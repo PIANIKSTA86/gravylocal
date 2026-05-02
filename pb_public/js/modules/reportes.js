@@ -107,6 +107,14 @@ function fmtSignedAmount(value) {
   return { text: fmt(n), isNegative: false };
 }
 
+function fmtPolarityAmount(value) {
+  const n = Number(value || 0);
+  const signed = fmtSignedAmount(n);
+  if (n < 0) return { text: signed.text, color: '#B91C1C' };
+  if (n > 0) return { text: signed.text, color: '#166534' };
+  return { text: signed.text, color: '#6B7280' };
+}
+
 async function renderTrialBalance() {
   const view = $('#report-view');
   if (!view) return;
@@ -412,19 +420,19 @@ async function renderTrialBalance() {
             <tbody>
               ${displayRows.length
                 ? displayRows.map((r) => {
-                  const prev = fmtSignedAmount(r.prev);
-                  const debit = fmtSignedAmount(r.debit);
-                  const credit = fmtSignedAmount(r.credit);
-                  const current = fmtSignedAmount(r.current);
+                  const prev = fmtPolarityAmount(r.prev);
+                  const debit = fmtPolarityAmount(r.debit);
+                  const credit = fmtPolarityAmount(r.credit);
+                  const current = fmtPolarityAmount(r.current);
                   return `
                 <tr>
                   <td class="font-mono text-xs ${r.isGroup ? 'font-bold' : ''}">${esc(r.code)}</td>
                   <td class="${r.isGroup ? 'font-bold' : ''}" style="padding-left:${8 + (r.depth * 18)}px">${esc(r.account)}</td>
                   ${includeThird ? `<td class="${r.isThirdDetail ? 'font-medium' : ''}">${esc(r.thirdName || '—')}</td>` : ''}
-                  <td class="${r.isGroup ? 'font-bold' : ''}" style="${prev.isNegative ? 'color:#B91C1C' : ''}">${prev.text}</td>
-                  <td class="${r.isGroup ? 'font-bold' : ''}" style="${debit.isNegative ? 'color:#B91C1C' : ''}">${debit.text}</td>
-                  <td class="${r.isGroup ? 'font-bold' : ''}" style="${credit.isNegative ? 'color:#B91C1C' : ''}">${credit.text}</td>
-                  <td class="${r.isGroup ? 'font-bold' : ''}" style="${current.isNegative ? 'color:#B91C1C' : ''}">${current.text}</td>
+                  <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${prev.color}">${prev.text}</td>
+                  <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${debit.color}">${debit.text}</td>
+                  <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${credit.color}">${credit.text}</td>
+                  <td class="${r.isGroup ? 'font-bold' : ''}" style="color:${current.color}">${current.text}</td>
                 </tr>`;
                 }).join('')
                 : `<tr><td colspan="${includeThird ? '7' : '6'}" class="text-center py-10" style="color:#9CA3AF">No hay datos para el lapso seleccionado.</td></tr>`}
@@ -432,10 +440,10 @@ async function renderTrialBalance() {
             <tfoot>
               <tr>
                 <td colspan="${includeThird ? '3' : '2'}" class="font-bold">Total</td>
-                <td class="font-bold" style="${totalPrev.isNegative ? 'color:#B91C1C' : ''}">${totalPrev.text}</td>
-                <td class="font-bold" style="${totalDebit.isNegative ? 'color:#B91C1C' : ''}">${totalDebit.text}</td>
-                <td class="font-bold" style="${totalCredit.isNegative ? 'color:#B91C1C' : ''}">${totalCredit.text}</td>
-                <td class="font-bold" style="${totalCurrent.isNegative ? 'color:#B91C1C' : ''}">${totalCurrent.text}</td>
+                <td class="font-bold" style="color:${fmtPolarityAmount(totals.prev).color}">${totalPrev.text}</td>
+                <td class="font-bold" style="color:${fmtPolarityAmount(totals.debit).color}">${totalDebit.text}</td>
+                <td class="font-bold" style="color:${fmtPolarityAmount(totals.credit).color}">${totalCredit.text}</td>
+                <td class="font-bold" style="color:${fmtPolarityAmount(totals.current).color}">${totalCurrent.text}</td>
               </tr>
             </tfoot>
           </table>
@@ -521,7 +529,7 @@ async function renderFinancialPosition() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Situación Financiera (Balance General)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="pos-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -529,6 +537,18 @@ async function renderFinancialPosition() {
         <div class="form-group">
           <label class="form-label">Comparar con</label>
           <input id="pos-compare-month" type="month" class="form-input" value="${compareMonthDefault}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nivel de información</label>
+          <select id="pos-level" class="form-input">
+            <option value="all">Todos</option>
+            <option value="1">Nivel 1</option>
+            <option value="2">Nivel 2</option>
+            <option value="3" selected>Nivel 3</option>
+            <option value="4">Nivel 4</option>
+            <option value="5">Nivel 5</option>
+            <option value="6">Nivel 6</option>
+          </select>
         </div>
         <div class="form-group flex items-end">
           <label class="inline-flex items-center gap-2 text-sm" style="color:#374151">
@@ -583,29 +603,89 @@ async function renderFinancialPosition() {
   };
 
   const toAmount = (raw, kind) => {
-    return kind === 'asset' ? Number(raw || 0) : Math.abs(Number(raw || 0));
+    const n = Number(raw || 0);
+    // Activo mantiene signo natural; Pasivo/Patrimonio invierten signo para mostrar
+    // saldos normales como positivos y saldos anormales como negativos.
+    return kind === 'asset' ? n : -n;
   };
 
-  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, startNote) => {
-    const detail = accounts
-      .filter(filterFn)
-      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')))
-      .map((acc, idx) => {
-        const now = toAmount(balancesNow[acc.id], kind);
-        const cmp = toAmount(balancesCmp[acc.id], kind);
-        return {
-          note: showNotes ? String(startNote + idx) : '',
-          label: acc.name,
-          now,
-          cmp,
-        };
-      })
-      .filter(r => Math.abs(r.now) > 0.0001 || Math.abs(r.cmp) > 0.0001);
+  const groupSection = (accounts, balancesNow, balancesCmp, filterFn, kind, showNotes, startNote, maxLevel) => {
+    const EPS = 0.0001;
+    const sectionAccounts = accounts.filter(filterFn);
+    const nodeById = new Map(sectionAccounts.map((acc) => [acc.id, {
+      id: acc.id,
+      code: String(acc.code || ''),
+      name: String(acc.name || ''),
+      level: Number(acc.level || 1),
+      parentCode: String(acc.parent_code || ''),
+      ownNow: toAmount(balancesNow[acc.id], kind),
+      ownCmp: toAmount(balancesCmp[acc.id], kind),
+      now: 0,
+      cmp: 0,
+      children: [],
+    }]));
 
-    const totalNow = detail.reduce((s, r) => s + r.now, 0);
-    const totalCmp = detail.reduce((s, r) => s + r.cmp, 0);
+    const nodeByCode = new Map();
+    nodeById.forEach((node) => {
+      if (node.code) nodeByCode.set(node.code, node);
+    });
 
-    return { detail, totalNow, totalCmp, nextNote: startNote + detail.length };
+    const roots = [];
+    nodeById.forEach((node) => {
+      const parent = node.parentCode ? nodeByCode.get(node.parentCode) : null;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    });
+
+    const sortByCode = (a, b) => a.code.localeCompare(b.code);
+    roots.sort(sortByCode);
+    nodeById.forEach((node) => node.children.sort(sortByCode));
+
+    const calcNode = (node) => {
+      let now = node.ownNow;
+      let cmp = node.ownCmp;
+      for (const child of node.children) {
+        const c = calcNode(child);
+        now += c.now;
+        cmp += c.cmp;
+      }
+      node.now = now;
+      node.cmp = cmp;
+      return { now, cmp };
+    };
+
+    roots.forEach((root) => calcNode(root));
+
+    let noteCounter = startNote;
+    const buildVisibleRows = (node) => {
+      const childRows = [];
+      for (const child of node.children) {
+        childRows.push(...buildVisibleRows(child));
+      }
+
+      const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+      const visible = hasActivity || childRows.length > 0;
+      if (!visible) return [];
+
+      const rows = [];
+      if (Number(node.level || 1) <= maxLevel) {
+        rows.push({
+          note: showNotes ? String(noteCounter++) : '',
+          label: node.name,
+          now: node.now,
+          cmp: node.cmp,
+        });
+      }
+
+      rows.push(...childRows);
+      return rows;
+    };
+
+    const detail = roots.flatMap((root) => buildVisibleRows(root));
+    const totalNow = roots.reduce((s, root) => s + root.now, 0);
+    const totalCmp = roots.reduce((s, root) => s + root.cmp, 0);
+
+    return { detail, totalNow, totalCmp, nextNote: noteCounter };
   };
 
   const generate = async () => {
@@ -615,6 +695,8 @@ async function renderFinancialPosition() {
     const reportMonth = getInputVal('pos-month');
     const compareMonth = getInputVal('pos-compare-month');
     const showNotes = getCheckVal('pos-show-notes');
+    const selectedLevel = getSelectVal('pos-level');
+    const maxLevel = selectedLevel === 'all' ? Number.POSITIVE_INFINITY : Number(selectedLevel || 3);
 
     if (!reportMonth || !compareMonth) {
       return showToast('Selecciona ambos meses para el reporte comparativo.', 'warning');
@@ -636,11 +718,11 @@ async function renderFinancialPosition() {
       const balCmp = buildBalancesAt(accounts, transactions, txLines, compareDate);
 
       let noteCounter = 1;
-      const actCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('11'), 'asset', showNotes, noteCounter); noteCounter = actCorr.nextNote;
-      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !String(a.code || '').startsWith('11'), 'asset', showNotes, noteCounter); noteCounter = actNoCorr.nextNote;
-      const pasCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('21'), 'liability', showNotes, noteCounter); noteCounter = pasCorr.nextNote;
-      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !String(a.code || '').startsWith('21'), 'liability', showNotes, noteCounter); noteCounter = pasNoCorr.nextNote;
-      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, noteCounter);
+      const actCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('11'), 'asset', showNotes, noteCounter, maxLevel); noteCounter = actCorr.nextNote;
+      const actNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('1') && !String(a.code || '').startsWith('11'), 'asset', showNotes, noteCounter, maxLevel); noteCounter = actNoCorr.nextNote;
+      const pasCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('21'), 'liability', showNotes, noteCounter, maxLevel); noteCounter = pasCorr.nextNote;
+      const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !String(a.code || '').startsWith('21'), 'liability', showNotes, noteCounter, maxLevel); noteCounter = pasNoCorr.nextNote;
+      const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, noteCounter, maxLevel);
 
       const totalActivosNow = actCorr.totalNow + actNoCorr.totalNow;
       const totalActivosCmp = actCorr.totalCmp + actNoCorr.totalCmp;
@@ -652,12 +734,18 @@ async function renderFinancialPosition() {
       const colCount = showNotes ? 4 : 3;
       const noteHead = showNotes ? '<th style="width:90px">Nota</th>' : '';
 
+      const amountCell = (value, extraClass = '') => {
+        const v = fmtPolarityAmount(value);
+        const color = `color:${v.color}`;
+        return `<td class="text-right ${extraClass}" style="${color}">${v.text}</td>`;
+      };
+
       const detailRowsHtml = (section) => section.detail.map(r => `
         <tr>
           <td style="padding-left:24px">${esc(r.label)}</td>
           ${showNotes ? `<td class="text-center">${esc(r.note)}</td>` : ''}
-          <td class="text-right">${fmt(r.now)}</td>
-          <td class="text-right">${fmt(r.cmp)}</td>
+          ${amountCell(r.now)}
+          ${amountCell(r.cmp)}
         </tr>`).join('');
 
       results.innerHTML = `
@@ -682,22 +770,22 @@ async function renderFinancialPosition() {
               <tr>
                 <td class="font-bold" style="padding-left:12px">Total activos corrientes</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(actCorr.totalNow)}</td>
-                <td class="font-bold text-right">${fmt(actCorr.totalCmp)}</td>
+                ${amountCell(actCorr.totalNow, 'font-bold')}
+                ${amountCell(actCorr.totalCmp, 'font-bold')}
               </tr>
               <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Activos no corrientes</td></tr>
               ${detailRowsHtml(actNoCorr)}
               <tr>
                 <td class="font-bold" style="padding-left:12px">Total activos no corrientes</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(actNoCorr.totalNow)}</td>
-                <td class="font-bold text-right">${fmt(actNoCorr.totalCmp)}</td>
+                ${amountCell(actNoCorr.totalNow, 'font-bold')}
+                ${amountCell(actNoCorr.totalCmp, 'font-bold')}
               </tr>
               <tr>
                 <td class="font-bold">Total activos</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(totalActivosNow)}</td>
-                <td class="font-bold text-right">${fmt(totalActivosCmp)}</td>
+                ${amountCell(totalActivosNow, 'font-bold')}
+                ${amountCell(totalActivosCmp, 'font-bold')}
               </tr>
 
               <tr><td class="font-bold" colspan="${colCount}">Pasivos</td></tr>
@@ -706,22 +794,22 @@ async function renderFinancialPosition() {
               <tr>
                 <td class="font-bold" style="padding-left:12px">Total pasivos corrientes</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(pasCorr.totalNow)}</td>
-                <td class="font-bold text-right">${fmt(pasCorr.totalCmp)}</td>
+                ${amountCell(pasCorr.totalNow, 'font-bold')}
+                ${amountCell(pasCorr.totalCmp, 'font-bold')}
               </tr>
               <tr><td class="font-semibold" colspan="${colCount}" style="padding-left:12px">Pasivos no corrientes</td></tr>
               ${detailRowsHtml(pasNoCorr)}
               <tr>
                 <td class="font-bold" style="padding-left:12px">Total pasivos no corrientes</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(pasNoCorr.totalNow)}</td>
-                <td class="font-bold text-right">${fmt(pasNoCorr.totalCmp)}</td>
+                ${amountCell(pasNoCorr.totalNow, 'font-bold')}
+                ${amountCell(pasNoCorr.totalCmp, 'font-bold')}
               </tr>
               <tr>
                 <td class="font-bold">Total pasivos</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(totalPasivosNow)}</td>
-                <td class="font-bold text-right">${fmt(totalPasivosCmp)}</td>
+                ${amountCell(totalPasivosNow, 'font-bold')}
+                ${amountCell(totalPasivosCmp, 'font-bold')}
               </tr>
 
               <tr><td class="font-bold" colspan="${colCount}">Patrimonio</td></tr>
@@ -729,15 +817,15 @@ async function renderFinancialPosition() {
               <tr>
                 <td class="font-bold">Total patrimonio</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(patrimonio.totalNow)}</td>
-                <td class="font-bold text-right">${fmt(patrimonio.totalCmp)}</td>
+                ${amountCell(patrimonio.totalNow, 'font-bold')}
+                ${amountCell(patrimonio.totalCmp, 'font-bold')}
               </tr>
 
               <tr>
                 <td class="font-bold">Total pasivos más patrimonio</td>
                 ${showNotes ? '<td></td>' : ''}
-                <td class="font-bold text-right">${fmt(totalPyPNow)}</td>
-                <td class="font-bold text-right">${fmt(totalPyPCmp)}</td>
+                ${amountCell(totalPyPNow, 'font-bold')}
+                ${amountCell(totalPyPCmp, 'font-bold')}
               </tr>
             </tbody>
           </table>

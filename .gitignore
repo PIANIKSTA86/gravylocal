@@ -1,0 +1,12 @@
+# Runtime data
+pb_data/storage/
+pb_data/logs/
+_tmp/
+
+# Local binaries
+pocketbase.exe
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/

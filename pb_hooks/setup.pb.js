@@ -1,0 +1,791 @@
+/// <reference path="../pb_data/types.d.ts" />
+
+/**
+ * ContaCO v2.0 — Setup inicial
+ * Se ejecuta una sola vez al primer arranque de PocketBase.
+ * IMPORTANTE: collectionId en campos de relación debe ser el ID real,
+ * no el nombre de la colección.
+ */
+
+onBootstrap((e) => {
+  e.next();
+
+  // Evitar re-ejecución si ya existe la colección principal
+  try {
+    $app.findCollectionByNameOrId("settings");
+    return; // Ya inicializado
+  } catch (_) {
+    // Primera vez — continuar
+  }
+
+  console.log("[ContaCO] Primer arranque detectado. Inicializando base de datos...");
+
+  // ── ID de la colección de usuarios (built-in) ──────────
+  let usersColId = "";
+  try {
+    usersColId = $app.findCollectionByNameOrId("users").id;
+  } catch (_) {
+    try { usersColId = $app.findCollectionByNameOrId("_pb_users_auth_").id; } catch (_2) {}
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: settings
+  // ─────────────────────────────────────────────────────────
+  const settings = new Collection({
+    name: "settings",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    updateRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    deleteRule: null,
+    fields: [
+      { name: "key",   type: "text", required: true },
+      { name: "value", type: "text", required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_settings_key ON settings (key)"],
+  });
+  $app.save(settings);
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: account_types
+  // ─────────────────────────────────────────────────────────
+  const accountTypes = new Collection({
+    name: "account_types",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    updateRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    deleteRule: null,
+    fields: [
+      { name: "code",       type: "text",   required: true },
+      { name: "name",       type: "text",   required: true },
+      { name: "nature",     type: "select", required: true, values: ["debit","credit"] },
+      { name: "class_code", type: "text",   required: true },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_at_code ON account_types (code)"],
+  });
+  $app.save(accountTypes);
+  const accountTypesId = accountTypes.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: accounts — sin auto-referencia de padre
+  //   Se usa parent_code (text) para evitar el problema chicken-and-egg
+  // ─────────────────────────────────────────────────────────
+  const accounts = new Collection({
+    name: "accounts",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "code",                 type: "text",     required: true },
+      { name: "name",                 type: "text",     required: true },
+      { name: "account_type_id",      type: "relation", required: true,
+        collectionId: accountTypesId, cascadeDelete: false },
+      { name: "nature",               type: "select",   required: true,  values: ["debit","credit"] },
+      { name: "level",                type: "number",   required: true,  min: 1, max: 6 },
+      { name: "parent_code",          type: "text",     required: false },
+      { name: "requires_third_party", type: "bool",     required: false },
+      { name: "active",               type: "bool",     required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_accounts_code ON accounts (code)"],
+  });
+  $app.save(accounts);
+  const accountsId = accounts.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: third_parties
+  // ─────────────────────────────────────────────────────────
+  const thirdParties = new Collection({
+    name: "third_parties",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    fields: [
+      { name: "type",               type: "select",  required: true,  values: ["CLIENTE","PROVEEDOR","EMPLEADO","OTRO"] },
+      { name: "doc_type",           type: "select",  required: true,  values: ["NIT","CC","CE","TI","PAS","RC"] },
+      { name: "doc_number",         type: "text",    required: true },
+      { name: "dv",                 type: "text",    required: false },
+      { name: "name",               type: "text",    required: true },
+      { name: "commercial_name",    type: "text",    required: false },
+      { name: "email",              type: "email",   required: false },
+      { name: "phone",              type: "text",    required: false },
+      { name: "address",            type: "text",    required: false },
+      { name: "city",               type: "text",    required: false },
+      { name: "department",         type: "text",    required: false },
+      { name: "country",            type: "text",    required: false },
+      { name: "tax_regime",         type: "select",  required: false, values: ["COMUN","SIMPLIFICADO","NO_RESP","GRAN_CONTR"] },
+      { name: "is_retention_agent", type: "bool",    required: false },
+      { name: "bank_name",          type: "text",    required: false },
+      { name: "bank_account",       type: "text",    required: false },
+      { name: "contact_name",       type: "text",    required: false },
+      { name: "contact_phone",      type: "text",    required: false },
+      { name: "notes",              type: "text",    required: false },
+      { name: "active",             type: "bool",    required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_tp_doc ON third_parties (doc_type, doc_number)"],
+  });
+  $app.save(thirdParties);
+  const thirdPartiesId = thirdParties.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: transaction_types
+  // ─────────────────────────────────────────────────────────
+  const transactionTypes = new Collection({
+    name: "transaction_types",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    updateRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "code",        type: "text",   required: true },
+      { name: "prefix",      type: "text",   required: true },
+      { name: "name",        type: "text",   required: true },
+      { name: "description", type: "text",   required: false },
+      { name: "consecutive", type: "number", required: false, min: 0 },
+      { name: "active",      type: "bool",   required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_tt_code ON transaction_types (code)"],
+  });
+  $app.save(transactionTypes);
+  const transactionTypesId = transactionTypes.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: transactions
+  // ─────────────────────────────────────────────────────────
+  const txFields = [
+    { name: "tx_type_id",    type: "relation", required: true,  collectionId: transactionTypesId, cascadeDelete: false },
+    { name: "number",        type: "text",     required: true },
+    { name: "date",          type: "text",     required: true },
+    { name: "description",   type: "text",     required: false },
+    { name: "third_party_id",type: "relation", required: false, collectionId: thirdPartiesId, cascadeDelete: false },
+    { name: "cross_enabled", type: "bool",     required: false },
+    { name: "cross_type",    type: "text",     required: false },
+    { name: "cross_number",  type: "text",     required: false },
+    { name: "cross_amount",  type: "number",   required: false },
+    { name: "cross_purpose", type: "select",   required: false, values: ["Causar","Recaudar","Reportar Cartera"] },
+    { name: "status",        type: "select",   required: false, values: ["active","voided","draft"] },
+  ];
+  if (usersColId) {
+    txFields.push({ name: "user_id", type: "relation", required: false, collectionId: usersColId, cascadeDelete: false });
+  } else {
+    txFields.push({ name: "user_id", type: "text", required: false });
+  }
+  const transactions = new Collection({
+    name: "transactions",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: txFields,
+    indexes: ["CREATE UNIQUE INDEX idx_transactions_number ON transactions (number)"],
+  });
+  $app.save(transactions);
+  const transactionsId = transactions.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: tx_lines
+  // ─────────────────────────────────────────────────────────
+  const txLines = new Collection({
+    name: "tx_lines",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "tx_id",      type: "relation", required: true,  collectionId: transactionsId, cascadeDelete: true },
+      { name: "account_id", type: "relation", required: true,  collectionId: accountsId,     cascadeDelete: false },
+      { name: "debit",      type: "number",   required: false, min: 0 },
+      { name: "credit",     type: "number",   required: false, min: 0 },
+      { name: "description",type: "text",     required: false },
+      { name: "line_order", type: "number",   required: false },
+    ],
+  });
+  $app.save(txLines);
+  const txLinesId = txLines.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: audit_log
+  // ─────────────────────────────────────────────────────────
+  const auditFields = [
+    { name: "username",  type: "text", required: true },
+    { name: "action",    type: "text", required: true },
+    { name: "entity",    type: "text", required: true },
+    { name: "entity_id", type: "text", required: false },
+    { name: "details",   type: "text", required: false },
+    { name: "ip",        type: "text", required: false },
+  ];
+  if (usersColId) {
+    auditFields.unshift({ name: "user_id", type: "relation", required: false, collectionId: usersColId, cascadeDelete: false });
+  } else {
+    auditFields.unshift({ name: "user_id", type: "text", required: false });
+  }
+  const auditLog = new Collection({
+    name: "audit_log",
+    type: "base",
+    listRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
+    viewRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
+    createRule: null,
+    updateRule: null,
+    deleteRule: null,
+    fields: auditFields,
+  });
+  $app.save(auditLog);
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: bank_accounts
+  // ─────────────────────────────────────────────────────────
+  const bankAccounts = new Collection({
+    name: "bank_accounts",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "name",       type: "text",     required: true },
+      { name: "bank",       type: "text",     required: true },
+      { name: "number",     type: "text",     required: true },
+      { name: "account_id", type: "relation", required: true, collectionId: accountsId, cascadeDelete: false },
+      { name: "currency",   type: "text",     required: false },
+      { name: "active",     type: "bool",     required: false },
+    ],
+  });
+  $app.save(bankAccounts);
+  const bankAccountsId = bankAccounts.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: bank_movements
+  // ─────────────────────────────────────────────────────────
+  const bankMovements = new Collection({
+    name: "bank_movements",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    fields: [
+      { name: "bank_account_id", type: "relation", required: true,  collectionId: bankAccountsId, cascadeDelete: false },
+      { name: "date",            type: "text",     required: true },
+      { name: "description",     type: "text",     required: false },
+      { name: "debit",           type: "number",   required: false, min: 0 },
+      { name: "credit",          type: "number",   required: false, min: 0 },
+      { name: "balance",         type: "number",   required: false },
+      { name: "ref",             type: "text",     required: false },
+      { name: "reconciled",      type: "bool",     required: false },
+      { name: "tx_line_id",      type: "relation", required: false, collectionId: txLinesId, cascadeDelete: false },
+    ],
+  });
+  $app.save(bankMovements);
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: payroll_periods
+  // ─────────────────────────────────────────────────────────
+  const payrollPeriods = new Collection({
+    name: "payroll_periods",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "name",      type: "text",     required: true },
+      { name: "date_from", type: "text",     required: true },
+      { name: "date_to",   type: "text",     required: true },
+      { name: "status",    type: "select",   required: false, values: ["draft","approved","paid"] },
+      { name: "tx_id",     type: "relation", required: false, collectionId: transactionsId, cascadeDelete: false },
+    ],
+  });
+  $app.save(payrollPeriods);
+  const payrollPeriodsId = payrollPeriods.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: payroll_lines
+  // ─────────────────────────────────────────────────────────
+  const payrollLines = new Collection({
+    name: "payroll_lines",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    fields: [
+      { name: "period_id",           type: "relation", required: true,  collectionId: payrollPeriodsId, cascadeDelete: true },
+      { name: "employee_id",         type: "relation", required: true,  collectionId: thirdPartiesId,   cascadeDelete: false },
+      { name: "salary_base",         type: "number",   required: true,  min: 0 },
+      { name: "days_worked",         type: "number",   required: false, min: 0, max: 30 },
+      { name: "overtime",            type: "number",   required: false, min: 0 },
+      { name: "transport_allowance", type: "number",   required: false, min: 0 },
+      { name: "deduction_health",    type: "number",   required: false, min: 0 },
+      { name: "deduction_pension",   type: "number",   required: false, min: 0 },
+      { name: "deduction_other",     type: "number",   required: false, min: 0 },
+      { name: "net_pay",             type: "number",   required: false, min: 0 },
+      { name: "employer_health",     type: "number",   required: false, min: 0 },
+      { name: "employer_pension",    type: "number",   required: false, min: 0 },
+      { name: "employer_arl",        type: "number",   required: false, min: 0 },
+      { name: "sena",                type: "number",   required: false, min: 0 },
+      { name: "icbf",                type: "number",   required: false, min: 0 },
+      { name: "caja_comp",           type: "number",   required: false, min: 0 },
+      { name: "cesantias",           type: "number",   required: false, min: 0 },
+      { name: "intereses_ces",       type: "number",   required: false, min: 0 },
+      { name: "prima",               type: "number",   required: false, min: 0 },
+      { name: "vacaciones",          type: "number",   required: false, min: 0 },
+      { name: "notes",               type: "text",     required: false },
+    ],
+  });
+  $app.save(payrollLines);
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: einvoice_docs
+  // ─────────────────────────────────────────────────────────
+  const einvoiceDocs = new Collection({
+    name: "einvoice_docs",
+    type: "base",
+    listRule: "@request.auth.id != ''",
+    viewRule: "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: null,
+    fields: [
+      { name: "tx_id",         type: "relation", required: true,  collectionId: transactionsId, cascadeDelete: false },
+      { name: "cufe",          type: "text",     required: false },
+      { name: "status",        type: "select",   required: false, values: ["pendiente","enviada","aceptada","rechazada"] },
+      { name: "dian_response", type: "text",     required: false },
+      { name: "xml_content",   type: "text",     required: false },
+      { name: "sent_at",       type: "text",     required: false },
+    ],
+  });
+  $app.save(einvoiceDocs);
+
+  // ─────────────────────────────────────────────────────────
+  // EXTENDER USUARIOS con campos de rol
+  // PocketBase v0.23+ requiere constructores tipados para fields.add()
+  // ─────────────────────────────────────────────────────────
+  try {
+    const usersCol = $app.findCollectionByNameOrId("users");
+    usersCol.fields.add(new SelectField({
+      name: "role",
+      required: true,
+      values: ["admin","contador","auxiliar","auditor","viewer"],
+    }));
+    usersCol.fields.add(new TextField({
+      name: "full_name",
+      required: true,
+    }));
+    usersCol.fields.add(new BoolField({
+      name: "active",
+      required: false,
+    }));
+    $app.save(usersCol);
+    console.log("[ContaCO] Campos de rol agregados a users correctamente.");
+  } catch(err) {
+    console.log("[ContaCO] Aviso al extender users: " + err);
+    console.log("[ContaCO] Agregue manualmente los campos role/full_name/active a la coleccion users en el panel admin.");
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // DATOS SEMILLA
+  // ─────────────────────────────────────────────────────────
+
+  // Configuración empresa
+  const settingsCol2 = $app.findCollectionByNameOrId("settings");
+  const seedSettings = [
+    ["company_name",    "Mi Empresa S.A.S."],
+    ["company_nit",     "900.123.456-7"],
+    ["company_address", "Cra 10 # 5-30, Bogotá"],
+    ["company_phone",   "601-555-0100"],
+    ["company_email",   "info@miempresa.com"],
+    ["smv_year",        String(new Date().getFullYear())],
+  ];
+  for (const [k, v] of seedSettings) {
+    const r = new Record(settingsCol2, { key: k, value: v });
+    $app.save(r);
+  }
+
+  // Tipos de cuenta (PUC Colombia)
+  const atCol  = $app.findCollectionByNameOrId("account_types");
+  const atSeed = [
+    ["ACT","Activo","debit","1"],
+    ["PAS","Pasivo","credit","2"],
+    ["PAT","Patrimonio","credit","3"],
+    ["ING","Ingreso","credit","4"],
+    ["GAS","Gasto","debit","5"],
+    ["COS","Costo de Ventas","debit","6"],
+    ["CON","Contrapartida","credit","7"],
+  ];
+  const atIds = {};
+  for (const [code, name, nature, cls] of atSeed) {
+    const r = new Record(atCol, { code, name, nature, class_code: cls });
+    $app.save(r);
+    atIds[code] = r.id;
+  }
+
+  // Tipos de transacción
+  const ttCol  = $app.findCollectionByNameOrId("transaction_types");
+  const ttSeed = [
+    ["FV","FV","Factura de Venta","Facturación de ventas a clientes",0],
+    ["FC","FC","Factura de Compra","Registro de compras a proveedores",0],
+    ["RC","RC","Recibo de Caja","Ingresos de efectivo",0],
+    ["EG","EG","Egreso de Caja","Pagos en efectivo",0],
+    ["NC","NC","Nota Crédito","Nota crédito a clientes",0],
+    ["ND","ND","Nota Débito","Nota débito a clientes",0],
+    ["CM","CM","Comprobante de Egreso","Pagos a proveedores",0],
+    ["NM","NM","Nómina","Liquidación de nómina",0],
+  ];
+  for (const [code, prefix, name, description, consecutive] of ttSeed) {
+    const r = new Record(ttCol, { code, prefix, name, description, consecutive, active: true });
+    $app.save(r);
+  }
+
+  // Plan de Cuentas PUC Colombia — extracto representativo
+  const acCol = $app.findCollectionByNameOrId("accounts");
+  // [code, name, atCode, nature, level, parentCode, requiresThirdParty]
+  const acSeed = [
+    // Clase 1 — Activo
+    ["1","ACTIVO","ACT","debit",1,"",false],
+    ["11","DISPONIBLE","ACT","debit",2,"1",false],
+    ["1105","CAJA","ACT","debit",3,"11",false],
+    ["110505","CAJA GENERAL","ACT","debit",4,"1105",false],
+    ["110510","CAJAS MENORES","ACT","debit",4,"1105",false],
+    ["1110","BANCOS","ACT","debit",3,"11",false],
+    ["111005","BANCO NACIONAL MONEDA NAL","ACT","debit",4,"1110",false],
+    ["12","INVERSIONES","ACT","debit",2,"1",false],
+    ["1205","ACCIONES","ACT","debit",3,"12",false],
+    ["13","DEUDORES","ACT","debit",2,"1",true],
+    ["1305","CLIENTES","ACT","debit",3,"13",true],
+    ["130505","NACIONALES","ACT","debit",4,"1305",true],
+    ["1330","ANTICIPOS Y AVANCES","ACT","debit",3,"13",true],
+    ["133005","A PROVEEDORES","ACT","debit",4,"1330",true],
+    ["1355","ANTICIPO DE IMPUESTOS","ACT","debit",3,"13",false],
+    ["135505","RETENCIÓN EN LA FUENTE","ACT","debit",4,"1355",false],
+    ["135510","ICA RETENIDO","ACT","debit",4,"1355",false],
+    ["14","INVENTARIOS","ACT","debit",2,"1",false],
+    ["1405","MATERIAS PRIMAS","ACT","debit",3,"14",false],
+    ["1430","PRODUCTOS TERMINADOS","ACT","debit",3,"14",false],
+    ["15","PROPIEDADES PLANTA Y EQUIPO","ACT","debit",2,"1",false],
+    ["1524","EQUIPO DE OFICINA","ACT","debit",3,"15",false],
+    ["152405","MUEBLES Y ENSERES","ACT","debit",4,"1524",false],
+    ["1528","EQUIPO DE COMPUTACIÓN","ACT","debit",3,"15",false],
+    ["152805","COMPUTADORES","ACT","debit",4,"1528",false],
+    ["1592","DEPRECIACIÓN ACUMULADA","ACT","credit",3,"15",false],
+    // Clase 2 — Pasivo
+    ["2","PASIVO","PAS","credit",1,"",false],
+    ["21","OBLIGACIONES FINANCIERAS","PAS","credit",2,"2",false],
+    ["2105","BANCOS NACIONALES","PAS","credit",3,"21",false],
+    ["22","PROVEEDORES","PAS","credit",2,"2",true],
+    ["2205","NACIONALES","PAS","credit",3,"22",true],
+    ["220505","CUENTAS POR PAGAR PROVEEDORES","PAS","credit",4,"2205",true],
+    ["23","CUENTAS POR PAGAR","PAS","credit",2,"2",true],
+    ["2330","RETENCIONES EN LA FUENTE","PAS","credit",3,"23",false],
+    ["233005","RENTA","PAS","credit",4,"2330",false],
+    ["233010","IVA RÉGIMEN COMÚN","PAS","credit",4,"2330",false],
+    ["2335","IVA IMPUESTO POR PAGAR","PAS","credit",3,"23",false],
+    ["233501","IVA GENERADO","PAS","credit",4,"2335",false],
+    ["233502","IVA DESCONTABLE","PAS","debit",4,"2335",false],
+    ["24","IMPUESTOS GRAVÁMENES Y TASAS","PAS","credit",2,"2",false],
+    ["2404","IVA","PAS","credit",3,"24",false],
+    ["2408","ICA","PAS","credit",3,"24",false],
+    ["25","OBLIGACIONES LABORALES","PAS","credit",2,"2",true],
+    ["2505","SALARIOS POR PAGAR","PAS","credit",3,"25",true],
+    ["2510","CESANTÍAS CONSOLIDADAS","PAS","credit",3,"25",false],
+    ["2515","INTERESES SOBRE CESANTÍAS","PAS","credit",3,"25",false],
+    ["2520","PRIMA DE SERVICIOS","PAS","credit",3,"25",false],
+    ["2525","VACACIONES CONSOLIDADAS","PAS","credit",3,"25",false],
+    // Clase 3 — Patrimonio
+    ["3","PATRIMONIO","PAT","credit",1,"",false],
+    ["31","CAPITAL SOCIAL","PAT","credit",2,"3",false],
+    ["3105","CAPITAL SUSCRITO Y PAGADO","PAT","credit",3,"31",false],
+    ["33","RESERVAS","PAT","credit",2,"3",false],
+    ["3305","RESERVA LEGAL","PAT","credit",3,"33",false],
+    ["36","RESULTADOS DEL EJERCICIO","PAT","credit",2,"3",false],
+    ["3605","UTILIDAD DEL EJERCICIO","PAT","credit",3,"36",false],
+    ["3610","PÉRDIDA DEL EJERCICIO","PAT","debit",3,"36",false],
+    ["37","RESULTADOS DE EJERCICIOS ANTERIORES","PAT","credit",2,"3",false],
+    ["3705","UTILIDADES ACUMULADAS","PAT","credit",3,"37",false],
+    // Clase 4 — Ingresos
+    ["4","INGRESOS","ING","credit",1,"",false],
+    ["41","OPERACIONALES","ING","credit",2,"4",false],
+    ["4135","COMERCIO AL POR MAYOR Y MENOR","ING","credit",3,"41",false],
+    ["413505","VENTAS BRUTAS","ING","credit",4,"4135",false],
+    ["42","NO OPERACIONALES","ING","credit",2,"4",false],
+    ["4210","FINANCIEROS","ING","credit",3,"42",false],
+    ["4245","DEVOLUCIONES EN VENTAS","ING","debit",3,"42",false],
+    // Clase 5 — Gastos
+    ["5","GASTOS","GAS","debit",1,"",false],
+    ["51","OPERACIONALES DE ADMINISTRACIÓN","GAS","debit",2,"5",false],
+    ["5105","GASTOS DE PERSONAL","GAS","debit",3,"51",false],
+    ["510506","SUELDOS","GAS","debit",4,"5105",false],
+    ["510527","AUXILIO DE TRANSPORTE","GAS","debit",4,"5105",false],
+    ["5110","HONORARIOS","GAS","debit",3,"51",false],
+    ["5135","SERVICIOS","GAS","debit",3,"51",false],
+    ["513540","GASTOS BANCARIOS","GAS","debit",4,"5135",false],
+    ["5155","DEPRECIACIONES","GAS","debit",3,"51",false],
+    ["5195","GASTOS DIVERSOS","GAS","debit",3,"51",false],
+    ["52","OPERACIONALES DE VENTAS","GAS","debit",2,"5",false],
+    ["5245","PUBLICIDAD Y PROPAGANDA","GAS","debit",3,"52",false],
+    // Clase 6 — Costo de Ventas
+    ["6","COSTOS","COS","debit",1,"",false],
+    ["61","COSTO DE VENTAS","COS","debit",2,"6",false],
+    ["6135","COSTO DE VENTAS COMERC.","COS","debit",3,"61",false],
+    ["613505","COSTO MERCANCÍA VENDIDA","COS","debit",4,"6135",false],
+    // Clase 7 — Costos de Producción
+    ["7","COSTOS DE PRODUCCIÓN","CON","credit",1,"",false],
+    ["71","MATERIA PRIMA","CON","debit",2,"7",false],
+    ["72","MANO DE OBRA DIRECTA","CON","debit",2,"7",false],
+    ["73","COSTOS INDIRECTOS","CON","debit",2,"7",false],
+  ];
+
+  for (const [code, name, atCode, nature, level, parentCode, req3rd] of acSeed) {
+    const r = new Record(acCol, {
+      code,
+      name,
+      account_type_id: atIds[atCode],
+      nature,
+      level,
+      parent_code: parentCode,
+      requires_third_party: req3rd,
+      active: true,
+    });
+    $app.save(r);
+  }
+
+  console.log("[ContaCO] Base de datos inicializada correctamente.");
+  console.log("[ContaCO] Ir a http://localhost:8090/_/ para crear el primer usuario administrador.");
+});
+
+/**
+ * Asigna número consecutivo en servidor para transactions.
+ *
+ * Esto evita depender de incrementos en cliente y centraliza
+ * la numeración por tipo de transacción.
+ */
+onRecordCreateRequest((e) => {
+  const rec = e.record;
+  if (!rec) {
+    e.next();
+    return;
+  }
+
+  // Solo aplica a la colección transactions
+  const colName = String(rec.collection?.()?.name || rec.collectionName || "");
+  if (colName !== "transactions") {
+    e.next();
+    return;
+  }
+
+  // En algunos contextos de JSVM la relación puede llegar como string o array.
+  const rawTxType = rec.get("tx_type_id");
+  const txTypeId = String(Array.isArray(rawTxType) ? (rawTxType[0] || "") : (rawTxType || "")).trim();
+  if (!txTypeId) {
+    throw new BadRequestError("tx_type_id es obligatorio para generar consecutivo");
+  }
+
+  let txNumber = "";
+
+  try {
+    $app.runInTransaction((txApp) => {
+      const txType = txApp.findRecordById("transaction_types", txTypeId);
+      const prefix = String(txType.getString("prefix") || txType.getString("code") || "TX").trim().toUpperCase() || "TX";
+      const consecutiveRaw = Number(txType.get("consecutive") || 0);
+      const next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
+
+      txType.set("consecutive", next);
+      txApp.save(txType);
+
+      txNumber = `${prefix}-${String(next).padStart(6, "0")}`;
+    });
+  } catch (err) {
+    throw new BadRequestError("No se pudo generar consecutivo de transaccion: " + err);
+  }
+
+  if (!txNumber) {
+    throw new BadRequestError("No se pudo asignar numero consecutivo");
+  }
+
+  rec.set("number", txNumber);
+  e.next();
+}, "transactions");
+
+// Garantiza el índice único en instalaciones existentes.
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    $app.nonconcurrentDB()
+      .newQuery("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_number ON transactions (number)")
+      .execute();
+  } catch (err) {
+    console.log("[ContaCO] Aviso al crear índice idx_transactions_number: " + err);
+  }
+});
+
+// -----------------------------------------------------------------------------
+// Auditoría server-side (fuente confiable)
+// -----------------------------------------------------------------------------
+function getActorInfoFromEvent(e) {
+  const auth = e?.requestInfo?.auth;
+  if (!auth) {
+    return { userId: "", username: "system" };
+  }
+
+  const userId = String(auth.id || "");
+  const username = String(auth.getString?.("email") || auth.getString?.("username") || auth.getString?.("name") || userId || "system");
+  return { userId, username };
+}
+
+function writeAuditFromEvent(e, action, entity, entityId = "", details = "") {
+  try {
+    const auditCol = $app.findCollectionByNameOrId("audit_log");
+    const actor = getActorInfoFromEvent(e);
+
+    const payload = {
+      username: actor.username,
+      action: String(action || ""),
+      entity: String(entity || ""),
+      entity_id: String(entityId || ""),
+      details: String(details || ""),
+      ip: String(e?.remoteIP?.() || ""),
+    };
+
+    if (actor.userId) payload.user_id = actor.userId;
+
+    const log = new Record(auditCol, payload);
+    $app.save(log);
+  } catch (_) {
+    // Evitar romper la operación principal por un fallo de auditoría.
+  }
+}
+
+onRecordAfterCreateSuccess((e) => {
+  try {
+    const r = e.record;
+    if (r) {
+      const labels = {
+        accounts: "Cuenta",
+        third_parties: "Tercero",
+        transaction_types: "Tipo Tx",
+        transactions: "Transaccion",
+        tx_lines: "Linea Tx",
+        bank_accounts: "Cuenta Bancaria",
+        bank_movements: "Movimiento Bancario",
+        payroll_periods: "Periodo Nomina",
+        payroll_lines: "Linea Nomina",
+        einvoice_docs: "DIAN Doc",
+      };
+      const colName = String(e?.collection?.name || r?.collectionName || "");
+      const label = labels[colName];
+      if (label) {
+        writeAuditFromEvent(e, "CREATE", label, r.id, `Creado ${label}`);
+      }
+    }
+  } catch (_) {
+    // Nunca bloquear la operación principal por auditoría.
+  }
+  e.next();
+});
+
+onRecordAfterUpdateSuccess((e) => {
+  try {
+    const r = e.record;
+    if (r) {
+      const labels = {
+        accounts: "Cuenta",
+        third_parties: "Tercero",
+        transaction_types: "Tipo Tx",
+        transactions: "Transaccion",
+        tx_lines: "Linea Tx",
+        bank_accounts: "Cuenta Bancaria",
+        bank_movements: "Movimiento Bancario",
+        payroll_periods: "Periodo Nomina",
+        payroll_lines: "Linea Nomina",
+        einvoice_docs: "DIAN Doc",
+      };
+      const colName = String(e?.collection?.name || r?.collectionName || "");
+      const label = labels[colName];
+      if (label) {
+        writeAuditFromEvent(e, "UPDATE", label, r.id, `Actualizado ${label}`);
+      }
+    }
+  } catch (_) {
+    // Nunca bloquear la operación principal por auditoría.
+  }
+  e.next();
+});
+
+onRecordAfterDeleteSuccess((e) => {
+  try {
+    const r = e.record;
+    if (r) {
+      const labels = {
+        accounts: "Cuenta",
+        third_parties: "Tercero",
+        transaction_types: "Tipo Tx",
+        transactions: "Transaccion",
+        tx_lines: "Linea Tx",
+        bank_accounts: "Cuenta Bancaria",
+        bank_movements: "Movimiento Bancario",
+        payroll_periods: "Periodo Nomina",
+        payroll_lines: "Linea Nomina",
+        einvoice_docs: "DIAN Doc",
+      };
+      const colName = String(e?.collection?.name || r?.collectionName || "");
+      const label = labels[colName];
+      if (label) {
+        writeAuditFromEvent(e, "DELETE", label, r.id || "", `Eliminado ${label}`);
+      }
+    }
+  } catch (_) {
+    // Nunca bloquear la operación principal por auditoría.
+  }
+  e.next();
+});
+
+// Asegura reglas de acceso de users en instalaciones ya existentes.
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    const usersCol = $app.findCollectionByNameOrId("users");
+    const listRule = "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'";
+    const viewRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.id = id)";
+    const updateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.id = id)";
+
+    let changed = false;
+    if (usersCol.listRule !== listRule) {
+      usersCol.listRule = listRule;
+      changed = true;
+    }
+    if (usersCol.viewRule !== viewRule) {
+      usersCol.viewRule = viewRule;
+      changed = true;
+    }
+    if (usersCol.updateRule !== updateRule) {
+      usersCol.updateRule = updateRule;
+      changed = true;
+    }
+
+    if (changed) {
+      $app.save(usersCol);
+      console.log("[ContaCO] Reglas de users actualizadas.");
+    }
+  } catch (err) {
+    console.log("[ContaCO] Aviso al ajustar reglas de users: " + err);
+  }
+});

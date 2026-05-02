@@ -20,7 +20,7 @@ async function renderPlanCuentas(c) {
         <td>${esc(a.name)}</td>
         <td>${esc(t?.name ?? '?')}</td>
         <td>${esc(a.parent_code || '?')}</td>
-         <td>${a.requires_third_party ? '<span class="badge badge-orange">Sí</span>' : 'No'}</td>
+        <td>${a.requires_third_party ? '<span class="badge badge-orange">Sí</span>' : 'No'}</td>
         <td>${badge}</td>
         <td>
           <div class="flex gap-2">
@@ -115,12 +115,57 @@ async function openAccountForm(accTypes, row = null) {
       <div class="form-group"><label class="form-label">Código Padre</label><input id="ac-parent" class="form-input" value="${esc(row?.parent_code || '')}"></div>
       <div class="form-group"><label class="form-label">¿Requiere Tercero?</label><select id="ac-third" class="form-input"><option value="0" ${row?.requires_third_party ? '' : 'selected'}>No</option><option value="1" ${row?.requires_third_party ? 'selected' : ''}>Sí</option></select></div>
       <div class="form-group"><label class="form-label">Estado</label><select id="ac-active" class="form-input"><option value="1" ${row?.active !== false ? 'selected' : ''}>Activa</option><option value="0" ${row?.active === false ? 'selected' : ''}>Inactiva</option></select></div>
+    </div>
+    <hr class="my-3" style="border-color:#F0F0F0">
+    <p class="text-xs font-semibold mb-2" style="color:#6B7280;text-transform:uppercase;letter-spacing:.05em">Comportamiento contable</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="form-group">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="ac-cruce" ${row?.maneja_cruce ? 'checked' : ''} class="w-4 h-4" style="accent-color:#1A4B8C">
+          <span class="form-label mb-0">Maneja documento de cruce <span class="text-xs" style="color:#6B7280">(CxP / CxC)</span></span>
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="ac-ret" ${row?.maneja_retenciones ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706" onchange="toggleRetTypes()">
+          <span class="form-label mb-0">Maneja retenciones</span>
+        </label>
+      </div>
+      <div id="ret-types-wrap" class="md:col-span-2 ${row?.maneja_retenciones ? '' : 'hidden'}">
+        <p class="text-xs mb-2" style="color:#6B7280">Selecciona los tipos de retención que aplican:</p>
+        <div class="flex flex-wrap gap-4">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="ac-reterenta" ${(row?.tipos_retencion || '').includes('reterenta') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
+            <span class="text-sm">Reterenta</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="ac-reteiva" ${(row?.tipos_retencion || '').includes('reteiva') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
+            <span class="text-sm">Reteiva</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="ac-reteica" ${(row?.tipos_retencion || '').includes('reteica') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
+            <span class="text-sm">Reteica</span>
+          </label>
+        </div>
+      </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
      <button class="btn btn-primary" id="btn-save-account"><i class="fas fa-floppy-disk"></i> Guardar</button>`,
   );
 
+  window.toggleRetTypes = () => {
+    const checked = document.getElementById('ac-ret')?.checked;
+    const wrap = document.getElementById('ret-types-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !checked);
+  };
+
   $('#btn-save-account')?.addEventListener('click', async () => {
+    const tiposArr = [];
+    if (document.getElementById('ac-ret')?.checked) {
+      if (document.getElementById('ac-reterenta')?.checked) tiposArr.push('reterenta');
+      if (document.getElementById('ac-reteiva')?.checked)   tiposArr.push('reteiva');
+      if (document.getElementById('ac-reteica')?.checked)   tiposArr.push('reteica');
+    }
     const payload = {
       code: getInputVal('ac-code'),
       name: getInputVal('ac-name'),
@@ -130,6 +175,9 @@ async function openAccountForm(accTypes, row = null) {
       parent_code: getInputVal('ac-parent'),
       requires_third_party: getSelectVal('ac-third') === '1',
       active: getSelectVal('ac-active') === '1',
+      maneja_cruce: !!document.getElementById('ac-cruce')?.checked,
+      maneja_retenciones: !!document.getElementById('ac-ret')?.checked,
+      tipos_retencion: tiposArr.join(','),
     };
     if (!payload.code || !payload.name || !payload.account_type_id) {
       return showToast('Completa código, nombre y tipo de cuenta', 'warning');

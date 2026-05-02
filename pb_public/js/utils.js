@@ -56,7 +56,7 @@ function showToast(msg, type = 'success', duration = 3500) {
 
 /* ── Modal genérico ───────────────────────────────────────── */
 function openModal(title, bodyHtml, footerHtml = '', wide = false) {
-  $('#modal-title').textContent = title;
+  $('#modal-title').innerHTML = title;
   $('#modal-body').innerHTML = bodyHtml;          // bodyHtml ya debe venir con esc() aplicado donde corresponde
   $('#modal-footer').innerHTML = footerHtml;
   $('#modal-box').classList.toggle('wide', wide);

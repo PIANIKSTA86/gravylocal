@@ -826,3 +826,51 @@ onBootstrap((e) => {
     console.log("[ContaCO] Aviso al ajustar reglas de users: " + err);
   }
 });
+
+// ── Migración: campos de cruce y retenciones ──────────────────────────────────
+onBootstrap((e) => {
+  e.next();
+
+  // ── accounts: maneja_cruce, maneja_retenciones, tipos_retencion ──────────
+  try {
+    const col = $app.findCollectionByNameOrId("accounts");
+    let changed = false;
+
+    const boolFields = ["maneja_cruce", "maneja_retenciones"];
+    for (const fname of boolFields) {
+      let hasIt = false;
+      try { hasIt = !!col.fields.getByName(fname); } catch (_) { hasIt = String(col.fields || "").includes(fname); }
+      if (!hasIt) {
+        col.fields.add(new BoolField({ name: fname, required: false }));
+        changed = true;
+        console.log("[ContaCO] Campo " + fname + " agregado a accounts.");
+      }
+    }
+
+    let hasTipos = false;
+    try { hasTipos = !!col.fields.getByName("tipos_retencion"); } catch (_) { hasTipos = String(col.fields || "").includes("tipos_retencion"); }
+    if (!hasTipos) {
+      col.fields.add(new TextField({ name: "tipos_retencion", required: false }));
+      changed = true;
+      console.log("[ContaCO] Campo tipos_retencion agregado a accounts.");
+    }
+
+    if (changed) $app.save(col);
+  } catch (err) {
+    console.log("[ContaCO] Aviso al migrar accounts (cruce/retenciones): " + err);
+  }
+
+  // ── tx_lines: cross_doc_ref ───────────────────────────────────────────────
+  try {
+    const col = $app.findCollectionByNameOrId("tx_lines");
+    let hasCross = false;
+    try { hasCross = !!col.fields.getByName("cross_doc_ref"); } catch (_) { hasCross = String(col.fields || "").includes("cross_doc_ref"); }
+    if (!hasCross) {
+      col.fields.add(new TextField({ name: "cross_doc_ref", required: false }));
+      $app.save(col);
+      console.log("[ContaCO] Campo cross_doc_ref agregado a tx_lines.");
+    }
+  } catch (err) {
+    console.log("[ContaCO] Aviso al migrar tx_lines (cross_doc_ref): " + err);
+  }
+});

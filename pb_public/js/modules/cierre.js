@@ -35,11 +35,13 @@ async function renderCierre(c) {
     const currentMonth = new Date().getMonth() + 1;
     const currentKey = `${currentYear}-${String(currentMonth).padStart(2,'0')}`;
     const isCurrentClosed = closedPeriods.has(currentKey);
+    const currentPeriodoRecord = periodos.find(p => p.key === currentKey);
+    const isCurrentRegistered = !!currentPeriodoRecord;
 
-    const statusBadge = closed =>
-      closed
+    const statusBadge = p =>
+      p.closed
         ? '<span class="badge badge-red"><i class="fas fa-lock mr-1"></i>Cerrado</span>'
-        : '<span class="badge badge-green"><i class="fas fa-lock-open mr-1"></i>Abierto</span>';
+        : '<span class="badge badge-green"><i class="fas fa-lock-open mr-1"></i>Habilitado</span>';
 
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -47,7 +49,11 @@ async function renderCierre(c) {
           <h3 class="text-lg font-bold" style="color:#0D2137">Asistente de Cierre Contable</h3>
           <p class="text-sm" style="color:#6B7280">Gestion de Periodos, asientos de cierre y bloqueo de transacciones.</p>
         </div>
-        ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-cierre"><i class="fas fa-calendar-check"></i> Realizar Cierre</button>' : ''}
+        ${can('canWrite') ? `
+          <div class="flex gap-2 flex-wrap">
+            <button class="btn btn-outline" id="btn-enable-period"><i class="fas fa-calendar-plus"></i> Habilitar Período</button>
+            <button class="btn btn-primary" id="btn-new-cierre"><i class="fas fa-calendar-check"></i> Realizar Cierre</button>
+          </div>` : ''}
       </div>
 
       <!-- Resumen del Periodo actual -->
@@ -72,20 +78,29 @@ async function renderCierre(c) {
       </div>
 
       <!-- Estado del Periodo actual -->
-      ${isCurrentClosed
+      ${!isCurrentRegistered
+        ? `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#FFF8F0;border-color:#FED7AA">
+            <i class="fas fa-triangle-exclamation text-xl" style="color:#C46516"></i>
+            <div>
+              <p class="font-semibold" style="color:#C46516">Período ${currentKey} no está habilitado</p>
+              <p class="text-sm" style="color:#6B7280">No se pueden registrar transacciones en este mes hasta que el administrador lo habilite.</p>
+            </div>
+            ${can('canWrite') ? `<button class="btn btn-primary btn-sm ml-auto" id="btn-enable-period-inline"><i class="fas fa-calendar-plus"></i> Habilitar ahora</button>` : ''}
+          </div>`
+        : isCurrentClosed
         ? `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#FEF2F2;border-color:#FECACA">
             <i class="fas fa-lock text-xl" style="color:#B91C1C"></i>
             <div>
-              <p class="font-semibold" style="color:#B91C1C">Periodo ${currentKey} CERRADO</p>
-              <p class="text-sm" style="color:#6B7280">No se pueden crear ni anular transacciones en este Periodo.</p>
+              <p class="font-semibold" style="color:#B91C1C">Período ${currentKey} CERRADO</p>
+              <p class="text-sm" style="color:#6B7280">No se pueden crear ni anular transacciones en este período.</p>
             </div>
             ${can('canWrite') ? `<button class="btn btn-outline btn-sm ml-auto" onclick="reOpenPeriod('${currentKey}')"><i class="fas fa-lock-open"></i> Re-abrir</button>` : ''}
           </div>`
         : `<div class="mb-4 p-4 rounded-2xl border flex items-center gap-3" style="background:#F0FFF4;border-color:#BBF7D0">
             <i class="fas fa-lock-open text-xl" style="color:#15803D"></i>
             <div>
-              <p class="font-semibold" style="color:#15803D">Periodo ${currentKey} ABIERTO</p>
-              <p class="text-sm" style="color:#6B7280">El Periodo actual acepta nuevas transacciones.</p>
+              <p class="font-semibold" style="color:#15803D">Período ${currentKey} HABILITADO</p>
+              <p class="text-sm" style="color:#6B7280">El período actual acepta nuevas transacciones.</p>
             </div>
           </div>`
       }
@@ -93,33 +108,39 @@ async function renderCierre(c) {
       <!-- Historial de Periodos -->
       <div class="bg-white rounded-2xl border overflow-hidden mb-4" style="border-color:#F0F0F0">
         <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
-          <h4 class="font-bold" style="color:#0D2137">Historial de Periodos</h4>
-          <span class="text-xs" style="color:#9CA3AF">${periodos.length} Periodo(s) registrado(s)</span>
+          <h4 class="font-bold" style="color:#0D2137">Períodos Registrados</h4>
+          <span class="text-xs" style="color:#9CA3AF">${periodos.length} período(s) — solo estos aceptan transacciones</span>
         </div>
+        ${!periodos.length ? `
+          <div class="p-8 text-center">
+            <i class="fas fa-calendar-xmark text-3xl mb-3" style="color:#D1D5DB"></i>
+            <p class="font-semibold" style="color:#374151">No hay períodos habilitados</p>
+            <p class="text-sm mt-1 mb-4" style="color:#9CA3AF">Habilita al menos el período actual para comenzar a registrar transacciones.</p>
+            ${can('canWrite') ? `<button class="btn btn-primary" id="btn-enable-period-empty"><i class="fas fa-calendar-plus"></i> Habilitar Período Actual</button>` : ''}
+          </div>` : `
         <div class="overflow-x-auto">
           <table class="data-table">
-            <thead><tr><th>Periodo</th><th>Estado</th><th>Fecha de Cierre</th><th>Usuario</th><th>Utilidad Registrada</th><th>Nota</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Período</th><th>Estado</th><th>Habilitado Por</th><th>Fecha Habilitación</th><th>Fecha Cierre</th><th>Utilidad Registrada</th><th>Nota</th><th>Acciones</th></tr></thead>
             <tbody>
-              ${periodos.length
-                ? [...periodos].reverse().map(p => `
-                  <tr>
-                    <td class="font-mono font-semibold">${esc(p.key)}</td>
-                    <td>${statusBadge(p.closed)}</td>
-                    <td>${esc(p.closedAt || '—')}</td>
-                    <td>${esc(p.closedBy || '—')}</td>
-                    <td class="font-semibold ${p.utilidad >= 0 ? '' : ''}" style="color:${(p.utilidad||0) >= 0 ? '#15803D' : '#B91C1C'}">${fmt(p.utilidad || 0)}</td>
-                    <td class="text-sm" style="color:#6B7280">${esc(p.note || '—')}</td>
-                    <td>
-                      <div class="flex gap-1">
-                        ${p.closed && can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Re-abrir Periodo" onclick="reOpenPeriod('${esc(p.key)}')"><i class="fas fa-lock-open"></i></button>` : ''}
-                        ${!p.closed && can('canWrite') ? `<button class="btn btn-danger btn-sm" title="Cerrar Periodo" onclick="closePeriod('${esc(p.key)}')"><i class="fas fa-lock"></i></button>` : ''}
-                      </div>
-                    </td>
-                  </tr>`).join('')
-                : '<tr><td colspan="7" class="text-center py-8" style="color:#9CA3AF">No hay Periodos registrados aun.</td></tr>'}
+              ${[...periodos].reverse().map(p => `
+                <tr>
+                  <td class="font-mono font-semibold">${esc(p.key)}</td>
+                  <td>${statusBadge(p)}</td>
+                  <td class="text-sm" style="color:#6B7280">${esc(p.enabledBy || p.closedBy || '—')}</td>
+                  <td class="text-sm" style="color:#6B7280">${esc(p.enabledAt || '—')}</td>
+                  <td>${esc(p.closedAt || '—')}</td>
+                  <td class="font-semibold" style="color:${(p.utilidad||0) >= 0 ? '#15803D' : '#B91C1C'}">${fmt(p.utilidad || 0)}</td>
+                  <td class="text-sm" style="color:#6B7280">${esc(p.note || '—')}</td>
+                  <td>
+                    <div class="flex gap-1">
+                      ${p.closed && can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Re-abrir período" onclick="reOpenPeriod('${esc(p.key)}')"><i class="fas fa-lock-open"></i></button>` : ''}
+                      ${!p.closed && can('canWrite') ? `<button class="btn btn-danger btn-sm" title="Cerrar período" onclick="closePeriod('${esc(p.key)}')"><i class="fas fa-lock"></i></button>` : ''}
+                    </div>
+                  </td>
+                </tr>`).join('')}
             </tbody>
           </table>
-        </div>
+        </div>`}
       </div>
 
       <!-- Asientos de cierre -->
@@ -151,6 +172,9 @@ async function renderCierre(c) {
       </div>`;
 
     $('#btn-new-cierre')?.addEventListener('click', () => openCierreForm(periodos, utilidad));
+    $('#btn-enable-period')?.addEventListener('click', () => openEnablePeriodForm(periodos));
+    $('#btn-enable-period-inline')?.addEventListener('click', () => openEnablePeriodForm(periodos));
+    $('#btn-enable-period-empty')?.addEventListener('click', () => openEnablePeriodForm(periodos));
     $('#btn-gen-cierre-entries')?.addEventListener('click', () => generateCierreEntries(accounts, saldos, utilidad));
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
@@ -199,7 +223,9 @@ function openCierreForm(periodos, utilidad) {
     try {
       const existing = periodos.find(p => p.key === key);
       const record = {
-        key, closed: true, closedAt, closedBy: pb.currentUser?.email || 'admin',
+        key, enabled: true, closed: true, closedAt, closedBy: pb.currentUser?.email || 'admin',
+        enabledAt: existing?.enabledAt || closedAt,
+        enabledBy: existing?.enabledBy || pb.currentUser?.email || 'admin',
         note, utilidad,
       };
       let newPeriodos;
@@ -233,7 +259,7 @@ async function reOpenPeriod(key) {
     try {
       const periodosRaw = await API.getSetting(CIERRE_SETTING_KEY);
       const periodos = periodosRaw ? JSON.parse(periodosRaw) : [];
-      const newPeriodos = periodos.map(p => p.key === key ? { ...p, closed: false, closedAt: null } : p);
+      const newPeriodos = periodos.map(p => p.key === key ? { ...p, enabled: true, closed: false, closedAt: null } : p);
       await API.setSetting(CIERRE_SETTING_KEY, JSON.stringify(newPeriodos));
       showToast(`Periodo ${key} re-abierto`, 'success');
       renderCierre($('#page-content'));
@@ -328,15 +354,93 @@ function gastoTotal(accounts, saldos) {
   return accounts.filter(a => ['5','6','7'].includes((a.code||'').charAt(0))).reduce((s,a) => s + Math.abs(Number(saldos[a.id]||0)), 0);
 }
 
+// ── Habilitar un período para digitación ─────────────────────────────────────
+function openEnablePeriodForm(periodos) {
+  if (!can('canWrite')) return showToast('No tienes permisos para habilitar períodos', 'error');
+  const now = new Date();
+  const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
+  openModal(
+    '<i class="fas fa-calendar-plus mr-2" style="color:#1A4B8C"></i>Habilitar Período',
+    `<div class="space-y-4">
+      <div class="p-4 rounded-xl border" style="background:#EFF6FF;border-color:#BFDBFE">
+        <p class="text-sm font-semibold" style="color:#1D4ED8"><i class="fas fa-info-circle mr-2"></i>¿Qué significa habilitar un período?</p>
+        <p class="text-sm mt-1" style="color:#374151">Solo los períodos habilitados permiten registrar transacciones. Esto evita digitaciones accidentales en fechas pasadas o futuras no autorizadas.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="form-group">
+          <label class="form-label">Período a Habilitar (YYYY-MM)</label>
+          <input id="enable-key" class="form-input font-mono" placeholder="Ej: 2026-05" value="${defaultKey}" pattern="\\d{4}-\\d{2}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Habilitación</label>
+          <input id="enable-date" type="date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group md:col-span-2">
+          <label class="form-label">Nota (opcional)</label>
+          <textarea id="enable-note" class="form-input" rows="2" placeholder="Ej: Habilitado para digitación del mes de mayo 2026..."></textarea>
+        </div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="btn-confirm-enable"><i class="fas fa-calendar-check"></i> Habilitar Período</button>`
+  );
+  $('#btn-confirm-enable')?.addEventListener('click', async () => {
+    const key = getInputVal('enable-key').trim();
+    const enabledAt = getInputVal('enable-date');
+    const note = getInputVal('enable-note').trim();
+    if (!key || !/^\d{4}-\d{2}$/.test(key)) return showToast('El período debe tener formato YYYY-MM', 'warning');
+    if (!enabledAt) return showToast('Ingresa la fecha de habilitación', 'warning');
+
+    const month = Number(key.split('-')[1]);
+    if (month < 1 || month > 12) return showToast('Mes inválido en el período', 'warning');
+
+    if (periodos.find(p => p.key === key)) {
+      return showToast(`El período ${key} ya está registrado en el sistema`, 'warning');
+    }
+
+    try {
+      const record = {
+        key,
+        enabled: true,
+        closed: false,
+        enabledAt,
+        enabledBy: pb.currentUser?.email || 'admin',
+        closedAt: null,
+        closedBy: null,
+        note,
+        utilidad: 0,
+      };
+      const newPeriodos = [...periodos, record].sort((a, b) => a.key.localeCompare(b.key));
+      await API.setSetting(CIERRE_SETTING_KEY, JSON.stringify(newPeriodos));
+      closeModal();
+      showToast(`Período ${key} habilitado correctamente para digitación`, 'success');
+      renderCierre($('#page-content'));
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+}
+
 // Validate period is open before creating transactions
 // This function is called from transacciones.js saveTransaction (gating check)
 async function isPeriodClosed(dateStr) {
   try {
     const periodosRaw = await API.getSetting(CIERRE_SETTING_KEY);
-    if (!periodosRaw) return false;
+    if (!periodosRaw) return true; // Sin períodos configurados → todo bloqueado
     const periodos = JSON.parse(periodosRaw);
     const key = (dateStr || '').slice(0, 7); // YYYY-MM
     const found = periodos.find(p => p.key === key);
-    return found?.closed === true;
+    if (!found) return true;             // Período no habilitado → bloqueado
+    if (found.closed) return true;       // Período cerrado → bloqueado
+    return false;                        // Período habilitado y abierto → permitido
+  } catch { return false; }
+}
+
+// Devuelve true si el período existe y está habilitado (abierto o cerrado)
+async function isPeriodRegistered(dateStr) {
+  try {
+    const periodosRaw = await API.getSetting(CIERRE_SETTING_KEY);
+    if (!periodosRaw) return false;
+    const periodos = JSON.parse(periodosRaw);
+    const key = (dateStr || '').slice(0, 7);
+    return periodos.some(p => p.key === key);
   } catch { return false; }
 }

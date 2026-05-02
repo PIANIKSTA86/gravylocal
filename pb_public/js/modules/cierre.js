@@ -6,17 +6,6 @@
 
 // Periodos de cierre almacenados en settings (clave: "periodos_cierre" como JSON array)
 const CIERRE_SETTING_KEY = 'periodos_cierre';
-const SIGNATURE_SETTINGS = {
-  legalName: ['representante_legal_name', 'legal_representative_name', 'rep_legal_name'],
-  legalTitle: ['representante_legal_title', 'legal_representative_title', 'rep_legal_title'],
-  accountantName: ['contador_name', 'accountant_name'],
-  accountantTitle: ['contador_title', 'accountant_title'],
-  accountantLicense: ['contador_license', 'accountant_license'],
-  reviewerName: ['revisor_fiscal_name', 'fiscal_reviewer_name'],
-  reviewerTitle: ['revisor_fiscal_title', 'fiscal_reviewer_title'],
-  reviewerLicense: ['revisor_fiscal_license', 'fiscal_reviewer_license'],
-  defaultEnabled: ['trial_show_signatures_default', 'show_signatures_default'],
-};
 
 async function renderCierre(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando asistente de cierre...</div>`;
@@ -26,10 +15,7 @@ async function renderCierre(c) {
       API.getAccounts(false),
       API.getAccountSaldos(),
     ]);
-    const [periodosRaw, signatureValues] = await Promise.all([
-      API.getSetting(CIERRE_SETTING_KEY),
-      loadSignatureSettings(),
-    ]);
+    const periodosRaw = await API.getSetting(CIERRE_SETTING_KEY);
     const periodos = periodosRaw ? JSON.parse(periodosRaw) : [];
 
     // Compute PUC class saldos for closing summary
@@ -136,59 +122,6 @@ async function renderCierre(c) {
         </div>
       </div>
 
-      <!-- Firmas para reportes -->
-      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div>
-            <h4 class="font-bold" style="color:#0D2137">Firmas para Reportes</h4>
-            <p class="text-sm" style="color:#6B7280">Estos datos se usan cuando activas "Mostrar firmas" en Balance de Prueba.</p>
-          </div>
-          ${can('canWrite') ? '<button class="btn btn-primary btn-sm" id="btn-save-signatures"><i class="fas fa-floppy-disk"></i> Guardar firmas</button>' : ''}
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="form-group md:col-span-2">
-            <label class="inline-flex items-center gap-2 text-sm" style="color:#374151">
-              <input id="sig-default-enabled" type="checkbox" ${signatureValues.defaultEnabled ? 'checked' : ''}>
-              Activar "Mostrar firmas" por defecto en Balance de Prueba
-            </label>
-          </div>
-          <div class="form-group md:col-span-2">
-            <label class="form-label">Representante legal - Nombre</label>
-            <input id="sig-legal-name" class="form-input" value="${esc(signatureValues.legalName || '')}" placeholder="Nombre completo">
-          </div>
-          <div class="form-group md:col-span-2">
-            <label class="form-label">Representante legal - Cargo</label>
-            <input id="sig-legal-title" class="form-input" value="${esc(signatureValues.legalTitle || 'Representante Legal')}" placeholder="Representante Legal">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Contador - Nombre</label>
-            <input id="sig-acc-name" class="form-input" value="${esc(signatureValues.accountantName || '')}" placeholder="Nombre completo">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Contador - Cargo</label>
-            <input id="sig-acc-title" class="form-input" value="${esc(signatureValues.accountantTitle || 'Contador')}" placeholder="Contador">
-          </div>
-          <div class="form-group md:col-span-2">
-            <label class="form-label">Contador - Matrícula profesional (opcional)</label>
-            <input id="sig-acc-license" class="form-input" value="${esc(signatureValues.accountantLicense || '')}" placeholder="TP 123456-T">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Revisor fiscal - Nombre</label>
-            <input id="sig-rev-name" class="form-input" value="${esc(signatureValues.reviewerName || '')}" placeholder="Nombre completo">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Revisor fiscal - Cargo</label>
-            <input id="sig-rev-title" class="form-input" value="${esc(signatureValues.reviewerTitle || 'Revisor Fiscal')}" placeholder="Revisor Fiscal">
-          </div>
-          <div class="form-group md:col-span-2">
-            <label class="form-label">Revisor fiscal - Matrícula profesional (opcional)</label>
-            <input id="sig-rev-license" class="form-input" value="${esc(signatureValues.reviewerLicense || '')}" placeholder="TP 654321-T">
-          </div>
-        </div>
-      </div>
-
       <!-- Asientos de cierre -->
       <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
         <h4 class="font-bold mb-3" style="color:#0D2137">Asientos de Cierre Sugeridos</h4>
@@ -219,73 +152,8 @@ async function renderCierre(c) {
 
     $('#btn-new-cierre')?.addEventListener('click', () => openCierreForm(periodos, utilidad));
     $('#btn-gen-cierre-entries')?.addEventListener('click', () => generateCierreEntries(accounts, saldos, utilidad));
-    $('#btn-save-signatures')?.addEventListener('click', saveSignatureSettingsFromForm);
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-  }
-}
-
-async function getSettingFirst(keys, fallback = '') {
-  for (const key of keys) {
-    const value = await API.getSetting(key);
-    if (value) return value;
-  }
-  return fallback;
-}
-
-async function loadSignatureSettings() {
-  const [
-    legalName,
-    legalTitle,
-    accountantName,
-    accountantTitle,
-    accountantLicense,
-    reviewerName,
-    reviewerTitle,
-    reviewerLicense,
-    defaultEnabled,
-  ] = await Promise.all([
-    getSettingFirst(SIGNATURE_SETTINGS.legalName, ''),
-    getSettingFirst(SIGNATURE_SETTINGS.legalTitle, 'Representante Legal'),
-    getSettingFirst(SIGNATURE_SETTINGS.accountantName, ''),
-    getSettingFirst(SIGNATURE_SETTINGS.accountantTitle, 'Contador'),
-    getSettingFirst(SIGNATURE_SETTINGS.accountantLicense, ''),
-    getSettingFirst(SIGNATURE_SETTINGS.reviewerName, ''),
-    getSettingFirst(SIGNATURE_SETTINGS.reviewerTitle, 'Revisor Fiscal'),
-    getSettingFirst(SIGNATURE_SETTINGS.reviewerLicense, ''),
-    getSettingFirst(SIGNATURE_SETTINGS.defaultEnabled, '0'),
-  ]);
-  return {
-    legalName,
-    legalTitle,
-    accountantName,
-    accountantTitle,
-    accountantLicense,
-    reviewerName,
-    reviewerTitle,
-    reviewerLicense,
-    defaultEnabled: String(defaultEnabled).trim() === '1' || String(defaultEnabled).toLowerCase() === 'true',
-  };
-}
-
-async function saveSignatureSettingsFromForm() {
-  if (!can('canWrite')) return showToast('Sin permisos para actualizar firmas', 'error');
-  try {
-    const payload = [
-      [SIGNATURE_SETTINGS.legalName[0], getInputVal('sig-legal-name').trim()],
-      [SIGNATURE_SETTINGS.legalTitle[0], getInputVal('sig-legal-title').trim() || 'Representante Legal'],
-      [SIGNATURE_SETTINGS.accountantName[0], getInputVal('sig-acc-name').trim()],
-      [SIGNATURE_SETTINGS.accountantTitle[0], getInputVal('sig-acc-title').trim() || 'Contador'],
-      [SIGNATURE_SETTINGS.accountantLicense[0], getInputVal('sig-acc-license').trim()],
-      [SIGNATURE_SETTINGS.reviewerName[0], getInputVal('sig-rev-name').trim()],
-      [SIGNATURE_SETTINGS.reviewerTitle[0], getInputVal('sig-rev-title').trim() || 'Revisor Fiscal'],
-      [SIGNATURE_SETTINGS.reviewerLicense[0], getInputVal('sig-rev-license').trim()],
-      [SIGNATURE_SETTINGS.defaultEnabled[0], getCheckVal('sig-default-enabled') ? '1' : '0'],
-    ];
-    await Promise.all(payload.map(([k, v]) => API.setSetting(k, v)));
-    showToast('Firmas actualizadas correctamente', 'success');
-  } catch (err) {
-    showToast(err.message || 'No se pudieron guardar las firmas', 'error');
   }
 }
 

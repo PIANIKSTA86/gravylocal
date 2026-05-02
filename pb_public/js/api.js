@@ -195,13 +195,21 @@ const API = {
 
   // -- auditoria ---------------------------------------------
   async logAudit(action, entity, entityId = null, details = '') {
-    // Desde 2026-05 la auditoria se consolida en hooks server-side.
-    // Conservamos esta funcion para no romper llamadas existentes en UI.
-    void action;
-    void entity;
-    void entityId;
-    void details;
-    return;
+    try {
+      const user = pb.currentUser || {};
+      await pb.create('audit_log', {
+        user_id: user.id || null,
+        username: user.email || user.full_name || 'system',
+        action: String(action || ''),
+        entity: String(entity || ''),
+        entity_id: entityId ? String(entityId) : '',
+        event_at: nowStr(),
+        details: String(details || ''),
+        ip: '',
+      });
+    } catch (_) {
+      // Nunca romper flujos de negocio por falla de auditoría.
+    }
   },
 
   // -- Plan de Cuentas ---------------------------------------
@@ -277,11 +285,21 @@ const API = {
   },
 
   async getTransactions(opts = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date,-created' } = opts;
-    return pb.list('transactions', {
-      page, perPage, filter, sort,
-      expand: 'tx_type_id,third_party_id,user_id',
-    });
+    const { page = 1, perPage = 50, filter = '', sort = '-id' } = opts;
+    try {
+      return await pb.list('transactions', {
+        page, perPage, filter, sort,
+        expand: 'tx_type_id,third_party_id,user_id',
+      });
+    } catch (err) {
+      if (sort !== '-id') {
+        return pb.list('transactions', {
+          page, perPage, filter, sort: '-id',
+          expand: 'tx_type_id,third_party_id,user_id',
+        });
+      }
+      throw err;
+    }
   },
 
   async getTxLines(txId) {

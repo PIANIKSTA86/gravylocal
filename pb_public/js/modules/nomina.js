@@ -15,9 +15,13 @@ async function renderNomina(c) {
       loadErrors.push(`empleados: ${err.message}`);
       return [];
     });
-    const lines = await pb.listAll('payroll_lines', { sort: '-created', expand: 'period_id,employee_id' }).catch((err) => {
-      loadErrors.push(`liquidaciones: ${err.message}`);
-      return [];
+    const lines = await pb.listAll('payroll_lines', { sort: '-id', expand: 'period_id,employee_id' }).catch(async (err) => {
+      try {
+        return await pb.listAll('payroll_lines', { expand: 'period_id,employee_id' });
+      } catch (_) {
+        loadErrors.push(`liquidaciones: ${err.message}`);
+        return [];
+      }
     });
     const noEmployees = employees.length === 0;
     const noPeriods = periods.length === 0;
@@ -155,7 +159,7 @@ async function setPeriodStatus(id, newStatus) {
 
 async function viewPeriodLines(periodId, periodName) {
   try {
-    const lines = await pb.listAll('payroll_lines', { filter: `period_id="${periodId}"`, expand: 'employee_id', sort: 'created' });
+    const lines = await pb.listAll('payroll_lines', { filter: `period_id="${periodId}"`, expand: 'employee_id', sort: 'id' });
     if (!lines.length) return showToast('Este período no tiene liquidaciones', 'info');
     const totDev = lines.reduce((s,l) => s + (l.salary_base||0)+(l.transport_allowance||0)+(l.overtime||0), 0);
     const totNeto = lines.reduce((s,l) => s + (l.net_pay||0), 0);

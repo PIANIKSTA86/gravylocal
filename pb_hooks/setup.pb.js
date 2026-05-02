@@ -225,6 +225,7 @@ onBootstrap((e) => {
     { name: "action",    type: "text", required: true },
     { name: "entity",    type: "text", required: true },
     { name: "entity_id", type: "text", required: false },
+    { name: "event_at",  type: "text", required: false },
     { name: "details",   type: "text", required: false },
     { name: "ip",        type: "text", required: false },
   ];
@@ -238,7 +239,7 @@ onBootstrap((e) => {
     type: "base",
     listRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
     viewRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
-    createRule: null,
+    createRule: "@request.auth.id != ''",
     updateRule: null,
     deleteRule: null,
     fields: auditFields,
@@ -654,107 +655,143 @@ function writeAuditFromEvent(e, action, entity, entityId = "", details = "") {
   try {
     const auditCol = $app.findCollectionByNameOrId("audit_log");
     const actor = getActorInfoFromEvent(e);
+    const remoteIp = (typeof e?.remoteIP === "function")
+      ? String(e.remoteIP() || "")
+      : String(e?.remoteIP || "");
 
     const payload = {
       username: actor.username,
       action: String(action || ""),
       entity: String(entity || ""),
       entity_id: String(entityId || ""),
+      event_at: (new Date()).toISOString().replace("T", " ").slice(0, 19),
       details: String(details || ""),
-      ip: String(e?.remoteIP?.() || ""),
+      ip: remoteIp,
     };
 
     if (actor.userId) payload.user_id = actor.userId;
 
     const log = new Record(auditCol, payload);
     $app.save(log);
-  } catch (_) {
+  } catch (err) {
     // Evitar romper la operación principal por un fallo de auditoría.
+    console.log("[ContaCO][Audit] Error al guardar auditoria: " + err);
   }
 }
 
-onRecordAfterCreateSuccess((e) => {
-  try {
-    const r = e.record;
-    if (r) {
-      const labels = {
-        accounts: "Cuenta",
-        third_parties: "Tercero",
-        transaction_types: "Tipo Tx",
-        transactions: "Transaccion",
-        tx_lines: "Linea Tx",
-        bank_accounts: "Cuenta Bancaria",
-        bank_movements: "Movimiento Bancario",
-        payroll_periods: "Periodo Nomina",
-        payroll_lines: "Linea Nomina",
-        einvoice_docs: "DIAN Doc",
-      };
-      const colName = String(e?.collection?.name || r?.collectionName || "");
-      const label = labels[colName];
-      if (label) {
-        writeAuditFromEvent(e, "CREATE", label, r.id, `Creado ${label}`);
-      }
-    }
-  } catch (_) {
-    // Nunca bloquear la operación principal por auditoría.
-  }
+onBootstrap((e) => {
   e.next();
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId("audit_log");
+    const expectedCreateRule = "@request.auth.id != ''";
+    let hasEventAt = false;
+    let changed = false;
+
+    try {
+      hasEventAt = !!auditCol.fields.getByName("event_at");
+    } catch (_) {
+      hasEventAt = String(auditCol.fields || "").includes("event_at");
+    }
+
+    if (!hasEventAt) {
+      auditCol.fields.add(new TextField({
+        name: "event_at",
+        required: false,
+      }));
+      console.log("[ContaCO] Campo event_at agregado a audit_log.");
+      changed = true;
+    }
+
+    if (auditCol.createRule !== expectedCreateRule) {
+      auditCol.createRule = expectedCreateRule;
+      console.log("[ContaCO] Regla createRule ajustada en audit_log.");
+      changed = true;
+    }
+
+    if (changed) {
+      $app.save(auditCol);
+    }
+  } catch (err) {
+    console.log("[ContaCO] Aviso al asegurar campo event_at en audit_log: " + err);
+  }
 });
 
-onRecordAfterUpdateSuccess((e) => {
+function getRecordCollectionName(e) {
   try {
-    const r = e.record;
-    if (r) {
-      const labels = {
-        accounts: "Cuenta",
-        third_parties: "Tercero",
-        transaction_types: "Tipo Tx",
-        transactions: "Transaccion",
-        tx_lines: "Linea Tx",
-        bank_accounts: "Cuenta Bancaria",
-        bank_movements: "Movimiento Bancario",
-        payroll_periods: "Periodo Nomina",
-        payroll_lines: "Linea Nomina",
-        einvoice_docs: "DIAN Doc",
-      };
-      const colName = String(e?.collection?.name || r?.collectionName || "");
-      const label = labels[colName];
-      if (label) {
-        writeAuditFromEvent(e, "UPDATE", label, r.id, `Actualizado ${label}`);
-      }
+    const r = e?.record;
+    if (r?.collection?.()) {
+      const c = r.collection();
+      if (c?.name) return String(c.name);
     }
-  } catch (_) {
-    // Nunca bloquear la operación principal por auditoría.
-  }
-  e.next();
-});
+    if (r?.collectionName) return String(r.collectionName);
+    if (e?.collection?.name) return String(e.collection.name);
+  } catch (_) {}
+  return "";
+}
 
-onRecordAfterDeleteSuccess((e) => {
-  try {
-    const r = e.record;
-    if (r) {
-      const labels = {
-        accounts: "Cuenta",
-        third_parties: "Tercero",
-        transaction_types: "Tipo Tx",
-        transactions: "Transaccion",
-        tx_lines: "Linea Tx",
-        bank_accounts: "Cuenta Bancaria",
-        bank_movements: "Movimiento Bancario",
-        payroll_periods: "Periodo Nomina",
-        payroll_lines: "Linea Nomina",
-        einvoice_docs: "DIAN Doc",
-      };
-      const colName = String(e?.collection?.name || r?.collectionName || "");
-      const label = labels[colName];
-      if (label) {
-        writeAuditFromEvent(e, "DELETE", label, r.id || "", `Eliminado ${label}`);
+const AUDIT_ENTITY_LABELS = {
+  accounts: "Cuenta",
+  third_parties: "Tercero",
+  transaction_types: "Tipo Tx",
+  transactions: "Transaccion",
+  tx_lines: "Linea Tx",
+  bank_accounts: "Cuenta Bancaria",
+  bank_movements: "Movimiento Bancario",
+  payroll_periods: "Periodo Nomina",
+  payroll_lines: "Linea Nomina",
+  einvoice_docs: "DIAN Doc",
+};
+
+const AUDIT_TARGET_COLLECTIONS = Object.keys(AUDIT_ENTITY_LABELS);
+
+AUDIT_TARGET_COLLECTIONS.forEach((collectionName) => {
+  onRecordCreateRequest((e) => {
+    e.next();
+    try {
+      const r = e.record;
+      if (r) {
+        const colName = getRecordCollectionName(e);
+        const label = AUDIT_ENTITY_LABELS[colName] || AUDIT_ENTITY_LABELS[collectionName];
+        if (label) {
+          writeAuditFromEvent(e, "CREATE", label, r.id, `Creado ${label}`);
+        }
       }
+    } catch (_) {
+      // Nunca bloquear la operación principal por auditoría.
     }
-  } catch (_) {
-    // Nunca bloquear la operación principal por auditoría.
-  }
-  e.next();
+  }, collectionName);
+
+  onRecordUpdateRequest((e) => {
+    e.next();
+    try {
+      const r = e.record;
+      if (r) {
+        const colName = getRecordCollectionName(e);
+        const label = AUDIT_ENTITY_LABELS[colName] || AUDIT_ENTITY_LABELS[collectionName];
+        if (label) {
+          writeAuditFromEvent(e, "UPDATE", label, r.id, `Actualizado ${label}`);
+        }
+      }
+    } catch (_) {
+      // Nunca bloquear la operación principal por auditoría.
+    }
+  }, collectionName);
+
+  onRecordDeleteRequest((e) => {
+    const beforeId = String(e?.record?.id || "");
+    e.next();
+    try {
+      const r = e.record;
+      const colName = getRecordCollectionName(e);
+      const label = AUDIT_ENTITY_LABELS[colName] || AUDIT_ENTITY_LABELS[collectionName];
+      if (label) {
+        writeAuditFromEvent(e, "DELETE", label, beforeId || String(r?.id || ""), `Eliminado ${label}`);
+      }
+    } catch (_) {
+      // Nunca bloquear la operación principal por auditoría.
+    }
+  }, collectionName);
 });
 
 // Asegura reglas de acceso de users en instalaciones ya existentes.

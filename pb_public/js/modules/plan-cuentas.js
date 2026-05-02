@@ -157,8 +157,10 @@ async function openAccountForm(accTypes, row = null) {
 
       if (row?.id) {
         await pb.update('accounts', row.id, payload);
+        await API.logAudit('UPDATE', 'Cuenta', row.id, `${payload.code} - ${payload.name}`);
       } else {
         const created = await pb.create('accounts', payload);
+        await API.logAudit('CREATE', 'Cuenta', created.id, `${payload.code} - ${payload.name}`);
       }
       closeModal();
       showToast('Cuenta guardada correctamente', 'success');
@@ -205,6 +207,8 @@ function toggleAccountActive(id, active) {
         }
 
         await pb.update('accounts', id, { active });
+        const updated = await pb.get('accounts', id);
+        await API.logAudit('STATUS', 'Cuenta', id, `${updated.code} - ${updated.name} => ${active ? 'Activa' : 'Inactiva'}`);
         showToast('Estado actualizado', 'success');
         renderPlanCuentas($('#page-content'));
       } catch (err) {

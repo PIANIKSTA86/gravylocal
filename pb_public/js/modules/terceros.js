@@ -129,8 +129,10 @@ function openTerceroForm(row = null) {
     try {
       if (row?.id) {
         await pb.update('third_parties', row.id, payload);
+        await API.logAudit('UPDATE', 'Tercero', row.id, `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
       } else {
         const created = await pb.create('third_parties', payload);
+        await API.logAudit('CREATE', 'Tercero', created.id, `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
       }
       closeModal();
       showToast('Tercero guardado correctamente', 'success');
@@ -154,6 +156,8 @@ function toggleTercero(id, active) {
     async () => {
       try {
         await pb.update('third_parties', id, { active });
+        const updated = await pb.get('third_parties', id);
+        await API.logAudit('STATUS', 'Tercero', id, `${updated.doc_type} ${updated.doc_number} - ${updated.name} => ${active ? 'Activo' : 'Inactivo'}`);
         showToast('Estado actualizado', 'success');
         renderTerceros($('#page-content'));
       } catch (err) { showToast(err.message, 'error'); }

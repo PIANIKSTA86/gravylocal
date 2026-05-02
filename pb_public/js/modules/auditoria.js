@@ -5,11 +5,30 @@
 
 let AUDIT_STATE = { page: 1, perPage: 100, total: 0 };
 
+function fmtAuditDateTime(value) {
+  if (!value) return '—';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '—';
+  return dt.toLocaleString('es-CO', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function getAuditDateValue(log) {
+  return log?.event_at || log?.created || '';
+}
+
 async function renderAuditoria(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando auditoría...</div>`;
   try {
     // Load first batch to populate action/entity dropdowns
-    const sample = await pb.list('audit_log', { page: 1, perPage: 100, sort: '-id' });
+    const sample = await pb.list('audit_log', { page: 1, perPage: 100, sort: '-event_at' });
     const actions = [...new Set(sample.items.map(l => l.action).filter(Boolean))].sort();
     const entities = [...new Set(sample.items.map(l => l.entity).filter(Boolean))].sort();
 
@@ -107,8 +126,8 @@ async function loadAuditPage() {
       const safe = pb.escapeFilterValue(userF);
       filters.push(`username="${safe}"`);
     }
-    if (dateFrom) filters.push(`created>="${dateFrom} 00:00:00"`);
-    if (dateTo) filters.push(`created<="${dateTo} 23:59:59"`);
+    if (dateFrom) filters.push(`event_at>="${dateFrom} 00:00:00"`);
+    if (dateTo) filters.push(`event_at<="${dateTo} 23:59:59"`);
     if (q) {
       const safe = pb.escapeFilterValue(q);
       filters.push(`(username~"${safe}" || details~"${safe}" || entity_id~"${safe}")`);
@@ -117,7 +136,7 @@ async function loadAuditPage() {
     const request = {
       page: AUDIT_STATE.page,
       perPage: AUDIT_STATE.perPage,
-      sort: '-id',
+      sort: '-event_at',
       filter: filters.join(' && ') || '',
     };
 
@@ -126,7 +145,7 @@ async function loadAuditPage() {
       res = await pb.list('audit_log', request);
     } catch (firstErr) {
       const fallbackFilter = filters
-        .filter(f => !f.startsWith('created>="') && !f.startsWith('created<="'))
+        .filter(f => !f.startsWith('event_at>="') && !f.startsWith('event_at<="'))
         .join(' && ');
 
       res = await pb.list('audit_log', {
@@ -163,7 +182,7 @@ async function loadAuditPage() {
           <tbody>
             ${res.items.map(l => `
               <tr>
-                <td class="whitespace-nowrap text-xs">${esc(l.created ? fmtDate(l.created) : '—')}</td>
+                <td class="whitespace-nowrap text-xs">${esc(fmtAuditDateTime(getAuditDateValue(l)))}</td>
                 <td class="font-medium text-sm">${esc(l.username || '—')}</td>
                 <td><span class="badge ${actionBadgeColor(l.action)}">${esc(l.action || '—')}</span></td>
                 <td class="text-sm">${esc(l.entity || '—')}</td>
@@ -199,7 +218,7 @@ function viewAuditDetail(jsonStr) {
       'Detalle de Registro de Auditoría',
       `<div class="space-y-3 text-sm">
         <div class="grid grid-cols-2 gap-3">
-          <div><span class="form-label">Fecha y Hora</span><p class="font-medium">${esc(l.created ? fmtDate(l.created) : '—')}</p></div>
+          <div><span class="form-label">Fecha y Hora</span><p class="font-medium">${esc(fmtAuditDateTime(getAuditDateValue(l)))}</p></div>
           <div><span class="form-label">Usuario</span><p class="font-medium">${esc(l.username || '—')}</p></div>
           <div><span class="form-label">Acción</span><p><span class="badge badge-blue">${esc(l.action || '—')}</span></p></div>
           <div><span class="form-label">Entidad</span><p class="font-medium">${esc(l.entity || '—')}</p></div>
@@ -237,18 +256,18 @@ async function exportAuditLog() {
       const safe = pb.escapeFilterValue(userF);
       filters.push(`username="${safe}"`);
     }
-    if (dateFrom) filters.push(`created>="${dateFrom} 00:00:00"`);
-    if (dateTo) filters.push(`created<="${dateTo} 23:59:59"`);
+    if (dateFrom) filters.push(`event_at>="${dateFrom} 00:00:00"`);
+    if (dateTo) filters.push(`event_at<="${dateTo} 23:59:59"`);
     if (q) {
       const safe = pb.escapeFilterValue(q);
       filters.push(`(username~"${safe}" || details~"${safe}" || entity_id~"${safe}")`);
     }
     let all;
     try {
-      all = await pb.listAll('audit_log', { sort: '-id', filter: filters.join(' && ') || '' });
+      all = await pb.listAll('audit_log', { sort: '-event_at', filter: filters.join(' && ') || '' });
     } catch (firstErr) {
       const fallbackFilter = filters
-        .filter(f => !f.startsWith('created>="') && !f.startsWith('created<="'))
+        .filter(f => !f.startsWith('event_at>="') && !f.startsWith('event_at<="'))
         .join(' && ');
       all = await pb.listAll('audit_log', { sort: '-id', filter: fallbackFilter || '' });
       if (dateFrom || dateTo) {
@@ -258,7 +277,7 @@ async function exportAuditLog() {
     }
     exportToExcel(
       all.map(l => ({
-        'Fecha': l.created ? fmtDate(l.created) : '',
+        'Fecha y Hora': fmtAuditDateTime(getAuditDateValue(l)),
         'Usuario': l.username || '',
         'Acción': l.action || '',
         'Entidad': l.entity || '',

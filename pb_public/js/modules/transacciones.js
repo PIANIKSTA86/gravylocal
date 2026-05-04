@@ -246,19 +246,62 @@ function renderTxLines(repaint = true) {
 }
 
 // ── Cartera: saldo de documentos de cruce por tercero ────────────────────────
-async function showCarteraModal(thirdId) {
+let CARTERA_MODAL_PREV = null;
+let CARTERA_CONTEXT = 'new';
+
+function closeCarteraModal() {
+  if (CARTERA_MODAL_PREV) {
+    const prev = CARTERA_MODAL_PREV;
+    CARTERA_MODAL_PREV = null;
+    openModal(prev.title, prev.body, prev.footer, prev.wide);
+    if (prev.editForm) {
+      const d = $('#edit-tx-date');
+      const t = $('#edit-tx-third');
+      const x = $('#edit-tx-desc');
+      if (d) d.value = prev.editForm.date || '';
+      if (t) t.value = prev.editForm.third || '';
+      if (x) x.value = prev.editForm.desc || '';
+      if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = prev.editForm.third || '';
+    }
+    bindEditCarteraEvents();
+    return;
+  }
+  closeModal();
+}
+
+async function showCarteraModal(thirdId, opts = {}) {
+    const { returnToPrevious = false } = opts;
     if (!thirdId) return;
-    const tercero = TX_STATE.terceros.find(t => t.id === thirdId);
+    const usingEdit = !!$('#edit-tx-third') && !!TX_EDIT_STATE?.accountMap?.size;
+  CARTERA_CONTEXT = (returnToPrevious || usingEdit) ? 'edit' : 'new';
+    const state = usingEdit ? TX_EDIT_STATE : TX_STATE;
+    const tercero = (state.terceros || []).find(t => t.id === thirdId);
     const cruceAccountIds = new Set(
-      [...TX_STATE.accountMap.values()]
+      [...(state.accountMap?.values?.() || [])]
         .filter(a => a.maneja_cruce)
         .map(a => a.id)
     );
 
+    if (returnToPrevious && $('#modal-overlay')?.classList.contains('show')) {
+      CARTERA_MODAL_PREV = {
+        title: $('#modal-title')?.innerHTML || '',
+        body: $('#modal-body')?.innerHTML || '',
+        footer: $('#modal-footer')?.innerHTML || '',
+        wide: $('#modal-box')?.classList.contains('wide') || false,
+        editForm: {
+          date: $('#edit-tx-date')?.value || '',
+          third: $('#edit-tx-third')?.value || '',
+          desc: $('#edit-tx-desc')?.value || '',
+        },
+      };
+    } else {
+      CARTERA_MODAL_PREV = null;
+    }
+
     openModal(
       `<i class="fas fa-file-invoice-dollar mr-2" style="color:#1A4B8C"></i>Cartera: ${esc(tercero?.name || thirdId)}`,
       `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos...</div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      `<button class="btn btn-outline" onclick="closeCarteraModal()">Cerrar</button>`,
       true
     );
 
@@ -286,7 +329,7 @@ async function showCarteraModal(thirdId) {
           expand: 'account_id,tx_id',
           sort: '-id',
         });
-        lines = { items: allLines.items?.filter(l => cruceAccountIds.has(l.account_id)) ?? [] };
+        lines = { items: (Array.isArray(allLines) ? allLines : (allLines?.items || [])).filter(l => cruceAccountIds.has(l.account_id)) };
       }
 
       const items = lines.items ?? lines;
@@ -369,12 +412,8 @@ async function showCarteraModal(thirdId) {
   }
 
 function _carteraSetContent(html) {
-  const candidates = document.querySelectorAll('.modal-content, .modal-body, [role="dialog"] > div > div');
-  for (const el of candidates) {
-    if (el.querySelector('.fa-spinner, .p-6, table')) { el.innerHTML = html; return; }
-  }
-  const overlay = document.querySelector('.modal-overlay, .fixed.inset-0 [class*="modal"]');
-  if (overlay) { const inner = overlay.querySelector('div > div'); if (inner) inner.innerHTML = html; }
+  const body = $('#modal-body');
+  if (body) body.innerHTML = html;
 }
 
 function getCrossAutoMode() {
@@ -387,7 +426,7 @@ function getCrossAutoMode() {
   return null;
 }
 
-function applyCrossAmountByType(lineIdx, netOpen) {
+function applyCrossAmountByType(lineIdx, netOpen, state = TX_STATE) {
   const mode = getCrossAutoMode();
   if (!mode) return false;
   const amount = Number(netOpen || 0);
@@ -403,21 +442,25 @@ function applyCrossAmountByType(lineIdx, netOpen) {
     else debit = Math.abs(amount);
   }
 
-  TX_STATE.lines[lineIdx].debit = debit;
-  TX_STATE.lines[lineIdx].credit = credit;
+  state.lines[lineIdx].debit = debit;
+  state.lines[lineIdx].credit = credit;
   return true;
 }
 
 function useCrossDoc(ref, netOpen = 0) {
-  const idx = TX_STATE.lines.findIndex(l => {
-    const a = TX_STATE.accountMap.get(l.account_id);
+  const inEdit = CARTERA_CONTEXT === 'edit' || (!!$('#edit-tx-lines') && !!TX_EDIT_STATE?.accountMap?.size);
+  const state = inEdit ? TX_EDIT_STATE : TX_STATE;
+  const rerender = inEdit ? renderEditTxLines : renderTxLines;
+
+  const idx = state.lines.findIndex(l => {
+    const a = state.accountMap.get(l.account_id);
     return a?.maneja_cruce && !l.cross_doc_ref;
   });
   const applyToLine = (lineIdx) => {
-    TX_STATE.lines[lineIdx].cross_doc_ref = ref;
-    const autoApplied = applyCrossAmountByType(lineIdx, netOpen);
-    closeModal();
-    renderTxLines(true);
+    state.lines[lineIdx].cross_doc_ref = ref;
+    const autoApplied = applyCrossAmountByType(lineIdx, netOpen, state);
+    closeCarteraModal();
+    rerender(true);
     if (autoApplied) {
       showToast(`Documento "${ref}" aplicado a la línea ${lineIdx + 1} con valor ${fmt(Math.abs(Number(netOpen || 0)))}`, 'success');
     } else {
@@ -426,9 +469,9 @@ function useCrossDoc(ref, netOpen = 0) {
   };
 
   if (idx === -1) {
-    const anyIdx = TX_STATE.lines.findIndex(l => TX_STATE.accountMap.get(l.account_id)?.maneja_cruce);
+    const anyIdx = state.lines.findIndex(l => state.accountMap.get(l.account_id)?.maneja_cruce);
     if (anyIdx === -1) {
-      closeModal();
+      closeCarteraModal();
       showToast('Primero selecciona una cuenta con documento de cruce en las líneas del comprobante', 'warning');
       return;
     }
@@ -504,31 +547,66 @@ async function saveTransaction() {
 }
 
 // ── Consulta de Transacciones ─────────────────────────────────────────────────
-let CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes: [] };
+let CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes: [], periods: [] };
+
+function calcPeriodRange(periodKey) {
+  const [yStr, mStr] = String(periodKey || '').split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return null;
+  const from = `${yStr}-${String(m).padStart(2, '0')}-01`;
+  const next = m === 12 ? `${String(y + 1)}-01-01` : `${yStr}-${String(m + 1).padStart(2, '0')}-01`;
+  return { from, next };
+}
+
+function normalizeConsultaPeriods(raw) {
+  if (!raw) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter(p => p && /^\d{4}-\d{2}$/.test(String(p.key || '')) && p.enabled !== false)
+    .map(p => ({ key: String(p.key), closed: !!p.closed }))
+    .sort((a, b) => b.key.localeCompare(a.key));
+}
 
 async function renderConsultaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando transacciones...</div>`;
   try {
-    const txTypes = await API.getTxTypes();
-    CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes };
+    const [txTypes, periodosRaw] = await Promise.all([
+      API.getTxTypes(),
+      API.getSetting('periodos_cierre'),
+    ]);
+    const periods = normalizeConsultaPeriods(periodosRaw);
+    CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes, periods };
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h3 class="text-lg font-bold" style="color:#0D2137">Consulta de Transacciones</h3>
-          <p class="text-sm" style="color:#6B7280">Histórico de comprobantes contables.</p>
+          <p class="text-sm" style="color:#6B7280">Consulta por período y tipo para mantener rendimiento con alto volumen.</p>
         </div>
         ${can('canExport') ? '<button class="btn btn-outline" id="btn-export-tx"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
       </div>
 
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <input id="txq" class="form-input col-span-2 md:col-span-2" placeholder="Buscar número, tercero, descripción...">
-          <select id="txq-type" class="form-input">
-            <option value="">Todos los tipos</option>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <select id="txq-period-state" class="form-input">
+            <option value="">Estado del período</option>
+            <option value="open">Abiertos</option>
+            <option value="closed">Cerrados</option>
+          </select>
+          <select id="txq-period" class="form-input" disabled>
+            <option value="">Selecciona un período</option>
+          </select>
+          <select id="txq-type" class="form-input" disabled>
+            <option value="">Selecciona tipo de transacción</option>
             ${txTypes.map(t => `<option value="${esc(t.id)}">${esc(t.prefix)} - ${esc(t.name)}</option>`).join('')}
           </select>
-          <input id="txq-from" type="date" class="form-input" title="Fecha desde">
-          <input id="txq-to" type="date" class="form-input" title="Fecha hasta">
+          <input id="txq" class="form-input md:col-span-2" placeholder="Buscar número, tercero, descripción...">
         </div>
         <div class="flex gap-3 mt-3">
           <select id="txq-status" class="form-input" style="max-width:180px">
@@ -543,24 +621,61 @@ async function renderConsultaTx(c) {
 
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div id="ctxq-results">
-          <div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-search mr-2"></i>Usa los filtros y pulsa Buscar</div>
+          <div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-filter mr-2"></i>Selecciona estado de período, período y tipo para consultar.</div>
         </div>
         <div id="ctxq-pagination" class="flex items-center justify-between px-4 py-3 border-t" style="border-color:#F0F0F0; display:none!important"></div>
       </div>`;
 
-    const doSearch = () => { CTXQ_STATE.page = 1; loadConsultaTxPage(); };
+    const updatePeriodOptions = () => {
+      const state = getSelectVal('txq-period-state');
+      const periodEl = $('#txq-period');
+      const typeEl = $('#txq-type');
+      if (!periodEl || !typeEl) return;
+
+      const filtered = CTXQ_STATE.periods.filter(p => state === 'open' ? !p.closed : state === 'closed' ? p.closed : false);
+      periodEl.innerHTML = `<option value="">Selecciona un período</option>${filtered.map(p => `<option value="${esc(p.key)}">${esc(p.key)} (${p.closed ? 'Cerrado' : 'Abierto'})</option>`).join('')}`;
+      periodEl.disabled = !state;
+      periodEl.value = '';
+      typeEl.value = '';
+      typeEl.disabled = true;
+    };
+
+    const updateTypeEnabled = () => {
+      const typeEl = $('#txq-type');
+      if (!typeEl) return;
+      typeEl.disabled = !getSelectVal('txq-period');
+      if (typeEl.disabled) typeEl.value = '';
+    };
+
+    const doSearch = () => {
+      if (!getSelectVal('txq-period-state')) return showToast('Selecciona el estado del período (abierto/cerrado).', 'warning');
+      if (!getSelectVal('txq-period')) return showToast('Selecciona un período para filtrar la consulta.', 'warning');
+      if (!getSelectVal('txq-type')) return showToast('Selecciona el tipo de transacción a consultar.', 'warning');
+      CTXQ_STATE.page = 1;
+      loadConsultaTxPage();
+    };
     $('#btn-txq-search')?.addEventListener('click', doSearch);
     $('#txq')?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+    $('#txq-period-state')?.addEventListener('change', updatePeriodOptions);
+    $('#txq-period')?.addEventListener('change', updateTypeEnabled);
     $('#btn-txq-clear')?.addEventListener('click', () => {
-      ['txq','txq-from','txq-to'].forEach(id => setInputVal(id, ''));
-      ['txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
-      $('#ctxq-results').innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-search mr-2"></i>Usa los filtros y pulsa Buscar</div>';
+      ['txq'].forEach(id => setInputVal(id, ''));
+      ['txq-period-state','txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
+      const periodEl = $('#txq-period');
+      if (periodEl) {
+        periodEl.innerHTML = '<option value="">Selecciona un período</option>';
+        periodEl.disabled = true;
+      }
+      const typeEl = $('#txq-type');
+      if (typeEl) typeEl.disabled = true;
+      $('#ctxq-results').innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-filter mr-2"></i>Selecciona estado de período, período y tipo para consultar.</div>';
       $('#ctxq-pagination').style.display = 'none';
     });
     $('#btn-export-tx')?.addEventListener('click', exportConsultaTx);
 
-    // Auto-load first page on mount
-    doSearch();
+    if (!periods.length) {
+      showToast('No hay períodos configurados. Habilítalos en Cierre Contable para usar esta consulta.', 'warning');
+    }
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
@@ -575,18 +690,29 @@ async function loadConsultaTxPage() {
 
   try {
     const q = getInputVal('txq').trim();
+    const periodState = getSelectVal('txq-period-state');
+    const periodKey = getSelectVal('txq-period');
     const typeId = getSelectVal('txq-type');
-    const dateFrom = getInputVal('txq-from');
-    const dateTo = getInputVal('txq-to');
     const status = getSelectVal('txq-status');
 
-    const filters = [];
-    if (typeId) {
-      const safe = pb.escapeFilterValue(typeId);
-      filters.push(`tx_type_id="${safe}"`);
+    if (!periodState || !periodKey || !typeId) {
+      resultsDiv.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-filter mr-2"></i>Completa los filtros obligatorios para consultar.</div>';
+      paginDiv.style.display = 'none';
+      return;
     }
-    if (dateFrom) filters.push(`date>="${dateFrom}"`);
-    if (dateTo) filters.push(`date<="${dateTo}"`);
+
+    const range = calcPeriodRange(periodKey);
+    if (!range) {
+      resultsDiv.innerHTML = '<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Período inválido.</div>';
+      paginDiv.style.display = 'none';
+      return;
+    }
+
+    const filters = [];
+    const safeType = pb.escapeFilterValue(typeId);
+    filters.push(`tx_type_id="${safeType}"`);
+    filters.push(`date>="${range.from}"`);
+    filters.push(`date<"${range.next}"`);
     if (status) {
       const safe = pb.escapeFilterValue(status);
       filters.push(`status="${safe}"`);
@@ -604,20 +730,7 @@ async function loadConsultaTxPage() {
       expand: 'tx_type_id,third_party_id',
     };
 
-    let res;
-    try {
-      res = await pb.list('transactions', request);
-    } catch (firstErr) {
-      // Fallback defensivo para instalaciones legacy con reglas de ordenamiento limitadas.
-      res = await pb.list('transactions', {
-        page: CTXQ_STATE.page,
-        perPage: CTXQ_STATE.perPage,
-        sort: '-id',
-        expand: 'tx_type_id,third_party_id',
-      });
-      showToast('Se omitieron filtros temporalmente en la consulta.', 'warning');
-      void firstErr;
-    }
+    const res = await pb.list('transactions', request);
     CTXQ_STATE.total = res.totalItems;
     const totalPages = Math.ceil(res.totalItems / CTXQ_STATE.perPage) || 1;
 
@@ -676,17 +789,22 @@ async function exportConsultaTx() {
   try {
     showToast('Generando exportación...', 'info');
     const q = getInputVal('txq').trim();
+    const periodState = getSelectVal('txq-period-state');
+    const periodKey = getSelectVal('txq-period');
     const typeId = getSelectVal('txq-type');
-    const dateFrom = getInputVal('txq-from');
-    const dateTo = getInputVal('txq-to');
     const status = getSelectVal('txq-status');
-    const filters = [];
-    if (typeId) {
-      const safe = pb.escapeFilterValue(typeId);
-      filters.push(`tx_type_id="${safe}"`);
+
+    if (!periodState || !periodKey || !typeId) {
+      return showToast('Para exportar debes seleccionar estado de período, período y tipo.', 'warning');
     }
-    if (dateFrom) filters.push(`date>="${dateFrom}"`);
-    if (dateTo) filters.push(`date<="${dateTo}"`);
+    const range = calcPeriodRange(periodKey);
+    if (!range) return showToast('Período inválido para exportación.', 'error');
+
+    const filters = [];
+    const safeType = pb.escapeFilterValue(typeId);
+    filters.push(`tx_type_id="${safeType}"`);
+    filters.push(`date>="${range.from}"`);
+    filters.push(`date<"${range.next}"`);
     if (status) {
       const safe = pb.escapeFilterValue(status);
       filters.push(`status="${safe}"`);
@@ -695,14 +813,7 @@ async function exportConsultaTx() {
       const safe = pb.escapeFilterValue(q);
       filters.push(`(number~"${safe}" || description~"${safe}")`);
     }
-    let all;
-    try {
-      all = await pb.listAll('transactions', { sort: '-id', filter: filters.join(' && ') || '', expand: 'tx_type_id,third_party_id' });
-    } catch (firstErr) {
-      all = await pb.listAll('transactions', { sort: '-id', expand: 'tx_type_id,third_party_id' });
-      showToast('Exportación sin filtros por compatibilidad del backend.', 'warning');
-      void firstErr;
-    }
+    const all = await pb.listAll('transactions', { sort: '-id', filter: filters.join(' && ') || '', expand: 'tx_type_id,third_party_id' });
     exportToExcel(
       all.map(t => ({
         'Número': t.number || '',
@@ -766,6 +877,7 @@ let TX_EDIT_STATE = {
   accounts: [],
   txTypes: [],
   terceros: [],
+  selectedThird: '',
   lines: [],
   postableAccountIds: new Set(),
   accountMap: new Map(),
@@ -814,6 +926,7 @@ async function editTx(id) {
     const accountMap = new Map(accounts.map(a => [a.id, a]));
     TX_EDIT_STATE = {
       txId: id, accounts, txTypes, terceros, postableAccountIds, accountMap,
+      selectedThird: tx.third_party_id || '',
       lines: lines.map(l => ({
         account_id: l.account_id,
         debit: l.debit || 0,
@@ -848,10 +961,15 @@ async function editTx(id) {
         </div>
         <div class="form-group">
           <label class="form-label">Tercero</label>
-          <select id="edit-tx-third" class="form-input">
-            <option value="">Sin tercero</option>
-            ${terceros.map(t => `<option value="${esc(t.id)}" ${tx.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
-          </select>
+          <div class="flex gap-2">
+            <select id="edit-tx-third" class="form-input" style="flex:1">
+              <option value="">Sin tercero</option>
+              ${terceros.map(t => `<option value="${esc(t.id)}" ${tx.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+            </select>
+            <button id="btn-edit-cartera" class="btn btn-outline btn-sm" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" ${tx.third_party_id ? '' : 'disabled'}>
+              <i class="fas fa-file-invoice-dollar"></i> Cartera
+            </button>
+          </div>
         </div>
         <div class="form-group md:col-span-4">
           <label class="form-label">Descripción</label>
@@ -872,9 +990,24 @@ async function editTx(id) {
     );
 
     renderEditTxLines(true);
+    bindEditCarteraEvents();
   } catch (err) {
     openModal('Error', `<p class="text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
   }
+}
+
+function bindEditCarteraEvents() {
+  const third = $('#edit-tx-third');
+  const btn = $('#btn-edit-cartera');
+  if (!third || !btn) return;
+
+  if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = third.value || TX_EDIT_STATE.selectedThird || '';
+  btn.disabled = !third.value;
+  third.onchange = () => {
+    btn.disabled = !third.value;
+    if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = third.value || '';
+  };
+  btn.onclick = () => showCarteraModal(third.value, { returnToPrevious: true });
 }
 
 function addEditTxLine(row = null) {
@@ -1001,7 +1134,7 @@ async function saveEditTx(txId) {
   if (!can('canWrite')) return showToast('No tienes permisos para modificar transacciones', 'error');
   const txDate  = document.getElementById('edit-tx-date')?.value || '';
   const txDesc  = (document.getElementById('edit-tx-desc')?.value || '').trim();
-  const thirdId = document.getElementById('edit-tx-third')?.value || '';
+  const thirdId = document.getElementById('edit-tx-third')?.value || TX_EDIT_STATE.selectedThird || '';
 
   if (!txDate) return showToast('La fecha es obligatoria', 'warning');
   if (!txDesc) return showToast('La descripción es obligatoria', 'warning');

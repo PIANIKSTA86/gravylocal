@@ -154,7 +154,7 @@ onBootstrap((e) => {
       { name: "consecutive", type: "number", required: false, min: 0 },
       { name: "active",      type: "bool",   required: false },
     ],
-    indexes: ["CREATE UNIQUE INDEX idx_tt_code ON transaction_types (code)"],
+    indexes: ["CREATE UNIQUE INDEX idx_tt_code_prefix ON transaction_types (code, prefix)"],
   });
   $app.save(transactionTypes);
   const transactionTypesId = transactionTypes.id;
@@ -610,7 +610,7 @@ onRecordCreateRequest((e) => {
       txType.set("consecutive", next);
       txApp.save(txType);
 
-      txNumber = `${prefix}-${String(next).padStart(6, "0")}`;
+      txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
     });
   } catch (err) {
     throw new BadRequestError("No se pudo generar consecutivo de transaccion: " + err);

@@ -257,7 +257,7 @@ const API = {
     const tt = await pb.get('transaction_types', txTypeId);
     const next = (tt.consecutive ?? 0) + 1;
     await pb.update('transaction_types', txTypeId, { consecutive: next });
-    return String(next).padStart(6, '0');
+    return String(next).padStart(8, '0');
   },
 
   // -- Transacciones -----------------------------------------
@@ -312,6 +312,60 @@ const API = {
 
   async voidTransaction(txId, description = '') {
     await pb.update('transactions', txId, { status: 'voided' });
+  },
+
+  async updateTransaction(txId, txData, lines) {
+    await pb.update('transactions', txId, txData);
+    // Reemplazar líneas: eliminar las existentes y crear las nuevas
+    const safeId = pb.escapeFilterValue(txId);
+    const oldLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeId}"` });
+    for (const l of oldLines) {
+      await pb.delete('tx_lines', l.id);
+    }
+    for (const line of lines) {
+      await pb.create('tx_lines', { tx_id: txId, ...line });
+    }
+    await this.logAudit('UPDATE', 'transactions', txId, 'Modificación desde consulta de transacciones');
+  },
+
+  async checkTxDependencies(txId) {
+    const safe = pb.escapeFilterValue(txId);
+    const blocks = [];
+    const warnings = [];
+
+    // BLOQUEO: Solo documentos electrónicos ya enviados o aceptados por la DIAN (firmados = inmutables)
+    // Los estados "pendiente" y "rechazada" NO bloquean porque aún no tienen validez fiscal.
+    const einv = await pb.list('einvoice_docs', {
+      filter: `tx_id="${safe}" && (status="enviada" || status="aceptada")`,
+      perPage: 1,
+    });
+    if (einv.totalItems > 0) {
+      const doc = einv.items[0];
+      const estado = doc.status === 'aceptada' ? 'Aceptada por DIAN' : 'Enviada a DIAN';
+      blocks.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Los documentos fiscales ya transmitidos son inalterables por normativa tributaria.`);
+    }
+
+    // ADVERTENCIA: Período de nómina vinculado (informativo — no bloquea)
+    const payP = await pb.list('payroll_periods', { filter: `tx_id="${safe}"`, perPage: 1 });
+    if (payP.totalItems > 0) {
+      const period = payP.items[0];
+      const estadoLabel = { draft: 'Borrador', approved: 'Aprobado', paid: 'Pagado' }[period.status] || period.status;
+      warnings.push(`Este comprobante es el asiento de nómina del período "${period.name}" (${estadoLabel}). Si lo modificas, el asiento contable de nómina quedará desincronizado con las liquidaciones.`);
+    }
+
+    // ADVERTENCIA: Movimientos bancarios conciliados (informativo — no bloquea)
+    const txLines = await pb.listAll('tx_lines', { filter: `tx_id="${safe}"` });
+    let reconCount = 0;
+    for (const l of txLines) {
+      const safeLine = pb.escapeFilterValue(l.id);
+      const bm = await pb.list('bank_movements', { filter: `tx_line_id="${safeLine}" && reconciled=true`, perPage: 1 });
+      reconCount += bm.totalItems;
+    }
+    if (reconCount > 0) {
+      warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliación bancaria después de modificar.`);
+    }
+
+    return { blocks, warnings };
   },
 
   // -- Dashboard KPIs ----------------------------------------

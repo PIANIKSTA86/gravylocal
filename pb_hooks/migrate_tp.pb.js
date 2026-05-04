@@ -1,0 +1,78 @@
+/// <reference path="../pb_data/types.d.ts" />
+/**
+ * ContaCO v2.0 — migrate_tp.pb.js
+ * Migración: agrega campos nuevos a third_parties y actualiza valores de tipo.
+ * Se ejecuta en cada arranque pero es idempotente (sólo actúa si falta algo).
+ */
+
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    const col = $app.findCollectionByNameOrId('third_parties');
+    const existing = new Set(col.fields.fieldNames());
+    let changed = false;
+
+    // ── Nuevos campos de texto ─────────────────────────────
+    const textFields = [
+      'person_type', 'first_name', 'last_name', 'business_name',
+      'city_code', 'dept_code', 'advisor', 'phone2',
+    ];
+    for (const name of textFields) {
+      if (!existing.has(name)) {
+        col.fields.add(new Field({ name, type: 'text', required: false }));
+        changed = true;
+      }
+    }
+
+    // ── Email 2 ────────────────────────────────────────────
+    if (!existing.has('email2')) {
+      col.fields.add(new Field({ name: 'email2', type: 'email', required: false }));
+      changed = true;
+    }
+
+    // ── Campos numéricos ───────────────────────────────────
+    if (!existing.has('credit_limit')) {
+      col.fields.add(new Field({ name: 'credit_limit', type: 'number', required: false, min: 0 }));
+      changed = true;
+    }
+    if (!existing.has('max_invoices')) {
+      col.fields.add(new Field({ name: 'max_invoices', type: 'number', required: false, min: 0 }));
+      changed = true;
+    }
+
+    // ── Actualizar valores del campo 'type' ────────────────
+    const typeField = col.fields.getByName('type');
+    if (typeField) {
+      const vals = typeField.values || [];
+      const needsUpdate = !vals.includes('ACREEDOR') || !vals.includes('TRANSPORTISTA');
+      if (needsUpdate) {
+        typeField.values = ['CLIENTE', 'PROVEEDOR', 'EMPLEADO', 'ACREEDOR', 'TRANSPORTISTA', 'OTRO'];
+        col.fields.add(typeField); // add() reemplaza si mismo nombre/id
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      $app.save(col);
+      console.log('[ContaCO] Migración third_parties completada: campos nuevos agregados.');
+    }
+  } catch (err) {
+    console.error('[ContaCO] Error en migración third_parties:', String(err));
+  }
+
+  // ── Migración transaction_types: índice único (code) → (code, prefix) ─────
+  // Permite múltiples series/prefijos por el mismo código de tipo (ej: varias
+  // resoluciones de facturación con distintos prefijos DIAN en el mismo tipo FV).
+  try {
+    $app.nonconcurrentDB()
+      .newQuery("DROP INDEX IF EXISTS idx_tt_code")
+      .execute();
+    $app.nonconcurrentDB()
+      .newQuery("CREATE UNIQUE INDEX IF NOT EXISTS idx_tt_code_prefix ON transaction_types (code, prefix)")
+      .execute();
+    console.log('[ContaCO] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).');
+  } catch (err) {
+    console.error('[ContaCO] Error migrando índice transaction_types:', String(err));
+  }
+});

@@ -47,7 +47,7 @@ async function renderNuevaTx(c) {
 
       <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="form-group"><label class="form-label">Tipo</label><select id="tx-type" class="form-input">${txTypes.map(t => `<option value="${esc(t.id)}">${esc(t.prefix)} - ${esc(t.name)}</option>`).join('')}</select></div>
+          <div class="form-group"><label class="form-label">Tipo / Serie</label><select id="tx-type" class="form-input">${buildTxTypeOptions(txTypes)}</select></div>
           <div class="form-group"><label class="form-label">Consecutivo</label><input id="tx-number" class="form-input" readonly placeholder="Auto"></div>
           <div class="form-group"><label class="form-label">Fecha</label><input id="tx-date" type="date" class="form-input" value="${todayStr()}"></div>
           <div class="form-group md:col-span-1">
@@ -92,11 +92,32 @@ async function renderNuevaTx(c) {
   }
 }
 
+// Construye opciones del selector de tipo agrupadas por código con <optgroup>
+function buildTxTypeOptions(txTypes) {
+  const groups = new Map();
+  for (const t of txTypes) {
+    if (!groups.has(t.code)) groups.set(t.code, []);
+    groups.get(t.code).push(t);
+  }
+  const parts = [];
+  for (const [code, series] of groups) {
+    if (series.length === 1) {
+      const t = series[0];
+      parts.push(`<option value="${esc(t.id)}">${esc(t.prefix)} — ${esc(t.name)}</option>`);
+    } else {
+      // Múltiples series: usar optgroup
+      const label = `${esc(code)} — ${esc(series[0].name.replace(/ ?[\-–—].*$/, '').trim())}`;
+      parts.push(`<optgroup label="${label}">${series.map(t => `<option value="${esc(t.id)}">[${esc(t.prefix)}] ${esc(t.name)}</option>`).join('')}</optgroup>`);
+    }
+  }
+  return parts.join('');
+}
+
 async function refreshConsecutive() {
   const typeId = getSelectVal('tx-type');
   const tt = TX_STATE.txTypes.find(t => t.id === typeId);
   if (!tt) return;
-  setInputVal('tx-number', `${tt.prefix}-${String((tt.consecutive ?? 0) + 1).padStart(6, '0')}`);
+  setInputVal('tx-number', `${tt.prefix}-${String((tt.consecutive ?? 0) + 1).padStart(8, '0')}`);
 }
 
 function addTxLine(row = null) {
@@ -622,7 +643,9 @@ async function loadConsultaTxPage() {
                 <td>
                   <div class="flex gap-1">
                     <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="seeTxDetail('${esc(t.id)}')"><i class="fas fa-eye"></i></button>
+                    ${can('canWrite') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
+                    ${requireRole('admin') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>
               </tr>`).join('')}
@@ -735,6 +758,363 @@ function voidTx(id) {
       renderConsultaTx($('#page-content'));
     } catch (err) { showToast(err.message, 'error'); }
   });
+}
+
+// ── Estado para edición de transacción ───────────────────────────────────────
+let TX_EDIT_STATE = {
+  txId: null,
+  accounts: [],
+  txTypes: [],
+  terceros: [],
+  lines: [],
+  postableAccountIds: new Set(),
+  accountMap: new Map(),
+};
+
+async function editTx(id) {
+  if (!can('canWrite')) return showToast('No tienes permisos para modificar transacciones', 'error');
+
+  openModal('<i class="fas fa-spinner fa-spin mr-2"></i>Verificando transacción...',
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
+
+  try {
+    const [tx, lines, accounts, txTypes, terceros] = await Promise.all([
+      pb.get('transactions', id, { expand: 'tx_type_id,third_party_id' }),
+      API.getTxLines(id),
+      API.getAccounts(true),
+      API.getTxTypes(),
+      API.getTerceros({}),
+    ]);
+
+    if (tx.status === 'voided') {
+      return openModal('No permitido',
+        '<p class="text-sm" style="color:#374151">No se puede modificar una transacción anulada.</p>',
+        '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+    }
+
+    if (typeof isPeriodClosed === 'function') {
+      const closed = await isPeriodClosed(tx.date);
+      if (closed) {
+        return openModal('Período cerrado',
+          `<p class="text-sm" style="color:#374151">El período <strong>${esc((tx.date||'').slice(0,7))}</strong> está cerrado. Habilítalo en Cierre Contable para poder modificar esta transacción.</p>`,
+          '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+      }
+    }
+
+    const deps = await API.checkTxDependencies(id);
+    if (deps.blocks.length) {
+      const listHtml = deps.blocks.map(b => `<li class="text-sm py-1"><i class="fas fa-ban mr-2" style="color:#EF4444"></i>${esc(b)}</li>`).join('');
+      return openModal('<i class="fas fa-lock mr-2" style="color:#EF4444"></i>No se puede modificar',
+        `<p class="text-sm mb-3" style="color:#374151">Esta transacción tiene dependencias que impiden su modificación:</p><ul class="space-y-1">${listHtml}</ul>`,
+        '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>');
+    }
+
+    const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
+    const postableAccountIds = new Set(accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id));
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+    TX_EDIT_STATE = {
+      txId: id, accounts, txTypes, terceros, postableAccountIds, accountMap,
+      lines: lines.map(l => ({
+        account_id: l.account_id,
+        debit: l.debit || 0,
+        credit: l.credit || 0,
+        description: l.description || '',
+        cross_doc_ref: l.cross_doc_ref || '',
+        ret_base: '',
+        ret_rate: '',
+        line_order: l.line_order || 0,
+      })),
+    };
+
+    const warnHtml = deps.warnings.length
+      ? `<div class="mb-4 p-3 rounded-lg" style="background:#FFFBEB;border:1px solid #D97706">${deps.warnings.map(w => `<p class="text-sm" style="color:#92400E"><i class="fas fa-triangle-exclamation mr-2"></i>${esc(w)}</p>`).join('')}</div>`
+      : '';
+
+    openModal(
+      `<i class="fas fa-pencil mr-2" style="color:#1A4B8C"></i>Modificar — ${esc(tx.number || '')}`,
+      `${warnHtml}
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+        <div class="form-group">
+          <label class="form-label">Tipo</label>
+          <input class="form-input" value="${esc(tx.expand?.tx_type_id?.name || '')}" readonly style="background:#F9FAFB">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Número</label>
+          <input class="form-input" value="${esc(tx.number || '')}" readonly style="background:#F9FAFB">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha</label>
+          <input id="edit-tx-date" type="date" class="form-input" value="${esc(tx.date || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tercero</label>
+          <select id="edit-tx-third" class="form-input">
+            <option value="">Sin tercero</option>
+            ${terceros.map(t => `<option value="${esc(t.id)}" ${tx.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group md:col-span-4">
+          <label class="form-label">Descripción</label>
+          <input id="edit-tx-desc" class="form-input" value="${esc(tx.description || '')}">
+        </div>
+      </div>
+      <div class="border-t pt-4" style="border-color:#F0F0F0">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold text-sm" style="color:#0D2137">Líneas contables</h4>
+          <button class="btn btn-outline btn-sm" onclick="addEditTxLine()"><i class="fas fa-plus"></i> Agregar línea</button>
+        </div>
+        <div id="edit-tx-lines"></div>
+        <div id="edit-tx-balance" class="balance-indicator balance-err mt-3"><i class="fas fa-triangle-exclamation"></i> Descuadrada</div>
+      </div>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" onclick="saveEditTx('${esc(id)}')"><i class="fas fa-floppy-disk"></i> Guardar cambios</button>`,
+      true
+    );
+
+    renderEditTxLines(true);
+  } catch (err) {
+    openModal('Error', `<p class="text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+  }
+}
+
+function addEditTxLine(row = null) {
+  TX_EDIT_STATE.lines.push(row || { account_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
+  renderEditTxLines(true);
+}
+
+function removeEditTxLine(i) {
+  TX_EDIT_STATE.lines.splice(i, 1);
+  renderEditTxLines(true);
+}
+
+function updateEditTxLine(i, field, value) {
+  TX_EDIT_STATE.lines[i][field] = value;
+  if (field === 'debit'  && Number(value) > 0) TX_EDIT_STATE.lines[i].credit = 0;
+  if (field === 'credit' && Number(value) > 0) TX_EDIT_STATE.lines[i].debit  = 0;
+  if (field === 'account_id') {
+    TX_EDIT_STATE.lines[i].cross_doc_ref = '';
+    TX_EDIT_STATE.lines[i].ret_base = '';
+    const acct = TX_EDIT_STATE.accountMap.get(value);
+    if (acct?.maneja_retenciones) {
+      const tipos = (acct.tipos_retencion || '').split(',').filter(Boolean);
+      TX_EDIT_STATE.lines[i].ret_rate = String(defaultRetRate(tipos));
+    } else {
+      TX_EDIT_STATE.lines[i].ret_rate = '';
+    }
+    renderEditTxLines(true);
+  } else if (field === 'ret_base' || field === 'ret_rate') {
+    const base = Number(TX_EDIT_STATE.lines[i].ret_base || 0);
+    const rate = Number(TX_EDIT_STATE.lines[i].ret_rate  || 0);
+    const el = document.getElementById(`edit-ret-calc-${i}`);
+    if (el) el.textContent = base && rate ? fmt(base * rate / 100) : '$0';
+  } else {
+    renderEditTxLines(false);
+  }
+}
+
+function applyEditRetentionCalc(i) {
+  const line = TX_EDIT_STATE.lines[i];
+  const base = Number(line.ret_base || 0);
+  const rate = Number(line.ret_rate  || 0);
+  if (!base || !rate) return showToast('Ingresa la base gravable y la tarifa para calcular', 'warning');
+  const amount = Math.round(base * rate / 100);
+  const acct   = TX_EDIT_STATE.accountMap.get(line.account_id);
+  if (acct?.nature === 'debit') {
+    TX_EDIT_STATE.lines[i].debit  = amount;
+    TX_EDIT_STATE.lines[i].credit = 0;
+  } else {
+    TX_EDIT_STATE.lines[i].credit = amount;
+    TX_EDIT_STATE.lines[i].debit  = 0;
+  }
+  renderEditTxLines(true);
+  showToast(`Retención aplicada: ${fmt(amount)}`, 'success');
+}
+
+function renderEditTxLines(repaint = true) {
+  if (repaint) {
+    const html = TX_EDIT_STATE.lines.map((line, i) => {
+      const acct      = TX_EDIT_STATE.accountMap.get(line.account_id);
+      const needsCruce = !!acct?.maneja_cruce;
+      const needsRet   = !!acct?.maneja_retenciones;
+      const tiposRet   = (acct?.tipos_retencion || '').split(',').filter(Boolean);
+      const calcBase   = Number(line.ret_base || 0);
+      const calcRate   = Number(line.ret_rate !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet) : 0));
+      const calcAmount = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
+      return `
+      <div class="tx-line-row" data-i="${i}">
+        <select class="form-input" onchange="updateEditTxLine(${i}, 'account_id', this.value)">
+          <option value="">Seleccione cuenta...</option>
+          ${TX_EDIT_STATE.accounts.map(a => {
+            const postable = TX_EDIT_STATE.postableAccountIds.has(a.id);
+            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(a.code)} - ${esc(a.name)}${postable ? '' : ' [MAYOR]'}</option>`;
+          }).join('')}
+        </select>
+        <input class="form-input text-right" value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))">
+        <input class="form-input text-right" value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))">
+        <button class="btn btn-danger btn-sm" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>
+      </div>
+      ${needsCruce ? `
+      <div style="display:flex;align-items:center;gap:8px;margin:-2px 0 6px 0;padding:5px 8px;background:#EFF6FF;border-left:3px solid #1A4B8C;border-radius:0 6px 6px 0">
+        <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+        <input class="form-input" style="max-width:200px;font-size:13px" placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
+      </div>` : ''}
+      ${needsRet ? `
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
+        <i class="fas fa-percent" style="color:#D97706;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#92400E;white-space:nowrap">Calculadora de Retención</span>
+        ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retLabel(t)}</span>`).join('')}
+        <span class="text-xs" style="color:#92400E">Base:</span>
+        <input class="form-input" style="max-width:140px;font-size:13px" type="number" min="0" step="1" placeholder="Base gravable"
+               value="${esc(line.ret_base || '')}" oninput="updateEditTxLine(${i}, 'ret_base', this.value)">
+        <span class="text-xs" style="color:#92400E">×</span>
+        <input class="form-input" style="max-width:75px;font-size:13px;text-align:right" type="number" min="0" step="0.001" placeholder="%"
+               value="${esc(line.ret_rate !== '' ? line.ret_rate : calcRate)}"
+               oninput="updateEditTxLine(${i}, 'ret_rate', this.value)">
+        <span class="text-xs" style="color:#92400E">%</span>
+        <span id="edit-ret-calc-${i}" class="text-sm font-bold" style="color:#D97706;min-width:70px">${calcAmount}</span>
+        <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:4px 10px;font-size:12px" onclick="applyEditRetentionCalc(${i})">
+          <i class="fas fa-check"></i> Aplicar
+        </button>
+      </div>` : ''}`;
+    }).join('');
+    const el = document.getElementById('edit-tx-lines');
+    if (el) el.innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
+  }
+
+  const totals = TX_EDIT_STATE.lines.reduce((acc, l) => {
+    acc.d += Number(l.debit  || 0);
+    acc.c += Number(l.credit || 0);
+    return acc;
+  }, { d: 0, c: 0 });
+
+  const ok = Math.abs(totals.d - totals.c) < 0.0001 && totals.d > 0;
+  const b  = document.getElementById('edit-tx-balance');
+  if (!b) return;
+  b.className = `balance-indicator ${ok ? 'balance-ok' : 'balance-err'}`;
+  b.innerHTML = ok
+    ? `<i class="fas fa-check-circle"></i> Cuadrada: Débito ${fmt(totals.d)} = Crédito ${fmt(totals.c)}`
+    : `<i class="fas fa-triangle-exclamation"></i> Diferencia: ${fmt(Math.abs(totals.d - totals.c))}`;
+}
+
+async function saveEditTx(txId) {
+  if (!can('canWrite')) return showToast('No tienes permisos para modificar transacciones', 'error');
+  const txDate  = document.getElementById('edit-tx-date')?.value || '';
+  const txDesc  = (document.getElementById('edit-tx-desc')?.value || '').trim();
+  const thirdId = document.getElementById('edit-tx-third')?.value || '';
+
+  if (!txDate) return showToast('La fecha es obligatoria', 'warning');
+  if (!txDesc) return showToast('La descripción es obligatoria', 'warning');
+
+  const validLines = TX_EDIT_STATE.lines.filter(l => l.account_id && (Number(l.debit) > 0 || Number(l.credit) > 0));
+  if (validLines.length < 2) return showToast('Se requieren al menos 2 líneas contables', 'warning');
+
+  const nonPostable = validLines.find(l => !TX_EDIT_STATE.postableAccountIds.has(l.account_id));
+  if (nonPostable) {
+    const acc = TX_EDIT_STATE.accounts.find(a => a.id === nonPostable.account_id);
+    return showToast(`La cuenta ${acc?.code || ''} es de mayor; usa una cuenta auxiliar`, 'error');
+  }
+
+  const needsThird = validLines.some(l => TX_EDIT_STATE.accounts.find(x => x.id === l.account_id)?.requires_third_party);
+  if (needsThird && !thirdId) return showToast('Una o más cuentas requieren tercero en el encabezado', 'error');
+
+  const sum = validLines.reduce((acc, l) => ({ d: acc.d + Number(l.debit || 0), c: acc.c + Number(l.credit || 0) }), { d: 0, c: 0 });
+  if (Math.abs(sum.d - sum.c) > 0.0001 || sum.d <= 0) return showToast('La transacción no está cuadrada', 'error');
+
+  if (typeof isPeriodClosed === 'function') {
+    const closed = await isPeriodClosed(txDate);
+    if (closed) return showToast(`El período ${txDate.slice(0,7)} está cerrado. No se puede modificar.`, 'error');
+  }
+
+  const btn = document.querySelector('#modal-footer .btn-primary');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+
+  try {
+    await API.updateTransaction(txId, {
+      date: txDate,
+      description: txDesc,
+      third_party_id: thirdId || null,
+    }, validLines.map((l, idx) => ({
+      account_id: l.account_id,
+      debit: Number(l.debit || 0),
+      credit: Number(l.credit || 0),
+      description: l.description || txDesc,
+      line_order: idx + 1,
+      cross_doc_ref: l.cross_doc_ref || '',
+    })));
+    closeModal();
+    showToast('Transacción modificada exitosamente', 'success');
+    loadConsultaTxPage();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar cambios'; }
+    showToast(err.message, 'error');
+  }
+}
+
+// ── Eliminación física (solo admin) ──────────────────────────────────────────
+function deleteTxPhysical(id, number) {
+  if (!requireRole('admin')) return showToast('Solo el administrador puede eliminar transacciones físicamente', 'error');
+
+  openModal(
+    '<i class="fas fa-spinner fa-spin mr-2"></i>Verificando dependencias...',
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Analizando...</div>',
+    '', false
+  );
+
+  API.checkTxDependencies(id).then(deps => {
+    if (deps.blocks.length) {
+      const listHtml = deps.blocks.map(b => `<li class="text-sm py-1"><i class="fas fa-ban mr-2" style="color:#EF4444"></i>${esc(b)}</li>`).join('');
+      return openModal(
+        '<i class="fas fa-lock mr-2" style="color:#EF4444"></i>No se puede eliminar',
+        `<p class="text-sm mb-3" style="color:#374151">Esta transacción no puede eliminarse por las siguientes razones:</p>
+         <ul class="space-y-1">${listHtml}</ul>
+         <p class="text-sm mt-4" style="color:#6B7280">Usa <strong>Anular</strong> para invalidarla contablemente sin perder la trazabilidad.</p>`,
+        '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>'
+      );
+    }
+
+    const warnHtml = deps.warnings.length
+      ? `<div class="mb-3 p-3 rounded-lg" style="background:#FFFBEB;border:1px solid #D97706">${deps.warnings.map(w => `<p class="text-sm" style="color:#92400E"><i class="fas fa-triangle-exclamation mr-2"></i>${esc(w)}</p>`).join('')}</div>`
+      : '';
+
+    openModal(
+      '<i class="fas fa-trash mr-2" style="color:#991B1B"></i>Eliminar transacción permanentemente',
+      `${warnHtml}
+       <div class="p-3 rounded-lg mb-4" style="background:#FEF2F2;border:1px solid #FECACA">
+         <p class="text-sm font-semibold mb-1" style="color:#991B1B"><i class="fas fa-triangle-exclamation mr-2"></i>Esta acción es IRREVERSIBLE</p>
+         <p class="text-sm" style="color:#374151">Se eliminará permanentemente el comprobante <strong>${esc(number)}</strong> y todas sus líneas contables. No podrá recuperarse.</p>
+       </div>
+       <div class="form-group">
+         <label class="form-label">Para confirmar, escribe el número del comprobante: <strong>${esc(number)}</strong></label>
+         <input id="delete-tx-confirm-input" class="form-input" placeholder="${esc(number)}" autocomplete="off">
+       </div>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-danger" id="btn-confirm-delete-tx" onclick="_confirmDeleteTx('${esc(id)}','${esc(number)}')">
+         <i class="fas fa-trash"></i> Eliminar definitivamente
+       </button>`
+    );
+  }).catch(err => {
+    openModal('Error', `<p class="text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+  });
+}
+
+async function _confirmDeleteTx(id, number) {
+  const input = (document.getElementById('delete-tx-confirm-input')?.value || '').trim();
+  if (input !== number) return showToast(`Escribe exactamente: ${number}`, 'warning');
+
+  const btn = document.getElementById('btn-confirm-delete-tx');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...'; }
+
+  try {
+    await pb.delete('transactions', id);
+    await API.logAudit('DELETE', 'transactions', id, `Eliminación física del comprobante ${number}`);
+    closeModal();
+    showToast(`Comprobante ${number} eliminado permanentemente`, 'success');
+    loadConsultaTxPage();
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Eliminar definitivamente'; }
+    showToast(err.message, 'error');
+  }
 }
 
 async function renderTransacciones(c) {

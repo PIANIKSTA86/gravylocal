@@ -135,12 +135,36 @@ const TAX_REGIMES = [
   { code: 'GRAN_CONTR',  name: 'Gran Contribuyente' },
 ];
 
-const TP_TYPES = [
-  { code: 'CLIENTE',   name: 'Cliente' },
-  { code: 'PROVEEDOR', name: 'Proveedor' },
-  { code: 'EMPLEADO',  name: 'Empleado' },
-  { code: 'OTRO',      name: 'Otro' },
+const PERSON_TYPES = [
+  { code: 'NATURAL',            name: 'Persona Natural' },
+  { code: 'JURIDICA',           name: 'Persona Jurídica' },
+  { code: 'GRAN_CONTRIBUYENTE', name: 'Gran Contribuyente' },
 ];
+
+const TP_TYPES = [
+  { code: 'CLIENTE',      name: 'Cliente' },
+  { code: 'PROVEEDOR',   name: 'Proveedor' },
+  { code: 'EMPLEADO',    name: 'Empleado' },
+  { code: 'ACREEDOR',    name: 'Acreedor' },
+  { code: 'TRANSPORTISTA', name: 'Transportista' },
+  { code: 'OTRO',        name: 'Otro' },
+];
+
+/* Departamentos de Colombia (DANE) */
+/* Departamentos de Colombia — fuente: geodata.js (GEO_DEPTS) */
+/* COL_DEPTS mantenido como alias de compatibilidad */
+const COL_DEPTS = typeof GEO_DEPTS !== 'undefined' ? GEO_DEPTS : [];
+
+/* Cálculo dígito de verificación DIAN (NIT) */
+const _NIT_FACTORS = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+function calcDV(nit) {
+  const d = String(nit).replace(/\D/g, '');
+  if (!d) return '';
+  let s = 0;
+  for (let i = 0; i < d.length; i++) s += +d[d.length - 1 - i] * _NIT_FACTORS[i];
+  const r = s % 11;
+  return String(r < 2 ? r : 11 - r);
+}
 
 const CROSS_DOC_TYPES = [
   'Factura de Venta','Factura de Compra','Recibo de Caja',

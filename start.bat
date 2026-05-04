@@ -32,7 +32,7 @@ if /I "%~1"=="--lan" (
 netstat -ano | find ":8090" >nul 2>&1
 if %ERRORLEVEL%==0 (
     echo  [AVISO] El puerto 8090 ya esta en uso.
-    echo  Si ContaCO ya esta corriendo, abre tu navegador en:
+    echo  ContaCO ya esta corriendo, abre tu navegador en:
     echo.
     echo         http://localhost:8090
     echo.

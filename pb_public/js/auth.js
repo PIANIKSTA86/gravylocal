@@ -1,6 +1,6 @@
 /**
- * ContaCO v2.0 � auth.js
- * Autenticaci�n, sesi�n y control de acceso por rol.
+ * ContaCO v2.0 o auth.js
+ * Autenticacion, sesion y control de acceso por rol.
  */
 
 'use strict';
@@ -28,7 +28,7 @@ function requireRole(...roles) {
 async function doLogin() {
   const email = getInputVal('login-email');
      const pass  = getInputVal('login-pass');  // sin leer la contraseña desde el DOM aquí adentro
-  // Leer contrase�a directamente del input (sin trimming para no alterar espacios)
+  // Leer contrasena directamente del input (sin trimming para no alterar espacios)
   const rawPass = $('#login-pass')?.value ?? '';
 
   const errEl = $('#login-error');
@@ -78,7 +78,7 @@ function showLogin() {
   ls.style.display = '';
   ls.classList.add('active');
   setInputVal('login-email', '');
-  setInputVal('login-pass', '');  // no limpiar el field de contrase�a real para evitar warnings
+  setInputVal('login-pass', '');  // no limpiar el field de contraseña real para evitar warnings
   if ($('#login-pass')) $('#login-pass').value = '';
   $('#login-error')?.classList.add('hidden');
   $('#login-server-url').textContent = window.location.host;
@@ -94,7 +94,7 @@ async function showApp() {
   $('#sidebar-role').textContent     = roleLabel(user.role ?? 'viewer');
   $('#sidebar-avatar').textContent   = (user.full_name || user.email).charAt(0).toUpperCase();
 
-  // Mostrar/ocultar �tems de men� seg�n rol
+  // Mostrar/ocultar ñtems de menñ segñn rol
   if ($('#nav-auditoria')) $('#nav-auditoria').style.display = can('canViewAudit') ? '' : 'none';
   if ($('#nav-usuarios'))  $('#nav-usuarios').style.display  = can('canManageUsers') ? '' : 'none';
 
@@ -113,7 +113,7 @@ async function showApp() {
   navigate('dashboard');
 }
 
-/* -- Toggle contrase�a visible ----------------------------- */
+/* -- Toggle contraseña visible ----------------------------- */
 function togglePassVisibility() {
   const inp  = $('#login-pass');
   const icon = $('#btn-toggle-pass')?.querySelector('i');
@@ -127,7 +127,7 @@ function togglePassVisibility() {
   }
 }
 
-/* -- Verificar estado de conexi�n -------------------------- */
+/* -- Verificar estado de conexion -------------------------- */
 let _connCheckInterval = null;
 
 function startConnCheck() {
@@ -140,10 +140,10 @@ function startConnCheck() {
     const label = ind.querySelector('span');
     if (online) {
       dot.className   = 'w-2 h-2 rounded-full bg-green-400';
-      label.textContent = 'En l�nea';
+      label.textContent = 'En linea';
     } else {
       dot.className   = 'w-2 h-2 rounded-full bg-red-400';
-      label.textContent = 'Sin conexi�n';
+      label.textContent = 'Sin conexion';
     }
   }, 15000);
 }

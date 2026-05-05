@@ -37,7 +37,11 @@ async function renderPlanCuentas(c) {
           <h3 class="text-lg font-bold" style="color:#0D2137">Plan de Cuentas</h3>
           <p class="text-sm" style="color:#6B7280">Administra cuentas PUC, naturaleza y estado.</p>
         </div>
-        ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-account"><i class="fas fa-plus"></i> Nueva Cuenta</button>' : ''}
+        ${can('canWrite') ? `
+          <div class="flex gap-2">
+            <button class="btn btn-outline" id="btn-import-accounts"><i class="fas fa-file-arrow-up"></i> Importar</button>
+            <button class="btn btn-primary" id="btn-new-account"><i class="fas fa-plus"></i> Nueva Cuenta</button>
+          </div>` : ''}
       </div>
 
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
@@ -88,6 +92,7 @@ async function renderPlanCuentas(c) {
     $('#acct-type')?.addEventListener('change', doFilter);
     $('#acct-status')?.addEventListener('change', doFilter);
     $('#btn-new-account')?.addEventListener('click', () => openAccountForm(accTypes));
+    $('#btn-import-accounts')?.addEventListener('click', () => openImportAccountsModal(accTypes));
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
@@ -264,4 +269,359 @@ function toggleAccountActive(id, active) {
       }
     }
   );
+}
+
+/* ══════════════════════════════════════════════════════════
+   IMPORTACIÓN MASIVA DE CUENTAS
+   Columnas esperadas (CSV/Excel):
+     codigo | nombre | tipo | naturaleza | nivel | codigo_padre | requiere_tercero | activa
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * Descarga una plantilla CSV de ejemplo para importación.
+ */
+function downloadImportTemplate() {
+  const header = 'codigo,nombre,tipo,naturaleza,nivel,codigo_padre,requiere_tercero,activa';
+  const example = [
+    '1,ACTIVO,1,debit,1,,No,Si',
+    '11,DISPONIBLE,1,debit,2,1,,Si',
+    '1105,CAJA,1,debit,3,11,,Si',
+    '110505,Caja General,1,debit,4,1105,No,Si',
+  ].join('\n');
+  const blob = new Blob([header + '\n' + example], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_plan_cuentas.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Parsea CSV simple respetando comillas.
+ */
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (!lines.length) return [];
+  const splitLine = line => {
+    const fields = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    fields.push(cur.trim());
+    return fields;
+  };
+  const headers = splitLine(lines[0]).map(h => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_'));
+  return lines.slice(1).map(line => {
+    const vals = splitLine(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+    return obj;
+  });
+}
+
+/**
+ * Parsea Excel usando la librería xlsx.full.min.js ya cargada.
+ */
+function parseExcel(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  // Normalizar claves de encabezado
+  return rows.map(r => {
+    const norm = {};
+    Object.entries(r).forEach(([k, v]) => {
+      const key = String(k).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+      norm[key] = String(v ?? '').trim();
+    });
+    return norm;
+  });
+}
+
+/**
+ * Normaliza una fila cruda a un objeto de cuenta con validaciones.
+ * Retorna { ok, payload, error }.
+ */
+function normalizeImportRow(raw, accTypes) {
+  const get = (...keys) => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (v !== undefined && v !== '') return String(v).trim();
+    }
+    return '';
+  };
+
+  const code       = get('codigo', 'code', 'cod', 'cuenta');
+  const name       = get('nombre', 'name', 'descripcion', 'description');
+  const tipoRaw    = get('tipo', 'type', 'tipo_cuenta', 'account_type');
+  const natRaw     = get('naturaleza', 'nature', 'nat');
+  const levelRaw   = get('nivel', 'level');
+  const parentCode = get('codigo_padre', 'parent_code', 'padre', 'parent');
+  const thirdRaw   = get('requiere_tercero', 'requires_third_party', 'tercero', 'req_tercero');
+  const activeRaw  = get('activa', 'active', 'estado');
+
+  if (!code) return { ok: false, error: 'Falta el código' };
+  if (!/^\d+$/.test(code)) return { ok: false, error: `Código "${code}" no es numérico` };
+  if (!name) return { ok: false, error: 'Falta el nombre' };
+  if (!tipoRaw) return { ok: false, error: 'Falta el tipo de cuenta' };
+
+  // Resolver account_type_id por código numérico o por nombre
+  const tipoNorm = tipoRaw.toLowerCase().trim();
+  const accType = accTypes.find(t =>
+    String(t.code).toLowerCase() === tipoNorm ||
+    t.name.toLowerCase().includes(tipoNorm)
+  );
+  if (!accType) return { ok: false, error: `Tipo de cuenta "${tipoRaw}" no encontrado` };
+
+  // Naturaleza
+  let nature = 'debit';
+  if (/^(c|cr|credit|credito|crédito)$/i.test(natRaw)) nature = 'credit';
+
+  // Nivel: si no se suministra, inferir del largo del código
+  const level = levelRaw ? Math.max(1, parseInt(levelRaw, 10) || 1) : code.length;
+
+  // Requiere tercero
+  const requiresThird = /^(s[ií]|yes|1|true)$/i.test(thirdRaw);
+
+  // Activa (default: true)
+  const active = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
+
+  return {
+    ok: true,
+    payload: {
+      code,
+      name,
+      account_type_id: accType.id,
+      nature,
+      level,
+      parent_code: parentCode,
+      requires_third_party: requiresThird,
+      active,
+      maneja_cruce: false,
+      maneja_retenciones: false,
+      tipos_retencion: '',
+    },
+  };
+}
+
+/**
+ * Modal principal de importación.
+ */
+async function openImportAccountsModal(accTypes) {
+  if (!can('canWrite')) return showToast('No tienes permisos para importar cuentas', 'error');
+  if (!accTypes) accTypes = await pb.listAll('account_types', { sort: 'code' });
+
+  openModal(
+    '<i class="fas fa-file-arrow-up mr-2" style="color:#1A4B8C"></i>Importar Plan de Cuentas',
+    `
+    <div class="mb-4">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx)</strong> con las cuentas a crear o actualizar.
+        Si el código ya existe, la cuenta será <strong>actualizada</strong>; si no existe, será <strong>creada</strong>.
+      </p>
+      <div class="rounded-xl p-3 mb-3" style="background:#F0F7FF;border:1px solid #BFDBFE">
+        <p class="text-xs font-semibold mb-1" style="color:#1A4B8C;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
+        <div class="flex flex-wrap gap-2">
+          ${['codigo','nombre','tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#DBEAFE;color:#1D4ED8">${c}</code>`).join('')}
+          ${['naturaleza','nivel','codigo_padre','requiere_tercero','activa'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+        </div>
+        <p class="text-xs mt-2" style="color:#6B7280">El campo <strong>tipo</strong> debe coincidir con el código numérico del tipo de cuenta (ej: <em>1</em>, <em>2</em>).</p>
+      </div>
+      <button class="btn btn-outline btn-sm mb-4" id="btn-download-template"><i class="fas fa-download mr-1"></i>Descargar plantilla CSV</button>
+      <div id="import-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#1A4B8C;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 5 MB</p>
+        <input type="file" id="import-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+      <div id="import-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa — <span id="import-preview-count"></span></p>
+          <button class="btn btn-outline btn-sm" id="btn-clear-import"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:300px;overflow-y:auto">
+          <table class="data-table text-xs" id="import-preview-table">
+            <thead><tr>
+              <th>#</th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Nat.</th><th>Nivel</th><th>Padre</th><th>Estado</th>
+            </tr></thead>
+            <tbody id="import-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="import-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary hidden" id="btn-execute-import"><i class="fas fa-bolt mr-1"></i>Ejecutar importación</button>`,
+    true /* wide */
+  );
+
+  // Almacena filas parseadas accesibles al botón de ejecución
+  let _parsedRows = [];
+
+  const dropZone  = document.getElementById('import-drop-zone');
+  const fileInput = document.getElementById('import-file-input');
+
+  document.getElementById('btn-download-template')?.addEventListener('click', downloadImportTemplate);
+
+  // Click en drop zone abre el selector de archivos
+  dropZone?.addEventListener('click', () => fileInput?.click());
+
+  // Drag & drop
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#1A4B8C';
+    dropZone.style.background  = '#EFF6FF';
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '#D1D5DB';
+    dropZone.style.background  = '#FAFAFA';
+  });
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#D1D5DB';
+    dropZone.style.background  = '#FAFAFA';
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processImportFile(file);
+  });
+
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) processImportFile(file);
+  });
+
+  document.getElementById('btn-clear-import')?.addEventListener('click', () => {
+    _parsedRows = [];
+    document.getElementById('import-preview')?.classList.add('hidden');
+    document.getElementById('btn-execute-import')?.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  });
+
+  async function processImportFile(file) {
+    if (file.size > 5 * 1024 * 1024) return showToast('El archivo supera el límite de 5 MB', 'error');
+    const ext = file.name.split('.').pop().toLowerCase();
+    let rawRows = [];
+    try {
+      if (ext === 'csv') {
+        const text = await file.text();
+        rawRows = parseCSV(text);
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const buf = await file.arrayBuffer();
+        rawRows = parseExcel(buf);
+      } else {
+        return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+      }
+    } catch (e) {
+      return showToast('Error al leer el archivo: ' + e.message, 'error');
+    }
+    if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');
+
+    _parsedRows = rawRows.map((r, i) => ({ idx: i + 1, raw: r, ...normalizeImportRow(r, accTypes) }));
+    renderImportPreview(_parsedRows);
+  }
+
+  function renderImportPreview(rows) {
+    const tbody  = document.getElementById('import-preview-body');
+    const count  = document.getElementById('import-preview-count');
+    const summary = document.getElementById('import-summary');
+    const execBtn = document.getElementById('btn-execute-import');
+    const preview = document.getElementById('import-preview');
+
+    const okRows  = rows.filter(r => r.ok);
+    const errRows = rows.filter(r => !r.ok);
+
+    count.textContent = `${rows.length} fila(s) — ${okRows.length} válidas, ${errRows.length} con error`;
+
+    tbody.innerHTML = rows.map(r => {
+      if (r.ok) {
+        const p = r.payload;
+        const typeName = accTypes.find(t => t.id === p.account_type_id)?.name ?? '?';
+        return `<tr>
+          <td>${r.idx}</td>
+          <td><span class="font-semibold" style="color:#1A4B8C">${esc(p.code)}</span></td>
+          <td>${esc(p.name)}</td>
+          <td class="text-xs">${esc(typeName)}</td>
+          <td>${p.nature === 'debit' ? 'Db' : 'Cr'}</td>
+          <td>${p.level}</td>
+          <td>${esc(p.parent_code || '—')}</td>
+          <td><span class="badge badge-green">OK</span></td>
+        </tr>`;
+      } else {
+        return `<tr style="background:#FFF7F7">
+          <td>${r.idx}</td>
+          <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error)}</td>
+          <td><span class="badge badge-red" title="${esc(r.error)}">Error</span></td>
+        </tr>`;
+      }
+    }).join('');
+
+    if (errRows.length) {
+      summary.innerHTML = `<span style="color:#EF4444"><i class="fas fa-triangle-exclamation mr-1"></i>${errRows.length} fila(s) con error serán omitidas.</span>`;
+    } else {
+      summary.innerHTML = `<span style="color:#22C55E"><i class="fas fa-circle-check mr-1"></i>Todas las filas son válidas.</span>`;
+    }
+
+    preview.classList.remove('hidden');
+    if (okRows.length) execBtn?.classList.remove('hidden');
+    else execBtn?.classList.add('hidden');
+  }
+
+  document.getElementById('btn-execute-import')?.addEventListener('click', () => executeImport(_parsedRows));
+
+  async function executeImport(rows) {
+    const okRows = rows.filter(r => r.ok);
+    if (!okRows.length) return;
+
+    const execBtn = document.getElementById('btn-execute-import');
+    if (execBtn) { execBtn.disabled = true; execBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
+
+    // Cargar cuentas existentes para decidir crear vs actualizar
+    let existingMap = {};
+    try {
+      const all = await pb.listAll('accounts', {});
+      all.forEach(a => { existingMap[a.code] = a.id; });
+    } catch (e) {
+      showToast('Error al cargar cuentas existentes: ' + e.message, 'error');
+      if (execBtn) { execBtn.disabled = false; execBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar importación'; }
+      return;
+    }
+
+    let created = 0, updated = 0, errors = 0;
+    const errorMsgs = [];
+
+    for (const row of okRows) {
+      const p = row.payload;
+      try {
+        if (existingMap[p.code]) {
+          await pb.update('accounts', existingMap[p.code], p);
+          updated++;
+        } else {
+          const rec = await pb.create('accounts', p);
+          existingMap[p.code] = rec.id;
+          created++;
+        }
+      } catch (e) {
+        errors++;
+        errorMsgs.push(`Código ${p.code}: ${e.message}`);
+      }
+    }
+
+    await API.logAudit('IMPORT', 'Cuenta', 'bulk', `${created} creadas, ${updated} actualizadas, ${errors} errores`);
+
+    closeModal();
+
+    let msg = `Importación completada: ${created} creadas, ${updated} actualizadas.`;
+    if (errors) msg += ` ${errors} con error.`;
+    showToast(msg, errors ? 'warning' : 'success', 5000);
+
+    if (errorMsgs.length) {
+      console.warn('[ImportCuentas] Errores:', errorMsgs);
+    }
+
+    renderPlanCuentas($('#page-content'));
+  }
 }

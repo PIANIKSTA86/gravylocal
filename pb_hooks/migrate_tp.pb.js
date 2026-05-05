@@ -75,4 +75,24 @@ onBootstrap((e) => {
   } catch (err) {
     console.error('[ContaCO] Error migrando índice transaction_types:', String(err));
   }
+
+  // ── Migración tx_lines: tercero por línea (third_party_id) ─────────────────
+  try {
+    const txLines = $app.findCollectionByNameOrId('tx_lines');
+    const thirdParties = $app.findCollectionByNameOrId('third_parties');
+    const hasLineThird = txLines.fields.fieldNames().includes('third_party_id');
+    if (!hasLineThird) {
+      txLines.fields.add(new Field({
+        name: 'third_party_id',
+        type: 'relation',
+        required: false,
+        collectionId: thirdParties.id,
+        cascadeDelete: false,
+      }));
+      $app.save(txLines);
+      console.log('[ContaCO] Migración tx_lines: campo third_party_id agregado.');
+    }
+  } catch (err) {
+    console.error('[ContaCO] Error migrando tx_lines.third_party_id:', String(err));
+  }
 });

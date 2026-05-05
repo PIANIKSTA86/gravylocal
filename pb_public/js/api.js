@@ -306,7 +306,7 @@ const API = {
     return pb.listAll('tx_lines', {
       filter: `tx_id="${txId}"`,
       sort: 'line_order',
-      expand: 'account_id',
+      expand: 'account_id,third_party_id',
     });
   },
 

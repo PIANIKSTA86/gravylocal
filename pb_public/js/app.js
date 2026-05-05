@@ -17,8 +17,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── Botones del modal ──────────────────────────────────────
   $('#modal-close-btn')?.addEventListener('click', closeModal);
+  let modalBackdropPointerDown = false;
+  $('#modal-overlay')?.addEventListener('pointerdown', e => {
+    modalBackdropPointerDown = (e.target === $('#modal-overlay'));
+  });
+  $('#modal-box')?.addEventListener('pointerdown', () => {
+    modalBackdropPointerDown = false;
+  });
   $('#modal-overlay')?.addEventListener('click', e => {
-    if (e.target === $('#modal-overlay')) closeModal();
+    if (e.target === $('#modal-overlay') && modalBackdropPointerDown) closeModal();
+    modalBackdropPointerDown = false;
   });
 
   // ── Botones de login ───────────────────────────────────────

@@ -121,7 +121,7 @@ async function refreshConsecutive() {
 }
 
 function addTxLine(row = null) {
-  TX_STATE.lines.push(row || { account_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
+  TX_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
   renderTxLines();
 }
 
@@ -180,6 +180,7 @@ function renderTxLines(repaint = true) {
   if (repaint) {
     const html = TX_STATE.lines.map((line, i) => {
       const acct       = TX_STATE.accountMap.get(line.account_id);
+      const needsThird  = !!acct?.requires_third_party;
       const needsCruce  = !!acct?.maneja_cruce;
       const needsRet    = !!acct?.maneja_retenciones;
       const tiposRet    = (acct?.tipos_retencion || '').split(',').filter(Boolean);
@@ -199,12 +200,22 @@ function renderTxLines(repaint = true) {
         <input class="form-input text-right" value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))">
         <button class="btn btn-danger btn-sm" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin:-2px 0 6px 0;padding:5px 8px;background:#F8FAFC;border-left:3px solid #64748B;border-radius:0 6px 6px 0">
+        <i class="fas fa-user-tag" style="color:#334155;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
+        <select class="form-input" style="max-width:340px;font-size:13px" onchange="updateTxLine(${i}, 'third_party_id', this.value)">
+          <option value="">Usar tercero del encabezado</option>
+          ${TX_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+        </select>
+        ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio para esta cuenta</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
+        ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
+      </div>
       ${needsCruce ? `
       <div style="display:flex;align-items:center;gap:8px;margin:-2px 0 6px 0;padding:5px 8px;background:#EFF6FF;border-left:3px solid #1A4B8C;border-radius:0 6px 6px 0">
         <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
         <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
-        <input class="form-input" style="max-width:200px;font-size:13px" placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
-        <span class="text-xs" style="color:#93C5FD">CxP / CxC — ingresa el número del documento que se está cruzando</span>
+        <input class="form-input" style="max-width:200px;font-size:13px" placeholder="N\u00b0 factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
+        <span class="text-xs" style="color:#93C5FD">CxP / CxC \u2014 ingresa el n\u00famero del documento que se est\u00e1 cruzando</span>
       </div>` : ''}
       ${needsRet ? `
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
@@ -248,8 +259,10 @@ function renderTxLines(repaint = true) {
 // ── Cartera: saldo de documentos de cruce por tercero ────────────────────────
 let CARTERA_MODAL_PREV = null;
 let CARTERA_CONTEXT = 'new';
+let CARTERA_TARGET_LINE = null; // índice de línea destino al abrir cartera desde lupa de línea
 
 function closeCarteraModal() {
+  CARTERA_TARGET_LINE = null;
   if (CARTERA_MODAL_PREV) {
     const prev = CARTERA_MODAL_PREV;
     CARTERA_MODAL_PREV = null;
@@ -269,11 +282,26 @@ function closeCarteraModal() {
   closeModal();
 }
 
+// Abre cartera desde botón lupa de una línea específica
+function showCarteraForLine(lineIdx, ctx) {
+  const state = ctx === 'edit' ? TX_EDIT_STATE : TX_STATE;
+  const thirdId = state.lines[lineIdx]?.third_party_id ||
+    (ctx === 'edit'
+      ? ($('#edit-tx-third')?.value || TX_EDIT_STATE?.selectedThird)
+      : getSelectVal('tx-third'));
+  if (!thirdId) { showToast('Selecciona un tercero para esta línea o en el encabezado', 'warning'); return; }
+  CARTERA_TARGET_LINE = lineIdx;
+  CARTERA_CONTEXT = ctx;
+  showCarteraModal(thirdId, { returnToPrevious: true, skipCtxOverride: true });
+}
+
 async function showCarteraModal(thirdId, opts = {}) {
-    const { returnToPrevious = false } = opts;
+    const { returnToPrevious = false, skipCtxOverride = false } = opts;
     if (!thirdId) return;
     const usingEdit = !!$('#edit-tx-third') && !!TX_EDIT_STATE?.accountMap?.size;
-  CARTERA_CONTEXT = (returnToPrevious || usingEdit) ? 'edit' : 'new';
+    if (!skipCtxOverride) {
+      CARTERA_CONTEXT = (returnToPrevious || usingEdit) ? 'edit' : 'new';
+    }
     const state = usingEdit ? TX_EDIT_STATE : TX_STATE;
     const tercero = (state.terceros || []).find(t => t.id === thirdId);
     const cruceAccountIds = new Set(
@@ -452,6 +480,22 @@ function useCrossDoc(ref, netOpen = 0) {
   const state = inEdit ? TX_EDIT_STATE : TX_STATE;
   const rerender = inEdit ? renderEditTxLines : renderTxLines;
 
+  // Si viene del botón lupa de una línea específica, aplicar directamente a esa línea
+  if (CARTERA_TARGET_LINE !== null) {
+    const targetIdx = CARTERA_TARGET_LINE;
+    CARTERA_TARGET_LINE = null;
+    state.lines[targetIdx].cross_doc_ref = ref;
+    const autoApplied = applyCrossAmountByType(targetIdx, netOpen, state);
+    closeCarteraModal();
+    rerender(true);
+    if (autoApplied) {
+      showToast(`Documento "${ref}" aplicado a la línea ${targetIdx + 1} con valor ${fmt(Math.abs(Number(netOpen || 0)))}`, 'success');
+    } else {
+      showToast(`Documento "${ref}" aplicado a la línea ${targetIdx + 1}`, 'success');
+    }
+    return;
+  }
+
   const idx = state.lines.findIndex(l => {
     const a = state.accountMap.get(l.account_id);
     return a?.maneja_cruce && !l.cross_doc_ref;
@@ -509,13 +553,14 @@ async function saveTransaction() {
       return showToast(`La cuenta ${acc?.code || ''} es de mayor; usa una cuenta auxiliar para registrar movimientos`, 'error');
     }
 
-    // Regla 2: si alguna cuenta requiere tercero, el encabezado debe tener tercero
-    const needsThird = validLines.some(l => {
+    // Regla 2: cuentas que requieren tercero deben tener tercero por línea o por encabezado
+    const missingThirdLine = validLines.find((l) => {
       const a = TX_STATE.accounts.find(x => x.id === l.account_id);
-      return !!a?.requires_third_party;
+      return !!a?.requires_third_party && !(l.third_party_id || thirdId);
     });
-    if (needsThird && !thirdId) {
-      return showToast('La transacción incluye cuentas que requieren tercero. Selecciona un tercero en el encabezado.', 'error');
+    if (missingThirdLine) {
+      const idx = TX_STATE.lines.indexOf(missingThirdLine);
+      return showToast(`La línea ${idx + 1} requiere tercero. Selecciónalo en la línea o en el encabezado.`, 'error');
     }
 
     const sum = validLines.reduce((acc, l) => ({ d: acc.d + Number(l.debit || 0), c: acc.c + Number(l.credit || 0) }), { d: 0, c: 0 });
@@ -532,6 +577,7 @@ async function saveTransaction() {
       status: 'active',
     }, validLines.map((l, i) => ({
       account_id: l.account_id,
+      third_party_id: l.third_party_id || thirdId || null,
       debit: Number(l.debit || 0),
       credit: Number(l.credit || 0),
       description: l.description || txDesc,
@@ -842,8 +888,8 @@ async function seeTxDetail(id) {
       </div>
       <p class="mb-4" style="color:#6B7280">${esc(tx.description || '')}</p>
       <div class="overflow-x-auto">
-        <table class="data-table"><thead><tr><th>Cuenta</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
-          <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
+        <table class="data-table"><thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
+          <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
         </table>
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
@@ -929,6 +975,7 @@ async function editTx(id) {
       selectedThird: tx.third_party_id || '',
       lines: lines.map(l => ({
         account_id: l.account_id,
+        third_party_id: l.third_party_id || tx.third_party_id || '',
         debit: l.debit || 0,
         credit: l.credit || 0,
         description: l.description || '',
@@ -1011,7 +1058,7 @@ function bindEditCarteraEvents() {
 }
 
 function addEditTxLine(row = null) {
-  TX_EDIT_STATE.lines.push(row || { account_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
+  TX_EDIT_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
   renderEditTxLines(true);
 }
 
@@ -1067,6 +1114,7 @@ function renderEditTxLines(repaint = true) {
   if (repaint) {
     const html = TX_EDIT_STATE.lines.map((line, i) => {
       const acct      = TX_EDIT_STATE.accountMap.get(line.account_id);
+      const needsThird = !!acct?.requires_third_party;
       const needsCruce = !!acct?.maneja_cruce;
       const needsRet   = !!acct?.maneja_retenciones;
       const tiposRet   = (acct?.tipos_retencion || '').split(',').filter(Boolean);
@@ -1085,6 +1133,16 @@ function renderEditTxLines(repaint = true) {
         <input class="form-input text-right" value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))">
         <input class="form-input text-right" value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))">
         <button class="btn btn-danger btn-sm" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin:-2px 0 6px 0;padding:5px 8px;background:#F8FAFC;border-left:3px solid #64748B;border-radius:0 6px 6px 0">
+        <i class="fas fa-user-tag" style="color:#334155;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
+        <select class="form-input" style="max-width:340px;font-size:13px" onchange="updateEditTxLine(${i}, 'third_party_id', this.value)">
+          <option value="">Usar tercero del encabezado</option>
+          ${TX_EDIT_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+        </select>
+        ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio para esta cuenta</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
+        ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
       </div>
       ${needsCruce ? `
       <div style="display:flex;align-items:center;gap:8px;margin:-2px 0 6px 0;padding:5px 8px;background:#EFF6FF;border-left:3px solid #1A4B8C;border-radius:0 6px 6px 0">
@@ -1148,8 +1206,14 @@ async function saveEditTx(txId) {
     return showToast(`La cuenta ${acc?.code || ''} es de mayor; usa una cuenta auxiliar`, 'error');
   }
 
-  const needsThird = validLines.some(l => TX_EDIT_STATE.accounts.find(x => x.id === l.account_id)?.requires_third_party);
-  if (needsThird && !thirdId) return showToast('Una o más cuentas requieren tercero en el encabezado', 'error');
+  const missingThirdLine = validLines.find((l) => {
+    const a = TX_EDIT_STATE.accounts.find(x => x.id === l.account_id);
+    return !!a?.requires_third_party && !(l.third_party_id || thirdId);
+  });
+  if (missingThirdLine) {
+    const idx = TX_EDIT_STATE.lines.indexOf(missingThirdLine);
+    return showToast(`La línea ${idx + 1} requiere tercero. Selecciónalo en la línea o en el encabezado.`, 'error');
+  }
 
   const sum = validLines.reduce((acc, l) => ({ d: acc.d + Number(l.debit || 0), c: acc.c + Number(l.credit || 0) }), { d: 0, c: 0 });
   if (Math.abs(sum.d - sum.c) > 0.0001 || sum.d <= 0) return showToast('La transacción no está cuadrada', 'error');
@@ -1169,6 +1233,7 @@ async function saveEditTx(txId) {
       third_party_id: thirdId || null,
     }, validLines.map((l, idx) => ({
       account_id: l.account_id,
+      third_party_id: l.third_party_id || thirdId || null,
       debit: Number(l.debit || 0),
       credit: Number(l.credit || 0),
       description: l.description || txDesc,

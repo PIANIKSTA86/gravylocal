@@ -208,6 +208,7 @@ onBootstrap((e) => {
     fields: [
       { name: "tx_id",      type: "relation", required: true,  collectionId: transactionsId, cascadeDelete: true },
       { name: "account_id", type: "relation", required: true,  collectionId: accountsId,     cascadeDelete: false },
+      { name: "third_party_id", type: "relation", required: false, collectionId: thirdPartiesId, cascadeDelete: false },
       { name: "debit",      type: "number",   required: false, min: 0 },
       { name: "credit",     type: "number",   required: false, min: 0 },
       { name: "description",type: "text",     required: false },

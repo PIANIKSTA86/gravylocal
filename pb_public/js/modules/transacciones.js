@@ -5,12 +5,30 @@
 
 // Tarifas de retención por defecto (Colombia)
 const RET_DEFAULT_RATES = { reterenta: 3.5, reteiva: 15, reteica: 0.414 };
-function defaultRetRate(tipos) {
-  for (const t of tipos) { if (RET_DEFAULT_RATES[t.trim()]) return RET_DEFAULT_RATES[t.trim()]; }
-  return 3.5;
+const RET_RATE_FIELD_BY_TYPE = {
+  reterenta: 'ret_rate_reterenta',
+  reteiva: 'ret_rate_reteiva',
+  reteica: 'ret_rate_reteica',
+};
+function defaultRetRate(tipos, account = null) {
+  for (const raw of tipos) {
+    const t = raw.trim();
+    const f = RET_RATE_FIELD_BY_TYPE[t];
+    const accRate = account && f ? Number(account[f] || 0) : 0;
+    if (accRate > 0) return accRate;
+    if (RET_DEFAULT_RATES[t]) return RET_DEFAULT_RATES[t];
+  }
+  return RET_DEFAULT_RATES.reterenta;
 }
 function retLabel(tipo) {
   return { reterenta: 'Reterenta', reteiva: 'Reteiva', reteica: 'Reteica' }[tipo.trim()] || tipo;
+}
+function retRateLabel(tipo, account = null) {
+  const t = String(tipo || '').trim();
+  const f = RET_RATE_FIELD_BY_TYPE[t];
+  const accRate = account && f ? Number(account[f] || 0) : 0;
+  const rate = accRate > 0 ? accRate : (RET_DEFAULT_RATES[t] || 0);
+  return `${retLabel(t)} ${rate}%`;
 }
 
 let TX_STATE = {
@@ -141,7 +159,7 @@ function updateTxLine(i, field, value) {
     const acct = TX_STATE.accountMap.get(value);
     if (acct?.maneja_retenciones) {
       const tipos = (acct.tipos_retencion || '').split(',').filter(Boolean);
-      TX_STATE.lines[i].ret_rate = String(defaultRetRate(tipos));
+      TX_STATE.lines[i].ret_rate = String(defaultRetRate(tipos, acct));
     } else {
       TX_STATE.lines[i].ret_rate = '';
     }
@@ -160,10 +178,12 @@ function updateTxLine(i, field, value) {
 function applyRetentionCalc(i) {
   const line = TX_STATE.lines[i];
   const base   = Number(line.ret_base || 0);
-  const rate   = Number(line.ret_rate  || 0);
-  if (!base || !rate) return showToast('Ingresa la base gravable y la tarifa para calcular', 'warning');
-  const amount = Math.round(base * rate / 100);
   const acct   = TX_STATE.accountMap.get(line.account_id);
+  const tipos  = (acct?.tipos_retencion || '').split(',').filter(Boolean);
+  const rate   = Number(line.ret_rate || defaultRetRate(tipos, acct) || 0);
+  TX_STATE.lines[i].ret_rate = rate ? String(rate) : '';
+  if (!base || !rate) return showToast('Ingresa la base gravable para calcular la retención', 'warning');
+  const amount = Math.round(base * rate / 100);
   // Credit nature → retención registrada al haber (pasivo); debit nature → al debe (activo/deducible)
   if (acct?.nature === 'debit') {
     TX_STATE.lines[i].debit  = amount;
@@ -185,7 +205,7 @@ function renderTxLines(repaint = true) {
       const needsRet    = !!acct?.maneja_retenciones;
       const tiposRet    = (acct?.tipos_retencion || '').split(',').filter(Boolean);
       const calcBase    = Number(line.ret_base || 0);
-      const calcRate    = Number(line.ret_rate  !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet) : 0));
+      const calcRate    = Number(line.ret_rate  !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet, acct) : 0));
       const calcAmount  = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
       return `
       <div class="tx-line-row" data-i="${i}">
@@ -221,15 +241,12 @@ function renderTxLines(repaint = true) {
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
         <i class="fas fa-percent" style="color:#D97706;font-size:11px"></i>
         <span class="text-xs font-semibold" style="color:#92400E;white-space:nowrap">Calculadora de Retención</span>
-        ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retLabel(t)}</span>`).join('')}
+         ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retRateLabel(t, acct)}</span>`).join('')}
         <span class="text-xs" style="color:#92400E">Base:</span>
         <input class="form-input" style="max-width:140px;font-size:13px" type="number" min="0" step="1" placeholder="Base gravable"
                value="${esc(line.ret_base || '')}" oninput="updateTxLine(${i}, 'ret_base', this.value)">
         <span class="text-xs" style="color:#92400E">×</span>
-        <input class="form-input" style="max-width:75px;font-size:13px;text-align:right" type="number" min="0" step="0.001" placeholder="%"
-               value="${esc(line.ret_rate !== '' ? line.ret_rate : calcRate)}"
-               oninput="updateTxLine(${i}, 'ret_rate', this.value)">
-        <span class="text-xs" style="color:#92400E">%</span>
+         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:11px">${esc(calcRate)}%</span>
         <span class="text-xs" style="color:#92400E">=</span>
         <span id="ret-calc-${i}" class="text-sm font-bold" style="color:#D97706;min-width:70px">${calcAmount}</span>
         <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:4px 10px;font-size:12px" onclick="applyRetentionCalc(${i})">
@@ -780,6 +797,21 @@ async function loadConsultaTxPage() {
     CTXQ_STATE.total = res.totalItems;
     const totalPages = Math.ceil(res.totalItems / CTXQ_STATE.perPage) || 1;
 
+    // Totales por transacción (débito/crédito) para mostrar balance en la grilla
+    const totalsByTx = new Map();
+    const txIds = res.items.map(t => t.id).filter(Boolean);
+    if (txIds.length) {
+      const linesFilter = txIds.map(id => `tx_id="${pb.escapeFilterValue(id)}"`).join(' || ');
+      const lines = await pb.listAll('tx_lines', { filter: linesFilter });
+      lines.forEach(l => {
+        const key = l.tx_id;
+        if (!totalsByTx.has(key)) totalsByTx.set(key, { d: 0, c: 0 });
+        const acc = totalsByTx.get(key);
+        acc.d += Number(l.debit || 0);
+        acc.c += Number(l.credit || 0);
+      });
+    }
+
     if (!res.items.length) {
       resultsDiv.innerHTML = '<div class="p-10 text-center" style="color:#9CA3AF">No se encontraron transacciones con los filtros aplicados.</div>';
       paginDiv.style.display = 'none';
@@ -789,15 +821,25 @@ async function loadConsultaTxPage() {
     resultsDiv.innerHTML = `
       <div class="overflow-x-auto">
         <table class="data-table" id="tx-table">
-          <thead><tr><th>Número</th><th>Fecha</th><th>Tipo</th><th>Tercero</th><th>Descripción</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Número</th><th>Fecha</th><th>Tercero</th><th>Descripción</th><th>Débito</th><th>Crédito</th><th>Balance</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>
-            ${res.items.map(t => `
+            ${res.items.map(t => {
+              const sums = totalsByTx.get(t.id) || { d: 0, c: 0 };
+              const diff = Math.abs(Number(sums.d || 0) - Number(sums.c || 0));
+              const balanced = diff < 0.0001;
+              return `
               <tr>
                 <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(t.number || '')}</span></td>
                 <td>${esc(t.date)}</td>
-                <td><span class="text-xs font-medium">${esc(t.expand?.tx_type_id?.name || '—')}</span></td>
                 <td>${esc(t.expand?.third_party_id?.name || '—')}</td>
                 <td class="max-w-xs truncate" title="${esc(t.description || '')}">${esc(t.description || '—')}</td>
+                <td class="font-semibold" style="color:#065F46">${fmt(sums.d || 0)}</td>
+                <td class="font-semibold" style="color:#1E3A8A">${fmt(sums.c || 0)}</td>
+                <td>
+                  ${balanced
+                    ? '<span class="badge badge-green">Cuadrada</span>'
+                    : `<span class="badge badge-red" title="Diferencia entre débito y crédito"><i class="fas fa-triangle-exclamation mr-1"></i>Descuadre ${fmt(diff)}</span>`}
+                </td>
                 <td>${t.status === 'voided' ? '<span class="badge badge-red">Anulada</span>' : '<span class="badge badge-green">Activa</span>'}</td>
                 <td>
                   <div class="flex gap-1">
@@ -807,7 +849,8 @@ async function loadConsultaTxPage() {
                     ${requireRole('admin') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>
-              </tr>`).join('')}
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div>`;
@@ -1077,7 +1120,7 @@ function updateEditTxLine(i, field, value) {
     const acct = TX_EDIT_STATE.accountMap.get(value);
     if (acct?.maneja_retenciones) {
       const tipos = (acct.tipos_retencion || '').split(',').filter(Boolean);
-      TX_EDIT_STATE.lines[i].ret_rate = String(defaultRetRate(tipos));
+      TX_EDIT_STATE.lines[i].ret_rate = String(defaultRetRate(tipos, acct));
     } else {
       TX_EDIT_STATE.lines[i].ret_rate = '';
     }
@@ -1095,10 +1138,12 @@ function updateEditTxLine(i, field, value) {
 function applyEditRetentionCalc(i) {
   const line = TX_EDIT_STATE.lines[i];
   const base = Number(line.ret_base || 0);
-  const rate = Number(line.ret_rate  || 0);
-  if (!base || !rate) return showToast('Ingresa la base gravable y la tarifa para calcular', 'warning');
+  const acct = TX_EDIT_STATE.accountMap.get(line.account_id);
+  const tipos = (acct?.tipos_retencion || '').split(',').filter(Boolean);
+  const rate = Number(line.ret_rate || defaultRetRate(tipos, acct) || 0);
+  TX_EDIT_STATE.lines[i].ret_rate = rate ? String(rate) : '';
+  if (!base || !rate) return showToast('Ingresa la base gravable para calcular la retención', 'warning');
   const amount = Math.round(base * rate / 100);
-  const acct   = TX_EDIT_STATE.accountMap.get(line.account_id);
   if (acct?.nature === 'debit') {
     TX_EDIT_STATE.lines[i].debit  = amount;
     TX_EDIT_STATE.lines[i].credit = 0;
@@ -1119,7 +1164,7 @@ function renderEditTxLines(repaint = true) {
       const needsRet   = !!acct?.maneja_retenciones;
       const tiposRet   = (acct?.tipos_retencion || '').split(',').filter(Boolean);
       const calcBase   = Number(line.ret_base || 0);
-      const calcRate   = Number(line.ret_rate !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet) : 0));
+      const calcRate   = Number(line.ret_rate !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet, acct) : 0));
       const calcAmount = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
       return `
       <div class="tx-line-row" data-i="${i}">
@@ -1154,15 +1199,12 @@ function renderEditTxLines(repaint = true) {
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
         <i class="fas fa-percent" style="color:#D97706;font-size:11px"></i>
         <span class="text-xs font-semibold" style="color:#92400E;white-space:nowrap">Calculadora de Retención</span>
-        ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retLabel(t)}</span>`).join('')}
+         ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retRateLabel(t, acct)}</span>`).join('')}
         <span class="text-xs" style="color:#92400E">Base:</span>
         <input class="form-input" style="max-width:140px;font-size:13px" type="number" min="0" step="1" placeholder="Base gravable"
                value="${esc(line.ret_base || '')}" oninput="updateEditTxLine(${i}, 'ret_base', this.value)">
         <span class="text-xs" style="color:#92400E">×</span>
-        <input class="form-input" style="max-width:75px;font-size:13px;text-align:right" type="number" min="0" step="0.001" placeholder="%"
-               value="${esc(line.ret_rate !== '' ? line.ret_rate : calcRate)}"
-               oninput="updateEditTxLine(${i}, 'ret_rate', this.value)">
-        <span class="text-xs" style="color:#92400E">%</span>
+         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:11px">${esc(calcRate)}%</span>
         <span id="edit-ret-calc-${i}" class="text-sm font-bold" style="color:#D97706;min-width:70px">${calcAmount}</span>
         <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:4px 10px;font-size:12px" onclick="applyEditRetentionCalc(${i})">
           <i class="fas fa-check"></i> Aplicar

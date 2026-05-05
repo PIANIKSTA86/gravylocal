@@ -90,6 +90,12 @@ onBootstrap((e) => {
       { name: "level",                type: "number",   required: true,  min: 1, max: 6 },
       { name: "parent_code",          type: "text",     required: false },
       { name: "requires_third_party", type: "bool",     required: false },
+      { name: "maneja_cruce",         type: "bool",     required: false },
+      { name: "maneja_retenciones",   type: "bool",     required: false },
+      { name: "tipos_retencion",      type: "text",     required: false },
+      { name: "ret_rate_reterenta",   type: "number",   required: false, min: 0 },
+      { name: "ret_rate_reteiva",     type: "number",   required: false, min: 0 },
+      { name: "ret_rate_reteica",     type: "number",   required: false, min: 0 },
       { name: "active",               type: "bool",     required: false },
     ],
     indexes: ["CREATE UNIQUE INDEX idx_accounts_code ON accounts (code)"],
@@ -832,7 +838,7 @@ onBootstrap((e) => {
 onBootstrap((e) => {
   e.next();
 
-  // ── accounts: maneja_cruce, maneja_retenciones, tipos_retencion ──────────
+  // ── accounts: cruce/retenciones + tarifas por tipo ───────────────────────
   try {
     const col = $app.findCollectionByNameOrId("accounts");
     let changed = false;
@@ -854,6 +860,17 @@ onBootstrap((e) => {
       col.fields.add(new TextField({ name: "tipos_retencion", required: false }));
       changed = true;
       console.log("[ContaCO] Campo tipos_retencion agregado a accounts.");
+    }
+
+    const rateFields = ["ret_rate_reterenta", "ret_rate_reteiva", "ret_rate_reteica"];
+    for (const fname of rateFields) {
+      let hasIt = false;
+      try { hasIt = !!col.fields.getByName(fname); } catch (_) { hasIt = String(col.fields || "").includes(fname); }
+      if (!hasIt) {
+        col.fields.add(new NumberField({ name: fname, required: false, min: 0 }));
+        changed = true;
+        console.log("[ContaCO] Campo " + fname + " agregado a accounts.");
+      }
     }
 
     if (changed) $app.save(col);

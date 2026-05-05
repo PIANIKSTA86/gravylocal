@@ -416,25 +416,37 @@ async function _doRestore(backup) {
 /* ══════════════════════════════════════════════════════════
    HELPER: modal con botones de acción
 ══════════════════════════════════════════════════════════ */
-function openModal(title, bodyHtml, actions = []) {
+function openModal(title, bodyHtml, actionsOrFooter = [], wide = false) {
   const titleEl  = $('#modal-title');
   const bodyEl   = $('#modal-body');
   const footerEl = $('#modal-footer');
+  const modalBox = $('#modal-box');
   const overlay  = $('#modal-overlay');
 
-  if (titleEl)  titleEl.textContent = title;
+  if (titleEl)  titleEl.innerHTML = title;
   if (bodyEl)   bodyEl.innerHTML    = bodyHtml;
 
   if (footerEl) {
     footerEl.innerHTML = '';
-    actions.forEach(({ label, class: cls, action }) => {
-      const btn = document.createElement('button');
-      btn.className = `btn ${cls}`;
-      btn.textContent = label;
-      btn.addEventListener('click', action);
-      footerEl.appendChild(btn);
-    });
+
+    if (typeof actionsOrFooter === 'string') {
+      footerEl.innerHTML = actionsOrFooter;
+    } else {
+      const actions = Array.isArray(actionsOrFooter)
+        ? actionsOrFooter
+        : (actionsOrFooter && typeof actionsOrFooter === 'object' ? [actionsOrFooter] : []);
+
+      actions.forEach(({ label, class: cls, action }) => {
+        if (typeof action !== 'function') return;
+        const btn = document.createElement('button');
+        btn.className = `btn ${cls || 'btn-outline'}`;
+        btn.textContent = label || 'Aceptar';
+        btn.addEventListener('click', action);
+        footerEl.appendChild(btn);
+      });
+    }
   }
 
+  modalBox?.classList.toggle('wide', !!wide);
   overlay?.classList.add('show');
 }

@@ -138,19 +138,28 @@ async function openAccountForm(accTypes, row = null) {
       </div>
       <div id="ret-types-wrap" class="md:col-span-2 ${row?.maneja_retenciones ? '' : 'hidden'}">
         <p class="text-xs mb-2" style="color:#6B7280">Selecciona los tipos de retención que aplican:</p>
-        <div class="flex flex-wrap gap-4">
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="ac-reterenta" ${(row?.tipos_retencion || '').includes('reterenta') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
-            <span class="text-sm">Reterenta</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="ac-reteiva" ${(row?.tipos_retencion || '').includes('reteiva') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
-            <span class="text-sm">Reteiva</span>
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" id="ac-reteica" ${(row?.tipos_retencion || '').includes('reteica') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706">
-            <span class="text-sm">Reteica</span>
-          </label>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="p-3 rounded-lg" style="background:#FFFBEB;border:1px solid #FDE68A">
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" id="ac-reterenta" ${(row?.tipos_retencion || '').includes('reterenta') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706" onchange="toggleRetRateInputs()">
+              <span class="text-sm font-semibold">Reterenta</span>
+            </label>
+            <input id="ac-rate-reterenta" type="number" min="0" step="0.001" class="form-input" placeholder="%" value="${esc(row?.ret_rate_reterenta ?? '')}">
+          </div>
+          <div class="p-3 rounded-lg" style="background:#FFFBEB;border:1px solid #FDE68A">
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" id="ac-reteiva" ${(row?.tipos_retencion || '').includes('reteiva') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706" onchange="toggleRetRateInputs()">
+              <span class="text-sm font-semibold">Reteiva</span>
+            </label>
+            <input id="ac-rate-reteiva" type="number" min="0" step="0.001" class="form-input" placeholder="%" value="${esc(row?.ret_rate_reteiva ?? '')}">
+          </div>
+          <div class="p-3 rounded-lg" style="background:#FFFBEB;border:1px solid #FDE68A">
+            <label class="flex items-center gap-2 cursor-pointer mb-2">
+              <input type="checkbox" id="ac-reteica" ${(row?.tipos_retencion || '').includes('reteica') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#D97706" onchange="toggleRetRateInputs()">
+              <span class="text-sm font-semibold">Reteica</span>
+            </label>
+            <input id="ac-rate-reteica" type="number" min="0" step="0.001" class="form-input" placeholder="%" value="${esc(row?.ret_rate_reteica ?? '')}">
+          </div>
         </div>
       </div>
     </div>`,
@@ -162,15 +171,41 @@ async function openAccountForm(accTypes, row = null) {
     const checked = document.getElementById('ac-ret')?.checked;
     const wrap = document.getElementById('ret-types-wrap');
     if (wrap) wrap.classList.toggle('hidden', !checked);
+    window.toggleRetRateInputs?.();
   };
 
+  window.toggleRetRateInputs = () => {
+    const map = [
+      ['ac-reterenta', 'ac-rate-reterenta'],
+      ['ac-reteiva', 'ac-rate-reteiva'],
+      ['ac-reteica', 'ac-rate-reteica'],
+    ];
+    const handlesRet = !!document.getElementById('ac-ret')?.checked;
+    map.forEach(([chkId, inputId]) => {
+      const chk = document.getElementById(chkId);
+      const inp = document.getElementById(inputId);
+      if (!chk || !inp) return;
+      const enabled = handlesRet && chk.checked;
+      inp.disabled = !enabled;
+      if (!enabled) inp.value = '';
+    });
+  };
+
+  window.toggleRetRateInputs?.();
+
   $('#btn-save-account')?.addEventListener('click', async () => {
+    const handlesRet = !!document.getElementById('ac-ret')?.checked;
     const tiposArr = [];
-    if (document.getElementById('ac-ret')?.checked) {
+    if (handlesRet) {
       if (document.getElementById('ac-reterenta')?.checked) tiposArr.push('reterenta');
       if (document.getElementById('ac-reteiva')?.checked)   tiposArr.push('reteiva');
       if (document.getElementById('ac-reteica')?.checked)   tiposArr.push('reteica');
     }
+
+    const rateRenta = parseFloat(getInputVal('ac-rate-reterenta'));
+    const rateIva   = parseFloat(getInputVal('ac-rate-reteiva'));
+    const rateIca   = parseFloat(getInputVal('ac-rate-reteica'));
+
     const payload = {
       code: getInputVal('ac-code'),
       name: getInputVal('ac-name'),
@@ -181,8 +216,11 @@ async function openAccountForm(accTypes, row = null) {
       requires_third_party: getSelectVal('ac-third') === '1',
       active: getSelectVal('ac-active') === '1',
       maneja_cruce: !!document.getElementById('ac-cruce')?.checked,
-      maneja_retenciones: !!document.getElementById('ac-ret')?.checked,
+      maneja_retenciones: handlesRet,
       tipos_retencion: tiposArr.join(','),
+      ret_rate_reterenta: Number.isFinite(rateRenta) ? rateRenta : 0,
+      ret_rate_reteiva: Number.isFinite(rateIva) ? rateIva : 0,
+      ret_rate_reteica: Number.isFinite(rateIca) ? rateIca : 0,
     };
     if (!payload.code || !payload.name || !payload.account_type_id) {
       return showToast('Completa código, nombre y tipo de cuenta', 'warning');
@@ -195,6 +233,20 @@ async function openAccountForm(accTypes, row = null) {
     }
     if (payload.parent_code && payload.parent_code === payload.code) {
       return showToast('Una cuenta no puede ser su propia cuenta padre', 'warning');
+    }
+    if (handlesRet && !tiposArr.length) {
+      return showToast('Selecciona al menos un tipo de retención', 'warning');
+    }
+    if (handlesRet) {
+      if (tiposArr.includes('reterenta') && payload.ret_rate_reterenta <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reterenta', 'warning');
+      }
+      if (tiposArr.includes('reteiva') && payload.ret_rate_reteiva <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reteiva', 'warning');
+      }
+      if (tiposArr.includes('reteica') && payload.ret_rate_reteica <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reteica', 'warning');
+      }
     }
 
     try {

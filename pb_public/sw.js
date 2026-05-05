@@ -42,6 +42,7 @@ const PRECACHE_URLS = [
   '/js/modules/conciliacion.js',
   '/js/modules/nomina.js',
   '/js/modules/facturacion-dian.js',
+  '/js/modules/utilidades.js',
 ];
 
 // ── Instalación: pre-cachear activos estáticos ─────────────

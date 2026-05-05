@@ -4,7 +4,7 @@
   "description": "Sistema Contable Colombiano — NIF / PUC",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#0D2137",
   "theme_color": "#0D2137",
   "lang": "es",

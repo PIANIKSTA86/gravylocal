@@ -844,6 +844,7 @@ async function loadConsultaTxPage() {
                 <td>
                   <div class="flex gap-1">
                     <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="seeTxDetail('${esc(t.id)}')"><i class="fas fa-eye"></i></button>
+                    <button class="btn btn-outline btn-sm" title="Imprimir nota contable" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(t.id)}')"><i class="fas fa-print"></i></button>
                     ${can('canWrite') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
                     ${requireRole('admin') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
@@ -935,7 +936,8 @@ async function seeTxDetail(id) {
           <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
         </table>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+       <button class="btn btn-outline" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(id)}')"><i class="fas fa-print mr-1"></i>Imprimir nota contable</button>`,
       true
     );
   } catch (err) {
@@ -1354,6 +1356,197 @@ async function _confirmDeleteTx(id, number) {
   } catch (err) {
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash"></i> Eliminar definitivamente'; }
     showToast(err.message, 'error');
+  }
+}
+
+// ── Impresión: Nota Contable ─────────────────────────────────────────────────
+async function printTxNotaContable(id) {
+  try {
+    const [tx, lines, companyName, companyNit, companyAddress] = await Promise.all([
+      pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' }),
+      API.getTxLines(id),
+      API.getSetting('company_name').catch(() => ''),
+      API.getSetting('company_nit').catch(() => ''),
+      API.getSetting('company_address').catch(() => ''),
+    ]);
+
+    const totalDebit  = lines.reduce((s, l) => s + Number(l.debit  || 0), 0);
+    const totalCredit = lines.reduce((s, l) => s + Number(l.credit || 0), 0);
+    const txTypeName  = tx.expand?.tx_type_id?.name || tx.expand?.tx_type_id?.prefix || '';
+    const thirdName   = tx.expand?.third_party_id?.name || '';
+    const thirdDoc    = tx.expand?.third_party_id?.doc_number || '';
+    const createdByName  = tx.expand?.user_id?.name || '';
+    const printedByName  = pb.currentUser?.name || '';
+
+    const linesHtml = lines.map((l, i) => {
+      const accCode = l.expand?.account_id?.code || '';
+      const accName = l.expand?.account_id?.name || '';
+      const lineThird = l.expand?.third_party_id?.name || (thirdName ? thirdName : '—');
+      const crossRef  = l.cross_doc_ref || '';
+      const debit  = Number(l.debit  || 0);
+      const credit = Number(l.credit || 0);
+      const isDebit = debit > 0;
+      return `
+        <tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}">
+          <td class="col-num">${i + 1}</td>
+          <td class="col-code">${esc(accCode)}</td>
+          <td class="col-acct">${esc(accName)}</td>
+          <td class="col-third">${esc(lineThird)}</td>
+          <td class="col-cross">${crossRef ? esc(crossRef) : ''}</td>
+          <td class="col-desc">${esc(l.description || tx.description || '')}</td>
+          <td class="col-money debit">${isDebit ? fmt(debit) : ''}</td>
+          <td class="col-money credit">${!isDebit ? fmt(credit) : ''}</td>
+        </tr>`;
+    }).join('');
+
+    const printDate = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Nota Contable ${esc(tx.number || '')}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; background: #fff; padding: 18mm 15mm 15mm 15mm; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #0D2137; padding-bottom: 8px; margin-bottom: 10px; }
+    .company-block { flex: 1; }
+    .company-name { font-size: 13pt; font-weight: bold; color: #0D2137; }
+    .company-sub { font-size: 8.5pt; color: #444; margin-top: 2px; }
+    .doc-block { text-align: right; min-width: 180px; }
+    .doc-number { font-size: 14pt; font-weight: bold; color: #1A4B8C; letter-spacing: 0.5px; }
+    .doc-type { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+    .doc-date { font-size: 9pt; color: #444; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 12px; font-size: 9pt; }
+    .meta-row { display: flex; gap: 6px; }
+    .meta-label { font-weight: bold; color: #0D2137; white-space: nowrap; min-width: 90px; }
+    .meta-value { color: #333; }
+    .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #6B7280; border-bottom: 1px solid #E5E7EB; padding-bottom: 3px; margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+    thead tr { background: #0D2137; color: #fff; }
+    thead th { padding: 5px 6px; text-align: left; font-weight: 600; border: 1px solid #0D2137; white-space: nowrap; }
+    thead th.col-money { text-align: right; }
+    tbody tr.row-even { background: #F8FAFC; }
+    tbody tr.row-odd  { background: #fff; }
+    tbody td { padding: 4px 6px; border: 1px solid #E5E7EB; vertical-align: top; }
+    td.debit, td.credit, th.col-money { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.debit  { color: #065F46; font-weight: 600; }
+    td.credit { color: #1E3A8A; font-weight: 600; }
+    .col-num   { width: 26px; text-align: center; }
+    .col-code  { width: 90px; font-family: monospace; font-size: 8pt; }
+    .col-acct  { min-width: 120px; }
+    .col-third { min-width: 100px; }
+    .col-cross { width: 80px; font-family: monospace; font-size: 8pt; }
+    .col-desc  { min-width: 100px; color: #555; }
+    .col-money { width: 95px; }
+    tfoot td { border: 1px solid #CBD5E1; padding: 5px 6px; font-weight: bold; font-size: 9pt; }
+    .totals-label { text-align: right; color: #0D2137; }
+    .totals-debit  { text-align: right; color: #065F46; }
+    .totals-credit { text-align: right; color: #1E3A8A; }
+    .balanced-ok  { color: #059669; font-weight: bold; font-size: 8pt; }
+    .balanced-err { color: #DC2626; font-weight: bold; font-size: 8pt; }
+    .footer-bar { margin-top: 18px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 8pt; color: #555; border-top: 1px solid #D1D5DB; padding-top: 8px; }
+    .sig-block { text-align: center; min-width: 140px; }
+    .sig-line  { border-top: 1px solid #888; margin-top: 28px; padding-top: 3px; font-size: 7.5pt; color: #444; }
+    @media print {
+      body { padding: 0; }
+      @page { margin: 14mm 12mm 12mm 12mm; size: letter portrait; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="company-block">
+      <div class="company-name">${esc(companyName || 'ContaCO')}</div>
+      ${companyNit ? `<div class="company-sub">NIT: ${esc(companyNit)}</div>` : ''}
+      ${companyAddress ? `<div class="company-sub">${esc(companyAddress)}</div>` : ''}
+    </div>
+    <div class="doc-block">
+      <div class="doc-type">${esc(txTypeName)}</div>
+      <div class="doc-number">${esc(tx.number || '')}</div>
+      <div class="doc-date">${esc(tx.date || '')}</div>
+      ${tx.status === 'voided' ? '<div style="color:#DC2626;font-weight:bold;font-size:10pt;margin-top:4px">&#x26D4; ANULADO</div>' : ''}
+    </div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="meta-row">
+      <span class="meta-label">Tercero:</span>
+      <span class="meta-value">${thirdName ? esc(thirdName) + (thirdDoc ? ' — ' + esc(thirdDoc) : '') : '—'}</span>
+    </div>
+    <div class="meta-row">
+      <span class="meta-label">Impreso por:</span>
+      <span class="meta-value">${esc(printedByName || '—')}</span>
+    </div>
+    <div class="meta-row">
+      <span class="meta-label">Concepto:</span>
+      <span class="meta-value">${esc(tx.description || '—')}</span>
+    </div>
+    <div class="meta-row">
+      <span class="meta-label">Fecha impresión:</span>
+      <span class="meta-value">${printDate}</span>
+    </div>
+  </div>
+
+  <div class="section-title">Partidas contables</div>
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-code">Código</th>
+        <th class="col-acct">Cuenta</th>
+        <th class="col-third">Tercero</th>
+        <th class="col-cross">Doc. Cruce</th>
+        <th class="col-desc">Descripción</th>
+        <th class="col-money">Débito</th>
+        <th class="col-money">Crédito</th>
+      </tr>
+    </thead>
+    <tbody>${linesHtml}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6" class="totals-label">TOTALES</td>
+        <td class="totals-debit">${fmt(totalDebit)}</td>
+        <td class="totals-credit">${fmt(totalCredit)}</td>
+      </tr>
+      <tr>
+        <td colspan="8" style="text-align:right;border-top:none;padding-top:3px">
+          ${Math.abs(totalDebit - totalCredit) < 0.0001
+            ? '<span class="balanced-ok">&#x2713; Comprobante cuadrado — Débito = Crédito</span>'
+            : `<span class="balanced-err">&#x26A0; Descuadre: ${fmt(Math.abs(totalDebit - totalCredit))}</span>`}
+        </td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="footer-bar">
+    <div class="sig-block">
+      <div style="margin-bottom:32px;font-weight:500;color:#111">${esc(createdByName)}</div>
+      <div class="sig-line">elaborado por</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line">Revisado por</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line">Aprobado por</div>
+    </div>
+    <div style="text-align:right;font-size:7.5pt;color:#9CA3AF">
+      ContaCO &mdash; Sistema contable<br>
+      ${esc(tx.number || '')} &mdash; ${esc(tx.date || '')}
+    </div>
+  </div>
+
+  <script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=700,scrollbars=yes');
+    if (!win) return showToast('El navegador bloqueó la ventana emergente. Permite ventanas emergentes para imprimir.', 'warning');
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } catch (err) {
+    showToast('Error al generar la nota contable: ' + err.message, 'error');
   }
 }
 

@@ -146,13 +146,50 @@ async function refreshConsecutive() {
 }
 
 function addTxLine(row = null) {
-  TX_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '', comments: '' });
+  TX_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
   renderTxLines();
 }
 
 function removeTxLine(i) {
   TX_STATE.lines.splice(i, 1);
   renderTxLines();
+}
+
+function autoAppendTxLineFrom(i) {
+  const line = TX_STATE.lines[i];
+  if (!line) return;
+  const isLast = i === (TX_STATE.lines.length - 1);
+  if (!isLast) return;
+  const debit = Number(line.debit || 0);
+  const credit = Number(line.credit || 0);
+  const hasSingleSideAmount = (debit > 0 && credit <= 0) || (credit > 0 && debit <= 0);
+  if (!line.account_id || !hasSingleSideAmount) return;
+  addTxLine();
+}
+
+function editTxLineComment(i) {
+  const line = TX_STATE.lines[i];
+  if (!line) return;
+
+  openModal(
+    'Comentario de línea contable',
+    `<div class="p-2">
+      <label class="form-label" for="tx-line-comment">Comentario del registro</label>
+      <textarea id="tx-line-comment" class="form-input" rows="4" placeholder="Escribe una observación para este registro...">${esc(line.description || '')}</textarea>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="btn-save-tx-line-comment"><i class="fas fa-check"></i> Guardar</button>`,
+    false
+  );
+
+  setTimeout(() => {
+    $('#btn-save-tx-line-comment')?.addEventListener('click', () => {
+      const val = ($('#tx-line-comment')?.value || '').trim();
+      TX_STATE.lines[i].description = val;
+      closeModal();
+      renderTxLines(false);
+    });
+  }, 0);
 }
 
 function updateTxLine(i, field, value) {
@@ -162,6 +199,7 @@ function updateTxLine(i, field, value) {
   if (field === 'account_id') {
     TX_STATE.lines[i].cross_doc_ref = '';
     TX_STATE.lines[i].ret_base = '';
+    // Pre-fill default rate when a retention account is selected
     const acct = TX_STATE.accountMap.get(value);
     if (acct?.maneja_retenciones) {
       const tipos = (acct.tipos_retencion || '').split(',').filter(Boolean);
@@ -171,49 +209,18 @@ function updateTxLine(i, field, value) {
     }
     renderTxLines(true);
   } else if (field === 'ret_base' || field === 'ret_rate') {
+    // Update calculated display in-place — no full repaint needed
     const base = Number(TX_STATE.lines[i].ret_base || 0);
     const rate = Number(TX_STATE.lines[i].ret_rate  || 0);
     const el = document.getElementById(`ret-calc-${i}`);
     if (el) el.textContent = base && rate ? fmt(base * rate / 100) : '$0';
   } else if (field === 'debit' || field === 'credit') {
-    const isLastLine = (i === TX_STATE.lines.length - 1);
-    const hasAmount = Number(TX_STATE.lines[i].debit || 0) > 0 || Number(TX_STATE.lines[i].credit || 0) > 0;
-    const lastLineEmpty = i > 0 && !TX_STATE.lines[i - 1].account_id;
-    if (isLastLine && hasAmount && !lastLineEmpty) {
-      addTxLine();
-    }
-    renderTxLines(false);
+    // Repaint to enforce disable/enable counterpart input in real time.
+    renderTxLines(true);
   } else {
     renderTxLines(false);
   }
 }
-
-function showLineCommentsModal(i) {
-  const line = TX_STATE.lines[i];
-  const acct = TX_STATE.accountMap.get(line.account_id);
-  const acctLabel = acct ? `${acct.code} - ${acct.name}` : 'Sin cuenta';
-  
-  const body = `
-    <div class="p-4">
-      <p class="text-sm" style="color:#6B7280;margin-bottom:8px"><strong>Cuenta:</strong> ${esc(acctLabel)}</p>
-      <textarea id="line-comments-${i}" class="form-input" style="height:120px;resize:vertical" placeholder="Ingresa comentarios o notas sobre este registro">${esc(line.comments || '')}</textarea>
-    </div>
-  `;
-  const footer = `
-    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" onclick="saveLineComments(${i})"><i class="fas fa-save mr-1"></i> Guardar</button>
-  `;
-  openModal(`Comentarios - Línea ${i + 1}`, body, footer, false);
-}
-
-function saveLineComments(i) {
-  const textarea = $(`#line-comments-${i}`);
-  if (textarea) {
-    TX_STATE.lines[i].comments = textarea.value;
-  }
-  closeModal();
-  renderTxLines(false);
-  showToast('Comentarios guardados', 'success');
 
 function applyRetentionCalc(i) {
   const line = TX_STATE.lines[i];
@@ -233,6 +240,7 @@ function applyRetentionCalc(i) {
     TX_STATE.lines[i].debit  = 0;
   }
   renderTxLines(true);
+  autoAppendTxLineFrom(i);
   showToast(`Retención aplicada: ${fmt(amount)}`, 'success');
 }
 
@@ -243,55 +251,68 @@ function renderTxLines(repaint = true) {
       const needsThird  = !!acct?.requires_third_party;
       const needsCruce  = !!acct?.maneja_cruce;
       const needsRet    = !!acct?.maneja_retenciones;
+      const hasComment  = !!String(line.description || '').trim();
       const tiposRet    = (acct?.tipos_retencion || '').split(',').filter(Boolean);
       const calcBase    = Number(line.ret_base || 0);
       const calcRate    = Number(line.ret_rate  !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet, acct) : 0));
-      const thirdSelected = TX_STATE.terceros.find(t => t.id === line.third_party_id);
-      const thirdNit = thirdSelected ? (thirdSelected.doc_number || '') : '';
-      const hasComments = !!line.comments;
-      
-      let html = `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(80px,0.8fr) minmax(100px,1fr) minmax(90px,0.9fr) minmax(90px,0.9fr) minmax(90px,0.9fr) auto;gap:6px;align-items:center;padding:8px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;margin-bottom:6px">
-        <select class="form-input" style="font-size:12px;padding:6px 4px" onchange="updateTxLine(${i}, 'account_id', this.value)" title="${acct ? esc(acct.code + ' - ' + acct.name) : 'Seleccione cuenta'}">
-          <option value="">Cuenta...</option>
+      const calcAmount  = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
+      const debitVal    = Number(line.debit || 0);
+      const creditVal   = Number(line.credit || 0);
+      return `
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
+        <select class="form-input" style="font-size:13px" onchange="updateTxLine(${i}, 'account_id', this.value)">
+          <option value="">Seleccione cuenta...</option>
           ${TX_STATE.accounts.map(a => {
             const postable = TX_STATE.postableAccountIds.has(a.id);
-            const shortCode = String(a.code || '').substring(0, 10);
-            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(shortCode)} ${postable ? '' : '[M]'}</option>`;
+            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(a.code)} - ${esc(a.name)}${postable ? '' : ' [MAYOR]'}</option>`;
           }).join('')}
         </select>
-        <select class="form-input" style="font-size:12px;padding:6px 4px" onchange="updateTxLine(${i}, 'third_party_id', this.value)" title="${esc(thirdNit)}">
-          <option value="">NIT...</option>
-          ${TX_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc((t.doc_number || '').substring(0, 20))}</option>`).join('')}
-        </select>
-        <input class="form-input" style="font-size:12px;padding:6px 4px;font-family:monospace" placeholder="Doc. cruce" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)" title="Número de factura/documento de cruce" ${needsCruce ? '' : 'disabled'}>
-        <input class="form-input text-right" style="font-size:12px;padding:6px 4px" value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" ${Number(line.credit || 0) > 0 ? 'readonly' : ''}>
-        <input class="form-input text-right" style="font-size:12px;padding:6px 4px" value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" ${Number(line.debit || 0) > 0 ? 'readonly' : ''}>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn btn-outline btn-sm" title="${hasComments ? 'Con comentarios' : 'Añadir comentarios'}" style="padding:4px 6px;border-color:${hasComments ? '#1A4B8C' : '#D1D5DB'};color:${hasComments ? '#1A4B8C' : '#6B7280'};font-size:11px;flex-shrink:0" onclick="showLineCommentsModal(${i})"><i class="fas fa-${hasComments ? 'comment-dots' : 'comment'}"></i></button>
-          <button class="btn btn-danger btn-sm" title="Eliminar línea" style="padding:4px 6px;font-size:11px;flex-shrink:0" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
+
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-user-tag" style="color:#334155;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
+            ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
+          </div>
+          <select class="form-input" style="font-size:13px" onchange="updateTxLine(${i}, 'third_party_id', this.value)">
+            <option value="">Usar tercero del encabezado</option>
+            ${TX_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+          </select>
         </div>
-      </div>`;
-      
-      if (needsRet) {
-        html += `
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 4px 4px 0;margin:-2px 0 6px 0;font-size:11px">
-        <i class="fas fa-percent" style="color:#D97706"></i>
-        <span class="font-semibold" style="color:#92400E">Retención:</span>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
+            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
+          </div>
+        </div>
+
+        <input class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
+        <input class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
+
+        <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
+      </div>
+      ${needsRet ? `
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
+        <i class="fas fa-percent" style="color:#D97706;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#92400E;white-space:nowrap">Calculadora de Retención</span>
          ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retRateLabel(t, acct)}</span>`).join('')}
-        <input class="form-input" style="max-width:100px;font-size:11px;padding:3px 6px" type="number" min="0" step="1" placeholder="Base"
+        <span class="text-xs" style="color:#92400E">Base:</span>
+        <input class="form-input" style="max-width:140px;font-size:13px" type="number" min="0" step="1" placeholder="Base gravable"
                value="${esc(line.ret_base || '')}" oninput="updateTxLine(${i}, 'ret_base', this.value)">
-        <span style="color:#92400E">×</span>
-         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:10px">${esc(calcRate)}%</span>
-        <span style="color:#92400E">=</span>
-        <span id="ret-calc-${i}" style="font-weight:600;color:#D97706;min-width:60px">${calcAmount}</span>
-        <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:2px 8px;font-size:10px" onclick="applyRetentionCalc(${i})">
-          <i class="fas fa-check"></i> Aplicar
+        <span class="text-xs" style="color:#92400E">×</span>
+         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:11px">${esc(calcRate)}%</span>
+        <span class="text-xs" style="color:#92400E">=</span>
+        <span id="ret-calc-${i}" class="text-sm font-bold" style="color:#D97706;min-width:70px">${calcAmount}</span>
+        <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:4px 10px;font-size:12px" onclick="applyRetentionCalc(${i})">
+          <i class="fas fa-check"></i> Aplicar al comprobante
         </button>
-      </div>`;
-      }
-      
-      return html;
+      </div>` : ''}`;
     
     }).join('');
     $('#tx-lines').innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
@@ -1223,13 +1244,50 @@ function bindEditCarteraEvents() {
 }
 
 function addEditTxLine(row = null) {
-  TX_EDIT_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '', comments: '' });
+  TX_EDIT_STATE.lines.push(row || { account_id: '', third_party_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
   renderEditTxLines(true);
 }
 
 function removeEditTxLine(i) {
   TX_EDIT_STATE.lines.splice(i, 1);
   renderEditTxLines(true);
+}
+
+function autoAppendEditTxLineFrom(i) {
+  const line = TX_EDIT_STATE.lines[i];
+  if (!line) return;
+  const isLast = i === (TX_EDIT_STATE.lines.length - 1);
+  if (!isLast) return;
+  const debit = Number(line.debit || 0);
+  const credit = Number(line.credit || 0);
+  const hasSingleSideAmount = (debit > 0 && credit <= 0) || (credit > 0 && debit <= 0);
+  if (!line.account_id || !hasSingleSideAmount) return;
+  addEditTxLine();
+}
+
+function editEditTxLineComment(i) {
+  const line = TX_EDIT_STATE.lines[i];
+  if (!line) return;
+
+  openModal(
+    'Comentario de línea contable',
+    `<div class="p-2">
+      <label class="form-label" for="edit-tx-line-comment">Comentario del registro</label>
+      <textarea id="edit-tx-line-comment" class="form-input" rows="4" placeholder="Escribe una observación para este registro...">${esc(line.description || '')}</textarea>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="btn-save-edit-tx-line-comment"><i class="fas fa-check"></i> Guardar</button>`,
+    false
+  );
+
+  setTimeout(() => {
+    $('#btn-save-edit-tx-line-comment')?.addEventListener('click', () => {
+      const val = ($('#edit-tx-line-comment')?.value || '').trim();
+      TX_EDIT_STATE.lines[i].description = val;
+      closeModal();
+      renderEditTxLines(false);
+    });
+  }, 0);
 }
 
 function updateEditTxLine(i, field, value) {
@@ -1253,13 +1311,8 @@ function updateEditTxLine(i, field, value) {
     const el = document.getElementById(`edit-ret-calc-${i}`);
     if (el) el.textContent = base && rate ? fmt(base * rate / 100) : '$0';
   } else if (field === 'debit' || field === 'credit') {
-    const isLastLine = (i === TX_EDIT_STATE.lines.length - 1);
-    const hasAmount = Number(TX_EDIT_STATE.lines[i].debit || 0) > 0 || Number(TX_EDIT_STATE.lines[i].credit || 0) > 0;
-    const lastLineEmpty = i > 0 && !TX_EDIT_STATE.lines[i - 1].account_id;
-    if (isLastLine && hasAmount && !lastLineEmpty) {
-      addEditTxLine();
-    }
-    renderEditTxLines(false);
+    // Repaint to enforce disable/enable counterpart input in real time.
+    renderEditTxLines(true);
   } else {
     renderEditTxLines(false);
   }
@@ -1282,6 +1335,7 @@ function applyEditRetentionCalc(i) {
     TX_EDIT_STATE.lines[i].debit  = 0;
   }
   renderEditTxLines(true);
+  autoAppendEditTxLineFrom(i);
   showToast(`Retención aplicada: ${fmt(amount)}`, 'success');
 }
 
@@ -1292,56 +1346,66 @@ function renderEditTxLines(repaint = true) {
       const needsThird = !!acct?.requires_third_party;
       const needsCruce = !!acct?.maneja_cruce;
       const needsRet   = !!acct?.maneja_retenciones;
+      const hasComment = !!String(line.description || '').trim();
       const tiposRet   = (acct?.tipos_retencion || '').split(',').filter(Boolean);
       const calcBase   = Number(line.ret_base || 0);
       const calcRate   = Number(line.ret_rate !== '' ? line.ret_rate : (tiposRet.length ? defaultRetRate(tiposRet, acct) : 0));
       const calcAmount = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
-      const thirdSelected = TX_EDIT_STATE.terceros.find(t => t.id === line.third_party_id);
-      const thirdNit = thirdSelected ? (thirdSelected.doc_number || '') : '';
-      const hasComments = !!line.comments;
-      
-      let html = `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(80px,0.8fr) minmax(100px,1fr) minmax(90px,0.9fr) minmax(90px,0.9fr) minmax(90px,0.9fr) auto;gap:6px;align-items:center;padding:8px;background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;margin-bottom:6px">
-        <select class="form-input" style="font-size:12px;padding:6px 4px" onchange="updateEditTxLine(${i}, 'account_id', this.value)" title="${acct ? esc(acct.code + ' - ' + acct.name) : 'Seleccione cuenta'}">
-          <option value="">Cuenta...</option>
+      const debitVal   = Number(line.debit || 0);
+      const creditVal  = Number(line.credit || 0);
+      return `
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
+        <select class="form-input" style="font-size:13px" onchange="updateEditTxLine(${i}, 'account_id', this.value)">
+          <option value="">Seleccione cuenta...</option>
           ${TX_EDIT_STATE.accounts.map(a => {
             const postable = TX_EDIT_STATE.postableAccountIds.has(a.id);
-            const shortCode = String(a.code || '').substring(0, 10);
-            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(shortCode)} ${postable ? '' : '[M]'}</option>`;
+            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(a.code)} - ${esc(a.name)}${postable ? '' : ' [MAYOR]'}</option>`;
           }).join('')}
         </select>
-        <select class="form-input" style="font-size:12px;padding:6px 4px" onchange="updateEditTxLine(${i}, 'third_party_id', this.value)" title="${esc(thirdNit)}">
-          <option value="">NIT...</option>
-          ${TX_EDIT_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc((t.doc_number || '').substring(0, 20))}</option>`).join('')}
-        </select>
-        <input class="form-input" style="font-size:12px;padding:6px 4px;font-family:monospace" placeholder="Doc. cruce" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)" title="Número de factura/documento de cruce" ${needsCruce ? '' : 'disabled'}>
-        <input class="form-input text-right" style="font-size:12px;padding:6px 4px" value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" ${Number(line.credit || 0) > 0 ? 'readonly' : ''}>
-        <input class="form-input text-right" style="font-size:12px;padding:6px 4px" value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" ${Number(line.debit || 0) > 0 ? 'readonly' : ''}>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="btn btn-outline btn-sm" title="${hasComments ? 'Con comentarios' : 'Añadir comentarios'}" style="padding:4px 6px;border-color:${hasComments ? '#1A4B8C' : '#D1D5DB'};color:${hasComments ? '#1A4B8C' : '#6B7280'};font-size:11px;flex-shrink:0" onclick="showLineCommentsModal(${i})"><i class="fas fa-${hasComments ? 'comment-dots' : 'comment'}"></i></button>
-          <button class="btn btn-danger btn-sm" title="Eliminar línea" style="padding:4px 6px;font-size:11px;flex-shrink:0" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-user-tag" style="color:#334155;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
+            ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
+          </div>
+          <select class="form-input" style="font-size:13px" onchange="updateEditTxLine(${i}, 'third_party_id', this.value)">
+            <option value="">Usar tercero del encabezado</option>
+            ${TX_EDIT_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+          </select>
         </div>
-      </div>`;
-      
-      if (needsRet) {
-        html += `
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 4px 4px 0;margin:-2px 0 6px 0;font-size:11px">
-        <i class="fas fa-percent" style="color:#D97706"></i>
-        <span class="font-semibold" style="color:#92400E">Retención:</span>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
+            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
+          </div>
+        </div>
+
+        <input class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
+        <input class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
+
+        <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editEditTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>
+      </div>
+      ${needsRet ? `
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:-2px 0 6px 0;padding:7px 10px;background:#FFFBEB;border-left:3px solid #D97706;border-radius:0 6px 6px 0">
+        <i class="fas fa-percent" style="color:#D97706;font-size:11px"></i>
+        <span class="text-xs font-semibold" style="color:#92400E;white-space:nowrap">Calculadora de Retención</span>
          ${tiposRet.map(t => `<span class="badge" style="background:#FEF3C7;color:#92400E;font-size:10px">${retRateLabel(t, acct)}</span>`).join('')}
-        <input class="form-input" style="max-width:100px;font-size:11px;padding:3px 6px" type="number" min="0" step="1" placeholder="Base"
+        <span class="text-xs" style="color:#92400E">Base:</span>
+        <input class="form-input" style="max-width:140px;font-size:13px" type="number" min="0" step="1" placeholder="Base gravable"
                value="${esc(line.ret_base || '')}" oninput="updateEditTxLine(${i}, 'ret_base', this.value)">
-        <span style="color:#92400E">×</span>
-         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:10px">${esc(calcRate)}%</span>
-        <span style="color:#92400E">=</span>
-        <span id="edit-ret-calc-${i}" style="font-weight:600;color:#D97706;min-width:60px">${calcAmount}</span>
-        <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:2px 8px;font-size:10px" onclick="applyEditRetentionCalc(${i})">
+        <span class="text-xs" style="color:#92400E">×</span>
+         <span class="badge" style="background:#FDE68A;color:#92400E;font-size:11px">${esc(calcRate)}%</span>
+        <span id="edit-ret-calc-${i}" class="text-sm font-bold" style="color:#D97706;min-width:70px">${calcAmount}</span>
+        <button class="btn btn-sm" style="background:#D97706;color:#fff;padding:4px 10px;font-size:12px" onclick="applyEditRetentionCalc(${i})">
           <i class="fas fa-check"></i> Aplicar
         </button>
-      </div>`;
-      }
-      
-      return html;
+      </div>` : ''}`;
     }).join('');
     const el = document.getElementById('edit-tx-lines');
     if (el) el.innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';

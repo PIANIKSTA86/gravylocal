@@ -40,6 +40,85 @@ let TX_STATE = {
   accountMap: new Map(),
 };
 
+async function openNuevaTxModal() {
+  if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
+  openModal('Nueva Transacción', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
+  try {
+    const [accounts, txTypes, terceros] = await Promise.all([
+      API.getAccounts(true),
+      API.getTxTypes(),
+      API.getTerceros({}),
+    ]);
+    const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
+    const postableAccountIds = new Set(
+      accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id)
+    );
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: true };
+
+    const body = `
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border-b" style="border-color:#F3F4F6">
+        <div class="form-group"><label class="form-label">Tipo / Serie</label><select id="tx-type" class="form-input">${buildTxTypeOptions(txTypes)}</select></div>
+        <div class="form-group"><label class="form-label">Consecutivo</label><input id="tx-number" class="form-input" readonly placeholder="Auto"></div>
+        <div class="form-group"><label class="form-label">Fecha</label><input id="tx-date" type="date" class="form-input" value="${todayStr()}"></div>
+        <div class="form-group">
+          <label class="form-label">Tercero</label>
+          <div class="flex gap-2">
+            <select id="tx-third" class="form-input" style="flex:1"><option value="">Sin tercero</option>${terceros.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}</select>
+            <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
+              <i class="fas fa-file-invoice-dollar"></i> Cartera
+            </button>
+          </div>
+        </div>
+        <div class="form-group md:col-span-3"><label class="form-label">Descripci\u00f3n</label><input id="tx-desc" class="form-input" placeholder="Descripci\u00f3n del comprobante"></div>
+        <div class="form-group"><label class="form-label">Plazo (d\u00edas)</label><input id="tx-payment-days" type="number" min="0" class="form-input" value="0" placeholder="0"></div>
+      </div>
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold text-sm" style="color:#0D2137">L\u00edneas contables</h4>
+          <button class="btn btn-outline btn-sm" id="btn-add-line"><i class="fas fa-plus"></i> Agregar l\u00ednea</button>
+        </div>
+        <div id="tx-lines"></div>
+        <div id="tx-balance" class="balance-indicator balance-err mt-3"><i class="fas fa-triangle-exclamation"></i> Descuadrada</div>
+      </div>`;
+
+    const footer = `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveTransaction()"><i class="fas fa-floppy-disk"></i> Guardar Transacci\u00f3n</button>`;
+
+    openModal('Nueva Transacci\u00f3n', body, footer, true);
+
+    setTimeout(async () => {
+      bindNewTxModalEvents();
+      await refreshConsecutive();
+      addTxLine();
+      addTxLine();
+    }, 0);
+  } catch (err) {
+    openModal('Error al cargar', `<p class="p-4 text-sm" style="color:#EF4444">${esc(err.message)}</p>`,
+      '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>', false);
+  }
+}
+
+function bindNewTxModalEvents() {
+  const typeEl = $('#tx-type');
+  const addLineBtn = $('#btn-add-line');
+  const thirdEl = $('#tx-third');
+  const carteraBtn = $('#btn-cartera');
+  if (typeEl) typeEl.onchange = refreshConsecutive;
+  if (addLineBtn) addLineBtn.onclick = () => addTxLine();
+  if (thirdEl) thirdEl.onchange = () => {
+    const thirdId = getSelectVal('tx-third');
+    if (carteraBtn) carteraBtn.disabled = !thirdId;
+    const payDaysInput = $('#tx-payment-days');
+    if (payDaysInput && thirdId) {
+      const third = TX_STATE.terceros?.find(t => t.id === thirdId);
+      payDaysInput.value = Number(third?.payment_days || 0);
+    }
+  };
+  if (carteraBtn) carteraBtn.onclick = () => showCarteraModal(getSelectVal('tx-third'));
+}
+
 async function renderNuevaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando datos...</div>`;
   try {
@@ -53,7 +132,7 @@ async function renderNuevaTx(c) {
       accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id)
     );
     const accountMap = new Map(accounts.map(a => [a.id, a]));
-    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap };
+    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: false };
 
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -168,28 +247,7 @@ function autoAppendTxLineFrom(i) {
 }
 
 function editTxLineComment(i) {
-  const line = TX_STATE.lines[i];
-  if (!line) return;
-
-  openModal(
-    'Comentario de línea contable',
-    `<div class="p-2">
-      <label class="form-label" for="tx-line-comment">Comentario del registro</label>
-      <textarea id="tx-line-comment" class="form-input" rows="4" placeholder="Escribe una observación para este registro...">${esc(line.description || '')}</textarea>
-    </div>`,
-    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-primary" id="btn-save-tx-line-comment"><i class="fas fa-check"></i> Guardar</button>`,
-    false
-  );
-
-  setTimeout(() => {
-    $('#btn-save-tx-line-comment')?.addEventListener('click', () => {
-      const val = ($('#tx-line-comment')?.value || '').trim();
-      TX_STATE.lines[i].description = val;
-      closeModal();
-      renderTxLines(false);
-    });
-  }, 0);
+  openLineComment(i, 'new');
 }
 
 function updateTxLine(i, field, value) {
@@ -215,8 +273,15 @@ function updateTxLine(i, field, value) {
     const el = document.getElementById(`ret-calc-${i}`);
     if (el) el.textContent = base && rate ? fmt(base * rate / 100) : '$0';
   } else if (field === 'debit' || field === 'credit') {
-    // Repaint to enforce disable/enable counterpart input in real time.
-    renderTxLines(true);
+    // Update only the counterpart input in-place to avoid destroying focus.
+    const counterField = field === 'debit' ? 'credit' : 'debit';
+    const counterEl = document.getElementById(`tx-line-${counterField}-${i}`);
+    if (counterEl) {
+      const lock = Number(value) > 0;
+      counterEl.disabled = lock;
+      if (lock) counterEl.value = '';
+    }
+    updateTxBalance();
   } else {
     renderTxLines(false);
   }
@@ -242,6 +307,21 @@ function applyRetentionCalc(i) {
   renderTxLines(true);
   autoAppendTxLineFrom(i);
   showToast(`Retención aplicada: ${fmt(amount)}`, 'success');
+}
+
+function updateTxBalance() {
+  const totals = TX_STATE.lines.reduce((acc, l) => {
+    acc.d += Number(l.debit || 0);
+    acc.c += Number(l.credit || 0);
+    return acc;
+  }, { d: 0, c: 0 });
+  const ok = Math.abs(totals.d - totals.c) < 0.0001 && totals.d > 0;
+  const b = $('#tx-balance');
+  if (!b) return;
+  b.className = `balance-indicator ${ok ? 'balance-ok' : 'balance-err'}`;
+  b.innerHTML = ok
+    ? `<i class="fas fa-check-circle"></i> Cuadrada: D\u00e9bito ${fmt(totals.d)} = Cr\u00e9dito ${fmt(totals.c)}`
+    : `<i class="fas fa-triangle-exclamation"></i> Diferencia: ${fmt(Math.abs(totals.d - totals.c))}`;
 }
 
 function renderTxLines(repaint = true) {
@@ -291,8 +371,8 @@ function renderTxLines(repaint = true) {
           </div>
         </div>
 
-        <input class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
-        <input class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
 
         <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
         <button class="btn btn-danger btn-sm" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
@@ -353,6 +433,24 @@ function closeCarteraModal() {
       if (x) x.value = prev.editForm.desc || '';
       if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = prev.editForm.third || '';
     }
+    if (prev.newForm) {
+      const nType = $('#tx-type');
+      const nNum  = $('#tx-number');
+      const nDate = $('#tx-date');
+      const nThird = $('#tx-third');
+      const nDesc = $('#tx-desc');
+      const nPay  = $('#tx-payment-days');
+      if (nType  && prev.newForm.type)    nType.value    = prev.newForm.type;
+      if (nNum)                           nNum.value     = prev.newForm.number || '';
+      if (nDate)                          nDate.value    = prev.newForm.date   || '';
+      if (nThird && prev.newForm.third)   nThird.value   = prev.newForm.third;
+      if (nDesc)                          nDesc.value    = prev.newForm.desc   || '';
+      if (nPay)                           nPay.value     = prev.newForm.payDays || '0';
+      // Sync btn-cartera enabled state
+      const btnCartera = $('#btn-cartera');
+      if (btnCartera) btnCartera.disabled = !prev.newForm.third;
+      bindNewTxModalEvents();
+    }
     bindEditCarteraEvents();
     return;
   }
@@ -397,6 +495,14 @@ async function showCarteraModal(thirdId, opts = {}) {
           date: $('#edit-tx-date')?.value || '',
           third: $('#edit-tx-third')?.value || '',
           desc: $('#edit-tx-desc')?.value || '',
+        },
+        newForm: {
+          type: $('#tx-type')?.value || '',
+          number: $('#tx-number')?.value || '',
+          date: $('#tx-date')?.value || '',
+          third: $('#tx-third')?.value || '',
+          desc: $('#tx-desc')?.value || '',
+          payDays: $('#tx-payment-days')?.value || '0',
         },
       };
     } else {
@@ -664,7 +770,14 @@ async function saveTransaction() {
     })));
 
     showToast(`Transacción ${tx.number} guardada`, 'success');
-    navigate('consulta-tx');
+    if (TX_STATE.inModal) {
+      closeModal();
+      if (typeof loadConsultaTxPage === 'function' && $('#ctxq-results')) {
+        loadConsultaTxPage();
+      }
+    } else {
+      navigate('consulta-tx');
+    }
   } catch (err) {
     showToast(err.message, 'error');
   }
@@ -720,7 +833,10 @@ async function renderConsultaTx(c) {
           <h3 class="text-lg font-bold" style="color:#0D2137">Consulta de Transacciones</h3>
           <p class="text-sm" style="color:#6B7280">Consulta por período y tipo para mantener rendimiento con alto volumen.</p>
         </div>
-        ${can('canExport') ? '<button class="btn btn-outline" id="btn-export-tx"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        <div class="flex gap-2">
+          ${can('canWrite') ? '<button class="btn btn-primary" id="btn-nueva-tx" onclick="openNuevaTxModal()"><i class="fas fa-file-circle-plus"></i> Nueva Transacci\u00f3n</button>' : ''}
+          ${can('canExport') ? '<button class="btn btn-outline" id="btn-export-tx"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
       </div>
 
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
@@ -1266,28 +1382,7 @@ function autoAppendEditTxLineFrom(i) {
 }
 
 function editEditTxLineComment(i) {
-  const line = TX_EDIT_STATE.lines[i];
-  if (!line) return;
-
-  openModal(
-    'Comentario de línea contable',
-    `<div class="p-2">
-      <label class="form-label" for="edit-tx-line-comment">Comentario del registro</label>
-      <textarea id="edit-tx-line-comment" class="form-input" rows="4" placeholder="Escribe una observación para este registro...">${esc(line.description || '')}</textarea>
-    </div>`,
-    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-primary" id="btn-save-edit-tx-line-comment"><i class="fas fa-check"></i> Guardar</button>`,
-    false
-  );
-
-  setTimeout(() => {
-    $('#btn-save-edit-tx-line-comment')?.addEventListener('click', () => {
-      const val = ($('#edit-tx-line-comment')?.value || '').trim();
-      TX_EDIT_STATE.lines[i].description = val;
-      closeModal();
-      renderEditTxLines(false);
-    });
-  }, 0);
+  openLineComment(i, 'edit');
 }
 
 function updateEditTxLine(i, field, value) {
@@ -1311,8 +1406,15 @@ function updateEditTxLine(i, field, value) {
     const el = document.getElementById(`edit-ret-calc-${i}`);
     if (el) el.textContent = base && rate ? fmt(base * rate / 100) : '$0';
   } else if (field === 'debit' || field === 'credit') {
-    // Repaint to enforce disable/enable counterpart input in real time.
-    renderEditTxLines(true);
+    // Update only the counterpart input in-place to avoid destroying focus.
+    const counterField = field === 'debit' ? 'credit' : 'debit';
+    const counterEl = document.getElementById(`edit-tx-line-${counterField}-${i}`);
+    if (counterEl) {
+      const lock = Number(value) > 0;
+      counterEl.disabled = lock;
+      if (lock) counterEl.value = '';
+    }
+    updateEditTxBalance();
   } else {
     renderEditTxLines(false);
   }
@@ -1337,6 +1439,21 @@ function applyEditRetentionCalc(i) {
   renderEditTxLines(true);
   autoAppendEditTxLineFrom(i);
   showToast(`Retención aplicada: ${fmt(amount)}`, 'success');
+}
+
+function updateEditTxBalance() {
+  const totals = TX_EDIT_STATE.lines.reduce((acc, l) => {
+    acc.d += Number(l.debit || 0);
+    acc.c += Number(l.credit || 0);
+    return acc;
+  }, { d: 0, c: 0 });
+  const ok = Math.abs(totals.d - totals.c) < 0.0001 && totals.d > 0;
+  const b = document.getElementById('edit-tx-balance');
+  if (!b) return;
+  b.className = `balance-indicator ${ok ? 'balance-ok' : 'balance-err'}`;
+  b.innerHTML = ok
+    ? `<i class="fas fa-check-circle"></i> Cuadrada: D\u00e9bito ${fmt(totals.d)} = Cr\u00e9dito ${fmt(totals.c)}`
+    : `<i class="fas fa-triangle-exclamation"></i> Diferencia: ${fmt(Math.abs(totals.d - totals.c))}`;
 }
 
 function renderEditTxLines(repaint = true) {
@@ -1385,8 +1502,8 @@ function renderEditTxLines(repaint = true) {
           </div>
         </div>
 
-        <input class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
-        <input class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
+        <input id="edit-tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
+        <input id="edit-tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
 
         <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editEditTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
         <button class="btn btn-danger btn-sm" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>

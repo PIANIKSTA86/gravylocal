@@ -288,7 +288,6 @@ select.form-input { appearance: none; background-image: url("data:image/svg+xml,
       <div class="nav-item" data-page="terceros"><i class="fas fa-users"></i><span>Terceros</span></div>
       <div class="nav-item" data-page="tipos-tx"><i class="fas fa-list-check"></i><span>Tipos de Transacción</span></div>
       <div class="nav-section">Operaciones</div>
-      <div class="nav-item" data-page="nueva-tx"><i class="fas fa-file-circle-plus"></i><span>Nueva Transacción</span></div>
       <div class="nav-item" data-page="consulta-tx"><i class="fas fa-magnifying-glass"></i><span>Consulta Transacciones</span></div>
       <div class="nav-section">Módulos</div>
       <div class="nav-item" data-page="conciliacion"><i class="fas fa-scale-balanced"></i><span>Conciliación Bancaria</span></div>
@@ -343,6 +342,24 @@ select.form-input { appearance: none; background-image: url("data:image/svg+xml,
     </div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- Mini-overlay para comentarios de línea (z-index 200, no reemplaza el modal padre) -->
+<div id="line-comment-overlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:420px;box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F0F0F0">
+      <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-comment-dots mr-2" style="color:#1A4B8C"></i>Comentario de línea</h4>
+      <button onclick="closeLineComment()" style="background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer"><i class="fas fa-xmark"></i></button>
+    </div>
+    <div style="padding:20px">
+      <label class="form-label" for="line-comment-textarea">Observación para este registro</label>
+      <textarea id="line-comment-textarea" class="form-input" rows="4" placeholder="Escribe una observación..."></textarea>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;border-top:1px solid #F0F0F0">
+      <button class="btn btn-outline" onclick="closeLineComment()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveLineComment()"><i class="fas fa-check mr-1"></i>Guardar</button>
+    </div>
   </div>
 </div>
 

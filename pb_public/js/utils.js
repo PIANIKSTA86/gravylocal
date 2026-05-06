@@ -69,6 +69,45 @@ function closeModal() {
   $('#modal-footer').innerHTML = '';
 }
 
+// ── Mini-overlay de comentario de línea (no reemplaza el modal padre) ────────
+let _lineCommentState = null; // { lineIdx, ctx: 'new'|'edit' }
+
+function openLineComment(lineIdx, ctx) {
+  const state = ctx === 'edit'
+    ? (typeof TX_EDIT_STATE !== 'undefined' ? TX_EDIT_STATE : null)
+    : (typeof TX_STATE     !== 'undefined' ? TX_STATE     : null);
+  if (!state) return;
+  const current = state.lines[lineIdx]?.description || '';
+  _lineCommentState = { lineIdx, ctx };
+  const ta = document.getElementById('line-comment-textarea');
+  if (ta) ta.value = current;
+  const overlay = document.getElementById('line-comment-overlay');
+  if (overlay) { overlay.style.display = 'flex'; setTimeout(() => ta?.focus(), 50); }
+}
+
+function closeLineComment() {
+  _lineCommentState = null;
+  const overlay = document.getElementById('line-comment-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function saveLineComment() {
+  if (!_lineCommentState) return closeLineComment();
+  const { lineIdx, ctx } = _lineCommentState;
+  const val = (document.getElementById('line-comment-textarea')?.value || '').trim();
+  const state = ctx === 'edit'
+    ? (typeof TX_EDIT_STATE !== 'undefined' ? TX_EDIT_STATE : null)
+    : (typeof TX_STATE     !== 'undefined' ? TX_STATE     : null);
+  if (state && state.lines[lineIdx] !== undefined) {
+    state.lines[lineIdx].description = val;
+    closeLineComment();
+    if (ctx === 'edit' && typeof renderEditTxLines === 'function') renderEditTxLines(false);
+    else if (typeof renderTxLines === 'function') renderTxLines(false);
+  } else {
+    closeLineComment();
+  }
+}
+
 function confirmDialog(title, message, onConfirm, danger = true) {
   openModal(
     title,

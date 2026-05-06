@@ -73,8 +73,8 @@ async function initApp() {
           <div>
             <h2 class="text-white text-xl font-bold mb-2">Servidor no disponible</h2>
             <p style="color:rgba(255,255,255,.6);font-size:14px;line-height:1.7">
-              No se pudo conectar con el servidor ContaCO.<br>
-              Asegúrate de haber ejecutado <strong style="color:#E87D1E">start.bat</strong> antes de abrir esta página.
+              No se pudo conectar con el servidor GRAVY.<br>
+              Asegúrate de haber ejecutado <strong style="color:#64E1FF">start.bat</strong> antes de abrir esta página.
             </p>
           </div>
           <button onclick="window.location.reload()" class="btn btn-primary mt-2">

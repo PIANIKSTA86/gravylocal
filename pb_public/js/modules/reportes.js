@@ -1857,7 +1857,7 @@ async function generateAuxiliaryRows() {
           ? [selectedAcc.code, selectedAcc.name].map(v => String(v || '').trim()).filter(Boolean).join(' - ') || 'Cuenta seleccionada'
           : 'Todas';
         const reportAccountLine = `Cuentas consultadas: ${selectedAccLabel}`;
-        const softwareLine = (softwareName || 'ContaCO v2.0').trim();
+        const softwareLine = (softwareName || 'GRAVY v2.0').trim();
         const userName = (sessionStorage.getItem('user_name') || 'Usuario').trim();
 
         // === ENCABEZADO EN 3 BLOQUES ===
@@ -2001,7 +2001,7 @@ async function generateAuxiliaryRows() {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7);
             doc.setTextColor(120, 120, 120);
-            doc.text('Reporte generado por ContaCO - Escala de grises', pageMarginLeft, pageHeight - 10);
+            doc.text('Reporte generado por GRAVY - Escala de grises', pageMarginLeft, pageHeight - 10);
             doc.text(`Página ${data.pageNumber}`, pageMarginRight, pageHeight - 10, { align: 'right' });
           },
         });

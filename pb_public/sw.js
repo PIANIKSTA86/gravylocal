@@ -1,10 +1,10 @@
 /**
- * ContaCO v2.0 — Service Worker
+ * GRAVY v2.0 — Service Worker
  * Cache offline para activos estáticos.
  * Los datos dinámicos (API) siempre van a la red.
  */
 
-const CACHE_NAME = 'contaco-v2-assets-v4';
+const CACHE_NAME = 'gravy-v2-assets-v5';
 
 // Activos estáticos a cachear al instalar
 const PRECACHE_URLS = [
@@ -26,6 +26,9 @@ const PRECACHE_URLS = [
   '/assets/fonts/plus-jakarta-3.woff2',
   '/assets/fonts/plus-jakarta-4.woff2',
   '/assets/fonts/plus-jakarta-5.woff2',
+  '/assets/gravy-logo.png',
+  '/assets/icon-192.png',
+  '/assets/icon-512.png',
   '/js/utils.js',
   '/js/api.js',
   '/js/auth.js',

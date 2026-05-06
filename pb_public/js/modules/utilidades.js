@@ -138,7 +138,7 @@ async function renderUtilidades(container) {
 
 /* ── Información del último backup (localStorage) ──────── */
 function _loadLastBackupInfo() {
-  const last = localStorage.getItem('contaco_last_backup');
+  const last = localStorage.getItem('gravy_last_backup') || localStorage.getItem('contaco_last_backup');
   if (!last) return;
   try {
     const info = JSON.parse(last);
@@ -179,7 +179,7 @@ async function _loadSysInfo() {
     </div>
   `).join('') + `
     <div class="flex items-center justify-between pt-3 mt-1">
-      <span class="text-xs" style="color:#9CA3AF">Versión ContaCO</span>
+      <span class="text-xs" style="color:#9CA3AF">Versión GRAVY</span>
       <span class="badge badge-orange">v${BACKUP_VERSION}</span>
     </div>`;
 }
@@ -218,7 +218,7 @@ async function _handleCreateBackup() {
     _meta: {
       version:    BACKUP_VERSION,
       created_at: new Date().toISOString(),
-      app:        'ContaCO',
+      app:        'GRAVY',
       user:       pb.currentUser?.email ?? 'desconocido',
     },
     collections: {},
@@ -252,7 +252,7 @@ async function _handleCreateBackup() {
     const anchor  = document.createElement('a');
     const dateStr = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', '-');
     anchor.href     = url;
-    anchor.download = `ContaCO_backup_${dateStr}.json`;
+    anchor.download = `GRAVY_backup_${dateStr}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
@@ -261,10 +261,12 @@ async function _handleCreateBackup() {
     setProgress('Completado', 100);
 
     // Guardar metadata del último backup
-    localStorage.setItem('contaco_last_backup', JSON.stringify({
+    const backupInfo = JSON.stringify({
       label:   new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }),
       records: totalRecords,
-    }));
+    });
+    localStorage.setItem('gravy_last_backup', backupInfo);
+    localStorage.setItem('contaco_last_backup', backupInfo);
     _loadLastBackupInfo();
 
     await API.logAudit('BACKUP_CREATED', 'sistema', null,
@@ -309,7 +311,7 @@ async function _handleRestoreFileSelected(e) {
   }
 
   if (!backup._meta?.version || !backup.collections) {
-    showToast('El archivo no corresponde a un respaldo de ContaCO', 'error');
+    showToast('El archivo no corresponde a un respaldo de GRAVY', 'error');
     return;
   }
 

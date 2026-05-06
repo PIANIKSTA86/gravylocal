@@ -1,12 +1,12 @@
 {
-  "name": "ContaCO",
-  "short_name": "ContaCO",
-  "description": "Sistema Contable Colombiano — NIF / PUC",
+  "name": "GRAVY",
+  "short_name": "GRAVY",
+  "description": "Plataforma contable inteligente para operación financiera y control administrativo",
   "start_url": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0D2137",
-  "theme_color": "#0D2137",
+  "background_color": "#050814",
+  "theme_color": "#050814",
   "lang": "es",
   "icons": [
     { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

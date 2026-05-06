@@ -27,6 +27,8 @@ const BACKUP_VERSION = '2.0';
 let _backupInProgress = false;
 let _restoreInProgress = false;
 let _massTxImportInProgress = false;
+let _massTpImportInProgress = false;
+let _massAccImportInProgress = false;
 
 /* ══════════════════════════════════════════════════════════
    RENDER PRINCIPAL
@@ -149,12 +151,74 @@ async function renderUtilidades(container) {
           </div>
         </div>
 
+        <!-- ── Tarjeta: Carga masiva de cuentas ─────────── -->
+        <div class="stat-card purple" id="util-card-mass-acc">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(124,58,237,.12)">
+                <i class="fas fa-list-tree" style="color:#6D28D9;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga masiva de cuentas</h3>
+                <p class="text-xs" style="color:#6B7280">Importa el plan de cuentas desde CSV o Excel</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Crea o actualiza cuentas en lote usando una plantilla estándar. Si el código ya existe
+            la cuenta se actualiza; si no existe, se crea automáticamente.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-acc-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-acc-open" class="btn btn-secondary btn-sm">
+              <i class="fas fa-upload"></i> Cargar archivo
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Tarjeta: Carga masiva de terceros ────────── -->
+        <div class="stat-card red" id="util-card-mass-tp">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(59,130,246,.12)">
+                <i class="fas fa-users" style="color:#1D4ED8;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga masiva de terceros</h3>
+                <p class="text-xs" style="color:#6B7280">Importa clientes, proveedores y más desde CSV o Excel</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Registra terceros en lote usando una plantilla estándar. El sistema valida documento,
+            nombre y tipo antes de grabar. Los duplicados (mismo NIT/documento) se actualizan.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-tp-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-tp-open" class="btn btn-secondary btn-sm">
+              <i class="fas fa-upload"></i> Cargar archivo
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>`;
 
   _backupInProgress = false;
   _restoreInProgress = false;
   _massTxImportInProgress = false;
+  _massTpImportInProgress = false;
+  _massAccImportInProgress = false;
 
   // Cargar última info de respaldo guardada localmente
   _loadLastBackupInfo();
@@ -168,6 +232,10 @@ async function renderUtilidades(container) {
   $('#backup-file-input')?.addEventListener('change', _handleRestoreFileSelected);
   $('#btn-mass-tx-template')?.addEventListener('click', _downloadMassTxTemplate);
   $('#btn-mass-tx-open')?.addEventListener('click', _openMassTxImportModal);
+  $('#btn-mass-tp-template')?.addEventListener('click', _downloadMassTpTemplate);
+  $('#btn-mass-tp-open')?.addEventListener('click', _openMassTpImportModal);
+  $('#btn-mass-acc-template')?.addEventListener('click', _downloadMassAccTemplate);
+  $('#btn-mass-acc-open')?.addEventListener('click', _openMassAccImportModal);
 }
 
 /* ── Información del último backup (localStorage) ──────── */
@@ -1018,6 +1086,652 @@ async function _executeMassTxImport(groups) {
       runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga';
     }
   }
+}
+
+/* ══════════════════════════════════════════════════════════
+   CARGA MASIVA DE TERCEROS
+══════════════════════════════════════════════════════════ */
+function _downloadMassTpTemplate() {
+  const header = [
+    'doc_type', 'doc_number', 'person_type', 'type', 'razon_social',
+    'nombres', 'apellidos', 'email', 'phone', 'address',
+    'dept_code', 'city_code', 'tax_regime', 'credit_limit',
+    'payment_days', 'active',
+  ].join(',');
+
+  const rows = [
+    'NIT,900123456,JURIDICA,CLIENTE,CERAMICAS CONSTRUHOGAR SAS,,,,3001234567,CR 8 73-25,68,68001,COMUN,5000000,30,Si',
+    'CC,1234567890,NATURAL,PROVEEDOR,,JUAN CARLOS,PEREZ GOMEZ,juan@correo.com,3109876543,CL 45 12-30,05,05001,NO_RESP,0,0,Si',
+    'NIT,800987654,JURIDICA,EMPLEADO,EMPRESA LOGISTICA SAS,,,,6012345678,AV 68 45-10,11,11001,COMUN,0,0,Si',
+    'CC,9876543210,NATURAL,ACREEDOR,,MARIA ELENA,RODRIGUEZ SILVA,,3201112233,KR 15 80-20,76,76001,,0,0,Si',
+  ].join('\n');
+
+  const blob = new Blob([`${header}\n${rows}`], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_carga_terceros.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function _openMassTpImportModal() {
+  if (!can('canWrite')) return showToast('No tienes permisos para importar terceros', 'error');
+
+  openModal(
+    '<i class="fas fa-users mr-2" style="color:#1D4ED8"></i>Carga masiva de terceros',
+    `
+    <div class="mb-2">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con los terceros a registrar.
+        Si el documento ya existe, el tercero será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
+      </p>
+      <div class="rounded-xl p-3 mb-3" style="background:#EFF6FF;border:1px solid #BFDBFE">
+        <p class="text-xs font-semibold mb-1" style="color:#1D4ED8;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
+        <div class="flex flex-wrap gap-2 mb-2">
+          ${['doc_type','doc_number','person_type','type'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#DBEAFE;color:#1E40AF">${c}</code>`).join('')}
+          ${['razon_social','nombres','apellidos','email','phone','address','dept_code','city_code','tax_regime','credit_limit','payment_days','active'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+        </div>
+        <p class="text-xs" style="color:#1E40AF">
+          <strong>doc_type</strong>: NIT, CC, CE, TI, PAS, RC.&nbsp;
+          <strong>person_type</strong>: NATURAL, JURIDICA, GRAN_CONTRIBUYENTE.&nbsp;
+          <strong>type</strong>: CLIENTE, PROVEEDOR, EMPLEADO, ACREEDOR, TRANSPORTISTA, OTRO.
+        </p>
+      </div>
+
+      <div id="mass-tp-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#1A4B8C;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
+        <input type="file" id="mass-tp-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+
+      <div id="mass-tp-progress-wrap" class="hidden mt-4">
+        <div class="w-full rounded-full h-2" style="background:#E5E7EB">
+          <div id="mass-tp-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#1D4ED8,#7C3AED);width:0%"></div>
+        </div>
+        <p id="mass-tp-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
+      </div>
+
+      <div id="mass-tp-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa</p>
+          <button class="btn btn-outline btn-sm" id="btn-mass-tp-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
+          <table class="data-table text-xs" id="mass-tp-preview-table">
+            <thead><tr>
+              <th>#</th><th>Doc</th><th>Nombre / Razón Social</th><th>Tipo Persona</th><th>Rol</th><th>Email</th><th>Estado</th><th>Detalle</th>
+            </tr></thead>
+            <tbody id="mass-tp-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="mass-tp-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary hidden" id="btn-mass-tp-run"><i class="fas fa-bolt mr-1"></i>Ejecutar carga</button>`,
+    true
+  );
+
+  let parsedRows = [];
+
+  const dropZone = $('#mass-tp-drop-zone');
+  const fileInput = $('#mass-tp-file-input');
+  const runBtn = $('#btn-mass-tp-run');
+  const clearBtn = $('#btn-mass-tp-clear');
+
+  const resetPreview = () => {
+    parsedRows = [];
+    $('#mass-tp-preview')?.classList.add('hidden');
+    runBtn?.classList.add('hidden');
+    const body = $('#mass-tp-preview-body');
+    if (body) body.innerHTML = '';
+    const summary = $('#mass-tp-summary');
+    if (summary) summary.innerHTML = '';
+    if (fileInput) fileInput.value = '';
+  };
+
+  const dropDefault = () => {
+    if (!dropZone) return;
+    dropZone.style.borderColor = '#D1D5DB';
+    dropZone.style.background = '#FAFAFA';
+  };
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (!dropZone) return;
+    dropZone.style.borderColor = '#1D4ED8';
+    dropZone.style.background = '#EFF6FF';
+  });
+  dropZone?.addEventListener('dragleave', () => dropDefault());
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    dropDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processFile(file);
+  });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) processFile(file);
+  });
+  clearBtn?.addEventListener('click', resetPreview);
+  runBtn?.addEventListener('click', () => _executeMassTpImport(parsedRows));
+
+  async function processFile(file) {
+    if (file.size > 8 * 1024 * 1024) return showToast('El archivo supera el límite de 8 MB', 'error');
+    const ext = String(file.name.split('.').pop() || '').toLowerCase();
+    let rawRows = [];
+    try {
+      if (ext === 'csv') {
+        rawRows = _massTxParseCsv(await file.text());
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        rawRows = _massTxParseExcel(await file.arrayBuffer());
+      } else {
+        return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+      }
+    } catch (err) {
+      return showToast(`Error al leer el archivo: ${err.message}`, 'error');
+    }
+    if (!rawRows.length) return showToast('El archivo no contiene datos', 'warning');
+    parsedRows = _massTpBuildDraft(rawRows);
+    _massTpRenderPreview(parsedRows);
+  }
+}
+
+/* Normaliza una fila a un draft de tercero { ok, payload, error, rowNo } */
+function _massTpBuildDraft(rawRows) {
+  const VALID_DOC_TYPES    = new Set(['NIT','CC','CE','TI','PAS','RC']);
+  const VALID_PERSON_TYPES = new Set(['NATURAL','JURIDICA','GRAN_CONTRIBUYENTE']);
+  const VALID_TP_TYPES     = new Set(['CLIENTE','PROVEEDOR','EMPLEADO','ACREEDOR','TRANSPORTISTA','OTRO']);
+
+  return rawRows.map((raw, i) => {
+    const rowNo = i + 2; // +2 porque fila 1 es cabecera
+    const get = (...keys) => {
+      for (const k of keys) {
+        const v = raw[_massTxNormHeader(k)];
+        if (v !== undefined && String(v).trim() !== '') return String(v).trim();
+      }
+      return '';
+    };
+
+    const docType    = get('doc_type','tipo_doc','tipo_documento').toUpperCase();
+    const docNumber  = get('doc_number','numero_doc','nit','documento','doc').replace(/[^0-9a-zA-Z]/g, '');
+    const personType = get('person_type','tipo_persona','persona').toUpperCase() || 'NATURAL';
+    const tpType     = get('type','tipo','rol').toUpperCase() || 'CLIENTE';
+
+    // Nombre
+    const bizName   = get('razon_social','business_name','razon').toUpperCase();
+    const firstName = get('nombres','first_name','nombre').toUpperCase();
+    const lastName  = get('apellidos','last_name','apellido').toUpperCase();
+    const isNatural = personType === 'NATURAL';
+    const name = isNatural
+      ? [firstName, lastName].filter(Boolean).join(' ')
+      : bizName;
+
+    // Opcionales
+    const email       = get('email','correo');
+    const phone       = get('phone','telefono','tel');
+    const address     = get('address','direccion').toUpperCase();
+    const deptCode    = get('dept_code','cod_dept','departamento_cod');
+    const cityCode    = get('city_code','cod_mun','municipio_cod','ciudad_cod');
+    const taxRegime   = get('tax_regime','regimen','tax').toUpperCase();
+    const creditLimit = parseFloat(get('credit_limit','cupo_credito','cupo').replace(/[^0-9.]/g, '')) || 0;
+    const payDays     = parseInt(get('payment_days','plazo_dias','plazo'), 10) || 0;
+    const activeRaw   = get('active','activo','estado').toLowerCase();
+    const active      = !/^(no|0|false|inactivo|inactiva)$/.test(activeRaw);
+
+    // Dígito de verificación
+    const dv = docType === 'NIT' ? calcDV(docNumber) : '';
+
+    // Validaciones
+    if (!docType)   return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_type` };
+    if (!VALID_DOC_TYPES.has(docType))
+      return { ok: false, rowNo, error: `Fila ${rowNo}: doc_type inválido (${docType})` };
+    if (!docNumber) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_number` };
+    if (!VALID_PERSON_TYPES.has(personType))
+      return { ok: false, rowNo, error: `Fila ${rowNo}: person_type inválido (${personType})` };
+    if (!VALID_TP_TYPES.has(tpType))
+      return { ok: false, rowNo, error: `Fila ${rowNo}: type inválido (${tpType})` };
+    if (isNatural && !firstName && !lastName)
+      return { ok: false, rowNo, error: `Fila ${rowNo}: persona natural requiere nombres o apellidos` };
+    if (!isNatural && !bizName)
+      return { ok: false, rowNo, error: `Fila ${rowNo}: persona jurídica requiere razon_social` };
+    if (!name)
+      return { ok: false, rowNo, error: `Fila ${rowNo}: no se pudo determinar el nombre` };
+
+    // Validar dept_code si se suministra (solo para Colombia)
+    let dept = '';
+    let city = '';
+    if (deptCode) {
+      const deptRec = (typeof GEO_DEPTS !== 'undefined' ? GEO_DEPTS : []).find(d => d.code === deptCode);
+      if (!deptRec)
+        return { ok: false, rowNo, error: `Fila ${rowNo}: dept_code "${deptCode}" no encontrado` };
+      dept = deptRec.name;
+      if (cityCode) {
+        const munis = typeof geoMunisByDept === 'function' ? geoMunisByDept(deptCode) : [];
+        const muni = munis.find(m => m.code === cityCode);
+        if (!muni)
+          return { ok: false, rowNo, error: `Fila ${rowNo}: city_code "${cityCode}" no encontrado en dept ${deptCode}` };
+        city = muni.name;
+      }
+    }
+
+    const payload = {
+      doc_type:        docType,
+      doc_number:      docNumber,
+      dv,
+      person_type:     personType,
+      type:            tpType,
+      first_name:      firstName,
+      last_name:       lastName,
+      business_name:   bizName,
+      commercial_name: '',
+      name,
+      email,
+      email2:          '',
+      phone,
+      phone2:          '',
+      contact_name:    '',
+      advisor:         '',
+      address,
+      country:         deptCode ? 'CO' : '',
+      department:      dept,
+      dept_code:       deptCode,
+      city,
+      city_code:       cityCode,
+      tax_regime:      taxRegime,
+      credit_limit:    creditLimit,
+      max_invoices:    1,
+      payment_days:    payDays,
+      active,
+    };
+
+    return {
+      ok: true,
+      rowNo,
+      docNumber,
+      docType,
+      name,
+      personType,
+      tpType,
+      email,
+      active,
+      payload,
+    };
+  });
+}
+
+function _massTpRenderPreview(rows) {
+  const preview = $('#mass-tp-preview');
+  const tbody   = $('#mass-tp-preview-body');
+  const summary = $('#mass-tp-summary');
+  const runBtn  = $('#btn-mass-tp-run');
+  if (!preview || !tbody || !summary || !runBtn) return;
+
+  const okRows  = rows.filter(r => r.ok);
+  const badRows = rows.filter(r => !r.ok);
+
+  tbody.innerHTML = rows.map(r => {
+    if (r.ok) {
+      return `<tr>
+        <td>${r.rowNo}</td>
+        <td><span class="font-semibold" style="color:#1D4ED8">${esc(r.docType)} ${esc(r.docNumber)}</span></td>
+        <td>${esc(r.name)}</td>
+        <td>${esc(r.personType)}</td>
+        <td>${esc(r.tpType)}</td>
+        <td>${esc(r.email || '—')}</td>
+        <td><span class="badge ${r.active ? 'badge-green' : 'badge-gray'}">${r.active ? 'Activo' : 'Inactivo'}</span></td>
+        <td><span class="badge badge-green">OK</span></td>
+      </tr>`;
+    }
+    return `<tr style="background:#FFF7F7">
+      <td>${r.rowNo}</td>
+      <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error || 'Error')}</td>
+      <td><span class="badge badge-red">Error</span></td>
+    </tr>`;
+  }).join('');
+
+  summary.innerHTML = `<span style="color:${badRows.length ? '#B91C1C' : '#166534'}">
+    ${rows.length} fila(s): ${okRows.length} válida(s), ${badRows.length} con error.
+    ${badRows.length ? 'Las filas con error serán omitidas.' : 'Listo para ejecutar.'}
+  </span>`;
+
+  preview.classList.remove('hidden');
+  if (okRows.length) runBtn.classList.remove('hidden');
+  else runBtn.classList.add('hidden');
+}
+
+async function _executeMassTpImport(rows) {
+  if (_massTpImportInProgress) return;
+  const valids = (rows || []).filter(r => r.ok && r.payload);
+  if (!valids.length) return showToast('No hay filas válidas para importar', 'warning');
+
+  _massTpImportInProgress = true;
+
+  const runBtn      = $('#btn-mass-tp-run');
+  const progressWrap = $('#mass-tp-progress-wrap');
+  const progressBar  = $('#mass-tp-progress-bar');
+  const progressText = $('#mass-tp-progress-text');
+
+  if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
+  progressWrap?.classList.remove('hidden');
+
+  // Cargar terceros existentes para decidir create vs update
+  let existingByDoc = new Map();
+  try {
+    const all = await pb.listAll('third_parties', {});
+    all.forEach(t => {
+      const key = `${t.doc_type}|${String(t.doc_number || '').replace(/[^0-9a-zA-Z]/g, '')}`;
+      existingByDoc.set(key, t.id);
+    });
+  } catch (err) {
+    showToast(`Error al cargar terceros existentes: ${err.message}`, 'error');
+    _massTpImportInProgress = false;
+    if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga'; }
+    return;
+  }
+
+  let created = 0, updated = 0, failed = 0;
+  const failedRows = [];
+
+  try {
+    for (let i = 0; i < valids.length; i++) {
+      const draft = valids[i];
+      const pct = (i / valids.length) * 100;
+      if (progressBar) progressBar.style.width = `${pct}%`;
+      if (progressText) progressText.textContent = `Procesando ${i + 1} de ${valids.length}: ${draft.name}`;
+
+      const key = `${draft.payload.doc_type}|${draft.payload.doc_number}`;
+      const existingId = existingByDoc.get(key);
+      try {
+        if (existingId) {
+          await pb.update('third_parties', existingId, draft.payload);
+          updated++;
+        } else {
+          const rec = await pb.create('third_parties', draft.payload);
+          existingByDoc.set(key, rec.id);
+          created++;
+        }
+      } catch (err) {
+        failed++;
+        failedRows.push(`Fila ${draft.rowNo} (${draft.docNumber}): ${err.message}`);
+      }
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = 'Proceso finalizado';
+
+    await API.logAudit(
+      'IMPORT', 'third_parties', 'bulk',
+      `Carga masiva: ${created} creados, ${updated} actualizados, ${failed} con error`
+    );
+
+    if (failedRows.length) console.warn('[CargaMasivaTp] Errores:', failedRows);
+
+    showToast(
+      `Carga completada: ${created} creados, ${updated} actualizados${failed ? `, ${failed} con error` : ''}`,
+      failed ? 'warning' : 'success',
+      5500
+    );
+
+    _loadSysInfo();
+  } finally {
+    _massTpImportInProgress = false;
+    if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga'; }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   CARGA MASIVA DE CUENTAS (Plan de Cuentas)
+══════════════════════════════════════════════════════════ */
+
+/** Descarga plantilla CSV de ejemplo para importación de cuentas. */
+function _downloadMassAccTemplate() {
+  const header = 'codigo,nombre,tipo,naturaleza,nivel,codigo_padre,requiere_tercero,activa';
+  const rows = [
+    '1,ACTIVO,1,debit,1,,No,Si',
+    '11,DISPONIBLE,1,debit,2,1,,Si',
+    '1105,CAJA,1,debit,3,11,,Si',
+    '110505,Caja General,1,debit,4,1105,No,Si',
+  ].join('\n');
+  const blob = new Blob([header + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'plantilla_plan_cuentas.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Normaliza una fila cruda a payload de cuenta. Retorna { ok, payload, error }. */
+function _massAccNormalizeRow(raw, accTypes) {
+  const get = (...keys) => {
+    for (const k of keys) { const v = raw[k]; if (v !== undefined && v !== '') return String(v).trim(); }
+    return '';
+  };
+  const code       = get('codigo', 'code', 'cod', 'cuenta');
+  const name       = get('nombre', 'name', 'descripcion', 'description');
+  const tipoRaw    = get('tipo', 'type', 'tipo_cuenta', 'account_type');
+  const natRaw     = get('naturaleza', 'nature', 'nat');
+  const levelRaw   = get('nivel', 'level');
+  const parentCode = get('codigo_padre', 'parent_code', 'padre', 'parent');
+  const thirdRaw   = get('requiere_tercero', 'requires_third_party', 'tercero', 'req_tercero');
+  const activeRaw  = get('activa', 'active', 'estado');
+
+  if (!code)             return { ok: false, error: 'Falta el código' };
+  if (!/^\d+$/.test(code)) return { ok: false, error: `Código "${code}" no es numérico` };
+  if (!name)             return { ok: false, error: 'Falta el nombre' };
+  if (!tipoRaw)          return { ok: false, error: 'Falta el tipo de cuenta' };
+
+  const tipoNorm = tipoRaw.toLowerCase().trim();
+  const accType  = accTypes.find(t =>
+    String(t.code).toLowerCase() === tipoNorm ||
+    t.name.toLowerCase().includes(tipoNorm)
+  );
+  if (!accType) return { ok: false, error: `Tipo "${tipoRaw}" no encontrado` };
+
+  const nature = /^(c|cr|credit|credito|crédito)$/i.test(natRaw) ? 'credit' : 'debit';
+  const level  = levelRaw ? Math.max(1, parseInt(levelRaw, 10) || 1) : code.length;
+  const requiresThird = /^(s[ií]|yes|1|true)$/i.test(thirdRaw);
+  const active = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
+
+  return {
+    ok: true,
+    payload: {
+      code, name,
+      account_type_id: accType.id,
+      nature, level,
+      parent_code: parentCode,
+      requires_third_party: requiresThird,
+      active,
+      maneja_cruce: false,
+      maneja_retenciones: false,
+      tipos_retencion: '',
+    },
+  };
+}
+
+/** Abre el modal de importación masiva de cuentas. */
+async function _openMassAccImportModal() {
+  if (!can('canWrite')) return showToast('No tienes permisos para importar cuentas', 'error');
+  if (_massAccImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+
+  const accTypes = await pb.listAll('account_types', { sort: 'code' });
+
+  openModal(
+    '<i class="fas fa-list-tree mr-2" style="color:#6D28D9"></i>Importar Plan de Cuentas',
+    `
+    <div class="mb-4">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx)</strong> con las cuentas.
+        Si el código ya existe la cuenta se <strong>actualiza</strong>; si no existe, se <strong>crea</strong>.
+      </p>
+      <div class="rounded-xl p-3 mb-3" style="background:#F5F3FF;border:1px solid #DDD6FE">
+        <p class="text-xs font-semibold mb-1" style="color:#6D28D9;text-transform:uppercase;letter-spacing:.05em">Columnas</p>
+        <div class="flex flex-wrap gap-2">
+          ${['codigo','nombre','tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#EDE9FE;color:#6D28D9">${c}</code>`).join('')}
+          ${['naturaleza','nivel','codigo_padre','requiere_tercero','activa'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+        </div>
+        <p class="text-xs mt-2" style="color:#6B7280">El campo <strong>tipo</strong> debe ser el código numérico del tipo (ej: <em>1</em>, <em>2</em>).</p>
+      </div>
+      <button class="btn btn-outline btn-sm mb-4" id="btn-mass-acc-dl-tmpl"><i class="fas fa-download mr-1"></i>Descargar plantilla CSV</button>
+      <div id="mass-acc-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#6D28D9;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 5 MB</p>
+        <input type="file" id="mass-acc-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+      <div id="mass-acc-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa — <span id="mass-acc-count"></span></p>
+          <button class="btn btn-outline btn-sm" id="btn-mass-acc-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:300px;overflow-y:auto">
+          <table class="data-table text-xs">
+            <thead><tr><th>#</th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Nat.</th><th>Nivel</th><th>Padre</th><th>Estado</th></tr></thead>
+            <tbody id="mass-acc-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="mass-acc-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary hidden" id="btn-mass-acc-run"><i class="fas fa-bolt mr-1"></i>Ejecutar importación</button>`,
+    true
+  );
+
+  let parsedRows = [];
+
+  const dropZone  = document.getElementById('mass-acc-drop');
+  const fileInput = document.getElementById('mass-acc-file-input');
+
+  document.getElementById('btn-mass-acc-dl-tmpl')?.addEventListener('click', _downloadMassAccTemplate);
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#6D28D9'; dropZone.style.background = '#F5F3FF';
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '#D1D5DB'; dropZone.style.background = '#FAFAFA';
+  });
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#D1D5DB'; dropZone.style.background = '#FAFAFA';
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processFile(file);
+  });
+  fileInput?.addEventListener('change', () => { if (fileInput.files?.[0]) processFile(fileInput.files[0]); });
+
+  document.getElementById('btn-mass-acc-clear')?.addEventListener('click', () => {
+    parsedRows = [];
+    document.getElementById('mass-acc-preview')?.classList.add('hidden');
+    document.getElementById('btn-mass-acc-run')?.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  });
+
+  async function processFile(file) {
+    if (file.size > 5 * 1024 * 1024) return showToast('El archivo supera 5 MB', 'error');
+    const ext = file.name.split('.').pop().toLowerCase();
+    let rawRows = [];
+    try {
+      if (ext === 'csv') {
+        rawRows = _massTxParseCsv(await file.text());
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        rawRows = _massTxParseExcel(await file.arrayBuffer());
+      } else {
+        return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+      }
+    } catch (e) {
+      return showToast('Error al leer el archivo: ' + e.message, 'error');
+    }
+    if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');
+    parsedRows = rawRows.map((r, i) => ({ idx: i + 1, ...(_massAccNormalizeRow(r, accTypes)) }));
+    renderPreview(parsedRows);
+  }
+
+  function renderPreview(rows) {
+    const tbody   = document.getElementById('mass-acc-preview-body');
+    const count   = document.getElementById('mass-acc-count');
+    const summary = document.getElementById('mass-acc-summary');
+    const runBtn  = document.getElementById('btn-mass-acc-run');
+    const preview = document.getElementById('mass-acc-preview');
+
+    const okRows  = rows.filter(r => r.ok);
+    const errRows = rows.filter(r => !r.ok);
+    count.textContent = `${rows.length} fila(s) — ${okRows.length} válidas, ${errRows.length} con error`;
+
+    tbody.innerHTML = rows.map((r, i) => {
+      if (r.ok) {
+        const p = r.payload;
+        const typeName = accTypes.find(t => t.id === p.account_type_id)?.name ?? '?';
+        return `<tr>
+          <td>${i + 1}</td>
+          <td><span class="font-semibold" style="color:#6D28D9">${esc(p.code)}</span></td>
+          <td>${esc(p.name)}</td>
+          <td class="text-xs">${esc(typeName)}</td>
+          <td>${p.nature === 'debit' ? 'Db' : 'Cr'}</td>
+          <td>${p.level}</td>
+          <td>${esc(p.parent_code || '—')}</td>
+          <td><span class="badge badge-green">OK</span></td>
+        </tr>`;
+      }
+      return `<tr style="background:#FFF7F7">
+        <td>${i + 1}</td>
+        <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error)}</td>
+        <td><span class="badge badge-red">Error</span></td>
+      </tr>`;
+    }).join('');
+
+    summary.innerHTML = errRows.length
+      ? `<span style="color:#EF4444"><i class="fas fa-triangle-exclamation mr-1"></i>${errRows.length} fila(s) con error serán omitidas.</span>`
+      : `<span style="color:#22C55E"><i class="fas fa-circle-check mr-1"></i>Todas las filas son válidas.</span>`;
+
+    preview.classList.remove('hidden');
+    if (okRows.length) runBtn?.classList.remove('hidden');
+    else runBtn?.classList.add('hidden');
+  }
+
+  document.getElementById('btn-mass-acc-run')?.addEventListener('click', async () => {
+    const okRows = parsedRows.filter(r => r.ok);
+    if (!okRows.length || _massAccImportInProgress) return;
+    _massAccImportInProgress = true;
+    const runBtn = document.getElementById('btn-mass-acc-run');
+    if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
+
+    let existingMap = {};
+    try {
+      const all = await pb.listAll('accounts', {});
+      all.forEach(a => { existingMap[a.code] = a.id; });
+    } catch (e) {
+      showToast('Error al cargar cuentas: ' + e.message, 'error');
+      _massAccImportInProgress = false;
+      if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar importación'; }
+      return;
+    }
+
+    let created = 0, updated = 0, errors = 0;
+    for (const row of okRows) {
+      try {
+        if (existingMap[row.payload.code]) {
+          await pb.update('accounts', existingMap[row.payload.code], row.payload);
+          updated++;
+        } else {
+          const rec = await pb.create('accounts', row.payload);
+          existingMap[row.payload.code] = rec.id;
+          created++;
+        }
+      } catch { errors++; }
+    }
+
+    await API.logAudit('IMPORT', 'Cuenta', 'bulk', `${created} creadas, ${updated} actualizadas, ${errors} errores`);
+    _loadSysInfo();
+    closeModal();
+    let msg = `Importación completada: ${created} creadas, ${updated} actualizadas.`;
+    if (errors) msg += ` ${errors} con error.`;
+    showToast(msg, errors ? 'warning' : 'success', 5000);
+    _massAccImportInProgress = false;
+  });
 }
 
 /* ══════════════════════════════════════════════════════════

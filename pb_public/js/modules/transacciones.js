@@ -618,7 +618,7 @@ async function saveTransaction() {
 }
 
 // ── Consulta de Transacciones ─────────────────────────────────────────────────
-let CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes: [], periods: [] };
+let CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes: [], periods: [], typeIdsByPeriod: {} };
 
 function calcPeriodRange(periodKey) {
   const [yStr, mStr] = String(periodKey || '').split('-');
@@ -645,6 +645,13 @@ function normalizeConsultaPeriods(raw) {
     .sort((a, b) => b.key.localeCompare(a.key));
 }
 
+function currentPeriodKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 async function renderConsultaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando transacciones...</div>`;
   try {
@@ -653,7 +660,7 @@ async function renderConsultaTx(c) {
       API.getSetting('periodos_cierre'),
     ]);
     const periods = normalizeConsultaPeriods(periodosRaw);
-    CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes, periods };
+    CTXQ_STATE = { page: 1, perPage: 50, total: 0, txTypes, periods, typeIdsByPeriod: {} };
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
@@ -697,7 +704,7 @@ async function renderConsultaTx(c) {
         <div id="ctxq-pagination" class="flex items-center justify-between px-4 py-3 border-t" style="border-color:#F0F0F0; display:none!important"></div>
       </div>`;
 
-    const updatePeriodOptions = () => {
+    const updatePeriodOptions = (preferredKey = '') => {
       const state = getSelectVal('txq-period-state');
       const periodEl = $('#txq-period');
       const typeEl = $('#txq-type');
@@ -706,16 +713,72 @@ async function renderConsultaTx(c) {
       const filtered = CTXQ_STATE.periods.filter(p => state === 'open' ? !p.closed : state === 'closed' ? p.closed : false);
       periodEl.innerHTML = `<option value="">Selecciona un período</option>${filtered.map(p => `<option value="${esc(p.key)}">${esc(p.key)} (${p.closed ? 'Cerrado' : 'Abierto'})</option>`).join('')}`;
       periodEl.disabled = !state;
-      periodEl.value = '';
+      if (!state || !filtered.length) {
+        periodEl.value = '';
+      } else {
+        const wanted = preferredKey && filtered.some(p => p.key === preferredKey)
+          ? preferredKey
+          : filtered[0].key;
+        periodEl.value = wanted;
+      }
       typeEl.value = '';
       typeEl.disabled = true;
     };
 
-    const updateTypeEnabled = () => {
+    const updateTypeOptionsForPeriod = async () => {
       const typeEl = $('#txq-type');
+      const periodKey = getSelectVal('txq-period');
       if (!typeEl) return;
-      typeEl.disabled = !getSelectVal('txq-period');
-      if (typeEl.disabled) typeEl.value = '';
+
+      if (!periodKey) {
+        typeEl.innerHTML = '<option value="">Selecciona tipo de transacción</option>';
+        typeEl.value = '';
+        typeEl.disabled = true;
+        return;
+      }
+
+      typeEl.innerHTML = '<option value="">Cargando tipos del período...</option>';
+      typeEl.disabled = true;
+
+      try {
+        let usedTypeIds = CTXQ_STATE.typeIdsByPeriod[periodKey];
+        if (!Array.isArray(usedTypeIds)) {
+          const range = calcPeriodRange(periodKey);
+          if (!range) {
+            typeEl.innerHTML = '<option value="">Período inválido</option>';
+            typeEl.value = '';
+            typeEl.disabled = true;
+            return;
+          }
+
+          const periodTx = await pb.listAll('transactions', {
+            filter: `date>="${range.from}" && date<"${range.next}"`,
+            fields: 'tx_type_id',
+          });
+          usedTypeIds = [...new Set(periodTx.map(t => t.tx_type_id).filter(Boolean))];
+          CTXQ_STATE.typeIdsByPeriod[periodKey] = usedTypeIds;
+        }
+
+        const usedTypes = CTXQ_STATE.txTypes
+          .filter(t => usedTypeIds.includes(t.id))
+          .sort((a, b) => `${a.prefix || ''}${a.name || ''}`.localeCompare(`${b.prefix || ''}${b.name || ''}`));
+
+        if (!usedTypes.length) {
+          typeEl.innerHTML = '<option value="">Sin tipos usados en este período</option>';
+          typeEl.value = '';
+          typeEl.disabled = true;
+          return;
+        }
+
+        typeEl.innerHTML = `<option value="">Selecciona tipo de transacción</option>${usedTypes.map(t => `<option value="${esc(t.id)}">${esc(t.prefix)} - ${esc(t.name)}</option>`).join('')}`;
+        typeEl.value = '';
+        typeEl.disabled = false;
+      } catch (err) {
+        typeEl.innerHTML = '<option value="">Error cargando tipos</option>';
+        typeEl.value = '';
+        typeEl.disabled = true;
+        showToast(err.message || 'No se pudieron cargar los tipos del período.', 'error');
+      }
     };
 
     const doSearch = () => {
@@ -727,22 +790,35 @@ async function renderConsultaTx(c) {
     };
     $('#btn-txq-search')?.addEventListener('click', doSearch);
     $('#txq')?.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
-    $('#txq-period-state')?.addEventListener('change', updatePeriodOptions);
-    $('#txq-period')?.addEventListener('change', updateTypeEnabled);
-    $('#btn-txq-clear')?.addEventListener('click', () => {
+    $('#txq-period-state')?.addEventListener('change', async () => {
+      updatePeriodOptions();
+      await updateTypeOptionsForPeriod();
+    });
+    $('#txq-period')?.addEventListener('change', async () => {
+      await updateTypeOptionsForPeriod();
+    });
+    $('#btn-txq-clear')?.addEventListener('click', async () => {
       ['txq'].forEach(id => setInputVal(id, ''));
-      ['txq-period-state','txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
-      const periodEl = $('#txq-period');
-      if (periodEl) {
-        periodEl.innerHTML = '<option value="">Selecciona un período</option>';
-        periodEl.disabled = true;
-      }
-      const typeEl = $('#txq-type');
-      if (typeEl) typeEl.disabled = true;
+      ['txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
+
+      const stateEl = $('#txq-period-state');
+      if (stateEl) stateEl.value = 'open';
+      updatePeriodOptions(currentPeriodKey());
+      await updateTypeOptionsForPeriod();
+
       $('#ctxq-results').innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-filter mr-2"></i>Selecciona estado de período, período y tipo para consultar.</div>';
       $('#ctxq-pagination').style.display = 'none';
     });
     $('#btn-export-tx')?.addEventListener('click', exportConsultaTx);
+
+    // Valores por defecto: períodos abiertos + período actual.
+    const openPeriods = periods.filter(p => !p.closed);
+    if (openPeriods.length) {
+      const stateEl = $('#txq-period-state');
+      if (stateEl) stateEl.value = 'open';
+      updatePeriodOptions(currentPeriodKey());
+      await updateTypeOptionsForPeriod();
+    }
 
     if (!periods.length) {
       showToast('No hay períodos configurados. Habilítalos en Cierre Contable para usar esta consulta.', 'warning');

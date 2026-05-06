@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title ContaCO v2.0 — Servidor LAN
+title GRAVY v2.0 — Servidor LAN
 
 echo.
 echo  ╔══════════════════════════════════════════╗
-echo  ║     ContaCO v2.0 — Modo Red Local       ║
+echo  ║     GRAVY v2.0 — Modo Red Local         ║
 echo  ╚══════════════════════════════════════════╝
 echo.
 
@@ -47,7 +47,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 netstat -ano | find ":8090" >nul 2>&1
 if %ERRORLEVEL%==0 (
-    echo  [AVISO] El puerto 8090 ya esta en uso. ContaCO ya puede estar corriendo.
+    echo  [AVISO] El puerto 8090 ya esta en uso. GRAVY ya puede estar corriendo.
     echo.
     echo  Acceso local:       http://localhost:8090
     echo  Acceso desde movil: http://%LOCAL_IP%:8090

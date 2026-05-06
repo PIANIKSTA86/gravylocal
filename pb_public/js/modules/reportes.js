@@ -123,6 +123,14 @@ function fmtSignedAmount(value) {
   return { text: fmt(n), isNegative: false };
 }
 
+function fmtSignedPlain(value) {
+  const n = Number(value || 0);
+  if (n < 0) {
+    return `-${fmt(Math.abs(n))}`;
+  }
+  return fmt(n);
+}
+
 function fmtPolarityAmount(value) {
   const n = Number(value || 0);
   const signed = fmtSignedAmount(n);
@@ -1522,11 +1530,11 @@ async function generateAuxiliaryRows() {
         const lineDocCruce = (l.cross_doc_ref || '').trim() || 'SIN_DOC';
         const openingKey = acc.maneja_cruce
           ? `doc|${l.account_id}|${lineThirdId || 'NO_TERCERO'}|${lineDocCruce}`
-          : `acc|${l.account_id}`;
+          : `acc|${l.account_id}|${lineThirdId || 'NO_TERCERO'}`;
         const prev  = openingByKey.get(openingKey) || 0;
         const debit  = Number(l.debit  || 0);
         const credit = Number(l.credit || 0);
-        const delta  = (acc.nature || 'debit') === 'debit' ? debit - credit : credit - debit;
+        const delta  = debit - credit;
         openingByKey.set(openingKey, prev + delta);
       }
     }
@@ -1585,13 +1593,11 @@ async function generateAuxiliaryRows() {
     for (const row of sortedForBalance) {
       const balanceKey = row.accountManejaCruce
         ? `doc|${row.accountId}|${row.thirdId}|${row.doc_cruce || 'SIN_DOC'}`
-        : `acc|${row.accountId}`;
+        : `acc|${row.accountId}|${row.thirdId}`;
       row.balanceKey = balanceKey;
       const opening = openingByKey.get(balanceKey) || 0;
       const moved = periodDeltaByKey.get(balanceKey) || 0;
-      const delta = row.accountNature === 'debit'
-        ? row.debito - row.credito
-        : row.credito - row.debito;
+      const delta = row.debito - row.credito;
       row.saldo_anterior = opening;
       row.saldo_actual = opening + moved + delta;
       periodDeltaByKey.set(balanceKey, moved + delta);
@@ -1754,13 +1760,13 @@ async function generateAuxiliaryRows() {
         return `<tr><td style="font-weight:700">${esc(r[firstKey] || '')}</td><td style="font-weight:700">${esc(r[secondKey] || '')}</td><td></td><td></td><td style="font-weight:700;padding-left:10px">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
       }
       if (r.kind === 'subtotal-secondary') {
-        return `<tr style="background:#F5F5F5;border-top:1px solid #D0D0D0"><td colspan="5" style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:700">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.saldo_actual || 0)}</td></tr>`;
+        return `<tr style="background:#F5F5F5;border-top:1px solid #D0D0D0"><td colspan="5" style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:700">${fmtSignedPlain(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:700">${fmtSignedPlain(r.saldo_actual || 0)}</td></tr>`;
       }
       if (r.kind === 'subtotal-primary') {
-        return `<tr style="background:#ECECEC;border-top:1px solid #B0B0B0;border-bottom:1px solid #B0B0B0"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.saldo_actual || 0)}</td></tr>`;
+        return `<tr style="background:#ECECEC;border-top:1px solid #B0B0B0;border-bottom:1px solid #B0B0B0"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmtSignedPlain(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmtSignedPlain(r.saldo_actual || 0)}</td></tr>`;
       }
       if (r.kind === 'grand-total') {
-        return `<tr style="background:#E2E2E2;border-top:2px solid #0D2137;border-bottom:2px solid #0D2137"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.saldo_actual || 0)}</td></tr>`;
+        return `<tr style="background:#E2E2E2;border-top:2px solid #0D2137;border-bottom:2px solid #0D2137"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmtSignedPlain(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmtSignedPlain(r.saldo_actual || 0)}</td></tr>`;
       }
       return `<tr>
         <td></td>
@@ -1769,10 +1775,10 @@ async function generateAuxiliaryRows() {
         <td style="font-family:monospace">${esc(r.cruce || '')}</td>
         <td>${esc(r.detalle || '')}</td>
         <td>${r.txId ? `<a href="#" onclick="event.preventDefault(); openAuxTxDetailInReport('${esc(r.txId)}');" style="color:#333;font-weight:700;text-decoration:underline">${esc(r.comprobante || '')}</a>` : esc(r.comprobante || '')}</td>
-        <td style="text-align:right">${fmt(r.saldo_anterior || 0)}</td>
+        <td style="text-align:right">${fmtSignedPlain(r.saldo_anterior || 0)}</td>
         <td style="text-align:right">${fmt(r.debito || 0)}</td>
         <td style="text-align:right">${fmt(r.credito || 0)}</td>
-        <td style="text-align:right">${fmt(r.saldo_actual || 0)}</td>
+        <td style="text-align:right">${fmtSignedPlain(r.saldo_actual || 0)}</td>
       </tr>`;
     }).join('');
 
@@ -1896,6 +1902,11 @@ async function generateAuxiliaryRows() {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
+        const fmtPdfSignedNum = (v) => {
+          const n = Number(v || 0);
+          const text = fmtPdfNum(Math.abs(n));
+          return n < 0 ? `-${text}` : text;
+        };
 
         const body = layoutRows.map((r) => {
           const row = [];
@@ -1904,9 +1915,9 @@ async function generateAuxiliaryRows() {
           } else if (r.kind === 'secondary') {
             row.push(r[firstKey] || '', r[secondKey] || '', '', '', r.detalle || '', '', '', '', '', '');
           } else if (r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') {
-            row.push('', '', '', '', r.detalle || '', '', fmtPdfNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfNum(r.saldo_actual || 0));
+            row.push('', '', '', '', r.detalle || '', '', fmtPdfSignedNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfSignedNum(r.saldo_actual || 0));
           } else {
-            row.push('', '', r.fecha || '', r.cruce || '', r.detalle || '', r.comprobante || '', fmtPdfNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfNum(r.saldo_actual || 0));
+            row.push('', '', r.fecha || '', r.cruce || '', r.detalle || '', r.comprobante || '', fmtPdfSignedNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfSignedNum(r.saldo_actual || 0));
           }
           row._rowKind = r.kind; // Marcar tipo de fila para styling
           return row;

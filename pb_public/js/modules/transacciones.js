@@ -77,7 +77,8 @@ async function renderNuevaTx(c) {
               </button>
             </div>
           </div>
-          <div class="form-group md:col-span-4"><label class="form-label">Descripción</label><input id="tx-desc" class="form-input" placeholder="Descripción del comprobante"></div>
+          <div class="form-group md:col-span-3"><label class="form-label">Descripción</label><input id="tx-desc" class="form-input" placeholder="Descripción del comprobante"></div>
+          <div class="form-group"><label class="form-label">Plazo (días)</label><input id="tx-payment-days" type="number" min="0" class="form-input" value="0" placeholder="0"></div>
         </div>
       </div>
 
@@ -97,8 +98,14 @@ async function renderNuevaTx(c) {
     $('#btn-add-line')?.addEventListener('click', () => addTxLine());
     $('#btn-save-tx')?.addEventListener('click', saveTransaction);
     $('#tx-third')?.addEventListener('change', () => {
+      const thirdId = getSelectVal('tx-third');
       const btn = $('#btn-cartera');
-      if (btn) btn.disabled = !getSelectVal('tx-third');
+      if (btn) btn.disabled = !thirdId;
+      const payDaysInput = $('#tx-payment-days');
+      if (payDaysInput && thirdId) {
+        const third = TX_STATE.terceros?.find(t => t.id === thirdId);
+        payDaysInput.value = Number(third?.payment_days || 0);
+      }
     });
     $('#btn-cartera')?.addEventListener('click', () => showCarteraModal(getSelectVal('tx-third')));
 
@@ -590,6 +597,7 @@ async function saveTransaction() {
       description: txDesc,
       third_party_id: thirdId || null,
       user_id: pb.currentUser?.id,
+      payment_days: parseInt(getInputVal('tx-payment-days'), 10) || 0,
       cross_enabled: validLines.some(l => TX_STATE.accountMap.get(l.account_id)?.maneja_cruce),
       status: 'active',
     }, validLines.map((l, i) => ({
@@ -1063,9 +1071,13 @@ async function editTx(id) {
             </button>
           </div>
         </div>
-        <div class="form-group md:col-span-4">
+        <div class="form-group md:col-span-3">
           <label class="form-label">Descripción</label>
           <input id="edit-tx-desc" class="form-input" value="${esc(tx.description || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Plazo (días)</label>
+          <input id="edit-tx-payment-days" type="number" min="0" class="form-input" value="${esc(tx.payment_days ?? 0)}" placeholder="0">
         </div>
       </div>
       <div class="border-t pt-4" style="border-color:#F0F0F0">
@@ -1275,6 +1287,7 @@ async function saveEditTx(txId) {
       date: txDate,
       description: txDesc,
       third_party_id: thirdId || null,
+      payment_days: parseInt(document.getElementById('edit-tx-payment-days')?.value, 10) || 0,
     }, validLines.map((l, idx) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,

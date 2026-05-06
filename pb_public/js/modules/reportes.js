@@ -139,6 +139,104 @@ function fmtPolarityAmount(value) {
   return { text: signed.text, color: '#6B7280' };
 }
 
+function getPdfCtorOrWarn() {
+  const jsPdfCtor = window.jspdf?.jsPDF;
+  if (typeof jsPdfCtor !== 'function') {
+    showToast('No se pudo inicializar el generador PDF.', 'error');
+    return null;
+  }
+  return jsPdfCtor;
+}
+
+function fmtPdfNum(value) {
+  return Number(value || 0).toLocaleString('es-CO', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtPdfSignedNum(value) {
+  const n = Number(value || 0);
+  const txt = fmtPdfNum(Math.abs(n));
+  return n < 0 ? `-${txt}` : txt;
+}
+
+async function getPdfHeaderContext() {
+  const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName] = await Promise.all([
+    API.getSetting('company_name').catch(() => ''),
+    API.getSetting('company_nit').catch(() => ''),
+    API.getSetting('company_address').catch(() => ''),
+    API.getSetting('company_city').catch(() => ''),
+    API.getSetting('company_country').catch(() => ''),
+    API.getSetting('software_name').catch(() => ''),
+  ]);
+
+  return {
+    companyName: String(companyName || 'EMPRESA').trim(),
+    companyNit: String(companyNit || 'N/A').trim(),
+    companyAddress: [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Direccion no configurada',
+    softwareName: String(softwareName || 'GRAVY v2.0').trim(),
+    userName: String(sessionStorage.getItem('user_name') || 'Usuario').trim(),
+    generatedAt: new Date().toLocaleString('es-CO'),
+  };
+}
+
+function drawPdfHeader(doc, headerCtx, cfg) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const left = 24;
+  const right = pageWidth - 24;
+  const title = String(cfg?.title || '').trim();
+  const subtitles = Array.isArray(cfg?.subtitles) ? cfg.subtitles : [];
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(13, 33, 55);
+  doc.text(headerCtx.companyName, left, 20);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`NIT: ${headerCtx.companyNit}`, left, 30);
+  doc.text(headerCtx.companyAddress, left, 40);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(13, 33, 55);
+  doc.text(title, pageWidth / 2, 20, { align: 'center' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  subtitles.slice(0, 3).forEach((line, idx) => {
+    doc.text(String(line || ''), pageWidth / 2, 30 + (idx * 10), { align: 'center' });
+  });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(headerCtx.softwareName, right, 20, { align: 'right' });
+  doc.text(`Usuario: ${headerCtx.userName}`, right, 30, { align: 'right' });
+  doc.text(`Impreso: ${headerCtx.generatedAt}`, right, 40, { align: 'right' });
+
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.5);
+  doc.line(left, 58, right, 58);
+
+  return {
+    marginLeft: left,
+    marginRight: right,
+    startY: 66,
+  };
+}
+
+function drawPdfFooter(doc, pageNumber) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(120, 120, 120);
+  doc.text('Reporte generado por GRAVY', 24, pageHeight - 10);
+  doc.text(`Pagina ${pageNumber}`, pageWidth - 24, pageHeight - 10, { align: 'right' });
+}
+
 function diffDays(fromDate, toDate) {
   const from = new Date(`${fromDate}T00:00:00`);
   const to = new Date(`${toDate}T00:00:00`);
@@ -147,10 +245,24 @@ function diffDays(fromDate, toDate) {
   return Math.max(0, Math.floor(ms / 86400000));
 }
 
-function agingBucket(days) {
-  if (days <= 30) return 'b0_30';
-  if (days <= 60) return 'b31_60';
-  if (days <= 90) return 'b61_90';
+function diffDaysSigned(fromDate, toDate) {
+  const from = new Date(`${fromDate}T00:00:00`);
+  const to = new Date(`${toDate}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0;
+  return Math.floor((to.getTime() - from.getTime()) / 86400000);
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + Number(n || 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function agingBucket(expiredDays) {
+  if (expiredDays < 0) return 'por_vencer';
+  if (expiredDays <= 30) return 'b0_30';
+  if (expiredDays <= 60) return 'b31_60';
+  if (expiredDays <= 90) return 'b61_90';
   return 'b90p';
 }
 
@@ -196,13 +308,17 @@ async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thi
         third_type: tpType || 'OTRO',
         doc_ref: ref,
         doc_date: tx.date,
+        payment_days: Number(tx.payment_days || 0),
         debit: 0,
         credit: 0,
       });
     }
 
     const doc = docs.get(key);
-    if (String(tx.date) < String(doc.doc_date)) doc.doc_date = tx.date;
+    if (String(tx.date) < String(doc.doc_date)) {
+      doc.doc_date = tx.date;
+      doc.payment_days = Number(tx.payment_days || 0);
+    }
     doc.debit += Number(line.debit || 0);
     doc.credit += Number(line.credit || 0);
   }
@@ -215,7 +331,9 @@ async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thi
       : Number(d.credit || 0) - Number(d.debit || 0);
     if (open <= EPS) return;
     const days = diffDays(d.doc_date, asOfDate);
-    items.push({ ...d, open, days, bucket: agingBucket(days) });
+    const due_date = addDays(d.doc_date, d.payment_days || 0);
+    const expired_days = diffDaysSigned(due_date, asOfDate);
+    items.push({ ...d, open, days, due_date, expired_days, bucket: agingBucket(expired_days) });
   });
 
   items.sort((a, b) => {
@@ -239,7 +357,7 @@ async function renderPortfolioBalances(mode) {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">${esc(title)}</h4>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div class="form-group">
           <label class="form-label">Corte</label>
           <input id="bal-cutoff" type="date" class="form-input" value="${todayStr()}">
@@ -258,6 +376,9 @@ async function renderPortfolioBalances(mode) {
           <button class="btn btn-primary w-full" id="btn-gen-bal"><i class="fas fa-filter"></i> Generar</button>
         </div>
         <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-bal" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
+        <div class="form-group flex items-end">
           ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-bal" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
         </div>
       </div>
@@ -268,6 +389,7 @@ async function renderPortfolioBalances(mode) {
     </div>`;
 
   let lastExportRows = [];
+  let lastPdfRows = [];
 
   const generate = async () => {
     const results = $('#bal-results');
@@ -285,7 +407,9 @@ async function renderPortfolioBalances(mode) {
       if (!docs.length) {
         results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</div>';
         lastExportRows = [];
+        lastPdfRows = [];
         if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = true;
+        if ($('#btn-pdf-bal')) $('#btn-pdf-bal').disabled = true;
         return;
       }
 
@@ -325,18 +449,17 @@ async function renderPortfolioBalances(mode) {
         </div>
         <div class="overflow-x-auto" style="max-height:460px">
           <table class="data-table">
-            <thead><tr><th>Tercero</th><th>Tipo</th><th>Cuenta</th><th># Docs</th><th>Antigüedad máx. (días)</th><th>Saldo abierto</th></tr></thead>
+            <thead><tr><th>Tercero</th><th>Cuenta</th><th># Docs</th><th>Antigüedad máx. (días)</th><th>Saldo abierto</th></tr></thead>
             <tbody>
               ${rows.map(r => `<tr>
                 <td>${esc(r.third_doc ? `${r.third_doc} - ${r.third_name}` : r.third_name)}</td>
-                <td>${esc(r.third_type || 'OTRO')}</td>
                 <td>${esc(r.account_code)} - ${esc(r.account_name)}</td>
                 <td>${fmtN(r.docs_count)}</td>
                 <td>${fmtN(r.max_days)}</td>
                 <td class="font-semibold" style="color:${isCxc ? '#065F46' : '#1E3A8A'}">${fmt(r.open_total)}</td>
               </tr>`).join('')}
             </tbody>
-            <tfoot><tr><td colspan="5" class="font-bold">Total saldo abierto</td><td class="font-bold">${fmt(totalOpen)}</td></tr></tfoot>
+            <tfoot><tr><td colspan="4" class="font-bold">Total saldo abierto</td><td class="font-bold">${fmt(totalOpen)}</td></tr></tfoot>
           </table>
         </div>`;
 
@@ -350,12 +473,16 @@ async function renderPortfolioBalances(mode) {
         antiguedad_max_dias: r.max_days,
         saldo_abierto: r.open_total,
       }));
+      lastPdfRows = rows.map(r => ({ ...r }));
 
       if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = !lastExportRows.length;
+      if ($('#btn-pdf-bal')) $('#btn-pdf-bal').disabled = !lastPdfRows.length;
     } catch (err) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
       lastExportRows = [];
+      lastPdfRows = [];
       if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = true;
+      if ($('#btn-pdf-bal')) $('#btn-pdf-bal').disabled = true;
     }
   };
 
@@ -365,7 +492,6 @@ async function renderPortfolioBalances(mode) {
     exportToExcel(lastExportRows, [
       { key: 'tercero', label: 'Tercero' },
       { key: 'documento', label: 'Documento' },
-      { key: 'tipo_tercero', label: 'Tipo tercero' },
       { key: 'cuenta_codigo', label: 'Código cuenta' },
       { key: 'cuenta_nombre', label: 'Nombre cuenta' },
       { key: 'documentos', label: '# Documentos' },
@@ -373,16 +499,83 @@ async function renderPortfolioBalances(mode) {
       { key: 'saldo_abierto', label: 'Saldo abierto' },
     ], mode === 'cxc' ? 'saldos_cuentas_por_cobrar' : 'saldos_cuentas_por_pagar');
   });
+  $('#btn-pdf-bal')?.addEventListener('click', async () => {
+    if (!lastPdfRows.length) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const asOfDate = getInputVal('bal-cutoff') || todayStr();
+      const thirdType = getSelectVal('bal-third-type') || 'TODOS';
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const header = drawPdfHeader(doc, headerCtx, {
+        title,
+        subtitles: [`Corte: ${asOfDate}`, `Tipo de tercero: ${thirdType}`],
+      });
+
+      const totalOpen = lastPdfRows.reduce((s, r) => s + Number(r.open_total || 0), 0);
+      const totalDocs = lastPdfRows.reduce((s, r) => s + Number(r.docs_count || 0), 0);
+      const body = lastPdfRows.map(r => [
+        r.third_doc ? `${r.third_doc} - ${r.third_name}` : r.third_name,
+        `${r.account_code} - ${r.account_name}`.trim(),
+        fmtN(r.docs_count),
+        fmtN(r.max_days),
+        fmtPdfNum(r.open_total || 0),
+      ]);
+
+      body.push(['TOTAL', '', fmtN(totalDocs), '', fmtPdfNum(totalOpen)]);
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [['Tercero', 'Cuenta', '# Docs', 'Antiguedad max. (dias)', 'Saldo abierto']],
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.4, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.3, lineWidth: { bottom: 0.25 } },
+        columnStyles: {
+          0: { cellWidth: 170 },
+          1: { cellWidth: 195 },
+          2: { cellWidth: 56, halign: 'right' },
+          3: { cellWidth: 63, halign: 'right' },
+          4: { cellWidth: 80, halign: 'right' },
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const isTotal = data.row.index === body.length - 1;
+          if (isTotal) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`${mode === 'cxc' ? 'saldos_cuentas_por_cobrar' : 'saldos_cuentas_por_pagar'}_${asOfDate}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
 }
 
 async function renderAgingPortfolio() {
   const view = getReportViewHost();
   if (!view) return;
 
+  const { accounts } = await ensureAccountsSaldos();
+  const cruceAccounts = accounts.filter(a => a.maneja_cruce).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  const accountOptions = cruceAccounts.map(a =>
+    `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`
+  ).join('');
+
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
-      <h4 class="font-bold mb-3" style="color:#0D2137">Cartera por Edades (0-30-60-90+)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Cartera por Edades (Por Vencer / 0-30-60-90+)</h4>
+      <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
         <div class="form-group">
           <label class="form-label">Corte</label>
           <input id="age-cutoff" type="date" class="form-input" value="${todayStr()}">
@@ -404,8 +597,18 @@ async function renderAgingPortfolio() {
             <option value="OTRO">Otro</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Cuenta</label>
+          <select id="age-account" class="form-input">
+            <option value="">Todas las cuentas</option>
+            ${accountOptions}
+          </select>
+        </div>
         <div class="form-group flex items-end">
           <button class="btn btn-primary w-full" id="btn-gen-aging"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-aging" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
           ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-aging" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
@@ -428,6 +631,8 @@ async function renderAgingPortfolio() {
   $('#age-mode')?.addEventListener('change', syncThirdTypeByMode);
 
   let lastExportRows = [];
+  let lastPdfRows = [];
+  let lastPdfMeta = {};
 
   const generate = async () => {
     const results = $('#aging-results');
@@ -436,72 +641,113 @@ async function renderAgingPortfolio() {
     const asOfDate = getInputVal('age-cutoff');
     const mode = getSelectVal('age-mode') || 'cxc';
     const thirdType = getSelectVal('age-third-type');
+    const accountId = getSelectVal('age-account');
     if (!asOfDate) return showToast('Selecciona la fecha de corte.', 'warning');
 
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando cartera por edades...</div>';
 
     try {
-      const docs = await buildOpenPortfolioDocs({ mode, asOfDate, thirdType });
+      const allDocs = await buildOpenPortfolioDocs({ mode, asOfDate, thirdType });
+      const docs = accountId ? allDocs.filter(d => d.account_id === accountId) : allDocs;
+
       if (!docs.length) {
         results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</div>';
-        lastExportRows = [];
+        lastExportRows = []; lastPdfRows = [];
         if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = true;
+        if ($('#btn-pdf-aging')) $('#btn-pdf-aging').disabled = true;
         return;
       }
+
+      const selectedAccount = accountId ? cruceAccounts.find(a => a.id === accountId) : null;
+      const accountLabel = selectedAccount
+        ? `${selectedAccount.code} - ${selectedAccount.name}`
+        : 'Todas las cuentas';
 
       const rows = docs.map(d => ({
         tercero: d.third_name,
         documento_tercero: d.third_doc,
+        cuenta_id: d.account_id,
         cuenta: `${d.account_code} - ${d.account_name}`.trim(),
+        cuenta_code: d.account_code,
         documento_cruce: d.doc_ref,
         fecha_documento: d.doc_date,
-        edad_dias: Number(d.days || 0),
-        de_0_a_30: d.bucket === 'b0_30' ? Number(d.open || 0) : 0,
-        de_31_a_60: d.bucket === 'b31_60' ? Number(d.open || 0) : 0,
-        de_61_a_90: d.bucket === 'b61_90' ? Number(d.open || 0) : 0,
-        mayor_a_90: d.bucket === 'b90p' ? Number(d.open || 0) : 0,
+        plazo_dias: Number(d.payment_days || 0),
+        vencimiento: d.due_date,
+        expired_days: Number(d.expired_days || 0),
+        por_vencer:  d.bucket === 'por_vencer' ? Number(d.open || 0) : 0,
+        de_0_a_30:   d.bucket === 'b0_30'      ? Number(d.open || 0) : 0,
+        de_31_a_60:  d.bucket === 'b31_60'     ? Number(d.open || 0) : 0,
+        de_61_a_90:  d.bucket === 'b61_90'     ? Number(d.open || 0) : 0,
+        mayor_a_90:  d.bucket === 'b90p'       ? Number(d.open || 0) : 0,
         total: Number(d.open || 0),
       })).sort((a, b) => {
-        const aKey = `${a.tercero}|${a.cuenta}|${a.fecha_documento}|${a.documento_cruce}`;
-        const bKey = `${b.tercero}|${b.cuenta}|${b.fecha_documento}|${b.documento_cruce}`;
+        const aKey = `${a.cuenta_code}|${a.tercero}|${a.fecha_documento}|${a.documento_cruce}`;
+        const bKey = `${b.cuenta_code}|${b.tercero}|${b.fecha_documento}|${b.documento_cruce}`;
         return aKey.localeCompare(bKey);
       });
 
       const totals = rows.reduce((acc, r) => {
-        acc.de_0_a_30 += r.de_0_a_30;
-        acc.de_31_a_60 += r.de_31_a_60;
-        acc.de_61_a_90 += r.de_61_a_90;
-        acc.mayor_a_90 += r.mayor_a_90;
-        acc.total += r.total;
+        acc.por_vencer  += r.por_vencer;
+        acc.de_0_a_30   += r.de_0_a_30;
+        acc.de_31_a_60  += r.de_31_a_60;
+        acc.de_61_a_90  += r.de_61_a_90;
+        acc.mayor_a_90  += r.mayor_a_90;
+        acc.total       += r.total;
         return acc;
-      }, { de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
+      }, { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
 
       const carteraLabel = mode === 'cxc' ? 'Clientes (CxC)' : 'Proveedores (CxP)';
 
+      // Group by account for section headers in table
+      const byAccount = new Map();
+      for (const r of rows) {
+        if (!byAccount.has(r.cuenta)) byAccount.set(r.cuenta, []);
+        byAccount.get(r.cuenta).push(r);
+      }
+
+      const bodyRowsHtml = [];
+      for (const [cuenta, cuentaRows] of byAccount) {
+        if (!accountId) {
+          bodyRowsHtml.push(`<tr style="background:#F0F4F8">
+            <td colspan="11" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
+              <i class="fas fa-bookmark mr-1" style="color:#E87D1E"></i>${esc(cuenta)}
+            </td>
+          </tr>`);
+        }
+        for (const r of cuentaRows) {
+          const expColor = r.expired_days < 0 ? '#059669' : r.expired_days <= 30 ? '#D97706' : '#EF4444';
+          bodyRowsHtml.push(`<tr>
+            <td>${esc(r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero)}</td>
+            <td><span class="font-mono">${esc(r.documento_cruce)}</span></td>
+            <td>${esc(r.fecha_documento)}</td>
+            <td style="text-align:right">${fmtN(r.plazo_dias)}</td>
+            <td>${esc(r.vencimiento)}</td>
+            <td style="color:${expColor};font-weight:${r.por_vencer > 0 ? '600' : '400'}">${fmt(r.por_vencer)}</td>
+            <td>${fmt(r.de_0_a_30)}</td>
+            <td>${fmt(r.de_31_a_60)}</td>
+            <td>${fmt(r.de_61_a_90)}</td>
+            <td>${fmt(r.mayor_a_90)}</td>
+            <td class="font-semibold" style="color:#0D2137">${fmt(r.total)}</td>
+          </tr>`);
+        }
+      }
+
       results.innerHTML = `
         <div class="p-4 border-b" style="border-color:#F3F4F6">
-          <p class="text-sm" style="color:#6B7280">Cartera: <strong>${esc(carteraLabel)}</strong> · Documentos: <strong>${fmtN(rows.length)}</strong> · Total cartera: <strong>${fmt(totals.total)}</strong></p>
+          <p class="text-sm" style="color:#6B7280">Cartera: <strong>${esc(carteraLabel)}</strong> · Cuenta: <strong>${esc(accountLabel)}</strong> · Documentos: <strong>${fmtN(rows.length)}</strong> · Total: <strong>${fmt(totals.total)}</strong></p>
         </div>
-        <div class="overflow-x-auto" style="max-height:460px">
+        <div class="overflow-x-auto" style="max-height:480px">
           <table class="data-table">
-            <thead><tr><th>Tercero</th><th>Cuenta</th><th>Doc. Cruce</th><th>Fecha Doc.</th><th>Edad (días)</th><th>0-30 días</th><th>31-60 días</th><th>61-90 días</th><th>Más de 90</th><th>Total</th></tr></thead>
-            <tbody>
-              ${rows.map(r => `<tr>
-                <td>${esc(r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero)}</td>
-                <td>${esc(r.cuenta)}</td>
-                <td><span class="font-mono">${esc(r.documento_cruce)}</span></td>
-                <td>${esc(r.fecha_documento)}</td>
-                <td>${fmtN(r.edad_dias)}</td>
-                <td>${fmt(r.de_0_a_30)}</td>
-                <td>${fmt(r.de_31_a_60)}</td>
-                <td>${fmt(r.de_61_a_90)}</td>
-                <td>${fmt(r.mayor_a_90)}</td>
-                <td class="font-semibold" style="color:#0D2137">${fmt(r.total)}</td>
-              </tr>`).join('')}
-            </tbody>
+            <thead><tr>
+              <th>Tercero</th><th>Doc. Cruce</th><th>Fecha Doc.</th>
+              <th style="text-align:right">Plazo</th><th>Vencimiento</th>
+              <th>Por Vencer</th><th>0-30 días</th><th>31-60 días</th><th>61-90 días</th><th>Más de 90</th><th>Total</th>
+            </tr></thead>
+            <tbody>${bodyRowsHtml.join('')}</tbody>
             <tfoot>
               <tr>
                 <td colspan="5" class="font-bold">Total general</td>
+                <td class="font-bold" style="color:#059669">${fmt(totals.por_vencer)}</td>
                 <td class="font-bold">${fmt(totals.de_0_a_30)}</td>
                 <td class="font-bold">${fmt(totals.de_31_a_60)}</td>
                 <td class="font-bold">${fmt(totals.de_61_a_90)}</td>
@@ -512,44 +758,146 @@ async function renderAgingPortfolio() {
           </table>
         </div>`;
 
-      lastExportRows = rows.map(r => ({
-        tercero: r.tercero,
-        documento_tercero: r.documento_tercero,
-        cuenta: r.cuenta,
-        documento_cruce: r.documento_cruce,
-        fecha_documento: r.fecha_documento,
-        edad_dias: r.edad_dias,
-        de_0_a_30: r.de_0_a_30,
-        de_31_a_60: r.de_31_a_60,
-        de_61_a_90: r.de_61_a_90,
-        mayor_a_90: r.mayor_a_90,
-        total: r.total,
-      }));
+      lastExportRows = rows.map(r => ({ ...r }));
+      lastPdfRows = rows.map(r => ({ ...r }));
+      lastPdfMeta = { asOfDate, mode, thirdType, accountLabel, carteraLabel };
 
       if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = !lastExportRows.length;
+      if ($('#btn-pdf-aging')) $('#btn-pdf-aging').disabled = !lastPdfRows.length;
     } catch (err) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-      lastExportRows = [];
+      lastExportRows = []; lastPdfRows = [];
       if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = true;
+      if ($('#btn-pdf-aging')) $('#btn-pdf-aging').disabled = true;
     }
   };
 
   $('#btn-gen-aging')?.addEventListener('click', generate);
+
   $('#btn-exp-aging')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     exportToExcel(lastExportRows, [
-      { key: 'tercero', label: 'Tercero' },
+      { key: 'tercero',           label: 'Tercero' },
       { key: 'documento_tercero', label: 'Documento tercero' },
-      { key: 'cuenta', label: 'Cuenta' },
-      { key: 'documento_cruce', label: 'Doc. Cruce' },
-      { key: 'fecha_documento', label: 'Fecha documento' },
-      { key: 'edad_dias', label: 'Edad (días)' },
-      { key: 'de_0_a_30', label: '0-30 días' },
-      { key: 'de_31_a_60', label: '31-60 días' },
-      { key: 'de_61_a_90', label: '61-90 días' },
-      { key: 'mayor_a_90', label: 'Más de 90 días' },
-      { key: 'total', label: 'Total' },
-    ], `cartera_por_edades_${getSelectVal('age-mode')}`);
+      { key: 'cuenta',            label: 'Cuenta' },
+      { key: 'documento_cruce',   label: 'Doc. Cruce' },
+      { key: 'fecha_documento',   label: 'Fecha documento' },
+      { key: 'plazo_dias',        label: 'Plazo (días)' },
+      { key: 'vencimiento',       label: 'Vencimiento' },
+      { key: 'por_vencer',        label: 'Por Vencer' },
+      { key: 'de_0_a_30',         label: '0-30 días' },
+      { key: 'de_31_a_60',        label: '31-60 días' },
+      { key: 'de_61_a_90',        label: '61-90 días' },
+      { key: 'mayor_a_90',        label: 'Más de 90 días' },
+      { key: 'total',             label: 'Total' },
+    ], `cartera_por_edades_${lastPdfMeta.mode || 'cxc'}`);
+  });
+
+  $('#btn-pdf-aging')?.addEventListener('click', async () => {
+    if (!lastPdfRows.length) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const { asOfDate, thirdType, accountLabel, carteraLabel } = lastPdfMeta;
+
+      const totals = lastPdfRows.reduce((acc, r) => {
+        acc.por_vencer  += Number(r.por_vencer  || 0);
+        acc.de_0_a_30   += Number(r.de_0_a_30   || 0);
+        acc.de_31_a_60  += Number(r.de_31_a_60  || 0);
+        acc.de_61_a_90  += Number(r.de_61_a_90  || 0);
+        acc.mayor_a_90  += Number(r.mayor_a_90  || 0);
+        acc.total       += Number(r.total        || 0);
+        return acc;
+      }, { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
+
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Cartera por Edades',
+        subtitles: [
+          `Corte: ${asOfDate}`,
+          `Cartera: ${carteraLabel}`,
+          `Cuenta: ${accountLabel}`,
+          `Tipo de tercero: ${thirdType || 'Todos'}`,
+        ],
+      });
+
+      // Build body — group by account with section header rows
+      const body = [];
+      const accountGroups = new Map();
+      for (const r of lastPdfRows) {
+        if (!accountGroups.has(r.cuenta)) accountGroups.set(r.cuenta, []);
+        accountGroups.get(r.cuenta).push(r);
+      }
+
+      const accountSectionIndices = new Set();
+      let rowIdx = 0;
+      const hasMultipleAccounts = accountGroups.size > 1;
+
+      for (const [cuenta, cuentaRows] of accountGroups) {
+        if (hasMultipleAccounts) {
+          body.push([{ content: cuenta, colSpan: 11, styles: { fontStyle: 'bold', fillColor: [235, 240, 248], textColor: [13, 33, 55] } }]);
+          accountSectionIndices.add(rowIdx++);
+        }
+        for (const r of cuentaRows) {
+          body.push([
+            r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero,
+            r.documento_cruce,
+            r.fecha_documento,
+            String(r.plazo_dias || 0),
+            r.vencimiento,
+            fmtPdfNum(r.por_vencer),
+            fmtPdfNum(r.de_0_a_30),
+            fmtPdfNum(r.de_31_a_60),
+            fmtPdfNum(r.de_61_a_90),
+            fmtPdfNum(r.mayor_a_90),
+            fmtPdfNum(r.total),
+          ]);
+          rowIdx++;
+        }
+      }
+      body.push(['TOTAL', '', '', '', '', fmtPdfNum(totals.por_vencer), fmtPdfNum(totals.de_0_a_30), fmtPdfNum(totals.de_31_a_60), fmtPdfNum(totals.de_61_a_90), fmtPdfNum(totals.mayor_a_90), fmtPdfNum(totals.total)]);
+      const totalRowIdx = rowIdx;
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [['Tercero', 'Cruce', 'Fecha', 'Plazo', 'Vencimiento', 'Por Vencer', '0-30', '31-60', '61-90', '>90', 'Total']],
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+        columnStyles: {
+          0:  { cellWidth: 116 },
+          1:  { cellWidth: 48 },
+          2:  { cellWidth: 46 },
+          3:  { cellWidth: 28, halign: 'right' },
+          4:  { cellWidth: 50 },
+          5:  { cellWidth: 48, halign: 'right' },
+          6:  { cellWidth: 42, halign: 'right' },
+          7:  { cellWidth: 42, halign: 'right' },
+          8:  { cellWidth: 42, halign: 'right' },
+          9:  { cellWidth: 42, halign: 'right' },
+          10: { cellWidth: 50, halign: 'right' },
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          if (data.row.index === totalRowIdx) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`cartera_por_edades_${lastPdfMeta.mode || 'cxc'}_${asOfDate}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
   });
 }
 
@@ -564,7 +912,7 @@ async function renderTrialBalance() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Balance de Prueba (Detallado)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-8 gap-3">
         <div class="form-group">
           <label class="form-label">Desde</label>
           <input id="trial-from" type="date" class="form-input" value="${fromDefault}">
@@ -601,6 +949,9 @@ async function renderTrialBalance() {
           <button class="btn btn-primary w-full" id="btn-gen-trial"><i class="fas fa-filter"></i> Generar</button>
         </div>
         <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-trial" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
+        <div class="form-group flex items-end">
           ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-trial" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
         </div>
       </div>
@@ -610,6 +961,7 @@ async function renderTrialBalance() {
     </div>`;
 
   let lastExportRows = [];
+  let lastTrialPdf = null;
 
   const generate = async () => {
     const results = $('#trial-results');
@@ -813,6 +1165,16 @@ async function renderTrialBalance() {
       }));
 
       if ($('#btn-exp-trial')) $('#btn-exp-trial').disabled = !displayRows.length;
+      if ($('#btn-pdf-trial')) $('#btn-pdf-trial').disabled = !displayRows.length;
+
+      lastTrialPdf = {
+        fromDate,
+        toDate,
+        includeThird,
+        includeSignatures,
+        displayRows: displayRows.map(r => ({ ...r })),
+        totals: { ...totals },
+      };
 
       let signaturesHtml = '';
       if (includeSignatures) {
@@ -889,6 +1251,8 @@ async function renderTrialBalance() {
         ${signaturesHtml}`;
     } catch (err) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastTrialPdf = null;
+      if ($('#btn-pdf-trial')) $('#btn-pdf-trial').disabled = true;
     }
   };
 
@@ -906,6 +1270,163 @@ async function renderTrialBalance() {
       { key: 'saldo_actual', label: 'BALANCE ACTUAL' },
     ], `balance_prueba_n${getSelectVal('trial-level')}_${getInputVal('trial-from')}_${getInputVal('trial-to')}`);
   });
+  $('#btn-pdf-trial')?.addEventListener('click', async () => {
+    if (!lastTrialPdf || !lastTrialPdf.displayRows.length) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Balance de Prueba (Detallado)',
+        subtitles: [`Desde: ${lastTrialPdf.fromDate}`, `Hasta: ${lastTrialPdf.toDate}`, `Detalle por tercero: ${lastTrialPdf.includeThird ? 'Si' : 'No'}`],
+      });
+
+      const cols = lastTrialPdf.includeThird
+        ? ['Cuenta', 'Descripcion', 'Tercero', 'Saldo Anterior', 'Mov. Debito', 'Mov. Credito', 'Saldo Actual']
+        : ['Cuenta', 'Descripcion', 'Saldo Anterior', 'Mov. Debito', 'Mov. Credito', 'Saldo Actual'];
+
+      const body = lastTrialPdf.displayRows.map(r => {
+        const label = `${'  '.repeat(Number(r.depth || 0))}${r.account || ''}`;
+        if (lastTrialPdf.includeThird) {
+          return [
+            r.code || '',
+            label,
+            r.thirdName || '',
+            fmtPdfSignedNum(r.prev || 0),
+            fmtPdfNum(r.debit || 0),
+            fmtPdfNum(r.credit || 0),
+            fmtPdfSignedNum(r.current || 0),
+            r.isGroup ? 'group' : (r.isThirdDetail ? 'third' : 'detail'),
+          ];
+        }
+        return [
+          r.code || '',
+          label,
+          fmtPdfSignedNum(r.prev || 0),
+          fmtPdfNum(r.debit || 0),
+          fmtPdfNum(r.credit || 0),
+          fmtPdfSignedNum(r.current || 0),
+          r.isGroup ? 'group' : 'detail',
+        ];
+      });
+
+      if (lastTrialPdf.includeThird) {
+        body.push([
+          'TOTAL',
+          '',
+          '',
+          fmtPdfSignedNum(lastTrialPdf.totals.prev || 0),
+          fmtPdfNum(lastTrialPdf.totals.debit || 0),
+          fmtPdfNum(lastTrialPdf.totals.credit || 0),
+          fmtPdfSignedNum(lastTrialPdf.totals.current || 0),
+          'total',
+        ]);
+      } else {
+        body.push([
+          'TOTAL',
+          '',
+          fmtPdfSignedNum(lastTrialPdf.totals.prev || 0),
+          fmtPdfNum(lastTrialPdf.totals.debit || 0),
+          fmtPdfNum(lastTrialPdf.totals.credit || 0),
+          fmtPdfSignedNum(lastTrialPdf.totals.current || 0),
+          'total',
+        ]);
+      }
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [cols],
+        body: body.map(r => r.slice(0, cols.length)),
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.5, textColor: [55, 55, 55], cellPadding: 2.7, lineWidth: 0 },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        columnStyles: lastTrialPdf.includeThird
+          ? {
+            0: { cellWidth: 62 },
+            1: { cellWidth: 242 },
+            2: { cellWidth: 140 },
+            3: { cellWidth: 80, halign: 'right' },
+            4: { cellWidth: 80, halign: 'right' },
+            5: { cellWidth: 80, halign: 'right' },
+            6: { cellWidth: 80, halign: 'right' },
+          }
+          : {
+            0: { cellWidth: 70 },
+            1: { cellWidth: 346 },
+            2: { cellWidth: 88, halign: 'right' },
+            3: { cellWidth: 88, halign: 'right' },
+            4: { cellWidth: 88, halign: 'right' },
+            5: { cellWidth: 88, halign: 'right' },
+          },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const marker = body[data.row.index]?.[cols.length];
+          if (marker === 'group') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = [13, 33, 55];
+          } else if (marker === 'third') {
+            data.cell.styles.fillColor = [248, 250, 252];
+          } else if (marker === 'total') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      if (lastTrialPdf.includeSignatures) {
+        const [repName, repTitle, contName, contTitle, contLicense, revName, revTitle, revLicense] = await Promise.all([
+          getSettingFirst(['representante_legal_name', 'legal_representative_name', 'rep_legal_name']),
+          getSettingFirst(['representante_legal_title', 'legal_representative_title', 'rep_legal_title'], 'Representante Legal'),
+          getSettingFirst(['contador_name', 'accountant_name']),
+          getSettingFirst(['contador_title', 'accountant_title'], 'Contador'),
+          getSettingFirst(['contador_license', 'accountant_license']),
+          getSettingFirst(['revisor_fiscal_name', 'fiscal_reviewer_name']),
+          getSettingFirst(['revisor_fiscal_title', 'fiscal_reviewer_title'], 'Revisor Fiscal'),
+          getSettingFirst(['revisor_fiscal_license', 'fiscal_reviewer_license']),
+        ]);
+
+        const finalY = (doc.lastAutoTable?.finalY || header.startY) + 34;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        let signY = finalY;
+        if (signY > pageHeight - 90) {
+          doc.addPage();
+          signY = 80;
+        }
+        const columns = [pageWidth * 0.18, pageWidth * 0.50, pageWidth * 0.82];
+        const signs = [
+          { name: repName || '', title: repTitle || '', extra: '' },
+          { name: contName || '', title: contTitle || '', extra: contLicense || '' },
+          { name: revName || '', title: revTitle || '', extra: revLicense || '' },
+        ];
+
+        doc.setDrawColor(70, 70, 70);
+        doc.setTextColor(60, 60, 60);
+        signs.forEach((s, idx) => {
+          const x = columns[idx];
+          doc.line(x - 75, signY, x + 75, signY);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.text(String(s.name || '________________________'), x, signY + 12, { align: 'center' });
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.text(String(s.title || ''), x, signY + 22, { align: 'center' });
+          if (s.extra) doc.text(String(s.extra), x, signY + 31, { align: 'center' });
+        });
+      }
+
+      doc.save(`balance_prueba_${lastTrialPdf.fromDate}_${lastTrialPdf.toDate}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
 }
 
 function signatureBlock(name, title, extraLine = '') {
@@ -918,42 +1439,437 @@ function signatureBlock(name, title, extraLine = '') {
     </div>`;
 }
 
+function monthRangeToDates(fromMonth, toMonth) {
+  const normalize = (monthStr, end = false) => {
+    const year = Number(String(monthStr || '').slice(0, 4));
+    const month = Number(String(monthStr || '').slice(5, 7));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return '';
+    if (!end) return `${String(year)}-${String(month).padStart(2, '0')}-01`;
+    const dt = new Date(year, month, 0);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  };
+
+  const fromDate = normalize(fromMonth, false);
+  const toDate = normalize(toMonth, true);
+  if (!fromDate || !toDate) return null;
+  if (String(fromDate) > String(toDate)) return null;
+  return { fromDate, toDate };
+}
+
 async function renderIncomeStatement() {
   const view = getReportViewHost();
   if (!view) return;
-  view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Estado de Resultados...</div>';
+  const currentMonthDefault = todayStr().slice(0, 7);
+  const y = Number(currentMonthDefault.slice(0, 4));
+  const m = Number(currentMonthDefault.slice(5, 7));
+  const compareMonthDefault = `${String(y - 1)}-${String(m).padStart(2, '0')}`;
 
-  try {
-    const { accounts, saldos } = await ensureAccountsSaldos();
-    const byClass = getByClass(accounts, saldos);
-    const ingresos = Math.abs(byClass['4'] || 0);
-    const gastos = Number(byClass['5'] || 0) + Number(byClass['6'] || 0) + Number(byClass['7'] || 0);
-    const utilidad = ingresos - gastos;
-
-    view.innerHTML = `
-      <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
-        <h4 class="font-bold" style="color:#0D2137">Estado de Resultados</h4>
-        ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-er"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Resultados</h4>
+      <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
+        <div class="form-group">
+          <label class="form-label">Mes del reporte</label>
+          <input id="inc-month" type="month" class="form-input" value="${currentMonthDefault}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Comparar con</label>
+          <input id="inc-compare-month" type="month" class="form-input" value="${compareMonthDefault}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nivel de información</label>
+          <select id="inc-level" class="form-input">
+            <option value="all">Todos</option>
+            <option value="1">Nivel 1</option>
+            <option value="2">Nivel 2</option>
+            <option value="3" selected>Nivel 3</option>
+            <option value="4">Nivel 4</option>
+            <option value="5">Nivel 5</option>
+            <option value="6">Nivel 6</option>
+          </select>
+        </div>
+        <div class="form-group flex items-end">
+          <label class="inline-flex items-center gap-2 text-sm" style="color:#374151">
+            <input id="inc-show-notes" type="checkbox" checked>
+            Mostrar nota/revelación
+          </label>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-primary w-full" id="btn-gen-er"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-er" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
+        <div class="form-group flex items-end">
+          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-er" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
       </div>
-      <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-        <div class="flex justify-between p-3 rounded-lg" style="background:#F8FAFC"><span>Ingresos (Clase 4)</span><strong>${fmt(ingresos)}</strong></div>
-        <div class="flex justify-between p-3 rounded-lg" style="background:#F8FAFC"><span>Gastos y Costos (5+6+7)</span><strong>${fmt(gastos)}</strong></div>
-        <div class="flex justify-between p-3 rounded-lg md:col-span-2" style="background:${utilidad >= 0 ? '#ECFDF5' : '#FEF2F2'}"><span class="font-semibold">Resultado Neto</span><strong>${fmt(utilidad)}</strong></div>
-      </div>`;
+    </div>
+    <div id="income-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-calendar-days mr-2"></i>Selecciona mes y comparación para generar el reporte.
+    </div>`;
 
-    $('#btn-exp-er')?.addEventListener('click', () => {
-      exportToExcel([
-        { concepto: 'Ingresos', valor: ingresos },
-        { concepto: 'Gastos y Costos', valor: gastos },
-        { concepto: 'Resultado Neto', valor: utilidad },
-      ], [
-        { key: 'concepto', label: 'Concepto' },
-        { key: 'valor', label: 'Valor' },
-      ], 'estado_resultados');
+  let lastExportRows = [];
+  let lastIncomePdf = null;
+
+  const endOfMonth = (monthStr) => {
+    const year = Number(String(monthStr || '').slice(0, 4));
+    const month = Number(String(monthStr || '').slice(5, 7));
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return '';
+    const dt = new Date(year, month, 0);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  };
+
+  const fmtLongDate = (dateStr) => {
+    if (!dateStr) return '—';
+    const dt = new Date(`${dateStr}T00:00:00`);
+    if (Number.isNaN(dt.getTime())) return dateStr;
+    return dt.toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' });
+  };
+
+  const buildBalancesAt = (accounts, transactions, txLines, cutoffDate) => {
+    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+    const byAccount = Object.fromEntries(accounts.map(a => [a.id, 0]));
+    for (const line of txLines) {
+      const tx = txById[line.tx_id];
+      if (!tx || tx.status !== 'active' || !tx.date) continue;
+      if (String(tx.date) > cutoffDate) continue;
+      byAccount[line.account_id] = Number(byAccount[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
+    }
+    return byAccount;
+  };
+
+  const getPeriodBalances = (accounts, balNow, balCmp, kind) => {
+    const sectionAccounts = accounts.filter((a) => String(a.code || '').startsWith(kind));
+    const nodeById = new Map(sectionAccounts.map((acc) => {
+      const baseNow = Number(balNow[acc.id] || 0);
+      const baseCmp = Number(balCmp[acc.id] || 0);
+      const ownNow = kind === '4' ? -baseNow : baseNow;
+      const ownCmp = kind === '4' ? -baseCmp : baseCmp;
+      return [acc.id, {
+        id: acc.id,
+        code: String(acc.code || ''),
+        name: String(acc.name || ''),
+        level: Number(acc.level || 1),
+        parentCode: String(acc.parent_code || ''),
+        ownNow,
+        ownCmp,
+        now: 0,
+        cmp: 0,
+        children: [],
+      }];
+    }));
+
+    const byCode = new Map();
+    nodeById.forEach((n) => { if (n.code) byCode.set(n.code, n); });
+    const roots = [];
+    nodeById.forEach((n) => {
+      const parent = n.parentCode ? byCode.get(n.parentCode) : null;
+      if (parent) parent.children.push(n);
+      else roots.push(n);
     });
-  } catch (err) {
-    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-  }
+    const sortByCode = (a, b) => a.code.localeCompare(b.code);
+    roots.sort(sortByCode);
+    nodeById.forEach((n) => n.children.sort(sortByCode));
+
+    const calcNode = (n) => {
+      let now = n.ownNow;
+      let cmp = n.ownCmp;
+      for (const c of n.children) {
+        const sc = calcNode(c);
+        now += sc.now;
+        cmp += sc.cmp;
+      }
+      n.now = now;
+      n.cmp = cmp;
+      return { now, cmp };
+    };
+    roots.forEach((r) => calcNode(r));
+
+    return roots;
+  };
+
+  const generate = async () => {
+    const results = $('#income-results');
+    if (!results) return;
+
+    const reportMonth = getInputVal('inc-month');
+    const compareMonth = getInputVal('inc-compare-month');
+    const showNotes = getCheckVal('inc-show-notes');
+    const selectedLevel = getSelectVal('inc-level');
+    const maxLevel = selectedLevel === 'all' ? Number.POSITIVE_INFINITY : Number(selectedLevel || 3);
+
+    if (!reportMonth || !compareMonth) {
+      return showToast('Selecciona ambos meses para el reporte comparativo.', 'warning');
+    }
+
+    const reportDate = endOfMonth(reportMonth);
+    const compareDate = endOfMonth(compareMonth);
+    if (!reportDate || !compareDate) {
+      return showToast('Mes inválido. Revisa los filtros.', 'warning');
+    }
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Estado de Resultados...</div>';
+
+    try {
+      const { accounts } = await ensureAccountsSaldos();
+      const { transactions, txLines } = await ensureLedgerData();
+
+      const balNow = buildBalancesAt(accounts, transactions, txLines, reportDate);
+      const balCmp = buildBalancesAt(accounts, transactions, txLines, compareDate);
+
+      const roots4 = getPeriodBalances(accounts, balNow, balCmp, '4');
+      const roots5 = getPeriodBalances(accounts, balNow, balCmp, '5');
+      const roots6 = getPeriodBalances(accounts, balNow, balCmp, '6');
+      const roots7 = getPeriodBalances(accounts, balNow, balCmp, '7');
+
+      let noteCounter = 1;
+      const buildRows = (roots) => {
+        const EPS = 0.0001;
+        const detail = [];
+        const visit = (node) => {
+          const childRows = [];
+          for (const c of node.children) childRows.push(...visit(c));
+          const hasActivity = Math.abs(node.now) > EPS || Math.abs(node.cmp) > EPS;
+          if (!hasActivity && !childRows.length) return [];
+          const rows = [];
+          if (Number(node.level || 1) <= maxLevel) {
+            rows.push({
+              note: showNotes ? String(noteCounter++) : '',
+              label: node.name,
+              now: node.now,
+              cmp: node.cmp,
+            });
+          }
+          rows.push(...childRows);
+          return rows;
+        };
+
+        roots.forEach((r) => detail.push(...visit(r)));
+        const totalNow = roots.reduce((s, r) => s + Number(r.now || 0), 0);
+        const totalCmp = roots.reduce((s, r) => s + Number(r.cmp || 0), 0);
+        return { detail, totalNow, totalCmp };
+      };
+
+      const ingresos = buildRows(roots4);
+      const costos = buildRows(roots5);
+      const gastos = buildRows(roots6);
+      const otrosGastos = buildRows(roots7);
+
+      const totalGastosNow = costos.totalNow + gastos.totalNow + otrosGastos.totalNow;
+      const totalGastosCmp = costos.totalCmp + gastos.totalCmp + otrosGastos.totalCmp;
+      const utilidadNow = ingresos.totalNow - totalGastosNow;
+      const utilidadCmp = ingresos.totalCmp - totalGastosCmp;
+
+      const colCount = showNotes ? 4 : 3;
+      const noteHead = showNotes ? '<th style="width:90px">Nota</th>' : '';
+      const amountCell = (value, extraClass = '') => {
+        const v = fmtPolarityAmount(value);
+        return `<td class="text-right ${extraClass}" style="color:${v.color}">${v.text}</td>`;
+      };
+      const detailRowsHtml = (section) => section.detail.map(r => `
+        <tr>
+          <td style="padding-left:24px">${esc(r.label)}</td>
+          ${showNotes ? `<td class="text-center">${esc(r.note)}</td>` : ''}
+          ${amountCell(r.now)}
+          ${amountCell(r.cmp)}
+        </tr>`).join('');
+
+      results.innerHTML = `
+        <div class="px-4 pt-4 text-center">
+          <p class="text-xl font-bold" style="color:#0D2137">Estado de Resultados</p>
+          <p class="text-sm" style="color:#6B7280">(Expresado en pesos colombianos)</p>
+        </div>
+        <div class="overflow-x-auto p-4" style="max-height:560px">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rubro</th>
+                ${noteHead}
+                <th class="text-right">${esc(fmtLongDate(reportDate))}</th>
+                <th class="text-right">${esc(fmtLongDate(compareDate))}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="font-bold" colspan="${colCount}">Ingresos (Clase 4)</td></tr>
+              ${detailRowsHtml(ingresos)}
+              <tr>
+                <td class="font-bold">Total ingresos</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(ingresos.totalNow, 'font-bold')}
+                ${amountCell(ingresos.totalCmp, 'font-bold')}
+              </tr>
+
+              <tr><td class="font-bold" colspan="${colCount}">Costos de venta (Clase 5)</td></tr>
+              ${detailRowsHtml(costos)}
+              <tr>
+                <td class="font-bold">Total costos</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(costos.totalNow, 'font-bold')}
+                ${amountCell(costos.totalCmp, 'font-bold')}
+              </tr>
+
+              <tr><td class="font-bold" colspan="${colCount}">Gastos operacionales (Clase 6)</td></tr>
+              ${detailRowsHtml(gastos)}
+              <tr>
+                <td class="font-bold">Total gastos operacionales</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(gastos.totalNow, 'font-bold')}
+                ${amountCell(gastos.totalCmp, 'font-bold')}
+              </tr>
+
+              <tr><td class="font-bold" colspan="${colCount}">Otros gastos (Clase 7)</td></tr>
+              ${detailRowsHtml(otrosGastos)}
+              <tr>
+                <td class="font-bold">Total otros gastos</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(otrosGastos.totalNow, 'font-bold')}
+                ${amountCell(otrosGastos.totalCmp, 'font-bold')}
+              </tr>
+
+              <tr>
+                <td class="font-bold">Total gastos y costos</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(totalGastosNow, 'font-bold')}
+                ${amountCell(totalGastosCmp, 'font-bold')}
+              </tr>
+              <tr>
+                <td class="font-bold">Resultado neto del periodo</td>
+                ${showNotes ? '<td></td>' : ''}
+                ${amountCell(utilidadNow, 'font-bold')}
+                ${amountCell(utilidadCmp, 'font-bold')}
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+
+      lastExportRows = [];
+      const pushSection = (title, section, totalLabel) => {
+        lastExportRows.push({ rubro: title, nota: '', actual: '', comparativo: '' });
+        section.detail.forEach((r) => {
+          lastExportRows.push({ rubro: `  ${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp });
+        });
+        lastExportRows.push({ rubro: totalLabel, nota: '', actual: section.totalNow, comparativo: section.totalCmp });
+      };
+
+      pushSection('Ingresos (Clase 4)', ingresos, 'Total ingresos');
+      pushSection('Costos de venta (Clase 5)', costos, 'Total costos');
+      pushSection('Gastos operacionales (Clase 6)', gastos, 'Total gastos operacionales');
+      pushSection('Otros gastos (Clase 7)', otrosGastos, 'Total otros gastos');
+      lastExportRows.push({ rubro: 'Total gastos y costos', nota: '', actual: totalGastosNow, comparativo: totalGastosCmp });
+      lastExportRows.push({ rubro: 'Resultado neto del periodo', nota: '', actual: utilidadNow, comparativo: utilidadCmp });
+
+      lastIncomePdf = {
+        reportMonth,
+        compareMonth,
+        reportDate,
+        compareDate,
+        showNotes,
+        sections: { ingresos, costos, gastos, otrosGastos },
+        totals: { totalGastosNow, totalGastosCmp, utilidadNow, utilidadCmp },
+      };
+
+      if ($('#btn-exp-er')) $('#btn-exp-er').disabled = !lastExportRows.length;
+      if ($('#btn-pdf-er')) $('#btn-pdf-er').disabled = !lastExportRows.length;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastExportRows = [];
+      lastIncomePdf = null;
+      if ($('#btn-exp-er')) $('#btn-exp-er').disabled = true;
+      if ($('#btn-pdf-er')) $('#btn-pdf-er').disabled = true;
+    }
+  };
+
+  $('#btn-gen-er')?.addEventListener('click', generate);
+  $('#btn-exp-er')?.addEventListener('click', () => {
+    if (!lastExportRows.length) return;
+    exportToExcel(lastExportRows, [
+      { key: 'rubro', label: 'Rubro' },
+      { key: 'nota', label: 'Nota' },
+      { key: 'actual', label: getInputVal('inc-month') },
+      { key: 'comparativo', label: getInputVal('inc-compare-month') },
+    ], `estado_resultados_${getInputVal('inc-month')}_vs_${getInputVal('inc-compare-month')}`);
+  });
+  $('#btn-pdf-er')?.addEventListener('click', async () => {
+    if (!lastIncomePdf) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const { showNotes, sections, totals, reportDate, compareDate, reportMonth, compareMonth } = lastIncomePdf;
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const headerCtx = await getPdfHeaderContext();
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Estado de Resultados',
+        subtitles: [
+          `Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`,
+          `Cortes: ${reportDate} / ${compareDate}`,
+        ],
+      });
+
+      const body = [];
+      const pushSection = (sectionTitle, section, totalLabel) => {
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+        section.detail.forEach((r) => {
+          if (showNotes) body.push([r.label, r.note || '', fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+          else body.push([r.label, fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+        });
+        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+      };
+
+      pushSection('Ingresos (Clase 4)', sections.ingresos, 'Total ingresos');
+      pushSection('Costos de venta (Clase 5)', sections.costos, 'Total costos');
+      pushSection('Gastos operacionales (Clase 6)', sections.gastos, 'Total gastos operacionales');
+      pushSection('Otros gastos (Clase 7)', sections.otrosGastos, 'Total otros gastos');
+      if (showNotes) body.push(['Total gastos y costos', '', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
+      else body.push(['Total gastos y costos', fmtPdfSignedNum(totals.totalGastosNow), fmtPdfSignedNum(totals.totalGastosCmp)]);
+      if (showNotes) body.push(['Resultado neto del periodo', '', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
+      else body.push(['Resultado neto del periodo', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
+
+      const head = showNotes
+        ? [['Rubro', 'Nota', String(reportDate), String(compareDate)]]
+        : [['Rubro', String(reportDate), String(compareDate)]];
+
+      doc.autoTable({
+        startY: header.startY,
+        head,
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        columnStyles: showNotes
+          ? {
+            0: { cellWidth: 280 },
+            1: { cellWidth: 54, halign: 'center' },
+            2: { cellWidth: 110, halign: 'right' },
+            3: { cellWidth: 110, halign: 'right' },
+          }
+          : {
+            0: { cellWidth: 334 },
+            1: { cellWidth: 110, halign: 'right' },
+            2: { cellWidth: 110, halign: 'right' },
+          },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const firstCell = body[data.row.index]?.[0];
+          if (typeof firstCell === 'object' && firstCell?.colSpan) return;
+          const label = String(firstCell || '').toLowerCase();
+          if (label.startsWith('total ') || label.startsWith('resultado ')) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`estado_resultados_${reportMonth}_vs_${compareMonth}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
 }
 
 async function renderFinancialPosition() {
@@ -967,7 +1883,7 @@ async function renderFinancialPosition() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Estado de Situación Financiera (Balance General)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-7 gap-3">
         <div class="form-group">
           <label class="form-label">Mes del reporte</label>
           <input id="pos-month" type="month" class="form-input" value="${currentMonthDefault}">
@@ -998,6 +1914,9 @@ async function renderFinancialPosition() {
           <button class="btn btn-primary w-full" id="btn-gen-position"><i class="fas fa-filter"></i> Generar</button>
         </div>
         <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-position" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
+        <div class="form-group flex items-end">
           ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-position" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
         </div>
       </div>
@@ -1007,6 +1926,7 @@ async function renderFinancialPosition() {
     </div>`;
 
   let lastExportRows = [];
+  let lastPositionPdf = null;
 
   const endOfMonth = (monthStr) => {
     const year = Number(String(monthStr || '').slice(0, 4));
@@ -1287,9 +2207,37 @@ async function renderFinancialPosition() {
       pushSection('Patrimonio', patrimonio, 'Total patrimonio');
       lastExportRows.push({ rubro: 'Total pasivos más patrimonio', nota: '', actual: totalPyPNow, comparativo: totalPyPCmp });
 
+      lastPositionPdf = {
+        reportMonth,
+        compareMonth,
+        reportDate,
+        compareDate,
+        showNotes,
+        sections: {
+          actCorr,
+          actNoCorr,
+          pasCorr,
+          pasNoCorr,
+          patrimonio,
+        },
+        totals: {
+          totalActivosNow,
+          totalActivosCmp,
+          totalPasivosNow,
+          totalPasivosCmp,
+          totalPyPNow,
+          totalPyPCmp,
+        },
+      };
+
       if ($('#btn-exp-position')) $('#btn-exp-position').disabled = !lastExportRows.length;
+      if ($('#btn-pdf-position')) $('#btn-pdf-position').disabled = !lastExportRows.length;
     } catch (err) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastExportRows = [];
+      lastPositionPdf = null;
+      if ($('#btn-exp-position')) $('#btn-exp-position').disabled = true;
+      if ($('#btn-pdf-position')) $('#btn-pdf-position').disabled = true;
     }
   };
 
@@ -1303,63 +2251,287 @@ async function renderFinancialPosition() {
       { key: 'comparativo', label: getInputVal('pos-compare-month') },
     ], `estado_situacion_financiera_${getInputVal('pos-month')}_vs_${getInputVal('pos-compare-month')}`);
   });
+  $('#btn-pdf-position')?.addEventListener('click', async () => {
+    if (!lastPositionPdf) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const { showNotes, sections, totals, reportDate, compareDate, reportMonth, compareMonth } = lastPositionPdf;
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const headerCtx = await getPdfHeaderContext();
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Estado de Situacion Financiera',
+        subtitles: [
+          `Periodo mensual comparativo: ${reportMonth} vs ${compareMonth}`,
+          `Cortes: ${reportDate} / ${compareDate}`,
+        ],
+      });
+
+      const body = [];
+      const pushSection = (sectionTitle, section, totalLabel) => {
+        body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+        section.detail.forEach((r) => {
+          if (showNotes) body.push([r.label, r.note || '', fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+          else body.push([r.label, fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+        });
+        if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+        else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
+      };
+
+      pushSection('Activos corrientes', sections.actCorr, 'Total activos corrientes');
+      pushSection('Activos no corrientes', sections.actNoCorr, 'Total activos no corrientes');
+      if (showNotes) body.push(['Total activos', '', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
+      else body.push(['Total activos', fmtPdfSignedNum(totals.totalActivosNow), fmtPdfSignedNum(totals.totalActivosCmp)]);
+      pushSection('Pasivos corrientes', sections.pasCorr, 'Total pasivos corrientes');
+      pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes');
+      if (showNotes) body.push(['Total pasivos', '', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
+      else body.push(['Total pasivos', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
+      pushSection('Patrimonio', sections.patrimonio, 'Total patrimonio');
+      if (showNotes) body.push(['Total pasivos mas patrimonio', '', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
+      else body.push(['Total pasivos mas patrimonio', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
+
+      const head = showNotes
+        ? [['Rubro', 'Nota', String(reportDate), String(compareDate)]]
+        : [['Rubro', String(reportDate), String(compareDate)]];
+
+      doc.autoTable({
+        startY: header.startY,
+        head,
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.3, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0 },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
+        columnStyles: showNotes
+          ? {
+            0: { cellWidth: 280 },
+            1: { cellWidth: 54, halign: 'center' },
+            2: { cellWidth: 110, halign: 'right' },
+            3: { cellWidth: 110, halign: 'right' },
+          }
+          : {
+            0: { cellWidth: 334 },
+            1: { cellWidth: 110, halign: 'right' },
+            2: { cellWidth: 110, halign: 'right' },
+          },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const firstCell = body[data.row.index]?.[0];
+          if (typeof firstCell === 'object' && firstCell?.colSpan) return;
+          const label = String(firstCell || '').toLowerCase();
+          if (label.startsWith('total ')) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`estado_situacion_financiera_${reportMonth}_vs_${compareMonth}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
 }
 
 async function renderJournalBook() {
   const view = getReportViewHost();
   if (!view) return;
-  view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Libro Diario...</div>';
+  const currentMonth = todayStr().slice(0, 7);
 
+  let txTypes = [];
   try {
-    const { transactions, txLines } = await ensureLedgerData();
-    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
-    const rows = txLines
-      .map(l => {
-        const tx = txById[l.tx_id];
-        if (!tx || tx.status !== 'active') return null;
-        return {
-          fecha: tx.date || '',
-          comprobante: tx.number || '',
-          tipo: tx.expand?.tx_type_id?.name || '',
-          descripcion: tx.description || '',
-          tercero: tx.expand?.third_party_id?.name || '—',
-          cuenta: `${l.expand?.account_id?.code || ''} - ${l.expand?.account_id?.name || ''}`.trim(),
-          debito: Number(l.debit || 0),
-          credito: Number(l.credit || 0),
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => `${a.fecha} ${a.comprobante}`.localeCompare(`${b.fecha} ${b.comprobante}`));
-
-    view.innerHTML = `
-      <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
-        <h4 class="font-bold" style="color:#0D2137">Libro Diario</h4>
-        ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-journal"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
-      </div>
-      <div class="overflow-x-auto" style="max-height:420px">
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Comp.</th><th>Tipo</th><th>Descripción</th><th>Tercero</th><th>Cuenta</th><th>Débito</th><th>Crédito</th></tr></thead>
-          <tbody>
-            ${rows.length ? rows.map(r => `<tr><td>${esc(r.fecha)}</td><td>${esc(r.comprobante)}</td><td>${esc(r.tipo)}</td><td>${esc(r.descripcion)}</td><td>${esc(r.tercero)}</td><td>${esc(r.cuenta)}</td><td>${fmt(r.debito)}</td><td>${fmt(r.credito)}</td></tr>`).join('') : '<tr><td colspan="8" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>'}
-          </tbody>
-        </table>
-      </div>`;
-
-    $('#btn-exp-journal')?.addEventListener('click', () => {
-      exportToExcel(rows, [
-        { key: 'fecha', label: 'Fecha' },
-        { key: 'comprobante', label: 'Comprobante' },
-        { key: 'tipo', label: 'Tipo' },
-        { key: 'descripcion', label: 'Descripción' },
-        { key: 'tercero', label: 'Tercero' },
-        { key: 'cuenta', label: 'Cuenta' },
-        { key: 'debito', label: 'Débito' },
-        { key: 'credito', label: 'Crédito' },
-      ], 'libro_diario');
-    });
-  } catch (err) {
-    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+    txTypes = await API.getTxTypes();
+  } catch (_) {
+    txTypes = [];
   }
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Libro Diario</h4>
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+        <div class="form-group">
+          <label class="form-label">Mes desde</label>
+          <input id="journal-month-from" type="month" class="form-input" value="${currentMonth}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mes hasta</label>
+          <input id="journal-month-to" type="month" class="form-input" value="${currentMonth}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo de transacción</label>
+          <select id="journal-tx-type" class="form-input">
+            <option value="">Todos</option>
+            ${txTypes.map(tt => `<option value="${esc(tt.id)}">${esc(tt.code || '')} - ${esc(tt.name || '')}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-primary w-full" id="btn-gen-journal"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-outline w-full" id="btn-pdf-journal" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+        </div>
+        <div class="form-group flex items-end">
+          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-journal" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
+      </div>
+    </div>
+    <div id="journal-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-calendar-days mr-2"></i>Selecciona rango mensual y filtros para generar el Libro Diario.
+    </div>`;
+
+  let lastRows = [];
+  let lastMeta = null;
+
+  const generate = async () => {
+    const results = $('#journal-results');
+    if (!results) return;
+
+    const fromMonth = getInputVal('journal-month-from');
+    const toMonth = getInputVal('journal-month-to');
+    const txTypeId = getSelectVal('journal-tx-type');
+    const range = monthRangeToDates(fromMonth, toMonth);
+    if (!range) return showToast('Rango mensual inválido. Verifica Desde/Hasta.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Libro Diario...</div>';
+
+    try {
+      const { transactions, txLines } = await ensureLedgerData();
+      const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+
+      const rows = txLines
+        .map(l => {
+          const tx = txById[l.tx_id];
+          if (!tx || tx.status !== 'active' || !tx.date) return null;
+          if (String(tx.date) < range.fromDate || String(tx.date) > range.toDate) return null;
+          if (txTypeId && String(tx.tx_type_id || '') !== String(txTypeId)) return null;
+          return {
+            fecha: tx.date || '',
+            comprobante: tx.number || '',
+            descripcion: tx.description || '',
+            tercero: tx.expand?.third_party_id?.name || '—',
+            cuenta: `${l.expand?.account_id?.code || ''} - ${l.expand?.account_id?.name || ''}`.trim(),
+            debito: Number(l.debit || 0),
+            credito: Number(l.credit || 0),
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => `${a.fecha}|${a.comprobante}|${a.cuenta}`.localeCompare(`${b.fecha}|${b.comprobante}|${b.cuenta}`));
+
+      const totalDeb = rows.reduce((s, r) => s + Number(r.debito || 0), 0);
+      const totalCre = rows.reduce((s, r) => s + Number(r.credito || 0), 0);
+
+      results.innerHTML = `
+        <div class="p-4 border-b" style="border-color:#F3F4F6">
+          <p class="text-sm" style="color:#6B7280">Período: <strong>${esc(fromMonth)}</strong> a <strong>${esc(toMonth)}</strong> · Registros: <strong>${fmtN(rows.length)}</strong> · Débito: <strong>${fmt(totalDeb)}</strong> · Crédito: <strong>${fmt(totalCre)}</strong></p>
+        </div>
+        <div class="overflow-x-auto" style="max-height:420px">
+          <table class="data-table">
+            <thead><tr><th>Fecha</th><th>Comp.</th><th>Descripción</th><th>Tercero</th><th>Cuenta</th><th>Débito</th><th>Crédito</th></tr></thead>
+            <tbody>
+              ${rows.length ? rows.map(r => `<tr><td>${esc(r.fecha)}</td><td>${esc(r.comprobante)}</td><td>${esc(r.descripcion)}</td><td>${esc(r.tercero)}</td><td>${esc(r.cuenta)}</td><td>${fmt(r.debito)}</td><td>${fmt(r.credito)}</td></tr>`).join('') : '<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>'}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" class="font-bold">Totales</td>
+                <td class="font-bold">${fmt(totalDeb)}</td>
+                <td class="font-bold">${fmt(totalCre)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+
+      lastRows = rows;
+      lastMeta = { fromMonth, toMonth, txTypeId, totalDeb, totalCre };
+
+      if ($('#btn-exp-journal')) $('#btn-exp-journal').disabled = !rows.length;
+      if ($('#btn-pdf-journal')) $('#btn-pdf-journal').disabled = !rows.length;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastRows = [];
+      lastMeta = null;
+      if ($('#btn-exp-journal')) $('#btn-exp-journal').disabled = true;
+      if ($('#btn-pdf-journal')) $('#btn-pdf-journal').disabled = true;
+    }
+  };
+
+  $('#btn-gen-journal')?.addEventListener('click', generate);
+  $('#btn-exp-journal')?.addEventListener('click', () => {
+    if (!lastRows.length) return;
+    exportToExcel(lastRows, [
+      { key: 'fecha', label: 'Fecha' },
+      { key: 'comprobante', label: 'Comprobante' },
+      { key: 'descripcion', label: 'Descripcion' },
+      { key: 'tercero', label: 'Tercero' },
+      { key: 'cuenta', label: 'Cuenta' },
+      { key: 'debito', label: 'Debito' },
+      { key: 'credito', label: 'Credito' },
+    ], `libro_diario_${lastMeta?.fromMonth || currentMonth}_a_${lastMeta?.toMonth || currentMonth}`);
+  });
+  $('#btn-pdf-journal')?.addEventListener('click', async () => {
+    if (!lastRows.length || !lastMeta) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const headerCtx = await getPdfHeaderContext();
+      const selectedType = txTypes.find(t => String(t.id) === String(lastMeta.txTypeId));
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Libro Diario',
+        subtitles: [
+          `Periodo mensual: ${lastMeta.fromMonth} a ${lastMeta.toMonth}`,
+          `Tipo de transaccion: ${selectedType ? `${selectedType.code || ''} - ${selectedType.name || ''}` : 'Todos'}`,
+        ],
+      });
+
+      const body = lastRows.map(r => [
+        r.fecha,
+        r.comprobante,
+        r.descripcion,
+        r.tercero,
+        r.cuenta,
+        fmtPdfNum(r.debito),
+        fmtPdfNum(r.credito),
+      ]);
+      body.push(['TOTAL', '', '', '', '', fmtPdfNum(lastMeta.totalDeb), fmtPdfNum(lastMeta.totalCre)]);
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [['Fecha', 'Comp.', 'Descripcion', 'Tercero', 'Cuenta', 'Debito', 'Credito']],
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+        columnStyles: {
+          0: { cellWidth: 48 },
+          1: { cellWidth: 58 },
+          2: { cellWidth: 126 },
+          3: { cellWidth: 90 },
+          4: { cellWidth: 124 },
+          5: { cellWidth: 56, halign: 'right' },
+          6: { cellWidth: 56, halign: 'right' },
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          if (data.row.index === body.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineColor = [13, 33, 55];
+          }
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`libro_diario_${lastMeta.fromMonth}_a_${lastMeta.toMonth}.pdf`);
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
 }
 
 async function renderAuxiliaryBook() {

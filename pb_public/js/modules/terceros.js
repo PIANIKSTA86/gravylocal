@@ -361,6 +361,11 @@ function terceroFormHtml(row) {
         <input id="tpf-max-invoices" type="number" min="0" class="form-input"
           value="${esc(row?.max_invoices ?? 1)}" placeholder="1">
       </div>
+      <div class="form-group">
+        <label class="form-label">Plazo de Crédito (días)</label>
+        <input id="tpf-payment-days" type="number" min="0" class="form-input"
+          value="${esc(row?.payment_days ?? 0)}" placeholder="0">
+      </div>
     </div>
   </div>
   `;
@@ -537,6 +542,7 @@ function terceroPayload() {
     tax_regime:      getSelectVal('tpf-tax'),
     credit_limit:    parseFloat(getInputVal('tpf-credit-limit'))  || 0,
     max_invoices:    parseInt(getInputVal('tpf-max-invoices'), 10) || 1,
+    payment_days:    parseInt(getInputVal('tpf-payment-days'), 10) || 0,
     active:          getSelectVal('tpf-active') === '1',
   };
 }

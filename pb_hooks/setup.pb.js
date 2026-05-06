@@ -834,6 +834,37 @@ onBootstrap((e) => {
   }
 });
 
+// ── Migración: payment_days en transactions y third_parties ──────────────────
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    const txCol = $app.findCollectionByNameOrId("transactions");
+    let hasPd = false;
+    try { hasPd = !!txCol.fields.getByName("payment_days"); } catch (_) { hasPd = String(txCol.fields || "").includes("payment_days"); }
+    if (!hasPd) {
+      txCol.fields.add(new NumberField({ name: "payment_days", required: false, min: 0 }));
+      $app.save(txCol);
+      console.log("[GRAVY] Campo payment_days agregado a transactions.");
+    }
+  } catch (err) {
+    console.log("[GRAVY] Aviso al migrar transactions (payment_days): " + err);
+  }
+
+  try {
+    const tpCol = $app.findCollectionByNameOrId("third_parties");
+    let hasPd = false;
+    try { hasPd = !!tpCol.fields.getByName("payment_days"); } catch (_) { hasPd = String(tpCol.fields || "").includes("payment_days"); }
+    if (!hasPd) {
+      tpCol.fields.add(new NumberField({ name: "payment_days", required: false, min: 0 }));
+      $app.save(tpCol);
+      console.log("[GRAVY] Campo payment_days agregado a third_parties.");
+    }
+  } catch (err) {
+    console.log("[GRAVY] Aviso al migrar third_parties (payment_days): " + err);
+  }
+});
+
 // ── Migración: campos de cruce y retenciones ──────────────────────────────────
 onBootstrap((e) => {
   e.next();

@@ -637,6 +637,13 @@ function normalizeConsultaPeriods(raw) {
     .sort((a, b) => b.key.localeCompare(a.key));
 }
 
+function getCurrentPeriodKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
 async function renderConsultaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando transacciones...</div>`;
   try {
@@ -659,7 +666,7 @@ async function renderConsultaTx(c) {
         <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
           <select id="txq-period-state" class="form-input">
             <option value="">Estado del período</option>
-            <option value="open">Abiertos</option>
+            <option value="open" selected>Abiertos</option>
             <option value="closed">Cerrados</option>
           </select>
           <select id="txq-period" class="form-input" disabled>
@@ -710,6 +717,24 @@ async function renderConsultaTx(c) {
       if (typeEl.disabled) typeEl.value = '';
     };
 
+    const applyConsultaDefaults = () => {
+      const periodStateEl = $('#txq-period-state');
+      if (periodStateEl) periodStateEl.value = 'open';
+      updatePeriodOptions();
+
+      const periodEl = $('#txq-period');
+      if (periodEl) {
+        const currentKey = getCurrentPeriodKey();
+        const hasCurrent = Array.from(periodEl.options).some(o => o.value === currentKey);
+        if (hasCurrent) {
+          periodEl.value = currentKey;
+        } else if (periodEl.options.length > 1) {
+          periodEl.selectedIndex = 1;
+        }
+      }
+      updateTypeEnabled();
+    };
+
     const doSearch = () => {
       if (!getSelectVal('txq-period-state')) return showToast('Selecciona el estado del período (abierto/cerrado).', 'warning');
       if (!getSelectVal('txq-period')) return showToast('Selecciona un período para filtrar la consulta.', 'warning');
@@ -722,19 +747,19 @@ async function renderConsultaTx(c) {
     $('#txq-period-state')?.addEventListener('change', updatePeriodOptions);
     $('#txq-period')?.addEventListener('change', updateTypeEnabled);
     $('#btn-txq-clear')?.addEventListener('click', () => {
-      ['txq'].forEach(id => setInputVal(id, ''));
-      ['txq-period-state','txq-type','txq-status'].forEach(id => { const el = $(`#${id}`); if (el) el.value = ''; });
-      const periodEl = $('#txq-period');
-      if (periodEl) {
-        periodEl.innerHTML = '<option value="">Selecciona un período</option>';
-        periodEl.disabled = true;
-      }
+      setInputVal('txq', '');
+      const statusEl = $('#txq-status');
+      if (statusEl) statusEl.value = '';
       const typeEl = $('#txq-type');
-      if (typeEl) typeEl.disabled = true;
+      if (typeEl) typeEl.value = '';
+      applyConsultaDefaults();
       $('#ctxq-results').innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-filter mr-2"></i>Selecciona estado de período, período y tipo para consultar.</div>';
       $('#ctxq-pagination').style.display = 'none';
     });
     $('#btn-export-tx')?.addEventListener('click', exportConsultaTx);
+
+    // Valores por defecto: estado abierto y período actual si está disponible.
+    applyConsultaDefaults();
 
     if (!periods.length) {
       showToast('No hay períodos configurados. Habilítalos en Cierre Contable para usar esta consulta.', 'warning');

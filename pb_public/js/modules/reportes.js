@@ -26,19 +26,35 @@ async function renderReportes(c) {
       ${reportCard('position', 'Estado de Situación Financiera', 'Activos, pasivos y patrimonio (Balance General).')}
       ${reportCard('journal', 'Libro Diario', 'Detalle cronológico de movimientos contables.')}
       ${reportCard('aux', 'Libro Auxiliar', 'Movimientos por Cuenta y Tercero o Tercero y Cuenta.')}
-    </div>
-
-    <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
-      <div id="report-view" class="p-8 text-center" style="color:#9CA3AF">
-        <i class="fas fa-chart-column mr-2"></i>Selecciona una card para generar el reporte.
-      </div>
+      ${reportCard('ar-bal', 'Saldos Cuentas por Cobrar', 'Pendientes por tercero y cuenta de cartera.')}
+      ${reportCard('ap-bal', 'Saldos Cuentas por Pagar', 'Pendientes por tercero y cuenta por pagar.')}
+      ${reportCard('aging', 'Cartera por Edades', 'Tramos 0-30-60-90+ para clientes o proveedores.')}
     </div>`;
 
-  $('#btn-report-trial')?.addEventListener('click', renderTrialBalance);
-  $('#btn-report-income')?.addEventListener('click', renderIncomeStatement);
-  $('#btn-report-position')?.addEventListener('click', renderFinancialPosition);
-  $('#btn-report-journal')?.addEventListener('click', renderJournalBook);
-  $('#btn-report-aux')?.addEventListener('click', renderAuxiliaryBook);
+  $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
+  $('#btn-report-income')?.addEventListener('click', () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()));
+  $('#btn-report-position')?.addEventListener('click', () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()));
+  $('#btn-report-journal')?.addEventListener('click', () => launchReportModal('Libro Diario', () => renderJournalBook()));
+  $('#btn-report-aux')?.addEventListener('click', () => launchReportModal('Libro Auxiliar', () => renderAuxiliaryBook()));
+  $('#btn-report-ar-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Cobrar', () => renderPortfolioBalances('cxc')));
+  $('#btn-report-ap-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Pagar', () => renderPortfolioBalances('cxp')));
+  $('#btn-report-aging')?.addEventListener('click', () => launchReportModal('Cartera por Edades', () => renderAgingPortfolio()));
+}
+
+function getReportViewHost() {
+  return $('#report-view-modal') || $('#report-view');
+}
+
+function launchReportModal(title, renderFn) {
+  openModal(
+    `<i class="fas fa-chart-column mr-2" style="color:#1A4B8C"></i>${esc(title)}`,
+    '<div id="report-view-modal" class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando reporte...</div>',
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+  setTimeout(() => {
+    renderFn();
+  }, 0);
 }
 
 function reportCard(id, title, subtitle) {
@@ -115,8 +131,422 @@ function fmtPolarityAmount(value) {
   return { text: signed.text, color: '#6B7280' };
 }
 
+function diffDays(fromDate, toDate) {
+  const from = new Date(`${fromDate}T00:00:00`);
+  const to = new Date(`${toDate}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 0;
+  const ms = to.getTime() - from.getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
+function agingBucket(days) {
+  if (days <= 30) return 'b0_30';
+  if (days <= 60) return 'b31_60';
+  if (days <= 90) return 'b61_90';
+  return 'b90p';
+}
+
+async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thirdType = '' } = {}) {
+  const [{ accounts }, { transactions, txLines, thirdParties }] = await Promise.all([
+    ensureAccountsSaldos(),
+    ensureLedgerData(),
+  ]);
+
+  const txById = new Map(transactions.map(t => [t.id, t]));
+  const thirdById = new Map(thirdParties.map(t => [t.id, t]));
+  const accountById = new Map(accounts.map(a => [a.id, a]));
+  const docs = new Map();
+  const safeThirdType = String(thirdType || '').trim().toUpperCase();
+
+  for (const line of txLines) {
+    const tx = txById.get(line.tx_id);
+    if (!tx || tx.status !== 'active' || !tx.date || String(tx.date) > asOfDate) continue;
+
+    const acc = line.expand?.account_id || accountById.get(line.account_id);
+    if (!acc || !acc.maneja_cruce) continue;
+
+    const nature = String(acc.nature || '').toLowerCase();
+    if (mode === 'cxc' && nature !== 'debit') continue;
+    if (mode === 'cxp' && nature !== 'credit') continue;
+
+    const thirdId = line.third_party_id || tx.third_party_id || 'NO_TERCERO';
+    const third = thirdById.get(thirdId);
+    const tpType = String(third?.type || '').toUpperCase();
+    if (safeThirdType && tpType !== safeThirdType) continue;
+
+    const ref = (line.cross_doc_ref || '').trim() || 'SIN_DOC';
+    const key = `${acc.id}|${thirdId}|${ref}`;
+    if (!docs.has(key)) {
+      docs.set(key, {
+        account_id: acc.id,
+        account_code: acc.code || '',
+        account_name: acc.name || '',
+        nature,
+        third_id: thirdId,
+        third_name: third?.name || tx.expand?.third_party_id?.name || 'Sin tercero',
+        third_doc: third?.doc_number || '',
+        third_type: tpType || 'OTRO',
+        doc_ref: ref,
+        doc_date: tx.date,
+        debit: 0,
+        credit: 0,
+      });
+    }
+
+    const doc = docs.get(key);
+    if (String(tx.date) < String(doc.doc_date)) doc.doc_date = tx.date;
+    doc.debit += Number(line.debit || 0);
+    doc.credit += Number(line.credit || 0);
+  }
+
+  const EPS = 0.0001;
+  const items = [];
+  docs.forEach((d) => {
+    const open = d.nature === 'debit'
+      ? Number(d.debit || 0) - Number(d.credit || 0)
+      : Number(d.credit || 0) - Number(d.debit || 0);
+    if (open <= EPS) return;
+    const days = diffDays(d.doc_date, asOfDate);
+    items.push({ ...d, open, days, bucket: agingBucket(days) });
+  });
+
+  items.sort((a, b) => {
+    const aKey = `${a.third_name}|${a.account_code}|${a.doc_date}|${a.doc_ref}`;
+    const bKey = `${b.third_name}|${b.account_code}|${b.doc_date}|${b.doc_ref}`;
+    return aKey.localeCompare(bKey);
+  });
+
+  return items;
+}
+
+async function renderPortfolioBalances(mode) {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  const isCxc = mode === 'cxc';
+  const title = isCxc ? 'Saldos de Cuentas por Cobrar' : 'Saldos de Cuentas por Pagar';
+  const defaultThirdType = isCxc ? 'CLIENTE' : 'PROVEEDOR';
+  const entityLabel = isCxc ? 'clientes' : 'proveedores';
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">${esc(title)}</h4>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="form-group">
+          <label class="form-label">Corte</label>
+          <input id="bal-cutoff" type="date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo de tercero</label>
+          <select id="bal-third-type" class="form-input">
+            <option value="">Todos</option>
+            <option value="CLIENTE" ${defaultThirdType === 'CLIENTE' ? 'selected' : ''}>Cliente</option>
+            <option value="PROVEEDOR" ${defaultThirdType === 'PROVEEDOR' ? 'selected' : ''}>Proveedor</option>
+            <option value="ACREEDOR">Acreedor</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-primary w-full" id="btn-gen-bal"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="form-group flex items-end">
+          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-bal" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
+      </div>
+      <p class="text-xs mt-3" style="color:#6B7280">Reporte de saldo abierto por documento de cruce, agrupado por tercero y cuenta (${esc(entityLabel)}).</p>
+    </div>
+    <div id="bal-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-calendar-days mr-2"></i>Selecciona filtros y pulsa Generar.
+    </div>`;
+
+  let lastExportRows = [];
+
+  const generate = async () => {
+    const results = $('#bal-results');
+    if (!results) return;
+
+    const asOfDate = getInputVal('bal-cutoff');
+    const thirdType = getSelectVal('bal-third-type');
+    if (!asOfDate) return showToast('Selecciona la fecha de corte.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando reporte...</div>';
+
+    try {
+      const docs = await buildOpenPortfolioDocs({ mode, asOfDate, thirdType });
+
+      if (!docs.length) {
+        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</div>';
+        lastExportRows = [];
+        if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = true;
+        return;
+      }
+
+      const byThirdAccount = new Map();
+      for (const d of docs) {
+        const key = `${d.third_id}|${d.account_id}`;
+        if (!byThirdAccount.has(key)) {
+          byThirdAccount.set(key, {
+            third_name: d.third_name,
+            third_doc: d.third_doc,
+            third_type: d.third_type,
+            account_code: d.account_code,
+            account_name: d.account_name,
+            docs_count: 0,
+            open_total: 0,
+            max_days: 0,
+          });
+        }
+        const row = byThirdAccount.get(key);
+        row.docs_count += 1;
+        row.open_total += Number(d.open || 0);
+        row.max_days = Math.max(row.max_days, Number(d.days || 0));
+      }
+
+      const rows = [...byThirdAccount.values()].sort((a, b) => {
+        const aKey = `${a.third_name}|${a.account_code}`;
+        const bKey = `${b.third_name}|${b.account_code}`;
+        return aKey.localeCompare(bKey);
+      });
+
+      const totalOpen = rows.reduce((s, r) => s + Number(r.open_total || 0), 0);
+      const totalDocs = rows.reduce((s, r) => s + Number(r.docs_count || 0), 0);
+
+      results.innerHTML = `
+        <div class="p-4 border-b flex flex-wrap items-center justify-between gap-3" style="border-color:#F3F4F6">
+          <p class="text-sm" style="color:#6B7280">Terceros/cuentas: <strong>${fmtN(rows.length)}</strong> · Documentos: <strong>${fmtN(totalDocs)}</strong> · Saldo abierto: <strong>${fmt(totalOpen)}</strong></p>
+        </div>
+        <div class="overflow-x-auto" style="max-height:460px">
+          <table class="data-table">
+            <thead><tr><th>Tercero</th><th>Tipo</th><th>Cuenta</th><th># Docs</th><th>Antigüedad máx. (días)</th><th>Saldo abierto</th></tr></thead>
+            <tbody>
+              ${rows.map(r => `<tr>
+                <td>${esc(r.third_doc ? `${r.third_doc} - ${r.third_name}` : r.third_name)}</td>
+                <td>${esc(r.third_type || 'OTRO')}</td>
+                <td>${esc(r.account_code)} - ${esc(r.account_name)}</td>
+                <td>${fmtN(r.docs_count)}</td>
+                <td>${fmtN(r.max_days)}</td>
+                <td class="font-semibold" style="color:${isCxc ? '#065F46' : '#1E3A8A'}">${fmt(r.open_total)}</td>
+              </tr>`).join('')}
+            </tbody>
+            <tfoot><tr><td colspan="5" class="font-bold">Total saldo abierto</td><td class="font-bold">${fmt(totalOpen)}</td></tr></tfoot>
+          </table>
+        </div>`;
+
+      lastExportRows = rows.map(r => ({
+        tercero: r.third_name,
+        documento: r.third_doc,
+        tipo_tercero: r.third_type,
+        cuenta_codigo: r.account_code,
+        cuenta_nombre: r.account_name,
+        documentos: r.docs_count,
+        antiguedad_max_dias: r.max_days,
+        saldo_abierto: r.open_total,
+      }));
+
+      if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = !lastExportRows.length;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastExportRows = [];
+      if ($('#btn-exp-bal')) $('#btn-exp-bal').disabled = true;
+    }
+  };
+
+  $('#btn-gen-bal')?.addEventListener('click', generate);
+  $('#btn-exp-bal')?.addEventListener('click', () => {
+    if (!lastExportRows.length) return;
+    exportToExcel(lastExportRows, [
+      { key: 'tercero', label: 'Tercero' },
+      { key: 'documento', label: 'Documento' },
+      { key: 'tipo_tercero', label: 'Tipo tercero' },
+      { key: 'cuenta_codigo', label: 'Código cuenta' },
+      { key: 'cuenta_nombre', label: 'Nombre cuenta' },
+      { key: 'documentos', label: '# Documentos' },
+      { key: 'antiguedad_max_dias', label: 'Antigüedad máx. (días)' },
+      { key: 'saldo_abierto', label: 'Saldo abierto' },
+    ], mode === 'cxc' ? 'saldos_cuentas_por_cobrar' : 'saldos_cuentas_por_pagar');
+  });
+}
+
+async function renderAgingPortfolio() {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Cartera por Edades (0-30-60-90+)</h4>
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div class="form-group">
+          <label class="form-label">Corte</label>
+          <input id="age-cutoff" type="date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cartera</label>
+          <select id="age-mode" class="form-input">
+            <option value="cxc">Clientes (CxC)</option>
+            <option value="cxp">Proveedores (CxP)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo tercero</label>
+          <select id="age-third-type" class="form-input">
+            <option value="">Todos</option>
+            <option value="CLIENTE" selected>Cliente</option>
+            <option value="PROVEEDOR">Proveedor</option>
+            <option value="ACREEDOR">Acreedor</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </div>
+        <div class="form-group flex items-end">
+          <button class="btn btn-primary w-full" id="btn-gen-aging"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="form-group flex items-end">
+          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-aging" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
+      </div>
+    </div>
+    <div id="aging-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-hourglass-half mr-2"></i>Selecciona filtros y pulsa Generar.
+    </div>`;
+
+  const syncThirdTypeByMode = () => {
+    const mode = getSelectVal('age-mode');
+    const typeEl = $('#age-third-type');
+    if (!typeEl) return;
+    if (!typeEl.value || typeEl.value === 'CLIENTE' || typeEl.value === 'PROVEEDOR') {
+      typeEl.value = mode === 'cxc' ? 'CLIENTE' : 'PROVEEDOR';
+    }
+  };
+
+  $('#age-mode')?.addEventListener('change', syncThirdTypeByMode);
+
+  let lastExportRows = [];
+
+  const generate = async () => {
+    const results = $('#aging-results');
+    if (!results) return;
+
+    const asOfDate = getInputVal('age-cutoff');
+    const mode = getSelectVal('age-mode') || 'cxc';
+    const thirdType = getSelectVal('age-third-type');
+    if (!asOfDate) return showToast('Selecciona la fecha de corte.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando cartera por edades...</div>';
+
+    try {
+      const docs = await buildOpenPortfolioDocs({ mode, asOfDate, thirdType });
+      if (!docs.length) {
+        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</div>';
+        lastExportRows = [];
+        if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = true;
+        return;
+      }
+
+      const rows = docs.map(d => ({
+        tercero: d.third_name,
+        documento_tercero: d.third_doc,
+        cuenta: `${d.account_code} - ${d.account_name}`.trim(),
+        documento_cruce: d.doc_ref,
+        fecha_documento: d.doc_date,
+        edad_dias: Number(d.days || 0),
+        de_0_a_30: d.bucket === 'b0_30' ? Number(d.open || 0) : 0,
+        de_31_a_60: d.bucket === 'b31_60' ? Number(d.open || 0) : 0,
+        de_61_a_90: d.bucket === 'b61_90' ? Number(d.open || 0) : 0,
+        mayor_a_90: d.bucket === 'b90p' ? Number(d.open || 0) : 0,
+        total: Number(d.open || 0),
+      })).sort((a, b) => {
+        const aKey = `${a.tercero}|${a.cuenta}|${a.fecha_documento}|${a.documento_cruce}`;
+        const bKey = `${b.tercero}|${b.cuenta}|${b.fecha_documento}|${b.documento_cruce}`;
+        return aKey.localeCompare(bKey);
+      });
+
+      const totals = rows.reduce((acc, r) => {
+        acc.de_0_a_30 += r.de_0_a_30;
+        acc.de_31_a_60 += r.de_31_a_60;
+        acc.de_61_a_90 += r.de_61_a_90;
+        acc.mayor_a_90 += r.mayor_a_90;
+        acc.total += r.total;
+        return acc;
+      }, { de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
+
+      const carteraLabel = mode === 'cxc' ? 'Clientes (CxC)' : 'Proveedores (CxP)';
+
+      results.innerHTML = `
+        <div class="p-4 border-b" style="border-color:#F3F4F6">
+          <p class="text-sm" style="color:#6B7280">Cartera: <strong>${esc(carteraLabel)}</strong> · Documentos: <strong>${fmtN(rows.length)}</strong> · Total cartera: <strong>${fmt(totals.total)}</strong></p>
+        </div>
+        <div class="overflow-x-auto" style="max-height:460px">
+          <table class="data-table">
+            <thead><tr><th>Tercero</th><th>Cuenta</th><th>Doc. Cruce</th><th>Fecha Doc.</th><th>Edad (días)</th><th>0-30 días</th><th>31-60 días</th><th>61-90 días</th><th>Más de 90</th><th>Total</th></tr></thead>
+            <tbody>
+              ${rows.map(r => `<tr>
+                <td>${esc(r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero)}</td>
+                <td>${esc(r.cuenta)}</td>
+                <td><span class="font-mono">${esc(r.documento_cruce)}</span></td>
+                <td>${esc(r.fecha_documento)}</td>
+                <td>${fmtN(r.edad_dias)}</td>
+                <td>${fmt(r.de_0_a_30)}</td>
+                <td>${fmt(r.de_31_a_60)}</td>
+                <td>${fmt(r.de_61_a_90)}</td>
+                <td>${fmt(r.mayor_a_90)}</td>
+                <td class="font-semibold" style="color:#0D2137">${fmt(r.total)}</td>
+              </tr>`).join('')}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="5" class="font-bold">Total general</td>
+                <td class="font-bold">${fmt(totals.de_0_a_30)}</td>
+                <td class="font-bold">${fmt(totals.de_31_a_60)}</td>
+                <td class="font-bold">${fmt(totals.de_61_a_90)}</td>
+                <td class="font-bold">${fmt(totals.mayor_a_90)}</td>
+                <td class="font-bold">${fmt(totals.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+
+      lastExportRows = rows.map(r => ({
+        tercero: r.tercero,
+        documento_tercero: r.documento_tercero,
+        cuenta: r.cuenta,
+        documento_cruce: r.documento_cruce,
+        fecha_documento: r.fecha_documento,
+        edad_dias: r.edad_dias,
+        de_0_a_30: r.de_0_a_30,
+        de_31_a_60: r.de_31_a_60,
+        de_61_a_90: r.de_61_a_90,
+        mayor_a_90: r.mayor_a_90,
+        total: r.total,
+      }));
+
+      if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = !lastExportRows.length;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastExportRows = [];
+      if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = true;
+    }
+  };
+
+  $('#btn-gen-aging')?.addEventListener('click', generate);
+  $('#btn-exp-aging')?.addEventListener('click', () => {
+    if (!lastExportRows.length) return;
+    exportToExcel(lastExportRows, [
+      { key: 'tercero', label: 'Tercero' },
+      { key: 'documento_tercero', label: 'Documento tercero' },
+      { key: 'cuenta', label: 'Cuenta' },
+      { key: 'documento_cruce', label: 'Doc. Cruce' },
+      { key: 'fecha_documento', label: 'Fecha documento' },
+      { key: 'edad_dias', label: 'Edad (días)' },
+      { key: 'de_0_a_30', label: '0-30 días' },
+      { key: 'de_31_a_60', label: '31-60 días' },
+      { key: 'de_61_a_90', label: '61-90 días' },
+      { key: 'mayor_a_90', label: 'Más de 90 días' },
+      { key: 'total', label: 'Total' },
+    ], `cartera_por_edades_${getSelectVal('age-mode')}`);
+  });
+}
+
 async function renderTrialBalance() {
-  const view = $('#report-view');
+  const view = getReportViewHost();
   if (!view) return;
   const today = todayStr();
   const fromDefault = `${today.slice(0, 7)}-01`;
@@ -481,7 +911,7 @@ function signatureBlock(name, title, extraLine = '') {
 }
 
 async function renderIncomeStatement() {
-  const view = $('#report-view');
+  const view = getReportViewHost();
   if (!view) return;
   view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Estado de Resultados...</div>';
 
@@ -519,7 +949,7 @@ async function renderIncomeStatement() {
 }
 
 async function renderFinancialPosition() {
-  const view = $('#report-view');
+  const view = getReportViewHost();
   if (!view) return;
   const currentMonthDefault = todayStr().slice(0, 7);
   const y = Number(currentMonthDefault.slice(0, 4));
@@ -868,7 +1298,7 @@ async function renderFinancialPosition() {
 }
 
 async function renderJournalBook() {
-  const view = $('#report-view');
+  const view = getReportViewHost();
   if (!view) return;
   view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Libro Diario...</div>';
 
@@ -925,7 +1355,7 @@ async function renderJournalBook() {
 }
 
 async function renderAuxiliaryBook() {
-  const view = $('#report-view');
+  const view = getReportViewHost();
   if (!view) return;
   view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Libro Auxiliar...</div>';
 
@@ -938,7 +1368,7 @@ async function renderAuxiliaryBook() {
     view.innerHTML = `
       <div class="p-4 border-b" style="border-color:#F3F4F6">
         <h4 class="font-bold mb-3" style="color:#0D2137">Libro Auxiliar</h4>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <select id="aux-mode" class="form-input">
             <option value="cuenta-tercero">Cuenta y luego Tercero</option>
             <option value="tercero-cuenta">Tercero y luego Cuenta</option>
@@ -951,7 +1381,19 @@ async function renderAuxiliaryBook() {
             <option value="">Todos los terceros</option>
             ${thirdParties.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number || '')} - ${esc(t.name)}</option>`).join('')}
           </select>
-          <button class="btn btn-primary" id="btn-gen-aux"><i class="fas fa-filter"></i> Generar</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-semibold" style="color:#6B7280">Fecha desde (saldo inicial)</label>
+            <input type="date" id="aux-date-from" class="form-input mt-1" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:#6B7280">Fecha hasta</label>
+            <input type="date" id="aux-date-to" class="form-input mt-1" />
+          </div>
+          <div class="flex items-end">
+            <button class="btn btn-primary w-full" id="btn-gen-aux"><i class="fas fa-filter"></i> Generar</button>
+          </div>
         </div>
       </div>
       <div id="aux-results" class="p-4 text-sm" style="color:#6B7280">Configura filtros y pulsa Generar.</div>`;
@@ -962,52 +1404,204 @@ async function renderAuxiliaryBook() {
   }
 }
 
+function closeAuxTxDetailPanel() {
+  const panel = $('#aux-tx-detail-panel');
+  if (!panel) return;
+  panel.classList.add('hidden');
+  panel.innerHTML = '';
+}
+
+async function openAuxTxDetailInReport(id) {
+  try {
+    const panel = $('#aux-tx-detail-panel');
+    if (!panel) return;
+
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando comprobante...</div>';
+
+    const tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
+    const lines = await API.getTxLines(id);
+
+    panel.innerHTML = `
+      <div class="rounded-2xl border bg-white" style="border-color:#D1D5DB;box-shadow:0 14px 35px rgba(0,0,0,.16)">
+        <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:#E5E7EB">
+          <h4 class="font-bold" style="color:#0D2137">Comprobante ${esc(tx.number || '')}</h4>
+          <button class="btn btn-outline btn-sm" onclick="closeAuxTxDetailPanel()"><i class="fas fa-xmark"></i> Cerrar</button>
+        </div>
+        <div class="p-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+            <div><strong>Fecha:</strong> ${esc(tx.date || '—')}</div>
+            <div><strong>Tercero:</strong> ${esc(tx.expand?.third_party_id?.name || '—')}</div>
+            <div><strong>Estado:</strong> ${esc(tx.status || '—')}</div>
+          </div>
+          <p class="mb-3" style="color:#6B7280">${esc(tx.description || '')}</p>
+          <div class="overflow-x-auto" style="max-height:260px">
+            <table class="data-table">
+              <thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
+              <tbody>
+                ${lines.map(l => `<tr>
+                  <td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td>
+                  <td>${esc(l.expand?.third_party_id?.name || '—')}</td>
+                  <td>${l.cross_doc_ref ? `<span class="badge" style="background:#F3F4F6;color:#374151">${esc(l.cross_doc_ref)}</span>` : '—'}</td>
+                  <td>${esc(l.description || '—')}</td>
+                  <td>${fmt(l.debit || 0)}</td>
+                  <td>${fmt(l.credit || 0)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="flex justify-end mt-3">
+            <button class="btn btn-outline btn-sm" style="border-color:#374151;color:#374151" onclick="printTxNotaContable('${esc(id)}')"><i class="fas fa-print"></i> Imprimir nota contable</button>
+          </div>
+        </div>
+      </div>`;
+  } catch (err) {
+    const panel = $('#aux-tx-detail-panel');
+    if (panel) {
+      panel.classList.remove('hidden');
+      panel.innerHTML = `<div class="rounded-xl border p-4" style="border-color:#FCA5A5;background:#FEF2F2;color:#991B1B"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+    }
+  }
+}
+
 async function generateAuxiliaryRows() {
   const results = $('#aux-results');
   if (!results) return;
   results.innerHTML = '<div class="p-4 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando...</div>';
 
   try {
-    const { transactions, txLines } = await ensureLedgerData();
-    const mode = getSelectVal('aux-mode');
+    const [{ transactions, txLines, thirdParties }, { accounts }] = await Promise.all([
+      ensureLedgerData(),
+      ensureAccountsSaldos(),
+    ]);
+    const mode      = getSelectVal('aux-mode');
     const accountId = getSelectVal('aux-account');
-    const thirdId = getSelectVal('aux-third');
+    const thirdId   = getSelectVal('aux-third');
+    const dateFrom  = ($('#aux-date-from')?.value || '').trim();
+    const dateTo    = ($('#aux-date-to')?.value   || '').trim();
 
-    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+    // Construye el conjunto de cuentas válidas: la seleccionada + todos sus descendientes
+    let allowedAccountIds = null;
+    if (accountId) {
+      const selectedAccount = accounts.find(a => a.id === accountId);
+      if (selectedAccount) {
+        const selectedCode = String(selectedAccount.code || '');
+        allowedAccountIds = new Set(
+          accounts
+            .filter(a => {
+              const code = String(a.code || '');
+              return code === selectedCode || code.startsWith(selectedCode);
+            })
+            .map(a => a.id)
+        );
+      } else {
+        allowedAccountIds = new Set([accountId]);
+      }
+    }
+
+    const accountById = Object.fromEntries(accounts.map(a => [a.id, a]));
+    const txById      = Object.fromEntries(transactions.map(t => [t.id, t]));
+    const thirdById   = Object.fromEntries((thirdParties || []).map(t => [t.id, t]));
+
+    // ── Saldos anteriores (movimientos ANTES de dateFrom) ──
+    // Para cuentas con cruce, el saldo se controla por documento (cuenta+tercero+doc).
+    // Para el resto, se mantiene por cuenta.
+    const openingByKey = new Map();
+    if (dateFrom) {
+      for (const l of txLines) {
+        const tx = txById[l.tx_id];
+        if (!tx || tx.status !== 'active') continue;
+        if (tx.date >= dateFrom) continue;
+        if (allowedAccountIds && !allowedAccountIds.has(l.account_id)) continue;
+        const acc = accountById[l.account_id];
+        if (!acc) continue;
+        const lineThirdId = l.third_party_id || tx.third_party_id || '';
+        const lineDocCruce = (l.cross_doc_ref || '').trim() || 'SIN_DOC';
+        const openingKey = acc.maneja_cruce
+          ? `doc|${l.account_id}|${lineThirdId || 'NO_TERCERO'}|${lineDocCruce}`
+          : `acc|${l.account_id}`;
+        const prev  = openingByKey.get(openingKey) || 0;
+        const debit  = Number(l.debit  || 0);
+        const credit = Number(l.credit || 0);
+        const delta  = (acc.nature || 'debit') === 'debit' ? debit - credit : credit - debit;
+        openingByKey.set(openingKey, prev + delta);
+      }
+    }
+
+    // ── Filas del período ──
     const rows = txLines
       .map(l => {
         const tx = txById[l.tx_id];
         if (!tx || tx.status !== 'active') return null;
-        const thirdPartyId = tx.third_party_id || '';
-        if (accountId && l.account_id !== accountId) return null;
-        if (thirdId && thirdPartyId !== thirdId) return null;
+        const thirdPartyId = l.third_party_id || tx.third_party_id || '';
+        if (allowedAccountIds && !allowedAccountIds.has(l.account_id)) return null;
+        if (thirdId   && thirdPartyId !== thirdId) return null;
+        if (dateFrom  && tx.date < dateFrom) return null;
+        if (dateTo    && tx.date > dateTo)   return null;
 
-        const accountCode = l.expand?.account_id?.code || '';
-        const accountName = l.expand?.account_id?.name || '';
-        const thirdName = tx.expand?.third_party_id?.name || 'Sin tercero';
+        const acc         = accountById[l.account_id];
+        const accountCode = acc?.code || l.expand?.account_id?.code || '';
+        const accountName = acc?.name || l.expand?.account_id?.name || '';
+        const thirdRec = thirdById[thirdPartyId] || tx.expand?.third_party_id || null;
+        const thirdName = thirdRec?.name || 'Sin tercero';
+        const thirdDoc = thirdRec?.doc_number || '';
+        const thirdDisplay = thirdDoc ? `${thirdDoc} - ${thirdName}` : thirdName;
 
         return {
-          fecha: tx.date || '',
-          comprobante: tx.number || '',
-          cuenta: `${accountCode} - ${accountName}`.trim(),
-          tercero: thirdName,
-          descripcion: l.description || tx.description || '',
-          debito: Number(l.debit || 0),
-          credito: Number(l.credit || 0),
-          keyCuenta: `${accountCode} - ${accountName}`.trim(),
-          keyTercero: thirdName,
+          fecha:         tx.date || '',
+          comprobante:   tx.number || '',
+          txId:          tx.id || '',
+          cuenta:        `${accountCode} - ${accountName}`.trim(),
+          accountCode:   accountCode,
+          accountName:   accountName,
+          tercero:       thirdDisplay,
+          thirdName:     thirdName,
+          thirdDoc:      thirdDoc,
+          doc_cruce:     (l.cross_doc_ref || '').trim(),
+          descripcion:   l.description || tx.description || '',
+          debito:        Number(l.debit  || 0),
+          credito:       Number(l.credit || 0),
+          keyCuenta:     `${accountCode} - ${accountName}`.trim(),
+          keyTercero:    thirdDisplay,
+          accountId:     l.account_id,
+          accountNature: acc?.nature || 'debit',
+          accountManejaCruce: !!acc?.maneja_cruce,
+          thirdId:        thirdPartyId || 'NO_TERCERO',
         };
       })
       .filter(Boolean);
 
-    const primaryField = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
-    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta' : 'keyTercero';
-    const primaryLabel = mode === 'tercero-cuenta' ? 'Tercero' : 'Cuenta';
-    const secondaryLabel = mode === 'tercero-cuenta' ? 'Cuenta' : 'Tercero';
+    // ── Pre-calcular saldos por fila ─────────────────────────────────────────
+    // saldo_anterior: saldo inicial del rango (constante por clave de saldo)
+    // saldo_actual: saldo inicial + movimientos acumulados de la clave en el rango
+    const sortedForBalance = [...rows].sort((a, b) =>
+      `${a.accountId}|${a.thirdId}|${a.fecha}|${a.doc_cruce || 'SIN_DOC'}|${a.comprobante}`.localeCompare(
+       `${b.accountId}|${b.thirdId}|${b.fecha}|${b.doc_cruce || 'SIN_DOC'}|${b.comprobante}`)
+    );
+    const periodDeltaByKey = new Map();
+    for (const row of sortedForBalance) {
+      const balanceKey = row.accountManejaCruce
+        ? `doc|${row.accountId}|${row.thirdId}|${row.doc_cruce || 'SIN_DOC'}`
+        : `acc|${row.accountId}`;
+      row.balanceKey = balanceKey;
+      const opening = openingByKey.get(balanceKey) || 0;
+      const moved = periodDeltaByKey.get(balanceKey) || 0;
+      const delta = row.accountNature === 'debit'
+        ? row.debito - row.credito
+        : row.credito - row.debito;
+      row.saldo_anterior = opening;
+      row.saldo_actual = opening + moved + delta;
+      periodDeltaByKey.set(balanceKey, moved + delta);
+    }
+
+    const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
+    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta'  : 'keyTercero';
+    const primaryLabel   = mode === 'tercero-cuenta' ? 'Tercero'    : 'Cuenta';
+    const secondaryLabel = mode === 'tercero-cuenta' ? 'Cuenta'     : 'Tercero';
 
     rows.sort((a, b) => {
-      const aKey = `${a[primaryField]}|${a[secondaryField]}|${a.fecha}|${a.comprobante}`;
-      const bKey = `${b[primaryField]}|${b[secondaryField]}|${b.fecha}|${b.comprobante}`;
+      const aKey = `${a[primaryField]}|${a[secondaryField]}|${a.fecha}|${a.doc_cruce || 'SIN_DOC'}|${a.comprobante}`;
+      const bKey = `${b[primaryField]}|${b[secondaryField]}|${b.fecha}|${b.doc_cruce || 'SIN_DOC'}|${b.comprobante}`;
       return aKey.localeCompare(bKey);
     });
 
@@ -1016,10 +1610,36 @@ async function generateAuxiliaryRows() {
       return;
     }
 
-    const totalDebit = rows.reduce((s, r) => s + r.debito, 0);
-    const totalCredit = rows.reduce((s, r) => s + r.credito, 0);
+    const calcOpeningTotal = (items) => {
+      const seen = new Set();
+      let total = 0;
+      for (const r of items) {
+        const k = r.balanceKey || '';
+        if (!k || seen.has(k)) continue;
+        seen.add(k);
+        total += Number(r.saldo_anterior || 0);
+      }
+      return total;
+    };
 
-    // Agrupa jerárquicamente para que el modo elegido cambie la lectura visual.
+    const calcClosingTotal = (items) => {
+      const lastByKey = new Map();
+      for (const r of items) {
+        const k = r.balanceKey || '';
+        if (!k) continue;
+        lastByKey.set(k, Number(r.saldo_actual || 0));
+      }
+      let total = 0;
+      lastByKey.forEach(v => { total += v; });
+      return total;
+    };
+
+    const totalPrev   = calcOpeningTotal(rows);
+    const totalDebit  = rows.reduce((s, r) => s + r.debito,  0);
+    const totalCredit = rows.reduce((s, r) => s + r.credito, 0);
+    const totalCurr   = calcClosingTotal(rows);
+
+    // Agrupa jerárquicamente
     const grouped = new Map();
     for (const row of rows) {
       const pk = row[primaryField] || '—';
@@ -1030,85 +1650,310 @@ async function generateAuxiliaryRows() {
       secondaryMap.get(sk).push(row);
     }
 
-    let groupedHtml = '';
+    const layoutRows = [];
     grouped.forEach((secondaryMap, primaryValue) => {
       const primaryRows = [...secondaryMap.values()].flat();
+      const firstPrimary = primaryRows[0] || {};
       const primaryDebit = primaryRows.reduce((s, r) => s + r.debito, 0);
       const primaryCredit = primaryRows.reduce((s, r) => s + r.credito, 0);
+      const primaryPrev = calcOpeningTotal(primaryRows);
+      const primaryCurr = calcClosingTotal(primaryRows);
 
-      groupedHtml += `
-        <tr>
-          <td colspan="7" class="font-bold" style="background:#EFF6FF;color:#1E3A8A">${esc(primaryLabel)}: ${esc(primaryValue)}</td>
-        </tr>`;
+      if (mode === 'cuenta-tercero') {
+        layoutRows.push({
+          kind: 'primary',
+          cuenta: firstPrimary.accountCode || primaryValue,
+          detalle: (firstPrimary.accountName || '').toUpperCase(),
+        });
+      } else {
+        layoutRows.push({
+          kind: 'primary',
+          nit: firstPrimary.thirdDoc || '',
+          detalle: (firstPrimary.thirdName || primaryValue).toUpperCase(),
+        });
+      }
 
       secondaryMap.forEach((items, secondaryValue) => {
+        const firstSecondary = items[0] || {};
+        const secPrev = calcOpeningTotal(items);
         const secDebit = items.reduce((s, r) => s + r.debito, 0);
         const secCredit = items.reduce((s, r) => s + r.credito, 0);
-        groupedHtml += `
-          <tr>
-            <td colspan="7" class="font-semibold" style="background:#F8FAFC;color:#334155;padding-left:1.5rem">${esc(secondaryLabel)}: ${esc(secondaryValue)}</td>
-          </tr>
-          ${items.map(r => `<tr>
-            <td>${esc(r.fecha)}</td>
-            <td>${esc(r.comprobante)}</td>
-            <td>${esc(r.cuenta)}</td>
-            <td>${esc(r.tercero)}</td>
-            <td>${esc(r.descripcion)}</td>
-            <td>${fmt(r.debito)}</td>
-            <td>${fmt(r.credito)}</td>
-          </tr>`).join('')}
-          <tr>
-            <td colspan="5" class="font-semibold" style="background:#F8FAFC;padding-left:2.5rem">Subtotal ${esc(secondaryLabel)}: ${esc(secondaryValue)}</td>
-            <td class="font-semibold" style="background:#F8FAFC">${fmt(secDebit)}</td>
-            <td class="font-semibold" style="background:#F8FAFC">${fmt(secCredit)}</td>
-          </tr>`;
+        const secCurr = calcClosingTotal(items);
+
+        if (mode === 'cuenta-tercero') {
+          layoutRows.push({
+            kind: 'secondary',
+            nit: firstSecondary.thirdDoc || '',
+            detalle: (firstSecondary.thirdName || secondaryValue).toUpperCase(),
+          });
+        } else {
+          layoutRows.push({
+            kind: 'secondary',
+            cuenta: firstSecondary.accountCode || secondaryValue,
+            detalle: (firstSecondary.accountName || '').toUpperCase(),
+          });
+        }
+
+        items.forEach((r) => {
+          layoutRows.push({
+            kind: 'detail',
+            fecha: r.fecha,
+            cruce: r.doc_cruce,
+            detalle: r.descripcion,
+            comprobante: r.comprobante,
+            txId: r.txId,
+            saldo_anterior: r.saldo_anterior,
+            debito: r.debito,
+            credito: r.credito,
+            saldo_actual: r.saldo_actual,
+          });
+        });
+
+        layoutRows.push({
+          kind: 'subtotal-secondary',
+          detalle: `SubTotal ${mode === 'cuenta-tercero' ? (firstSecondary.thirdName || secondaryValue) : (firstSecondary.accountName || secondaryValue)}`,
+          saldo_anterior: secPrev,
+          debito: secDebit,
+          credito: secCredit,
+          saldo_actual: secCurr,
+        });
       });
 
-      groupedHtml += `
-        <tr>
-          <td colspan="5" class="font-bold" style="background:#DBEAFE;color:#1E3A8A">Subtotal ${esc(primaryLabel)}: ${esc(primaryValue)}</td>
-          <td class="font-bold" style="background:#DBEAFE;color:#1E3A8A">${fmt(primaryDebit)}</td>
-          <td class="font-bold" style="background:#DBEAFE;color:#1E3A8A">${fmt(primaryCredit)}</td>
-        </tr>`;
+      layoutRows.push({
+        kind: 'subtotal-primary',
+        detalle: `SubTotal ${mode === 'cuenta-tercero' ? (firstPrimary.accountName || primaryValue) : (firstPrimary.thirdName || primaryValue)}`,
+        saldo_anterior: primaryPrev,
+        debito: primaryDebit,
+        credito: primaryCredit,
+        saldo_actual: primaryCurr,
+      });
     });
+
+    layoutRows.push({
+      kind: 'grand-total',
+      detalle: 'GRAN TOTAL LIBRO AUXILIAR',
+      saldo_anterior: totalPrev,
+      debito: totalDebit,
+      credito: totalCredit,
+      saldo_actual: totalCurr,
+    });
+
+    const groupedHtml = layoutRows.map((r) => {
+      if (r.kind === 'primary') {
+        return `<tr style="border-top:1px solid #E5E7EB"><td style="font-weight:700;color:#0D2137">${esc(r.cuenta || '')}</td><td style="font-weight:700;color:#0D2137">${esc(r.nit || '')}</td><td></td><td></td><td style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      }
+      if (r.kind === 'secondary') {
+        return `<tr><td></td><td style="font-weight:700">${esc(r.nit || '')}</td><td></td><td></td><td style="font-weight:700;padding-left:10px">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      }
+      if (r.kind === 'subtotal-secondary') {
+        return `<tr style="background:#F5F5F5;border-top:1px solid #D0D0D0"><td colspan="5" style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:700">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.saldo_actual || 0)}</td></tr>`;
+      }
+      if (r.kind === 'subtotal-primary') {
+        return `<tr style="background:#ECECEC;border-top:1px solid #B0B0B0;border-bottom:1px solid #B0B0B0"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.saldo_actual || 0)}</td></tr>`;
+      }
+      if (r.kind === 'grand-total') {
+        return `<tr style="background:#E2E2E2;border-top:2px solid #0D2137;border-bottom:2px solid #0D2137"><td colspan="5" style="font-weight:800;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:800">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:800">${fmt(r.saldo_actual || 0)}</td></tr>`;
+      }
+      return `<tr>
+        <td></td>
+        <td></td>
+        <td>${esc(r.fecha || '')}</td>
+        <td style="font-family:monospace">${esc(r.cruce || '')}</td>
+        <td>${esc(r.detalle || '')}</td>
+        <td>${r.txId ? `<a href="#" onclick="event.preventDefault(); openAuxTxDetailInReport('${esc(r.txId)}');" style="color:#333;font-weight:700;text-decoration:underline">${esc(r.comprobante || '')}</a>` : esc(r.comprobante || '')}</td>
+        <td style="text-align:right">${fmt(r.saldo_anterior || 0)}</td>
+        <td style="text-align:right">${fmt(r.debito || 0)}</td>
+        <td style="text-align:right">${fmt(r.credito || 0)}</td>
+        <td style="text-align:right">${fmt(r.saldo_actual || 0)}</td>
+      </tr>`;
+    }).join('');
 
     results.innerHTML = `
       <div class="flex items-center justify-between mb-3">
-        <p class="text-sm" style="color:#6B7280">Orden actual: <strong>${esc(primaryLabel)} → ${esc(secondaryLabel)}</strong> · Registros: <strong>${fmtN(rows.length)}</strong></p>
-        ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        <p class="text-sm" style="color:#6B7280">Orden actual: <strong>${esc(primaryLabel)} → ${esc(secondaryLabel)} → Fecha → Doc. Cruce</strong> · Registros: <strong>${fmtN(rows.length)}</strong></p>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-outline btn-sm" id="btn-pdf-aux" style="border-color:#6B7280;color:#374151"><i class="fas fa-file-pdf"></i> PDF</button>
+          ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+        </div>
       </div>
-      <div class="overflow-x-auto" style="max-height:420px">
-        <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Comp.</th><th>Cuenta</th><th>Tercero</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
-          <tbody>${groupedHtml}</tbody>
-          <tfoot><tr><td colspan="5" class="font-bold">Total</td><td class="font-bold">${fmt(totalDebit)}</td><td class="font-bold">${fmt(totalCredit)}</td></tr></tfoot>
-        </table>
+      <div style="position:relative">
+        <div class="overflow-x-auto" style="max-height:420px">
+          <table class="data-table">
+            <thead><tr><th>CUENTA</th><th>NIT</th><th>FECHA</th><th>CRUCE</th><th>DETALLE DOCTO.</th><th>COMPROBANTE</th><th>SALDO ANTERIOR</th><th>DEBITO</th><th>CREDITO</th><th>NUEVO SALDO</th></tr></thead>
+            <tbody>${groupedHtml}</tbody>
+          </table>
+        </div>
+        <div id="aux-tx-detail-panel" class="hidden" style="position:absolute;inset:12px;z-index:20;background:rgba(255,255,255,.98);padding:4px;border-radius:14px;overflow:auto"></div>
       </div>`;
 
     $('#btn-exp-aux')?.addEventListener('click', () => {
-      const exportRows = rows.map(r => ({
-        fecha: r.fecha,
-        comprobante: r.comprobante,
-        cuenta: r.cuenta,
-        tercero: r.tercero,
-        descripcion: r.descripcion,
-        debito: r.debito,
-        credito: r.credito,
-        grupo_principal: r[primaryField],
-        grupo_secundario: r[secondaryField],
+      const exportRows = layoutRows.map((r) => ({
+        cuenta: r.cuenta || '',
+        nit: r.nit || '',
+        fecha: r.fecha || '',
+        cruce: r.cruce || '',
+        detalle_docto: r.detalle || '',
+        comprobante: r.comprobante || '',
+        saldo_anterior: (r.kind === 'detail' || r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') ? Number(r.saldo_anterior || 0) : '',
+        debito: (r.kind === 'detail' || r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') ? Number(r.debito || 0) : '',
+        credito: (r.kind === 'detail' || r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') ? Number(r.credito || 0) : '',
+        nuevo_saldo: (r.kind === 'detail' || r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') ? Number(r.saldo_actual || 0) : '',
       }));
 
       exportToExcel(exportRows, [
-        { key: 'fecha', label: 'Fecha' },
-        { key: 'comprobante', label: 'Comprobante' },
-        { key: 'cuenta', label: 'Cuenta' },
-        { key: 'tercero', label: 'Tercero' },
-        { key: 'descripcion', label: 'Descripción' },
-        { key: 'debito', label: 'Débito' },
-        { key: 'credito', label: 'Crédito' },
-        { key: 'grupo_principal', label: `Grupo Principal (${primaryLabel})` },
-        { key: 'grupo_secundario', label: `Grupo Secundario (${secondaryLabel})` },
+        { key: 'cuenta',          label: 'CUENTA' },
+        { key: 'nit',             label: 'NIT' },
+        { key: 'fecha',           label: 'FECHA' },
+        { key: 'cruce',           label: 'CRUCE' },
+        { key: 'detalle_docto',   label: 'DETALLE DOCTO.' },
+        { key: 'comprobante',     label: 'COMPROBANTE' },
+        { key: 'saldo_anterior',  label: 'SALDO ANTERIOR' },
+        { key: 'debito',          label: 'DEBITO' },
+        { key: 'credito',         label: 'CREDITO' },
+        { key: 'nuevo_saldo',     label: 'NUEVO SALDO' },
       ], 'libro_auxiliar');
+    });
+
+    $('#btn-pdf-aux')?.addEventListener('click', () => {
+      try {
+        const jsPdfCtor = window.jspdf?.jsPDF;
+        if (typeof jsPdfCtor !== 'function') {
+          showToast('No se pudo inicializar el generador PDF.', 'error');
+          return;
+        }
+
+        const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const generatedAt = new Date().toLocaleString('es-CO');
+        const pageMarginLeft = 24;
+        const pageMarginRight = pageWidth - 24;
+
+        // === ENCABEZADO EN 3 BLOQUES ===
+        // Bloque izquierdo: Empresa
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(13, 33, 55);
+        doc.text('CONTACO S.A.S.', pageMarginLeft, 20);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        doc.text('NIT: 901.234.567-8', pageMarginLeft, 30);
+        doc.text('Bogotá, Colombia', pageMarginLeft, 38);
+
+        // Bloque central: Título
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.setTextColor(13, 33, 55);
+        doc.text('LIBRO AUXILIAR', pageWidth / 2, 26, { align: 'center' });
+
+        // Bloque derecho: Usuario y fecha
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 100);
+        const userName = sessionStorage.getItem('user_name') || 'Usuario';
+        doc.text(`Usuario: ${userName}`, pageMarginRight, 20, { align: 'right' });
+        doc.text(`Fecha: ${generatedAt}`, pageMarginRight, 30, { align: 'right' });
+        doc.text(`Orden: ${primaryLabel} → ${secondaryLabel}`, pageMarginRight, 38, { align: 'right' });
+
+        // Línea separadora
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.5);
+        doc.line(pageMarginLeft, 46, pageMarginRight, 46);
+
+        // Construir body con información de tipo de fila
+        const body = layoutRows.map((r) => {
+          const row = [];
+          if (r.kind === 'primary') {
+            row.push(r.cuenta || '', r.nit || '', '', '', r.detalle || '', '', '', '', '', '');
+          } else if (r.kind === 'secondary') {
+            row.push('', r.nit || '', '', '', r.detalle || '', '', '', '', '', '');
+          } else if (r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') {
+            row.push('', '', '', '', r.detalle || '', '', fmt(r.saldo_anterior || 0), fmt(r.debito || 0), fmt(r.credito || 0), fmt(r.saldo_actual || 0));
+          } else {
+            row.push('', '', r.fecha || '', r.cruce || '', r.detalle || '', r.comprobante || '', fmt(r.saldo_anterior || 0), fmt(r.debito || 0), fmt(r.credito || 0), fmt(r.saldo_actual || 0));
+          }
+          row._rowKind = r.kind; // Marcar tipo de fila para styling
+          return row;
+        });
+
+        doc.autoTable({
+          startY: 54,
+          head: [[
+            'CUENTA', 'NIT', 'FECHA', 'CRUCE', 'DETALLE DOCTO.', 'COMPROBANTE',
+            'SALDO ANTERIOR', 'DEBITO', 'CREDITO', 'NUEVO SALDO',
+          ]],
+          body,
+          theme: 'plain',
+          margin: { top: 54, left: pageMarginLeft, right: 24, bottom: 26 },
+          styles: {
+            font: 'helvetica',
+            fontSize: 7,
+            textColor: [40, 40, 40],
+            lineColor: [200, 200, 200],
+            lineWidth: 0.1,
+            cellPadding: 2.5,
+          },
+          headStyles: {
+            fillColor: [220, 220, 220],
+            textColor: [13, 33, 55],
+            fontStyle: 'bold',
+            lineColor: [180, 180, 180],
+            lineWidth: 0.3,
+          },
+          columnStyles: {
+            0: { cellWidth: 48 },
+            1: { cellWidth: 56 },
+            2: { cellWidth: 52 },
+            3: { cellWidth: 38 },
+            4: { cellWidth: 112 },
+            5: { cellWidth: 68 },
+            6: { cellWidth: 50, halign: 'right' },
+            7: { cellWidth: 46, halign: 'right' },
+            8: { cellWidth: 46, halign: 'right' },
+            9: { cellWidth: 50, halign: 'right' },
+          },
+          didDrawCell: (data) => {
+            const { cell, row } = data;
+            const rowKind = body[row.index]?._rowKind;
+            
+            // Aplicar estilos según tipo de fila
+            if (rowKind === 'primary') {
+              cell.styles.fontStyle = 'bold';
+              cell.styles.textColor = [13, 33, 55];
+              cell.styles.lineWidth = 0.15;
+            } else if (rowKind === 'secondary') {
+              cell.styles.fontStyle = 'bold';
+              cell.styles.textColor = [20, 20, 20];
+              cell.styles.lineWidth = 0.15;
+            } else if (rowKind === 'subtotal-secondary') {
+              cell.styles.fillColor = [245, 245, 245];
+              cell.styles.fontStyle = 'bold';
+              cell.styles.lineWidth = 0.15;
+            } else if (rowKind === 'subtotal-primary') {
+              cell.styles.fillColor = [240, 240, 240];
+              cell.styles.fontStyle = 'bold';
+              cell.styles.lineWidth = 0.15;
+            } else if (rowKind === 'grand-total') {
+              cell.styles.fillColor = [230, 230, 230];
+              cell.styles.fontStyle = 'bold';
+              cell.styles.lineWidth = 0.2;
+              cell.styles.textColor = [13, 33, 55];
+            }
+          },
+          didDrawPage: (data) => {
+            const pageHeight = doc.internal.pageSize.getHeight();
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(120, 120, 120);
+            doc.text('Reporte generado por ContaCO - Escala de grises', pageMarginLeft, pageHeight - 10);
+            doc.text(`Página ${data.pageNumber}`, pageMarginRight, pageHeight - 10, { align: 'right' });
+          },
+        });
+
+        doc.save(`libro_auxiliar_${todayStr()}.pdf`);
+      } catch (err) {
+        showToast(`Error al generar PDF: ${err.message}`, 'error');
+      }
     });
   } catch (err) {
     results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;

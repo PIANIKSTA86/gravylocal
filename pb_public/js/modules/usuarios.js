@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 - usuarios.js
+﻿/**
+ * GRAVY v2.0 - usuarios.js
  */
 'use strict';
 

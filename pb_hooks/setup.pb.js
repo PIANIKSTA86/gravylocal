@@ -1,7 +1,7 @@
-/// <reference path="../pb_data/types.d.ts" />
+﻿/// <reference path="../pb_data/types.d.ts" />
 
 /**
- * ContaCO v2.0 — Setup inicial
+ * GRAVY v2.0 — Setup inicial
  * Se ejecuta una sola vez al primer arranque de PocketBase.
  * IMPORTANTE: collectionId en campos de relación debe ser el ID real,
  * no el nombre de la colección.
@@ -18,7 +18,7 @@ onBootstrap((e) => {
     // Primera vez — continuar
   }
 
-  console.log("[ContaCO] Primer arranque detectado. Inicializando base de datos...");
+  console.log("[GRAVY] Primer arranque detectado. Inicializando base de datos...");
 
   // ── ID de la colección de usuarios (built-in) ──────────
   let usersColId = "";
@@ -402,10 +402,10 @@ onBootstrap((e) => {
       required: false,
     }));
     $app.save(usersCol);
-    console.log("[ContaCO] Campos de rol agregados a users correctamente.");
+    console.log("[GRAVY] Campos de rol agregados a users correctamente.");
   } catch(err) {
-    console.log("[ContaCO] Aviso al extender users: " + err);
-    console.log("[ContaCO] Agregue manualmente los campos role/full_name/active a la coleccion users en el panel admin.");
+    console.log("[GRAVY] Aviso al extender users: " + err);
+    console.log("[GRAVY] Agregue manualmente los campos role/full_name/active a la coleccion users en el panel admin.");
   }
 
   // ─────────────────────────────────────────────────────────
@@ -574,8 +574,8 @@ onBootstrap((e) => {
     $app.save(r);
   }
 
-  console.log("[ContaCO] Base de datos inicializada correctamente.");
-  console.log("[ContaCO] Ir a http://localhost:8090/_/ para crear el primer usuario administrador.");
+  console.log("[GRAVY] Base de datos inicializada correctamente.");
+  console.log("[GRAVY] Ir a http://localhost:8090/_/ para crear el primer usuario administrador.");
 });
 
 /**
@@ -640,7 +640,7 @@ onBootstrap((e) => {
       .newQuery("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_number ON transactions (number)")
       .execute();
   } catch (err) {
-    console.log("[ContaCO] Aviso al crear índice idx_transactions_number: " + err);
+    console.log("[GRAVY] Aviso al crear índice idx_transactions_number: " + err);
   }
 });
 
@@ -682,7 +682,7 @@ function writeAuditFromEvent(e, action, entity, entityId = "", details = "") {
     $app.save(log);
   } catch (err) {
     // Evitar romper la operación principal por un fallo de auditoría.
-    console.log("[ContaCO][Audit] Error al guardar auditoria: " + err);
+    console.log("[GRAVY][Audit] Error al guardar auditoria: " + err);
   }
 }
 
@@ -706,13 +706,13 @@ onBootstrap((e) => {
         name: "event_at",
         required: false,
       }));
-      console.log("[ContaCO] Campo event_at agregado a audit_log.");
+      console.log("[GRAVY] Campo event_at agregado a audit_log.");
       changed = true;
     }
 
     if (auditCol.createRule !== expectedCreateRule) {
       auditCol.createRule = expectedCreateRule;
-      console.log("[ContaCO] Regla createRule ajustada en audit_log.");
+      console.log("[GRAVY] Regla createRule ajustada en audit_log.");
       changed = true;
     }
 
@@ -720,7 +720,7 @@ onBootstrap((e) => {
       $app.save(auditCol);
     }
   } catch (err) {
-    console.log("[ContaCO] Aviso al asegurar campo event_at en audit_log: " + err);
+    console.log("[GRAVY] Aviso al asegurar campo event_at en audit_log: " + err);
   }
 });
 
@@ -827,10 +827,10 @@ onBootstrap((e) => {
 
     if (changed) {
       $app.save(usersCol);
-      console.log("[ContaCO] Reglas de users actualizadas.");
+      console.log("[GRAVY] Reglas de users actualizadas.");
     }
   } catch (err) {
-    console.log("[ContaCO] Aviso al ajustar reglas de users: " + err);
+    console.log("[GRAVY] Aviso al ajustar reglas de users: " + err);
   }
 });
 
@@ -850,7 +850,7 @@ onBootstrap((e) => {
       if (!hasIt) {
         col.fields.add(new BoolField({ name: fname, required: false }));
         changed = true;
-        console.log("[ContaCO] Campo " + fname + " agregado a accounts.");
+        console.log("[GRAVY] Campo " + fname + " agregado a accounts.");
       }
     }
 
@@ -859,7 +859,7 @@ onBootstrap((e) => {
     if (!hasTipos) {
       col.fields.add(new TextField({ name: "tipos_retencion", required: false }));
       changed = true;
-      console.log("[ContaCO] Campo tipos_retencion agregado a accounts.");
+      console.log("[GRAVY] Campo tipos_retencion agregado a accounts.");
     }
 
     const rateFields = ["ret_rate_reterenta", "ret_rate_reteiva", "ret_rate_reteica"];
@@ -869,13 +869,13 @@ onBootstrap((e) => {
       if (!hasIt) {
         col.fields.add(new NumberField({ name: fname, required: false, min: 0 }));
         changed = true;
-        console.log("[ContaCO] Campo " + fname + " agregado a accounts.");
+        console.log("[GRAVY] Campo " + fname + " agregado a accounts.");
       }
     }
 
     if (changed) $app.save(col);
   } catch (err) {
-    console.log("[ContaCO] Aviso al migrar accounts (cruce/retenciones): " + err);
+    console.log("[GRAVY] Aviso al migrar accounts (cruce/retenciones): " + err);
   }
 
   // ── tx_lines: cross_doc_ref ───────────────────────────────────────────────
@@ -886,9 +886,9 @@ onBootstrap((e) => {
     if (!hasCross) {
       col.fields.add(new TextField({ name: "cross_doc_ref", required: false }));
       $app.save(col);
-      console.log("[ContaCO] Campo cross_doc_ref agregado a tx_lines.");
+      console.log("[GRAVY] Campo cross_doc_ref agregado a tx_lines.");
     }
   } catch (err) {
-    console.log("[ContaCO] Aviso al migrar tx_lines (cross_doc_ref): " + err);
+    console.log("[GRAVY] Aviso al migrar tx_lines (cross_doc_ref): " + err);
   }
 });

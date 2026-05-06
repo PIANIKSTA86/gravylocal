@@ -1,5 +1,5 @@
 ﻿/**
- * ContaCO v2.0 — reportes.js
+ * GRAVY v2.0 — reportes.js
  */
 'use strict';
 

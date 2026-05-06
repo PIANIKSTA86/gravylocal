@@ -1,5 +1,5 @@
 ﻿/**
- * ContaCO v2.0 — auditoria.js
+ * GRAVY v2.0 — auditoria.js
  */
 'use strict';
 

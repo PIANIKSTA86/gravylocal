@@ -1,5 +1,5 @@
 ﻿/**
- * ContaCO v2.0 — transacciones.js
+ * GRAVY v2.0 — transacciones.js
  */
 'use strict';
 

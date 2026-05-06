@@ -1,6 +1,6 @@
 ﻿/// <reference path="../pb_data/types.d.ts" />
 /**
- * ContaCO v2.0 - migrate_geo.pb.js
+ * GRAVY v2.0 - migrate_geo.pb.js
  * Crea las colecciones geograficas (countries, departments, municipalities)
  * y las siembra con los datos DANE / ISO la primera vez que se ejecuta.
  *
@@ -31,7 +31,7 @@ onBootstrap(function(e) {
       indexes: ['CREATE UNIQUE INDEX idx_geo_country_code ON geo_countries (code)'],
     });
     $app.save(col1);
-    console.log('[ContaCO] Coleccion geo_countries creada.');
+    console.log('[GRAVY] Coleccion geo_countries creada.');
   }
 
   // 2. Crear/verificar coleccion departments
@@ -54,7 +54,7 @@ onBootstrap(function(e) {
       indexes: ['CREATE UNIQUE INDEX idx_geo_dept_code ON geo_departments (code)'],
     });
     $app.save(col2);
-    console.log('[ContaCO] Coleccion geo_departments creada.');
+    console.log('[GRAVY] Coleccion geo_departments creada.');
   }
 
   // 3. Crear/verificar coleccion municipalities
@@ -81,7 +81,7 @@ onBootstrap(function(e) {
       ],
     });
     $app.save(col3);
-    console.log('[ContaCO] Coleccion geo_municipalities creada.');
+    console.log('[GRAVY] Coleccion geo_municipalities creada.');
   }
 
   // 4. Sembrar datos si estan vacias (inlineado para evitar referencia externa)
@@ -92,7 +92,7 @@ onBootstrap(function(e) {
     return; // coleccion no existe
   }
 
-  console.log('[ContaCO] Sembrando datos geograficos...');
+  console.log('[GRAVY] Sembrando datos geograficos...');
 
   var PAISES = [
     ["CO","COLOMBIA"],["AF","AFGANISTAN"],["AX","ALAND"],["AL","ALBANIA"],["DE","ALEMANIA"],
@@ -156,9 +156,9 @@ onBootstrap(function(e) {
       recP.set('name', PAISES[i][1]);
       $app.save(recP);
     }
-    console.log('[ContaCO] ' + PAISES.length + ' paises sembrados.');
+    console.log('[GRAVY] ' + PAISES.length + ' paises sembrados.');
   } catch (err) {
-    console.error('[ContaCO] Error sembrando paises: ' + String(err));
+    console.error('[GRAVY] Error sembrando paises: ' + String(err));
   }
 
   var DEPTS = [
@@ -182,10 +182,10 @@ onBootstrap(function(e) {
       recD.set('country_code', 'CO');
       $app.save(recD);
     }
-    console.log('[ContaCO] ' + DEPTS.length + ' departamentos sembrados.');
+    console.log('[GRAVY] ' + DEPTS.length + ' departamentos sembrados.');
   } catch (err) {
-    console.error('[ContaCO] Error sembrando departamentos: ' + String(err));
+    console.error('[GRAVY] Error sembrando departamentos: ' + String(err));
   }
 
-  console.log('[ContaCO] Siembra geografica completada.');
+  console.log('[GRAVY] Siembra geografica completada.');
 });

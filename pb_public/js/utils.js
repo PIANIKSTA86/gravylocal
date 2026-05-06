@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — utils.js
+﻿/**
+ * GRAVY v2.0 — utils.js
  * Funciones utilitarias globales. Sin dependencias externas.
  */
 

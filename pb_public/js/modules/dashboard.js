@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — dashboard.js
+﻿/**
+ * GRAVY v2.0 — dashboard.js
  */
 'use strict';
 

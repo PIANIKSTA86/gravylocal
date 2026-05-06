@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 ? facturacion-dian.js
+﻿/**
+ * GRAVY v2.0 ? facturacion-dian.js
  */
 'use strict';
 
@@ -153,7 +153,7 @@ async function viewDianDetail(id) {
 
     // Build simulated XML content
     const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Documento Electr?nico DIAN - ContaCO v2 (Simulaci?n) -->
+<!-- Documento Electr?nico DIAN - GRAVY v2 (Simulaci?n) -->
 <Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2">
   <UBLVersionID>UBL 2.1</UBLVersionID>
   <ID>${esc(txRef?.number || 'N/A')}</ID>

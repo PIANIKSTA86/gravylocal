@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — utilidades.js
+﻿/**
+ * GRAVY v2.0 — utilidades.js
  * Módulo de Utilidades: herramientas de administración y mantenimiento.
  */
 'use strict';
@@ -266,7 +266,6 @@ async function _handleCreateBackup() {
       records: totalRecords,
     });
     localStorage.setItem('gravy_last_backup', backupInfo);
-    localStorage.setItem('contaco_last_backup', backupInfo);
     _loadLastBackupInfo();
 
     await API.logAudit('BACKUP_CREATED', 'sistema', null,

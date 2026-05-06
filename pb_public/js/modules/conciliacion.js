@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 ? conciliacion.js
+﻿/**
+ * GRAVY v2.0 ? conciliacion.js
  */
 'use strict';
 

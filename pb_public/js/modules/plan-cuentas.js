@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — plan-cuentas.js
+﻿/**
+ * GRAVY v2.0 — plan-cuentas.js
  */
 'use strict';
 

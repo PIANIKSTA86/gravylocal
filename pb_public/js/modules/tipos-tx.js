@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — tipos-tx.js
+﻿/**
+ * GRAVY v2.0 — tipos-tx.js
  */
 'use strict';
 

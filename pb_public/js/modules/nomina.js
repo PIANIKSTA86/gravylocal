@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — nomina.js
+﻿/**
+ * GRAVY v2.0 — nomina.js
  */
 'use strict';
 

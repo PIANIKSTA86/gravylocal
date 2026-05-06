@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — router.js
+﻿/**
+ * GRAVY v2.0 — router.js
  * Navegación SPA entre módulos.
  */
 

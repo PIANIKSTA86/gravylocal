@@ -1,6 +1,6 @@
-/// <reference path="../pb_data/types.d.ts" />
+﻿/// <reference path="../pb_data/types.d.ts" />
 /**
- * ContaCO v2.0 — migrate_tp.pb.js
+ * GRAVY v2.0 — migrate_tp.pb.js
  * Migración: agrega campos nuevos a third_parties y actualiza valores de tipo.
  * Se ejecuta en cada arranque pero es idempotente (sólo actúa si falta algo).
  */
@@ -55,10 +55,10 @@ onBootstrap((e) => {
 
     if (changed) {
       $app.save(col);
-      console.log('[ContaCO] Migración third_parties completada: campos nuevos agregados.');
+      console.log('[GRAVY] Migración third_parties completada: campos nuevos agregados.');
     }
   } catch (err) {
-    console.error('[ContaCO] Error en migración third_parties:', String(err));
+    console.error('[GRAVY] Error en migración third_parties:', String(err));
   }
 
   // ── Migración transaction_types: índice único (code) → (code, prefix) ─────
@@ -71,9 +71,9 @@ onBootstrap((e) => {
     $app.nonconcurrentDB()
       .newQuery("CREATE UNIQUE INDEX IF NOT EXISTS idx_tt_code_prefix ON transaction_types (code, prefix)")
       .execute();
-    console.log('[ContaCO] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).');
+    console.log('[GRAVY] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).');
   } catch (err) {
-    console.error('[ContaCO] Error migrando índice transaction_types:', String(err));
+    console.error('[GRAVY] Error migrando índice transaction_types:', String(err));
   }
 
   // ── Migración tx_lines: tercero por línea (third_party_id) ─────────────────
@@ -90,9 +90,9 @@ onBootstrap((e) => {
         cascadeDelete: false,
       }));
       $app.save(txLines);
-      console.log('[ContaCO] Migración tx_lines: campo third_party_id agregado.');
+      console.log('[GRAVY] Migración tx_lines: campo third_party_id agregado.');
     }
   } catch (err) {
-    console.error('[ContaCO] Error migrando tx_lines.third_party_id:', String(err));
+    console.error('[GRAVY] Error migrando tx_lines.third_party_id:', String(err));
   }
 });

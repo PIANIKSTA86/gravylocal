@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 � api.js
+﻿/**
+ * GRAVY v2.0 � api.js
  * Capa de acceso a PocketBase REST API.
  * Reemplaza completamente a SQL.js / localStorage.
  */

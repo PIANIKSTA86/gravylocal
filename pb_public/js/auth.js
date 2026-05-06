@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 o auth.js
+﻿/**
+ * GRAVY v2.0 o auth.js
  * Autenticacion, sesion y control de acceso por rol.
  */
 

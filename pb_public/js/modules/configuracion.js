@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 - configuracion.js
+﻿/**
+ * GRAVY v2.0 - configuracion.js
  */
 'use strict';
 

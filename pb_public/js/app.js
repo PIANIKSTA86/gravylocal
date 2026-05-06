@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — app.js
+﻿/**
+ * GRAVY v2.0 — app.js
  * Punto de entrada: inicializa la aplicación.
  */
 

@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 — terceros.js (v2)
+﻿/**
+ * GRAVY v2.0 — terceros.js (v2)
  * Maestro de Terceros: clientes, proveedores, empleados, acreedores y transportistas.
  */
 'use strict';

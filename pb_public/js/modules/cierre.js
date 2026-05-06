@@ -1,5 +1,5 @@
-/**
- * ContaCO v2.0 - cierre.js
+﻿/**
+ * GRAVY v2.0 - cierre.js
  * Asistente de Cierre Contable Mensual
  */
 'use strict';

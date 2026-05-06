@@ -1405,25 +1405,25 @@ async function renderAuxiliaryBook() {
 }
 
 function closeAuxTxDetailPanel() {
-  const panel = $('#aux-tx-detail-panel');
+  const panel = $('#aux-tx-detail-overlay');
   if (!panel) return;
-  panel.classList.add('hidden');
-  panel.innerHTML = '';
+  panel.remove();
 }
 
 async function openAuxTxDetailInReport(id) {
   try {
-    const panel = $('#aux-tx-detail-panel');
-    if (!panel) return;
-
-    panel.classList.remove('hidden');
-    panel.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando comprobante...</div>';
+    closeAuxTxDetailPanel();
+    const panel = document.createElement('div');
+    panel.id = 'aux-tx-detail-overlay';
+    panel.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(13,33,55,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+    panel.innerHTML = '<div class="rounded-2xl border bg-white p-6 text-center" style="width:min(1080px,96vw);max-height:92vh;overflow:auto;border-color:#D1D5DB;box-shadow:0 24px 60px rgba(0,0,0,.25);color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando comprobante...</div>';
+    document.body.appendChild(panel);
 
     const tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
     const lines = await API.getTxLines(id);
 
     panel.innerHTML = `
-      <div class="rounded-2xl border bg-white" style="border-color:#D1D5DB;box-shadow:0 14px 35px rgba(0,0,0,.16)">
+      <div class="rounded-2xl border bg-white" style="width:min(1080px,96vw);max-height:92vh;overflow:auto;border-color:#D1D5DB;box-shadow:0 24px 60px rgba(0,0,0,.25)">
         <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color:#E5E7EB">
           <h4 class="font-bold" style="color:#0D2137">Comprobante ${esc(tx.number || '')}</h4>
           <button class="btn btn-outline btn-sm" onclick="closeAuxTxDetailPanel()"><i class="fas fa-xmark"></i> Cerrar</button>
@@ -1455,11 +1455,14 @@ async function openAuxTxDetailInReport(id) {
           </div>
         </div>
       </div>`;
+
+    panel.addEventListener('click', (ev) => {
+      if (ev.target === panel) closeAuxTxDetailPanel();
+    });
   } catch (err) {
-    const panel = $('#aux-tx-detail-panel');
+    const panel = $('#aux-tx-detail-overlay');
     if (panel) {
-      panel.classList.remove('hidden');
-      panel.innerHTML = `<div class="rounded-xl border p-4" style="border-color:#FCA5A5;background:#FEF2F2;color:#991B1B"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      panel.innerHTML = `<div class="rounded-xl border p-4 bg-white" style="width:min(780px,92vw);border-color:#FCA5A5;background:#FEF2F2;color:#991B1B"><div class="flex items-center justify-between gap-2"><div><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div><button class="btn btn-outline btn-sm" onclick="closeAuxTxDetailPanel()">Cerrar</button></div></div>`;
     }
   }
 }
@@ -1738,12 +1741,17 @@ async function generateAuxiliaryRows() {
       saldo_actual: totalCurr,
     });
 
+    const firstKey = mode === 'tercero-cuenta' ? 'nit' : 'cuenta';
+    const secondKey = mode === 'tercero-cuenta' ? 'cuenta' : 'nit';
+    const firstLabel = mode === 'tercero-cuenta' ? 'NIT' : 'CUENTA';
+    const secondLabel = mode === 'tercero-cuenta' ? 'CUENTA' : 'NIT';
+
     const groupedHtml = layoutRows.map((r) => {
       if (r.kind === 'primary') {
-        return `<tr style="border-top:1px solid #E5E7EB"><td style="font-weight:700;color:#0D2137">${esc(r.cuenta || '')}</td><td style="font-weight:700;color:#0D2137">${esc(r.nit || '')}</td><td></td><td></td><td style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+        return `<tr style="border-top:1px solid #E5E7EB"><td style="font-weight:700;color:#0D2137">${esc(r[firstKey] || '')}</td><td style="font-weight:700;color:#0D2137">${esc(r[secondKey] || '')}</td><td></td><td></td><td style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
       }
       if (r.kind === 'secondary') {
-        return `<tr><td></td><td style="font-weight:700">${esc(r.nit || '')}</td><td></td><td></td><td style="font-weight:700;padding-left:10px">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
+        return `<tr><td style="font-weight:700">${esc(r[firstKey] || '')}</td><td style="font-weight:700">${esc(r[secondKey] || '')}</td><td></td><td></td><td style="font-weight:700;padding-left:10px">${esc(r.detalle || '')}</td><td></td><td></td><td></td><td></td><td></td></tr>`;
       }
       if (r.kind === 'subtotal-secondary') {
         return `<tr style="background:#F5F5F5;border-top:1px solid #D0D0D0"><td colspan="5" style="font-weight:700;color:#0D2137">${esc(r.detalle || '')}</td><td></td><td style="text-align:right;font-weight:700">${fmt(r.saldo_anterior || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.debito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.credito || 0)}</td><td style="text-align:right;font-weight:700">${fmt(r.saldo_actual || 0)}</td></tr>`;
@@ -1776,20 +1784,17 @@ async function generateAuxiliaryRows() {
           ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
         </div>
       </div>
-      <div style="position:relative">
-        <div class="overflow-x-auto" style="max-height:420px">
-          <table class="data-table">
-            <thead><tr><th>CUENTA</th><th>NIT</th><th>FECHA</th><th>CRUCE</th><th>DETALLE DOCTO.</th><th>COMPROBANTE</th><th>SALDO ANTERIOR</th><th>DEBITO</th><th>CREDITO</th><th>NUEVO SALDO</th></tr></thead>
-            <tbody>${groupedHtml}</tbody>
-          </table>
-        </div>
-        <div id="aux-tx-detail-panel" class="hidden" style="position:absolute;inset:12px;z-index:20;background:rgba(255,255,255,.98);padding:4px;border-radius:14px;overflow:auto"></div>
+      <div class="overflow-x-auto" style="max-height:420px">
+        <table class="data-table">
+          <thead><tr><th>${firstLabel}</th><th>${secondLabel}</th><th>FECHA</th><th>CRUCE</th><th>DETALLE DOCTO.</th><th>COMPROBANTE</th><th>SALDO ANTERIOR</th><th>DEBITO</th><th>CREDITO</th><th>NUEVO SALDO</th></tr></thead>
+          <tbody>${groupedHtml}</tbody>
+        </table>
       </div>`;
 
     $('#btn-exp-aux')?.addEventListener('click', () => {
       const exportRows = layoutRows.map((r) => ({
-        cuenta: r.cuenta || '',
         nit: r.nit || '',
+        cuenta: r.cuenta || '',
         fecha: r.fecha || '',
         cruce: r.cruce || '',
         detalle_docto: r.detalle || '',
@@ -1801,8 +1806,8 @@ async function generateAuxiliaryRows() {
       }));
 
       exportToExcel(exportRows, [
-        { key: 'cuenta',          label: 'CUENTA' },
-        { key: 'nit',             label: 'NIT' },
+        { key: firstKey,          label: firstLabel },
+        { key: secondKey,         label: secondLabel },
         { key: 'fecha',           label: 'FECHA' },
         { key: 'cruce',           label: 'CRUCE' },
         { key: 'detalle_docto',   label: 'DETALLE DOCTO.' },
@@ -1814,7 +1819,7 @@ async function generateAuxiliaryRows() {
       ], 'libro_auxiliar');
     });
 
-    $('#btn-pdf-aux')?.addEventListener('click', () => {
+    $('#btn-pdf-aux')?.addEventListener('click', async () => {
       try {
         const jsPdfCtor = window.jspdf?.jsPDF;
         if (typeof jsPdfCtor !== 'function') {
@@ -1822,122 +1827,162 @@ async function generateAuxiliaryRows() {
           return;
         }
 
+        const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName] = await Promise.all([
+          API.getSetting('company_name').catch(() => ''),
+          API.getSetting('company_nit').catch(() => ''),
+          API.getSetting('company_address').catch(() => ''),
+          API.getSetting('company_city').catch(() => ''),
+          API.getSetting('company_country').catch(() => ''),
+          API.getSetting('software_name').catch(() => ''),
+        ]);
+
         const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const generatedAt = new Date().toLocaleString('es-CO');
         const pageMarginLeft = 24;
         const pageMarginRight = pageWidth - 24;
+        const companyLine1 = (companyName || 'EMPRESA').trim();
+        const companyLine2 = `NIT: ${(companyNit || 'N/A').trim()}`;
+        const companyLine3 = [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Direccion no configurada';
+        const reportTypeLine = `${primaryLabel} -> ${secondaryLabel}`;
+        const reportDateLine = `Desde: ${dateFrom || 'Inicio'}  Hasta: ${dateTo || 'Hoy'}`;
+        const selectedAcc = accountId ? accounts.find(a => a.id === accountId) : null;
+        const selectedAccLabel = selectedAcc
+          ? [selectedAcc.code, selectedAcc.name].map(v => String(v || '').trim()).filter(Boolean).join(' - ') || 'Cuenta seleccionada'
+          : 'Todas';
+        const reportAccountLine = `Cuentas consultadas: ${selectedAccLabel}`;
+        const softwareLine = (softwareName || 'ContaCO v2.0').trim();
+        const userName = (sessionStorage.getItem('user_name') || 'Usuario').trim();
 
         // === ENCABEZADO EN 3 BLOQUES ===
         // Bloque izquierdo: Empresa
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(13, 33, 55);
-        doc.text('CONTACO S.A.S.', pageMarginLeft, 20);
+        doc.text(companyLine1, pageMarginLeft, 20);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        doc.text('NIT: 901.234.567-8', pageMarginLeft, 30);
-        doc.text('Bogotá, Colombia', pageMarginLeft, 38);
+        doc.text(companyLine2, pageMarginLeft, 30);
+        doc.text(companyLine3, pageMarginLeft, 40);
 
         // Bloque central: Título
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         doc.setTextColor(13, 33, 55);
-        doc.text('LIBRO AUXILIAR', pageWidth / 2, 26, { align: 'center' });
+        doc.text('LIBRO AUXILIAR', pageWidth / 2, 20, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Tipo: ${reportTypeLine}`, pageWidth / 2, 30, { align: 'center' });
+        doc.text(reportDateLine, pageWidth / 2, 40, { align: 'center' });
+        doc.text(reportAccountLine, pageWidth / 2, 50, { align: 'center' });
 
-        // Bloque derecho: Usuario y fecha
+        // Bloque derecho: Software + usuario + fecha/hora
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 100);
-        const userName = sessionStorage.getItem('user_name') || 'Usuario';
-        doc.text(`Usuario: ${userName}`, pageMarginRight, 20, { align: 'right' });
-        doc.text(`Fecha: ${generatedAt}`, pageMarginRight, 30, { align: 'right' });
-        doc.text(`Orden: ${primaryLabel} → ${secondaryLabel}`, pageMarginRight, 38, { align: 'right' });
+        doc.text(softwareLine, pageMarginRight, 20, { align: 'right' });
+        doc.text(`Usuario: ${userName}`, pageMarginRight, 30, { align: 'right' });
+        doc.text(`Impreso: ${generatedAt}`, pageMarginRight, 40, { align: 'right' });
 
         // Línea separadora
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.5);
-        doc.line(pageMarginLeft, 46, pageMarginRight, 46);
+        doc.line(pageMarginLeft, 58, pageMarginRight, 58);
 
         // Construir body con información de tipo de fila
+        const fmtPdfNum = (v) => Number(v || 0).toLocaleString('es-CO', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+
         const body = layoutRows.map((r) => {
           const row = [];
           if (r.kind === 'primary') {
-            row.push(r.cuenta || '', r.nit || '', '', '', r.detalle || '', '', '', '', '', '');
+            row.push(r[firstKey] || '', r[secondKey] || '', '', '', r.detalle || '', '', '', '', '', '');
           } else if (r.kind === 'secondary') {
-            row.push('', r.nit || '', '', '', r.detalle || '', '', '', '', '', '');
+            row.push(r[firstKey] || '', r[secondKey] || '', '', '', r.detalle || '', '', '', '', '', '');
           } else if (r.kind === 'subtotal-secondary' || r.kind === 'subtotal-primary' || r.kind === 'grand-total') {
-            row.push('', '', '', '', r.detalle || '', '', fmt(r.saldo_anterior || 0), fmt(r.debito || 0), fmt(r.credito || 0), fmt(r.saldo_actual || 0));
+            row.push('', '', '', '', r.detalle || '', '', fmtPdfNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfNum(r.saldo_actual || 0));
           } else {
-            row.push('', '', r.fecha || '', r.cruce || '', r.detalle || '', r.comprobante || '', fmt(r.saldo_anterior || 0), fmt(r.debito || 0), fmt(r.credito || 0), fmt(r.saldo_actual || 0));
+            row.push('', '', r.fecha || '', r.cruce || '', r.detalle || '', r.comprobante || '', fmtPdfNum(r.saldo_anterior || 0), fmtPdfNum(r.debito || 0), fmtPdfNum(r.credito || 0), fmtPdfNum(r.saldo_actual || 0));
           }
           row._rowKind = r.kind; // Marcar tipo de fila para styling
           return row;
         });
 
         doc.autoTable({
-          startY: 54,
+          startY: 66,
           head: [[
-            'CUENTA', 'NIT', 'FECHA', 'CRUCE', 'DETALLE DOCTO.', 'COMPROBANTE',
+            firstLabel, secondLabel, 'FECHA', 'CRUCE', 'DETALLE DOCTO.', 'COMPROBANTE',
             'SALDO ANTERIOR', 'DEBITO', 'CREDITO', 'NUEVO SALDO',
           ]],
           body,
           theme: 'plain',
-          margin: { top: 54, left: pageMarginLeft, right: 24, bottom: 26 },
+          margin: { top: 66, left: pageMarginLeft, right: 24, bottom: 26 },
           styles: {
             font: 'helvetica',
-            fontSize: 7,
-            textColor: [40, 40, 40],
-            lineColor: [200, 200, 200],
-            lineWidth: 0.1,
-            cellPadding: 2.5,
+            fontSize: 7.5,
+            textColor: [55, 55, 55],
+            lineColor: [225, 225, 225],
+            lineWidth: 0,
+            cellPadding: 2.8,
           },
           headStyles: {
-            fillColor: [220, 220, 220],
+            fillColor: [230, 230, 230],
             textColor: [13, 33, 55],
             fontStyle: 'bold',
             lineColor: [180, 180, 180],
-            lineWidth: 0.3,
+            lineWidth: { top: 0, right: 0, bottom: 0.25, left: 0 },
           },
           columnStyles: {
-            0: { cellWidth: 48 },
-            1: { cellWidth: 56 },
-            2: { cellWidth: 52 },
-            3: { cellWidth: 38 },
-            4: { cellWidth: 112 },
-            5: { cellWidth: 68 },
-            6: { cellWidth: 50, halign: 'right' },
-            7: { cellWidth: 46, halign: 'right' },
-            8: { cellWidth: 46, halign: 'right' },
-            9: { cellWidth: 50, halign: 'right' },
+            0: { cellWidth: 44 },
+            1: { cellWidth: 52 },
+            2: { cellWidth: 44 },
+            3: { cellWidth: 34 },
+            4: { cellWidth: 100 },
+            5: { cellWidth: 58 },
+            6: { cellWidth: 58, halign: 'right' },
+            7: { cellWidth: 56, halign: 'right' },
+            8: { cellWidth: 56, halign: 'right' },
+            9: { cellWidth: 58, halign: 'right' },
           },
-          didDrawCell: (data) => {
-            const { cell, row } = data;
+          didParseCell: (data) => {
+            if (data.section !== 'body') return;
+            const { cell, row, column } = data;
             const rowKind = body[row.index]?._rowKind;
-            
-            // Aplicar estilos según tipo de fila
+
             if (rowKind === 'primary') {
               cell.styles.fontStyle = 'bold';
               cell.styles.textColor = [13, 33, 55];
-              cell.styles.lineWidth = 0.15;
+              cell.styles.fillColor = [255, 255, 255];
+              cell.styles.lineWidth = 0;
             } else if (rowKind === 'secondary') {
               cell.styles.fontStyle = 'bold';
               cell.styles.textColor = [20, 20, 20];
-              cell.styles.lineWidth = 0.15;
+              cell.styles.fillColor = [255, 255, 255];
+              cell.styles.lineWidth = 0;
             } else if (rowKind === 'subtotal-secondary') {
               cell.styles.fillColor = [245, 245, 245];
               cell.styles.fontStyle = 'bold';
-              cell.styles.lineWidth = 0.15;
+              cell.styles.lineWidth = { top: 0.15, right: 0, bottom: 0, left: 0 };
+              cell.styles.lineColor = [208, 208, 208];
             } else if (rowKind === 'subtotal-primary') {
-              cell.styles.fillColor = [240, 240, 240];
+              cell.styles.fillColor = [236, 236, 236];
               cell.styles.fontStyle = 'bold';
-              cell.styles.lineWidth = 0.15;
+              cell.styles.lineWidth = { top: 0.15, right: 0, bottom: 0.15, left: 0 };
+              cell.styles.lineColor = [176, 176, 176];
             } else if (rowKind === 'grand-total') {
-              cell.styles.fillColor = [230, 230, 230];
+              cell.styles.fillColor = [226, 226, 226];
               cell.styles.fontStyle = 'bold';
-              cell.styles.lineWidth = 0.2;
+              cell.styles.lineWidth = { top: 0.2, right: 0, bottom: 0.2, left: 0 };
+              cell.styles.lineColor = [13, 33, 55];
               cell.styles.textColor = [13, 33, 55];
+            } else if (rowKind === 'detail') {
+              cell.styles.fontSize = column.index >= 6 ? 6.1 : 6.4;
+              cell.styles.cellPadding = column.index >= 6 ? 2.1 : 2.6;
+              cell.styles.lineWidth = 0;
             }
           },
           didDrawPage: (data) => {

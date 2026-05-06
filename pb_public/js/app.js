@@ -44,9 +44,57 @@ document.addEventListener('DOMContentLoaded', async () => {
   );
 
   // ── Toggle sidebar móvil ───────────────────────────────────
-  $('#btn-menu-toggle')?.addEventListener('click', () =>
-    $('#sidebar')?.classList.toggle('open')
-  );
+  // ── Toggle menú (colapso desktop ↔ overlay móvil) ──────────
+  const _sidebar   = $('#sidebar');
+  const _screenApp = $('#screen-app');
+
+  function setSidebarCollapsed(collapsed, animate = true) {
+    if (!_sidebar || !_screenApp) return;
+    if (!animate) {
+      _sidebar.style.transition = 'none';
+      requestAnimationFrame(() => { _sidebar.style.transition = ''; });
+    }
+    _sidebar.classList.toggle('collapsed', collapsed);
+    _screenApp.classList.toggle('sidebar-collapsed', collapsed);
+    localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+  }
+
+  // Restaurar estado guardado sin animación al cargar
+  setSidebarCollapsed(localStorage.getItem('sidebar-collapsed') === '1', false);
+
+  // Topbar hamburguesa → colapsa (desktop) | abre overlay (móvil)
+  $('#btn-menu-toggle')?.addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      _sidebar?.classList.toggle('open');
+    } else {
+      setSidebarCollapsed(!_sidebar?.classList.contains('collapsed'));
+    }
+  });
+
+  // Hamburguesa del sidebar → siempre expande
+  $('#sidebar-hamburger')?.addEventListener('click', () => setSidebarCollapsed(false));
+
+  // ── Tooltips fixed para nav-items en modo colapsado ────────
+  (function () {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'position:fixed;z-index:400;padding:5px 13px;border-radius:8px;font-size:12px;font-weight:600;font-family:Plus Jakarta Sans,sans-serif;color:#fff;background:#111E43;border:1px solid rgba(100,225,255,.25);box-shadow:0 4px 20px rgba(5,8,20,.5);pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap;';
+    document.body.appendChild(tip);
+    const nav = $('#nav-menu');
+    nav?.addEventListener('mouseover', e => {
+      const item = e.target.closest('.nav-item');
+      if (!item || !_sidebar?.classList.contains('collapsed') || !item.dataset.label) return;
+      const r = item.getBoundingClientRect();
+      tip.textContent = item.dataset.label;
+      tip.style.left  = (r.right + 10) + 'px';
+      tip.style.top   = (r.top + r.height / 2) + 'px';
+      tip.style.transform = 'translateY(-50%)';
+      tip.style.opacity = '1';
+    });
+    nav?.addEventListener('mouseout', e => {
+      if (!e.relatedTarget?.closest?.('.nav-item')) tip.style.opacity = '0';
+    });
+    nav?.addEventListener('mouseleave', () => { tip.style.opacity = '0'; });
+  })();
 
   // ── Inicializar aplicación ─────────────────────────────────
   await initApp();

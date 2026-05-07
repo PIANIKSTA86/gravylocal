@@ -21,6 +21,7 @@ const PAGE_TITLES = {
   'cierre':          'Cierre Contable',
   productos:         'Productos y Servicios',
   inventario:        'Inventarios',
+  compras:           'Compras de Bienes y Servicios',
 };
 
 const PAGE_RENDERERS = {
@@ -41,6 +42,7 @@ const PAGE_RENDERERS = {
   'cierre':           () => typeof renderCierre           === 'function' && renderCierre($('#page-content')),
   productos:          () => typeof renderProductos         === 'function' && renderProductos($('#page-content')),
   inventario:         () => typeof renderInventario        === 'function' && renderInventario($('#page-content')),
+  compras:            () => typeof renderCompras           === 'function' && renderCompras($('#page-content')),
 };
 
 let currentPage = 'dashboard';

@@ -540,4 +540,349 @@ const API = {
     await pb.update('inventory_movements', movId, { status: 'voided' });
     await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} — ${mov.number}`);
   },
+
+  // ── Compras ───────────────────────────────────────────────
+
+  /** Lista paginada de facturas de compra */
+  async getPurchaseInvoices(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('purchase_invoices', {
+      page, perPage, filter, sort,
+      expand: 'supplier_id,warehouse_id,tx_type_id',
+    });
+  },
+
+  /** Líneas de una factura de compra con expand de producto y cuenta */
+  async getPurchaseInvoiceLines(invoiceId) {
+    const safe = pb.escapeFilterValue(invoiceId);
+    return pb.listAll('purchase_invoice_lines', {
+      filter:  `invoice_id="${safe}"`,
+      sort:    'line_order',
+      expand:  'product_id,account_id',
+    });
+  },
+
+  /** Crea cabecera + líneas de factura de compra en estado borrador */
+  async createPurchaseInvoice(header, lines) {
+    const txTypeId = String(header?.tx_type_id || '').trim();
+    const txNumber = String(header?.tx_number || '').trim();
+    if (!txTypeId) throw new Error('Debes seleccionar el tipo de comprobante contable en la compra.');
+    if (!txNumber) throw new Error('Debes definir la numeración del comprobante contable en la compra.');
+
+    // Calcular totales desde las líneas
+    let subtotal = 0, ivaTot = 0, retTot = 0;
+    for (const l of lines) {
+      subtotal += l.subtotal || 0;
+      ivaTot   += l.iva_amount || 0;
+      retTot   += l.ret_amount || 0;
+    }
+    const inv = await pb.create('purchase_invoices', {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      total:     subtotal + ivaTot,
+      ret_total: retTot,
+      payable_total: (subtotal + ivaTot) - retTot,
+      status:    'draft',
+    });
+
+    // Refuerzo de persistencia para instalaciones donde el esquema pudo estar desfasado.
+    if (!inv.tx_type_id || !inv.tx_number) {
+      await pb.update('purchase_invoices', inv.id, {
+        tx_type_id: txTypeId,
+        tx_number: txNumber,
+      });
+    }
+
+    const invStored = await pb.get('purchase_invoices', inv.id);
+    if (!invStored.tx_type_id || !invStored.tx_number) {
+      throw new Error('No se pudo persistir el comprobante contable de la compra. Reinicia PocketBase para aplicar migraciones y vuelve a intentar.');
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('purchase_invoice_lines', {
+        invoice_id: inv.id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+    await this.logAudit('CREATE', 'PurchaseInvoice', inv.id, `Factura compra ${inv.number}`);
+    return invStored;
+  },
+
+  /**
+   * Contabiliza una factura de compra (draft → posted):
+   * 1. Genera asiento FC en transactions (status: draft, listo para aprobar)
+   * 2. Para líneas de BIEN: crea movimiento ENTRADA y lo aplica al stock
+   * 3. Actualiza la factura con tx_id, inv_movement_id, status=posted
+   */
+  async postPurchaseInvoice(invoiceId) {
+    const inv   = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
+    if (inv.status === 'posted')  throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'voided')  throw new Error('La factura está anulada.');
+
+    const lines = await this.getPurchaseInvoiceLines(invoiceId);
+    if (!lines.length) throw new Error('La factura no tiene líneas.');
+
+    // Configuracion contable de compras (settings.key = purchase_config_v1)
+    let purchaseCfg = {};
+    try {
+      const rawCfg = await this.getSetting('purchase_config_v1');
+      purchaseCfg = rawCfg ? JSON.parse(rawCfg) : {};
+    } catch (_) {
+      purchaseCfg = {};
+    }
+    const cfgAccounting = purchaseCfg?.accounting || {};
+    const cfgAccounts = cfgAccounting?.accounts || {};
+    const cfgRetRules = Array.isArray(cfgAccounting?.withholding_rules) ? cfgAccounting.withholding_rules : [];
+    const codePayable = String(cfgAccounts.payable_code || '220505').trim();
+    const codeExpFallback = String(cfgAccounts.expense_fallback_code || '5135').trim();
+    const ivaByRateCfg = (cfgAccounts.iva_by_rate && typeof cfgAccounts.iva_by_rate === 'object')
+      ? cfgAccounts.iva_by_rate
+      : {};
+
+    const accountByIdCache = {};
+    const accountByCodeCache = {};
+
+    const getAccById = async (id) => {
+      const key = String(id || '').trim();
+      if (!key) throw new Error('Cuenta contable inválida en la compra.');
+      if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
+      return accountByIdCache[key];
+    };
+
+    // ── Buscar cuentas clave por código ──────────────────────────────────
+    const findAccByCode = async (code) => {
+      if (!String(code || '').trim()) throw new Error('Hay una cuenta sin código en la configuración de compras.');
+      const key = String(code).trim();
+      if (accountByCodeCache[key]) return accountByCodeCache[key];
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada en el plan de cuentas.`);
+      accountByCodeCache[key] = res.items[0];
+      accountByIdCache[res.items[0].id] = res.items[0];
+      return res.items[0];
+    };
+
+    const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '' }) => {
+      const acc = await getAccById(accountId);
+      const line = {
+        account_id: acc.id,
+        third_party_id: thirdPartyId,
+        debit,
+        credit,
+        description,
+        line_order: txLines.length + 1,
+      };
+      if (acc.maneja_cruce && String(crossDocRef || '').trim()) {
+        line.cross_doc_ref = String(crossDocRef || '').trim();
+      }
+      return line;
+    };
+
+    const accProveedor  = await findAccByCode(codePayable);   // Proveedores
+    const accExpFallback = await findAccByCode(codeExpFallback);
+    const ivaAccountCache = {};
+
+    // ── Construir líneas del asiento contable ────────────────────────────
+    const txLines = [];
+    const bienLines = [];
+    const ivaByRate = {};
+    const retByAccount = {};
+
+    for (const line of lines) {
+      const prod = line.expand?.product_id;
+      let accountId;
+      if (prod) {
+        accountId = prod.type === 'BIEN'
+          ? prod.inventory_account_id
+          : (prod.cost_account_id || accExpFallback.id);
+        if (prod.type === 'BIEN' && !accountId) {
+          throw new Error(`El producto ${prod.code || ''} ${prod.name || ''} no tiene cuenta de inventario asignada.`.trim());
+        }
+      } else {
+        if (!line.account_id) throw new Error(`Línea sin cuenta contable: "${line.description || '?'}"`);
+        accountId = line.account_id;
+      }
+      txLines.push(await buildTxLine({
+        accountId,
+        thirdPartyId: inv.supplier_id,
+        debit: line.subtotal || 0,
+        credit: 0,
+        description: line.description || inv.expand?.supplier_id?.name || '',
+        crossDocRef: inv.supplier_ref || '',
+      }));
+      if (prod?.type === 'BIEN') {
+        bienLines.push({ product_id: line.product_id, qty: line.qty, unit_cost: line.unit_price, notes: line.description });
+      }
+
+      const rateKey = String(Number(line.iva_rate || 0));
+      const ivaAmt = Number(line.iva_amount || 0);
+      if (ivaAmt > 0) {
+        ivaByRate[rateKey] = (ivaByRate[rateKey] || 0) + ivaAmt;
+      }
+
+      let retAmt = Number(line.ret_amount || 0);
+      let retAccountCode = String(line.ret_account_code || '').trim();
+      if (retAmt <= 0 && line.ret_rule_id) {
+        const rule = cfgRetRules.find(r => String(r.id || '') === String(line.ret_rule_id || ''));
+        if (rule) {
+          const baseType = String(line.ret_base_type || rule.base_type || 'SUBTOTAL').toUpperCase();
+          const minBase = Number(rule.min_base || 0) || 0;
+          const sub = Number(line.subtotal || 0);
+          const iva = Number(line.iva_amount || 0);
+          const tot = Number(line.total || (sub + iva));
+          const base = baseType === 'IVA' ? iva : (baseType === 'TOTAL' ? tot : sub);
+          const rate = Number(line.ret_rate || rule.rate || 0) || 0;
+          if (base >= minBase && rate > 0) {
+            retAmt = base * rate / 100;
+            if (!retAccountCode) retAccountCode = String(rule.account_code || '').trim();
+          }
+        }
+      }
+      if (retAmt > 0) {
+        if (!retAccountCode) {
+          throw new Error(`La línea "${line.description || '?'}" tiene retención sin cuenta contable configurada.`);
+        }
+        retByAccount[retAccountCode] = (retByAccount[retAccountCode] || 0) + retAmt;
+      }
+    }
+
+    // IVA Descontable por tarifa
+    for (const rateKey of Object.keys(ivaByRate)) {
+      const amount = Number(ivaByRate[rateKey] || 0);
+      if (amount <= 0) continue;
+      let accCode = String(ivaByRateCfg[rateKey] || '').trim();
+      if (!accCode && Number(rateKey) === 19) accCode = '233502'; // compatibilidad
+      if (!accCode) {
+        throw new Error(`No hay cuenta IVA configurada para la tarifa ${rateKey}%. Ajusta el engranaje de Compras.`);
+      }
+      if (!ivaAccountCache[accCode]) ivaAccountCache[accCode] = await findAccByCode(accCode);
+      txLines.push(await buildTxLine({
+        accountId: ivaAccountCache[accCode].id,
+        thirdPartyId: null,
+        debit: amount,
+        credit: 0,
+        description: `IVA ${rateKey}% compra ${inv.number}`,
+        crossDocRef: inv.supplier_ref || '',
+      }));
+    }
+
+    // Retenciones por cuenta (crédito)
+    let retTotal = 0;
+    for (const accCode of Object.keys(retByAccount)) {
+      const amount = Number(retByAccount[accCode] || 0);
+      if (amount <= 0) continue;
+      retTotal += amount;
+      if (!ivaAccountCache[accCode]) ivaAccountCache[accCode] = await findAccByCode(accCode);
+      txLines.push(await buildTxLine({
+        accountId: ivaAccountCache[accCode].id,
+        thirdPartyId: inv.supplier_id,
+        debit: 0,
+        credit: amount,
+        description: `Retenciones compra ${inv.number}`,
+        crossDocRef: inv.supplier_ref || '',
+      }));
+    }
+    // Crédito a Proveedores
+    const payableCredit = (inv.total || 0) - retTotal;
+    txLines.push(await buildTxLine({
+      accountId: accProveedor.id,
+      thirdPartyId: inv.supplier_id,
+      debit: 0,
+      credit: payableCredit,
+      description: `${inv.supplier_ref ? `Ref: ${inv.supplier_ref} — ` : ''}${inv.expand?.supplier_id?.name || ''}`,
+      crossDocRef: inv.supplier_ref || '',
+    }));
+
+    // ── Crear transacción contable ───────────────────────────────────────
+    let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
+    let effectiveTxNumber = String(inv.tx_number || '').trim();
+
+    // Fallback para facturas históricas con datos incompletos de comprobante.
+    if (!effectiveTxTypeId) {
+      const candidates = [];
+      const fromTxNumber = effectiveTxNumber.split('-')[0] || '';
+      const fromInvNumber = String(inv.number || '').split('-')[0] || '';
+      if (fromTxNumber) candidates.push(fromTxNumber);
+      if (fromInvNumber && fromInvNumber !== fromTxNumber) candidates.push(fromInvNumber);
+
+      for (const token of candidates) {
+        const safe = pb.escapeFilterValue(token);
+        const found = await pb.list('transaction_types', {
+          filter: `active=true && (prefix="${safe}" || code="${safe}")`,
+          perPage: 1,
+        });
+        if (found.items.length) {
+          effectiveTxTypeId = found.items[0].id;
+          break;
+        }
+      }
+    }
+
+    if (!effectiveTxTypeId) throw new Error('La factura no tiene tipo de comprobante contable. Edítala y selecciónalo.');
+    if (!effectiveTxNumber) effectiveTxNumber = 'AUTO';
+
+    if (!inv.tx_type_id || !inv.tx_number) {
+      await pb.update('purchase_invoices', invoiceId, {
+        tx_type_id: effectiveTxTypeId,
+        tx_number: effectiveTxNumber,
+      });
+    }
+
+    const tx = await this.createTransaction({
+      tx_type_id:    effectiveTxTypeId,
+      number:        effectiveTxNumber,
+      date:          inv.date,
+      description:   `Compra ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
+      third_party_id: inv.supplier_id,
+      payment_days:  0,
+      cross_enabled: false,
+      status:        'draft',
+    }, txLines);
+
+    // ── Movimiento de inventario para bienes ─────────────────────────────
+    let invMovId = null;
+    if (bienLines.length && inv.warehouse_id) {
+      const today  = inv.date || new Date().toISOString().slice(0, 10);
+      const rand   = String(Date.now()).slice(-4);
+      const movNumber = `ENT-${today.replaceAll('-', '')}-${rand}`;
+      const mov = await pb.create('inventory_movements', {
+        number:       movNumber,
+        mov_type:     'ENTRADA',
+        date:         inv.date,
+        warehouse_id: inv.warehouse_id,
+        third_party_id: inv.supplier_id,
+        notes:        `Compra ${inv.number}`,
+        status:       'draft',
+        tx_id:        tx.id,
+      });
+      for (let i = 0; i < bienLines.length; i++) {
+        await pb.create('inventory_movement_lines', { movement_id: mov.id, line_order: i + 1, ...bienLines[i] });
+      }
+      await this.applyInventoryMovement(mov.id);
+      invMovId = mov.id;
+    }
+
+    // ── Actualizar factura ───────────────────────────────────────────────
+    await pb.update('purchase_invoices', invoiceId, {
+      status:          'posted',
+      tx_id:           tx.id,
+      inv_movement_id: invMovId,
+      ret_total:       retTotal,
+      payable_total:   payableCredit,
+    });
+    await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
+    return { inv, tx };
+  },
+
+  /** Anula una factura de compra (solo borradores — para simplificar) */
+  async voidPurchaseInvoice(invoiceId) {
+    const inv = await pb.get('purchase_invoices', invoiceId);
+    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+    if (inv.status === 'posted') throw new Error('No se puede anular una factura ya contabilizada. Anula el asiento contable directamente.');
+    await pb.update('purchase_invoices', invoiceId, { status: 'voided' });
+    await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number}`);
+  },
 };
+

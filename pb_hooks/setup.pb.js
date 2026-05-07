@@ -1290,6 +1290,172 @@ onBootstrap((e) => {
   }
 });
 
+// ── Migración Compras: purchase_invoices + purchase_invoice_lines ─────────────
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    const productsId     = $app.findCollectionByNameOrId("products").id;
+    const warehousesId   = $app.findCollectionByNameOrId("warehouses").id;
+    const thirdPartiesId = $app.findCollectionByNameOrId("third_parties").id;
+    const transactionsId = $app.findCollectionByNameOrId("transactions").id;
+    const txTypesId      = $app.findCollectionByNameOrId("transaction_types").id;
+    const accountsId     = $app.findCollectionByNameOrId("accounts").id;
+
+    // ── purchase_invoices ────────────────────────────────────────────────────
+    let purchaseInvoicesId;
+    try {
+      purchaseInvoicesId = $app.findCollectionByNameOrId("purchase_invoices").id;
+    } catch (_) {
+      const col = new Collection({
+        name: "purchase_invoices",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "number",            type: "text",     required: true  },
+          { name: "date",              type: "text",     required: true  },
+          { name: "due_date",          type: "text",     required: false },
+          { name: "supplier_id",       type: "relation", required: true,  collectionId: thirdPartiesId, cascadeDelete: false },
+          { name: "supplier_ref",      type: "text",     required: false },
+          { name: "tx_type_id",        type: "relation", required: false, collectionId: txTypesId,      cascadeDelete: false },
+          { name: "tx_number",         type: "text",     required: false },
+          { name: "warehouse_id",      type: "relation", required: false, collectionId: warehousesId,   cascadeDelete: false },
+          { name: "notes",             type: "text",     required: false },
+          { name: "status",            type: "select",   required: false,
+            values: ["draft","posted","voided"] },
+          { name: "subtotal",          type: "number",   required: false, min: 0 },
+          { name: "iva_total",         type: "number",   required: false, min: 0 },
+          { name: "total",             type: "number",   required: false, min: 0 },
+          { name: "ret_total",         type: "number",   required: false, min: 0 },
+          { name: "payable_total",     type: "number",   required: false, min: 0 },
+          { name: "tx_id",             type: "relation", required: false, collectionId: transactionsId, cascadeDelete: false },
+          { name: "inv_movement_id",   type: "relation", required: false, collectionId: $app.findCollectionByNameOrId("inventory_movements").id, cascadeDelete: false },
+        ],
+        indexes: ["CREATE UNIQUE INDEX idx_purchase_inv_number ON purchase_invoices (number)"],
+      });
+      $app.save(col);
+      purchaseInvoicesId = col.id;
+      console.log("[GRAVY] Colección purchase_invoices creada (migración).");
+    }
+
+    // Asegura campos contables de comprobante en instalaciones existentes
+    try {
+      const invCol = $app.findCollectionByNameOrId("purchase_invoices");
+      let changed = false;
+
+      let hasTxType = false;
+      try { hasTxType = !!invCol.fields.getByName("tx_type_id"); } catch (_) { hasTxType = String(invCol.fields || "").includes("tx_type_id"); }
+      if (!hasTxType) {
+        invCol.fields.add(new RelationField({ name: "tx_type_id", required: false, collectionId: txTypesId, cascadeDelete: false }));
+        changed = true;
+      }
+
+      let hasTxNumber = false;
+      try { hasTxNumber = !!invCol.fields.getByName("tx_number"); } catch (_) { hasTxNumber = String(invCol.fields || "").includes("tx_number"); }
+      if (!hasTxNumber) {
+        invCol.fields.add(new TextField({ name: "tx_number", required: false }));
+        changed = true;
+      }
+
+      if (changed) {
+        $app.save(invCol);
+        console.log("[GRAVY] Campos tx_type_id/tx_number agregados a purchase_invoices.");
+      }
+    } catch (mErr) {
+      console.log("[GRAVY] Aviso migrando campos de comprobante en compras: " + mErr);
+    }
+
+    // ── purchase_invoice_lines ───────────────────────────────────────────────
+    try {
+      $app.findCollectionByNameOrId("purchase_invoice_lines");
+    } catch (_) {
+      const col = new Collection({
+        name: "purchase_invoice_lines",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "invoice_id",  type: "relation", required: true,  collectionId: purchaseInvoicesId, cascadeDelete: true  },
+          { name: "product_id",  type: "relation", required: false, collectionId: productsId,          cascadeDelete: false },
+          { name: "account_id",  type: "relation", required: false, collectionId: accountsId,          cascadeDelete: false },
+          { name: "description", type: "text",     required: false },
+          { name: "qty",         type: "number",   required: true,  min: 0 },
+          { name: "unit_price",  type: "number",   required: true,  min: 0 },
+          { name: "iva_rate",    type: "number",   required: false, min: 0 },
+          { name: "subtotal",    type: "number",   required: false, min: 0 },
+          { name: "iva_amount",  type: "number",   required: false, min: 0 },
+          { name: "ret_rule_id", type: "text",     required: false },
+          { name: "ret_concept", type: "text",     required: false },
+          { name: "ret_base_type", type: "text",   required: false },
+          { name: "ret_base",    type: "number",   required: false, min: 0 },
+          { name: "ret_rate",    type: "number",   required: false, min: 0 },
+          { name: "ret_amount",  type: "number",   required: false, min: 0 },
+          { name: "ret_account_code", type: "text", required: false },
+          { name: "total",       type: "number",   required: false, min: 0 },
+          { name: "line_order",  type: "number",   required: false },
+        ],
+      });
+      $app.save(col);
+      console.log("[GRAVY] Colección purchase_invoice_lines creada (migración).");
+    }
+
+    // Campos de retención en compras para instalaciones existentes
+    try {
+      const invCol = $app.findCollectionByNameOrId("purchase_invoices");
+      let changedInv = false;
+      const invExtra = [
+        ["ret_total", new NumberField({ name: "ret_total", required: false, min: 0 })],
+        ["payable_total", new NumberField({ name: "payable_total", required: false, min: 0 })],
+      ];
+      for (const [fname, fieldObj] of invExtra) {
+        let hasIt = false;
+        try { hasIt = !!invCol.fields.getByName(fname); } catch (_) { hasIt = String(invCol.fields || "").includes(fname); }
+        if (!hasIt) {
+          invCol.fields.add(fieldObj);
+          changedInv = true;
+        }
+      }
+      if (changedInv) $app.save(invCol);
+    } catch (mErr) {
+      console.log("[GRAVY] Aviso migrando totales de retención en purchase_invoices: " + mErr);
+    }
+
+    try {
+      const lineCol = $app.findCollectionByNameOrId("purchase_invoice_lines");
+      let changedLines = false;
+      const lineExtra = [
+        ["ret_rule_id", new TextField({ name: "ret_rule_id", required: false })],
+        ["ret_concept", new TextField({ name: "ret_concept", required: false })],
+        ["ret_base_type", new TextField({ name: "ret_base_type", required: false })],
+        ["ret_base", new NumberField({ name: "ret_base", required: false, min: 0 })],
+        ["ret_rate", new NumberField({ name: "ret_rate", required: false, min: 0 })],
+        ["ret_amount", new NumberField({ name: "ret_amount", required: false, min: 0 })],
+        ["ret_account_code", new TextField({ name: "ret_account_code", required: false })],
+      ];
+      for (const [fname, fieldObj] of lineExtra) {
+        let hasIt = false;
+        try { hasIt = !!lineCol.fields.getByName(fname); } catch (_) { hasIt = String(lineCol.fields || "").includes(fname); }
+        if (!hasIt) {
+          lineCol.fields.add(fieldObj);
+          changedLines = true;
+        }
+      }
+      if (changedLines) $app.save(lineCol);
+    } catch (mErr2) {
+      console.log("[GRAVY] Aviso migrando campos de retención en purchase_invoice_lines: " + mErr2);
+    }
+  } catch (err) {
+    console.log("[GRAVY] Aviso migrando colecciones de compras: " + err);
+  }
+});
+
 // ── Ruta custom de auditoría (sustituye createRule en audit_log) ──────────────
 // Solo usuarios autenticados pueden registrar eventos; el servidor escribe
 // directamente en audit_log con IP real y validación server-side.

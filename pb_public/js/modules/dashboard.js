@@ -113,7 +113,9 @@ async function renderDashboard(c) {
 }
 
 async function viewTransaction(id) {
-  // Navegar a consulta de transacciones con el ID seleccionado
   navigate('consulta-tx');
-  // TODO: abrir el detalle directamente
+  // Abrir el detalle una vez que el módulo haya renderizado
+  setTimeout(() => {
+    if (typeof seeTxDetail === 'function') seeTxDetail(id);
+  }, 120);
 }

@@ -383,6 +383,45 @@ onBootstrap((e) => {
   $app.save(einvoiceDocs);
 
   // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: products
+  // ─────────────────────────────────────────────────────────
+  const productsCol = new Collection({
+    name: "products",
+    type: "base",
+    listRule:   "@request.auth.id != ''",
+    viewRule:   "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "code",                  type: "text",     required: true  },
+      { name: "name",                  type: "text",     required: true  },
+      { name: "description",           type: "text",     required: false },
+      { name: "type",                  type: "select",   required: true,  values: ["BIEN","SERVICIO"] },
+      { name: "unit",                  type: "text",     required: true  },
+      { name: "unspsc_code",           type: "text",     required: false },
+      { name: "ean_code",              type: "text",     required: false },
+      { name: "presentacion",          type: "text",     required: false },
+      { name: "categoria",             type: "text",     required: false },
+      { name: "linea",                 type: "text",     required: false },
+      { name: "iva_rate",              type: "number",   required: true,  min: 0 },
+      { name: "income_account_id",     type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+      { name: "cost_account_id",       type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+      { name: "inventory_account_id",  type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+      { name: "base_price",            type: "number",   required: false, min: 0 },
+      { name: "precio_venta_2",        type: "number",   required: false, min: 0 },
+      { name: "precio_venta_3",        type: "number",   required: false, min: 0 },
+      { name: "cost_price",            type: "number",   required: false, min: 0 },
+      { name: "peso",                  type: "number",   required: false, min: 0 },
+      { name: "cajas_en_pallet",       type: "number",   required: false, min: 0 },
+      { name: "und_empaque",           type: "number",   required: false, min: 0 },
+      { name: "peso_x_und_empaque",    type: "number",   required: false, min: 0 },
+      { name: "active",                type: "bool",     required: false },
+    ],
+  });
+  $app.save(productsCol);
+
+  // ─────────────────────────────────────────────────────────
   // EXTENDER USUARIOS con campos de rol
   // PocketBase v0.23+ requiere constructores tipados para fields.add()
   // ─────────────────────────────────────────────────────────
@@ -691,7 +730,7 @@ onBootstrap((e) => {
 
   try {
     const auditCol = $app.findCollectionByNameOrId("audit_log");
-    const expectedCreateRule = "@request.auth.id != ''";
+    const expectedCreateRule = null;
     let hasEventAt = false;
     let changed = false;
 
@@ -710,9 +749,9 @@ onBootstrap((e) => {
       changed = true;
     }
 
-    if (auditCol.createRule !== expectedCreateRule) {
-      auditCol.createRule = expectedCreateRule;
-      console.log("[GRAVY] Regla createRule ajustada en audit_log.");
+    if (auditCol.createRule !== null) {
+      auditCol.createRule = null;
+      console.log("[GRAVY] Regla createRule de audit_log restringida a null (solo server-side).");
       changed = true;
     }
 
@@ -921,5 +960,156 @@ onBootstrap((e) => {
     }
   } catch (err) {
     console.log("[GRAVY] Aviso al migrar tx_lines (cross_doc_ref): " + err);
+  }
+});
+
+// ── Migración: colección products ─────────────────────────────────────────────
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    $app.findCollectionByNameOrId("products");
+    // Ya existe — verificar campos opcionales
+    return;
+  } catch (_) {
+    // No existe, crearla
+  }
+
+  try {
+    const accountsId = $app.findCollectionByNameOrId("accounts").id;
+
+    const col = new Collection({
+      name: "products",
+      type: "base",
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: "code",                 type: "text",     required: true  },
+        { name: "name",                 type: "text",     required: true  },
+        { name: "description",          type: "text",     required: false },
+        { name: "type",                 type: "select",   required: true,  values: ["BIEN","SERVICIO"] },
+        { name: "unit",                 type: "text",     required: true  },
+        { name: "unspsc_code",          type: "text",     required: false },
+        { name: "ean_code",             type: "text",     required: false },
+        { name: "presentacion",         type: "text",     required: false },
+        { name: "categoria",            type: "text",     required: false },
+        { name: "linea",                type: "text",     required: false },
+        { name: "iva_rate",             type: "number",   required: true,  min: 0 },
+        { name: "income_account_id",    type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+        { name: "cost_account_id",      type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+        { name: "inventory_account_id", type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
+        { name: "base_price",           type: "number",   required: false, min: 0 },
+        { name: "precio_venta_2",       type: "number",   required: false, min: 0 },
+        { name: "precio_venta_3",       type: "number",   required: false, min: 0 },
+        { name: "cost_price",           type: "number",   required: false, min: 0 },
+        { name: "peso",                 type: "number",   required: false, min: 0 },
+        { name: "cajas_en_pallet",      type: "number",   required: false, min: 0 },
+        { name: "und_empaque",          type: "number",   required: false, min: 0 },
+        { name: "peso_x_und_empaque",   type: "number",   required: false, min: 0 },
+        { name: "active",               type: "bool",     required: false },
+      ],
+    });
+    $app.save(col);
+    console.log("[GRAVY] Colección products creada correctamente.");
+  } catch (err) {
+    console.log("[GRAVY] Error al crear colección products: " + err);
+  }
+});
+
+// ── Migración: campos opcionales en products (idempotente) ───────────────────
+onBootstrap((e) => {
+  e.next();
+
+  try {
+    const col = $app.findCollectionByNameOrId("products");
+    let changed = false;
+
+    const textFields = ["presentacion", "categoria", "linea"];
+    for (const fname of textFields) {
+      let hasIt = false;
+      try { hasIt = !!col.fields.getByName(fname); } catch (_) { hasIt = String(col.fields || "").includes(fname); }
+      if (!hasIt) {
+        col.fields.add(new TextField({ name: fname, required: false }));
+        changed = true;
+        console.log("[GRAVY] Campo " + fname + " agregado a products.");
+      }
+    }
+
+    const numberFields = [
+      "precio_venta_2",
+      "precio_venta_3",
+      "peso",
+      "cajas_en_pallet",
+      "und_empaque",
+      "peso_x_und_empaque",
+    ];
+    for (const fname of numberFields) {
+      let hasIt = false;
+      try { hasIt = !!col.fields.getByName(fname); } catch (_) { hasIt = String(col.fields || "").includes(fname); }
+      if (!hasIt) {
+        col.fields.add(new NumberField({ name: fname, required: false, min: 0 }));
+        changed = true;
+        console.log("[GRAVY] Campo " + fname + " agregado a products.");
+      }
+    }
+
+    if (changed) {
+      $app.save(col);
+    }
+  } catch (err) {
+    console.log("[GRAVY] Aviso al migrar campos opcionales de products: " + err);
+  }
+});
+
+// ── Ruta custom de auditoría (sustituye createRule en audit_log) ──────────────
+// Solo usuarios autenticados pueden registrar eventos; el servidor escribe
+// directamente en audit_log con IP real y validación server-side.
+routerAdd("POST", "/api/audit-event", (e) => {
+  const info = e.requestInfo();
+  const auth = info?.auth;
+  if (!auth) {
+    e.json(401, { message: "Autenticación requerida" });
+    return;
+  }
+
+  const body      = info?.body || {};
+  const action    = String(body.action    || "").slice(0, 100).trim();
+  const entity    = String(body.entity    || "").slice(0, 100).trim();
+  const entityId  = String(body.entity_id || "").slice(0, 100).trim();
+  const details   = String(body.details   || "").slice(0, 500).trim();
+
+  if (!action || !entity) {
+    e.json(400, { message: "Los campos action y entity son obligatorios" });
+    return;
+  }
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId("audit_log");
+    const userId   = String(auth.id || "");
+    const username = String(
+      auth.getString?.("email") ||
+      auth.getString?.("username") ||
+      userId || "system"
+    );
+    const remoteIp = (typeof e.realIP === "function") ? String(e.realIP() || "") : "";
+
+    const payload = {
+      action, entity,
+      entity_id: entityId,
+      event_at:  (new Date()).toISOString().replace("T", " ").slice(0, 19),
+      details,
+      ip: remoteIp,
+      username,
+    };
+    if (userId) payload.user_id = userId;
+
+    const log = new Record(auditCol, payload);
+    $app.save(log);
+    e.json(200, { ok: true });
+  } catch (err) {
+    e.json(500, { message: "No se pudo registrar el evento: " + String(err) });
   }
 });

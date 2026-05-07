@@ -196,16 +196,16 @@ const API = {
   // -- auditoria ---------------------------------------------
   async logAudit(action, entity, entityId = null, details = '') {
     try {
-      const user = pb.currentUser || {};
-      await pb.create('audit_log', {
-        user_id: user.id || null,
-        username: user.email || user.full_name || 'system',
-        action: String(action || ''),
-        entity: String(entity || ''),
-        entity_id: entityId ? String(entityId) : '',
-        event_at: nowStr(),
-        details: String(details || ''),
-        ip: '',
+      if (!pb.authToken) return;
+      await fetch(`${PB_URL}/api/audit-event`, {
+        method: 'POST',
+        headers: pb.headers(),
+        body: JSON.stringify({
+          action:    String(action    || ''),
+          entity:    String(entity    || ''),
+          entity_id: entityId ? String(entityId) : '',
+          details:   String(details   || ''),
+        }),
       });
     } catch (_) {
       // Nunca romper flujos de negocio por falla de auditoría.
@@ -356,16 +356,40 @@ const API = {
     // ADVERTENCIA: Movimientos bancarios conciliados (informativo — no bloquea)
     const txLines = await pb.listAll('tx_lines', { filter: `tx_id="${safe}"` });
     let reconCount = 0;
-    for (const l of txLines) {
-      const safeLine = pb.escapeFilterValue(l.id);
-      const bm = await pb.list('bank_movements', { filter: `tx_line_id="${safeLine}" && reconciled=true`, perPage: 1 });
-      reconCount += bm.totalItems;
+    if (txLines.length > 0) {
+      const lineFilter = txLines
+        .map(l => `tx_line_id="${pb.escapeFilterValue(l.id)}"`)
+        .join(' || ');
+      const bm = await pb.list('bank_movements', {
+        filter: `(${lineFilter}) && reconciled=true`,
+        perPage: 1,
+      });
+      reconCount = bm.totalItems;
     }
     if (reconCount > 0) {
       warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliación bancaria después de modificar.`);
     }
 
     return { blocks, warnings };
+  },
+
+  // -- Productos ---------------------------------------------
+  async getProducts(opts = {}) {
+    const { activeOnly = true, query = '', type = '' } = opts;
+    let filter = activeOnly ? 'active=true' : '';
+    if (type) {
+      const safeType = pb.escapeFilterValue(type);
+      filter += (filter ? ' && ' : '') + `type="${safeType}"`;
+    }
+    if (query) {
+      const safeQ = pb.escapeFilterValue(query);
+      filter += (filter ? ' && ' : '') + `(name~"${safeQ}" || code~"${safeQ}")`;
+    }
+    return pb.listAll('products', {
+      filter,
+      sort: 'code',
+      expand: 'income_account_id,cost_account_id,inventory_account_id',
+    });
   },
 
   // -- Dashboard KPIs ----------------------------------------

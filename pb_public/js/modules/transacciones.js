@@ -40,6 +40,157 @@ let TX_STATE = {
   accountMap: new Map(),
 };
 
+function thirdDisplay(t) {
+  return `${t?.doc_number || ''} - ${t?.name || ''}`.trim();
+}
+
+function getThirdById(state, thirdId) {
+  if (!thirdId || !state?.terceros?.length) return null;
+  return state.terceros.find(t => t.id === thirdId) || null;
+}
+
+function renderThirdSearchResults(state, query) {
+  const list = Array.isArray(state?.terceros) ? state.terceros : [];
+  const q = String(query || '').toLowerCase().trim();
+  if (!q) return list.slice(0, 30);
+  const terms = q.split(/\s+/).filter(Boolean);
+  return list
+    .filter(t => {
+      const hay = `${t.doc_number || ''} ${t.name || ''}`.toLowerCase();
+      return terms.every(term => hay.includes(term));
+    })
+    .slice(0, 30);
+}
+
+function initThirdSearchInput({ state, hiddenId, inputId, resultsId, onSelected }) {
+  const wrap = document.getElementById(`${inputId}-wrap`);
+  const hidden = document.getElementById(hiddenId);
+  const input = document.getElementById(inputId);
+  const results = document.getElementById(resultsId);
+  if (!wrap || !hidden || !input || !results) return;
+
+  const paint = (query = '') => {
+    const found = renderThirdSearchResults(state, query);
+    if (!found.length) {
+      results.innerHTML = '<div class="px-3 py-2 text-xs" style="color:#9CA3AF">Sin resultados</div>';
+      return;
+    }
+    results.innerHTML = found.map(t => `
+      <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+        <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
+        <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
+      </button>
+    `).join('');
+  };
+
+  const show = () => {
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  const hide = () => { results.style.display = 'none'; };
+
+  const syncInputFromHidden = () => {
+    const third = getThirdById(state, hidden.value);
+    input.value = third ? thirdDisplay(third) : '';
+  };
+
+  syncInputFromHidden();
+  input.onfocus = () => show();
+  input.oninput = () => {
+    hidden.value = '';
+    if (typeof onSelected === 'function') onSelected('');
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  results.onclick = (ev) => {
+    const btn = ev.target.closest('[data-third-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-third-id') || '';
+    const third = getThirdById(state, id);
+    hidden.value = id;
+    input.value = third ? thirdDisplay(third) : '';
+    hide();
+    if (typeof onSelected === 'function') onSelected(id);
+  };
+
+  if (input._thirdOutsideHandler) document.removeEventListener('click', input._thirdOutsideHandler);
+  input._thirdOutsideHandler = (ev) => {
+    if (!wrap.contains(ev.target)) hide();
+  };
+  setTimeout(() => document.addEventListener('click', input._thirdOutsideHandler), 0);
+}
+
+function initLineThirdSearchInput({ state, hidden, input, results, onSelected }) {
+  if (!hidden || !input || !results) return;
+
+  const paint = (query = '') => {
+    const found = renderThirdSearchResults(state, query);
+    results.innerHTML = `
+      <button type="button" data-third-id="" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">
+        Usar tercero del encabezado
+      </button>
+      ${found.map(t => `
+        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+          <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
+          <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
+        </button>
+      `).join('')}
+    `;
+  };
+
+  const syncInputFromHidden = () => {
+    const third = getThirdById(state, hidden.value);
+    input.value = third ? thirdDisplay(third) : '';
+  };
+
+  syncInputFromHidden();
+  input.onfocus = () => {
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.oninput = () => {
+    hidden.value = '';
+    if (typeof onSelected === 'function') onSelected('');
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.onblur = () => setTimeout(() => { results.style.display = 'none'; }, 120);
+  results.onmousedown = (ev) => ev.preventDefault();
+  results.onclick = (ev) => {
+    const btn = ev.target.closest('[data-third-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-third-id') || '';
+    hidden.value = id;
+    const third = getThirdById(state, id);
+    input.value = third ? thirdDisplay(third) : '';
+    results.style.display = 'none';
+    if (typeof onSelected === 'function') onSelected(id);
+  };
+}
+
+function bindTxLineThirdSearches(mode = 'new') {
+  const isEdit = mode === 'edit';
+  const state = isEdit ? TX_EDIT_STATE : TX_STATE;
+  if (!state?.lines?.length) return;
+
+  state.lines.forEach((_, i) => {
+    const base = isEdit ? `edit-tx-line-third-${i}` : `tx-line-third-${i}`;
+    const hidden = document.getElementById(base);
+    const input = document.getElementById(`${base}-search`);
+    const results = document.getElementById(`${base}-results`);
+    initLineThirdSearchInput({
+      state,
+      hidden,
+      input,
+      results,
+      onSelected: (id) => {
+        if (isEdit) updateEditTxLine(i, 'third_party_id', id);
+        else updateTxLine(i, 'third_party_id', id);
+      }
+    });
+  });
+}
+
 async function openNuevaTxModal() {
   if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
   openModal('Nueva Transacción', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
@@ -61,10 +212,14 @@ async function openNuevaTxModal() {
         <div class="form-group"><label class="form-label">Tipo / Serie</label><select id="tx-type" class="form-input">${buildTxTypeOptions(txTypes)}</select></div>
         <div class="form-group"><label class="form-label">Consecutivo</label><input id="tx-number" class="form-input" readonly placeholder="Auto"></div>
         <div class="form-group"><label class="form-label">Fecha</label><input id="tx-date" type="date" class="form-input" value="${todayStr()}"></div>
-        <div class="form-group">
+          <div class="form-group">
           <label class="form-label">Tercero</label>
           <div class="flex gap-2">
-            <select id="tx-third" class="form-input" style="flex:1"><option value="">Sin tercero</option>${terceros.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}</select>
+            <div id="tx-third-search-wrap" class="relative" style="flex:1">
+              <input id="tx-third-search" class="form-input" autocomplete="off" placeholder="Buscar tercero por documento o nombre">
+              <input id="tx-third" type="hidden" value="">
+              <div id="tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
             <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
               <i class="fas fa-file-invoice-dollar"></i> Cartera
             </button>
@@ -107,15 +262,21 @@ function bindNewTxModalEvents() {
   const carteraBtn = $('#btn-cartera');
   if (typeEl) typeEl.onchange = refreshConsecutive;
   if (addLineBtn) addLineBtn.onclick = () => addTxLine();
-  if (thirdEl) thirdEl.onchange = () => {
-    const thirdId = getSelectVal('tx-third');
-    if (carteraBtn) carteraBtn.disabled = !thirdId;
-    const payDaysInput = $('#tx-payment-days');
-    if (payDaysInput && thirdId) {
-      const third = TX_STATE.terceros?.find(t => t.id === thirdId);
-      payDaysInput.value = Number(third?.payment_days || 0);
+  initThirdSearchInput({
+    state: TX_STATE,
+    hiddenId: 'tx-third',
+    inputId: 'tx-third-search',
+    resultsId: 'tx-third-results',
+    onSelected: (thirdId) => {
+      if (carteraBtn) carteraBtn.disabled = !thirdId;
+      const payDaysInput = $('#tx-payment-days');
+      if (payDaysInput && thirdId) {
+        const third = TX_STATE.terceros?.find(t => t.id === thirdId);
+        payDaysInput.value = Number(third?.payment_days || 0);
+      }
     }
-  };
+  });
+  if (thirdEl && carteraBtn) carteraBtn.disabled = !thirdEl.value;
   if (carteraBtn) carteraBtn.onclick = () => showCarteraModal(getSelectVal('tx-third'));
 }
 
@@ -150,7 +311,11 @@ async function renderNuevaTx(c) {
           <div class="form-group md:col-span-1">
             <label class="form-label">Tercero</label>
             <div class="flex gap-2">
-              <select id="tx-third" class="form-input" style="flex:1"><option value="">Sin tercero</option>${terceros.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}</select>
+              <div id="tx-third-search-wrap" class="relative" style="flex:1">
+                <input id="tx-third-search" class="form-input" autocomplete="off" placeholder="Buscar tercero por documento o nombre">
+                <input id="tx-third" type="hidden" value="">
+                <div id="tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
+              </div>
               <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
                 <i class="fas fa-file-invoice-dollar"></i> Cartera
               </button>
@@ -173,20 +338,8 @@ async function renderNuevaTx(c) {
         </div>
       </div>`;
 
-    $('#tx-type')?.addEventListener('change', refreshConsecutive);
-    $('#btn-add-line')?.addEventListener('click', () => addTxLine());
+    bindNewTxModalEvents();
     $('#btn-save-tx')?.addEventListener('click', saveTransaction);
-    $('#tx-third')?.addEventListener('change', () => {
-      const thirdId = getSelectVal('tx-third');
-      const btn = $('#btn-cartera');
-      if (btn) btn.disabled = !thirdId;
-      const payDaysInput = $('#tx-payment-days');
-      if (payDaysInput && thirdId) {
-        const third = TX_STATE.terceros?.find(t => t.id === thirdId);
-        payDaysInput.value = Number(third?.payment_days || 0);
-      }
-    });
-    $('#btn-cartera')?.addEventListener('click', () => showCarteraModal(getSelectVal('tx-third')));
 
     await refreshConsecutive();
     addTxLine();
@@ -354,10 +507,11 @@ function renderTxLines(repaint = true) {
             <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
             ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
           </div>
-          <select class="form-input" style="font-size:13px" onchange="updateTxLine(${i}, 'third_party_id', this.value)">
-            <option value="">Usar tercero del encabezado</option>
-            ${TX_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
-          </select>
+          <div id="tx-line-third-${i}-wrap" class="relative">
+            <input id="tx-line-third-${i}-search" class="form-input" style="font-size:13px" autocomplete="off" placeholder="Buscar tercero de la línea">
+            <input id="tx-line-third-${i}" type="hidden" value="${esc(line.third_party_id || '')}">
+            <div id="tx-line-third-${i}-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
+          </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:3px">
@@ -396,6 +550,7 @@ function renderTxLines(repaint = true) {
     
     }).join('');
     $('#tx-lines').innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
+    bindTxLineThirdSearches('new');
   }
 
   const totals = TX_STATE.lines.reduce((acc, l) => {
@@ -427,9 +582,11 @@ function closeCarteraModal() {
     if (prev.editForm) {
       const d = $('#edit-tx-date');
       const t = $('#edit-tx-third');
+      const tLabel = $('#edit-tx-third-search');
       const x = $('#edit-tx-desc');
       if (d) d.value = prev.editForm.date || '';
       if (t) t.value = prev.editForm.third || '';
+      if (tLabel) tLabel.value = prev.editForm.thirdLabel || '';
       if (x) x.value = prev.editForm.desc || '';
       if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = prev.editForm.third || '';
     }
@@ -438,12 +595,14 @@ function closeCarteraModal() {
       const nNum  = $('#tx-number');
       const nDate = $('#tx-date');
       const nThird = $('#tx-third');
+      const nThirdLabel = $('#tx-third-search');
       const nDesc = $('#tx-desc');
       const nPay  = $('#tx-payment-days');
       if (nType  && prev.newForm.type)    nType.value    = prev.newForm.type;
       if (nNum)                           nNum.value     = prev.newForm.number || '';
       if (nDate)                          nDate.value    = prev.newForm.date   || '';
       if (nThird && prev.newForm.third)   nThird.value   = prev.newForm.third;
+      if (nThirdLabel)                    nThirdLabel.value = prev.newForm.thirdLabel || '';
       if (nDesc)                          nDesc.value    = prev.newForm.desc   || '';
       if (nPay)                           nPay.value     = prev.newForm.payDays || '0';
       // Sync btn-cartera enabled state
@@ -494,6 +653,7 @@ async function showCarteraModal(thirdId, opts = {}) {
         editForm: {
           date: $('#edit-tx-date')?.value || '',
           third: $('#edit-tx-third')?.value || '',
+          thirdLabel: $('#edit-tx-third-search')?.value || '',
           desc: $('#edit-tx-desc')?.value || '',
         },
         newForm: {
@@ -501,6 +661,7 @@ async function showCarteraModal(thirdId, opts = {}) {
           number: $('#tx-number')?.value || '',
           date: $('#tx-date')?.value || '',
           third: $('#tx-third')?.value || '',
+          thirdLabel: $('#tx-third-search')?.value || '',
           desc: $('#tx-desc')?.value || '',
           payDays: $('#tx-payment-days')?.value || '0',
         },
@@ -758,7 +919,7 @@ async function saveTransaction() {
       user_id: pb.currentUser?.id,
       payment_days: parseInt(getInputVal('tx-payment-days'), 10) || 0,
       cross_enabled: validLines.some(l => TX_STATE.accountMap.get(l.account_id)?.maneja_cruce),
-      status: 'active',
+      status: 'draft',
     }, validLines.map((l, i) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,
@@ -769,10 +930,16 @@ async function saveTransaction() {
       cross_doc_ref: l.cross_doc_ref || '',
     })));
 
-    showToast(`Transacción ${tx.number} guardada`, 'success');
+    showToast(`Transacción ${tx.number} guardada como borrador. Pendiente de aprobación por el contador.`, 'success');
     if (TX_STATE.inModal) {
       closeModal();
-      if (typeof loadConsultaTxPage === 'function' && $('#ctxq-results')) {
+      // Invalidate the period cache so the new type appears in the dropdown
+      const savedPeriodKey = txDate.slice(0, 7);
+      if (CTXQ_STATE.typeIdsByPeriod[savedPeriodKey]) {
+        delete CTXQ_STATE.typeIdsByPeriod[savedPeriodKey];
+      }
+      if ($('#ctxq-results')) {
+        await updateTypeOptionsForPeriod();
         loadConsultaTxPage();
       }
     } else {
@@ -818,6 +985,62 @@ function currentPeriodKey() {
   return `${y}-${m}`;
 }
 
+async function updateTypeOptionsForPeriod() {
+  const typeEl = $('#txq-type');
+  const periodKey = getSelectVal('txq-period');
+  if (!typeEl) return;
+
+  if (!periodKey) {
+    typeEl.innerHTML = '<option value="">Selecciona tipo de transacción</option>';
+    typeEl.value = '';
+    typeEl.disabled = true;
+    return;
+  }
+
+  typeEl.innerHTML = '<option value="">Cargando tipos del período...</option>';
+  typeEl.disabled = true;
+
+  try {
+    let usedTypeIds = CTXQ_STATE.typeIdsByPeriod[periodKey];
+    if (!Array.isArray(usedTypeIds)) {
+      const range = calcPeriodRange(periodKey);
+      if (!range) {
+        typeEl.innerHTML = '<option value="">Período inválido</option>';
+        typeEl.value = '';
+        typeEl.disabled = true;
+        return;
+      }
+
+      const periodTx = await pb.listAll('transactions', {
+        filter: `date>="${range.from}" && date<"${range.next}"`,
+        fields: 'tx_type_id',
+      });
+      usedTypeIds = [...new Set(periodTx.map(t => t.tx_type_id).filter(Boolean))];
+      CTXQ_STATE.typeIdsByPeriod[periodKey] = usedTypeIds;
+    }
+
+    const usedTypes = CTXQ_STATE.txTypes
+      .filter(t => usedTypeIds.includes(t.id))
+      .sort((a, b) => `${a.prefix || ''}${a.name || ''}`.localeCompare(`${b.prefix || ''}${b.name || ''}`));
+
+    if (!usedTypes.length) {
+      typeEl.innerHTML = '<option value="">Sin tipos usados en este período</option>';
+      typeEl.value = '';
+      typeEl.disabled = true;
+      return;
+    }
+
+    typeEl.innerHTML = `<option value="">Selecciona tipo de transacción</option>${usedTypes.map(t => `<option value="${esc(t.id)}">${esc(t.prefix)} - ${esc(t.name)}</option>`).join('')}`;
+    typeEl.value = '';
+    typeEl.disabled = false;
+  } catch (err) {
+    typeEl.innerHTML = '<option value="">Error cargando tipos</option>';
+    typeEl.value = '';
+    typeEl.disabled = true;
+    showToast(err.message || 'No se pudieron cargar los tipos del período.', 'error');
+  }
+}
+
 async function renderConsultaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando transacciones...</div>`;
   try {
@@ -858,6 +1081,7 @@ async function renderConsultaTx(c) {
         <div class="flex gap-3 mt-3">
           <select id="txq-status" class="form-input" style="max-width:180px">
             <option value="">Todos los estados</option>
+            <option value="draft">Borrador</option>
             <option value="active">Activa</option>
             <option value="voided">Anulada</option>
           </select>
@@ -892,62 +1116,6 @@ async function renderConsultaTx(c) {
       }
       typeEl.value = '';
       typeEl.disabled = true;
-    };
-
-    const updateTypeOptionsForPeriod = async () => {
-      const typeEl = $('#txq-type');
-      const periodKey = getSelectVal('txq-period');
-      if (!typeEl) return;
-
-      if (!periodKey) {
-        typeEl.innerHTML = '<option value="">Selecciona tipo de transacción</option>';
-        typeEl.value = '';
-        typeEl.disabled = true;
-        return;
-      }
-
-      typeEl.innerHTML = '<option value="">Cargando tipos del período...</option>';
-      typeEl.disabled = true;
-
-      try {
-        let usedTypeIds = CTXQ_STATE.typeIdsByPeriod[periodKey];
-        if (!Array.isArray(usedTypeIds)) {
-          const range = calcPeriodRange(periodKey);
-          if (!range) {
-            typeEl.innerHTML = '<option value="">Período inválido</option>';
-            typeEl.value = '';
-            typeEl.disabled = true;
-            return;
-          }
-
-          const periodTx = await pb.listAll('transactions', {
-            filter: `date>="${range.from}" && date<"${range.next}"`,
-            fields: 'tx_type_id',
-          });
-          usedTypeIds = [...new Set(periodTx.map(t => t.tx_type_id).filter(Boolean))];
-          CTXQ_STATE.typeIdsByPeriod[periodKey] = usedTypeIds;
-        }
-
-        const usedTypes = CTXQ_STATE.txTypes
-          .filter(t => usedTypeIds.includes(t.id))
-          .sort((a, b) => `${a.prefix || ''}${a.name || ''}`.localeCompare(`${b.prefix || ''}${b.name || ''}`));
-
-        if (!usedTypes.length) {
-          typeEl.innerHTML = '<option value="">Sin tipos usados en este período</option>';
-          typeEl.value = '';
-          typeEl.disabled = true;
-          return;
-        }
-
-        typeEl.innerHTML = `<option value="">Selecciona tipo de transacción</option>${usedTypes.map(t => `<option value="${esc(t.id)}">${esc(t.prefix)} - ${esc(t.name)}</option>`).join('')}`;
-        typeEl.value = '';
-        typeEl.disabled = false;
-      } catch (err) {
-        typeEl.innerHTML = '<option value="">Error cargando tipos</option>';
-        typeEl.value = '';
-        typeEl.disabled = true;
-        showToast(err.message || 'No se pudieron cargar los tipos del período.', 'error');
-      }
     };
 
     const doSearch = () => {
@@ -1093,12 +1261,13 @@ async function loadConsultaTxPage() {
                     ? '<span class="badge badge-green">Cuadrada</span>'
                     : `<span class="badge badge-red" title="Diferencia entre débito y crédito"><i class="fas fa-triangle-exclamation mr-1"></i>Descuadre ${fmt(diff)}</span>`}
                 </td>
-                <td>${t.status === 'voided' ? '<span class="badge badge-red">Anulada</span>' : '<span class="badge badge-green">Activa</span>'}</td>
+                <td>${t.status === 'voided' ? '<span class="badge badge-red">Anulada</span>' : t.status === 'draft' ? '<span class="badge badge-orange">Borrador</span>' : '<span class="badge badge-green">Activa</span>'}</td>
                 <td>
                   <div class="flex gap-1">
                     <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="seeTxDetail('${esc(t.id)}')"><i class="fas fa-eye"></i></button>
                     <button class="btn btn-outline btn-sm" title="Imprimir nota contable" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(t.id)}')"><i class="fas fa-print"></i></button>
-                    ${can('canWrite') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
+                    ${can('canApprove') && t.status === 'draft' ? `<button class="btn btn-primary btn-sm" title="Aprobar transacción" onclick="approveTx('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-check"></i> Aprobar</button>` : ''}
+                    ${can('canWrite') && (t.status === 'active' || t.status === 'draft') ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
                     ${requireRole('admin') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
@@ -1196,6 +1365,23 @@ async function seeTxDetail(id) {
   } catch (err) {
     showToast(err.message, 'error');
   }
+}
+
+function approveTx(id, number) {
+  if (!can('canApprove')) return showToast('No tienes permisos para aprobar transacciones', 'error');
+  confirmDialog(
+    'Aprobar transacción',
+    `¿Confirmas aprobar la transacción <strong>${esc(number)}</strong>? Quedará <strong>Activa</strong> y se reflejará en los reportes contables.`,
+    async () => {
+      try {
+        await API.approveTx(id);
+        showToast(`Transacción ${number} aprobada exitosamente.`, 'success');
+        if (typeof loadConsultaTxPage === 'function') loadConsultaTxPage();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  );
 }
 
 function voidTx(id) {
@@ -1307,10 +1493,11 @@ async function editTx(id) {
         <div class="form-group">
           <label class="form-label">Tercero</label>
           <div class="flex gap-2">
-            <select id="edit-tx-third" class="form-input" style="flex:1">
-              <option value="">Sin tercero</option>
-              ${terceros.map(t => `<option value="${esc(t.id)}" ${tx.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
-            </select>
+            <div id="edit-tx-third-search-wrap" class="relative" style="flex:1">
+              <input id="edit-tx-third-search" class="form-input" autocomplete="off" placeholder="Buscar tercero por documento o nombre" value="${esc(thirdDisplay(terceros.find(t => t.id === tx.third_party_id) || null))}">
+              <input id="edit-tx-third" type="hidden" value="${esc(tx.third_party_id || '')}">
+              <div id="edit-tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
             <button id="btn-edit-cartera" class="btn btn-outline btn-sm" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" ${tx.third_party_id ? '' : 'disabled'}>
               <i class="fas fa-file-invoice-dollar"></i> Cartera
             </button>
@@ -1347,15 +1534,22 @@ async function editTx(id) {
 
 function bindEditCarteraEvents() {
   const third = $('#edit-tx-third');
+  const thirdInput = $('#edit-tx-third-search');
   const btn = $('#btn-edit-cartera');
-  if (!third || !btn) return;
+  if (!third || !btn || !thirdInput) return;
 
   if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = third.value || TX_EDIT_STATE.selectedThird || '';
+  initThirdSearchInput({
+    state: TX_EDIT_STATE,
+    hiddenId: 'edit-tx-third',
+    inputId: 'edit-tx-third-search',
+    resultsId: 'edit-tx-third-results',
+    onSelected: (thirdId) => {
+      btn.disabled = !thirdId;
+      if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = thirdId || '';
+    }
+  });
   btn.disabled = !third.value;
-  third.onchange = () => {
-    btn.disabled = !third.value;
-    if (TX_EDIT_STATE) TX_EDIT_STATE.selectedThird = third.value || '';
-  };
   btn.onclick = () => showCarteraModal(third.value, { returnToPrevious: true });
 }
 
@@ -1485,10 +1679,11 @@ function renderEditTxLines(repaint = true) {
             <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Tercero línea</span>
             ${needsThird ? '<span class="text-xs" style="color:#B91C1C">Obligatorio</span>' : '<span class="text-xs" style="color:#94A3B8">Opcional</span>'}
           </div>
-          <select class="form-input" style="font-size:13px" onchange="updateEditTxLine(${i}, 'third_party_id', this.value)">
-            <option value="">Usar tercero del encabezado</option>
-            ${TX_EDIT_STATE.terceros.map(t => `<option value="${esc(t.id)}" ${line.third_party_id === t.id ? 'selected' : ''}>${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
-          </select>
+          <div id="edit-tx-line-third-${i}-wrap" class="relative">
+            <input id="edit-tx-line-third-${i}-search" class="form-input" style="font-size:13px" autocomplete="off" placeholder="Buscar tercero de la línea">
+            <input id="edit-tx-line-third-${i}" type="hidden" value="${esc(line.third_party_id || '')}">
+            <div id="edit-tx-line-third-${i}-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
+          </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:3px">
@@ -1526,6 +1721,7 @@ function renderEditTxLines(repaint = true) {
     }).join('');
     const el = document.getElementById('edit-tx-lines');
     if (el) el.innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
+    bindTxLineThirdSearches('edit');
   }
 
   const totals = TX_EDIT_STATE.lines.reduce((acc, l) => {

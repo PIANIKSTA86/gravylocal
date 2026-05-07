@@ -150,6 +150,74 @@ const ARL_RISK_RATES = {
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+function nominaThirdDisplay(t) {
+  return `${t?.doc_number || ''} - ${t?.name || ''}`.trim();
+}
+
+function nominaFindThirdById(terceros, thirdId) {
+  if (!thirdId) return null;
+  return (Array.isArray(terceros) ? terceros : []).find((t) => t.id === thirdId) || null;
+}
+
+function initNominaThirdSearchInput({ terceros, hiddenId, inputId, resultsId, onSelected }) {
+  const hidden = document.getElementById(hiddenId);
+  const input = document.getElementById(inputId);
+  const results = document.getElementById(resultsId);
+  if (!hidden || !input || !results) return;
+
+  const paint = (query = '') => {
+    const all = Array.isArray(terceros) ? terceros : [];
+    const q = String(query || '').toLowerCase().trim();
+    const terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    const filtered = (terms.length
+      ? all.filter((t) => {
+        const hay = `${t.doc_number || ''} ${t.name || ''}`.toLowerCase();
+        return terms.every((term) => hay.includes(term));
+      })
+      : all
+    ).slice(0, 30);
+
+    results.innerHTML = `
+      <button type="button" data-third-id="" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">Sin tercero</button>
+      ${filtered.map((t) => `
+        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+          <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
+          <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
+        </button>
+      `).join('')}
+    `;
+  };
+
+  const syncFromHidden = () => {
+    const third = nominaFindThirdById(terceros, hidden.value);
+    input.value = third ? nominaThirdDisplay(third) : '';
+  };
+
+  syncFromHidden();
+  input.onfocus = () => {
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.oninput = () => {
+    hidden.value = '';
+    if (typeof onSelected === 'function') onSelected('');
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.onblur = () => setTimeout(() => { results.style.display = 'none'; }, 120);
+  results.onmousedown = (ev) => ev.preventDefault();
+  results.onclick = (ev) => {
+    const btn = ev.target.closest('[data-third-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-third-id') || '';
+    hidden.value = id;
+    const third = nominaFindThirdById(terceros, id);
+    input.value = third ? nominaThirdDisplay(third) : '';
+    results.style.display = 'none';
+    if (typeof onSelected === 'function') onSelected(id);
+  };
+}
+
 function defaultNominaConfig() {
   return {
     balancing_account_id: '',
@@ -788,7 +856,6 @@ async function openNominaAccountingSettings(employees = []) {
     const accountOpts = `<option value="">Selecciona cuenta...</option>${accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`).join('')}`;
     const categoryOpts = `<option value="">Selecciona categoría...</option>${Object.keys(NOMINA_CATEGORY_LABELS).map((key) => `<option value="${esc(key)}">${esc(NOMINA_CATEGORY_LABELS[key])}</option>`).join('')}`;
     const groupOpts = () => `<option value="">Selecciona grupo...</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
-    const terceroOpts = `<option value="">Sin tercero...</option>${terceros.map((t) => `<option value="${esc(t.id)}">${esc(t.doc_number || '')} - ${esc(t.name)}</option>`).join('')}`;
 
     openModal(
       'Configuración Contable de Nómina',
@@ -819,11 +886,19 @@ async function openNominaAccountingSettings(employees = []) {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="form-group">
             <label class="form-label">Tercero SENA</label>
-            <select id="nom-tercero-sena" class="form-input">${terceroOpts}</select>
+            <div class="relative">
+              <input id="nom-tercero-sena-search" class="form-input" autocomplete="off" placeholder="Buscar tercero por documento o nombre">
+              <input id="nom-tercero-sena" type="hidden" value="${esc(local.config.company_rules.tercero_sena_id || '')}">
+              <div id="nom-tercero-sena-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">Tercero ICBF</label>
-            <select id="nom-tercero-icbf" class="form-input">${terceroOpts}</select>
+            <div class="relative">
+              <input id="nom-tercero-icbf-search" class="form-input" autocomplete="off" placeholder="Buscar tercero por documento o nombre">
+              <input id="nom-tercero-icbf" type="hidden" value="${esc(local.config.company_rules.tercero_icbf_id || '')}">
+              <div id="nom-tercero-icbf-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
           </div>
         </div>
 
@@ -894,8 +969,18 @@ async function openNominaAccountingSettings(employees = []) {
     };
 
     if ($('#nom-balancing-account')) $('#nom-balancing-account').value = local.config.balancing_account_id || '';
-    if ($('#nom-tercero-sena')) $('#nom-tercero-sena').value = local.config.company_rules.tercero_sena_id || '';
-    if ($('#nom-tercero-icbf')) $('#nom-tercero-icbf').value = local.config.company_rules.tercero_icbf_id || '';
+    initNominaThirdSearchInput({
+      terceros,
+      hiddenId: 'nom-tercero-sena',
+      inputId: 'nom-tercero-sena-search',
+      resultsId: 'nom-tercero-sena-results',
+    });
+    initNominaThirdSearchInput({
+      terceros,
+      hiddenId: 'nom-tercero-icbf',
+      inputId: 'nom-tercero-icbf-search',
+      resultsId: 'nom-tercero-icbf-results',
+    });
 
     const refreshGroupSelectorOptions = () => {
       const mapGroupSel = $('#nom-map-group');
@@ -1157,7 +1242,6 @@ async function openNominaEmployeeSettings(employees = []) {
     const groupOpts = `<option value="">Sin grupo</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
     const groupNameById = {};
     (local.config.employee_groups || []).forEach((g) => { groupNameById[g.id] = g.name; });
-    const terceroOpts = `<option value="">Sin tercero...</option>${terceros.map((t) => `<option value="${esc(t.id)}">${esc(t.doc_number || '')} - ${esc(t.name)}</option>`).join('')}`;
 
     const arlText = (lvl) => `Nivel ${lvl} (${round2((ARL_RISK_RATES[lvl] || ARL_RISK_RATES[1]) * 100)}%)`;
 
@@ -1209,19 +1293,35 @@ async function openNominaEmployeeSettings(employees = []) {
             <p class="md:col-span-2 text-xs font-semibold" style="color:#6B7280">TERCEROS ENTIDADES (para contabilización automática)</p>
             <div class="form-group">
               <label class="form-label">EPS (Salud)</label>
-              <select id="nom-emp-rule-tercero-salud" class="form-input">${terceroOpts}</select>
+              <div class="relative">
+                <input id="nom-emp-rule-tercero-salud-search" class="form-input" autocomplete="off" placeholder="Buscar tercero...">
+                <input id="nom-emp-rule-tercero-salud" type="hidden" value="">
+                <div id="nom-emp-rule-tercero-salud-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">AFP (Pensión)</label>
-              <select id="nom-emp-rule-tercero-pension" class="form-input">${terceroOpts}</select>
+              <div class="relative">
+                <input id="nom-emp-rule-tercero-pension-search" class="form-input" autocomplete="off" placeholder="Buscar tercero...">
+                <input id="nom-emp-rule-tercero-pension" type="hidden" value="">
+                <div id="nom-emp-rule-tercero-pension-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">ARL</label>
-              <select id="nom-emp-rule-tercero-arl" class="form-input">${terceroOpts}</select>
+              <div class="relative">
+                <input id="nom-emp-rule-tercero-arl-search" class="form-input" autocomplete="off" placeholder="Buscar tercero...">
+                <input id="nom-emp-rule-tercero-arl" type="hidden" value="">
+                <div id="nom-emp-rule-tercero-arl-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">Caja de Compensación</label>
-              <select id="nom-emp-rule-tercero-caja" class="form-input">${terceroOpts}</select>
+              <div class="relative">
+                <input id="nom-emp-rule-tercero-caja-search" class="form-input" autocomplete="off" placeholder="Buscar tercero...">
+                <input id="nom-emp-rule-tercero-caja" type="hidden" value="">
+                <div id="nom-emp-rule-tercero-caja-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+              </div>
             </div>
           </div>
           <div class="mt-3 flex gap-2">
@@ -1255,6 +1355,23 @@ async function openNominaEmployeeSettings(employees = []) {
       setInputVal('nom-emp-rule-tercero-pension', '');
       setInputVal('nom-emp-rule-tercero-arl', '');
       setInputVal('nom-emp-rule-tercero-caja', '');
+      syncRuleThirdSearchInputs();
+    };
+
+    const syncRuleThirdSearchInputs = () => {
+      const pairs = [
+        ['nom-emp-rule-tercero-salud', 'nom-emp-rule-tercero-salud-search'],
+        ['nom-emp-rule-tercero-pension', 'nom-emp-rule-tercero-pension-search'],
+        ['nom-emp-rule-tercero-arl', 'nom-emp-rule-tercero-arl-search'],
+        ['nom-emp-rule-tercero-caja', 'nom-emp-rule-tercero-caja-search'],
+      ];
+      pairs.forEach(([hiddenId, inputId]) => {
+        const hidden = document.getElementById(hiddenId);
+        const input = document.getElementById(inputId);
+        if (!hidden || !input) return;
+        const third = nominaFindThirdById(terceros, hidden.value || '');
+        input.value = third ? nominaThirdDisplay(third) : '';
+      });
     };
 
     const loadRuleToForm = (employeeId) => {
@@ -1273,6 +1390,7 @@ async function openNominaEmployeeSettings(employees = []) {
       if ($('#nom-emp-rule-tercero-pension')) $('#nom-emp-rule-tercero-pension').value = explicit.tercero_pension_id || '';
       if ($('#nom-emp-rule-tercero-arl')) $('#nom-emp-rule-tercero-arl').value = explicit.tercero_arl_id || '';
       if ($('#nom-emp-rule-tercero-caja')) $('#nom-emp-rule-tercero-caja').value = explicit.tercero_caja_id || '';
+      syncRuleThirdSearchInputs();
     };
 
     const renderEmployeeRules = () => {
@@ -1322,6 +1440,12 @@ async function openNominaEmployeeSettings(employees = []) {
     };
 
     renderEmployeeRules();
+
+    initNominaThirdSearchInput({ terceros, hiddenId: 'nom-emp-rule-tercero-salud', inputId: 'nom-emp-rule-tercero-salud-search', resultsId: 'nom-emp-rule-tercero-salud-results' });
+    initNominaThirdSearchInput({ terceros, hiddenId: 'nom-emp-rule-tercero-pension', inputId: 'nom-emp-rule-tercero-pension-search', resultsId: 'nom-emp-rule-tercero-pension-results' });
+    initNominaThirdSearchInput({ terceros, hiddenId: 'nom-emp-rule-tercero-arl', inputId: 'nom-emp-rule-tercero-arl-search', resultsId: 'nom-emp-rule-tercero-arl-results' });
+    initNominaThirdSearchInput({ terceros, hiddenId: 'nom-emp-rule-tercero-caja', inputId: 'nom-emp-rule-tercero-caja-search', resultsId: 'nom-emp-rule-tercero-caja-results' });
+    syncRuleThirdSearchInputs();
 
     $('#nom-emp-rule-employee')?.addEventListener('change', () => {
       const employeeId = getSelectVal('nom-emp-rule-employee');

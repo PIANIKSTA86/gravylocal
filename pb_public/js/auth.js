@@ -7,11 +7,11 @@
 
 /* -- Permisos por rol --------------------------------------- */
 const PERMISSIONS = {
-  admin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true  },
-  contador: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true  },
-  auxiliar: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false },
-  auditor:  { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true  },
-  viewer:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false },
+  admin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true  },
+  contador: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true  },
+  auxiliar: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false },
+  auditor:  { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true,  canApprove: false },
+  viewer:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false },
 };
 
 function can(permission) {

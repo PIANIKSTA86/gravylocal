@@ -266,9 +266,9 @@ const API = {
     // lines: [{ account_id, debit, credit, description, line_order }]
     const tx = await pb.create('transactions', {
       ...txData,
-      // El n�mero se asigna en hook server-side al crear transactions.
+      // El número se asigna en hook server-side al crear transactions.
       number: txData.number || 'AUTO',
-      status: 'active',
+      status: txData.status || 'active',
     });
 
     try {
@@ -312,6 +312,14 @@ const API = {
 
   async voidTransaction(txId, description = '') {
     await pb.update('transactions', txId, { status: 'voided' });
+  },
+
+  async approveTx(txId) {
+    const tx = await pb.get('transactions', txId);
+    if (tx.status !== 'draft') throw new Error('Solo se pueden aprobar transacciones en estado Borrador.');
+    await pb.update('transactions', txId, { status: 'active' });
+    await this.logAudit('APPROVE', 'transactions', txId, `Transacción ${tx.number} aprobada`);
+    return tx;
   },
 
   async updateTransaction(txId, txData, lines) {

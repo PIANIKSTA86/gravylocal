@@ -20,6 +20,7 @@ const PAGE_TITLES = {
   'facturacion-dian':'Facturación Electrónica DIAN',
   'cierre':          'Cierre Contable',
   productos:         'Productos y Servicios',
+  inventario:        'Inventarios',
 };
 
 const PAGE_RENDERERS = {
@@ -39,6 +40,7 @@ const PAGE_RENDERERS = {
   'facturacion-dian': () => typeof renderFacturacionDIAN === 'function' && renderFacturacionDIAN($('#page-content')),
   'cierre':           () => typeof renderCierre           === 'function' && renderCierre($('#page-content')),
   productos:          () => typeof renderProductos         === 'function' && renderProductos($('#page-content')),
+  inventario:         () => typeof renderInventario        === 'function' && renderInventario($('#page-content')),
 };
 
 let currentPage = 'dashboard';

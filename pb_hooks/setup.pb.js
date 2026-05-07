@@ -420,6 +420,105 @@ onBootstrap((e) => {
     ],
   });
   $app.save(productsCol);
+  const productsId = productsCol.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: warehouses (bodegas / almacenes)
+  // ─────────────────────────────────────────────────────────
+  const warehouses = new Collection({
+    name: "warehouses",
+    type: "base",
+    listRule:   "@request.auth.id != ''",
+    viewRule:   "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "code",       type: "text",     required: true  },
+      { name: "name",       type: "text",     required: true  },
+      { name: "address",    type: "text",     required: false },
+      { name: "notes",      type: "text",     required: false },
+      { name: "active",     type: "bool",     required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_warehouses_code ON warehouses (code)"],
+  });
+  $app.save(warehouses);
+  const warehousesId = warehouses.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: inventory_movements (documento de movimiento)
+  // Tipos: ENTRADA, SALIDA, TRASLADO, AJUSTE_POSITIVO, AJUSTE_NEGATIVO
+  // ─────────────────────────────────────────────────────────
+  const inventoryMovements = new Collection({
+    name: "inventory_movements",
+    type: "base",
+    listRule:   "@request.auth.id != ''",
+    viewRule:   "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "number",         type: "text",     required: true  },
+      { name: "mov_type",       type: "select",   required: true,
+        values: ["ENTRADA","SALIDA","TRASLADO","AJUSTE_POSITIVO","AJUSTE_NEGATIVO"] },
+      { name: "date",           type: "text",     required: true  },
+      { name: "warehouse_id",   type: "relation", required: true,  collectionId: warehousesId, cascadeDelete: false },
+      { name: "dest_warehouse_id", type: "relation", required: false, collectionId: warehousesId, cascadeDelete: false },
+      { name: "third_party_id", type: "relation", required: false, collectionId: thirdPartiesId, cascadeDelete: false },
+      { name: "notes",          type: "text",     required: false },
+      { name: "status",         type: "select",   required: false, values: ["draft","applied","voided"] },
+      { name: "tx_id",          type: "relation", required: false, collectionId: transactionsId, cascadeDelete: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_invmov_number ON inventory_movements (number)"],
+  });
+  $app.save(inventoryMovements);
+  const inventoryMovementsId = inventoryMovements.id;
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: inventory_movement_lines
+  // ─────────────────────────────────────────────────────────
+  const inventoryMovementLines = new Collection({
+    name: "inventory_movement_lines",
+    type: "base",
+    listRule:   "@request.auth.id != ''",
+    viewRule:   "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "movement_id",  type: "relation", required: true,  collectionId: inventoryMovementsId, cascadeDelete: true  },
+      { name: "product_id",   type: "relation", required: true,  collectionId: productsId,            cascadeDelete: false },
+      { name: "qty",          type: "number",   required: true,  min: 0 },
+      { name: "unit_cost",    type: "number",   required: false, min: 0 },
+      { name: "notes",        type: "text",     required: false },
+      { name: "line_order",   type: "number",   required: false },
+    ],
+  });
+  $app.save(inventoryMovementLines);
+
+  // ─────────────────────────────────────────────────────────
+  // COLECCIÓN: inventory_stock (stock actual por producto+bodega)
+  // Mantiene un único registro por combinación producto+bodega.
+  // Se actualiza cuando se aplica un movimiento.
+  // ─────────────────────────────────────────────────────────
+  const inventoryStock = new Collection({
+    name: "inventory_stock",
+    type: "base",
+    listRule:   "@request.auth.id != ''",
+    viewRule:   "@request.auth.id != ''",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+    deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    fields: [
+      { name: "product_id",   type: "relation", required: true,  collectionId: productsId,    cascadeDelete: false },
+      { name: "warehouse_id", type: "relation", required: true,  collectionId: warehousesId,  cascadeDelete: false },
+      { name: "qty_on_hand",  type: "number",   required: false, min: 0 },
+      { name: "avg_cost",     type: "number",   required: false, min: 0 },
+      { name: "last_mov_date",type: "text",     required: false },
+    ],
+    indexes: ["CREATE UNIQUE INDEX idx_inv_stock_prod_wh ON inventory_stock (product_id, warehouse_id)"],
+  });
+  $app.save(inventoryStock);
 
   // ─────────────────────────────────────────────────────────
   // EXTENDER USUARIOS con campos de rol
@@ -1061,6 +1160,133 @@ onBootstrap((e) => {
     }
   } catch (err) {
     console.log("[GRAVY] Aviso al migrar campos opcionales de products: " + err);
+  }
+});
+
+// ── Migración F5: Inventarios ─────────────────────────────────────────────────
+onBootstrap((e) => {
+  e.next();
+
+  // warehouses
+  try {
+    $app.findCollectionByNameOrId("warehouses");
+  } catch (_) {
+    try {
+      const col = new Collection({
+        name: "warehouses",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "code",    type: "text", required: true  },
+          { name: "name",    type: "text", required: true  },
+          { name: "address", type: "text", required: false },
+          { name: "notes",   type: "text", required: false },
+          { name: "active",  type: "bool", required: false },
+        ],
+        indexes: ["CREATE UNIQUE INDEX idx_warehouses_code ON warehouses (code)"],
+      });
+      $app.save(col);
+      console.log("[GRAVY] Colección warehouses creada (migración).");
+    } catch (err2) {
+      console.log("[GRAVY] Error creando warehouses: " + err2);
+    }
+  }
+
+  // inventory_movements + inventory_movement_lines + inventory_stock
+  try {
+    const productsId    = $app.findCollectionByNameOrId("products").id;
+    const warehousesId  = $app.findCollectionByNameOrId("warehouses").id;
+    const thirdPartiesId = $app.findCollectionByNameOrId("third_parties").id;
+    const transactionsId = $app.findCollectionByNameOrId("transactions").id;
+
+    // inventory_movements
+    let invMovId;
+    try {
+      invMovId = $app.findCollectionByNameOrId("inventory_movements").id;
+    } catch (_) {
+      const col = new Collection({
+        name: "inventory_movements",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "number",            type: "text",     required: true  },
+          { name: "mov_type",          type: "select",   required: true,
+            values: ["ENTRADA","SALIDA","TRASLADO","AJUSTE_POSITIVO","AJUSTE_NEGATIVO"] },
+          { name: "date",              type: "text",     required: true  },
+          { name: "warehouse_id",      type: "relation", required: true,  collectionId: warehousesId,   cascadeDelete: false },
+          { name: "dest_warehouse_id", type: "relation", required: false, collectionId: warehousesId,   cascadeDelete: false },
+          { name: "third_party_id",    type: "relation", required: false, collectionId: thirdPartiesId, cascadeDelete: false },
+          { name: "notes",             type: "text",     required: false },
+          { name: "status",            type: "select",   required: false, values: ["draft","applied","voided"] },
+          { name: "tx_id",             type: "relation", required: false, collectionId: transactionsId, cascadeDelete: false },
+        ],
+        indexes: ["CREATE UNIQUE INDEX idx_invmov_number ON inventory_movements (number)"],
+      });
+      $app.save(col);
+      invMovId = col.id;
+      console.log("[GRAVY] Colección inventory_movements creada (migración).");
+    }
+
+    // inventory_movement_lines
+    try {
+      $app.findCollectionByNameOrId("inventory_movement_lines");
+    } catch (_) {
+      const col = new Collection({
+        name: "inventory_movement_lines",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "movement_id", type: "relation", required: true,  collectionId: invMovId,      cascadeDelete: true  },
+          { name: "product_id",  type: "relation", required: true,  collectionId: productsId,    cascadeDelete: false },
+          { name: "qty",         type: "number",   required: true,  min: 0 },
+          { name: "unit_cost",   type: "number",   required: false, min: 0 },
+          { name: "notes",       type: "text",     required: false },
+          { name: "line_order",  type: "number",   required: false },
+        ],
+      });
+      $app.save(col);
+      console.log("[GRAVY] Colección inventory_movement_lines creada (migración).");
+    }
+
+    // inventory_stock
+    try {
+      $app.findCollectionByNameOrId("inventory_stock");
+    } catch (_) {
+      const col = new Collection({
+        name: "inventory_stock",
+        type: "base",
+        listRule:   "@request.auth.id != ''",
+        viewRule:   "@request.auth.id != ''",
+        createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+        deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+        fields: [
+          { name: "product_id",    type: "relation", required: true, collectionId: productsId,   cascadeDelete: false },
+          { name: "warehouse_id",  type: "relation", required: true, collectionId: warehousesId, cascadeDelete: false },
+          { name: "qty_on_hand",   type: "number",   required: false, min: 0 },
+          { name: "avg_cost",      type: "number",   required: false, min: 0 },
+          { name: "last_mov_date", type: "text",     required: false },
+        ],
+        indexes: ["CREATE UNIQUE INDEX idx_inv_stock_prod_wh ON inventory_stock (product_id, warehouse_id)"],
+      });
+      $app.save(col);
+      console.log("[GRAVY] Colección inventory_stock creada (migración).");
+    }
+
+  } catch (err) {
+    console.log("[GRAVY] Aviso migrando colecciones de inventario: " + err);
   }
 });
 

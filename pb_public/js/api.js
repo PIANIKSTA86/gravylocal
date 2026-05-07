@@ -405,4 +405,123 @@ const API = {
       totalAc: acCount.totalItems,
     };
   },
+
+  // -- Inventarios -------------------------------------------
+
+  /** Bodegas */
+  async getWarehouses(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('warehouses', { filter, sort: 'code' });
+  },
+
+  /** Stock actual (kardex resumen) con expand a producto y bodega */
+  async getInventoryStock(opts = {}) {
+    const { warehouseId = '', productId = '' } = opts;
+    let filter = '';
+    if (warehouseId) filter += `warehouse_id="${pb.escapeFilterValue(warehouseId)}"`;
+    if (productId)   filter += (filter ? ' && ' : '') + `product_id="${pb.escapeFilterValue(productId)}"`;
+    return pb.listAll('inventory_stock', {
+      filter,
+      sort:   'product_id',
+      expand: 'product_id,warehouse_id',
+    });
+  },
+
+  /** Upsert de stock: si ya existe el registro producto+bodega lo actualiza; si no lo crea */
+  async upsertStock(productId, warehouseId, deltaQty, newAvgCost = null, date = '') {
+    const safeP = pb.escapeFilterValue(productId);
+    const safeW = pb.escapeFilterValue(warehouseId);
+    const existing = await pb.list('inventory_stock', {
+      filter: `product_id="${safeP}" && warehouse_id="${safeW}"`,
+      perPage: 1,
+    });
+    const today = date || new Date().toISOString().slice(0, 10);
+    if (existing.items.length) {
+      const rec = existing.items[0];
+      const newQty = Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
+      const avgCost = newAvgCost !== null ? newAvgCost : (rec.avg_cost ?? 0);
+      return pb.update('inventory_stock', rec.id, {
+        qty_on_hand: newQty, avg_cost: avgCost, last_mov_date: today,
+      });
+    }
+    return pb.create('inventory_stock', {
+      product_id: productId, warehouse_id: warehouseId,
+      qty_on_hand: Math.max(0, deltaQty),
+      avg_cost: newAvgCost ?? 0,
+      last_mov_date: today,
+    });
+  },
+
+  /** Movimientos de inventario paginados */
+  async getInventoryMovements(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('inventory_movements', {
+      page, perPage, filter, sort,
+      expand: 'warehouse_id,dest_warehouse_id,third_party_id',
+    });
+  },
+
+  /** Líneas de un movimiento */
+  async getInventoryMovementLines(movementId) {
+    const safe = pb.escapeFilterValue(movementId);
+    return pb.listAll('inventory_movement_lines', {
+      filter: `movement_id="${safe}"`,
+      sort:   'line_order',
+      expand: 'product_id',
+    });
+  },
+
+  /** Aplica un movimiento: actualiza stock + genera asiento contable si procede */
+  async applyInventoryMovement(movId) {
+    const mov   = await pb.get('inventory_movements', movId, { expand: 'warehouse_id,dest_warehouse_id' });
+    if (mov.status === 'applied') throw new Error('El movimiento ya fue aplicado.');
+    if (mov.status === 'voided')  throw new Error('El movimiento está anulado.');
+
+    const lines = await this.getInventoryMovementLines(movId);
+    if (!lines.length) throw new Error('El movimiento no tiene líneas.');
+
+    const today  = mov.date || new Date().toISOString().slice(0, 10);
+    const isIn   = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+    const isOut  = mov.mov_type === 'SALIDA'  || mov.mov_type === 'AJUSTE_NEGATIVO';
+    const isTran = mov.mov_type === 'TRASLADO';
+
+    for (const line of lines) {
+      const delta = isIn ? line.qty : isOut ? -line.qty : 0;
+      if (isTran) {
+        await this.upsertStock(line.product_id, mov.warehouse_id,      -line.qty, null, today);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id,  line.qty, null, today);
+      } else {
+        await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today);
+      }
+    }
+
+    await pb.update('inventory_movements', movId, { status: 'applied' });
+    await this.logAudit('APPLY', 'InventoryMovement', movId, `${mov.mov_type} — ${mov.number}`);
+    return mov;
+  },
+
+  /** Anula un movimiento aplicado revirtiendo el stock */
+  async voidInventoryMovement(movId) {
+    const mov   = await pb.get('inventory_movements', movId);
+    if (mov.status !== 'applied') throw new Error('Solo se pueden anular movimientos ya aplicados.');
+
+    const lines = await this.getInventoryMovementLines(movId);
+    const today  = new Date().toISOString().slice(0, 10);
+    const isIn   = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+    const isOut  = mov.mov_type === 'SALIDA'  || mov.mov_type === 'AJUSTE_NEGATIVO';
+    const isTran = mov.mov_type === 'TRASLADO';
+
+    for (const line of lines) {
+      const delta = isIn ? -line.qty : isOut ? line.qty : 0;
+      if (isTran) {
+        await this.upsertStock(line.product_id, mov.warehouse_id,      line.qty,  null, today);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id, -line.qty, null, today);
+      } else {
+        await this.upsertStock(line.product_id, mov.warehouse_id, delta, null, today);
+      }
+    }
+
+    await pb.update('inventory_movements', movId, { status: 'voided' });
+    await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} — ${mov.number}`);
+  },
 };

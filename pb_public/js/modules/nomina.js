@@ -1,9 +1,17 @@
 ﻿/**
- * GRAVY v2.0 — nomina.js
+ * ContaCO v2.0 — nomina.js
  */
 'use strict';
 
 const NOMINA_CONFIG_KEY = 'payroll_accounting_config_v1';
+const NOMINA_CONFIG_KEYS = {
+  core: `${NOMINA_CONFIG_KEY}_core`,
+  mappings: `${NOMINA_CONFIG_KEY}_mappings`,
+  employee_groups: `${NOMINA_CONFIG_KEY}_employee_groups`,
+  group_rules: `${NOMINA_CONFIG_KEY}_group_rules`,
+  employee_rules: `${NOMINA_CONFIG_KEY}_employee_rules`,
+};
+const NOMINA_CONFIG_VALUE_MAX_CHARS = 5000;
 const NOMINA_CONCEPTS = [
   { key: 'salary_base', label: 'Salario base', default_side: 'debit' },
   { key: 'overtime', label: 'Horas extra / recargos', default_side: 'debit' },
@@ -62,6 +70,66 @@ const NOMINA_EXTRA_DEDUCTION_KEYS = [
   'libranza',
   'prestamos',
 ];
+
+const NOMINA_CATEGORY_LABELS = {
+  devengo: 'Devengos',
+  descuento: 'Descuentos',
+  aportes: 'Aportes',
+  provision: 'Provisiones',
+};
+
+const NOMINA_CONCEPT_RULES = {
+  salary_base: { category: 'devengo', allowed_sides: ['debit'] },
+  overtime: { category: 'devengo', allowed_sides: ['debit'] },
+  transport_allowance: { category: 'devengo', allowed_sides: ['debit'] },
+  incapacidades: { category: 'devengo', allowed_sides: ['debit'] },
+  licencias: { category: 'devengo', allowed_sides: ['debit'] },
+  gastos_representacion: { category: 'devengo', allowed_sides: ['debit'] },
+  bonificacion: { category: 'devengo', allowed_sides: ['debit'] },
+  aux_no_salariales: { category: 'devengo', allowed_sides: ['debit'] },
+  comisiones: { category: 'devengo', allowed_sides: ['debit'] },
+  dotaciones: { category: 'devengo', allowed_sides: ['debit'] },
+  compensatorios: { category: 'devengo', allowed_sides: ['debit'] },
+  alimentacion: { category: 'devengo', allowed_sides: ['debit'] },
+  net_pay: { category: 'devengo', allowed_sides: ['credit'] },
+
+  deduction_health: { category: 'descuento', allowed_sides: ['credit'] },
+  deduction_pension: { category: 'descuento', allowed_sides: ['credit'] },
+  solidarity_fund: { category: 'descuento', allowed_sides: ['credit'] },
+  withholding_tax: { category: 'descuento', allowed_sides: ['credit'] },
+  deduction_other: { category: 'descuento', allowed_sides: ['credit'] },
+  embargo: { category: 'descuento', allowed_sides: ['credit'] },
+  cxc: { category: 'descuento', allowed_sides: ['credit'] },
+  libranza: { category: 'descuento', allowed_sides: ['credit'] },
+  prestamos: { category: 'descuento', allowed_sides: ['credit'] },
+
+  employer_health: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+  employer_pension: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+  employer_arl: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+  sena: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+  icbf: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+  caja_comp: { category: 'aportes', allowed_sides: ['debit', 'credit'] },
+
+  cesantias: { category: 'provision', allowed_sides: ['debit', 'credit'] },
+  intereses_ces: { category: 'provision', allowed_sides: ['debit', 'credit'] },
+  prima: { category: 'provision', allowed_sides: ['debit', 'credit'] },
+  vacaciones: { category: 'provision', allowed_sides: ['debit', 'credit'] },
+};
+
+function getNominaConceptRule(conceptKey) {
+  return NOMINA_CONCEPT_RULES[conceptKey] || {
+    category: 'devengo',
+    allowed_sides: [(NOMINA_CONCEPT_BY_KEY[conceptKey]?.default_side || 'debit') === 'credit' ? 'credit' : 'debit'],
+  };
+}
+
+function getNominaCategoryLabel(category) {
+  return NOMINA_CATEGORY_LABELS[category] || category || 'Sin categoría';
+}
+
+function getNominaCategoryConcepts(category) {
+  return NOMINA_CONCEPTS.filter((c) => getNominaConceptRule(c.key).category === category);
+}
 
 const NOMINA_OVERTIME_TYPES = [
   { key: 'hed', label: 'Extra Diurna (HED)', factor: 1.25 },
@@ -165,7 +233,68 @@ function normalizeNominaConfig(raw) {
   };
 }
 
+function compactNominaConfigForStorage(config) {
+  const normalized = normalizeNominaConfig(config);
+  return {
+    balancing_account_id: normalized.balancing_account_id || '',
+    mappings: (normalized.mappings || []).map((m) => ({
+      id: m.id || '',
+      concept: m.concept || '',
+      side: m.side === 'credit' ? 'credit' : 'debit',
+      account_id: m.account_id || '',
+      employee_id: m.employee_id || '',
+      group_id: m.group_id || '',
+      active: m.active !== false,
+    })),
+    employee_groups: (normalized.employee_groups || []).map((g) => ({
+      id: g.id || '',
+      name: (g.name || '').trim(),
+      active: g.active !== false,
+    })),
+    group_rules: normalized.group_rules || [],
+    company_rules: normalized.company_rules || {},
+    employee_rules: (normalized.employee_rules || []).map((r) => {
+      const compactRule = { employee_id: r.employee_id || '' };
+      if (r.group_id) compactRule.group_id = r.group_id;
+      if (r.basic_salary !== null && r.basic_salary !== undefined) compactRule.basic_salary = Number(r.basic_salary || 0);
+      if (r.arl_risk_level !== null && r.arl_risk_level !== undefined) compactRule.arl_risk_level = Number(r.arl_risk_level || 1);
+      if (typeof r.is_pensioner === 'boolean') compactRule.is_pensioner = r.is_pensioner;
+      if (typeof r.apply_solidarity_fund === 'boolean') compactRule.apply_solidarity_fund = r.apply_solidarity_fund;
+      if (typeof r.apply_withholding_tax === 'boolean') compactRule.apply_withholding_tax = r.apply_withholding_tax;
+      if (r.withholding_rate !== null && r.withholding_rate !== undefined) compactRule.withholding_rate = Number(r.withholding_rate || 0);
+      return compactRule;
+    }),
+  };
+}
+
 async function getNominaConfigWithRow() {
+  const allShardedRows = await pb.list('settings', {
+    perPage: 200,
+    page: 1,
+    filter: `key~"${pb.escapeFilterValue(NOMINA_CONFIG_KEY + '_')}"`,
+  });
+
+  const shardByKey = {};
+  (allShardedRows?.items || []).forEach((r) => { shardByKey[r.key] = r; });
+  const hasShardedConfig = Object.keys(NOMINA_CONFIG_KEYS).some((k) => !!shardByKey[NOMINA_CONFIG_KEYS[k]]);
+
+  if (hasShardedConfig) {
+    const core = await readSettingJsonMaybeChunked(NOMINA_CONFIG_KEYS.core, {});
+    const config = {
+      balancing_account_id: core?.balancing_account_id || '',
+      company_rules: core?.company_rules && typeof core.company_rules === 'object' ? core.company_rules : {},
+      mappings: await readSettingJsonMaybeChunked(NOMINA_CONFIG_KEYS.mappings, []),
+      employee_groups: await readSettingJsonMaybeChunked(NOMINA_CONFIG_KEYS.employee_groups, []),
+      group_rules: await readSettingJsonMaybeChunked(NOMINA_CONFIG_KEYS.group_rules, []),
+      employee_rules: await readSettingJsonMaybeChunked(NOMINA_CONFIG_KEYS.employee_rules, []),
+    };
+
+    return {
+      row: shardByKey[NOMINA_CONFIG_KEYS.core] || null,
+      config: normalizeNominaConfig(config),
+    };
+  }
+
   const safeKey = pb.escapeFilterValue(NOMINA_CONFIG_KEY);
   const res = await pb.list('settings', { perPage: 1, page: 1, filter: `key="${safeKey}"` });
   const row = res?.items?.[0] || null;
@@ -177,12 +306,127 @@ async function getNominaConfigWithRow() {
   }
 }
 
+function splitTextInChunks(text, maxChars = NOMINA_CONFIG_VALUE_MAX_CHARS) {
+  const raw = String(text || '');
+  if (!raw) return [''];
+  const chunks = [];
+  for (let i = 0; i < raw.length; i += maxChars) {
+    chunks.push(raw.slice(i, i + maxChars));
+  }
+  return chunks;
+}
+
+function settingChunkKey(baseKey, index) {
+  return `${baseKey}_part_${String(index + 1).padStart(3, '0')}`;
+}
+
+async function listSettingsByPrefix(prefix) {
+  const safePrefix = pb.escapeFilterValue(prefix);
+  const res = await pb.list('settings', { perPage: 200, page: 1, filter: `key~"${safePrefix}"` });
+  const items = Array.isArray(res?.items) ? res.items : [];
+  return items.filter((r) => String(r.key || '').startsWith(prefix));
+}
+
+async function deleteSettingByKey(key) {
+  const safeKey = pb.escapeFilterValue(key);
+  const existing = await pb.list('settings', { perPage: 1, page: 1, filter: `key="${safeKey}"` });
+  const found = existing?.items?.[0] || null;
+  if (found?.id) {
+    await pb.delete('settings', found.id);
+  }
+}
+
+async function readSettingJsonMaybeChunked(baseKey, fallback) {
+  const chunkPrefix = `${baseKey}_part_`;
+  const chunkRows = await listSettingsByPrefix(chunkPrefix);
+  if (chunkRows.length) {
+    const sorted = chunkRows
+      .slice()
+      .sort((a, b) => String(a.key || '').localeCompare(String(b.key || '')));
+    const merged = sorted.map((r) => String(r.value || '')).join('');
+    try {
+      return JSON.parse(merged || 'null') ?? fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  const safeKey = pb.escapeFilterValue(baseKey);
+  const existing = await pb.list('settings', { perPage: 1, page: 1, filter: `key="${safeKey}"` });
+  const found = existing?.items?.[0] || null;
+  if (!found?.value) return fallback;
+  try {
+    return JSON.parse(found.value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+async function upsertSettingByKey(key, value) {
+  const safeKey = pb.escapeFilterValue(key);
+  const existing = await pb.list('settings', { perPage: 1, page: 1, filter: `key="${safeKey}"` });
+  const found = existing?.items?.[0] || null;
+  if (found?.id) {
+    try {
+      return await pb.update('settings', found.id, { value });
+    } catch (err) {
+      if (err?.status !== 400) throw err;
+      await pb.delete('settings', found.id).catch(() => {});
+      return pb.create('settings', { key, value });
+    }
+  }
+  return pb.create('settings', { key, value });
+}
+
+async function writeSettingJsonMaybeChunked(baseKey, data) {
+  const text = JSON.stringify(data);
+  const chunkPrefix = `${baseKey}_part_`;
+  const existingChunkRows = await listSettingsByPrefix(chunkPrefix);
+
+  if (text.length <= NOMINA_CONFIG_VALUE_MAX_CHARS) {
+    await upsertSettingByKey(baseKey, text);
+    for (const row of existingChunkRows) {
+      await pb.delete('settings', row.id).catch(() => {});
+    }
+    return;
+  }
+
+  const chunks = splitTextInChunks(text, NOMINA_CONFIG_VALUE_MAX_CHARS);
+  for (let i = 0; i < chunks.length; i++) {
+    await upsertSettingByKey(settingChunkKey(baseKey, i), chunks[i]);
+  }
+
+  for (let i = chunks.length; i < existingChunkRows.length; i++) {
+    const staleKey = settingChunkKey(baseKey, i);
+    await deleteSettingByKey(staleKey).catch(() => {});
+  }
+
+  await deleteSettingByKey(baseKey).catch(() => {});
+}
+
 async function saveNominaConfig(config, rowId = '') {
-  const payload = { key: NOMINA_CONFIG_KEY, value: JSON.stringify(normalizeNominaConfig(config)) };
-  if (rowId) {
-    await pb.update('settings', rowId, payload);
-  } else {
-    await pb.create('settings', payload);
+  void rowId;
+  const compact = compactNominaConfigForStorage(config);
+  const core = {
+    balancing_account_id: compact.balancing_account_id || '',
+    company_rules: compact.company_rules || {},
+  };
+
+  const writes = [
+    [NOMINA_CONFIG_KEYS.core, core],
+    [NOMINA_CONFIG_KEYS.mappings, compact.mappings || []],
+    [NOMINA_CONFIG_KEYS.employee_groups, compact.employee_groups || []],
+    [NOMINA_CONFIG_KEYS.group_rules, compact.group_rules || []],
+    [NOMINA_CONFIG_KEYS.employee_rules, compact.employee_rules || []],
+  ];
+
+  for (const [key, data] of writes) {
+    try {
+      await writeSettingJsonMaybeChunked(key, data);
+    } catch (err) {
+      const detail = err?.message ? `: ${err.message}` : '';
+      throw new Error(`Error guardando configuración de nómina en ${key}${detail}`);
+    }
   }
 }
 
@@ -325,6 +569,30 @@ function resolveNominaMapping(mappings, conceptKey, employeeId, employeeGroupId 
   return active.find((m) => m.concept === conceptKey && !m.employee_id && !m.group_id) || null;
 }
 
+/**
+ * Returns ALL applicable mappings for a concept (one per side).
+ * For single-side concepts (devengo/descuento) this returns at most 1 entry.
+ * For dual-side concepts (aportes/provisiones) this returns up to 2 entries (debit + credit),
+ * each resolved by the same employee > group > default priority chain.
+ */
+function resolveAllNominaMappings(mappings, conceptKey, employeeId, employeeGroupId = '') {
+  const active = (mappings || []).filter((m) => m.active !== false && m.concept === conceptKey);
+  const result = [];
+  for (const side of ['debit', 'credit']) {
+    const forSide = active.filter((m) => m.side === side);
+    if (!forSide.length) continue;
+    const exact = forSide.find((m) => m.employee_id === employeeId);
+    if (exact) { result.push(exact); continue; }
+    const groupMatch = employeeGroupId
+      ? forSide.find((m) => m.group_id === employeeGroupId && !m.employee_id)
+      : null;
+    if (groupMatch) { result.push(groupMatch); continue; }
+    const def = forSide.find((m) => !m.employee_id && !m.group_id);
+    if (def) result.push(def);
+  }
+  return result;
+}
+
 async function buildNominaAccountingLines(period, payLines, config) {
   const missing = [];
   const buckets = {};
@@ -334,23 +602,25 @@ async function buildNominaAccountingLines(period, payLines, config) {
     for (const concept of NOMINA_CONCEPTS) {
       const amount = getNominaConceptAmount(line, concept.key);
       if (amount <= 0) continue;
-      const mapping = resolveNominaMapping(config.mappings, concept.key, line.employee_id, effectiveRule.group_id || '');
-      if (!mapping) {
+      const mappingList = resolveAllNominaMappings(config.mappings, concept.key, line.employee_id, effectiveRule.group_id || '');
+      if (!mappingList.length) {
         missing.push({ employee: line.expand?.employee_id?.name || 'Empleado', concept: concept.label });
         continue;
       }
-      const side = mapping.side === 'credit' ? 'credit' : 'debit';
-      const bucketKey = `${mapping.account_id}__${side}`;
-      if (!buckets[bucketKey]) {
-        buckets[bucketKey] = {
-          account_id: mapping.account_id,
-          debit: 0,
-          credit: 0,
-          description: `Nómina ${period.name} - ${concept.label}`,
-        };
+      for (const mapping of mappingList) {
+        const side = mapping.side === 'credit' ? 'credit' : 'debit';
+        const bucketKey = `${mapping.account_id}__${side}`;
+        if (!buckets[bucketKey]) {
+          buckets[bucketKey] = {
+            account_id: mapping.account_id,
+            debit: 0,
+            credit: 0,
+            description: `Nómina ${period.name} - ${concept.label}`,
+          };
+        }
+        if (side === 'debit') buckets[bucketKey].debit = round2(buckets[bucketKey].debit + amount);
+        else buckets[bucketKey].credit = round2(buckets[bucketKey].credit + amount);
       }
-      if (side === 'debit') buckets[bucketKey].debit = round2(buckets[bucketKey].debit + amount);
-      else buckets[bucketKey].credit = round2(buckets[bucketKey].credit + amount);
     }
   }
 
@@ -425,8 +695,8 @@ async function openNominaAccountingSettings(employees = []) {
     };
 
     const accountOpts = `<option value="">Selecciona cuenta...</option>${accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`).join('')}`;
-    const conceptOpts = NOMINA_CONCEPTS.map((cpt) => `<option value="${esc(cpt.key)}">${esc(cpt.label)}</option>`).join('');
-    const groupOpts = () => `<option value="">Todos los grupos</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
+    const categoryOpts = `<option value="">Selecciona categoría...</option>${Object.keys(NOMINA_CATEGORY_LABELS).map((key) => `<option value="${esc(key)}">${esc(NOMINA_CATEGORY_LABELS[key])}</option>`).join('')}`;
+    const groupOpts = () => `<option value="">Selecciona grupo...</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
 
     openModal(
       'Configuración Contable de Nómina',
@@ -437,14 +707,6 @@ async function openNominaAccountingSettings(employees = []) {
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div class="form-group">
-            <label class="form-label">Cuenta de Ajuste (opcional)</label>
-            <select id="nom-balancing-account" class="form-input">${accountOpts}</select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">SMMLV vigente</label>
-            <input id="nom-smmlv" class="form-input" type="number" min="1" step="1" value="${esc(String(local.config.company_rules.smmlv || 1423500))}">
-          </div>
           <div class="form-group">
             <label class="form-label">Jornada laboral semanal (Ley 2101/2021)</label>
             <select id="nom-weekly-hours" class="form-input">
@@ -457,6 +719,17 @@ async function openNominaAccountingSettings(employees = []) {
             <p class="text-xs mt-1" style="color:#6B7280">Define el valor hora base para liquidar horas extra y recargos.</p>
           </div>
           <div class="form-group">
+            <label class="form-label">Cuenta de Ajuste (opcional)</label>
+            <select id="nom-balancing-account" class="form-input">${accountOpts}</select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="form-group">
+            <label class="form-label">SMMLV vigente</label>
+            <input id="nom-smmlv" class="form-input" type="number" min="1" step="1" value="${esc(String(local.config.company_rules.smmlv || 1423500))}">
+          </div>
+          <div class="form-group">
             <label class="form-label">Umbral fondo solidaridad (SMMLV)</label>
             <input id="nom-sol-threshold" class="form-input" type="number" min="0" step="0.01" value="${esc(String(local.config.company_rules.solidarity_threshold_smmlv || 3))}">
           </div>
@@ -464,7 +737,7 @@ async function openNominaAccountingSettings(employees = []) {
             <label class="form-label">Tarifa fondo solidaridad (%)</label>
             <input id="nom-sol-rate" class="form-input" type="number" min="0" step="0.01" value="${esc(String((local.config.company_rules.solidarity_rate || 0.01) * 100))}">
           </div>
-          <div class="form-group md:col-span-2">
+          <div class="form-group flex items-end pb-1">
             <label class="inline-flex items-center gap-2 text-sm" style="color:#334155">
               <input id="nom-exempt-sena-icbf" type="checkbox" ${local.config.company_rules.exempt_sena_icbf ? 'checked' : ''}>
               Empresa exenta de parafiscales SENA e ICBF
@@ -489,21 +762,18 @@ async function openNominaAccountingSettings(employees = []) {
         <div class="rounded-xl p-3" style="border:1px solid #E5E7EB;background:#FFFFFF">
           <p class="font-semibold mb-2" style="color:#0D2137">Nuevo mapeo contable</p>
           <div class="grid grid-cols-1 md:grid-cols-6 gap-2">
-            <input id="nom-map-group-filter" class="form-input" placeholder="Filtrar grupos...">
             <select id="nom-map-group" class="form-input">${groupOpts()}</select>
-            <select id="nom-map-concept" class="form-input">${conceptOpts}</select>
-            <select id="nom-map-side" class="form-input">
-              <option value="debit">Débito</option>
-              <option value="credit">Crédito</option>
-            </select>
-            <select id="nom-map-account" class="form-input">${accountOpts}</select>
+            <select id="nom-map-category" class="form-input">${categoryOpts}</select>
+            <select id="nom-map-concept" class="form-input"><option value="">Selecciona concepto...</option></select>
+            <select id="nom-map-account-debit" class="form-input">${accountOpts}</select>
+            <select id="nom-map-account-credit" class="form-input">${accountOpts}</select>
             <button class="btn btn-primary" id="btn-add-map"><i class="fas fa-plus"></i> Agregar</button>
           </div>
         </div>
 
         <div class="overflow-x-auto">
           <table class="data-table text-sm">
-            <thead><tr><th>Aplica a</th><th>Concepto</th><th>Lado</th><th>Cuenta</th><th></th></tr></thead>
+            <thead><tr><th>Grupo</th><th>Categoría</th><th>Concepto</th><th>Cuenta Débito</th><th>Cuenta Crédito</th><th></th></tr></thead>
             <tbody id="nom-map-body"></tbody>
           </table>
         </div>
@@ -512,8 +782,6 @@ async function openNominaAccountingSettings(employees = []) {
       true
     );
 
-    const employeeById = {};
-    employees.forEach((e) => { employeeById[e.id] = e; });
     const accountById = {};
     accounts.forEach((a) => { accountById[a.id] = a; });
     const groupsById = () => {
@@ -524,23 +792,57 @@ async function openNominaAccountingSettings(employees = []) {
 
     if ($('#nom-balancing-account')) $('#nom-balancing-account').value = local.config.balancing_account_id || '';
 
-    const refreshGroupSelectors = () => {
-      const q = (getInputVal('nom-map-group-filter') || '').trim().toLowerCase();
+    const refreshGroupSelectorOptions = () => {
       const mapGroupSel = $('#nom-map-group');
+      const prevValue = mapGroupSel ? mapGroupSel.value : '';
       if (mapGroupSel) {
         const options = (local.config.employee_groups || [])
-          .filter((g) => !q || (g.name || '').toLowerCase().includes(q))
           .map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`)
           .join('');
         mapGroupSel.innerHTML = `<option value="">Selecciona grupo...</option>${options}`;
+        if (prevValue && (local.config.employee_groups || []).some((g) => g.id === prevValue)) {
+          mapGroupSel.value = prevValue;
+        }
       }
     };
 
-    const applyConceptDefaultSide = () => {
+    const refreshConceptSelector = () => {
+      const category = getSelectVal('nom-map-category');
+      const conceptSel = $('#nom-map-concept');
+      if (!conceptSel) return;
+      const options = category
+        ? getNominaCategoryConcepts(category).map((cpt) => `<option value="${esc(cpt.key)}">${esc(cpt.label)}</option>`).join('')
+        : '';
+      conceptSel.innerHTML = `<option value="">Selecciona concepto...</option>${options}`;
+    };
+
+    const applyConceptAccountLocks = () => {
       const conceptKey = getSelectVal('nom-map-concept');
-      const defaultSide = NOMINA_CONCEPT_BY_KEY[conceptKey]?.default_side;
-      if (!defaultSide) return;
-      setInputVal('nom-map-side', defaultSide === 'credit' ? 'credit' : 'debit');
+      const debitSel = $('#nom-map-account-debit');
+      const creditSel = $('#nom-map-account-credit');
+      if (!conceptKey) {
+        if (debitSel) {
+          debitSel.disabled = true;
+          debitSel.value = '';
+        }
+        if (creditSel) {
+          creditSel.disabled = true;
+          creditSel.value = '';
+        }
+        return;
+      }
+      const rule = getNominaConceptRule(conceptKey);
+      const allowed = Array.isArray(rule.allowed_sides) ? rule.allowed_sides : ['debit'];
+      if (debitSel) {
+        const enabled = allowed.includes('debit');
+        debitSel.disabled = !enabled;
+        if (!enabled) debitSel.value = '';
+      }
+      if (creditSel) {
+        const enabled = allowed.includes('credit');
+        creditSel.disabled = !enabled;
+        if (!enabled) creditSel.value = '';
+      }
     };
 
     const renderGroups = () => {
@@ -550,30 +852,59 @@ async function openNominaAccountingSettings(employees = []) {
       body.innerHTML = rows.length
         ? rows.map((g) => `<tr><td>${esc(g.name)}</td><td class="text-right"><button class="btn btn-outline btn-sm btn-del-group" data-id="${esc(g.id)}"><i class="fas fa-trash"></i></button></td></tr>`).join('')
         : '<tr><td colspan="2" class="text-center py-6" style="color:#9CA3AF">Sin grupos definidos.</td></tr>';
-      refreshGroupSelectors();
+      refreshGroupSelectorOptions();
     };
 
     const renderMappings = () => {
       const body = $('#nom-map-body');
       if (!body) return;
       const gById = groupsById();
-      const rows = local.config.mappings || [];
+      const grouped = {};
+      (local.config.mappings || []).forEach((m) => {
+        if (m.employee_id) return;
+        const groupId = m.group_id || '';
+        const key = `${groupId}__${m.concept}`;
+        if (!grouped[key]) {
+          grouped[key] = {
+            group_id: groupId,
+            concept: m.concept,
+            debit_account_id: '',
+            credit_account_id: '',
+          };
+        }
+        if (m.side === 'credit') grouped[key].credit_account_id = m.account_id || '';
+        else grouped[key].debit_account_id = m.account_id || '';
+      });
+
+      const rows = Object.values(grouped)
+        .filter((r) => {
+          const selectedGroupId = getSelectVal('nom-map-group') || '';
+          if (!selectedGroupId) return true;
+          return (r.group_id || '') === selectedGroupId;
+        })
+        .sort((a, b) => {
+          const ga = gById[a.group_id]?.name || '';
+          const gb = gById[b.group_id]?.name || '';
+          if (ga !== gb) return ga.localeCompare(gb);
+          return (NOMINA_CONCEPT_BY_KEY[a.concept]?.label || a.concept).localeCompare(NOMINA_CONCEPT_BY_KEY[b.concept]?.label || b.concept);
+        });
       body.innerHTML = rows.length
         ? rows.map((m) => {
-          const appliesTo = m.employee_id
-            ? (employeeById[m.employee_id]?.name || 'Empleado no encontrado')
-            : (m.group_id ? `Grupo: ${gById[m.group_id]?.name || 'Grupo no encontrado'}` : 'Todos');
+          const groupName = m.group_id ? (gById[m.group_id]?.name || 'Grupo no encontrado') : 'Sin grupo';
           const conceptName = NOMINA_CONCEPT_BY_KEY[m.concept]?.label || m.concept;
-          const accountName = accountById[m.account_id] ? `${accountById[m.account_id].code} - ${accountById[m.account_id].name}` : 'Cuenta no encontrada';
+          const categoryLabel = getNominaCategoryLabel(getNominaConceptRule(m.concept).category);
+          const debitName = accountById[m.debit_account_id] ? `${accountById[m.debit_account_id].code} - ${accountById[m.debit_account_id].name}` : '—';
+          const creditName = accountById[m.credit_account_id] ? `${accountById[m.credit_account_id].code} - ${accountById[m.credit_account_id].name}` : '—';
           return `<tr>
-            <td>${esc(appliesTo)}</td>
+            <td>${esc(groupName)}</td>
+            <td>${esc(categoryLabel)}</td>
             <td>${esc(conceptName)}</td>
-            <td>${m.side === 'credit' ? 'Crédito' : 'Débito'}</td>
-            <td>${esc(accountName)}</td>
-            <td class="text-right"><button class="btn btn-outline btn-sm btn-del-map" data-id="${esc(m.id)}"><i class="fas fa-trash"></i></button></td>
+            <td>${esc(debitName)}</td>
+            <td>${esc(creditName)}</td>
+            <td class="text-right"><button class="btn btn-outline btn-sm btn-del-map" data-group="${esc(m.group_id || '')}" data-concept="${esc(m.concept)}"><i class="fas fa-trash"></i></button></td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="5" class="text-center py-6" style="color:#9CA3AF">Sin mapeos configurados.</td></tr>';
+        : '<tr><td colspan="6" class="text-center py-6" style="color:#9CA3AF">Sin mapeos configurados para el grupo seleccionado.</td></tr>';
     };
 
     renderGroups();
@@ -603,39 +934,81 @@ async function openNominaAccountingSettings(employees = []) {
 
     $('#btn-add-map')?.addEventListener('click', () => {
       const groupId = getSelectVal('nom-map-group');
+      const category = getSelectVal('nom-map-category');
       const concept = getSelectVal('nom-map-concept');
-      const side = getSelectVal('nom-map-side');
-      const accountId = getSelectVal('nom-map-account');
-      if (!concept || !accountId) return showToast('Selecciona concepto y cuenta.', 'warning');
+      const debitAccountId = getSelectVal('nom-map-account-debit');
+      const creditAccountId = getSelectVal('nom-map-account-credit');
       if (!groupId) return showToast('Selecciona un grupo para el mapeo contable.', 'warning');
+      if (!category) return showToast('Selecciona una categoría.', 'warning');
+      if (!concept) return showToast('Selecciona un concepto.', 'warning');
 
-      const duplicate = (local.config.mappings || []).find((m) =>
-        m.concept === concept && (m.group_id || '') === (groupId || '') && m.side === side
-      );
-      if (duplicate) return showToast('Ya existe un mapeo igual (ámbito + concepto + lado).', 'info');
+      const rule = getNominaConceptRule(concept);
+      const allowed = Array.isArray(rule.allowed_sides) ? rule.allowed_sides : ['debit'];
+      if (rule.category !== category) return showToast('El concepto no pertenece a la categoría seleccionada.', 'warning');
 
-      local.config.mappings.push({
-        id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        employee_id: '',
-        group_id: groupId || '',
-        concept,
-        side: side === 'credit' ? 'credit' : 'debit',
-        account_id: accountId,
-        active: true,
+      if (allowed.includes('debit') && !debitAccountId) {
+        return showToast('Este concepto requiere cuenta débito.', 'warning');
+      }
+      if (allowed.includes('credit') && !creditAccountId) {
+        return showToast('Este concepto requiere cuenta crédito.', 'warning');
+      }
+
+      const upsertSide = (side, accountId) => {
+        const existing = (local.config.mappings || []).find((m) =>
+          m.concept === concept && (m.group_id || '') === (groupId || '') && !m.employee_id && m.side === side
+        );
+        if (existing) {
+          existing.account_id = accountId;
+          existing.active = true;
+          return;
+        }
+        local.config.mappings.push({
+          id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          employee_id: '',
+          group_id: groupId || '',
+          concept,
+          side,
+          account_id: accountId,
+          active: true,
+        });
+      };
+
+      local.config.mappings = (local.config.mappings || []).filter((m) => {
+        if (m.employee_id) return true;
+        if (m.concept !== concept) return true;
+        if ((m.group_id || '') !== (groupId || '')) return true;
+        return allowed.includes(m.side === 'credit' ? 'credit' : 'debit');
       });
+
+      if (allowed.includes('debit')) upsertSide('debit', debitAccountId);
+      if (allowed.includes('credit')) upsertSide('credit', creditAccountId);
+
       renderMappings();
+      showToast('Mapeo actualizado', 'success');
     });
 
-    $('#nom-map-group-filter')?.addEventListener('input', debounce(refreshGroupSelectors, 180));
-    $('#nom-map-concept')?.addEventListener('change', applyConceptDefaultSide);
-    refreshGroupSelectors();
-    applyConceptDefaultSide();
+    $('#nom-map-group')?.addEventListener('change', () => {
+      renderMappings();
+    });
+    $('#nom-map-category')?.addEventListener('change', () => {
+      refreshConceptSelector();
+      applyConceptAccountLocks();
+    });
+    $('#nom-map-concept')?.addEventListener('change', applyConceptAccountLocks);
+    refreshGroupSelectorOptions();
+    refreshConceptSelector();
+    applyConceptAccountLocks();
 
     $('#nom-map-body')?.addEventListener('click', (e) => {
       const btn = e.target?.closest?.('.btn-del-map');
       if (!btn) return;
-      const id = btn.getAttribute('data-id');
-      local.config.mappings = (local.config.mappings || []).filter((m) => m.id !== id);
+      const concept = btn.getAttribute('data-concept') || '';
+      const groupId = btn.getAttribute('data-group') || '';
+      local.config.mappings = (local.config.mappings || []).filter((m) => {
+        if (m.employee_id) return true;
+        if (m.concept !== concept) return true;
+        return (m.group_id || '') !== groupId;
+      });
       renderMappings();
     });
 
@@ -1181,10 +1554,10 @@ async function viewPayrollLineDetail(id) {
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Devengos</p>
            ${row('Salario base (30 días)', l.salary_base||0)}
-           ${row('Días trabajados', l.days_worked||30)}
+           ${row('Días trabajados', String(l.days_worked||30))}
           ${row('Salario proporcional', (l.salary_base||0)/30*(l.days_worked||30))}
           ${overtimeRows}
-          ${row('Días auxilio transporte', transportDays)}
+          ${row('Días auxilio transporte', String(transportDays))}
           ${row('Aux. transporte', l.transport_allowance||0)}
           ${extraEarningRows}
           ${row('TOTAL DEVENGADO', dev, true)}

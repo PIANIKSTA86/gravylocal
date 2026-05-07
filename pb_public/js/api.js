@@ -322,6 +322,14 @@ const API = {
     return tx;
   },
 
+  async revertTxToDraft(txId) {
+    const tx = await pb.get('transactions', txId);
+    if (tx.status !== 'active') throw new Error('Solo se pueden revertir transacciones Activas a Borrador.');
+    await pb.update('transactions', txId, { status: 'draft' });
+    await this.logAudit('REVERT_DRAFT', 'transactions', txId, `Transacción ${tx.number} revertida a Borrador`);
+    return tx;
+  },
+
   async updateTransaction(txId, txData, lines) {
     await pb.update('transactions', txId, txData);
     // Reemplazar líneas: eliminar las existentes y crear las nuevas

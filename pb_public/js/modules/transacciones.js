@@ -239,7 +239,8 @@ async function openNuevaTxModal() {
 
     const footer = `
       <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveTransaction()"><i class="fas fa-floppy-disk"></i> Guardar Transacci\u00f3n</button>`;
+      <button class="btn btn-outline" onclick="saveTransaction(false)" style="border-color:#D97706;color:#D97706"><i class="fas fa-file-pen"></i> Guardar Borrador</button>
+      ${can('canApprove') ? `<button class="btn btn-primary" onclick="saveTransaction(true)"><i class="fas fa-check-circle"></i> Guardar y Aprobar</button>` : ''}`;
 
     openModal('Nueva Transacci\u00f3n', body, footer, true);
 
@@ -869,7 +870,7 @@ function useCrossDoc(ref, netOpen = 0) {
   applyToLine(idx);
 }
 
-async function saveTransaction() {
+async function saveTransaction(approve = false) {
   if (!can('canWrite')) return showToast('No tienes permisos para registrar transacciones', 'error');
   try {
     const txTypeId = getSelectVal('tx-type');
@@ -930,7 +931,12 @@ async function saveTransaction() {
       cross_doc_ref: l.cross_doc_ref || '',
     })));
 
-    showToast(`Transacción ${tx.number} guardada como borrador. Pendiente de aprobación por el contador.`, 'success');
+    if (approve && can('canApprove')) {
+      await API.approveTx(tx.id);
+      showToast(`Transacción ${tx.number} guardada y aprobada.`, 'success');
+    } else {
+      showToast(`Transacción ${tx.number} guardada como borrador. Pendiente de aprobación.`, 'success');
+    }
     if (TX_STATE.inModal) {
       closeModal();
       // Invalidate the period cache so the new type appears in the dropdown
@@ -1267,6 +1273,7 @@ async function loadConsultaTxPage() {
                     <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="seeTxDetail('${esc(t.id)}')"><i class="fas fa-eye"></i></button>
                     <button class="btn btn-outline btn-sm" title="Imprimir nota contable" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(t.id)}')"><i class="fas fa-print"></i></button>
                     ${can('canApprove') && t.status === 'draft' ? `<button class="btn btn-primary btn-sm" title="Aprobar transacción" onclick="approveTx('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-check"></i> Aprobar</button>` : ''}
+                    ${requireRole('admin') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Revertir a Borrador" style="border-color:#D97706;color:#D97706" onclick="revertTxToDraft('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-rotate-left"></i></button>` : ''}
                     ${can('canWrite') && (t.status === 'active' || t.status === 'draft') ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
                     ${requireRole('admin') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
@@ -1376,6 +1383,23 @@ function approveTx(id, number) {
       try {
         await API.approveTx(id);
         showToast(`Transacción ${number} aprobada exitosamente.`, 'success');
+        if (typeof loadConsultaTxPage === 'function') loadConsultaTxPage();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+  );
+}
+
+function revertTxToDraft(id, number) {
+  if (!requireRole('admin')) return showToast('Solo el administrador puede revertir transacciones a Borrador', 'error');
+  confirmDialog(
+    'Revertir a Borrador',
+    `¿Confirmas revertir la transacción <strong>${esc(number)}</strong> a estado <strong>Borrador</strong>? Dejará de reflejarse en los reportes hasta ser aprobada nuevamente.`,
+    async () => {
+      try {
+        await API.revertTxToDraft(id);
+        showToast(`Transacción ${number} revertida a Borrador.`, 'success');
         if (typeof loadConsultaTxPage === 'function') loadConsultaTxPage();
       } catch (err) {
         showToast(err.message, 'error');

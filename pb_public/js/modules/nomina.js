@@ -162,6 +162,8 @@ function defaultNominaConfig() {
       solidarity_rate: 0.01,
       exempt_sena_icbf: false,
       weekly_hours: 44,
+      tercero_sena_id: '',
+      tercero_icbf_id: '',
     },
     employee_rules: [],
   };
@@ -211,6 +213,8 @@ function normalizeNominaConfig(raw) {
       solidarity_rate: Number(company.solidarity_rate) >= 0 ? Number(company.solidarity_rate) : 0.01,
       exempt_sena_icbf: !!company.exempt_sena_icbf,
       weekly_hours: [42, 44, 46, 47, 48].includes(Number(company.weekly_hours)) ? Number(company.weekly_hours) : 44,
+      tercero_sena_id: company.tercero_sena_id || '',
+      tercero_icbf_id: company.tercero_icbf_id || '',
     },
     employee_rules: employeeRules
       .map((r) => ({
@@ -228,6 +232,10 @@ function normalizeNominaConfig(raw) {
         withholding_rate: r.withholding_rate === null || r.withholding_rate === undefined || r.withholding_rate === ''
           ? null
           : (Number(r.withholding_rate) >= 0 ? Number(r.withholding_rate) : null),
+        tercero_salud_id: r.tercero_salud_id || '',
+        tercero_pension_id: r.tercero_pension_id || '',
+        tercero_arl_id: r.tercero_arl_id || '',
+        tercero_caja_id: r.tercero_caja_id || '',
       }))
       .filter((r) => r.employee_id),
   };
@@ -262,6 +270,10 @@ function compactNominaConfigForStorage(config) {
       if (typeof r.apply_solidarity_fund === 'boolean') compactRule.apply_solidarity_fund = r.apply_solidarity_fund;
       if (typeof r.apply_withholding_tax === 'boolean') compactRule.apply_withholding_tax = r.apply_withholding_tax;
       if (r.withholding_rate !== null && r.withholding_rate !== undefined) compactRule.withholding_rate = Number(r.withholding_rate || 0);
+      if (r.tercero_salud_id) compactRule.tercero_salud_id = r.tercero_salud_id;
+      if (r.tercero_pension_id) compactRule.tercero_pension_id = r.tercero_pension_id;
+      if (r.tercero_arl_id) compactRule.tercero_arl_id = r.tercero_arl_id;
+      if (r.tercero_caja_id) compactRule.tercero_caja_id = r.tercero_caja_id;
       return compactRule;
     }),
   };
@@ -454,6 +466,10 @@ function getEmployeePayrollRule(config, employeeId) {
     apply_solidarity_fund: false,
     apply_withholding_tax: false,
     withholding_rate: 0,
+    tercero_salud_id: '',
+    tercero_pension_id: '',
+    tercero_arl_id: '',
+    tercero_caja_id: '',
   };
 
   if (found) {
@@ -464,6 +480,10 @@ function getEmployeePayrollRule(config, employeeId) {
     if (typeof found.apply_solidarity_fund === 'boolean') merged.apply_solidarity_fund = found.apply_solidarity_fund;
     if (typeof found.apply_withholding_tax === 'boolean') merged.apply_withholding_tax = found.apply_withholding_tax;
     if (found.withholding_rate !== null && found.withholding_rate !== undefined) merged.withholding_rate = Number(found.withholding_rate || 0);
+    if (found.tercero_salud_id) merged.tercero_salud_id = found.tercero_salud_id;
+    if (found.tercero_pension_id) merged.tercero_pension_id = found.tercero_pension_id;
+    if (found.tercero_arl_id) merged.tercero_arl_id = found.tercero_arl_id;
+    if (found.tercero_caja_id) merged.tercero_caja_id = found.tercero_caja_id;
   }
 
   return merged;
@@ -593,9 +613,49 @@ function resolveAllNominaMappings(mappings, conceptKey, employeeId, employeeGrou
   return result;
 }
 
+// Resolve the third_party_id for a given concept + payroll line
+function resolveNominaTerceroId(conceptKey, line, effectiveRule, companyRules) {
+  const empId = line.employee_id || '';
+  switch (conceptKey) {
+    case 'net_pay':
+    case 'cesantias':
+    case 'intereses_ces':
+    case 'prima':
+    case 'vacaciones':
+      return empId;
+    case 'deduction_health':
+    case 'employer_health':
+      return effectiveRule.tercero_salud_id || '';
+    case 'deduction_pension':
+    case 'employer_pension':
+      return effectiveRule.tercero_pension_id || '';
+    case 'employer_arl':
+      return effectiveRule.tercero_arl_id || '';
+    case 'caja_comp':
+      return effectiveRule.tercero_caja_id || '';
+    case 'sena':
+      return companyRules.tercero_sena_id || '';
+    case 'icbf':
+      return companyRules.tercero_icbf_id || '';
+    default:
+      return empId;
+  }
+}
+
+// Build the cross_doc_ref for a given concept + payroll line
+function resolveNominaCrossDocRef(conceptKey, periodYYYYMM, line) {
+  const empDoc = line.expand?.employee_id?.doc_number || line.employee_id || '';
+  if (conceptKey === 'net_pay') {
+    return `NOM-${periodYYYYMM}-EMP-${empDoc}`;
+  }
+  return '';
+}
+
 async function buildNominaAccountingLines(period, payLines, config) {
   const missing = [];
   const buckets = {};
+  const companyRules = config.company_rules || {};
+  const periodYYYYMM = (period.date_from || period.date_to || '').slice(0, 7).replace('-', '');
 
   for (const line of payLines) {
     const effectiveRule = getEmployeePayrollRule(config, line.employee_id);
@@ -607,12 +667,16 @@ async function buildNominaAccountingLines(period, payLines, config) {
         missing.push({ employee: line.expand?.employee_id?.name || 'Empleado', concept: concept.label });
         continue;
       }
+      const thirdPartyId = resolveNominaTerceroId(concept.key, line, effectiveRule, companyRules);
+      const crossDocRef = resolveNominaCrossDocRef(concept.key, periodYYYYMM, line);
       for (const mapping of mappingList) {
         const side = mapping.side === 'credit' ? 'credit' : 'debit';
-        const bucketKey = `${mapping.account_id}__${side}`;
+        const bucketKey = `${mapping.account_id}__${side}__${thirdPartyId}`;
         if (!buckets[bucketKey]) {
           buckets[bucketKey] = {
             account_id: mapping.account_id,
+            third_party_id: thirdPartyId || undefined,
+            cross_doc_ref: crossDocRef || undefined,
             debit: 0,
             credit: 0,
             description: `Nómina ${period.name} - ${concept.label}`,
@@ -671,10 +735,36 @@ async function postNominaPeriodAccounting(periodId) {
   const txLines = await buildNominaAccountingLines(period, payLines, config);
   if (!txLines.length) throw new Error('No hay líneas contables para generar en este período.');
 
+  // Phase C: validate requires_third_party and maneja_cruce before posting
+  const uniqueAccountIds = [...new Set(txLines.map((l) => l.account_id).filter(Boolean))];
+  const accountsUsed = await pb.listAll('accounts', {
+    filter: uniqueAccountIds.map((id) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+  }).catch(() => []);
+  const accountMetaById = {};
+  accountsUsed.forEach((a) => { accountMetaById[a.id] = a; });
+
+  const validationErrors = [];
+  txLines.forEach((l) => {
+    const meta = accountMetaById[l.account_id];
+    if (!meta) return;
+    if (meta.requires_third_party && !l.third_party_id) {
+      validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere tercero pero no está asignado.`);
+    }
+    if (meta.maneja_cruce && !l.cross_doc_ref) {
+      validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere cruce pero no tiene referencia.`);
+    }
+  });
+  if (validationErrors.length) {
+    throw new Error(`Errores de validación contable:\n${validationErrors.slice(0, 5).join('\n')}`);
+  }
+
+  const headerEmployeeId = payLines.find((l) => !!l.employee_id)?.employee_id || '';
+
   const tx = await API.createTransaction({
     tx_type_id: txType.id,
     date: period.date_to || todayStr(),
     description: `Nómina ${period.name}`,
+    third_party_id: headerEmployeeId || undefined,
   }, txLines);
 
   return tx.id;
@@ -682,9 +772,10 @@ async function postNominaPeriodAccounting(periodId) {
 
 async function openNominaAccountingSettings(employees = []) {
   try {
-    const [{ row, config }, accounts] = await Promise.all([
+    const [{ row, config }, accounts, terceros] = await Promise.all([
       getNominaConfigWithRow(),
       pb.listAll('accounts', { filter: 'active=true', sort: 'code' }),
+      pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
     ]);
 
     if (!accounts.length) return showToast('No hay cuentas activas para mapear.', 'warning');
@@ -697,6 +788,7 @@ async function openNominaAccountingSettings(employees = []) {
     const accountOpts = `<option value="">Selecciona cuenta...</option>${accounts.map((a) => `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`).join('')}`;
     const categoryOpts = `<option value="">Selecciona categoría...</option>${Object.keys(NOMINA_CATEGORY_LABELS).map((key) => `<option value="${esc(key)}">${esc(NOMINA_CATEGORY_LABELS[key])}</option>`).join('')}`;
     const groupOpts = () => `<option value="">Selecciona grupo...</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
+    const terceroOpts = `<option value="">Sin tercero...</option>${terceros.map((t) => `<option value="${esc(t.id)}">${esc(t.doc_number || '')} - ${esc(t.name)}</option>`).join('')}`;
 
     openModal(
       'Configuración Contable de Nómina',
@@ -721,6 +813,17 @@ async function openNominaAccountingSettings(employees = []) {
           <div class="form-group">
             <label class="form-label">Cuenta de Ajuste (opcional)</label>
             <select id="nom-balancing-account" class="form-input">${accountOpts}</select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="form-group">
+            <label class="form-label">Tercero SENA</label>
+            <select id="nom-tercero-sena" class="form-input">${terceroOpts}</select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tercero ICBF</label>
+            <select id="nom-tercero-icbf" class="form-input">${terceroOpts}</select>
           </div>
         </div>
 
@@ -791,6 +894,8 @@ async function openNominaAccountingSettings(employees = []) {
     };
 
     if ($('#nom-balancing-account')) $('#nom-balancing-account').value = local.config.balancing_account_id || '';
+    if ($('#nom-tercero-sena')) $('#nom-tercero-sena').value = local.config.company_rules.tercero_sena_id || '';
+    if ($('#nom-tercero-icbf')) $('#nom-tercero-icbf').value = local.config.company_rules.tercero_icbf_id || '';
 
     const refreshGroupSelectorOptions = () => {
       const mapGroupSel = $('#nom-map-group');
@@ -1021,6 +1126,8 @@ async function openNominaAccountingSettings(employees = []) {
           solidarity_rate: Math.max(0, (parseNum(getInputVal('nom-sol-rate')) || 1) / 100),
           exempt_sena_icbf: !!$('#nom-exempt-sena-icbf')?.checked,
           weekly_hours: [42, 44, 46, 47, 48].includes(Number(getInputVal('nom-weekly-hours'))) ? Number(getInputVal('nom-weekly-hours')) : 44,
+          tercero_sena_id: getSelectVal('nom-tercero-sena') || '',
+          tercero_icbf_id: getSelectVal('nom-tercero-icbf') || '',
         };
         await saveNominaConfig(local.config, local.rowId);
         closeModal();
@@ -1036,7 +1143,10 @@ async function openNominaAccountingSettings(employees = []) {
 
 async function openNominaEmployeeSettings(employees = []) {
   try {
-    const { row, config } = await getNominaConfigWithRow();
+    const [{ row, config }, terceros] = await Promise.all([
+      getNominaConfigWithRow(),
+      pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
+    ]);
     const local = {
       rowId: row?.id || '',
       config: normalizeNominaConfig(config),
@@ -1047,6 +1157,7 @@ async function openNominaEmployeeSettings(employees = []) {
     const groupOpts = `<option value="">Sin grupo</option>${(local.config.employee_groups || []).map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}`;
     const groupNameById = {};
     (local.config.employee_groups || []).forEach((g) => { groupNameById[g.id] = g.name; });
+    const terceroOpts = `<option value="">Sin tercero...</option>${terceros.map((t) => `<option value="${esc(t.id)}">${esc(t.doc_number || '')} - ${esc(t.name)}</option>`).join('')}`;
 
     const arlText = (lvl) => `Nivel ${lvl} (${round2((ARL_RISK_RATES[lvl] || ARL_RISK_RATES[1]) * 100)}%)`;
 
@@ -1094,6 +1205,25 @@ async function openNominaEmployeeSettings(employees = []) {
               <input id="nom-emp-rule-withholding-rate" class="form-input mt-2" type="number" min="0" step="0.01" placeholder="Tarifa retefuente %">
             </div>
           </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pt-3" style="border-top:1px solid #E5E7EB">
+            <p class="md:col-span-2 text-xs font-semibold" style="color:#6B7280">TERCEROS ENTIDADES (para contabilización automática)</p>
+            <div class="form-group">
+              <label class="form-label">EPS (Salud)</label>
+              <select id="nom-emp-rule-tercero-salud" class="form-input">${terceroOpts}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">AFP (Pensión)</label>
+              <select id="nom-emp-rule-tercero-pension" class="form-input">${terceroOpts}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">ARL</label>
+              <select id="nom-emp-rule-tercero-arl" class="form-input">${terceroOpts}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Caja de Compensación</label>
+              <select id="nom-emp-rule-tercero-caja" class="form-input">${terceroOpts}</select>
+            </div>
+          </div>
           <div class="mt-3 flex gap-2">
             <button class="btn btn-primary" id="btn-nom-emp-rule-upsert"><i class="fas fa-floppy-disk"></i> Guardar en Lista</button>
             <button class="btn btn-outline" id="btn-nom-emp-rule-clear">Limpiar</button>
@@ -1121,6 +1251,10 @@ async function openNominaEmployeeSettings(employees = []) {
       if ($('#nom-emp-rule-solidarity')) $('#nom-emp-rule-solidarity').checked = false;
       if ($('#nom-emp-rule-withholding')) $('#nom-emp-rule-withholding').checked = false;
       setInputVal('nom-emp-rule-withholding-rate', '0');
+      setInputVal('nom-emp-rule-tercero-salud', '');
+      setInputVal('nom-emp-rule-tercero-pension', '');
+      setInputVal('nom-emp-rule-tercero-arl', '');
+      setInputVal('nom-emp-rule-tercero-caja', '');
     };
 
     const loadRuleToForm = (employeeId) => {
@@ -1135,6 +1269,10 @@ async function openNominaEmployeeSettings(employees = []) {
       if ($('#nom-emp-rule-solidarity')) $('#nom-emp-rule-solidarity').checked = !!(explicit.apply_solidarity_fund ?? effective.apply_solidarity_fund);
       if ($('#nom-emp-rule-withholding')) $('#nom-emp-rule-withholding').checked = !!(explicit.apply_withholding_tax ?? effective.apply_withholding_tax);
       setInputVal('nom-emp-rule-withholding-rate', String(round2(((explicit.withholding_rate ?? effective.withholding_rate ?? 0) * 100))));
+      if ($('#nom-emp-rule-tercero-salud')) $('#nom-emp-rule-tercero-salud').value = explicit.tercero_salud_id || '';
+      if ($('#nom-emp-rule-tercero-pension')) $('#nom-emp-rule-tercero-pension').value = explicit.tercero_pension_id || '';
+      if ($('#nom-emp-rule-tercero-arl')) $('#nom-emp-rule-tercero-arl').value = explicit.tercero_arl_id || '';
+      if ($('#nom-emp-rule-tercero-caja')) $('#nom-emp-rule-tercero-caja').value = explicit.tercero_caja_id || '';
     };
 
     const renderEmployeeRules = () => {
@@ -1207,6 +1345,10 @@ async function openNominaEmployeeSettings(employees = []) {
         apply_solidarity_fund: !!$('#nom-emp-rule-solidarity')?.checked,
         apply_withholding_tax: applyWithholdingTax,
         withholding_rate: applyWithholdingTax ? Math.max(0, withholdingRatePct / 100) : 0,
+        tercero_salud_id: getSelectVal('nom-emp-rule-tercero-salud') || '',
+        tercero_pension_id: getSelectVal('nom-emp-rule-tercero-pension') || '',
+        tercero_arl_id: getSelectVal('nom-emp-rule-tercero-arl') || '',
+        tercero_caja_id: getSelectVal('nom-emp-rule-tercero-caja') || '',
       };
 
       local.config.employee_rules = (local.config.employee_rules || []).filter((r) => r.employee_id !== employeeId);

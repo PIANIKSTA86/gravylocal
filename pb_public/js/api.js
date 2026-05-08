@@ -212,6 +212,32 @@ const API = {
     }
   },
 
+  async getAuditLogs(opts = {}) {
+    const {
+      entity = '',
+      entityId = '',
+      actions = [],
+      sort = '-event_at',
+      limit = 100,
+    } = opts;
+
+    const filters = [];
+    if (entity) filters.push(`entity="${pb.escapeFilterValue(entity)}"`);
+    if (entityId) filters.push(`entity_id="${pb.escapeFilterValue(entityId)}"`);
+    if (Array.isArray(actions) && actions.length) {
+      const actionFilter = actions
+        .map(a => `action="${pb.escapeFilterValue(a)}"`)
+        .join(' || ');
+      filters.push(`(${actionFilter})`);
+    }
+
+    return pb.listAll('audit_log', {
+      filter: filters.join(' && ') || '',
+      sort,
+      perPage: Math.max(1, Math.min(200, Number(limit) || 100)),
+    });
+  },
+
   // -- Plan de Cuentas ---------------------------------------
   async getAccounts(activeOnly = true) {
     const filter = activeOnly ? 'active=true' : '';
@@ -311,7 +337,11 @@ const API = {
   },
 
   async voidTransaction(txId, description = '') {
+    const tx = await pb.get('transactions', txId);
+    if (tx.status === 'voided') return tx;
     await pb.update('transactions', txId, { status: 'voided' });
+    await this.logAudit('VOID', 'transactions', txId, description || `Transacción ${tx.number} anulada`);
+    return tx;
   },
 
   async approveTx(txId) {
@@ -456,16 +486,22 @@ const API = {
       const rec = existing.items[0];
       const newQty = Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
       const avgCost = newAvgCost !== null ? newAvgCost : (rec.avg_cost ?? 0);
-      return pb.update('inventory_stock', rec.id, {
+      await pb.update('inventory_stock', rec.id, {
         qty_on_hand: newQty, avg_cost: avgCost, last_mov_date: today,
       });
+    } else {
+      await pb.create('inventory_stock', {
+        product_id: productId, warehouse_id: warehouseId,
+        qty_on_hand: Math.max(0, deltaQty),
+        avg_cost: newAvgCost ?? 0,
+        last_mov_date: today,
+      });
     }
-    return pb.create('inventory_stock', {
-      product_id: productId, warehouse_id: warehouseId,
-      qty_on_hand: Math.max(0, deltaQty),
-      avg_cost: newAvgCost ?? 0,
-      last_mov_date: today,
-    });
+    // Actualizar último costo en el producto cuando viene de una entrada con costo
+    if (newAvgCost !== null && newAvgCost > 0) {
+      await pb.update('products', productId, { cost_price: newAvgCost });
+    }
+    return;
   },
 
   /** Movimientos de inventario paginados */
@@ -517,7 +553,7 @@ const API = {
   },
 
   /** Anula un movimiento aplicado revirtiendo el stock */
-  async voidInventoryMovement(movId) {
+  async voidInventoryMovement(movId, reason = '') {
     const mov   = await pb.get('inventory_movements', movId);
     if (mov.status !== 'applied') throw new Error('Solo se pueden anular movimientos ya aplicados.');
 
@@ -538,7 +574,7 @@ const API = {
     }
 
     await pb.update('inventory_movements', movId, { status: 'voided' });
-    await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} — ${mov.number}`);
+    await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} — ${mov.number}${reason ? ` | Motivo: ${reason}` : ''}`);
   },
 
   // ── Compras ───────────────────────────────────────────────
@@ -576,13 +612,14 @@ const API = {
       ivaTot   += l.iva_amount || 0;
       retTot   += l.ret_amount || 0;
     }
+    const payableTotal = (subtotal + ivaTot) - retTot;
     const inv = await pb.create('purchase_invoices', {
       ...header,
       subtotal,
       iva_total: ivaTot,
-      total:     subtotal + ivaTot,
+      total:     payableTotal,
       ret_total: retTot,
-      payable_total: (subtotal + ivaTot) - retTot,
+      payable_total: payableTotal,
       status:    'draft',
     });
 
@@ -748,6 +785,42 @@ const API = {
       }
     }
 
+    // ── Retenciones de encabezado (modo global) ──────────────────────────
+    // Cuando las retenciones se capturan a nivel de encabezado (no por línea),
+    // el invoice guarda ret_rule_renta_id / ret_rule_ica_id / ret_rule_iva_id.
+    // Computamos esos montos aquí para que queden en retByAccount.
+    {
+      const aggSub   = lines.reduce((s, l) => s + Number(l.subtotal    || 0), 0);
+      const aggIva   = lines.reduce((s, l) => s + Number(l.iva_amount  || 0), 0);
+      const aggTotal = aggSub + aggIva;
+      const hdrRules = [
+        { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
+        { id: String(inv.ret_rule_ica_id   || '').trim(), kind: 'ica'   },
+        { id: String(inv.ret_rule_iva_id   || '').trim(), kind: 'iva'   },
+      ];
+      for (const { id, kind } of hdrRules) {
+        if (!id) continue;
+        const rule = cfgRetRules.find(r => String(r.id || '') === id);
+        if (!rule) continue;
+        const minBase = Number(rule.min_base || 0) || 0;
+        // ReteIVA siempre usa IVA como base; los demás respetan base_type de la regla
+        let base;
+        if (kind === 'iva') {
+          base = aggIva;
+        } else {
+          const baseType = String(rule.base_type || 'SUBTOTAL').toUpperCase();
+          base = baseType === 'IVA' ? aggIva : (baseType === 'TOTAL' ? aggTotal : aggSub);
+        }
+        if (base <= 0 || base < minBase) continue;
+        const rate = Number(rule.rate || 0) || 0;
+        if (rate <= 0) continue;
+        const amt = base * rate / 100;
+        const code = String(rule.account_code || '').trim();
+        if (!code) throw new Error(`La regla de retención "${rule.concept}" no tiene cuenta contable configurada.`);
+        retByAccount[code] = (retByAccount[code] || 0) + amt;
+      }
+    }
+
     // IVA Descontable por tarifa
     for (const rateKey of Object.keys(ivaByRate)) {
       const amount = Number(ivaByRate[rateKey] || 0);
@@ -785,7 +858,12 @@ const API = {
       }));
     }
     // Crédito a Proveedores
-    const payableCredit = (inv.total || 0) - retTotal;
+    const grossTotal = Number(inv.subtotal || 0) + Number(inv.iva_total || 0);
+    const storedPayable = Number(inv.payable_total || 0);
+    const storedTotal = Number(inv.total || 0);
+    const payableCredit = storedPayable > 0
+      ? storedPayable
+      : (storedTotal > 0 && Math.abs(storedTotal - grossTotal) > 0.01 ? storedTotal : (grossTotal - retTotal));
     txLines.push(await buildTxLine({
       accountId: accProveedor.id,
       thirdPartyId: inv.supplier_id,
@@ -876,13 +954,160 @@ const API = {
     return { inv, tx };
   },
 
-  /** Anula una factura de compra (solo borradores — para simplificar) */
-  async voidPurchaseInvoice(invoiceId) {
+  async getPurchaseMutationBlocks(invoiceId) {
+    const inv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id' });
+    const blocks = [];
+    const details = {
+      crossRefs: [],
+      downstreamTx: [],
+      stockShortages: [],
+    };
+
+    if (inv.tx_id) {
+      const deps = await this.checkTxDependencies(inv.tx_id);
+      blocks.push(...deps.blocks);
+
+      const txLines = await this.getTxLines(inv.tx_id).catch(() => []);
+      const crossRefs = new Set();
+      if (String(inv.supplier_ref || '').trim()) crossRefs.add(String(inv.supplier_ref || '').trim());
+      txLines.forEach((line) => {
+        const ref = String(line.cross_doc_ref || '').trim();
+        if (ref) crossRefs.add(ref);
+      });
+      details.crossRefs = [...crossRefs];
+
+      if (inv.supplier_id && crossRefs.size) {
+        for (const ref of crossRefs) {
+          const rows = await pb.listAll('tx_lines', {
+            filter: `third_party_id="${pb.escapeFilterValue(inv.supplier_id)}" && cross_doc_ref="${pb.escapeFilterValue(ref)}"`,
+            expand: 'account_id,tx_id',
+            sort: '-id',
+          });
+          const related = rows.filter((line) => {
+            if (!line || line.tx_id === inv.tx_id) return false;
+            if ((line.expand?.tx_id?.status || '') === 'voided') return false;
+            return String(line.cross_doc_ref || '').trim() === ref;
+          });
+          if (related.length) {
+            details.downstreamTx.push(...related.map(line => ({
+              ref,
+              txNumber: line.expand?.tx_id?.number || line.tx_id,
+              txDate: line.expand?.tx_id?.date || '',
+              account: line.expand?.account_id?.code || line.account_id,
+              amount: Number(line.debit || 0) || Number(line.credit || 0) || 0,
+            })));
+          }
+        }
+      }
+
+      if (details.downstreamTx.length) {
+        const sample = details.downstreamTx.slice(0, 3)
+          .map(item => `${item.txNumber}${item.txDate ? ` (${item.txDate})` : ''}`)
+          .join(', ');
+        blocks.push(`La compra ya tiene pagos o cruces posteriores sobre el documento ${details.crossRefs.join(', ')}. Transacciones detectadas: ${sample}${details.downstreamTx.length > 3 ? '…' : ''}.`);
+      }
+    }
+
+    if (inv.inv_movement_id) {
+      const mov = await pb.get('inventory_movements', inv.inv_movement_id).catch(() => null);
+      const movementWarehouseId = mov?.warehouse_id || inv.warehouse_id || '';
+      const movLines = await this.getInventoryMovementLines(inv.inv_movement_id).catch(() => []);
+      for (const line of movLines) {
+        const stockRows = movementWarehouseId
+          ? await this.getInventoryStock({ warehouseId: movementWarehouseId, productId: line.product_id }).catch(() => [])
+          : [];
+        const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
+        const requiredQty = Number(line.qty || 0);
+        if (qtyOnHand + 0.0001 < requiredQty) {
+          details.stockShortages.push({
+            product: line.expand?.product_id?.name || line.product_id,
+            requiredQty,
+            qtyOnHand,
+          });
+        }
+      }
+      if (details.stockShortages.length) {
+        const sample = details.stockShortages
+          .slice(0, 3)
+          .map(item => `${item.product} (disp. ${fmtN(item.qtyOnHand)} / compra ${fmtN(item.requiredQty)})`)
+          .join(', ');
+        blocks.push(`La entrada de inventario ya tuvo efectos posteriores y no se puede revertir sin descuadrar stock. Productos afectados: ${sample}${details.stockShortages.length > 3 ? '…' : ''}.`);
+      }
+    }
+
+    return { inv, blocks, details };
+  },
+
+  async rollbackPurchasePosting(invoiceId, actionLabel = 'anular', reason = '') {
+    const inv = await pb.get('purchase_invoices', invoiceId);
+    if (inv.status !== 'posted') {
+      return {
+        inv,
+        txVoided: false,
+        movementVoided: false,
+      };
+    }
+
+    if (typeof isPeriodClosed === 'function') {
+      const closed = await isPeriodClosed(inv.date);
+      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede ${actionLabel} la compra.`);
+    }
+
+    const mutationCheck = await this.getPurchaseMutationBlocks(invoiceId);
+    if (mutationCheck.blocks.length) throw new Error(mutationCheck.blocks[0]);
+
+    if (inv.tx_id) {
+      const tx = await pb.get('transactions', inv.tx_id).catch(() => null);
+      if (tx && tx.status !== 'voided') {
+        await this.voidTransaction(inv.tx_id, `${actionLabel} compra ${inv.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+      }
+    }
+
+    if (inv.inv_movement_id) {
+      const mov = await pb.get('inventory_movements', inv.inv_movement_id).catch(() => null);
+      if (mov && mov.status === 'applied') {
+        await this.voidInventoryMovement(inv.inv_movement_id, reason);
+      } else if (mov && mov.status !== 'voided') {
+        await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
+        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} — ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+      }
+    }
+
+    return {
+      inv,
+      txVoided: !!inv.tx_id,
+      movementVoided: !!inv.inv_movement_id,
+    };
+  },
+
+  async reopenPurchaseInvoice(invoiceId, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de reapertura.');
+    const result = await this.rollbackPurchasePosting(invoiceId, 'reabrir', safeReason);
+    const inv = result.inv;
+    if (inv.status === 'voided') throw new Error('La factura está anulada y no se puede reabrir.');
+    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
+
+    await pb.update('purchase_invoices', invoiceId, {
+      status: 'draft',
+      tx_id: null,
+      inv_movement_id: null,
+    });
+    await this.logAudit('REOPEN', 'PurchaseInvoice', invoiceId, `Reabierta ${inv.number} para corrección | Motivo: ${safeReason}`);
+    return pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
+  },
+
+  /** Anula una factura de compra manteniendo trazabilidad y revirtiendo efectos si ya fue contabilizada. */
+  async voidPurchaseInvoice(invoiceId, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
     const inv = await pb.get('purchase_invoices', invoiceId);
     if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
-    if (inv.status === 'posted') throw new Error('No se puede anular una factura ya contabilizada. Anula el asiento contable directamente.');
+    if (inv.status === 'posted') {
+      await this.rollbackPurchasePosting(invoiceId, 'anular', safeReason);
+    }
     await pb.update('purchase_invoices', invoiceId, { status: 'voided' });
-    await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number}`);
+    await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
   },
 };
 

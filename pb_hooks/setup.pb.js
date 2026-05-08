@@ -1413,6 +1413,9 @@ onBootstrap((e) => {
       const invExtra = [
         ["ret_total", new NumberField({ name: "ret_total", required: false, min: 0 })],
         ["payable_total", new NumberField({ name: "payable_total", required: false, min: 0 })],
+        ["ret_rule_renta_id", new TextField({ name: "ret_rule_renta_id", required: false })],
+        ["ret_rule_ica_id",   new TextField({ name: "ret_rule_ica_id",   required: false })],
+        ["ret_rule_iva_id",   new TextField({ name: "ret_rule_iva_id",   required: false })],
       ];
       for (const [fname, fieldObj] of invExtra) {
         let hasIt = false;

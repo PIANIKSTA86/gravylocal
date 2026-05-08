@@ -21,10 +21,75 @@ const PO_PRODUCT_TYPES = [
 const PO_PRODUCT_UNITS = ['UND', 'KG', 'L', 'M', 'M2', 'M3', 'PAQ', 'CJ', 'HORA', 'MES'];
 const PO_IVA_RATES = [0, 5, 19];
 
+function fmtPurchaseAuditDate(value) {
+  if (!value) return '—';
+  const dt = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString('es-CO', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function openPurchaseReasonDialog(opts, onConfirm) {
+  const {
+    title,
+    messageHtml,
+    actionLabel = 'Confirmar',
+    actionClass = 'btn-primary',
+    placeholder = 'Describe el motivo...',
+  } = opts || {};
+
+  openModal(
+    title || 'Motivo requerido',
+    `<div class="space-y-4 text-sm">
+      <div style="color:#374151">${messageHtml || ''}</div>
+      <div>
+        <label class="form-label">Motivo obligatorio</label>
+        <textarea id="po-action-reason" class="form-input" rows="4" placeholder="${esc(placeholder)}"></textarea>
+        <p class="text-xs mt-2" style="color:#6B7280">Este motivo quedará registrado en la auditoría de la compra.</p>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn ${actionClass}" id="po-action-confirm-btn">${actionLabel}</button>`
+  );
+
+  setTimeout(() => {
+    const reasonEl = document.getElementById('po-action-reason');
+    const btn = document.getElementById('po-action-confirm-btn');
+    reasonEl?.focus();
+    btn?.addEventListener('click', async () => {
+      const reason = String(reasonEl?.value || '').trim();
+      if (reason.length < 8) {
+        showToast('Indica un motivo claro de al menos 8 caracteres.', 'warning');
+        reasonEl?.focus();
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+      }
+      try {
+        await onConfirm(reason);
+        closeModal();
+      } catch (err) {
+        showToast(err.message || 'No fue posible completar la acción.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = actionLabel;
+        }
+      }
+    }, { once: true });
+  }, 50);
+}
+
 function defaultPurchaseConfig() {
   return {
     operational: {
-      allow_services_without_product: true,
+      allow_services_without_product: false,
       require_warehouse_for_goods: true,
       enable_discounts: true,
       enable_freight: true,
@@ -114,7 +179,7 @@ function normalizePurchaseConfig(raw) {
 
   return {
     operational: {
-      allow_services_without_product: op.allow_services_without_product !== false,
+      allow_services_without_product: false,
       require_warehouse_for_goods: op.require_warehouse_for_goods !== false,
       enable_discounts: op.enable_discounts !== false,
       enable_freight: op.enable_freight !== false,
@@ -191,7 +256,6 @@ async function openPurchaseSettingsModal(onSaved = null) {
           <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-sliders mr-2"></i>Parámetros operativos</h4>
           <p class="text-xs mb-3" style="color:#6B7280">Define opciones habilitadas para el registro de compras.</p>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <label class="inline-flex items-center gap-2"><input id="po-cfg-svc-no-product" type="checkbox" ${cfg.operational.allow_services_without_product ? 'checked' : ''}>Permitir servicios sin producto (solo cuenta)</label>
             <label class="inline-flex items-center gap-2"><input id="po-cfg-req-wh" type="checkbox" ${cfg.operational.require_warehouse_for_goods ? 'checked' : ''}>Exigir bodega cuando hay bienes</label>
             <label class="inline-flex items-center gap-2"><input id="po-cfg-discount" type="checkbox" ${cfg.operational.enable_discounts ? 'checked' : ''}>Habilitar descuentos</label>
             <label class="inline-flex items-center gap-2"><input id="po-cfg-freight" type="checkbox" ${cfg.operational.enable_freight ? 'checked' : ''}>Habilitar fletes</label>
@@ -332,7 +396,7 @@ async function openPurchaseSettingsModal(onSaved = null) {
         });
         const payload = {
           operational: {
-            allow_services_without_product: getCheckVal('po-cfg-svc-no-product'),
+            allow_services_without_product: false,
             require_warehouse_for_goods: getCheckVal('po-cfg-req-wh'),
             enable_discounts: getCheckVal('po-cfg-discount'),
             enable_freight: getCheckVal('po-cfg-freight'),
@@ -472,7 +536,9 @@ function renderPoRow(inv) {
         <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewPurchaseDetail('${esc(inv.id)}')"><i class="fas fa-eye"></i></button>
         ${inv.status === 'draft' && can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editPurchase('${esc(inv.id)}')"><i class="fas fa-pen"></i></button>` : ''}
         ${inv.status === 'draft' && can('canApprove') ? `<button class="btn btn-primary btn-sm" title="Contabilizar" onclick="contabilizarCompra('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-check"></i> Contabilizar</button>` : ''}
-        ${inv.status === 'draft' && can('canDelete')  ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidPurchase('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-ban"></i></button>` : ''}
+        ${inv.status === 'draft' && can('canDelete')  ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidPurchase('${esc(inv.id)}', '${esc(inv.number)}', 'draft')"><i class="fas fa-ban"></i></button>` : ''}
+        ${inv.status === 'posted' && requireRole('admin') ? `<button class="btn btn-outline btn-sm" title="Reabrir para corregir" style="border-color:#D97706;color:#D97706" onclick="reopenPurchase('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-rotate-left"></i></button>` : ''}
+        ${inv.status === 'posted' && can('canDelete') ? `<button class="btn btn-danger btn-sm" title="Anular definitivamente" onclick="voidPurchase('${esc(inv.id)}', '${esc(inv.number)}', 'posted')"><i class="fas fa-ban"></i></button>` : ''}
         ${inv.status === 'posted' && inv.tx_id ? `<button class="btn btn-outline btn-sm" title="Ver asiento contable" style="border-color:#7C3AED;color:#7C3AED" onclick="seeTxDetail('${esc(inv.tx_id)}')"><i class="fas fa-book-open"></i></button>` : ''}
       </div>
     </td>
@@ -520,7 +586,6 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
 
   // Estado reactivo de líneas
   let lineCounter = 0;
-  const serviceAccounts = accounts.filter(a => ['5','6','7'].some(p => a.code.startsWith(p)));
   const billDate = inv?.date || todayStr();
   const defaultDueDate = inv?.due_date || addDaysToDateStr(billDate, poConfig.operational.default_due_days || 0);
   const txTypeOptions = txTypes.map(t => `<option value="${esc(t.id)}"${inv?.tx_type_id === t.id ? ' selected' : ''}>${esc(t.prefix)} — ${esc(t.name)}</option>`).join('');
@@ -534,9 +599,21 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
   const withholdingRules = (poConfig?.accounting?.withholding_rules || []).filter(r => String(r.account_code || '').trim() && Number(r.rate || 0) > 0);
   window.__poRetRulesCache = withholdingRules;
   const retRuleLabel = (r) => `${r.concept} ${r.rate}% (${r.base_type}${Number(r.min_base || 0) > 0 ? `, base >= ${fmt(r.min_base || 0)}` : ''})`;
-  const retRuleOptions = () => `<option value="">— Sin retención —</option>${withholdingRules.map(r => `<option value="${esc(r.id)}">${esc(retRuleLabel(r))}</option>`).join('')}`;
-  const serviceAccountOptions = () => serviceAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.code)} ${esc(a.name)}</option>`).join('');
-  const accountSearchData = serviceAccounts.map(a => ({ id: a.id, title: `${a.code} — ${a.name}`, sub: a.code }));
+  const retRuleOptions = (rules = withholdingRules, selectedId = '') => `<option value="">— Sin retención —</option>${rules.map(r => `<option value="${esc(r.id)}"${r.id === selectedId ? ' selected' : ''}>${esc(retRuleLabel(r))}</option>`).join('')}`;
+  const normRetText = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const retKindOfRule = (rule) => {
+    const hay = normRetText(`${rule?.concept || ''} ${rule?.name || ''} ${rule?.account_code || ''}`);
+    if (hay.includes('ica')) return 'ica';
+    if (hay.includes('iva')) return 'iva';
+    if (hay.includes('fuente') || hay.includes('renta') || hay.includes('rete fuente')) return 'renta';
+    return 'other';
+  };
+  const retRulesRenta = withholdingRules.filter(r => retKindOfRule(r) === 'renta');
+  const retRulesIca = withholdingRules.filter(r => retKindOfRule(r) === 'ica');
+  const retRulesIva = withholdingRules.filter(r => retKindOfRule(r) === 'iva');
+  const retRuleOptionsRenta = (sel = '') => retRuleOptions(retRulesRenta, sel);
+  const retRuleOptionsIca = (sel = '') => retRuleOptions(retRulesIca, sel);
+  const retRuleOptionsIva = (sel = '') => retRuleOptions(retRulesIva, sel);
   const productSearchData = products.map(p => ({ id: p.id, title: `${p.code} — ${p.name}`, sub: p.type }));
 
   openModal(
@@ -589,27 +666,36 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
 
     <!-- Líneas de compra -->
     <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
-      <div class="flex items-center justify-between px-4 py-2" style="background:#F9FAFB">
+      <!-- Barra de herramientas de la tabla -->
+      <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
         <span class="text-sm font-semibold" style="color:#0D2137">Artículos / Servicios</span>
-        <div class="flex gap-2">
+        <div class="flex items-center gap-3 flex-wrap">
+          <label class="flex items-center gap-2 cursor-pointer select-none" style="font-size:12px;font-weight:600;color:#374151" title="Cambiar modo de captura de retenciones">
+            <span id="po-ret-mode-lbl-hdr" style="color:#1A4B8C">Global</span>
+            <div style="position:relative;display:inline-block;width:38px;height:20px">
+              <input type="checkbox" id="po-ret-mode-switch" style="opacity:0;width:0;height:0;position:absolute" onchange="window.poSetRetMode(this.checked)">
+              <span id="po-ret-mode-track" onclick="var sw=document.getElementById('po-ret-mode-switch');sw.checked=!sw.checked;window.poSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#1A4B8C;border-radius:10px;cursor:pointer;transition:background .2s"></span>
+              <span id="po-ret-mode-knob" style="position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
+            </div>
+            <span id="po-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
+          </label>
           <button type="button" class="btn btn-outline btn-sm" id="btn-new-po-product"><i class="fas fa-box-open"></i> Crear producto</button>
-          <button type="button" class="btn btn-outline btn-sm" id="btn-add-po-line"><i class="fas fa-plus"></i> Agregar línea</button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-add-po-line"><i class="fas fa-plus"></i> Agregar línea</button>
         </div>
       </div>
-      <div class="overflow-x-auto">
-        <table class="data-table" style="min-width:900px">
-          <thead>
+      <!-- Tabla con encabezado sticky -->
+      <div style="overflow-x:auto;max-height:320px;overflow-y:auto">
+        <table class="data-table" id="po-lines-table" style="min-width:740px">
+          <thead style="position:sticky;top:0;z-index:10">
             <tr>
-              <th style="min-width:220px">Producto / Servicio</th>
-              <th style="min-width:180px">Cuenta gasto (si es servicio directo)</th>
-              <th>Descripción</th>
-              <th class="text-right" style="width:80px">Cant.</th>
-              <th class="text-right" style="width:110px">P. unitario</th>
-              <th class="text-right" style="width:80px">IVA %</th>
-              <th style="min-width:200px">Retención</th>
-              <th class="text-right" style="width:120px">Vlr Ret.</th>
-              <th class="text-right" style="width:110px">Total</th>
-              <th style="width:40px"></th>
+              <th style="min-width:220px;background:#F4F8FF">Producto / Servicio</th>
+              <th class="text-right" style="width:75px;background:#F4F8FF">Cant.</th>
+              <th class="text-right" style="width:115px;background:#F4F8FF">P. unitario</th>
+              <th class="text-right" style="width:72px;background:#F4F8FF">IVA %</th>
+              <th class="po-ret-col" style="min-width:190px;background:#F4F8FF">Retención</th>
+              <th class="po-ret-col text-right" style="width:115px;background:#F4F8FF">Vlr Ret.</th>
+              <th class="text-right" style="width:115px;background:#F4F8FF">Total línea</th>
+              <th style="width:88px;background:#F4F8FF">Acciones</th>
             </tr>
           </thead>
           <tbody id="po-lines-body"></tbody>
@@ -621,9 +707,37 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       <div class="text-sm space-y-1 min-w-64">
         <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span> <span id="po-total-sub" class="font-semibold">$ 0</span></div>
         <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA:</span>      <span id="po-total-iva" class="font-semibold">$ 0</span></div>
-        <div class="flex justify-between gap-8"><span style="color:#6B7280">Retenciones:</span> <span id="po-total-ret" class="font-semibold">$ 0</span></div>
-        <div class="flex justify-between gap-8"><span style="color:#6B7280">Total factura:</span> <span id="po-total-all" class="font-semibold">$ 0</span></div>
-        <div class="flex justify-between gap-8 text-base border-t pt-2" style="border-color:#E5E7EB"><span class="font-bold" style="color:#0D2137">NETO A PAGAR:</span> <span id="po-total-net" class="font-bold" style="color:#1A4B8C">$ 0</span></div>
+        <div id="po-hdr-ret-wrap" class="space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <span style="color:#6B7280;white-space:nowrap">ReteRenta:</span>
+            <div class="flex items-center gap-2">
+              <select id="po-hdr-ret-rule-renta" class="form-input" style="font-size:12px;padding:4px 8px;min-width:170px" onchange="window.poRecalcLine(0)">
+                ${retRuleOptionsRenta(inv?.ret_rule_renta_id || '')}
+              </select>
+              <span id="po-total-ret-renta" class="font-semibold" style="min-width:90px;text-align:right;color:#C46516">$ 0</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span style="color:#6B7280;white-space:nowrap">ReteICA:</span>
+            <div class="flex items-center gap-2">
+              <select id="po-hdr-ret-rule-ica" class="form-input" style="font-size:12px;padding:4px 8px;min-width:170px" onchange="window.poRecalcLine(0)">
+                ${retRuleOptionsIca(inv?.ret_rule_ica_id || '')}
+              </select>
+              <span id="po-total-ret-ica" class="font-semibold" style="min-width:90px;text-align:right;color:#C46516">$ 0</span>
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span style="color:#6B7280;white-space:nowrap">ReteIVA:</span>
+            <div class="flex items-center gap-2">
+              <select id="po-hdr-ret-rule-iva" class="form-input" style="font-size:12px;padding:4px 8px;min-width:170px" onchange="window.poRecalcLine(0)">
+                ${retRuleOptionsIva(inv?.ret_rule_iva_id || '')}
+              </select>
+              <span id="po-total-ret-iva" class="font-semibold" style="min-width:90px;text-align:right;color:#C46516">$ 0</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-between gap-8"><span style="color:#6B7280">Total Retenciones:</span> <span id="po-total-ret" class="font-semibold">$ 0</span></div>
+        <div class="flex justify-between gap-8 text-base border-t pt-2" style="border-color:#E5E7EB"><span class="font-bold" style="color:#0D2137">TOTAL CxP:</span> <span id="po-total-net" class="font-bold" style="color:#1A4B8C">$ 0</span></div>
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
@@ -709,6 +823,24 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
     if (base < minBase) return { base, amount: 0 };
     const rate = Number(rule.rate || 0) || 0;
     return { base, amount: base * rate / 100 };
+  }
+
+  function calcHeaderRetentionTotals(subtotal, ivaAmt) {
+    const totalAmt = subtotal + ivaAmt;
+    const ruleRenta = getRetRuleById(getSelectVal('po-hdr-ret-rule-renta'));
+    const ruleIca = getRetRuleById(getSelectVal('po-hdr-ret-rule-ica'));
+    const ruleIva = getRetRuleById(getSelectVal('po-hdr-ret-rule-iva'));
+    const reteRenta = calcRetentionValues(subtotal, ivaAmt, totalAmt, ruleRenta).amount || 0;
+    const reteIca = calcRetentionValues(subtotal, ivaAmt, totalAmt, ruleIca).amount || 0;
+    // ReteIVA siempre se aplica sobre el IVA acumulado, sin importar el base_type de la regla
+    const reteIva = ruleIva
+      ? (() => {
+          const minBase = Number(ruleIva.min_base || 0) || 0;
+          if (ivaAmt < minBase) return 0;
+          return ivaAmt * (Number(ruleIva.rate || 0) || 0) / 100;
+        })()
+      : 0;
+    return { reteRenta, reteIca, reteIva, total: reteRenta + reteIca + reteIva };
   }
 
   function initLookupInput({ wrapId, inputId, selectId, resultsId, dataList, onSelected }) {
@@ -868,24 +1000,97 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       const s    = qty * pr;
       const v    = s * ivaR / 100;
       const t    = s + v;
-      const ruleId = getSelectVal(`pol-ret-rule-${idx}`);
-      const rule = getRetRuleById(ruleId);
-      const retCalc = calcRetentionValues(s, v, t, rule);
       sub += s;
       iva += v;
-      ret += retCalc.amount;
       const totEl = document.getElementById(`pol-rowtot-${idx}`);
       if (totEl) totEl.textContent = fmt(t);
-      const retEl = document.getElementById(`pol-retamt-${idx}`);
-      if (retEl) retEl.textContent = retCalc.amount > 0 ? fmt(retCalc.amount) : '—';
+      if (window.__poRetMode !== 'header') {
+        const ruleId = getSelectVal(`pol-ret-rule-${idx}`);
+        const rule = getRetRuleById(ruleId);
+        const retCalc = calcRetentionValues(s, v, t, rule);
+        ret += retCalc.amount;
+        const retEl = document.getElementById(`pol-retamt-${idx}`);
+        if (retEl) retEl.textContent = retCalc.amount > 0 ? fmt(retCalc.amount) : '—';
+      }
       idx++;
     }
+    if (window.__poRetMode === 'header') {
+      const hdr = calcHeaderRetentionTotals(sub, iva);
+      ret = hdr.total;
+      if ($('#po-total-ret-renta')) $('#po-total-ret-renta').textContent = fmt(hdr.reteRenta);
+      if ($('#po-total-ret-ica')) $('#po-total-ret-ica').textContent = fmt(hdr.reteIca);
+      if ($('#po-total-ret-iva')) $('#po-total-ret-iva').textContent = fmt(hdr.reteIva);
+    } else {
+      if ($('#po-total-ret-renta')) $('#po-total-ret-renta').textContent = fmt(0);
+      if ($('#po-total-ret-ica')) $('#po-total-ret-ica').textContent = fmt(0);
+      if ($('#po-total-ret-iva')) $('#po-total-ret-iva').textContent = fmt(0);
+    }
+    const grossTotal = sub + iva;
+    const payableTotal = grossTotal - ret;
     if ($('#po-total-sub')) $('#po-total-sub').textContent = fmt(sub);
     if ($('#po-total-iva')) $('#po-total-iva').textContent = fmt(iva);
     if ($('#po-total-ret')) $('#po-total-ret').textContent = fmt(ret);
-    if ($('#po-total-all')) $('#po-total-all').textContent = fmt(sub + iva);
-    if ($('#po-total-net')) $('#po-total-net').textContent = fmt((sub + iva) - ret);
+    if ($('#po-total-net')) $('#po-total-net').textContent = fmt(payableTotal);
   }
+
+  // Bridge para que poRecalcLine use el recálculo del modal activo
+  window.__poRecalcTotals = recalcTotals;
+
+  function paintLineCommentBtn(idx) {
+    const row = document.getElementById(`pol-row-${idx}`);
+    const btn = document.getElementById(`pol-comment-btn-${idx}`);
+    if (!row || !btn) return;
+    const has = !!String(row.dataset.comment || '').trim();
+    btn.style.borderColor = has ? '#1A4B8C' : '#D1D5DB';
+    btn.style.color = has ? '#1A4B8C' : '#6B7280';
+    btn.style.background = has ? '#EEF4FF' : '#fff';
+    btn.title = has ? 'Editar comentario' : 'Agregar comentario';
+  }
+
+  window.poEditLineComment = function poEditLineComment(idx) {
+    const row = document.getElementById(`pol-row-${idx}`);
+    if (!row) return;
+
+    let overlay = document.getElementById('po-line-comment-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'po-line-comment-overlay';
+      overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:220;align-items:center;justify-content:center;padding:16px';
+      overlay.innerHTML = `
+        <div style="background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F0F0F0">
+            <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-comment-dots mr-2" style="color:#1A4B8C"></i>Comentario de línea</h4>
+            <button type="button" id="po-line-comment-close" style="background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer"><i class="fas fa-xmark"></i></button>
+          </div>
+          <div style="padding:20px">
+            <label class="form-label" for="po-line-comment-text">Descripción personalizada</label>
+            <textarea id="po-line-comment-text" class="form-input" rows="4" placeholder="Escribe una descripción o comentario..."></textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;border-top:1px solid #F0F0F0">
+            <button type="button" class="btn btn-outline" id="po-line-comment-cancel">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="po-line-comment-save"><i class="fas fa-check mr-1"></i>Guardar</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+
+    const ta = document.getElementById('po-line-comment-text');
+    const close = () => { overlay.style.display = 'none'; };
+    const save = () => {
+      const val = String(ta?.value || '').trim();
+      row.dataset.comment = val;
+      paintLineCommentBtn(idx);
+      close();
+    };
+
+    if (ta) ta.value = String(row.dataset.comment || '');
+    overlay.style.display = 'flex';
+    setTimeout(() => ta?.focus(), 40);
+
+    document.getElementById('po-line-comment-close').onclick = close;
+    document.getElementById('po-line-comment-cancel').onclick = close;
+    document.getElementById('po-line-comment-save').onclick = save;
+  };
 
   function addPoLine(line = {}) {
     lineCounter++;
@@ -894,6 +1099,7 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
     if (!tbody) return;
     const tr = document.createElement('tr');
     tr.id = `pol-row-${idx}`;
+    tr.dataset.comment = String(line.description || '').trim();
     tr.innerHTML = `
       <td>
         <div id="pol-prod-wrap-${idx}" class="relative">
@@ -905,29 +1111,24 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
           <div id="pol-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
         </div>
       </td>
-      <td>
-        <div id="pol-acct-wrap-${idx}" class="relative">
-          <input id="pol-acct-search-${idx}" class="form-input" style="min-width:160px" autocomplete="off" placeholder="Buscar cuenta...">
-          <select class="form-input" id="pol-acct-${idx}" style="display:none">
-            <option value="">— Solo si no hay producto —</option>
-            ${serviceAccountOptions()}
-          </select>
-          <div id="pol-acct-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
-        </div>
-      </td>
-      <td><input id="pol-desc-${idx}" class="form-input" style="min-width:120px" placeholder="Descripción" value="${esc(line.description||'')}"></td>
       <td><input id="pol-qty-${idx}" type="number" min="0.0001" step="0.0001" class="form-input text-right" style="min-width:70px" value="${line.qty||'1'}" oninput="poRecalcLine(${idx})"></td>
       <td><input id="pol-price-${idx}" type="number" min="0" step="0.01" class="form-input text-right" style="min-width:100px" value="${line.unit_price||''}" oninput="poRecalcLine(${idx})"></td>
       <td><input id="pol-iva-${idx}" type="number" min="0" max="100" step="1" class="form-input text-right" style="min-width:60px" value="${line.iva_rate||'0'}" oninput="poRecalcLine(${idx})"></td>
-      <td>
+      <td class="po-ret-col">
         <select id="pol-ret-rule-${idx}" class="form-input" style="min-width:180px" onchange="poRecalcLine(${idx})">
           ${retRuleOptions()}
         </select>
       </td>
-      <td class="text-right font-semibold text-sm" id="pol-retamt-${idx}" style="color:#C46516">—</td>
+      <td class="po-ret-col text-right font-semibold text-sm" id="pol-retamt-${idx}" style="color:#C46516">—</td>
       <td class="text-right font-semibold text-sm" id="pol-rowtot-${idx}" style="color:#1A4B8C">—</td>
-      <td><button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('pol-row-${idx}').remove(); poRecalcLine(0)"><i class="fas fa-times"></i></button></td>`;
+      <td>
+        <div class="flex items-center gap-1">
+          <button type="button" class="btn btn-outline btn-sm" id="pol-comment-btn-${idx}" onclick="poEditLineComment(${idx})"><i class="fas fa-comment"></i></button>
+          <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('pol-row-${idx}').remove(); poRecalcLine(0)"><i class="fas fa-times"></i></button>
+        </div>
+      </td>`;
     tbody.appendChild(tr);
+    paintLineCommentBtn(idx);
 
     initLookupInput({
       wrapId: `pol-prod-wrap-${idx}`,
@@ -943,25 +1144,6 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
         const ivaFld = document.getElementById(`pol-iva-${idx}`);
         if (prFld && !prFld.value) prFld.value = opt.dataset.cost || '';
         if (ivaFld) ivaFld.value = opt.dataset.iva || '0';
-        const acctSel = document.getElementById(`pol-acct-${idx}`);
-        const acctInp = document.getElementById(`pol-acct-search-${idx}`);
-        if (acctSel) acctSel.value = '';
-        if (acctInp) acctInp.value = '';
-        poRecalcLine(idx);
-      },
-    });
-
-    initLookupInput({
-      wrapId: `pol-acct-wrap-${idx}`,
-      inputId: `pol-acct-search-${idx}`,
-      selectId: `pol-acct-${idx}`,
-      resultsId: `pol-acct-results-${idx}`,
-      dataList: accountSearchData,
-      onSelected: () => {
-        const prodSel = document.getElementById(`pol-prod-${idx}`);
-        const prodInp = document.getElementById(`pol-prod-search-${idx}`);
-        if (prodSel) prodSel.value = '';
-        if (prodInp) prodInp.value = '';
         poRecalcLine(idx);
       },
     });
@@ -973,16 +1155,13 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       const opt = sel?.selectedOptions?.[0];
       if (inp && opt?.value) inp.value = opt.textContent;
     }
-    if (line.account_id) {
-      const sel = document.getElementById(`pol-acct-${idx}`);
-      if (sel) sel.value = line.account_id;
-      const inp = document.getElementById(`pol-acct-search-${idx}`);
-      const opt = sel?.selectedOptions?.[0];
-      if (inp && opt?.value) inp.value = opt.textContent;
-    }
     if (line.ret_rule_id) {
       const rs = document.getElementById(`pol-ret-rule-${idx}`);
       if (rs) rs.value = line.ret_rule_id;
+        // Apply current retention mode to new row (hide ret cols if in header mode)
+        if (window.__poRetMode === 'header') {
+          document.querySelectorAll(`#pol-row-${idx} .po-ret-col`).forEach(el => { el.style.display = 'none'; });
+        }
     }
     recalcTotals();
   }
@@ -997,6 +1176,11 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
   initPoSupplierSearch();
   document.getElementById('btn-add-po-line')?.addEventListener('click', () => addPoLine());
   document.getElementById('btn-new-po-product')?.addEventListener('click', () => openQuickProductCreateModal());
+
+  // Inicializar modo de retención: header (global) por defecto
+  window.__poRetMode = 'header';
+  window.poSetRetMode(false);
+
 
   const txTypeSel = document.getElementById('po-tx-type');
   const txNumberInput = document.getElementById('po-tx-number');
@@ -1042,15 +1226,14 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
         const rowEl = document.getElementById(`pol-row-${i}`);
         if (!rowEl) continue;
         const prodId  = getSelectVal(`pol-prod-${i}`);
-        const acctId  = getSelectVal(`pol-acct-${i}`);
-        const desc    = getInputVal(`pol-desc-${i}`) || '';
+        const desc    = String(rowEl.dataset.comment || '').trim();
         const qty     = parseFloat(getInputVal(`pol-qty-${i}`)   || '0') || 0;
         const price   = parseFloat(getInputVal(`pol-price-${i}`) || '0') || 0;
         const ivaR    = parseFloat(getInputVal(`pol-iva-${i}`)   || '0') || 0;
-        const retRuleId = getSelectVal(`pol-ret-rule-${i}`) || '';
+        const retRuleId = window.__poRetMode === 'header' ? '' : (getSelectVal(`pol-ret-rule-${i}`) || '');
         if (!qty || !price) continue;
-        if (!prodId && !acctId && !poConfig.operational.allow_services_without_product) {
-          return showToast(`Línea ${linesData.length + 1}: selecciona producto o cuenta contable`, 'warning');
+        if (!prodId) {
+          return showToast(`Línea ${linesData.length + 1}: selecciona un producto`, 'warning');
         }
         const sub = qty * price;
         const ivaAmt = sub * ivaR / 100;
@@ -1060,7 +1243,7 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
         retTotal += retCalc.amount || 0;
         linesData.push({
           product_id:  prodId || null,
-          account_id:  acctId || null,
+          account_id:  null,
           description: desc,
           qty, unit_price: price,
           iva_rate: ivaR,
@@ -1075,6 +1258,14 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
         });
       }
       if (!linesData.length) return showToast('Agrega al menos una línea válida', 'warning');
+
+      // Header retention mode: compute total from configured retentions on aggregated amounts
+      if (window.__poRetMode === 'header') {
+        const aggSub = linesData.reduce((s, l) => s + (l.subtotal || 0), 0);
+        const aggIva = linesData.reduce((s, l) => s + (l.iva_amount || 0), 0);
+        retTotal = calcHeaderRetentionTotals(aggSub, aggIva).total;
+      }
+
 
       if (poConfig.operational.require_warehouse_for_goods) {
         const hasGoods = linesData.some(l => {
@@ -1091,6 +1282,8 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       const rand   = String(Date.now()).slice(-4);
       const number = inv?.number || `FC-${today}-${rand}`;
 
+      const grossTotal = linesData.reduce((s, l) => s + (l.total || 0), 0);
+      const payableTotal = grossTotal - retTotal;
       const header = {
         number, date,
         due_date:     getInputVal('po-due-date') || null,
@@ -1101,14 +1294,17 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
         warehouse_id: getSelectVal('po-warehouse') || null,
         notes:        getInputVal('po-notes').trim(),
         ret_total:    retTotal,
-        payable_total: linesData.reduce((s, l) => s + (l.total || 0), 0) - retTotal,
+        payable_total: payableTotal,
+        ret_rule_renta_id: window.__poRetMode === 'header' ? (getSelectVal('po-hdr-ret-rule-renta') || '') : '',
+        ret_rule_ica_id:   window.__poRetMode === 'header' ? (getSelectVal('po-hdr-ret-rule-ica')   || '') : '',
+        ret_rule_iva_id:   window.__poRetMode === 'header' ? (getSelectVal('po-hdr-ret-rule-iva')   || '') : '',
       };
 
       if (invoiceId) {
         // Editar: actualizar encabezado y reemplazar líneas
         let sub = 0, ivaT = 0;
         for (const l of linesData) { sub += l.subtotal; ivaT += l.iva_amount; }
-        await pb.update('purchase_invoices', invoiceId, { ...header, subtotal: sub, iva_total: ivaT, total: sub + ivaT });
+        await pb.update('purchase_invoices', invoiceId, { ...header, subtotal: sub, iva_total: ivaT, total: payableTotal });
         const oldLines = await pb.listAll('purchase_invoice_lines', { filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}"` });
         for (const ol of oldLines) await pb.delete('purchase_invoice_lines', ol.id);
         for (let i = 0; i < linesData.length; i++) {
@@ -1132,58 +1328,91 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
 }
 
 // Expone función global para recalcular al cambiar inputs desde el DOM
-window.poRecalcLine = function (idx) {
-  // recalcTotals() no puede llamarse directo por scope; usamos evento
-  const e = new Event('po-recalc');
-  document.dispatchEvent(e);
-};
-document.addEventListener('po-recalc', () => {
-  // recalc de todos los totales en el formulario abierto
+window.poRecalcLine = function () {
+  if (typeof window.__poRecalcTotals === 'function') {
+    window.__poRecalcTotals();
+    return;
+  }
+
+  // Fallback mínimo cuando no hay formulario abierto
   let sub = 0, iva = 0, ret = 0;
   for (let i = 1; i <= 100; i++) {
     const rowEl = document.getElementById(`pol-row-${i}`);
     if (!rowEl) continue;
-    const qty  = parseFloat(document.getElementById(`pol-qty-${i}`)?.value   || '0') || 0;
-    const pr   = parseFloat(document.getElementById(`pol-price-${i}`)?.value  || '0') || 0;
-    const ivaR = parseFloat(document.getElementById(`pol-iva-${i}`)?.value    || '0') || 0;
-    const s    = qty * pr;
-    const v    = s * ivaR / 100;
-    const t    = s + v;
-    sub += s; iva += v;
-    const ruleId = getSelectVal(`pol-ret-rule-${i}`);
-    const baseType = String(document.getElementById(`pol-ret-rule-${i}`)?.selectedOptions?.[0]?.textContent || '');
-    const ruleLine = (window.__poRetRulesCache || []).find(r => r.id === ruleId) || null;
-    let retVal = 0;
-    if (ruleLine) {
-      const base = String(ruleLine.base_type || 'SUBTOTAL').toUpperCase() === 'IVA' ? v : (String(ruleLine.base_type || 'SUBTOTAL').toUpperCase() === 'TOTAL' ? t : s);
-      const minBase = Number(ruleLine.min_base || 0) || 0;
-      if (base >= minBase) retVal = base * (Number(ruleLine.rate || 0) || 0) / 100;
-    } else if (baseType) {
-      retVal = 0;
-    }
-    ret += retVal;
-    const totEl = document.getElementById(`pol-rowtot-${i}`);
-    if (totEl) totEl.textContent = fmt(t);
-    const retEl = document.getElementById(`pol-retamt-${i}`);
-    if (retEl) retEl.textContent = retVal > 0 ? fmt(retVal) : '—';
+    const qty = parseFloat(document.getElementById(`pol-qty-${i}`)?.value || '0') || 0;
+    const pr = parseFloat(document.getElementById(`pol-price-${i}`)?.value || '0') || 0;
+    const ivaR = parseFloat(document.getElementById(`pol-iva-${i}`)?.value || '0') || 0;
+    const s = qty * pr;
+    const v = s * ivaR / 100;
+    sub += s;
+    iva += v;
   }
+  const grossTotal = sub + iva;
+  const payableTotal = grossTotal - ret;
   if ($('#po-total-sub')) $('#po-total-sub').textContent = fmt(sub);
   if ($('#po-total-iva')) $('#po-total-iva').textContent = fmt(iva);
   if ($('#po-total-ret')) $('#po-total-ret').textContent = fmt(ret);
-  if ($('#po-total-all')) $('#po-total-all').textContent = fmt(sub + iva);
-  if ($('#po-total-net')) $('#po-total-net').textContent = fmt((sub + iva) - ret);
-});
+  if ($('#po-total-net')) $('#po-total-net').textContent = fmt(payableTotal);
+};
+
+// ── Retention mode toggle (header vs per-line) ────────────────────────────────
+window.poSetRetMode = function(isPerLine) {
+  window.__poRetMode = isPerLine ? 'line' : 'header';
+  document.querySelectorAll('.po-ret-col').forEach(el => { el.style.display = isPerLine ? '' : 'none'; });
+  const hdrWrap = document.getElementById('po-hdr-ret-wrap');
+  if (hdrWrap) hdrWrap.style.display = isPerLine ? 'none' : '';
+  const knob  = document.getElementById('po-ret-mode-knob');
+  if (knob)  knob.style.transform = isPerLine ? 'translateX(18px)' : '';
+  const track = document.getElementById('po-ret-mode-track');
+  if (track) track.style.background = isPerLine ? '#6B7280' : '#1A4B8C';
+  const lblHdr  = document.getElementById('po-ret-mode-lbl-hdr');
+  if (lblHdr)  lblHdr.style.color  = isPerLine ? '#9CA3AF' : '#1A4B8C';
+  const lblLine = document.getElementById('po-ret-mode-lbl-line');
+  if (lblLine) lblLine.style.color = isPerLine ? '#1A4B8C' : '#9CA3AF';
+  window.poRecalcLine(0);
+};
 
 // ── Acciones globales ─────────────────────────────────────────────────────────
 async function viewPurchaseDetail(id) {
   try {
-    const [inv, lines] = await Promise.all([
+    const [inv, lines, history] = await Promise.all([
       pb.get('purchase_invoices', id, { expand: 'supplier_id,warehouse_id' }),
       API.getPurchaseInvoiceLines(id),
+      can('canViewAudit')
+        ? API.getAuditLogs({ entity: 'PurchaseInvoice', entityId: id, actions: ['REOPEN', 'VOID'], limit: 20 }).catch(() => [])
+        : Promise.resolve([]),
     ]);
+    const mutationCheck = inv.status === 'posted'
+      ? await API.getPurchaseMutationBlocks(id).catch(() => ({ blocks: [], details: {} }))
+      : { blocks: [], details: {} };
     const meta = PO_STATUS[inv.status] || { label: inv.status, badge: 'badge-gray' };
     const sup  = inv.expand?.supplier_id;
     const wh   = inv.expand?.warehouse_id;
+    const historyHtml = can('canViewAudit') ? `
+      <div class="mt-5 rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-clock-rotate-left mr-2"></i>Historial de reaperturas y anulaciones</h4>
+          <span class="text-xs" style="color:#6B7280">Auditoría del documento</span>
+        </div>
+        ${history.length
+          ? `<div class="space-y-2">
+              ${history.map(h => `
+                <div class="rounded-lg border px-3 py-2" style="border-color:#E5E7EB;background:#fff">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-semibold" style="color:#1A4B8C">${esc(h.action || 'EVENTO')}</span>
+                    <span class="text-xs" style="color:#6B7280">${esc(fmtPurchaseAuditDate(h.created || h.createdAt || h.date || ''))}</span>
+                  </div>
+                  <p class="text-sm mt-1" style="color:#374151">${esc(h.description || h.notes || 'Sin detalle')}</p>
+                </div>`).join('')}
+             </div>`
+          : `<p class="text-sm" style="color:#6B7280">No hay reaperturas ni anulaciones registradas para esta compra.</p>`}
+      </div>`
+      : '';
+    const blockerHtml = inv.status === 'posted' && mutationCheck.blocks.length ? `
+      <div class="mt-4 p-4 rounded-xl text-sm" style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B">
+        <div class="font-semibold mb-2"><i class="fas fa-shield-halved mr-2"></i>Bloqueo de reapertura/anulación</div>
+        ${mutationCheck.blocks.map(msg => `<p class="mb-1">• ${esc(msg)}</p>`).join('')}
+      </div>` : '';
 
     openModal(
       `Factura de Compra — ${esc(inv.number)}`,
@@ -1221,12 +1450,18 @@ async function viewPurchaseDetail(id) {
         <div class="text-sm space-y-1 min-w-56">
           <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span><span class="font-semibold">${fmt(inv.subtotal||0)}</span></div>
           <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA:</span>     <span class="font-semibold">${fmt(inv.iva_total||0)}</span></div>
-          <div class="flex justify-between gap-8 border-t pt-2 text-base" style="border-color:#E5E7EB"><span class="font-bold" style="color:#0D2137">TOTAL:</span><span class="font-bold" style="color:#1A4B8C">${fmt(inv.total||0)}</span></div>
+          <div class="flex justify-between gap-8"><span style="color:#6B7280">Retenciones:</span><span class="font-semibold">${fmt(inv.ret_total||0)}</span></div>
+          <div class="flex justify-between gap-8"><span style="color:#6B7280">Bruto (Base + IVA):</span><span class="font-semibold">${fmt((inv.subtotal||0) + (inv.iva_total||0))}</span></div>
+          <div class="flex justify-between gap-8 border-t pt-2 text-base" style="border-color:#E5E7EB"><span class="font-bold" style="color:#0D2137">TOTAL CxP:</span><span class="font-bold" style="color:#1A4B8C">${fmt(inv.payable_total || inv.total || 0)}</span></div>
         </div>
       </div>
-      ${inv.tx_id ? `<div class="mt-4 p-3 rounded-xl text-sm" style="background:#EEF4FF;color:#2446B8"><i class="fas fa-book-open mr-2"></i>Asiento contable generado: <button class="font-semibold underline cursor-pointer" onclick="closeModal(); setTimeout(() => seeTxDetail('${esc(inv.tx_id)}'), 300)">Ver asiento</button></div>` : ''}`,
+      ${inv.tx_id ? `<div class="mt-4 p-3 rounded-xl text-sm" style="background:#EEF4FF;color:#2446B8"><i class="fas fa-book-open mr-2"></i>Asiento contable generado: <button class="font-semibold underline cursor-pointer" onclick="closeModal(); setTimeout(() => seeTxDetail('${esc(inv.tx_id)}'), 300)">Ver asiento</button></div>` : ''}
+      ${blockerHtml}
+      ${historyHtml}`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-       ${inv.status === 'draft' && can('canApprove') ? `<button class="btn btn-primary" onclick="closeModal(); contabilizarCompra('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-check"></i> Contabilizar</button>` : ''}`,
+       ${inv.status === 'draft' && can('canApprove') ? `<button class="btn btn-primary" onclick="closeModal(); contabilizarCompra('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-check"></i> Contabilizar</button>` : ''}
+       ${inv.status === 'posted' && requireRole('admin') ? `<button class="btn btn-outline" style="border-color:#D97706;color:#D97706" onclick="closeModal(); reopenPurchase('${esc(inv.id)}', '${esc(inv.number)}')"><i class="fas fa-rotate-left"></i> Reabrir</button>` : ''}
+       ${inv.status === 'posted' && can('canDelete') ? `<button class="btn btn-danger" onclick="closeModal(); voidPurchase('${esc(inv.id)}', '${esc(inv.number)}', 'posted')"><i class="fas fa-ban"></i> Anular</button>` : ''}`,
       true
     );
   } catch (err) { showToast(err.message, 'error'); }
@@ -1256,19 +1491,46 @@ function contabilizarCompra(id, number) {
   );
 }
 
-function voidPurchase(id, number) {
+function reopenPurchase(id, number) {
+  if (!requireRole('admin')) return showToast('Solo el administrador puede reabrir compras contabilizadas', 'error');
+  openPurchaseReasonDialog(
+    {
+      title: 'Reabrir Compra para Corrección',
+      messageHtml: `
+        <p>Se reabrirá la factura <strong>${esc(number)}</strong> y el sistema hará lo siguiente:</p>
+        <p class="mt-2">• Anulará el asiento contable vinculado</p>
+        <p>• Revertirá el movimiento de inventario asociado</p>
+        <p>• Dejará la compra en <em>Borrador</em> para corrección y nueva contabilización</p>`,
+      actionLabel: 'Reabrir compra',
+      actionClass: 'btn-outline',
+      placeholder: 'Explica el motivo de la reapertura aprobada por el administrador',
+    }
+    , async (reason) => {
+      await API.reopenPurchaseInvoice(id, reason);
+      showToast(`Factura ${number} reabierta en borrador. Se revirtieron contabilidad e inventario.`, 'success');
+      renderCompras($('#page-content'));
+    }
+  );
+}
+
+function voidPurchase(id, number, status = 'draft') {
   if (!can('canDelete')) return showToast('No tienes permisos para anular', 'error');
-  confirmDialog(
-    'Anular Factura de Compra',
-    `¿Confirmas anular la factura <strong>${esc(number)}</strong>? Esta acción no se puede deshacer.`,
-    async () => {
-      try {
-        await API.voidPurchaseInvoice(id);
-        showToast('Factura anulada', 'success');
-        renderCompras($('#page-content'));
-      } catch (err) {
-        showToast(err.message, 'error');
-      }
+  openPurchaseReasonDialog(
+    {
+      title: 'Anular Factura de Compra',
+      messageHtml: status === 'posted'
+        ? `
+          <p>Se anulará la factura <strong>${esc(number)}</strong>.</p>
+          <p class="mt-2">Para conservar trazabilidad el sistema también anulará el asiento contable y revertirá el movimiento de inventario asociado.</p>`
+        : `<p>Vas a anular la factura <strong>${esc(number)}</strong>. Esta acción dejará el documento inválido para operación.</p>`,
+      actionLabel: 'Anular compra',
+      actionClass: 'btn-danger',
+      placeholder: 'Explica el motivo de la anulación',
+    }
+    , async (reason) => {
+      await API.voidPurchaseInvoice(id, reason);
+      showToast(status === 'posted' ? 'Factura anulada. Se revirtieron contabilidad e inventario.' : 'Factura anulada', 'success');
+      renderCompras($('#page-content'));
     }
   );
 }

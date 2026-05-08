@@ -185,12 +185,20 @@ const API = {
   },
 
   async setSetting(key, value) {
-    const safeKey = pb.escapeFilterValue(key);
-    const existing = await pb.list('settings', { filter: `key="${safeKey}"`, perPage: 1 });
-    if (existing.items.length) {
-      return pb.update('settings', existing.items[0].id, { value });
+    try {
+      const safeKey = pb.escapeFilterValue(key);
+      const existing = await pb.list('settings', { filter: `key="${safeKey}"`, perPage: 1 });
+      if (existing.items.length) {
+        return await pb.update('settings', existing.items[0].id, { value });
+      }
+      return await pb.create('settings', { key, value });
+    } catch (err) {
+      const msg = String(err?.message || '').toLowerCase();
+      if (err?.status === 400 || err?.status === 403 || msg.includes('allowed') || msg.includes('permission')) {
+        throw new Error('No tienes permisos para modificar configuración global.');
+      }
+      throw err;
     }
-    return pb.create('settings', { key, value });
   },
 
   // -- auditoria ---------------------------------------------
@@ -1153,7 +1161,7 @@ const API = {
     return pb.listAll('ph_invoice_lines', {
       filter: `invoice_id="${safe}"`,
       sort:   'line_order',
-      expand: 'concept_id',
+      expand: 'concept_id,concept_id.account_id',
     });
   },
 
@@ -1163,12 +1171,23 @@ const API = {
    */
   async generatePhInvoices(period, dueDate = '') {
     const safePeriod = pb.escapeFilterValue(period);
-    const [properties, concepts] = await Promise.all([
+    const [properties, concepts, rawCfg] = await Promise.all([
       this.getPhProperties(true),
       this.getPhBillingConcepts(true),
+      this.getSetting('ph_config_v1'),
     ]);
     if (!properties.length) throw new Error('No hay unidades activas registradas.');
     if (!concepts.length)   throw new Error('No hay conceptos de facturación activos.');
+
+    let phCfg = {};
+    try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
+    const lateFeeRate = Number(phCfg?.late_fee_rate || 0);
+    const lateConceptIds = Array.isArray(phCfg?.late_fee_concepts)
+      ? phCfg.late_fee_concepts.map(v => String(v || '')).filter(Boolean)
+      : [];
+    const lateConceptSet = new Set(lateConceptIds);
+    const asOf = new Date();
+    const asOfStr = asOf.toISOString().slice(0, 10);
 
     // Calcular número de secuencia base CF para este batch
     const existingFilter = `period="${safePeriod}"`;
@@ -1201,6 +1220,52 @@ const API = {
           line_order:  order++,
         });
       }
+
+      // Interés de mora por conceptos configurados (sobre facturas vencidas no pagadas).
+      if (lateFeeRate > 0 && lateConceptSet.size) {
+        const safeProp = pb.escapeFilterValue(prop.id);
+        const overdueInvoices = await pb.listAll('ph_invoices', {
+          filter: `property_id="${safeProp}" && period!="${safePeriod}" && status!="paid" && status!="voided"`,
+          perPage: 200,
+        });
+
+        let lateAmount = 0;
+        for (const oldInv of overdueInvoices) {
+          if (!oldInv?.due_date) continue;
+          const due = new Date(`${oldInv.due_date}T00:00:00`);
+          if (Number.isNaN(due.getTime())) continue;
+          const overdueDays = Math.floor((asOf.getTime() - due.getTime()) / 86400000);
+          if (overdueDays <= 0) continue;
+
+          const safeOldInv = pb.escapeFilterValue(oldInv.id);
+          const oldLines = await pb.listAll('ph_invoice_lines', {
+            filter: `invoice_id="${safeOldInv}"`,
+            perPage: 200,
+          });
+
+          for (const oldLn of oldLines) {
+            const conceptId = String(oldLn?.concept_id || '');
+            if (!conceptId || !lateConceptSet.has(conceptId)) continue;
+            const principal = Number(oldLn.amount || 0);
+            if (principal <= 0) continue;
+            // lateFeeRate se almacena como entero (ej: 2 = 2% mensual).
+            // Se aplica una vez sobre el saldo vencido, sin multiplicar por días.
+            lateAmount += principal * (lateFeeRate / 100);
+          }
+        }
+
+        if (lateAmount > 0) {
+          const roundedLate = Math.round(lateAmount);
+          total += roundedLate;
+          lines.push({
+            concept_id:  null,
+            description: `Interés de mora a ${asOfStr}`,
+            amount:      roundedLate,
+            line_order:  order++,
+          });
+        }
+      }
+
       if (!lines.length) continue;
 
       // Crear cabecera (número AUTO — el hook de PocketBase no aplica aquí,
@@ -1231,6 +1296,142 @@ const API = {
   },
 
   /**
+   * Cartera PH por concepto a fecha de corte.
+   * Considera facturas no pagadas y no anuladas.
+   */
+  async getPhPortfolioByConcept(cutoffDate = '') {
+    const asOf = String(cutoffDate || new Date().toISOString().slice(0, 10)).trim();
+    const safeAsOf = pb.escapeFilterValue(asOf);
+    const invoices = await pb.listAll('ph_invoices', {
+      filter: `status!="paid" && status!="voided" && date<="${safeAsOf}"`,
+      perPage: 200,
+      expand: 'property_id',
+    });
+
+    const byConcept = new Map();
+    for (const inv of invoices) {
+      const safeInv = pb.escapeFilterValue(inv.id);
+      const lines = await pb.listAll('ph_invoice_lines', {
+        filter: `invoice_id="${safeInv}"`,
+        perPage: 200,
+        expand: 'concept_id',
+      });
+      const isOverdue = !!inv.due_date && String(inv.due_date) < asOf;
+
+      for (const ln of lines) {
+        const conceptId = String(ln.concept_id || 'SIN_CONCEPTO');
+        const conceptName = ln.expand?.concept_id?.name || ln.description || 'Sin concepto';
+        const key = `${conceptId}`;
+        if (!byConcept.has(key)) {
+          byConcept.set(key, {
+            concept_id: conceptId === 'SIN_CONCEPTO' ? null : conceptId,
+            concept_name: conceptName,
+            total: 0,
+            overdue: 0,
+            lines: 0,
+          });
+        }
+        const bucket = byConcept.get(key);
+        const amount = Number(ln.amount || 0);
+        bucket.total += amount;
+        bucket.lines += 1;
+        if (isOverdue) bucket.overdue += amount;
+      }
+    }
+
+    return Array.from(byConcept.values())
+      .sort((a, b) => String(a.concept_name || '').localeCompare(String(b.concept_name || '')));
+  },
+
+  /**
+   * Descontabiliza completamente la liquidación de un período PH.
+   * - Facturas posted/paid pasan a draft y se desvinculan del asiento (tx_id = null).
+   * - El asiento asociado se intenta pasar a borrador; si falla, se anula.
+   */
+  async unpostPhInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let reverted = 0;
+    let skipped = 0;
+    let txDraft = 0;
+    let txVoided = 0;
+
+    for (const inv of invoices) {
+      if (inv.status === 'draft') {
+        skipped++;
+        continue;
+      }
+      if (inv.status === 'voided') {
+        skipped++;
+        continue;
+      }
+
+      if (inv.tx_id) {
+        try {
+          await pb.update('transactions', inv.tx_id, { status: 'draft' });
+          txDraft++;
+        } catch (_) {
+          await pb.update('transactions', inv.tx_id, { status: 'voided' });
+          txVoided++;
+        }
+      }
+
+      await pb.update('ph_invoices', inv.id, { status: 'draft', tx_id: null });
+      reverted++;
+    }
+
+    await this.logAudit(
+      'UNPOST_PERIOD',
+      'PhInvoices',
+      period,
+      `Período ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
+    );
+
+    return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
+  },
+
+  /**
+   * Elimina toda la liquidación de un período PH.
+   * - Intenta eliminar transacciones asociadas.
+   * - Si no puede eliminarlas, las anula para no dejar efecto contable.
+   */
+  async deletePhInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let deleted = 0;
+    let txDeleted = 0;
+    let txVoided = 0;
+
+    for (const inv of invoices) {
+      if (inv.tx_id) {
+        try {
+          await pb.delete('transactions', inv.tx_id);
+          txDeleted++;
+        } catch (_) {
+          await pb.update('transactions', inv.tx_id, { status: 'voided' });
+          txVoided++;
+        }
+      }
+
+      await pb.delete('ph_invoices', inv.id);
+      deleted++;
+    }
+
+    await this.logAudit(
+      'DELETE_PERIOD',
+      'PhInvoices',
+      period,
+      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+    );
+
+    return { period, total: invoices.length, deleted, txDeleted, txVoided };
+  },
+
+  /**
    * Contabiliza una factura PH (draft → posted).
    * Genera un asiento: Débito CxC propietario / Crédito ingresos por concepto.
    */
@@ -1253,6 +1454,8 @@ const API = {
 
     const cxcCode    = String(phCfg.cxc_code    || '130505').trim();
     const incomeCode = String(phCfg.income_code  || '413505').trim();
+    const lateFeeIncomeCode = String(phCfg.late_fee_income_code || incomeCode).trim();
+    const crossRef   = String(inv.number || '').trim();
 
     // Buscar tipo de transacción CF
     const cfTypes = await pb.list('transaction_types', {
@@ -1262,15 +1465,65 @@ const API = {
     if (!cfTypes.items.length) throw new Error('Tipo de transacción CF no encontrado. Reinicia PocketBase para aplicar la migración.');
     const txType = cfTypes.items[0];
 
-    // Buscar cuenta CxC por código
-    const safeCxc = pb.escapeFilterValue(cxcCode);
-    const cxcRes  = await pb.list('accounts', { filter: `code="${safeCxc}"`, perPage: 1 });
-    if (!cxcRes.items.length) throw new Error(`Cuenta CxC "${cxcCode}" no encontrada. Configúrala en Copropiedades > Configuración.`);
-    const cxcAccount = cxcRes.items[0];
-
     // Propietario de la unidad (para third_party en asiento)
     const property = inv.expand?.property_id;
     const ownerId  = property?.owner_id || null;
+
+    const accountByIdCache = {};
+    const accountByCodeCache = {};
+    const getAccById = async (id) => {
+      const key = String(id || '').trim();
+      if (!key) throw new Error('Cuenta contable inválida.');
+      if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
+      return accountByIdCache[key];
+    };
+    const findAccByCode = async (code) => {
+      const key = String(code || '').trim();
+      if (!key) throw new Error('Código de cuenta inválido.');
+      if (accountByCodeCache[key]) return accountByCodeCache[key];
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta "${key}" no encontrada.`);
+      const acc = res.items[0];
+      accountByCodeCache[key] = acc;
+      accountByIdCache[acc.id] = acc;
+      return acc;
+    };
+
+    // Buscar cuentas base por código
+    const cxcAccount = await findAccByCode(cxcCode);
+    const incomeDefaultAccount = await findAccByCode(incomeCode);
+
+    const buildTxLine = async ({ accountId, debit = 0, credit = 0, description = '', thirdPartyId = null, crossDocRef = '' }) => {
+      const acc = await getAccById(accountId);
+      const line = {
+        account_id: acc.id,
+        debit: Number(debit || 0),
+        credit: Number(credit || 0),
+        description: String(description || ''),
+        line_order: 0,
+      };
+
+      if (acc.requires_third_party) {
+        const resolvedThird = thirdPartyId || ownerId || null;
+        if (!resolvedThird) {
+          throw new Error(`La cuenta ${acc.code} - ${acc.name} requiere tercero y la unidad no tiene propietario.`);
+        }
+        line.third_party_id = resolvedThird;
+      } else {
+        line.third_party_id = thirdPartyId || null;
+      }
+
+      if (acc.maneja_cruce) {
+        const ref = String(crossDocRef || crossRef || '').trim();
+        if (!ref) {
+          throw new Error(`La cuenta ${acc.code} - ${acc.name} requiere documento de cruce.`);
+        }
+        line.cross_doc_ref = ref;
+      }
+
+      return line;
+    };
 
     // Construir líneas del asiento contable
     const txLines = [];
@@ -1278,41 +1531,33 @@ const API = {
     // Líneas de ingreso por concepto (crédito)
     for (const ln of lines) {
       const concept   = ln.expand?.concept_id;
-      let accCode     = incomeCode;
-      if (concept?.expand?.account_id?.code) {
-        accCode = concept.expand.account_id.code;
-      } else if (concept?.account_id) {
-        // Expand no disponible — buscar por id
-        try {
-          const acc = await pb.get('accounts', concept.account_id);
-          accCode = acc.code || incomeCode;
-        } catch (_) { accCode = incomeCode; }
+      let incomeAccountId = incomeDefaultAccount.id;
+      if (concept?.account_id) {
+        incomeAccountId = concept.account_id;
+      } else if (!ln.concept_id && /inter[eé]s de mora/i.test(String(ln.description || ''))) {
+        const lateAcc = await findAccByCode(lateFeeIncomeCode);
+        incomeAccountId = lateAcc.id;
       }
-
-      const safeCode = pb.escapeFilterValue(accCode);
-      const accRes   = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
-      if (!accRes.items.length) throw new Error(`Cuenta de ingreso "${accCode}" no encontrada.`);
-
-      txLines.push({
-        account_id:     accRes.items[0].id,
-        third_party_id: ownerId || null,
-        debit:          0,
-        credit:         Number(ln.amount || 0),
-        description:    ln.description,
-        line_order:     txLines.length + 1,
-      });
+      txLines.push(await buildTxLine({
+        accountId: incomeAccountId,
+        debit: 0,
+        credit: Number(ln.amount || 0),
+        description: ln.description,
+        thirdPartyId: ownerId || null,
+        crossDocRef: crossRef,
+      }));
     }
 
     // Línea de débito a CxC (una sola línea por el total)
     const totalAmount = lines.reduce((s, l) => s + Number(l.amount || 0), 0);
-    txLines.unshift({
-      account_id:     cxcAccount.id,
-      third_party_id: ownerId || null,
-      debit:          totalAmount,
-      credit:         0,
-      description:    `Cuota ${inv.period} — ${property?.name || property?.code || inv.property_id}`,
-      line_order:     0,
-    });
+    txLines.unshift(await buildTxLine({
+      accountId: cxcAccount.id,
+      debit: totalAmount,
+      credit: 0,
+      description: `Cuota ${inv.period} — ${property?.name || property?.code || inv.property_id}`,
+      thirdPartyId: ownerId || null,
+      crossDocRef: crossRef,
+    }));
     // Reordenar
     txLines.forEach((l, i) => { l.line_order = i + 1; });
 
@@ -1324,6 +1569,7 @@ const API = {
       date:          inv.date,
       description:   `Factura PH ${inv.number} — ${property?.name || inv.property_id} — ${inv.period}`,
       third_party_id: ownerId || null,
+      cross_enabled: txLines.some(l => !!l.cross_doc_ref),
       status:        'active',
       user_id:       userId || undefined,
     });
@@ -1372,18 +1618,43 @@ const API = {
   /** PQRs paginadas */
   async getPhPqrs(opts = {}) {
     const { page = 1, perPage = 50, filter = '', sort = '-created' } = opts;
-    return pb.list('ph_pqrs', {
-      page, perPage, filter, sort,
-      expand: 'property_id',
-    });
+    try {
+      return await pb.list('ph_pqrs', {
+        page, perPage, filter, sort,
+        expand: 'property_id',
+      });
+    } catch (_) {
+      try {
+        return await pb.list('ph_pqrs', {
+          page, perPage, filter,
+          expand: 'property_id',
+        });
+      } catch (_2) {
+        return { items: [], totalItems: 0, page, perPage };
+      }
+    }
   },
 
   /** Genera número de PQR con prefijo PQR-YYYYMMDD-NNNN */
   async nextPhPqrNumber() {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const res   = await pb.list('ph_pqrs', { sort: '-created', perPage: 1 });
+    const res   = await pb.list('ph_pqrs', { perPage: 1 });
     const count = (res.totalItems || 0) + 1;
     return `PQR-${today}-${String(count).padStart(4, '0')}`;
+  },
+
+  /** Cobros individuales paginados */
+  async getPhIndividualCharges(opts = {}) {
+    const { page = 1, perPage = 100, filter = '', sort = '-created' } = opts;
+    try {
+      return await pb.list('ph_individual_charges', { page, perPage, filter, sort });
+    } catch (_) {
+      try {
+        return await pb.list('ph_individual_charges', { page, perPage, filter });
+      } catch (_2) {
+        return { items: [], totalItems: 0, page, perPage };
+      }
+    }
   },
 };
 

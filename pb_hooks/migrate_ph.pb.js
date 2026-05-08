@@ -25,6 +25,27 @@ onBootstrap((e) => {
     return;
   }
 
+  // Normalizar permisos de settings para roles con canWrite.
+  try {
+    const settingsCol = $app.findCollectionByNameOrId('settings');
+    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+    let changed = false;
+    if (settingsCol.createRule !== writeRule) {
+      settingsCol.createRule = writeRule;
+      changed = true;
+    }
+    if (settingsCol.updateRule !== writeRule) {
+      settingsCol.updateRule = writeRule;
+      changed = true;
+    }
+    if (changed) {
+      $app.save(settingsCol);
+      console.log('[GRAVY-PH] Reglas de settings sincronizadas con canWrite.');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar settings: ' + err);
+  }
+
   // ──────────────────────────────────────────────────────────
   // COLECCIÓN: ph_properties — Unidades habitacionales
   // ──────────────────────────────────────────────────────────
@@ -60,6 +81,43 @@ onBootstrap((e) => {
     });
     $app.save(phProperties);
     console.log('[GRAVY-PH] Colección ph_properties creada.');
+  }
+
+  // Normalizar ph_properties si ya existía: reglas y campos nuevos.
+  try {
+    const phProperties = $app.findCollectionByNameOrId('ph_properties');
+    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+    const existing = new Set(phProperties.fields.fieldNames());
+    let changed = false;
+
+    if (phProperties.createRule !== writeRule) {
+      phProperties.createRule = writeRule;
+      changed = true;
+    }
+    if (phProperties.updateRule !== writeRule) {
+      phProperties.updateRule = writeRule;
+      changed = true;
+    }
+
+    if (!existing.has('tower')) {
+      phProperties.fields.add(new TextField({ name: 'tower', required: false }));
+      changed = true;
+    }
+    if (!existing.has('apartment')) {
+      phProperties.fields.add(new TextField({ name: 'apartment', required: false }));
+      changed = true;
+    }
+    if (!existing.has('admin_fee')) {
+      phProperties.fields.add(new NumberField({ name: 'admin_fee', required: false, min: 0 }));
+      changed = true;
+    }
+
+    if (changed) {
+      $app.save(phProperties);
+      console.log('[GRAVY-PH] Colección ph_properties actualizada: reglas/campos sincronizados.');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar ph_properties: ' + err);
   }
 
   // ──────────────────────────────────────────────────────────
@@ -272,6 +330,100 @@ onBootstrap((e) => {
     });
     $app.save(phPqrs);
     console.log('[GRAVY-PH] Colección ph_pqrs creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_individual_charges — Cobros individuales
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_individual_charges');
+  } catch (_) {
+    let phPropertiesId2 = '';
+    try { phPropertiesId2 = $app.findCollectionByNameOrId('ph_properties').id; } catch (_2) {}
+    const phIndividualCharges = new Collection({
+      name: 'ph_individual_charges',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      fields: [
+        { name: 'property_id',   type: 'relation', required: true,
+          collectionId: phPropertiesId2, cascadeDelete: false },
+        { name: 'description',   type: 'text',     required: true  },
+        { name: 'amount',        type: 'number',   required: true, min: 0 },
+        { name: 'period',        type: 'text',     required: true  },
+        { name: 'notes',         type: 'text',     required: false },
+      ],
+    });
+    $app.save(phIndividualCharges);
+    console.log('[GRAVY-PH] Colección ph_individual_charges creada.');
+  }
+
+  // Normalizar permisos de colecciones de configuración PH con canWrite.
+  try {
+    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+    const writableCollections = ['ph_common_areas', 'ph_billing_concepts', 'ph_individual_charges'];
+    let adjusted = 0;
+    for (const cname of writableCollections) {
+      try {
+        const col = $app.findCollectionByNameOrId(cname);
+        let changed = false;
+        if (col.createRule !== writeRule) {
+          col.createRule = writeRule;
+          changed = true;
+        }
+        if (col.updateRule !== writeRule) {
+          col.updateRule = writeRule;
+          changed = true;
+        }
+        if (changed) {
+          $app.save(col);
+          adjusted++;
+        }
+      } catch (_inner) {}
+    }
+    if (adjusted > 0) {
+      console.log('[GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de configuración PH: ' + adjusted);
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar permisos de configuración PH: ' + err);
+  }
+
+  // Normalizar permisos de facturación PH para roles con canWrite.
+  try {
+    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+    const deleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
+    const billingCollections = ['ph_invoices', 'ph_invoice_lines'];
+    let adjustedBilling = 0;
+    for (const cname of billingCollections) {
+      try {
+        const col = $app.findCollectionByNameOrId(cname);
+        let changed = false;
+        if (col.createRule !== writeRule) {
+          col.createRule = writeRule;
+          changed = true;
+        }
+        if (col.updateRule !== writeRule) {
+          col.updateRule = writeRule;
+          changed = true;
+        }
+        if (col.deleteRule !== deleteRule) {
+          col.deleteRule = deleteRule;
+          changed = true;
+        }
+        if (changed) {
+          $app.save(col);
+          adjustedBilling++;
+        }
+      } catch (_inner) {}
+    }
+    if (adjustedBilling > 0) {
+      console.log('[GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de facturación PH: ' + adjustedBilling);
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar permisos de facturación PH: ' + err);
   }
 
   // ──────────────────────────────────────────────────────────

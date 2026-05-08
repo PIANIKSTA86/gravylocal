@@ -1,10 +1,10 @@
 @echo off
 chcp 65001 >nul
-title ContaCO v2.0 — Servidor Local
+title GRAVY v2.0 — Servidor Local
 
 echo.
 echo  ╔══════════════════════════════════════════╗
-echo  ║        ContaCO v2.0 — Iniciando         ║
+echo  ║        GRAVY v2.0 — Iniciando            ║
 echo  ╚══════════════════════════════════════════╝
 echo.
 
@@ -28,11 +28,11 @@ if /I "%~1"=="--lan" (
     set "ACCESS_LAN=http://%COMPUTERNAME%:8090"
 )
 
-:: Verificar si ya hay una instancia corriendo en el puerto 8090
-netstat -ano | find ":8090" >nul 2>&1
+:: Verificar si ya hay una instancia escuchando en el puerto 8090
+netstat -ano | findstr /R /C:":8090 .*LISTENING" >nul 2>&1
 if %ERRORLEVEL%==0 (
     echo  [AVISO] El puerto 8090 ya esta en uso.
-    echo  ContaCO ya esta corriendo, abre tu navegador en:
+    echo  GRAVY ya esta corriendo, abre tu navegador en:
     echo.
     echo         http://localhost:8090
     echo.

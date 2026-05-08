@@ -153,6 +153,15 @@ async function renderPhFacturacion(c) {
           <input id="ph-period-filter" type="month" class="form-input" style="max-width:180px" value="${esc(period)}">
         </div>
         <div class="flex-1"></div>
+        ${can('canApprove') ? `
+          <button class="btn btn-outline" id="ph-unpost-period-btn" title="Descontabilizar liquidación del período"
+            style="color:#1A4B8C;border-color:#93C5FD">
+            <i class="fas fa-rotate-left"></i> Descontabilizar período
+          </button>
+          <button class="btn btn-outline" id="ph-delete-period-btn" title="Eliminar liquidación del período"
+            style="color:#DC2626;border-color:#FECACA">
+            <i class="fas fa-trash"></i> Eliminar período
+          </button>` : ''}
         ${can('canWrite') ? `
           <button class="btn btn-primary" id="ph-gen-btn">
             <i class="fas fa-wand-magic-sparkles"></i> Generar facturas del período
@@ -214,6 +223,8 @@ async function renderPhFacturacion(c) {
 
     // Generar
     document.getElementById('ph-gen-btn')?.addEventListener('click', () => openPhGenerateModal());
+    document.getElementById('ph-unpost-period-btn')?.addEventListener('click', () => openPhUnpostPeriodModal(c));
+    document.getElementById('ph-delete-period-btn')?.addEventListener('click', () => openPhDeletePeriodModal(c));
 
     attachPhInvActions();
   } catch (err) {
@@ -280,6 +291,95 @@ function attachPhInvActions() {
   document.querySelectorAll('.ph-inv-void').forEach(btn => {
     btn.addEventListener('click', () => voidPhInvoiceModal(btn.dataset.id));
   });
+}
+
+function openPhUnpostPeriodModal(container) {
+  const period = document.getElementById('ph-period-filter')?.value || currentPeriod();
+  openModal(
+    'Descontabilizar Liquidación del Período',
+    `<div class="space-y-4">
+      <p class="text-sm" style="color:#374151">
+        Esta acción quitará la contabilización de todas las facturas del período <strong>${fmtPeriod(period)}</strong>.
+      </p>
+      <ul class="text-sm list-disc pl-5" style="color:#6B7280">
+        <li>Facturas en estado Contabilizada/Pagada pasarán a Borrador.</li>
+        <li>Se desvincularán de su asiento contable.</li>
+        <li>Los asientos se intentarán pasar a borrador; si no es posible, se anularán.</li>
+      </ul>
+      <div class="form-group mb-0">
+        <label class="form-label">Confirma escribiendo el período</label>
+        <input id="ph-unpost-period-confirm" class="form-input" placeholder="${esc(period)}">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="ph-unpost-period-confirm-btn"><i class="fas fa-rotate-left mr-1"></i>Descontabilizar</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-unpost-period-confirm-btn')?.addEventListener('click', async () => {
+      const typed = (document.getElementById('ph-unpost-period-confirm')?.value || '').trim();
+      if (typed !== period) {
+        showToast(`Debes escribir exactamente ${period}.`, 'warning');
+        return;
+      }
+      const btn = document.getElementById('ph-unpost-period-confirm-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+      try {
+        const r = await API.unpostPhInvoicesByPeriod(period);
+        showToast(`Período ${period}: ${r.reverted} facturas descontabilizadas.`, 'success');
+        closeModal();
+        renderPhFacturacion(container);
+      } catch (err) {
+        showToast(err.message || 'Error al descontabilizar período.', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left mr-1"></i>Descontabilizar'; }
+      }
+    }, { once: true });
+  }, 50);
+}
+
+function openPhDeletePeriodModal(container) {
+  const period = document.getElementById('ph-period-filter')?.value || currentPeriod();
+  openModal(
+    'Eliminar Liquidación del Período',
+    `<div class="space-y-4">
+      <p class="text-sm" style="color:#374151">
+        Esta acción eliminará todas las facturas del período <strong>${fmtPeriod(period)}</strong>.
+      </p>
+      <ul class="text-sm list-disc pl-5" style="color:#DC2626">
+        <li>Se eliminarán cabeceras y líneas de factura del período.</li>
+        <li>Se intentará eliminar los asientos asociados; si no es posible, se anularán.</li>
+        <li>Esta acción no se puede deshacer.</li>
+      </ul>
+      <div class="form-group mb-0">
+        <label class="form-label">Confirma escribiendo <strong>ELIMINAR ${esc(period)}</strong></label>
+        <input id="ph-delete-period-confirm" class="form-input" placeholder="ELIMINAR ${esc(period)}">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-danger" id="ph-delete-period-confirm-btn"><i class="fas fa-trash mr-1"></i>Eliminar Todo</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-delete-period-confirm-btn')?.addEventListener('click', async () => {
+      const typed = (document.getElementById('ph-delete-period-confirm')?.value || '').trim().toUpperCase();
+      const expected = `ELIMINAR ${period}`.toUpperCase();
+      if (typed !== expected) {
+        showToast(`Debes escribir exactamente: ${expected}`, 'warning');
+        return;
+      }
+      const btn = document.getElementById('ph-delete-period-confirm-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Eliminando...'; }
+      try {
+        const r = await API.deletePhInvoicesByPeriod(period);
+        showToast(`Período ${period}: ${r.deleted} facturas eliminadas.`, 'success');
+        closeModal();
+        renderPhFacturacion(container);
+      } catch (err) {
+        showToast(err.message || 'Error al eliminar período.', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash mr-1"></i>Eliminar Todo'; }
+      }
+    }, { once: true });
+  }, 50);
 }
 
 function openPhGenerateModal() {
@@ -485,6 +585,7 @@ async function renderPhUnidades(c) {
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
     const properties = await API.getPhProperties(false);
+    const canEditUnits = can('canWrite');
     const active   = properties.filter(p => p.active !== false).length;
     const inactive = properties.length - active;
 
@@ -499,9 +600,10 @@ async function renderPhUnidades(c) {
           <span class="font-bold text-sm" style="color:#0D2137">Unidades Habitacionales</span>
           <div class="flex gap-2">
             <input id="ph-unit-search" class="form-input text-sm" placeholder="Buscar..." style="max-width:200px">
+            ${canEditUnits ? `
             <button class="btn btn-primary btn-sm" id="ph-unit-add-btn">
               <i class="fas fa-plus mr-1"></i>Nueva Unidad
-            </button>
+            </button>` : ''}
           </div>
         </div>
         <div class="overflow-x-auto">
@@ -511,15 +613,16 @@ async function renderPhUnidades(c) {
                 <th>Código</th>
                 <th>Nombre</th>
                 <th>Tipo</th>
-                <th>Torre/Piso</th>
+                <th>Apartamento</th>
                 <th>Coef. %</th>
+                <th>Cuota Admin.</th>
                 <th>Propietario</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody id="ph-units-tbody">
-              ${renderPhUnitRows(properties)}
+              ${renderPhUnitRows(properties, canEditUnits)}
             </tbody>
           </table>
         </div>
@@ -534,20 +637,22 @@ async function renderPhUnidades(c) {
 
     document.getElementById('ph-unit-add-btn')?.addEventListener('click', () => openPhUnitModal(null, c));
 
-    c.querySelectorAll('.ph-unit-edit').forEach(btn => {
-      btn.addEventListener('click', () => openPhUnitModal(btn.dataset.id, c));
-    });
-    c.querySelectorAll('.ph-unit-toggle').forEach(btn => {
-      btn.addEventListener('click', () => togglePhUnit(btn.dataset.id, btn.dataset.active === 'true', c));
-    });
+    if (canEditUnits) {
+      c.querySelectorAll('.ph-unit-edit').forEach(btn => {
+        btn.addEventListener('click', () => openPhUnitModal(btn.dataset.id, c));
+      });
+      c.querySelectorAll('.ph-unit-toggle').forEach(btn => {
+        btn.addEventListener('click', () => togglePhUnit(btn.dataset.id, btn.dataset.active === 'true', c));
+      });
+    }
   } catch (err) {
     c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
   }
 }
 
-function renderPhUnitRows(properties) {
+function renderPhUnitRows(properties, canEditUnits = can('canWrite')) {
   if (!properties.length) {
-    return `<tr><td colspan="8" class="text-center py-10" style="color:#9CA3AF">No hay unidades registradas.</td></tr>`;
+    return `<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF">No hay unidades registradas.</td></tr>`;
   }
   return properties.map(p => {
     const owner   = p.expand?.owner_id;
@@ -556,14 +661,13 @@ function renderPhUnitRows(properties) {
       <td class="font-mono text-xs font-bold">${esc(p.code)}</td>
       <td class="font-semibold" style="color:#0D2137">${esc(p.name)}</td>
       <td><span class="badge badge-gray">${esc(p.unit_type || '—')}</span></td>
-      <td class="text-sm">
-        ${p.tower ? `Torre ${esc(p.tower)} ` : ''}${p.floor ? `Piso ${esc(p.floor)}` : '—'}
-      </td>
+      <td class="text-sm font-semibold">${esc(p.apartment || '—')}</td>
       <td class="text-sm text-right">${p.coef_participacion ? fmtN(p.coef_participacion) + '%' : '—'}</td>
+      <td class="text-sm text-right font-semibold" style="color:#E87D1E">${p.admin_fee ? fmt(p.admin_fee) : '—'}</td>
       <td class="text-sm">${esc(owner?.name || '—')}</td>
       <td><span class="badge ${active ? 'badge-green' : 'badge-gray'}">${active ? 'Activa' : 'Inactiva'}</span></td>
       <td>
-        <div class="flex gap-1">
+        ${canEditUnits ? `<div class="flex gap-1">
           <button class="btn btn-outline btn-sm ph-unit-edit" data-id="${esc(p.id)}" title="Editar">
             <i class="fas fa-pen"></i>
           </button>
@@ -572,13 +676,17 @@ function renderPhUnitRows(properties) {
             style="${active ? 'color:#DC2626;border-color:#FECACA' : 'color:#059669;border-color:#6EE7B7'}">
             <i class="fas ${active ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
           </button>
-        </div>
+        </div>` : `<span class="text-xs" style="color:#9CA3AF">Solo lectura</span>`}
       </td>
     </tr>`;
   }).join('');
 }
 
 async function openPhUnitModal(unitId, container) {
+  if (!can('canWrite')) {
+    showToast('No tienes permisos para guardar unidades.', 'warning');
+    return;
+  }
   let unit = null;
   let terceros = [];
   try {
@@ -610,17 +718,23 @@ async function openPhUnitModal(unitId, container) {
         </select>
       </div>
       <div class="form-group">
+        <label class="form-label">Torre</label>
+        <input id="pu-tower" class="form-input" value="${esc(unit?.tower || '')}" placeholder="Ej: Torre 1, A, Norte">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Apartamento (número sin torre)</label>
+        <input id="pu-apartment" class="form-input" value="${esc(unit?.apartment || '')}" placeholder="Ej: 101, 305, PB-01">
+      </div>
+      <div class="form-group">
         <label class="form-label">Coef. Participación (%)</label>
         <input id="pu-coef" type="number" step="0.0001" min="0" max="100" class="form-input"
           value="${esc(unit?.coef_participacion ?? '')}" placeholder="0.0000">
       </div>
       <div class="form-group">
-        <label class="form-label">Torre</label>
-        <input id="pu-tower" class="form-input" value="${esc(unit?.tower || '')}" placeholder="Ej: A, 1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Piso</label>
-        <input id="pu-floor" class="form-input" value="${esc(unit?.floor || '')}" placeholder="Ej: 1, PB">
+        <label class="form-label">Cuota Administración (valor fijo)</label>
+        <input id="pu-admin-fee" type="number" min="0" step="0.01" class="form-input"
+          value="${esc(unit?.admin_fee ?? '')}" placeholder="0.00">
+        <p class="text-xs mt-1" style="color:#6B7280">Si se completa, esta unidad pagará este valor fijo en vez del coeficiente.</p>
       </div>
       <div class="form-group">
         <label class="form-label">Área (m²)</label>
@@ -661,9 +775,10 @@ async function openPhUnitModal(unitId, container) {
         code,
         name,
         unit_type:           utype,
+        tower:               (document.getElementById('pu-tower')?.value     || '').trim(),
+        apartment:           (document.getElementById('pu-apartment')?.value || '').trim(),
         coef_participacion:  parseFloat(document.getElementById('pu-coef')?.value  || 0) || 0,
-        tower:               (document.getElementById('pu-tower')?.value  || '').trim(),
-        floor:               (document.getElementById('pu-floor')?.value  || '').trim(),
+        admin_fee:           parseFloat(document.getElementById('pu-admin-fee')?.value || 0) || 0,
         area_m2:             parseFloat(document.getElementById('pu-area')?.value   || 0) || 0,
         owner_id:            document.getElementById('pu-owner')?.value  || null,
         notes:               document.getElementById('pu-notes')?.value  || '',
@@ -694,6 +809,10 @@ async function openPhUnitModal(unitId, container) {
 }
 
 async function togglePhUnit(unitId, currentActive, container) {
+  if (!can('canWrite')) {
+    showToast('No tienes permisos para actualizar unidades.', 'warning');
+    return;
+  }
   const action = currentActive ? 'desactivar' : 'activar';
   if (!confirm(`¿${action.charAt(0).toUpperCase() + action.slice(1)} esta unidad?`)) return;
   try {
@@ -927,10 +1046,11 @@ async function renderPhPqrs(c) {
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
     const [pqrsRes, props] = await Promise.all([
-      API.getPhPqrs({ filter: 'status!="closed"', sort: '-created', perPage: 100 }),
+      API.getPhPqrs({ perPage: 100 }),
       API.getPhProperties(true),
     ]);
-    const pqrs   = pqrsRes.items || [];
+    const allPqrs = pqrsRes.items || [];
+    const pqrs    = allPqrs.filter(p => (p.status || 'open') !== 'closed');
     const open   = pqrs.filter(p => p.status === 'open').length;
     const inProc = pqrs.filter(p => p.status === 'in_process').length;
     const alta   = pqrs.filter(p => p.priority === 'alta').length;
@@ -975,12 +1095,15 @@ async function renderPhPqrs(c) {
     async function reloadPqrs() {
       const status = document.getElementById('ph-pqr-status-filter')?.value;
       const type   = document.getElementById('ph-pqr-type-filter')?.value;
-      let filter   = '';
-      if (status) filter += `status="${pb.escapeFilterValue(status)}"`;
-      if (type)   filter += (filter ? ' && ' : '') + `pqrs_type="${pb.escapeFilterValue(type)}"`;
-      if (!status) filter = filter || 'status!="closed"';
-      const res = await API.getPhPqrs({ filter, sort: '-created', perPage: 100 });
-      document.getElementById('ph-pqrs-tbody').innerHTML = renderPhPqrRows(res.items || []);
+      const res = await API.getPhPqrs({ perPage: 100 });
+      const items = (res.items || []).filter(p => {
+        const currentStatus = p.status || 'open';
+        if (!status && currentStatus === 'closed') return false;
+        if (status && currentStatus !== status) return false;
+        if (type && p.pqrs_type !== type) return false;
+        return true;
+      });
+      document.getElementById('ph-pqrs-tbody').innerHTML = renderPhPqrRows(items);
       attachPhPqrActions(c, props);
     }
 
@@ -1163,18 +1286,36 @@ async function openPhPqrModal(pqrId, container, propsPreloaded) {
 // TAB: CONFIGURACIÓN
 // ══════════════════════════════════════════════════════════════════════════════
 async function renderPhConfig(c) {
+  c.id = c.id || 'ph-config-container';
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
-    const [concepts, areas, phCfgRaw, accounts] = await Promise.all([
+    const [concepts, areas, phCfgRaw, accounts, properties] = await Promise.all([
       API.getPhBillingConcepts(false),
       API.getPhCommonAreas(false),
       API.getSetting('ph_config_v1'),
       API.getAccounts(true),
+      API.getPhProperties(true),
     ]);
+    const propMap = new Map((properties || []).map(p => [p.id, p]));
     let phCfg = {};
     try { phCfg = phCfgRaw ? JSON.parse(phCfgRaw) : {}; } catch (_) { phCfg = {}; }
     const cxcCode    = phCfg.cxc_code    || '130505';
     const incomeCode = phCfg.income_code || '413505';
+    const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
+    const activeLeafAccounts = (accounts || [])
+      .filter(a => a.active !== false && Number(a.level || 0) >= 3)
+      .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+    const accountByCode = new Map(activeLeafAccounts.map(a => [String(a.code || ''), a]));
+    const cxcAccounts = activeLeafAccounts.filter(a => String(a.code || '').startsWith('1'));
+    const incomeAccounts = activeLeafAccounts.filter(a => String(a.code || '').startsWith('4'));
+    const accountOptions = (rows, selectedCode = '') => {
+      const selected = String(selectedCode || '');
+      const hasSelected = rows.some(a => String(a.code || '') === selected);
+      const orphanOption = selected && !hasSelected
+        ? `<option value="${esc(selected)}" selected>${esc(selected)} — (No encontrada en PUC activo)</option>`
+        : '';
+      return `${orphanOption}<option value="">— Seleccionar cuenta —</option>${rows.map(a => `<option value="${esc(a.code)}"${String(a.code || '') === selected ? ' selected' : ''}>${esc(a.code)} — ${esc(a.name || '')}</option>`).join('')}`;
+    };
 
     c.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1189,12 +1330,12 @@ async function renderPhConfig(c) {
           </p>
           <div class="form-group">
             <label class="form-label">Cuenta CxC Propietarios (Débito)</label>
-            <input id="ph-cfg-cxc" class="form-input font-mono" value="${esc(cxcCode)}" placeholder="Ej: 130505">
+            <select id="ph-cfg-cxc" class="form-input font-mono">${accountOptions(cxcAccounts, cxcCode)}</select>
             <p class="text-xs mt-1" style="color:#9CA3AF">Cuenta a debitar al generar la factura (cartera de propietarios).</p>
           </div>
           <div class="form-group">
             <label class="form-label">Cuenta de Ingreso por Defecto (Crédito)</label>
-            <input id="ph-cfg-income" class="form-input font-mono" value="${esc(incomeCode)}" placeholder="Ej: 413505">
+            <select id="ph-cfg-income" class="form-input font-mono">${accountOptions(incomeAccounts, incomeCode)}</select>
             <p class="text-xs mt-1" style="color:#9CA3AF">Usada cuando el concepto no tiene cuenta propia asignada.</p>
           </div>
           <button class="btn btn-primary" id="ph-cfg-save-btn">
@@ -1241,6 +1382,57 @@ async function renderPhConfig(c) {
             </table>
           </div>
         </div>
+
+        <!-- Intereses de Mora -->
+        <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
+          <h4 class="font-bold mb-4" style="color:#0D2137">
+            <i class="fas fa-hourglass-end mr-2" style="color:#DC2626"></i>Configuración de Intereses de Mora
+          </h4>
+          <p class="text-sm mb-4" style="color:#6B7280">
+            Define qué conceptos generan interés de mora y la tasa mensual aplicable sobre saldos vencidos.
+          </p>
+          <div class="form-group">
+            <label class="form-label">Tasa de Mora (% mensual)</label>
+            <input id="ph-late-rate" type="number" min="0" max="100" step="0.01" class="form-input" 
+              value="${phCfg.late_fee_rate || 2}" placeholder="2">
+            <p class="text-xs mt-1" style="color:#6B7280">Ingresa el valor entero. Ej: <strong>2</strong> para aplicar el 2% mensual sobre el saldo vencido.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Cuenta de Ingreso para Intereses de Mora</label>
+            <select id="ph-late-income" class="form-input font-mono">${accountOptions(incomeAccounts, lateFeeIncomeCode)}</select>
+            <p class="text-xs mt-1" style="color:#6B7280">Cuenta clase 4 donde se contabilizarán los intereses de mora.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Conceptos que generan mora</label>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px;margin-top:8px">
+              ${concepts.filter(c => c.active !== false).map(c => `
+                <label class="flex items-center gap-2 p-3 rounded-lg" style="background:#F8FAFF;border:1px solid #E5E7EB;cursor:pointer">
+                  <input type="checkbox" class="ph-mora-concept" value="${esc(c.id)}" 
+                    ${(phCfg.late_fee_concepts || []).includes(c.id) ? 'checked' : ''}>
+                  <span class="text-sm font-medium">${esc(c.code)} — ${esc(c.name)}</span>
+                </label>`).join('')}
+            </div>
+          </div>
+          <button class="btn btn-primary mt-4" id="ph-mora-save-btn">
+            <i class="fas fa-save mr-1"></i>Guardar Configuración de Mora
+          </button>
+        </div>
+
+        <!-- Cobros Individuales por Unidad -->
+        <div class="bg-white rounded-2xl border p-5 lg:col-span-2" style="border-color:#F0F0F0">
+          <div class="flex items-center justify-between mb-4">
+            <h4 class="font-bold" style="color:#0D2137">
+              <i class="fas fa-receipt mr-2" style="color:#7F7CFF"></i>Cobros Individuales
+            </h4>
+            <button class="btn btn-primary btn-sm" id="ph-individual-charge-add-btn">
+              <i class="fas fa-plus mr-1"></i>Nuevo cobro
+            </button>
+          </div>
+          <p class="text-sm mb-4" style="color:#6B7280">
+            Asigna cobros específicos a unidades (sanciones, servicios adicionales, etc.). Se facturan automáticamente.
+          </p>
+          <div id="ph-individual-charges-list" class="space-y-2"></div>
+        </div>
       </div>`;
 
     // Guardar config contable
@@ -1248,10 +1440,23 @@ async function renderPhConfig(c) {
       const cxc    = (document.getElementById('ph-cfg-cxc')?.value    || '').trim();
       const income = (document.getElementById('ph-cfg-income')?.value  || '').trim();
       if (!cxc || !income) { showToast('Completa ambas cuentas.', 'warning'); return; }
+      if (!accountByCode.has(cxc) || !accountByCode.has(income)) {
+        showToast('Selecciona cuentas válidas del PUC activo.', 'warning');
+        return;
+      }
+      if (!cxc.startsWith('1')) {
+        showToast('La cuenta CxC debe ser de clase 1 (Activo).', 'warning');
+        return;
+      }
+      if (!income.startsWith('4')) {
+        showToast('La cuenta de ingreso debe ser de clase 4 (Ingreso).', 'warning');
+        return;
+      }
       const btn = document.getElementById('ph-cfg-save-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
-        await API.setSetting('ph_config_v1', JSON.stringify({ cxc_code: cxc, income_code: income }));
+        const cfg = { ...phCfg, cxc_code: cxc, income_code: income };
+        await API.setSetting('ph_config_v1', JSON.stringify(cfg));
         showToast('Configuración guardada.', 'success');
       } catch (err) {
         showToast(err.message || 'Error.', 'error');
@@ -1259,6 +1464,63 @@ async function renderPhConfig(c) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Configuración'; }
       }
     });
+
+    // Guardar config de mora
+    document.getElementById('ph-mora-save-btn')?.addEventListener('click', async () => {
+      const rate = parseFloat(document.getElementById('ph-late-rate')?.value || 0.5) || 0.5;
+      const lateIncome = (document.getElementById('ph-late-income')?.value || '').trim();
+      const selectedConcepts = Array.from(document.querySelectorAll('.ph-mora-concept:checked')).map(cb => cb.value);
+      if (!lateIncome) {
+        showToast('Selecciona la cuenta de ingreso para mora.', 'warning');
+        return;
+      }
+      if (!accountByCode.has(lateIncome) || !lateIncome.startsWith('4')) {
+        showToast('La cuenta de mora debe existir en el PUC activo y ser clase 4.', 'warning');
+        return;
+      }
+      const btn = document.getElementById('ph-mora-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+      try {
+        const cfg = {
+          ...phCfg,
+          late_fee_rate: rate,
+          late_fee_concepts: selectedConcepts,
+          late_fee_income_code: lateIncome,
+        };
+        await API.setSetting('ph_config_v1', JSON.stringify(cfg));
+        showToast('Configuración de mora guardada.', 'success');
+      } catch (err) {
+        showToast(err.message || 'Error.', 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Configuración de Mora'; }
+      }
+    });
+
+    // Cargar cobros individuales (colección puede no existir aún si el servidor no se reinició)
+    let chargesRes = { items: [], totalItems: 0 };
+    try { chargesRes = await API.getPhIndividualCharges(); } catch (_) {}
+    const chargesItems = chargesRes.items || chargesRes || [];
+    const chargesHTML = chargesItems.length ? chargesItems.map(ch => {
+      const prop = propMap.get(ch.property_id);
+      return `<div class="flex items-center justify-between p-3 rounded-lg" style="background:#F8FAFF;border:1px solid #E5E7EB">
+        <div>
+          <p class="font-medium text-sm" style="color:#0D2137">${esc(prop?.name || '—')}</p>
+          <p class="text-xs" style="color:#6B7280">${esc(ch.description || '')}</p>
+        </div>
+        <div class="text-right">
+          <p class="font-bold" style="color:#E87D1E">${fmt(ch.amount)}</p>
+          <p class="text-xs" style="color:#6B7280">Período: ${esc(ch.period)}</p>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="removePhIndividualCharge('${esc(ch.id)}', '${esc(c.id)}')" title="Eliminar">
+          <i class="fas fa-trash text-red-500"></i>
+        </button>
+      </div>`;
+    }).join('') : `<p class="text-sm text-center py-4" style="color:#9CA3AF">Sin cobros individuales registrados.</p>`;
+    const chargesListEl = document.getElementById('ph-individual-charges-list');
+    if (chargesListEl) chargesListEl.innerHTML = chargesHTML;
+
+    // Botón para añadir cobro individual
+    document.getElementById('ph-individual-charge-add-btn')?.addEventListener('click', () => openPhIndividualChargeModal(null, c));
 
     // Zonas comunes
     document.getElementById('ph-area-add-btn')?.addEventListener('click', () => openPhAreaModal(null, c));
@@ -1456,11 +1718,12 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
         <label class="form-label">Cuenta de Ingreso (opcional)</label>
         <select id="pc-account" class="form-input">
           <option value="">— Usar cuenta por defecto —</option>
-          ${accounts.filter(a => String(a.code||'').length >= 4).map(a =>
+          ${accounts.filter(a => String(a.code||'').startsWith('4')).map(a =>
             `<option value="${esc(a.id)}" ${concept?.account_id === a.id ? 'selected' : ''}>
               ${esc(a.code)} — ${esc(a.name)}
             </option>`).join('')}
         </select>
+        <p class="text-xs mt-1" style="color:#6B7280">Solo cuentas de ingresos (clase 4). Si no seleccionas, se usa la cuenta por defecto.</p>
       </div>
       <div class="form-group col-span-2">
         <label class="form-label">Descripción</label>
@@ -1502,4 +1765,95 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
       }
     }, { once: true });
   }, 50);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COBROS INDIVIDUALES POR UNIDAD
+// ══════════════════════════════════════════════════════════════════════════════
+async function openPhIndividualChargeModal(chargeId, container) {
+  let charge   = null;
+  let properties = [];
+  try {
+    [properties] = await Promise.all([
+      API.getPhProperties(true),
+      chargeId ? pb.get('ph_individual_charges', chargeId).then(ch => { charge = ch; }) : Promise.resolve(),
+    ]);
+  } catch (err) {
+    showToast('Error al cargar datos.', 'error');
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 7);
+  openModal(
+    charge ? 'Editar Cobro Individual' : 'Nuevo Cobro Individual',
+    `<div class="grid grid-cols-2 gap-4">
+      <div class="form-group col-span-2">
+        <label class="form-label">Unidad Habitacional <span class="text-red-500">*</span></label>
+        <select id="pic-property" class="form-input" ${charge ? 'disabled' : ''}>
+          <option value="">Seleccionar unidad...</option>
+          ${properties.map(p => `<option value="${esc(p.id)}" ${charge?.property_id === p.id ? 'selected' : ''}>${esc(p.name)} (${esc(p.code)})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Descripción <span class="text-red-500">*</span></label>
+        <input id="pic-desc" class="form-input" value="${esc(charge?.description || '')}" placeholder="Ej: Sanción, Parqueadero adicional, Servicio especial">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Período <span class="text-red-500">*</span></label>
+        <input id="pic-period" type="month" class="form-input" value="${esc(charge?.period || today)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor <span class="text-red-500">*</span></label>
+        <input id="pic-amount" type="number" min="0" step="0.01" class="form-input" value="${esc(charge?.amount || '')}" placeholder="0.00">
+      </div>
+      <div class="form-group col-span-2">
+        <label class="form-label">Notas</label>
+        <textarea id="pic-notes" class="form-input" rows="2" placeholder="Observaciones sobre este cobro...">${esc(charge?.notes || '')}</textarea>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="pic-save-btn"><i class="fas fa-save mr-1"></i>${charge ? 'Actualizar' : 'Crear'}</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('pic-save-btn')?.addEventListener('click', async () => {
+      const propId = document.getElementById('pic-property')?.value;
+      const desc   = (document.getElementById('pic-desc')?.value || '').trim();
+      const period = document.getElementById('pic-period')?.value;
+      const amount = parseFloat(document.getElementById('pic-amount')?.value || 0) || 0;
+      if (!propId || !desc || !period || !amount) {
+        showToast('Completa todos los campos obligatorios.', 'warning');
+        return;
+      }
+      const btn = document.getElementById('pic-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+      try {
+        const data = { property_id: propId, description: desc, period, amount, notes: document.getElementById('pic-notes')?.value || '' };
+        if (charge) {
+          await pb.update('ph_individual_charges', charge.id, data);
+          showToast('Cobro actualizado.', 'success');
+        } else {
+          await pb.create('ph_individual_charges', data);
+          showToast('Cobro creado. Se incluirá en la próxima facturación.', 'success');
+        }
+        closeModal();
+        renderPhConfig(container);
+      } catch (err) {
+        showToast(err.message || 'Error al guardar.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = charge ? 'Actualizar' : 'Crear'; }
+      }
+    }, { once: true });
+  }, 50);
+}
+
+async function removePhIndividualCharge(chargeId, containerId) {
+  if (!confirm('¿Eliminar este cobro individual?')) return;
+  try {
+    await pb.delete('ph_individual_charges', chargeId);
+    showToast('Cobro eliminado.', 'success');
+    const container = document.getElementById(containerId);
+    if (container) renderPhConfig(container);
+  } catch (err) {
+    showToast(err.message || 'Error al eliminar.', 'error');
+  }
 }

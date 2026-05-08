@@ -1186,8 +1186,13 @@ const API = {
       ? phCfg.late_fee_concepts.map(v => String(v || '')).filter(Boolean)
       : [];
     const lateConceptSet = new Set(lateConceptIds);
-    const asOf = new Date();
-    const asOfStr = asOf.toISOString().slice(0, 10);
+    const norm = (v) => String(v || '').trim().toLowerCase();
+    const lateConceptNameSet = new Set(
+      (concepts || [])
+        .filter(c => lateConceptSet.has(String(c.id || '')))
+        .map(c => norm(c.name))
+        .filter(Boolean)
+    );
 
     // Calcular número de secuencia base CF para este batch
     const existingFilter = `period="${safePeriod}"`;
@@ -1202,6 +1207,11 @@ const API = {
     let created = 0;
 
     for (const prop of toCreate) {
+      // Fecha de corte de mora: inicio del período que se está liquidando.
+      // Así la mora no depende del día real de ejecución del proceso.
+      const asOfStr = `${period}-01`;
+      const asOf = new Date(`${asOfStr}T00:00:00`);
+
       // Calcular líneas y total para esta unidad
       const lines = [];
       let total = 0;
@@ -1234,8 +1244,7 @@ const API = {
           if (!oldInv?.due_date) continue;
           const due = new Date(`${oldInv.due_date}T00:00:00`);
           if (Number.isNaN(due.getTime())) continue;
-          const overdueDays = Math.floor((asOf.getTime() - due.getTime()) / 86400000);
-          if (overdueDays <= 0) continue;
+          if (due.getTime() >= asOf.getTime()) continue;
 
           const safeOldInv = pb.escapeFilterValue(oldInv.id);
           const oldLines = await pb.listAll('ph_invoice_lines', {
@@ -1245,7 +1254,10 @@ const API = {
 
           for (const oldLn of oldLines) {
             const conceptId = String(oldLn?.concept_id || '');
-            if (!conceptId || !lateConceptSet.has(conceptId)) continue;
+            const descNorm = norm(oldLn?.description);
+            const selectedById = conceptId && lateConceptSet.has(conceptId);
+            const selectedByDesc = !conceptId && lateConceptNameSet.has(descNorm);
+            if (!selectedById && !selectedByDesc) continue;
             const principal = Number(oldLn.amount || 0);
             if (principal <= 0) continue;
             // lateFeeRate se almacena como entero (ej: 2 = 2% mensual).
@@ -1341,6 +1353,69 @@ const API = {
 
     return Array.from(byConcept.values())
       .sort((a, b) => String(a.concept_name || '').localeCompare(String(b.concept_name || '')));
+  },
+
+  /**
+   * Contabiliza en lote la liquidación de un período PH.
+   * Solo procesa facturas en draft; omite posted/paid/voided.
+   */
+  async postPhInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let posted = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failures = [];
+
+    for (const inv of invoices) {
+      if (inv.status !== 'draft') {
+        skipped++;
+        continue;
+      }
+      try {
+        await this.postPhInvoice(inv.id);
+        posted++;
+      } catch (err) {
+        failed++;
+        failures.push(`${inv.number || inv.id}: ${err?.message || 'Error'}`);
+      }
+    }
+
+    await this.logAudit(
+      'POST_PERIOD',
+      'PhInvoices',
+      period,
+      `Período ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
+    );
+
+    return { period, total: invoices.length, posted, skipped, failed, failures };
+  },
+
+  /**
+   * Descontabiliza una sola factura PH (posted/paid -> draft).
+   * Intenta pasar el asiento a draft; si falla, lo anula.
+   */
+  async unpostPhInvoice(invoiceId) {
+    const inv = await pb.get('ph_invoices', invoiceId);
+    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada y no se puede descontabilizar.');
+
+    let txAction = 'none';
+    if (inv.tx_id) {
+      try {
+        await pb.update('transactions', inv.tx_id, { status: 'draft' });
+        txAction = 'draft';
+      } catch (_) {
+        await pb.update('transactions', inv.tx_id, { status: 'voided' });
+        txAction = 'voided';
+      }
+    }
+
+    await pb.update('ph_invoices', invoiceId, { status: 'draft', tx_id: null });
+    await this.logAudit('UNPOST', 'PhInvoice', invoiceId, `Descontabilizada ${inv.number || invoiceId} | TX->${txAction}`);
+    return { invoiceId, txAction };
   },
 
   /**
@@ -1530,9 +1605,13 @@ const API = {
 
     // Líneas de ingreso por concepto (crédito)
     for (const ln of lines) {
-      const concept   = ln.expand?.concept_id;
+      const concept = ln.expand?.concept_id;
       let incomeAccountId = incomeDefaultAccount.id;
-      if (concept?.account_id) {
+      if (ln.account_code) {
+        // Override directo en la línea (conceptos individuales manuales)
+        const overrideAcc = await findAccByCode(ln.account_code);
+        incomeAccountId = overrideAcc.id;
+      } else if (concept?.account_id) {
         incomeAccountId = concept.account_id;
       } else if (!ln.concept_id && /inter[eé]s de mora/i.test(String(ln.description || ''))) {
         const lateAcc = await findAccByCode(lateFeeIncomeCode);
@@ -1644,15 +1723,81 @@ const API = {
   },
 
   /** Cobros individuales paginados */
+  /**
+   * Añade líneas de conceptos individuales a una factura en borrador.
+   * lines: [{ description, amount, account_code }]
+   * Recalcula el total de la factura.
+   */
+  async addPhIndividualLinesToInvoice(invoiceId, lines) {
+    const inv = await pb.get('ph_invoices', invoiceId);
+    if (inv.status !== 'draft') throw new Error('Solo se pueden modificar facturas en estado Borrador.');
+    const existingLines = await this.getPhInvoiceLines(invoiceId);
+    let lineOrder = Math.max(0, ...existingLines.map(l => Number(l.line_order || 0))) + 1;
+    for (const ln of lines) {
+      await pb.create('ph_invoice_lines', {
+        invoice_id:   invoiceId,
+        concept_id:   null,
+        description:  String(ln.description || ''),
+        amount:       Math.round(Number(ln.amount || 0)),
+        account_code: String(ln.account_code || ''),
+        line_order:   lineOrder++,
+      });
+    }
+    // Recalcular total
+    const allLines = await this.getPhInvoiceLines(invoiceId);
+    const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
+    await pb.update('ph_invoices', invoiceId, { subtotal: newTotal, total: newTotal });
+    return newTotal;
+  },
+
+  /**
+   * Edita una línea manual de factura PH en borrador y recalcula total.
+   */
+  async updatePhDraftInvoiceLine(lineId, { description = '', amount = 0, account_code = '' } = {}) {
+    const line = await pb.get('ph_invoice_lines', lineId);
+    const inv = await pb.get('ph_invoices', line.invoice_id);
+    if (inv.status !== 'draft') throw new Error('Solo se pueden editar líneas de facturas en borrador.');
+    await pb.update('ph_invoice_lines', lineId, {
+      description: String(description || '').trim(),
+      amount: Math.round(Number(amount || 0)),
+      account_code: String(account_code || '').trim() || null,
+    });
+    const allLines = await this.getPhInvoiceLines(inv.id);
+    const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
+    await pb.update('ph_invoices', inv.id, { subtotal: newTotal, total: newTotal });
+    return { invoiceId: inv.id, total: newTotal };
+  },
+
+  /**
+   * Elimina una línea manual de factura PH en borrador y recalcula total.
+   */
+  async deletePhDraftInvoiceLine(lineId) {
+    const line = await pb.get('ph_invoice_lines', lineId);
+    const inv = await pb.get('ph_invoices', line.invoice_id);
+    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar líneas de facturas en borrador.');
+    await pb.delete('ph_invoice_lines', lineId);
+    const allLines = await this.getPhInvoiceLines(inv.id);
+    const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
+    await pb.update('ph_invoices', inv.id, { subtotal: newTotal, total: newTotal });
+    return { invoiceId: inv.id, total: newTotal };
+  },
+
   async getPhIndividualCharges(opts = {}) {
-    const { page = 1, perPage = 100, filter = '', sort = '-created' } = opts;
+    const { page = 1, perPage = 100, filter = '', sort = '' } = opts;
+    const params = { page, perPage, filter };
+    if (sort) params.sort = sort;
     try {
-      return await pb.list('ph_individual_charges', { page, perPage, filter, sort });
+      return await pb.list('ph_individual_charges', params);
     } catch (_) {
       try {
         return await pb.list('ph_individual_charges', { page, perPage, filter });
       } catch (_2) {
-        return { items: [], totalItems: 0, page, perPage };
+        try {
+          // Fallback para esquemas legacy donde el filtro/campo aún no existe.
+          return await pb.list('ph_individual_charges', { page, perPage });
+        } catch (_3) {
+          return { items: [], totalItems: 0, page, perPage };
+        }
       }
     }
   },

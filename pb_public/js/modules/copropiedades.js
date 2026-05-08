@@ -154,6 +154,10 @@ async function renderPhFacturacion(c) {
         </div>
         <div class="flex-1"></div>
         ${can('canApprove') ? `
+          <button class="btn btn-outline" id="ph-post-period-btn" title="Contabilizar todas las facturas en borrador del período"
+            style="color:#059669;border-color:#6EE7B7">
+            <i class="fas fa-layer-group"></i> Contabilizar período
+          </button>
           <button class="btn btn-outline" id="ph-unpost-period-btn" title="Descontabilizar liquidación del período"
             style="color:#1A4B8C;border-color:#93C5FD">
             <i class="fas fa-rotate-left"></i> Descontabilizar período
@@ -223,6 +227,7 @@ async function renderPhFacturacion(c) {
 
     // Generar
     document.getElementById('ph-gen-btn')?.addEventListener('click', () => openPhGenerateModal());
+    document.getElementById('ph-post-period-btn')?.addEventListener('click', () => openPhPostPeriodModal(c));
     document.getElementById('ph-unpost-period-btn')?.addEventListener('click', () => openPhUnpostPeriodModal(c));
     document.getElementById('ph-delete-period-btn')?.addEventListener('click', () => openPhDeletePeriodModal(c));
 
@@ -258,6 +263,10 @@ function renderPhInvRows(invoices) {
             <i class="fas fa-eye"></i>
           </button>
           ${inv.status === 'draft' ? `
+            <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(inv.id)}" title="Añadir concepto individual"
+              style="color:#7F7CFF;border-color:#C4B5FD">
+              <i class="fas fa-plus-circle"></i>
+            </button>
             <button class="btn btn-sm ph-inv-post" data-id="${esc(inv.id)}" title="Contabilizar"
               style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7">
               <i class="fas fa-check"></i>
@@ -266,6 +275,11 @@ function renderPhInvRows(invoices) {
             <button class="btn btn-sm ph-inv-paid" data-id="${esc(inv.id)}" title="Marcar pagada"
               style="background:#EEF4FF;color:#2446B8;border:1.5px solid #93C5FD">
               <i class="fas fa-coins"></i>
+            </button>` : ''}
+          ${(can('canApprove') && (inv.status === 'posted' || inv.status === 'paid')) ? `
+            <button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(inv.id)}" title="Descontabilizar factura"
+              style="color:#1A4B8C;border-color:#93C5FD">
+              <i class="fas fa-rotate-left"></i>
             </button>` : ''}
           ${(inv.status === 'draft' || inv.status === 'posted') ? `
             <button class="btn btn-outline btn-sm ph-inv-void" data-id="${esc(inv.id)}" title="Anular"
@@ -282,15 +296,64 @@ function attachPhInvActions() {
   document.querySelectorAll('.ph-inv-view').forEach(btn => {
     btn.addEventListener('click', () => openPhInvoiceDetail(btn.dataset.id));
   });
+  document.querySelectorAll('.ph-inv-add-individual').forEach(btn => {
+    btn.addEventListener('click', () => openPhAddIndividualLinesModal(btn.dataset.id));
+  });
   document.querySelectorAll('.ph-inv-post').forEach(btn => {
     btn.addEventListener('click', () => postPhInvoiceConfirm(btn.dataset.id, btn));
   });
   document.querySelectorAll('.ph-inv-paid').forEach(btn => {
     btn.addEventListener('click', () => markPhPaidConfirm(btn.dataset.id, btn));
   });
+  document.querySelectorAll('.ph-inv-unpost').forEach(btn => {
+    btn.addEventListener('click', () => unpostPhInvoiceConfirm(btn.dataset.id, btn));
+  });
   document.querySelectorAll('.ph-inv-void').forEach(btn => {
     btn.addEventListener('click', () => voidPhInvoiceModal(btn.dataset.id));
   });
+}
+
+function openPhPostPeriodModal(container) {
+  const period = document.getElementById('ph-period-filter')?.value || currentPeriod();
+  openModal(
+    'Contabilizar Liquidación del Período',
+    `<div class="space-y-4">
+      <p class="text-sm" style="color:#374151">
+        Esta acción contabilizará en lote todas las facturas en estado <strong>Borrador</strong> del período <strong>${fmtPeriod(period)}</strong>.
+      </p>
+      <ul class="text-sm list-disc pl-5" style="color:#6B7280">
+        <li>Las facturas ya contabilizadas o pagadas serán omitidas.</li>
+        <li>Si alguna factura falla, el proceso continuará con las demás.</li>
+      </ul>
+      <div class="form-group mb-0">
+        <label class="form-label">Confirma escribiendo el período</label>
+        <input id="ph-post-period-confirm" class="form-input" placeholder="${esc(period)}">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="ph-post-period-confirm-btn"><i class="fas fa-layer-group mr-1"></i>Contabilizar</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-post-period-confirm-btn')?.addEventListener('click', async () => {
+      const typed = (document.getElementById('ph-post-period-confirm')?.value || '').trim();
+      if (typed !== period) {
+        showToast(`Debes escribir exactamente ${period}.`, 'warning');
+        return;
+      }
+      const btn = document.getElementById('ph-post-period-confirm-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+      try {
+        const r = await API.postPhInvoicesByPeriod(period);
+        showToast(`Período ${period}: ${r.posted} contabilizadas, ${r.skipped} omitidas, ${r.failed} fallidas.`, r.failed ? 'warning' : 'success');
+        closeModal();
+        renderPhFacturacion(container);
+      } catch (err) {
+        showToast(err.message || 'Error al contabilizar período.', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-layer-group mr-1"></i>Contabilizar'; }
+      }
+    }, { once: true });
+  }, 50);
 }
 
 function openPhUnpostPeriodModal(container) {
@@ -454,6 +517,9 @@ async function openPhInvoiceDetail(invoiceId) {
     const prop  = inv.expand?.property_id;
     const owner = prop?.expand?.owner_id;
     const meta  = PH_STATUS[inv.status] || PH_STATUS.draft;
+    const canEditDraftLines = inv.status === 'draft';
+    const isLateLine = (line) => /inter[eé]s de mora/i.test(String(line?.description || ''));
+    const isEditableManualLine = (line) => canEditDraftLines && !line?.concept_id && !isLateLine(line);
 
     openModal(
       `Factura ${inv.number}`,
@@ -469,23 +535,102 @@ async function openPhInvoiceDetail(invoiceId) {
           ${inv.tx_id ? `<div><p class="text-xs" style="color:#6B7280">Asiento</p><p class="font-mono text-xs" style="color:#374151">${esc(inv.expand?.tx_id?.number || inv.tx_id)}</p></div>` : ''}
         </div>
         <table class="data-table text-sm">
-          <thead><tr><th>Concepto</th><th class="text-right">Valor</th></tr></thead>
+          <thead><tr><th>Concepto</th><th class="text-right">Valor</th>${canEditDraftLines ? '<th>Acciones</th>' : ''}</tr></thead>
           <tbody>
             ${lines.map(l => `<tr>
               <td>${esc(l.description)}</td>
               <td class="text-right font-semibold">${fmt(l.amount || 0)}</td>
+              ${canEditDraftLines ? `<td>
+                ${isEditableManualLine(l) ? `<div class="flex gap-1">
+                  <button class="btn btn-outline btn-sm ph-line-edit" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" title="Editar línea"><i class="fas fa-pen"></i></button>
+                  <button class="btn btn-outline btn-sm ph-line-del" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" title="Eliminar línea" style="color:#DC2626;border-color:#FECACA"><i class="fas fa-trash"></i></button>
+                </div>` : '<span class="text-xs" style="color:#9CA3AF">No editable</span>'}
+              </td>` : ''}
             </tr>`).join('')}
             <tr style="border-top:2px solid #E5E7EB">
               <td class="font-bold" style="color:#0D2137">TOTAL</td>
               <td class="text-right font-bold text-lg" style="color:#0D2137">${fmt(inv.total || 0)}</td>
+              ${canEditDraftLines ? '<td></td>' : ''}
             </tr>
           </tbody>
         </table>
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`
     );
+
+    if (canEditDraftLines) {
+      setTimeout(() => {
+        document.querySelectorAll('.ph-line-edit').forEach(btn => {
+          btn.addEventListener('click', () => openPhEditDraftLineModal(btn.dataset.lineId, btn.dataset.invId));
+        });
+        document.querySelectorAll('.ph-line-del').forEach(btn => {
+          btn.addEventListener('click', () => removePhDraftLineConfirm(btn.dataset.lineId, btn.dataset.invId));
+        });
+      }, 30);
+    }
   } catch (err) {
     showToast(err.message || 'Error al cargar la factura.', 'error');
+  }
+}
+
+async function openPhEditDraftLineModal(lineId, invoiceId) {
+  let line;
+  try {
+    line = await pb.get('ph_invoice_lines', lineId);
+  } catch (err) {
+    showToast('No se pudo cargar la línea.', 'error');
+    return;
+  }
+  openModal(
+    'Editar Concepto Manual',
+    `<div class="space-y-4">
+      <div class="form-group mb-0">
+        <label class="form-label">Descripción <span class="text-red-500">*</span></label>
+        <input id="ph-line-edit-desc" class="form-input" value="${esc(line.description || '')}">
+      </div>
+      <div class="form-group mb-0">
+        <label class="form-label">Valor <span class="text-red-500">*</span></label>
+        <input id="ph-line-edit-amount" type="number" min="0" step="1" class="form-input" value="${esc(line.amount || 0)}">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="openPhInvoiceDetail('${esc(invoiceId)}')">Cancelar</button>
+     <button class="btn btn-primary" id="ph-line-edit-save-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-line-edit-save-btn')?.addEventListener('click', async () => {
+      const desc = (document.getElementById('ph-line-edit-desc')?.value || '').trim();
+      const amount = parseFloat(document.getElementById('ph-line-edit-amount')?.value || 0) || 0;
+      if (!desc || amount <= 0) {
+        showToast('Descripción y valor son obligatorios.', 'warning');
+        return;
+      }
+      const btn = document.getElementById('ph-line-edit-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+      try {
+        await API.updatePhDraftInvoiceLine(lineId, {
+          description: desc,
+          amount,
+          account_code: line.account_code || '',
+        });
+        showToast('Línea actualizada.', 'success');
+        openPhInvoiceDetail(invoiceId);
+      } catch (err) {
+        showToast(err.message || 'Error al actualizar línea.', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar'; }
+      }
+    }, { once: true });
+  }, 40);
+}
+
+async function removePhDraftLineConfirm(lineId, invoiceId) {
+  if (!confirm('¿Eliminar este concepto manual de la factura?')) return;
+  try {
+    await API.deletePhDraftInvoiceLine(lineId);
+    showToast('Línea eliminada.', 'success');
+    openPhInvoiceDetail(invoiceId);
+  } catch (err) {
+    showToast(err.message || 'Error al eliminar línea.', 'error');
   }
 }
 
@@ -506,6 +651,8 @@ async function postPhInvoiceConfirm(invoiceId, btn) {
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(inv.id)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
           <button class="btn btn-sm ph-inv-paid" data-id="${esc(inv.id)}" title="Marcar pagada"
             style="background:#EEF4FF;color:#2446B8;border:1.5px solid #93C5FD"><i class="fas fa-coins"></i></button>
+          ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(inv.id)}" title="Descontabilizar factura"
+            style="color:#1A4B8C;border-color:#93C5FD"><i class="fas fa-rotate-left"></i></button>` : ''}
           <button class="btn btn-outline btn-sm ph-inv-void" data-id="${esc(inv.id)}" title="Anular"
             style="color:#DC2626;border-color:#FECACA"><i class="fas fa-ban"></i></button>
         </div>`;
@@ -527,12 +674,45 @@ async function markPhPaidConfirm(invoiceId, btn) {
     if (row) {
       row.querySelector('td:nth-child(7)').innerHTML = `<span class="badge badge-blue">Pagada</span>`;
       row.querySelector('td:nth-child(8)').innerHTML = `
-        <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>`;
+        <div class="flex gap-1">
+          <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+          ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(invoiceId)}" title="Descontabilizar factura"
+            style="color:#1A4B8C;border-color:#93C5FD"><i class="fas fa-rotate-left"></i></button>` : ''}
+        </div>`;
       attachPhInvActions();
     }
   } catch (err) {
     showToast(err.message || 'Error.', 'error');
     if (btn) btn.disabled = false;
+  }
+}
+
+async function unpostPhInvoiceConfirm(invoiceId, btn) {
+  if (!confirm('¿Descontabilizar esta factura? Volverá a estado Borrador y se desligará del asiento.')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  try {
+    await API.unpostPhInvoice(invoiceId);
+    showToast('Factura descontabilizada correctamente.', 'success');
+    const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
+    if (row) {
+      const draftMeta = PH_STATUS.draft || { badge: 'badge-orange', label: 'Borrador' };
+      row.style.opacity = '';
+      row.querySelector('td:nth-child(7)').innerHTML = `<span class="badge ${draftMeta.badge}">${draftMeta.label}</span>`;
+      row.querySelector('td:nth-child(8)').innerHTML = `
+        <div class="flex gap-1">
+          <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(invoiceId)}" title="Añadir concepto individual"
+            style="color:#7F7CFF;border-color:#C4B5FD"><i class="fas fa-plus-circle"></i></button>
+          <button class="btn btn-sm ph-inv-post" data-id="${esc(invoiceId)}" title="Contabilizar"
+            style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7"><i class="fas fa-check"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-void" data-id="${esc(invoiceId)}" title="Anular"
+            style="color:#DC2626;border-color:#FECACA"><i class="fas fa-ban"></i></button>
+        </div>`;
+      attachPhInvActions();
+    }
+  } catch (err) {
+    showToast(err.message || 'Error al descontabilizar factura.', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i>'; }
   }
 }
 
@@ -1289,13 +1469,19 @@ async function renderPhConfig(c) {
   c.id = c.id || 'ph-config-container';
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
-    const [concepts, areas, phCfgRaw, accounts, properties] = await Promise.all([
+    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes] = await Promise.all([
       API.getPhBillingConcepts(false),
       API.getPhCommonAreas(false),
       API.getSetting('ph_config_v1'),
       API.getAccounts(true),
       API.getPhProperties(true),
+      API.getPhIndividualCharges({ filter: '' }).catch(() => ({ items: [] })),
     ]);
+    const indConcepts = (indConceptsRes?.items || []).slice().sort((a, b) => {
+      const an = String(a?.name || a?.description || '').toLowerCase();
+      const bn = String(b?.name || b?.description || '').toLowerCase();
+      return an.localeCompare(bn);
+    });
     const propMap = new Map((properties || []).map(p => [p.id, p]));
     let phCfg = {};
     try { phCfg = phCfgRaw ? JSON.parse(phCfgRaw) : {}; } catch (_) { phCfg = {}; }
@@ -1418,20 +1604,33 @@ async function renderPhConfig(c) {
           </button>
         </div>
 
-        <!-- Cobros Individuales por Unidad -->
+        <!-- Conceptos Individuales -->
         <div class="bg-white rounded-2xl border p-5 lg:col-span-2" style="border-color:#F0F0F0">
           <div class="flex items-center justify-between mb-4">
             <h4 class="font-bold" style="color:#0D2137">
-              <i class="fas fa-receipt mr-2" style="color:#7F7CFF"></i>Cobros Individuales
+              <i class="fas fa-receipt mr-2" style="color:#7F7CFF"></i>Conceptos Individuales
             </h4>
-            <button class="btn btn-primary btn-sm" id="ph-individual-charge-add-btn">
-              <i class="fas fa-plus mr-1"></i>Nuevo cobro
+            <button class="btn btn-primary btn-sm" id="ph-individual-concept-add-btn">
+              <i class="fas fa-plus mr-1"></i>Nuevo concepto individual
             </button>
           </div>
           <p class="text-sm mb-4" style="color:#6B7280">
-            Asigna cobros específicos a unidades (sanciones, servicios adicionales, etc.). Se facturan automáticamente.
+            Conceptos que se añaden manualmente a facturas individuales en borrador (sanciones, servicios adicionales, etc.).
+            No se agregan automáticamente; se seleccionan por unidad luego de generar las facturas del período.
           </p>
-          <div id="ph-individual-charges-list" class="space-y-2"></div>
+          <div class="overflow-x-auto">
+            <table class="data-table text-sm">
+              <thead>
+                <tr>
+                  <th>Nombre</th><th>Descripción</th><th class="text-right">Valor ref.</th>
+                  <th>Cuenta ingreso</th><th>Estado</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="ph-ind-concepts-tbody">
+                ${renderPhIndividualConceptRows(indConcepts, accounts)}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>`;
 
@@ -1496,31 +1695,19 @@ async function renderPhConfig(c) {
       }
     });
 
-    // Cargar cobros individuales (colección puede no existir aún si el servidor no se reinició)
-    let chargesRes = { items: [], totalItems: 0 };
-    try { chargesRes = await API.getPhIndividualCharges(); } catch (_) {}
-    const chargesItems = chargesRes.items || chargesRes || [];
-    const chargesHTML = chargesItems.length ? chargesItems.map(ch => {
-      const prop = propMap.get(ch.property_id);
-      return `<div class="flex items-center justify-between p-3 rounded-lg" style="background:#F8FAFF;border:1px solid #E5E7EB">
-        <div>
-          <p class="font-medium text-sm" style="color:#0D2137">${esc(prop?.name || '—')}</p>
-          <p class="text-xs" style="color:#6B7280">${esc(ch.description || '')}</p>
-        </div>
-        <div class="text-right">
-          <p class="font-bold" style="color:#E87D1E">${fmt(ch.amount)}</p>
-          <p class="text-xs" style="color:#6B7280">Período: ${esc(ch.period)}</p>
-        </div>
-        <button class="btn btn-outline btn-sm" onclick="removePhIndividualCharge('${esc(ch.id)}', '${esc(c.id)}')" title="Eliminar">
-          <i class="fas fa-trash text-red-500"></i>
-        </button>
-      </div>`;
-    }).join('') : `<p class="text-sm text-center py-4" style="color:#9CA3AF">Sin cobros individuales registrados.</p>`;
-    const chargesListEl = document.getElementById('ph-individual-charges-list');
-    if (chargesListEl) chargesListEl.innerHTML = chargesHTML;
-
-    // Botón para añadir cobro individual
-    document.getElementById('ph-individual-charge-add-btn')?.addEventListener('click', () => openPhIndividualChargeModal(null, c));
+    // Conceptos individuales — botones
+    document.getElementById('ph-individual-concept-add-btn')?.addEventListener('click', () => openPhIndividualConceptModal(null, c, accounts));
+    c.querySelectorAll('.ph-ind-concept-edit').forEach(btn => {
+      btn.addEventListener('click', () => openPhIndividualConceptModal(btn.dataset.id, c, accounts));
+    });
+    c.querySelectorAll('.ph-ind-concept-toggle').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const active = btn.dataset.active === 'true';
+        await pb.update('ph_individual_charges', btn.dataset.id, { active: !active });
+        showToast(`Concepto ${active ? 'desactivado' : 'activado'}.`, 'success');
+        renderPhConfig(c);
+      });
+    });
 
     // Zonas comunes
     document.getElementById('ph-area-add-btn')?.addEventListener('click', () => openPhAreaModal(null, c));
@@ -1579,6 +1766,50 @@ function renderPhAreasList(areas, c) {
         </div>
       </div>`).join('')}
   </div>`;
+}
+
+function renderPhIndividualConceptRows(concepts, accounts) {
+  if (!concepts.length) {
+    return `<tr><td colspan="6" class="text-center py-8" style="color:#9CA3AF">No hay conceptos individuales. Crea el primero.</td></tr>`;
+  }
+  const accByCode = new Map((accounts || []).map(a => [String(a.code || ''), a]));
+  return concepts.map(con => {
+    const active = con.active !== false;
+    const effectiveAccCode = getIndividualConceptAccountCode(con);
+    const accName = effectiveAccCode ? (accByCode.get(effectiveAccCode)?.name || effectiveAccCode) : '—';
+    return `<tr>
+      <td class="font-semibold" style="color:#0D2137">${esc(con.name || con.description || '—')}</td>
+      <td class="text-xs" style="color:#6B7280">${esc(con.description || '')}</td>
+      <td class="text-right font-semibold">${con.amount ? fmt(con.amount) : '—'}</td>
+      <td class="font-mono text-xs">${effectiveAccCode ? esc(effectiveAccCode + ' — ' + accName) : '—'}</td>
+      <td><span class="badge ${active ? 'badge-green' : 'badge-gray'}">${active ? 'Activo' : 'Inactivo'}</span></td>
+      <td>
+        <div class="flex gap-1">
+          <button class="btn btn-outline btn-sm ph-ind-concept-edit" data-id="${esc(con.id)}" title="Editar"><i class="fas fa-pen"></i></button>
+          <button class="btn btn-outline btn-sm ph-ind-concept-toggle" data-id="${esc(con.id)}"
+            data-active="${active}"
+            style="${active ? 'color:#DC2626;border-color:#FECACA' : 'color:#059669;border-color:#6EE7B7'}">
+            <i class="fas ${active ? 'fa-toggle-on' : 'fa-toggle-off'}"></i>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function getIndividualConceptAccountCode(concept) {
+  const direct = String(concept?.account_code || '').trim();
+  if (direct) return direct;
+  const notes = String(concept?.notes || '');
+  const m = notes.match(/\[ACC:([^\]]+)\]/i);
+  return m ? String(m[1] || '').trim() : '';
+}
+
+function upsertIndividualConceptAccInNotes(notes, accountCode) {
+  const clean = String(notes || '').replace(/\[ACC:[^\]]+\]\s*/ig, '').trim();
+  const code = String(accountCode || '').trim();
+  if (!code) return clean;
+  return `[ACC:${code}]${clean ? ' ' + clean : ''}`;
 }
 
 function renderPhConceptRows(concepts, accounts) {
@@ -1768,92 +1999,195 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// COBROS INDIVIDUALES POR UNIDAD
 // ══════════════════════════════════════════════════════════════════════════════
-async function openPhIndividualChargeModal(chargeId, container) {
-  let charge   = null;
-  let properties = [];
+// AÑADIR CONCEPTOS INDIVIDUALES A UNA FACTURA EN BORRADOR
+// ══════════════════════════════════════════════════════════════════════════════
+async function openPhAddIndividualLinesModal(invoiceId) {
+  let inv = null;
+  let concepts = [];
   try {
-    [properties] = await Promise.all([
-      API.getPhProperties(true),
-      chargeId ? pb.get('ph_individual_charges', chargeId).then(ch => { charge = ch; }) : Promise.resolve(),
+    [inv, concepts] = await Promise.all([
+      pb.get('ph_invoices', invoiceId, { expand: 'property_id' }),
+      API.getPhIndividualCharges({ filter: '' }),
     ]);
-  } catch (err) {
-    showToast('Error al cargar datos.', 'error');
+    concepts = (concepts?.items || []).filter(c => c?.active !== false);
+  } catch (err) { showToast('Error al cargar datos.', 'error'); return; }
+
+  if (!concepts.length) {
+    showToast('No hay conceptos individuales activos. Crea al menos uno en Configuración.', 'warning');
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 7);
+  const prop = inv.expand?.property_id;
+  const propLabel = prop ? `${esc(prop.name || prop.code || '')}` : esc(inv.property_id);
+  const sortedConcepts = concepts.slice().sort((a, b) => {
+    const an = String(a?.name || a?.description || '').toLowerCase();
+    const bn = String(b?.name || b?.description || '').toLowerCase();
+    return an.localeCompare(bn);
+  });
+
   openModal(
-    charge ? 'Editar Cobro Individual' : 'Nuevo Cobro Individual',
-    `<div class="grid grid-cols-2 gap-4">
-      <div class="form-group col-span-2">
-        <label class="form-label">Unidad Habitacional <span class="text-red-500">*</span></label>
-        <select id="pic-property" class="form-input" ${charge ? 'disabled' : ''}>
-          <option value="">Seleccionar unidad...</option>
-          ${properties.map(p => `<option value="${esc(p.id)}" ${charge?.property_id === p.id ? 'selected' : ''}>${esc(p.name)} (${esc(p.code)})</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Descripción <span class="text-red-500">*</span></label>
-        <input id="pic-desc" class="form-input" value="${esc(charge?.description || '')}" placeholder="Ej: Sanción, Parqueadero adicional, Servicio especial">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Período <span class="text-red-500">*</span></label>
-        <input id="pic-period" type="month" class="form-input" value="${esc(charge?.period || today)}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Valor <span class="text-red-500">*</span></label>
-        <input id="pic-amount" type="number" min="0" step="0.01" class="form-input" value="${esc(charge?.amount || '')}" placeholder="0.00">
-      </div>
-      <div class="form-group col-span-2">
-        <label class="form-label">Notas</label>
-        <textarea id="pic-notes" class="form-input" rows="2" placeholder="Observaciones sobre este cobro...">${esc(charge?.notes || '')}</textarea>
+    `Añadir conceptos individuales — ${propLabel}`,
+    `<div class="space-y-3">
+      <p class="text-sm" style="color:#6B7280">
+        Selecciona los conceptos a añadir y ajusta el valor si es necesario.
+        Solo se puede modificar facturas en estado <strong>Borrador</strong>.
+      </p>
+      <div class="space-y-2" id="ph-add-ind-list">
+        ${sortedConcepts.map((con, i) => {
+          const effectiveAccCode = getIndividualConceptAccountCode(con);
+          return `
+          <div class="flex items-center gap-3 p-3 rounded-lg" style="background:#F8FAFF;border:1px solid #E5E7EB">
+            <input type="checkbox" class="ph-add-ind-check" id="pic-chk-${i}"
+              data-idx="${i}" data-name="${esc(con.name || con.description || '')}"
+              data-account="${esc(effectiveAccCode || '')}" style="width:18px;height:18px;cursor:pointer">
+            <label for="pic-chk-${i}" class="flex-1 cursor-pointer">
+              <p class="font-medium text-sm" style="color:#0D2137">${esc(con.name || con.description || '—')}</p>
+              ${con.description ? `<p class="text-xs" style="color:#9CA3AF">${esc(con.description)}</p>` : ''}
+            </label>
+            <input type="number" class="form-input ph-add-ind-amount" data-idx="${i}"
+              min="0" step="1" style="max-width:130px;text-align:right"
+              value="${esc(con.amount || '')}" placeholder="Valor">
+          </div>`;
+        }).join('')}
       </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-     <button class="btn btn-primary" id="pic-save-btn"><i class="fas fa-save mr-1"></i>${charge ? 'Actualizar' : 'Crear'}</button>`
+     <button class="btn btn-primary" id="ph-add-ind-confirm-btn">
+       <i class="fas fa-plus-circle mr-1"></i>Añadir a factura
+     </button>`
   );
 
   setTimeout(() => {
-    document.getElementById('pic-save-btn')?.addEventListener('click', async () => {
-      const propId = document.getElementById('pic-property')?.value;
-      const desc   = (document.getElementById('pic-desc')?.value || '').trim();
-      const period = document.getElementById('pic-period')?.value;
-      const amount = parseFloat(document.getElementById('pic-amount')?.value || 0) || 0;
-      if (!propId || !desc || !period || !amount) {
-        showToast('Completa todos los campos obligatorios.', 'warning');
+    document.getElementById('ph-add-ind-confirm-btn')?.addEventListener('click', async () => {
+      const selected = [];
+      document.querySelectorAll('.ph-add-ind-check:checked').forEach(chk => {
+        const idx = chk.dataset.idx;
+        const amountEl = document.querySelector(`.ph-add-ind-amount[data-idx="${idx}"]`);
+        const amount = parseFloat(amountEl?.value || 0) || 0;
+        if (amount <= 0) return; // skip conceptos sin valor
+        selected.push({
+          description: chk.dataset.name,
+          amount,
+          account_code: chk.dataset.account || '',
+        });
+      });
+      if (!selected.length) {
+        showToast('Selecciona al menos un concepto con valor mayor a 0.', 'warning');
         return;
       }
-      const btn = document.getElementById('pic-save-btn');
+      const btn = document.getElementById('ph-add-ind-confirm-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
-        const data = { property_id: propId, description: desc, period, amount, notes: document.getElementById('pic-notes')?.value || '' };
-        if (charge) {
-          await pb.update('ph_individual_charges', charge.id, data);
-          showToast('Cobro actualizado.', 'success');
-        } else {
-          await pb.create('ph_individual_charges', data);
-          showToast('Cobro creado. Se incluirá en la próxima facturación.', 'success');
-        }
+        const newTotal = await API.addPhIndividualLinesToInvoice(invoiceId, selected);
+        showToast(`${selected.length} concepto(s) añadido(s). Nuevo total: ${fmt(newTotal)}`, 'success');
         closeModal();
-        renderPhConfig(container);
+        // Actualizar celda de total en la fila
+        const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
+        if (row) {
+          row.querySelector('td:nth-child(5)').textContent = fmt(newTotal);
+        }
       } catch (err) {
-        showToast(err.message || 'Error al guardar.', 'error');
-        if (btn) { btn.disabled = false; btn.textContent = charge ? 'Actualizar' : 'Crear'; }
+        showToast(err.message || 'Error al añadir conceptos.', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-plus-circle mr-1"></i>Añadir a factura'; }
       }
     }, { once: true });
   }, 50);
 }
 
-async function removePhIndividualCharge(chargeId, containerId) {
-  if (!confirm('¿Eliminar este cobro individual?')) return;
+// ══════════════════════════════════════════════════════════════════════════════
+// CONCEPTOS INDIVIDUALES (manuales, seleccionables por unidad al liquidar)
+// ══════════════════════════════════════════════════════════════════════════════
+async function openPhIndividualConceptModal(conceptId, container, accountsPreloaded) {
+  let concept  = null;
+  let accounts = accountsPreloaded || [];
+  let properties = [];
   try {
-    await pb.delete('ph_individual_charges', chargeId);
-    showToast('Cobro eliminado.', 'success');
-    const container = document.getElementById(containerId);
-    if (container) renderPhConfig(container);
-  } catch (err) {
-    showToast(err.message || 'Error al eliminar.', 'error');
-  }
+    if (conceptId) concept = await pb.get('ph_individual_charges', conceptId);
+    if (!accounts.length) accounts = await API.getAccounts(true);
+    properties = await API.getPhProperties(true);
+  } catch (err) { showToast('Error al cargar datos.', 'error'); return; }
+
+  const conceptAccCode = getIndividualConceptAccountCode(concept);
+  openModal(
+    concept ? 'Editar Concepto Individual' : 'Nuevo Concepto Individual',
+    `<div class="grid grid-cols-2 gap-4">
+      <div class="form-group col-span-2">
+        <label class="form-label">Nombre <span class="text-red-500">*</span></label>
+        <input id="pic-name" class="form-input" value="${esc(concept?.name || concept?.description || '')}"
+          placeholder="Ej: Sanción de convivencia, Parqueadero extra, Servicio especial">
+      </div>
+      <div class="form-group col-span-2">
+        <label class="form-label">Descripción</label>
+        <input id="pic-desc" class="form-input" value="${esc(concept?.description || '')}"
+          placeholder="Descripción adicional del concepto">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Valor de referencia</label>
+        <input id="pic-amount" type="number" min="0" step="1" class="form-input"
+          value="${esc(concept?.amount || '')}" placeholder="0 (ajustable al aplicar)">
+        <p class="text-xs mt-1" style="color:#6B7280">Opcional. Se puede modificar al añadir a cada factura.</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select id="pic-active" class="form-input">
+          <option value="true"  ${concept?.active !== false ? 'selected' : ''}>Activo</option>
+          <option value="false" ${concept?.active === false ? 'selected' : ''}>Inactivo</option>
+        </select>
+      </div>
+      <div class="form-group col-span-2">
+        <label class="form-label">Cuenta de Ingreso (opcional)</label>
+        <select id="pic-account" class="form-input font-mono">
+          <option value="">— Usar cuenta por defecto de la configuración —</option>
+          ${accounts.filter(a => String(a.code||'').startsWith('4')).map(a =>
+            `<option value="${esc(a.code)}" ${conceptAccCode === a.code ? 'selected' : ''}>
+              ${esc(a.code)} — ${esc(a.name)}
+            </option>`).join('')}
+        </select>
+        <p class="text-xs mt-1" style="color:#6B7280">Cuenta clase 4. Si no seleccionas, se usa la cuenta de ingreso por defecto al contabilizar.</p>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="pic-save-btn"><i class="fas fa-save mr-1"></i>${concept ? 'Actualizar' : 'Crear'}</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('pic-save-btn')?.addEventListener('click', async () => {
+      const name   = (document.getElementById('pic-name')?.value || '').trim();
+      const desc   = (document.getElementById('pic-desc')?.value || '').trim();
+      const amount = parseFloat(document.getElementById('pic-amount')?.value || 0) || 0;
+      const active = document.getElementById('pic-active')?.value !== 'false';
+      const accCode = (document.getElementById('pic-account')?.value || '').trim();
+      if (!name) { showToast('El nombre es obligatorio.', 'warning'); return; }
+      const btn = document.getElementById('pic-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+      try {
+        const fallbackPropertyId = concept?.property_id || properties?.[0]?.id || null;
+        const data = {
+          // Esquema nuevo
+          name,
+          description: desc || name,
+          amount: amount || 0,
+          active,
+          account_code: accCode || null,
+          // Compatibilidad con esquema legado (evita 400 si aún no aplicó migración)
+          period: concept?.period || currentPeriod(),
+          notes: upsertIndividualConceptAccInNotes(concept?.notes || '', accCode),
+          property_id: fallbackPropertyId,
+        };
+        if (concept) {
+          await pb.update('ph_individual_charges', concept.id, data);
+          showToast('Concepto actualizado.', 'success');
+        } else {
+          await pb.create('ph_individual_charges', data);
+          showToast('Concepto creado. Disponible para añadir a facturas en borrador.', 'success');
+        }
+        closeModal();
+        renderPhConfig(container);
+      } catch (err) {
+        showToast(err.message || 'Error al guardar. Si persiste, reinicia el servidor para aplicar la migración.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = concept ? 'Actualizar' : 'Crear'; }
+      }
+    }, { once: true });
+  }, 50);
 }

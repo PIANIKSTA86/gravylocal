@@ -257,6 +257,19 @@ onBootstrap((e) => {
 
   // ──────────────────────────────────────────────────────────
   // COLECCIÓN: ph_reservations — Reservas de zonas comunes
+
+    // Normalizar ph_invoice_lines: campo account_code para override contable.
+    try {
+      const phIL = $app.findCollectionByNameOrId('ph_invoice_lines');
+      if (!new Set(phIL.fields.fieldNames()).has('account_code')) {
+        phIL.fields.add(new TextField({ name: 'account_code', required: false }));
+        $app.save(phIL);
+        console.log('[GRAVY-PH] ph_invoice_lines: campo account_code agregado.');
+      }
+    } catch (err) {
+      console.log('[GRAVY-PH] Aviso al normalizar ph_invoice_lines: ' + err);
+    }
+
   // ──────────────────────────────────────────────────────────
   try {
     $app.findCollectionByNameOrId('ph_reservations');
@@ -362,6 +375,64 @@ onBootstrap((e) => {
   }
 
   // Normalizar permisos de colecciones de configuración PH con canWrite.
+
+    // Normalizar esquema de ph_individual_charges: conceptos individuales manuales.
+    try {
+      const phIC = $app.findCollectionByNameOrId('ph_individual_charges');
+      const icFields = new Set(phIC.fields.fieldNames());
+      let icChanged = false;
+      if (!icFields.has('name')) {
+        phIC.fields.add(new TextField({ name: 'name', required: false }));
+        icChanged = true;
+      }
+      if (!icFields.has('account_code')) {
+        phIC.fields.add(new TextField({ name: 'account_code', required: false }));
+        icChanged = true;
+      }
+      if (!icFields.has('active')) {
+        phIC.fields.add(new BoolField({ name: 'active', required: false }));
+        icChanged = true;
+      }
+      // Hacer property_id opcional (ya no es necesario para conceptos globales)
+      try {
+        const propIdField = phIC.fields.getByName('property_id');
+        if (propIdField && propIdField.required) {
+          propIdField.required = false;
+          icChanged = true;
+        }
+      } catch (_f) {}
+      // Hacer period opcional
+      try {
+        const periodField = phIC.fields.getByName('period');
+        if (periodField && periodField.required) {
+          periodField.required = false;
+          icChanged = true;
+        }
+      } catch (_f) {}
+      // Hacer description opcional (ahora usamos name como principal)
+      try {
+        const descField = phIC.fields.getByName('description');
+        if (descField && descField.required) {
+          descField.required = false;
+          icChanged = true;
+        }
+      } catch (_f) {}
+      // Hacer amount opcional (valor de referencia)
+      try {
+        const amountField = phIC.fields.getByName('amount');
+        if (amountField && amountField.required) {
+          amountField.required = false;
+          icChanged = true;
+        }
+      } catch (_f) {}
+      if (icChanged) {
+        $app.save(phIC);
+        console.log('[GRAVY-PH] ph_individual_charges: esquema actualizado a conceptos individuales.');
+      }
+    } catch (err) {
+      console.log('[GRAVY-PH] Aviso al normalizar ph_individual_charges: ' + err);
+    }
+
   try {
     const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
     const writableCollections = ['ph_common_areas', 'ph_billing_concepts', 'ph_individual_charges'];

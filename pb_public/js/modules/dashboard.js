@@ -6,10 +6,10 @@
 async function renderDashboard(c) {
   c.innerHTML = `
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-      ${['blue','orange','green','red'].map(color => `
-        <div class="stat-card ${color} anim-slide-up">
-          <div class="h-8 w-24 rounded" style="background:#F0F0F0;animation:pulse 1.5s ease infinite"></div>
-          <div class="h-6 w-32 rounded mt-3" style="background:#F0F0F0"></div>
+      ${['#EEF4FF','#FFF8F0','#ECFDF5','#FEF2F2'].map(bg => `
+        <div class="rounded-2xl p-4 anim-slide-up" style="background:${bg}">
+          <div class="h-3 w-20 rounded mb-3" style="background:#E5E7EB;animation:pulse 1.5s ease infinite"></div>
+          <div class="h-7 w-28 rounded" style="background:#E5E7EB;animation:pulse 1.5s ease infinite"></div>
         </div>`).join('')}
     </div>`;
 
@@ -36,37 +36,37 @@ async function renderDashboard(c) {
 
     c.innerHTML = `
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
-      <div class="stat-card blue anim-slide-up" style="animation-delay:.05s">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs font-bold uppercase tracking-wide" style="color:#6B7280">Total Activos</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#E8F1FB"><i class="fas fa-building" style="color:#1A4B8C;font-size:14px"></i></div>
+      <div class="rounded-2xl p-4 anim-slide-up" style="background:#EEF4FF;animation-delay:.05s">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fas fa-building text-sm" style="color:#1A4B8C"></i>
+          <span class="text-xs font-semibold" style="color:#1A4B8C">Total Activos</span>
         </div>
-        <p class="text-2xl font-extrabold" style="color:#0D2137">${fmt(totalActivos)}</p>
-        <p class="text-xs mt-1" style="color:#9CA3AF">${fmtN(kpis.totalAc)} cuentas activas</p>
+        <p class="text-2xl font-extrabold" style="color:#1A4B8C">${fmt(totalActivos)}</p>
+        <p class="text-xs mt-1" style="color:#1A4B8C;opacity:.7">${fmtN(kpis.totalAc)} cuentas activas</p>
       </div>
-      <div class="stat-card orange anim-slide-up" style="animation-delay:.1s">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs font-bold uppercase tracking-wide" style="color:#6B7280">Total Pasivos</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#FFF3E0"><i class="fas fa-file-invoice-dollar" style="color:#E87D1E;font-size:14px"></i></div>
+      <div class="rounded-2xl p-4 anim-slide-up" style="background:#FFF8F0;animation-delay:.1s">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fas fa-file-invoice-dollar text-sm" style="color:#C46516"></i>
+          <span class="text-xs font-semibold" style="color:#C46516">Total Pasivos</span>
         </div>
-        <p class="text-2xl font-extrabold" style="color:#0D2137">${fmt(totalPasivos)}</p>
-        <p class="text-xs mt-1" style="color:#9CA3AF">Patrimonio: ${fmt(totalActivos - totalPasivos)}</p>
+        <p class="text-2xl font-extrabold" style="color:#C46516">${fmt(totalPasivos)}</p>
+        <p class="text-xs mt-1" style="color:#C46516;opacity:.7">Patrimonio: ${fmt(totalActivos - totalPasivos)}</p>
       </div>
-      <div class="stat-card green anim-slide-up" style="animation-delay:.15s">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs font-bold uppercase tracking-wide" style="color:#6B7280">Ingresos del Periodo</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#ECFDF5"><i class="fas fa-arrow-trend-up" style="color:#059669;font-size:14px"></i></div>
+      <div class="rounded-2xl p-4 anim-slide-up" style="background:#ECFDF5;animation-delay:.15s">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fas fa-arrow-trend-up text-sm" style="color:#059669"></i>
+          <span class="text-xs font-semibold" style="color:#059669">Ingresos del Período</span>
         </div>
-        <p class="text-2xl font-extrabold" style="color:#0D2137">${fmt(totalIngresos)}</p>
-        <p class="text-xs mt-1" style="color:#9CA3AF">Gastos: ${fmt(totalGastos)}</p>
+        <p class="text-2xl font-extrabold" style="color:#059669">${fmt(totalIngresos)}</p>
+        <p class="text-xs mt-1" style="color:#059669;opacity:.7">Gastos: ${fmt(totalGastos)}</p>
       </div>
-      <div class="stat-card red anim-slide-up" style="animation-delay:.2s">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-xs font-bold uppercase tracking-wide" style="color:#6B7280">Transacciones</span>
-          <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:#FEF2F2"><i class="fas fa-receipt" style="color:#EF4444;font-size:14px"></i></div>
+      <div class="rounded-2xl p-4 anim-slide-up" style="background:#FEF2F2;animation-delay:.2s">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fas fa-receipt text-sm" style="color:#DC2626"></i>
+          <span class="text-xs font-semibold" style="color:#DC2626">Transacciones</span>
         </div>
-        <p class="text-2xl font-extrabold" style="color:#0D2137">${fmtN(kpis.totalTx)}</p>
-        <p class="text-xs mt-1" style="color:#9CA3AF">${fmtN(kpis.totalTp)} terceros registrados</p>
+        <p class="text-2xl font-extrabold" style="color:#DC2626">${fmtN(kpis.totalTx)}</p>
+        <p class="text-xs mt-1" style="color:#DC2626;opacity:.7">${fmtN(kpis.totalTp)} terceros registrados</p>
       </div>
     </div>
 

@@ -45,19 +45,13 @@ const PH_UNIT_TYPES = [
 
 // ── Helpers locales ─────────────────────────────────────────────────────────
 function phKpi(label, value, iconClass, color, bg) {
-  return `
-    <div class="stat-card" style="border-left:4px solid ${color}">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs font-semibold uppercase" style="color:#6B7280;letter-spacing:.4px">${label}</p>
-          <p class="text-2xl font-extrabold mt-1" style="color:#0D2137">${value}</p>
-        </div>
-        <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-             style="background:${bg}">
-          <i class="${iconClass} text-lg" style="color:${color}"></i>
-        </div>
-      </div>
-    </div>`;
+  return `<div class="rounded-2xl p-4" style="background:${bg}">
+    <div class="flex items-center gap-2 mb-1">
+      <i class="${iconClass} text-sm" style="color:${color}"></i>
+      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+    </div>
+    <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
+  </div>`;
 }
 
 // Obtiene el período actual en formato YYYY-MM
@@ -159,7 +153,7 @@ async function renderPhFacturacion(c) {
           <input id="ph-period-filter" type="month" class="form-input" style="max-width:180px" value="${esc(period)}">
         </div>
         <div class="flex-1"></div>
-        ${can('canCreate') !== false ? `
+        ${can('canWrite') ? `
           <button class="btn btn-primary" id="ph-gen-btn">
             <i class="fas fa-wand-magic-sparkles"></i> Generar facturas del período
           </button>` : ''}

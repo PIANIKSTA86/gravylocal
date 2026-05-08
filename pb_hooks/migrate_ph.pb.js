@@ -1,0 +1,320 @@
+/// <reference path="../pb_data/types.d.ts" />
+/**
+ * GRAVY v2.0 — migrate_ph.pb.js
+ * F8: Copropiedades — Propiedad Horizontal
+ * Crea colecciones PH si no existen (idempotente).
+ * Siembra tipo de transacción CF (Cuota Fondo / Facturación PH).
+ */
+
+onBootstrap((e) => {
+  e.next();
+
+  // ── Obtener IDs de colecciones base ya existentes ──────────
+  let accountsId     = '';
+  let thirdPartiesId = '';
+  let transactionsId = '';
+  let txTypesId      = '';
+
+  try {
+    accountsId     = $app.findCollectionByNameOrId('accounts').id;
+    thirdPartiesId = $app.findCollectionByNameOrId('third_parties').id;
+    transactionsId = $app.findCollectionByNameOrId('transactions').id;
+    txTypesId      = $app.findCollectionByNameOrId('transaction_types').id;
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso: no se pudo obtener IDs de colecciones base: ' + err);
+    return;
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_properties — Unidades habitacionales
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_properties');
+    // ya existe
+  } catch (_) {
+    const phProperties = new Collection({
+      name: 'ph_properties',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'code',               type: 'text',     required: true  },
+        { name: 'name',               type: 'text',     required: true  },
+        { name: 'unit_type',          type: 'select',   required: true,
+          values: ['APARTAMENTO', 'PARQUEADERO', 'DEPOSITO', 'LOCAL', 'CASA', 'OFICINA', 'OTRO'] },
+        { name: 'floor',              type: 'text',     required: false },
+        { name: 'tower',              type: 'text',     required: false },
+        { name: 'area_m2',            type: 'number',   required: false, min: 0 },
+        { name: 'coef_participacion', type: 'number',   required: false, min: 0, max: 100 },
+        { name: 'owner_id',           type: 'relation', required: false,
+          collectionId: thirdPartiesId, cascadeDelete: false },
+        { name: 'occupant_id',        type: 'relation', required: false,
+          collectionId: thirdPartiesId, cascadeDelete: false },
+        { name: 'notes',              type: 'text',     required: false },
+        { name: 'active',             type: 'bool',     required: false },
+      ],
+      indexes: ['CREATE UNIQUE INDEX idx_ph_prop_code ON ph_properties (code)'],
+    });
+    $app.save(phProperties);
+    console.log('[GRAVY-PH] Colección ph_properties creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_common_areas — Zonas comunes
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_common_areas');
+  } catch (_) {
+    const phCommonAreas = new Collection({
+      name: 'ph_common_areas',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'code',        type: 'text',   required: true  },
+        { name: 'name',        type: 'text',   required: true  },
+        { name: 'description', type: 'text',   required: false },
+        { name: 'capacity',    type: 'number', required: false, min: 0 },
+        { name: 'min_hours',   type: 'number', required: false, min: 0 },
+        { name: 'max_hours',   type: 'number', required: false, min: 0 },
+        { name: 'rules',       type: 'text',   required: false },
+        { name: 'active',      type: 'bool',   required: false },
+      ],
+      indexes: ['CREATE UNIQUE INDEX idx_ph_area_code ON ph_common_areas (code)'],
+    });
+    $app.save(phCommonAreas);
+    console.log('[GRAVY-PH] Colección ph_common_areas creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_billing_concepts — Conceptos de facturación
+  // ──────────────────────────────────────────────────────────
+  let phBillingConceptsId = '';
+  try {
+    phBillingConceptsId = $app.findCollectionByNameOrId('ph_billing_concepts').id;
+  } catch (_) {
+    const phBillingConcepts = new Collection({
+      name: 'ph_billing_concepts',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'code',            type: 'text',     required: true  },
+        { name: 'name',            type: 'text',     required: true  },
+        { name: 'description',     type: 'text',     required: false },
+        { name: 'amount',          type: 'number',   required: true,  min: 0 },
+        { name: 'is_variable',     type: 'bool',     required: false },
+        { name: 'applies_coef',    type: 'bool',     required: false },
+        { name: 'account_id',      type: 'relation', required: false,
+          collectionId: accountsId, cascadeDelete: false },
+        { name: 'active',          type: 'bool',     required: false },
+      ],
+      indexes: ['CREATE UNIQUE INDEX idx_ph_concept_code ON ph_billing_concepts (code)'],
+    });
+    $app.save(phBillingConcepts);
+    phBillingConceptsId = phBillingConcepts.id;
+    console.log('[GRAVY-PH] Colección ph_billing_concepts creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_invoices — Facturas de copropiedad
+  // ──────────────────────────────────────────────────────────
+  let phInvoicesId = '';
+  try {
+    phInvoicesId = $app.findCollectionByNameOrId('ph_invoices').id;
+  } catch (_) {
+    const phPropertiesId2 = $app.findCollectionByNameOrId('ph_properties').id;
+    const phInvoices = new Collection({
+      name: 'ph_invoices',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'number',       type: 'text',     required: true  },
+        { name: 'period',       type: 'text',     required: true  },
+        { name: 'property_id',  type: 'relation', required: true,
+          collectionId: phPropertiesId2, cascadeDelete: false },
+        { name: 'date',         type: 'text',     required: true  },
+        { name: 'due_date',     type: 'text',     required: false },
+        { name: 'subtotal',     type: 'number',   required: false, min: 0 },
+        { name: 'total',        type: 'number',   required: false, min: 0 },
+        { name: 'status',       type: 'select',   required: false,
+          values: ['draft', 'posted', 'paid', 'voided'] },
+        { name: 'tx_id',        type: 'relation', required: false,
+          collectionId: transactionsId, cascadeDelete: false },
+        { name: 'notes',        type: 'text',     required: false },
+      ],
+      indexes: ['CREATE UNIQUE INDEX idx_ph_inv_number ON ph_invoices (number)'],
+    });
+    $app.save(phInvoices);
+    phInvoicesId = phInvoices.id;
+    console.log('[GRAVY-PH] Colección ph_invoices creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_invoice_lines — Líneas de factura PH
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_invoice_lines');
+  } catch (_) {
+    if (!phInvoicesId) {
+      try { phInvoicesId = $app.findCollectionByNameOrId('ph_invoices').id; } catch (_2) {}
+    }
+    if (!phBillingConceptsId) {
+      try { phBillingConceptsId = $app.findCollectionByNameOrId('ph_billing_concepts').id; } catch (_2) {}
+    }
+    const phInvoiceLines = new Collection({
+      name: 'ph_invoice_lines',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'invoice_id',  type: 'relation', required: true,
+          collectionId: phInvoicesId, cascadeDelete: true },
+        { name: 'concept_id',  type: 'relation', required: false,
+          collectionId: phBillingConceptsId, cascadeDelete: false },
+        { name: 'description', type: 'text',     required: true  },
+        { name: 'amount',      type: 'number',   required: true,  min: 0 },
+        { name: 'line_order',  type: 'number',   required: false },
+      ],
+    });
+    $app.save(phInvoiceLines);
+    console.log('[GRAVY-PH] Colección ph_invoice_lines creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_reservations — Reservas de zonas comunes
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_reservations');
+  } catch (_) {
+    let phPropertiesId3 = '';
+    let phCommonAreasId = '';
+    try { phPropertiesId3  = $app.findCollectionByNameOrId('ph_properties').id;   } catch (_2) {}
+    try { phCommonAreasId  = $app.findCollectionByNameOrId('ph_common_areas').id; } catch (_2) {}
+
+    const phReservations = new Collection({
+      name: 'ph_reservations',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      fields: [
+        { name: 'area_id',      type: 'relation', required: true,
+          collectionId: phCommonAreasId, cascadeDelete: false },
+        { name: 'property_id',  type: 'relation', required: true,
+          collectionId: phPropertiesId3, cascadeDelete: false },
+        { name: 'date',         type: 'text',     required: true  },
+        { name: 'time_from',    type: 'text',     required: true  },
+        { name: 'time_to',      type: 'text',     required: true  },
+        { name: 'status',       type: 'select',   required: false,
+          values: ['pending', 'confirmed', 'cancelled'] },
+        { name: 'attendees',    type: 'number',   required: false, min: 0 },
+        { name: 'notes',        type: 'text',     required: false },
+      ],
+    });
+    $app.save(phReservations);
+    console.log('[GRAVY-PH] Colección ph_reservations creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // COLECCIÓN: ph_pqrs — Peticiones, Quejas, Reclamos, Sugerencias
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.findCollectionByNameOrId('ph_pqrs');
+  } catch (_) {
+    let phPropertiesId4 = '';
+    try { phPropertiesId4 = $app.findCollectionByNameOrId('ph_properties').id; } catch (_2) {}
+
+    const phPqrs = new Collection({
+      name: 'ph_pqrs',
+      type: 'base',
+      listRule:   "@request.auth.id != ''",
+      viewRule:   "@request.auth.id != ''",
+      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+      updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
+      deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+      fields: [
+        { name: 'number',      type: 'text',     required: true  },
+        { name: 'property_id', type: 'relation', required: false,
+          collectionId: phPropertiesId4, cascadeDelete: false },
+        { name: 'pqrs_type',   type: 'select',   required: true,
+          values: ['PETICION', 'QUEJA', 'RECLAMO', 'SUGERENCIA', 'FELICITACION'] },
+        { name: 'priority',    type: 'select',   required: false,
+          values: ['baja', 'media', 'alta'] },
+        { name: 'subject',     type: 'text',     required: true  },
+        { name: 'description', type: 'text',     required: true  },
+        { name: 'status',      type: 'select',   required: false,
+          values: ['open', 'in_process', 'resolved', 'closed'] },
+        { name: 'response',    type: 'text',     required: false },
+        { name: 'opened_at',   type: 'text',     required: false },
+        { name: 'closed_at',   type: 'text',     required: false },
+        { name: 'assigned_to', type: 'text',     required: false },
+      ],
+      indexes: ['CREATE UNIQUE INDEX idx_ph_pqrs_number ON ph_pqrs (number)'],
+    });
+    $app.save(phPqrs);
+    console.log('[GRAVY-PH] Colección ph_pqrs creada.');
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // TIPO DE TRANSACCIÓN: CF — Cuota Facturación PH
+  // ──────────────────────────────────────────────────────────
+  try {
+    const existing = $app.findFirstRecordByFilter(
+      'transaction_types',
+      'code="CF" && prefix="CF"'
+    );
+    // ya existe
+    existing; // silence unused var
+  } catch (_) {
+    try {
+      const ttCol = $app.findCollectionByNameOrId('transaction_types');
+      const cfType = new Record(ttCol, {
+        code:        'CF',
+        prefix:      'CF',
+        name:        'Cuota Facturación PH',
+        description: 'Facturas mensuales de propiedad horizontal (cuota de administración y conceptos)',
+        consecutive:  0,
+        active:       true,
+      });
+      $app.save(cfType);
+      console.log('[GRAVY-PH] Tipo de transacción CF creado.');
+    } catch (err2) {
+      console.log('[GRAVY-PH] Aviso al crear tipo CF: ' + err2);
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // CONSECUTIVO ph_invoices y ph_pqrs
+  // ──────────────────────────────────────────────────────────
+  try {
+    $app.nonconcurrentDB()
+      .newQuery('CREATE UNIQUE INDEX IF NOT EXISTS idx_ph_inv_number ON ph_invoices (number)')
+      .execute();
+    $app.nonconcurrentDB()
+      .newQuery('CREATE UNIQUE INDEX IF NOT EXISTS idx_ph_pqrs_number ON ph_pqrs (number)')
+      .execute();
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al crear índices únicos PH: ' + err);
+  }
+
+  console.log('[GRAVY-PH] Migración Copropiedades completada.');
+});

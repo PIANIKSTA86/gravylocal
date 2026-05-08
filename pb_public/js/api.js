@@ -1109,5 +1109,281 @@ const API = {
     await pb.update('purchase_invoices', invoiceId, { status: 'voided' });
     await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
   },
+
+  // ── Copropiedades (F8) ────────────────────────────────────
+
+  /** Lista todas las unidades habitacionales */
+  async getPhProperties(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('ph_properties', {
+      filter,
+      sort: 'code',
+      expand: 'owner_id,occupant_id',
+    });
+  },
+
+  /** Zonas comunes */
+  async getPhCommonAreas(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('ph_common_areas', { filter, sort: 'code' });
+  },
+
+  /** Conceptos de facturación PH */
+  async getPhBillingConcepts(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('ph_billing_concepts', {
+      filter,
+      sort: 'code',
+      expand: 'account_id',
+    });
+  },
+
+  /** Facturas PH paginadas */
+  async getPhInvoices(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('ph_invoices', {
+      page, perPage, filter, sort,
+      expand: 'property_id,property_id.owner_id',
+    });
+  },
+
+  /** Líneas de una factura PH */
+  async getPhInvoiceLines(invoiceId) {
+    const safe = pb.escapeFilterValue(invoiceId);
+    return pb.listAll('ph_invoice_lines', {
+      filter: `invoice_id="${safe}"`,
+      sort:   'line_order',
+      expand: 'concept_id',
+    });
+  },
+
+  /**
+   * Genera facturas en borrador para todas las unidades activas en un período YYYY-MM.
+   * Omite unidades que ya tienen factura para ese período.
+   */
+  async generatePhInvoices(period, dueDate = '') {
+    const safePeriod = pb.escapeFilterValue(period);
+    const [properties, concepts] = await Promise.all([
+      this.getPhProperties(true),
+      this.getPhBillingConcepts(true),
+    ]);
+    if (!properties.length) throw new Error('No hay unidades activas registradas.');
+    if (!concepts.length)   throw new Error('No hay conceptos de facturación activos.');
+
+    // Calcular número de secuencia base CF para este batch
+    const existingFilter = `period="${safePeriod}"`;
+    const existing = await pb.listAll('ph_invoices', { filter: existingFilter, perPage: 200 });
+    const existingPropIds = new Set(existing.map(i => i.property_id));
+
+    const toCreate = properties.filter(p => !existingPropIds.has(p.id));
+    if (!toCreate.length) throw new Error(`Todas las unidades ya tienen factura para el período ${period}.`);
+
+    const dateStr = period + '-01';
+    const dueDateStr = dueDate || (period + '-10');
+    let created = 0;
+
+    for (const prop of toCreate) {
+      // Calcular líneas y total para esta unidad
+      const lines = [];
+      let total = 0;
+      let order = 1;
+      for (const c of concepts) {
+        let amount = Number(c.amount || 0);
+        if (c.applies_coef && prop.coef_participacion > 0) {
+          amount = amount * (prop.coef_participacion / 100);
+        }
+        if (amount <= 0) continue;
+        total += amount;
+        lines.push({
+          concept_id:  c.id,
+          description: c.name,
+          amount:      Math.round(amount),
+          line_order:  order++,
+        });
+      }
+      if (!lines.length) continue;
+
+      // Crear cabecera (número AUTO — el hook de PocketBase no aplica aquí,
+      // ph_invoices no es "transactions"; generamos número en cliente con timestamp)
+      const seq = String(created + 1).padStart(6, '0');
+      const number = `CF-${period.replace('-', '')}-${seq}`;
+
+      const inv = await pb.create('ph_invoices', {
+        number,
+        period,
+        property_id: prop.id,
+        date:         dateStr,
+        due_date:     dueDateStr,
+        subtotal:     Math.round(total),
+        total:        Math.round(total),
+        status:       'draft',
+        notes:        '',
+      });
+
+      for (const ln of lines) {
+        await pb.create('ph_invoice_lines', { invoice_id: inv.id, ...ln });
+      }
+      created++;
+    }
+
+    await this.logAudit('GENERATE', 'PhInvoices', period, `Generadas ${created} facturas PH para ${period}`);
+    return created;
+  },
+
+  /**
+   * Contabiliza una factura PH (draft → posted).
+   * Genera un asiento: Débito CxC propietario / Crédito ingresos por concepto.
+   */
+  async postPhInvoice(invoiceId) {
+    const inv = await pb.get('ph_invoices', invoiceId, {
+      expand: 'property_id,property_id.owner_id',
+    });
+    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+
+    const lines = await this.getPhInvoiceLines(invoiceId);
+    if (!lines.length) throw new Error('La factura no tiene líneas.');
+
+    // Leer configuración contable PH
+    let phCfg = {};
+    try {
+      const raw = await this.getSetting('ph_config_v1');
+      phCfg = raw ? JSON.parse(raw) : {};
+    } catch (_) { phCfg = {}; }
+
+    const cxcCode    = String(phCfg.cxc_code    || '130505').trim();
+    const incomeCode = String(phCfg.income_code  || '413505').trim();
+
+    // Buscar tipo de transacción CF
+    const cfTypes = await pb.list('transaction_types', {
+      filter: 'code="CF" && active=true',
+      perPage: 1,
+    });
+    if (!cfTypes.items.length) throw new Error('Tipo de transacción CF no encontrado. Reinicia PocketBase para aplicar la migración.');
+    const txType = cfTypes.items[0];
+
+    // Buscar cuenta CxC por código
+    const safeCxc = pb.escapeFilterValue(cxcCode);
+    const cxcRes  = await pb.list('accounts', { filter: `code="${safeCxc}"`, perPage: 1 });
+    if (!cxcRes.items.length) throw new Error(`Cuenta CxC "${cxcCode}" no encontrada. Configúrala en Copropiedades > Configuración.`);
+    const cxcAccount = cxcRes.items[0];
+
+    // Propietario de la unidad (para third_party en asiento)
+    const property = inv.expand?.property_id;
+    const ownerId  = property?.owner_id || null;
+
+    // Construir líneas del asiento contable
+    const txLines = [];
+
+    // Líneas de ingreso por concepto (crédito)
+    for (const ln of lines) {
+      const concept   = ln.expand?.concept_id;
+      let accCode     = incomeCode;
+      if (concept?.expand?.account_id?.code) {
+        accCode = concept.expand.account_id.code;
+      } else if (concept?.account_id) {
+        // Expand no disponible — buscar por id
+        try {
+          const acc = await pb.get('accounts', concept.account_id);
+          accCode = acc.code || incomeCode;
+        } catch (_) { accCode = incomeCode; }
+      }
+
+      const safeCode = pb.escapeFilterValue(accCode);
+      const accRes   = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!accRes.items.length) throw new Error(`Cuenta de ingreso "${accCode}" no encontrada.`);
+
+      txLines.push({
+        account_id:     accRes.items[0].id,
+        third_party_id: ownerId || null,
+        debit:          0,
+        credit:         Number(ln.amount || 0),
+        description:    ln.description,
+        line_order:     txLines.length + 1,
+      });
+    }
+
+    // Línea de débito a CxC (una sola línea por el total)
+    const totalAmount = lines.reduce((s, l) => s + Number(l.amount || 0), 0);
+    txLines.unshift({
+      account_id:     cxcAccount.id,
+      third_party_id: ownerId || null,
+      debit:          totalAmount,
+      credit:         0,
+      description:    `Cuota ${inv.period} — ${property?.name || property?.code || inv.property_id}`,
+      line_order:     0,
+    });
+    // Reordenar
+    txLines.forEach((l, i) => { l.line_order = i + 1; });
+
+    // Crear transacción contable
+    const userId = pb.currentUser?.id || '';
+    const tx = await pb.create('transactions', {
+      tx_type_id:    txType.id,
+      number:        'AUTO',
+      date:          inv.date,
+      description:   `Factura PH ${inv.number} — ${property?.name || inv.property_id} — ${inv.period}`,
+      third_party_id: ownerId || null,
+      status:        'active',
+      user_id:       userId || undefined,
+    });
+    for (const ln of txLines) {
+      await pb.create('tx_lines', { tx_id: tx.id, ...ln });
+    }
+
+    // Actualizar factura
+    await pb.update('ph_invoices', invoiceId, { status: 'posted', tx_id: tx.id });
+    await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
+    return pb.get('ph_invoices', invoiceId, { expand: 'property_id' });
+  },
+
+  /** Anula una factura PH: revierte el asiento si existe */
+  async voidPhInvoice(invoiceId, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
+    const inv = await pb.get('ph_invoices', invoiceId);
+    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+
+    if (inv.status === 'posted' && inv.tx_id) {
+      // Anular la transacción contable
+      await pb.update('transactions', inv.tx_id, { status: 'voided' });
+    }
+    await pb.update('ph_invoices', invoiceId, { status: 'voided', tx_id: null });
+    await this.logAudit('VOID', 'PhInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
+  },
+
+  /** Marca una factura PH como pagada */
+  async markPhInvoicePaid(invoiceId) {
+    const inv = await pb.get('ph_invoices', invoiceId);
+    if (inv.status !== 'posted') throw new Error('Solo se pueden marcar como pagadas las facturas contabilizadas.');
+    await pb.update('ph_invoices', invoiceId, { status: 'paid' });
+    await this.logAudit('PAID', 'PhInvoice', invoiceId, `Marcada como pagada ${inv.number}`);
+  },
+
+  /** Reservas */
+  async getPhReservations(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('ph_reservations', {
+      page, perPage, filter, sort,
+      expand: 'area_id,property_id',
+    });
+  },
+
+  /** PQRs paginadas */
+  async getPhPqrs(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-created' } = opts;
+    return pb.list('ph_pqrs', {
+      page, perPage, filter, sort,
+      expand: 'property_id',
+    });
+  },
+
+  /** Genera número de PQR con prefijo PQR-YYYYMMDD-NNNN */
+  async nextPhPqrNumber() {
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const res   = await pb.list('ph_pqrs', { sort: '-created', perPage: 1 });
+    const count = (res.totalItems || 0) + 1;
+    return `PQR-${today}-${String(count).padStart(4, '0')}`;
+  },
 };
 

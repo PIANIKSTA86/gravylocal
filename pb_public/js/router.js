@@ -16,6 +16,7 @@ const PAGE_TITLES = {
   auditoria:         'Auditoría',
   usuarios:          'Usuarios',
   configuracion:     'Configuración',  utilidades:        'Utilidades',  conciliacion:      'Conciliación Bancaria',
+  copropiedades:     'Copropiedades',
   nomina:            'Nómina',
   'facturacion-dian':'Facturación Electrónica DIAN',
   'cierre':          'Cierre Contable',
@@ -43,6 +44,7 @@ const PAGE_RENDERERS = {
   productos:          () => typeof renderProductos         === 'function' && renderProductos($('#page-content')),
   inventario:         () => typeof renderInventario        === 'function' && renderInventario($('#page-content')),
   compras:            () => typeof renderCompras           === 'function' && renderCompras($('#page-content')),
+  copropiedades:      () => typeof renderCopropiedades     === 'function' && renderCopropiedades($('#page-content')),
 };
 
 let currentPage = 'dashboard';

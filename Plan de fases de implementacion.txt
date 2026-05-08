@@ -1,0 +1,11 @@
+Plan de fases actualizado
+#	Módulo	Dependencias____________________________________________Impacto
+F0	Quick wins (auditoría, N+1, dashboard TODO)_____________________Ninguna	Seguridad + estabilidad
+F1	Catálogo de Productos/Servicios	Ninguna	________________________Desbloquea F2..F7
+F2	CRM — pipeline, prospectos, cotizaciones,Terceros (ok) + F1_____Desbloquea F3 + captura comercial
+F3	Facturación Comercial FV/NC/ND + motor impuestos F1 + F2________Desbloquea F4, F6, habilita DIAN
+F4	DIAN real (UBL 2.1, firma, acuses, eventos) F3 completo	________Cumplimiento fiscal
+F5	Inventarios (bodegas, kárdex, costos PEPS/prom)	F1______________Desbloquea F7
+F6	POS F3 + F5_____________________________________________________Punto de venta
+F7	Importaciones (OC internac., aranceles, costos logísticos)______F1 + F5	Compras exteriores
+F8	Copropiedades (Facturación de concepto mensuales, reservas de zonas, pqrs, gestion de unidades habitacionales)Solo core contable________________________________________________________________Track independiente

@@ -9,4 +9,7 @@ F5	Inventarios (bodegas, kárdex, costos PEPS/prom)	F1______________Desbloquea F
 F6	POS F3 + F5_____________________________________________________Punto de venta
 F7	Importaciones (OC internac., aranceles, costos logísticos)______F1 + F5	Compras exteriores
 F8	Copropiedades (Facturación de concepto mensuales, reservas de zonas, pqrs, gestion de unidades habitacionales)Solo core contable________________________________________________________________Track independiente de otras fases
-F9	Tesoreria (Recaudos, Pagos)_____________________________________Track independiente de otras fases
+F9	Tesoreria (Recaudos, Pagos)_____________________________________Track independiente de otras fases Aplicación de abonos: ¿Necesitas motor de aplicación (abono se distribuye automáticamente contra conceptos según reglas)? ¿O es manual (usuario selecciona qué concepto cancela el abono)?
+Aplicación de abonos: Motor de aplicación (abono se distribuye automáticamente contra conceptos según reglas) con posibilidad de intervencion manual del usuario (opcional)
+Recaudos: Registrar pagos/recaudos (banco, efectivo, cheque) con aplicación contra partidas
+

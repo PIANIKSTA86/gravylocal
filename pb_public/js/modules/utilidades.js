@@ -29,6 +29,7 @@ let _restoreInProgress = false;
 let _massTxImportInProgress = false;
 let _massTpImportInProgress = false;
 let _massAccImportInProgress = false;
+let _massPhUnitsImportInProgress = false;
 
 /* ══════════════════════════════════════════════════════════
    RENDER PRINCIPAL
@@ -211,6 +212,36 @@ async function renderUtilidades(container) {
           </div>
         </div>
 
+        <!-- ── Tarjeta: Carga masiva de unidades PH ─────── -->
+        <div class="stat-card blue" id="util-card-mass-ph-units">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(14,116,144,.12)">
+                <i class="fas fa-building-user" style="color:#0E7490;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga masiva de unidades PH</h3>
+                <p class="text-xs" style="color:#6B7280">Importa unidades habitacionales de copropiedades</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Crea o actualiza unidades en lote para el módulo de Copropiedades. Si el código ya existe,
+            la unidad se actualiza; si no existe, se crea automáticamente.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-ph-units-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-ph-units-open" class="btn btn-secondary btn-sm">
+              <i class="fas fa-upload"></i> Cargar archivo
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>`;
 
@@ -219,6 +250,7 @@ async function renderUtilidades(container) {
   _massTxImportInProgress = false;
   _massTpImportInProgress = false;
   _massAccImportInProgress = false;
+  _massPhUnitsImportInProgress = false;
 
   // Cargar última info de respaldo guardada localmente
   _loadLastBackupInfo();
@@ -236,6 +268,8 @@ async function renderUtilidades(container) {
   $('#btn-mass-tp-open')?.addEventListener('click', _openMassTpImportModal);
   $('#btn-mass-acc-template')?.addEventListener('click', _downloadMassAccTemplate);
   $('#btn-mass-acc-open')?.addEventListener('click', _openMassAccImportModal);
+  $('#btn-mass-ph-units-template')?.addEventListener('click', _downloadMassPhUnitsTemplate);
+  $('#btn-mass-ph-units-open')?.addEventListener('click', _openMassPhUnitsImportModal);
 }
 
 /* ── Información del último backup (localStorage) ──────── */
@@ -1731,6 +1765,321 @@ async function _openMassAccImportModal() {
     if (errors) msg += ` ${errors} con error.`;
     showToast(msg, errors ? 'warning' : 'success', 5000);
     _massAccImportInProgress = false;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   CARGA MASIVA DE UNIDADES HABITACIONALES (COPROPIEDADES)
+══════════════════════════════════════════════════════════ */
+
+function _downloadMassPhUnitsTemplate() {
+  const header = [
+    'codigo', 'nombre', 'tipo', 'torre', 'apartamento',
+    'coef_participacion', 'cuota_admin', 'area_m2',
+    'doc_propietario', 'tipo_doc_propietario', 'activo', 'notas'
+  ].join(',');
+
+  const rows = [
+    '101,Apartamento 101,APARTAMENTO,Torre 1,101,2.1500,0,68.50,900123456,CC,Si,Unidad principal',
+    'P-12,Parqueadero 12,PARQUEADERO,Torre 1,P-12,0.3200,0,12.00,900123456,CC,Si,Parqueadero cubierto',
+    'D-03,Deposito 03,DEPOSITO,Torre 1,D-03,0.1500,0,5.20,900123456,CC,Si,',
+  ].join('\n');
+
+  const blob = new Blob([header + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_unidades_copropiedades.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function _massPhUnitsNormalizeRow(raw, ownersByDoc, ownersByDocTypeDoc) {
+  const code = _massTxPick(raw, ['codigo', 'code', 'unidad', 'unit_code']);
+  const name = _massTxPick(raw, ['nombre', 'name', 'descripcion']);
+  const unitTypeRaw = _massTxPick(raw, ['tipo', 'unit_type', 'tipo_unidad']) || 'APARTAMENTO';
+  const tower = _massTxPick(raw, ['torre', 'tower']);
+  const apartment = _massTxPick(raw, ['apartamento', 'apto', 'apartment']);
+  const coef = _massTxNum(_massTxPick(raw, ['coef_participacion', 'coef', 'coeficiente']));
+  const adminFee = _massTxNum(_massTxPick(raw, ['cuota_admin', 'admin_fee', 'cuota_administracion']));
+  const area = _massTxNum(_massTxPick(raw, ['area_m2', 'area']));
+  const ownerDoc = _massTxPick(raw, ['doc_propietario', 'owner_doc', 'documento_propietario']);
+  const ownerDocType = _massTxPick(raw, ['tipo_doc_propietario', 'owner_doc_type', 'doc_type_propietario']).toUpperCase();
+  const activeRaw = _massTxPick(raw, ['activo', 'active', 'estado']);
+  const notes = _massTxPick(raw, ['notas', 'nota', 'notes']);
+
+  if (!code) return { ok: false, error: 'Falta el código de la unidad' };
+  if (!name) return { ok: false, error: `Falta el nombre para la unidad ${code}` };
+
+  const validTypes = new Set(['APARTAMENTO', 'PARQUEADERO', 'DEPOSITO', 'LOCAL', 'CASA', 'OFICINA', 'OTRO']);
+  const unitType = String(unitTypeRaw || '').toUpperCase();
+  if (!validTypes.has(unitType)) {
+    return { ok: false, error: `Tipo inválido en ${code}: ${unitTypeRaw}` };
+  }
+
+  if (coef < 0 || coef > 100) {
+    return { ok: false, error: `Coeficiente fuera de rango (0-100) en ${code}` };
+  }
+  if (adminFee < 0) return { ok: false, error: `Cuota administración negativa en ${code}` };
+  if (area < 0) return { ok: false, error: `Área negativa en ${code}` };
+
+  let ownerId = null;
+  if (ownerDoc) {
+    const ownerDocKey = _massTxDocKey(ownerDoc);
+    if (ownerDocType) {
+      ownerId = ownersByDocTypeDoc.get(`${ownerDocType}|${ownerDocKey}`)?.id || null;
+    }
+    if (!ownerId) ownerId = ownersByDoc.get(ownerDocKey)?.id || null;
+    if (!ownerId) return { ok: false, error: `No existe tercero propietario con documento ${ownerDoc}` };
+  }
+
+  const active = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
+
+  return {
+    ok: true,
+    payload: {
+      code,
+      name,
+      unit_type: unitType,
+      tower,
+      apartment,
+      coef_participacion: coef,
+      admin_fee: adminFee,
+      area_m2: area,
+      owner_id: ownerId,
+      notes,
+      active,
+    },
+  };
+}
+
+async function _openMassPhUnitsImportModal() {
+  if (!can('canWrite')) return showToast('No tienes permisos para importar unidades', 'error');
+  if (_massPhUnitsImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+
+  openModal(
+    '<i class="fas fa-building-user mr-2" style="color:#0E7490"></i>Importar Unidades Copropiedades',
+    `
+    <div class="mb-4">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx)</strong> con unidades habitacionales.
+        Si el código ya existe se <strong>actualiza</strong>; si no existe se <strong>crea</strong>.
+      </p>
+      <div class="rounded-xl p-3 mb-3" style="background:#F0FDFA;border:1px solid #99F6E4">
+        <p class="text-xs font-semibold mb-1" style="color:#0F766E;text-transform:uppercase;letter-spacing:.05em">Columnas</p>
+        <div class="flex flex-wrap gap-2">
+          ${['codigo','nombre','tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#CCFBF1;color:#0F766E">${c}</code>`).join('')}
+          ${['torre','apartamento','coef_participacion','cuota_admin','area_m2','doc_propietario','tipo_doc_propietario','activo','notas'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm mb-4" id="btn-mass-ph-units-dl-tmpl"><i class="fas fa-download mr-1"></i>Descargar plantilla CSV</button>
+      <div id="mass-ph-units-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#0E7490;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 5 MB</p>
+        <input type="file" id="mass-ph-units-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+
+      <div id="mass-ph-units-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa — <span id="mass-ph-units-count"></span></p>
+          <button class="btn btn-outline btn-sm" id="btn-mass-ph-units-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:300px;overflow-y:auto">
+          <table class="data-table text-xs">
+            <thead><tr><th>#</th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Apto</th><th>Propietario</th><th>Operación</th><th>Estado</th></tr></thead>
+            <tbody id="mass-ph-units-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="mass-ph-units-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary hidden" id="btn-mass-ph-units-run"><i class="fas fa-bolt mr-1"></i>Ejecutar importación</button>`,
+    true
+  );
+
+  let parsedRows = [];
+
+  const [terceros, existingUnits] = await Promise.all([
+    API.getTerceros({}),
+    pb.listAll('ph_properties', { sort: 'code' }),
+  ]);
+
+  const ownersByDoc = new Map();
+  const ownersByDocTypeDoc = new Map();
+  terceros.forEach(t => {
+    const key = _massTxDocKey(t.doc_number);
+    if (!key) return;
+    if (!ownersByDoc.has(key)) ownersByDoc.set(key, t);
+    const typed = `${String(t.doc_type || '').toUpperCase()}|${key}`;
+    if (!ownersByDocTypeDoc.has(typed)) ownersByDocTypeDoc.set(typed, t);
+  });
+
+  const unitByCode = new Map(existingUnits.map(u => [String(u.code || '').trim().toUpperCase(), u]));
+
+  const dropZone = document.getElementById('mass-ph-units-drop');
+  const fileInput = document.getElementById('mass-ph-units-file-input');
+
+  document.getElementById('btn-mass-ph-units-dl-tmpl')?.addEventListener('click', _downloadMassPhUnitsTemplate);
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#0E7490';
+    dropZone.style.background = '#ECFEFF';
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    dropZone.style.borderColor = '#D1D5DB';
+    dropZone.style.background = '#FAFAFA';
+  });
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#D1D5DB';
+    dropZone.style.background = '#FAFAFA';
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processFile(file);
+  });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) processFile(file);
+  });
+
+  document.getElementById('btn-mass-ph-units-clear')?.addEventListener('click', () => {
+    parsedRows = [];
+    document.getElementById('mass-ph-units-preview')?.classList.add('hidden');
+    document.getElementById('btn-mass-ph-units-run')?.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  });
+
+  async function processFile(file) {
+    if (file.size > 5 * 1024 * 1024) return showToast('El archivo supera 5 MB', 'error');
+    const ext = file.name.split('.').pop().toLowerCase();
+    let rawRows = [];
+    try {
+      if (ext === 'csv') rawRows = _massTxParseCsv(await file.text());
+      else if (ext === 'xlsx' || ext === 'xls') rawRows = _massTxParseExcel(await file.arrayBuffer());
+      else return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+    } catch (e) {
+      return showToast('Error al leer el archivo: ' + e.message, 'error');
+    }
+    if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');
+
+    parsedRows = rawRows.map((r, i) => {
+      const norm = _massPhUnitsNormalizeRow(r, ownersByDoc, ownersByDocTypeDoc);
+      if (!norm.ok) return { idx: i + 1, ...norm };
+      const codeKey = String(norm.payload.code || '').trim().toUpperCase();
+      const existing = unitByCode.get(codeKey);
+      return {
+        idx: i + 1,
+        ok: true,
+        mode: existing ? 'update' : 'create',
+        existingId: existing?.id || null,
+        ownerName: norm.payload.owner_id ? (terceros.find(t => t.id === norm.payload.owner_id)?.name || '—') : '—',
+        payload: norm.payload,
+      };
+    });
+
+    renderPreview(parsedRows);
+  }
+
+  function renderPreview(rows) {
+    const tbody = document.getElementById('mass-ph-units-preview-body');
+    const count = document.getElementById('mass-ph-units-count');
+    const summary = document.getElementById('mass-ph-units-summary');
+    const runBtn = document.getElementById('btn-mass-ph-units-run');
+    const preview = document.getElementById('mass-ph-units-preview');
+
+    const okRows = rows.filter(r => r.ok);
+    const errRows = rows.filter(r => !r.ok);
+    count.textContent = `${rows.length} fila(s) — ${okRows.length} válidas, ${errRows.length} con error`;
+
+    tbody.innerHTML = rows.map(r => {
+      if (!r.ok) {
+        return `<tr style="background:#FFF7F7">
+          <td>${r.idx}</td>
+          <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error || 'Fila inválida')}</td>
+          <td><span class="badge badge-red">Error</span></td>
+        </tr>`;
+      }
+      const p = r.payload;
+      const opBadge = r.mode === 'update'
+        ? '<span class="badge badge-orange">Actualizar</span>'
+        : '<span class="badge badge-blue">Crear</span>';
+      return `<tr>
+        <td>${r.idx}</td>
+        <td><span class="font-semibold" style="color:#0E7490">${esc(p.code)}</span></td>
+        <td>${esc(p.name)}</td>
+        <td>${esc(p.unit_type || '—')}</td>
+        <td>${esc(p.apartment || '—')}</td>
+        <td>${esc(r.ownerName || '—')}</td>
+        <td>${opBadge}</td>
+        <td><span class="badge badge-green">OK</span></td>
+      </tr>`;
+    }).join('');
+
+    summary.innerHTML = errRows.length
+      ? `<span style="color:#EF4444"><i class="fas fa-triangle-exclamation mr-1"></i>${errRows.length} fila(s) con error serán omitidas.</span>`
+      : `<span style="color:#22C55E"><i class="fas fa-circle-check mr-1"></i>Todas las filas son válidas.</span>`;
+
+    preview.classList.remove('hidden');
+    if (okRows.length) runBtn?.classList.remove('hidden');
+    else runBtn?.classList.add('hidden');
+  }
+
+  document.getElementById('btn-mass-ph-units-run')?.addEventListener('click', async () => {
+    const okRows = parsedRows.filter(r => r.ok);
+    if (!okRows.length || _massPhUnitsImportInProgress) return;
+
+    _massPhUnitsImportInProgress = true;
+    const runBtn = document.getElementById('btn-mass-ph-units-run');
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...';
+    }
+
+    let created = 0;
+    let updated = 0;
+    let failed = 0;
+    const failedRows = [];
+
+    try {
+      for (const row of okRows) {
+        try {
+          if (row.mode === 'update' && row.existingId) {
+            await pb.update('ph_properties', row.existingId, row.payload);
+            updated++;
+          } else {
+            const rec = await pb.create('ph_properties', row.payload);
+            row.existingId = rec.id;
+            created++;
+          }
+        } catch (e) {
+          failed++;
+          failedRows.push({ code: row.payload.code, error: e.message || 'Error desconocido' });
+        }
+      }
+
+      await API.logAudit(
+        'IMPORT', 'PhProperty', 'bulk',
+        `Carga masiva unidades PH: ${created} creadas, ${updated} actualizadas, ${failed} con error`
+      );
+
+      if (failedRows.length) console.warn('[CargaMasivaPhUnits] Errores:', failedRows);
+
+      closeModal();
+      showToast(
+        `Carga completada: ${created} creadas, ${updated} actualizadas${failed ? `, ${failed} con error` : ''}`,
+        failed ? 'warning' : 'success',
+        5500
+      );
+    } finally {
+      _massPhUnitsImportInProgress = false;
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar importación';
+      }
+    }
   });
 }
 

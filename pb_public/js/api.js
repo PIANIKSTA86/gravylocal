@@ -1801,5 +1801,135 @@ const API = {
       }
     }
   },
+
+  /**
+   * Calcula días de mora desde una fecha de vencimiento.
+   * dueDate: 'YYYY-MM-DD'
+   * Retorna: número de días vencidos (0 si aún no vence, negativo si vence en futuro)
+   */
+  calculateDaysOverdue(dueDate) {
+    if (!dueDate) return 0;
+    const due = new Date(dueDate + 'T00:00:00Z');
+    const now = new Date();
+    const diffMs = now.getTime() - due.getTime();
+    return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  },
+
+  /**
+   * Obtiene cartera consolidada por concepto de una unidad.
+   * Retorna: [{concepto, conceptoId, totalVencido, totalPorVencer, totalPendiente, diasMoraMax}]
+   */
+  async getPhCarteraByUnit(propertyId, fromPeriod = '', toPeriod = '') {
+    const cartera = {};
+
+    // Obtener todas las facturas de la unidad (no pagadas/voided)
+    let invoices = [];
+    const invStatuses = ['draft', 'posted', 'paid'];
+    for (const status of invStatuses) {
+      let filter = `property_id="${propertyId}" && status="${status}"`;
+      if (fromPeriod) filter += ` && period>="${fromPeriod}"`;
+      if (toPeriod) filter += ` && period<="${toPeriod}"`;
+      try {
+        const res = await pb.list('ph_invoices', { filter, perPage: 500 });
+        invoices.push(...res.items);
+      } catch (_) {}
+    }
+
+    if (invoices.length === 0) return [];
+
+    // Obtener líneas de todas esas facturas
+    const allLines = [];
+    for (const inv of invoices) {
+      try {
+        const lines = await this.getPhInvoiceLines(inv.id);
+        allLines.push(...lines.map(l => ({ ...l, invoiceId: inv.id, invoicePeriod: inv.period, invoiceDueDate: inv.due_date })));
+      } catch (_) {}
+    }
+
+    if (allLines.length === 0) return [];
+
+    // Agrupar por concepto
+    for (const line of allLines) {
+      const conceptoId = line.concept_id || line.account_code || 'OTROS';
+      if (!cartera[conceptoId]) {
+        cartera[conceptoId] = {
+          conceptoId,
+          concepto: line.description || conceptoId,
+          totalVencido: 0,
+          totalPorVencer: 0,
+          totalPendiente: 0,
+          diasMoraMax: 0,
+        };
+      }
+
+      const amount = Number(line.amount || 0);
+      const diasMora = this.calculateDaysOverdue(line.invoiceDueDate);
+
+      cartera[conceptoId].totalPendiente += amount;
+      if (diasMora > 0) {
+        cartera[conceptoId].totalVencido += amount;
+        cartera[conceptoId].diasMoraMax = Math.max(cartera[conceptoId].diasMoraMax, diasMora);
+      } else {
+        cartera[conceptoId].totalPorVencer += amount;
+      }
+    }
+
+    return Object.values(cartera);
+  },
+
+  /**
+   * Obtiene partidas abiertas por concepto (línea por línea) con detalles de mora.
+   * Retorna: [{invoiceId, invoiceNumber, periodo, concepto, amount, dueDate, diasMora, estado}]
+   */
+  async getPhCarteraOpenParties(propertyId, fromPeriod = '', toPeriod = '') {
+    const parties = [];
+
+    // Obtener todas las facturas de la unidad (no voided)
+    let invoices = [];
+    const invStatuses = ['draft', 'posted', 'paid'];
+    for (const status of invStatuses) {
+      let filter = `property_id="${propertyId}" && status="${status}"`;
+      if (fromPeriod) filter += ` && period>="${fromPeriod}"`;
+      if (toPeriod) filter += ` && period<="${toPeriod}"`;
+      try {
+        const res = await pb.list('ph_invoices', { filter, perPage: 500, sort: '-date' });
+        invoices.push(...res.items);
+      } catch (_) {}
+    }
+
+    if (invoices.length === 0) return [];
+
+    // Obtener líneas de todas esas facturas
+    for (const inv of invoices) {
+      try {
+        const lines = await this.getPhInvoiceLines(inv.id);
+        for (const line of lines) {
+          const diasMora = this.calculateDaysOverdue(inv.due_date);
+          let estado = 'por_vencer';
+          if (diasMora > 0) {
+            estado = 'vencido';
+          } else if (inv.status === 'paid') {
+            estado = 'cancelado';
+          } else if (inv.status === 'draft') {
+            estado = 'borrador';
+          }
+
+          parties.push({
+            invoiceId: inv.id,
+            invoiceNumber: inv.number,
+            periodo: inv.period,
+            concepto: line.description || line.account_code || 'Concepto',
+            conceptoId: line.concept_id || line.account_code || 'OTROS',
+            amount: Number(line.amount || 0),
+            dueDate: inv.due_date,
+            diasMora: Math.max(0, diasMora),
+            estado,
+          });
+        }
+      } catch (_) {}
+    }
+
+    return parties;
+  },
 };
 

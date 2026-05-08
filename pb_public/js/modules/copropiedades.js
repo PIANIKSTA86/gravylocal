@@ -79,6 +79,7 @@ async function renderCopropiedades(c) {
 function _renderPhPage(c, activeTab) {
   const tabs = [
     { id: 'facturacion', label: 'Facturación',   icon: 'fa-file-invoice-dollar' },
+    { id: 'cartera',     label: 'Cartera',       icon: 'fa-chart-line'          },
     { id: 'unidades',    label: 'Unidades',       icon: 'fa-building'            },
     { id: 'reservas',    label: 'Reservas',       icon: 'fa-calendar-check'      },
     { id: 'pqrs',        label: 'PQRs',           icon: 'fa-comments'            },
@@ -107,6 +108,7 @@ function _renderPhPage(c, activeTab) {
   function switchTab(tabId) {
     c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     if (tabId === 'facturacion') renderPhFacturacion(tabContent);
+    if (tabId === 'cartera')     renderPhCartera(tabContent);
     if (tabId === 'unidades')    renderPhUnidades(tabContent);
     if (tabId === 'reservas')    renderPhReservas(tabContent);
     if (tabId === 'pqrs')        renderPhPqrs(tabContent);
@@ -756,6 +758,190 @@ function voidPhInvoiceModal(invoiceId) {
       }
     }, { once: true });
   }, 50);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: CARTERA POR CONCEPTO
+// ══════════════════════════════════════════════════════════════════════════════
+async function renderPhCartera(c) {
+  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando cartera...</div>`;
+  try {
+    // Obtener todas las propiedades
+    const properties = await API.getPhProperties(false);
+    const selectedPropertyId = properties[0]?.id || '';
+
+    c.innerHTML = `
+      <!-- Filtros -->
+      <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+          <div>
+            <label class="form-label mb-1">Unidad</label>
+            <select id="ph-cartera-unit-filter" class="form-input">
+              <option value="">— Todas las unidades —</option>
+              ${properties.map(p => `<option value="${esc(p.id)}">${esc(p.code)} - ${esc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="form-label mb-1">Período desde</label>
+            <input id="ph-cartera-from" type="month" class="form-input">
+          </div>
+          <div>
+            <label class="form-label mb-1">Período hasta</label>
+            <input id="ph-cartera-to" type="month" class="form-input">
+          </div>
+          <div class="flex items-end">
+            <button class="btn btn-primary w-full" id="ph-cartera-refresh-btn">
+              <i class="fas fa-sync"></i> Actualizar
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dos pestañas: Resumen y Detalle -->
+      <div class="flex gap-1 mb-4 border-b" style="border-color:#E5E7EB">
+        <button class="cartera-tab-btn active" data-tab="resumen">
+          <i class="fas fa-table mr-2"></i>Resumen por Concepto
+        </button>
+        <button class="cartera-tab-btn" data-tab="detalle">
+          <i class="fas fa-list mr-2"></i>Partidas Abiertas
+        </button>
+      </div>
+
+      <!-- TAB: Resumen por concepto -->
+      <div id="ph-cartera-resumen" class="cartera-tab-content">
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+          <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
+            <span class="font-bold text-sm" style="color:#0D2137">Cartera Consolidada por Concepto</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table" id="ph-cartera-resumen-table">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th class="text-right">Vencido ($)</th>
+                  <th class="text-right">Por Vencer ($)</th>
+                  <th class="text-right">Total Pendiente ($)</th>
+                  <th class="text-right">Días Mora Máx</th>
+                </tr>
+              </thead>
+              <tbody id="ph-cartera-resumen-tbody">
+                <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: Partidas abiertas -->
+      <div id="ph-cartera-detalle" class="cartera-tab-content" style="display:none">
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+          <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
+            <span class="font-bold text-sm" style="color:#0D2137">Partidas Abiertas por Concepto</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table" id="ph-cartera-detalle-table">
+              <thead>
+                <tr>
+                  <th>N° Factura</th>
+                  <th>Período</th>
+                  <th>Concepto</th>
+                  <th class="text-right">Monto ($)</th>
+                  <th>Vencimiento</th>
+                  <th class="text-right">Días Vencidos</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="ph-cartera-detalle-tbody">
+                <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+
+    // Tabs
+    c.querySelectorAll('.cartera-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        c.querySelectorAll('.cartera-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        const tab = btn.dataset.tab;
+        c.querySelectorAll('.cartera-tab-content').forEach(t => t.style.display = 'none');
+        c.querySelector(`#ph-cartera-${tab}`).style.display = '';
+      });
+    });
+
+    // Función para cargar cartera
+    async function loadCartera() {
+      const unitId = document.getElementById('ph-cartera-unit-filter')?.value || '';
+      const fromPeriod = document.getElementById('ph-cartera-from')?.value || '';
+      const toPeriod = document.getElementById('ph-cartera-to')?.value || '';
+
+      if (!unitId) {
+        document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
+          <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Selecciona una unidad para ver la cartera</td></tr>`;
+        document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
+          <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Selecciona una unidad para ver las partidas</td></tr>`;
+        return;
+      }
+
+      // Resumen
+      try {
+        const cartera = await API.getPhCarteraByUnit(unitId, fromPeriod, toPeriod);
+        if (cartera.length === 0) {
+          document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
+            <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Sin cartera en este período</td></tr>`;
+        } else {
+          document.getElementById('ph-cartera-resumen-tbody').innerHTML = cartera.map(c => `
+            <tr>
+              <td><strong>${esc(c.concepto)}</strong></td>
+              <td class="text-right">${fmt(c.totalVencido)}</td>
+              <td class="text-right">${fmt(c.totalPorVencer)}</td>
+              <td class="text-right"><strong>${fmt(c.totalPendiente)}</strong></td>
+              <td class="text-right">${c.diasMoraMax > 0 ? `<span style="color:#EF4444"><strong>${c.diasMoraMax}</strong></span>` : '—'}</td>
+            </tr>`).join('');
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
+          <tr><td colspan="5" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+      }
+
+      // Detalle
+      try {
+        const parties = await API.getPhCarteraOpenParties(unitId, fromPeriod, toPeriod);
+        if (parties.length === 0) {
+          document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
+            <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Sin partidas en este período</td></tr>`;
+        } else {
+          document.getElementById('ph-cartera-detalle-tbody').innerHTML = parties.map(p => {
+            const estilo = p.estado === 'vencido' ? 'color:#EF4444;font-weight:bold' : p.estado === 'cancelado' ? 'color:#059669' : '';
+            return `<tr style="${estilo}">
+              <td class="font-mono text-xs">${esc(p.invoiceNumber)}</td>
+              <td>${esc(p.periodo)}</td>
+              <td>${esc(p.concepto)}</td>
+              <td class="text-right">${fmt(p.amount)}</td>
+              <td>${p.dueDate ? fmtDate(p.dueDate) : '—'}</td>
+              <td class="text-right">${p.diasMora > 0 ? `<strong>${p.diasMora}</strong>` : '—'}</td>
+              <td><span class="badge ${p.estado === 'vencido' ? 'badge-red' : p.estado === 'cancelado' ? 'badge-green' : p.estado === 'borrador' ? 'badge-orange' : 'badge-blue'}">${esc(p.estado)}</span></td>
+            </tr>`;
+          }).join('');
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
+          <tr><td colspan="7" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+      }
+    }
+
+    // Event listener para actualizar
+    document.getElementById('ph-cartera-refresh-btn')?.addEventListener('click', loadCartera);
+    document.getElementById('ph-cartera-unit-filter')?.addEventListener('change', loadCartera);
+
+    // Cargar inicial
+    loadCartera();
+
+  } catch (err) {
+    c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

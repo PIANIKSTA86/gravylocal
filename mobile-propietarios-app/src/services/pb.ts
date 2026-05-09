@@ -109,12 +109,31 @@ type OwnerRegistrationResponse = {
   };
 };
 
+type OwnerContextResponse = {
+  owner?: {
+    id?: string;
+    name?: string;
+    docNumber?: string;
+  } | null;
+  properties?: PhProperty[];
+};
+
 export async function loginWithPassword(email: string, password: string) {
   return pb.collection('users').authWithPassword(email.trim(), password);
 }
 
 function normalizeDocument(value: string) {
   return String(value || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+}
+
+function normalizeText(value: string) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase();
 }
 
 async function fetchOwnerRegistrationMatch(documentNumber: string): Promise<OwnerRegistrationMatch | null> {
@@ -186,6 +205,24 @@ export function currentUser() {
 
 function relationValueToId(value: any) {
   if (!value) return '';
+
+  if (typeof value === 'string') {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    // PocketBase relation values may occasionally come serialized as JSON strings.
+    if ((raw.startsWith('[') && raw.endsWith(']')) || (raw.startsWith('{') && raw.endsWith('}'))) {
+      try {
+        const parsed = JSON.parse(raw);
+        return relationValueToId(parsed);
+      } catch {
+        // Keep fallback below if parsing fails.
+      }
+    }
+
+    return raw.replace(/^"|"$/g, '');
+  }
+
   if (Array.isArray(value)) {
     if (!value.length) return '';
     const first = value[0];
@@ -232,6 +269,34 @@ async function resolveOwnerRefFromCurrentUser() {
   const userId = String(user.id || '');
   if (!userId) return '';
 
+  // Fuente primaria: contexto server-side del propietario autenticado.
+  try {
+    const token = String(pb.authStore.token || '');
+    if (token) {
+      const res = await fetch(`${PB_URL}/api/public/owner-context`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as OwnerContextResponse;
+        const ownerId = String(payload?.owner?.id || '');
+        if (ownerId) {
+          const patchedUser = {
+            ...user,
+            owner_id: ownerId,
+          };
+          pb.authStore.save(pb.authStore.token, patchedUser as any);
+          return ownerId;
+        }
+      }
+    }
+  } catch {
+    // noop: fallback below
+  }
+
   try {
     const fresh = (await pb.collection('users').getOne(userId)) as AnyRecord;
     const resolved = getOwnerRefFromUser(fresh);
@@ -240,10 +305,66 @@ async function resolveOwnerRefFromCurrentUser() {
       return resolved;
     }
   } catch {
-    return '';
+    // noop: seguimos con fallback por nombre
   }
 
-  return '';
+  // Fallback: si owner_id no llega en sesion, intentamos resolver por nombre del tercero.
+  try {
+    const userNames = [
+      normalizeText(String(user.full_name || '')),
+      normalizeText(String(user.name || '')),
+      normalizeText(String(user.email || '').split('@')[0] || ''),
+    ].filter(Boolean);
+
+    if (!userNames.length) return '';
+
+    const owners = (await pb.collection('third_parties').getFullList({
+      sort: 'name',
+    })) as AnyRecord[];
+
+    const properties = (await pb.collection('ph_properties').getFullList({
+      sort: 'code',
+    })) as AnyRecord[];
+
+    const ownerUnits = new Map<string, number>();
+    properties.forEach((property) => {
+      const ownerId = relationValueToId(property.owner_id);
+      if (!ownerId) return;
+      ownerUnits.set(ownerId, (ownerUnits.get(ownerId) || 0) + 1);
+    });
+
+    const candidates = owners
+      .map((owner) => {
+        const ownerId = String(owner.id || '');
+        const normalizedOwnerName = normalizeText(String(owner.name || owner.getString?.('name') || ''));
+        const matchesName = userNames.some((n) => n && normalizedOwnerName && (normalizedOwnerName === n || normalizedOwnerName.includes(n) || n.includes(normalizedOwnerName)));
+        return {
+          id: ownerId,
+          type: String(owner.type || owner.getString?.('type') || ''),
+          matchesName,
+          units: ownerUnits.get(ownerId) || 0,
+        };
+      })
+      .filter((row) => row.matchesName && row.units > 0)
+      .sort((a, b) => {
+        if ((a.type === 'CLIENTE') !== (b.type === 'CLIENTE')) {
+          return a.type === 'CLIENTE' ? -1 : 1;
+        }
+        return b.units - a.units;
+      });
+
+    const guessedOwnerId = candidates[0]?.id || '';
+    if (!guessedOwnerId) return '';
+
+    const patchedUser = {
+      ...user,
+      owner_id: guessedOwnerId,
+    };
+    pb.authStore.save(pb.authStore.token, patchedUser as any);
+    return guessedOwnerId;
+  } catch {
+    return '';
+  }
 }
 
 function toIsoDate(value: string | undefined) {
@@ -257,11 +378,67 @@ export async function getOwnerProperties(): Promise<PhProperty[]> {
   const ownerRef = await resolveOwnerRefFromCurrentUser();
   if (!ownerRef) return [];
 
+  // Fuente primaria: endpoint server-side ya resuelto para el auth actual.
+  try {
+    const token = String(pb.authStore.token || '');
+    if (token) {
+      const res = await fetch(`${PB_URL}/api/public/owner-context`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as OwnerContextResponse;
+        const properties = Array.isArray(payload?.properties) ? payload.properties : [];
+        if (properties.length > 0) {
+          return properties;
+        }
+      }
+    }
+  } catch {
+    // noop: fallback a consultas directas abajo
+  }
+
   const rows = (await pb.collection('ph_properties').getFullList({
     sort: 'code',
+    expand: 'owner_id',
   })) as AnyRecord[];
 
-  return rows.filter((p) => String(p.owner_id || '') === ownerRef) as PhProperty[];
+  const localMatches = rows.filter((p) => {
+    const candidates = [
+      p.owner_id,
+      p.ownerId,
+      p.owner,
+      p.third_party_id,
+      p.tercero_id,
+      p?.expand?.owner_id,
+      p?.expand?.owner,
+      p?.expand?.third_party_id,
+      p?.expand?.tercero_id,
+    ];
+
+    for (const candidate of candidates) {
+      const relationId = relationValueToId(candidate);
+      if (relationId === ownerRef) return true;
+    }
+    return false;
+  }) as PhProperty[];
+
+  if (localMatches.length > 0) {
+    return localMatches;
+  }
+
+  // Fallback para casos en los que el SDK devuelve la relación con una forma no esperada.
+  try {
+    const filtered = (await pb.collection('ph_properties').getFullList({
+      filter: `owner_id = "${ownerRef}"`,
+      sort: 'code',
+    })) as PhProperty[];
+    return filtered;
+  } catch {
+    return [];
+  }
 }
 
 export async function getCopropiedadInfo(): Promise<CopropiedadInfo> {

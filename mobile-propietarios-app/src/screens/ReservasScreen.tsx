@@ -48,11 +48,16 @@ export function ReservasScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ownerProps, commonAreas, reservations] = await Promise.all([
+      const [ownerPropsRes, commonAreasRes, reservationsRes] = await Promise.allSettled([
         getOwnerProperties(),
         getCommonAreas(),
         getOwnerReservations(),
       ]);
+
+      const ownerProps = ownerPropsRes.status === 'fulfilled' ? ownerPropsRes.value : [];
+      const commonAreas = commonAreasRes.status === 'fulfilled' ? commonAreasRes.value : [];
+      const reservations = reservationsRes.status === 'fulfilled' ? reservationsRes.value : [];
+
       setProperties(ownerProps);
       setAreas(commonAreas);
       setRows(reservations);
@@ -118,23 +123,33 @@ export function ReservasScreen() {
 
       <Text style={styles.label}>Unidad</Text>
       <View style={styles.chipsRow}>
-        {properties.map((p) => (
-          <Pressable
-            key={p.id}
-            style={[styles.chip, selectedProperty === p.id && styles.chipActive]}
-            onPress={() => setSelectedProperty(p.id)}
-          >
-            <Text style={[styles.chipText, selectedProperty === p.id && styles.chipTextActive]}>
-              {p.name || p.code || p.id}
-            </Text>
-          </Pressable>
-        ))}
+        {properties.length ? (
+          properties.map((p) => (
+            <Pressable
+              key={p.id}
+              style={[styles.chip, selectedProperty === p.id && styles.chipActive]}
+              onPress={() => setSelectedProperty(p.id)}
+            >
+              <Text style={[styles.chipText, selectedProperty === p.id && styles.chipTextActive]}>
+                {p.name || p.code || p.id}
+              </Text>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={styles.inlineHint}>No encontramos unidades asociadas a tu usuario.</Text>
+        )}
       </View>
 
       <Text style={styles.label}>Zona común</Text>
-      <Pressable style={styles.selector} onPress={() => setShowAreaSelector(true)}>
+      <Pressable
+        style={[styles.selector, !areas.length && styles.selectorDisabled]}
+        onPress={() => {
+          if (!areas.length) return;
+          setShowAreaSelector(true);
+        }}
+      >
         <Text style={styles.selectorLabel}>{selectedAreaLabel}</Text>
-        <Text style={styles.selectorHint}>Toca para cambiar</Text>
+        <Text style={styles.selectorHint}>{areas.length ? 'Toca para cambiar' : 'No hay zonas comunes activas'}</Text>
       </Pressable>
 
       <View style={styles.formRow}>
@@ -352,6 +367,14 @@ const styles = StyleSheet.create({
     borderColor: '#D1D5DB',
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginBottom: 8,
+  },
+  selectorDisabled: {
+    opacity: 0.65,
+  },
+  inlineHint: {
+    color: colors.textMuted,
+    fontSize: 12,
     marginBottom: 8,
   },
   selectorLabel: {

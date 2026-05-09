@@ -106,3 +106,127 @@ routerAdd('POST', '/api/public/owner-registration-check', (e) => {
     e.json(500, { eligible: false, message: 'No se pudo validar la identificación: ' + String(err) });
   }
 });
+
+/**
+ * Contexto autenticado para app móvil de propietarios.
+ * Devuelve owner resuelto + unidades asociadas para evitar ambigüedades de relaciones en el cliente.
+ */
+routerAdd('GET', '/api/public/owner-context', (e) => {
+  try {
+    const normalizeText = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^0-9A-Za-z ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+
+    const relationValueToId = (value) => {
+      if (!value) return '';
+      if (Array.isArray(value)) {
+        if (!value.length) return '';
+        const first = value[0];
+        if (typeof first === 'object' && first) return String(first.id || '');
+        return String(first || '');
+      }
+      if (typeof value === 'object') {
+        return String(value.id || '');
+      }
+      return String(value || '');
+    };
+
+    const info = e.requestInfo();
+    const auth = info?.auth;
+    if (!auth) {
+      e.json(401, { message: 'Autenticación requerida.' });
+      return;
+    }
+
+    const ownerCandidates = [
+      auth?.getString?.('owner_id'),
+      auth?.owner_id,
+      auth?.getString?.('third_party_id'),
+      auth?.third_party_id,
+      auth?.getString?.('tercero_id'),
+      auth?.tercero_id,
+    ];
+
+    let ownerId = '';
+    for (const candidate of ownerCandidates) {
+      const id = relationValueToId(candidate);
+      if (id) {
+        ownerId = id;
+        break;
+      }
+    }
+
+    const properties = $app.findRecordsByFilter('ph_properties', 'active=true', 'code', 2000, 0) || [];
+
+    // Fallback por nombre si no llega owner_id en el auth record.
+    if (!ownerId) {
+      const owners = $app.findRecordsByFilter('third_parties', 'active=true', 'name', 2000, 0) || [];
+      const ownerUnits = new Map();
+      properties.forEach((property) => {
+        const pid = String(property?.getString?.('owner_id') || property?.owner_id || '');
+        if (!pid) return;
+        ownerUnits.set(pid, (ownerUnits.get(pid) || 0) + 1);
+      });
+
+      const userNames = [
+        normalizeText(auth?.getString?.('full_name') || auth?.full_name || ''),
+        normalizeText(auth?.getString?.('name') || auth?.name || ''),
+        normalizeText(String(auth?.getString?.('email') || auth?.email || '').split('@')[0] || ''),
+      ].filter(Boolean);
+
+      const candidates = owners
+        .map((owner) => {
+          const id = String(owner?.id || '');
+          const ownerName = normalizeText(owner?.getString?.('name') || owner?.name || '');
+          const matchesName = userNames.some((u) => u && ownerName && (u === ownerName || u.includes(ownerName) || ownerName.includes(u)));
+          return {
+            id,
+            units: ownerUnits.get(id) || 0,
+            preferredType: String(owner?.getString?.('type') || owner?.type || '') === 'CLIENTE',
+            owner,
+            matchesName,
+          };
+        })
+        .filter((row) => row.matchesName && row.units > 0)
+        .sort((a, b) => {
+          if (a.preferredType !== b.preferredType) return a.preferredType ? -1 : 1;
+          return b.units - a.units;
+        });
+
+      ownerId = String(candidates[0]?.id || '');
+    }
+
+    if (!ownerId) {
+      e.json(200, {
+        owner: null,
+        properties: [],
+      });
+      return;
+    }
+
+    const owner = $app.findRecordById('third_parties', ownerId);
+    const ownerProps = properties
+      .filter((property) => String(property?.getString?.('owner_id') || property?.owner_id || '') === ownerId)
+      .map((property) => ({
+        id: String(property?.id || ''),
+        code: String(property?.getString?.('code') || property?.code || ''),
+        name: String(property?.getString?.('name') || property?.name || ''),
+        owner_id: ownerId,
+      }));
+
+    e.json(200, {
+      owner: {
+        id: ownerId,
+        name: String(owner?.getString?.('name') || owner?.name || ''),
+        docNumber: String(owner?.getString?.('doc_number') || owner?.doc_number || ''),
+      },
+      properties: ownerProps,
+    });
+  } catch (err) {
+    e.json(500, { message: 'No se pudo resolver el contexto del propietario: ' + String(err) });
+  }
+});

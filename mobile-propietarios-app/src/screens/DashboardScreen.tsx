@@ -46,20 +46,32 @@ export function DashboardScreen() {
   }, []);
 
   const loadHomeData = useCallback(async () => {
-    try {
-      const [info, properties, invoices, areas] = await Promise.all([
-        getCopropiedadInfo(),
-        getOwnerProperties(),
-        getOwnerInvoices(),
-        getCommonAreas(),
-      ]);
-      setCopropiedad(info);
-      setPropertyCount(properties.length);
-      setSummaryPending(getInvoiceSummary(invoices).pending);
-      setCommonAreas(areas);
-    } catch {
+    const [infoRes, propertiesRes, invoicesRes, areasRes] = await Promise.allSettled([
+      getCopropiedadInfo(),
+      getOwnerProperties(),
+      getOwnerInvoices(),
+      getCommonAreas(),
+    ]);
+
+    if (infoRes.status === 'fulfilled') {
+      setCopropiedad(infoRes.value);
+    }
+
+    if (propertiesRes.status === 'fulfilled') {
+      setPropertyCount(propertiesRes.value.length);
+    } else {
       setPropertyCount(0);
+    }
+
+    if (invoicesRes.status === 'fulfilled') {
+      setSummaryPending(getInvoiceSummary(invoicesRes.value).pending);
+    } else {
       setSummaryPending(0);
+    }
+
+    if (areasRes.status === 'fulfilled') {
+      setCommonAreas(areasRes.value);
+    } else {
       setCommonAreas([]);
     }
   }, []);

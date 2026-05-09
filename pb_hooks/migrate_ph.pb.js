@@ -319,7 +319,7 @@ onBootstrap((e) => {
       type: 'base',
       listRule:   "@request.auth.id != ''",
       viewRule:   "@request.auth.id != ''",
-      createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
+      createRule: "@request.auth.collectionName = 'users' && @request.auth.id != ''",
       updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
       deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
       fields: [
@@ -338,6 +338,8 @@ onBootstrap((e) => {
         { name: 'opened_at',   type: 'text',     required: false },
         { name: 'closed_at',   type: 'text',     required: false },
         { name: 'assigned_to', type: 'text',     required: false },
+        { name: 'evidences',   type: 'file',     required: false,
+          maxSelect: 3, maxSize: 2097152, mimeTypes: ['image/*', 'application/pdf', 'text/plain', 'application/octet-stream'] },
       ],
       indexes: ['CREATE UNIQUE INDEX idx_ph_pqrs_number ON ph_pqrs (number)'],
     });
@@ -495,6 +497,52 @@ onBootstrap((e) => {
     }
   } catch (err) {
     console.log('[GRAVY-PH] Aviso al normalizar permisos de facturación PH: ' + err);
+  }
+
+  // Normalizar esquema y permisos de PQRS para propietarios móviles.
+  try {
+    const pqrsCol = $app.findCollectionByNameOrId('ph_pqrs');
+    const pqrsFields = new Set(pqrsCol.fields.fieldNames());
+    let pqrsChanged = false;
+
+    if (!pqrsFields.has('evidences')) {
+      try {
+        pqrsCol.fields.add(new FileField({
+          name: 'evidences',
+          required: false,
+          maxSelect: 3,
+          maxSize: 2097152,
+          mimeTypes: ['image/*', 'application/pdf', 'text/plain', 'application/octet-stream'],
+        }));
+        pqrsChanged = true;
+      } catch (fieldErr) {
+        console.log('[GRAVY-PH] Aviso al crear campo evidences en ph_pqrs: ' + fieldErr);
+      }
+    }
+
+    const pqrsCreateRule = "@request.auth.collectionName = 'users' && @request.auth.id != ''";
+    const pqrsUpdateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
+    const pqrsDeleteRule = "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'";
+
+    if (pqrsCol.createRule !== pqrsCreateRule) {
+      pqrsCol.createRule = pqrsCreateRule;
+      pqrsChanged = true;
+    }
+    if (pqrsCol.updateRule !== pqrsUpdateRule) {
+      pqrsCol.updateRule = pqrsUpdateRule;
+      pqrsChanged = true;
+    }
+    if (pqrsCol.deleteRule !== pqrsDeleteRule) {
+      pqrsCol.deleteRule = pqrsDeleteRule;
+      pqrsChanged = true;
+    }
+
+    if (pqrsChanged) {
+      $app.save(pqrsCol);
+      console.log('[GRAVY-PH] ph_pqrs sincronizada (create para propietarios + campo evidences).');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar ph_pqrs: ' + err);
   }
 
   // Normalizar permisos de reservas para app móvil de propietarios.

@@ -59,6 +59,7 @@ export type PhPqrs = {
   id: string;
   number?: string;
   property_id?: string;
+  evidences?: string[];
   pqrs_type: 'PETICION' | 'QUEJA' | 'RECLAMO' | 'SUGERENCIA' | 'FELICITACION';
   priority?: 'baja' | 'media' | 'alta' | string;
   subject: string;
@@ -70,6 +71,13 @@ export type PhPqrs = {
   expand?: {
     property_id?: PhProperty;
   };
+};
+
+export type PqrsEvidenceInput = {
+  uri: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
 };
 
 export type AppNotification = {
@@ -549,14 +557,57 @@ export async function getOwnerPqrs(): Promise<PhPqrs[]> {
     expand: 'property_id',
   })) as PhPqrs[];
 
-  return rows.filter((row) => propIds.has(String(row.property_id || '')));
+  return rows
+    .filter((row: any) => {
+      const candidates = [
+        row?.property_id,
+        row?.propertyId,
+        row?.expand?.property_id,
+      ];
+      for (const candidate of candidates) {
+        const relationId = relationValueToId(candidate);
+        if (relationId && propIds.has(relationId)) return true;
+      }
+      return false;
+    })
+    .sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
 }
 
 export async function nextPqrsNumber() {
-  const head = await pb.collection('ph_pqrs').getList(1, 1);
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const n = Number(head.totalItems || 0) + 1;
-  return `PQR-${today}-${String(n).padStart(4, '0')}`;
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeChunk = String(now.getTime()).slice(-6);
+  const randomChunk = String(Math.floor(Math.random() * 900) + 100);
+  return `PQR-${today}-${timeChunk}${randomChunk}`;
+}
+
+function detectMimeType(fileName?: string, providedMimeType?: string) {
+  const direct = String(providedMimeType || '').trim().toLowerCase();
+  if (direct) return direct;
+
+  const name = String(fileName || '').toLowerCase();
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.gif')) return 'image/gif';
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  if (name.endsWith('.txt')) return 'text/plain';
+  return 'application/octet-stream';
+}
+
+function normalizePqrsError(err: any, fallback: string) {
+  const message = String(err?.response?.message || err?.message || '').trim();
+  const data = err?.response?.data;
+
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const firstKey = Object.keys(data)[0];
+    const firstEntry = firstKey ? (data as AnyRecord)[firstKey] : null;
+    const detail = String(firstEntry?.message || '').trim();
+    if (detail) return `${message || fallback} (${detail})`;
+  }
+
+  if (message) return message;
+  return fallback;
 }
 
 export async function createOwnerPqrs(input: {
@@ -565,20 +616,55 @@ export async function createOwnerPqrs(input: {
   priority: 'baja' | 'media' | 'alta';
   subject: string;
   description: string;
+  evidences?: PqrsEvidenceInput[];
 }) {
   const number = await nextPqrsNumber();
   const openedAt = new Date().toISOString().slice(0, 10);
 
-  return pb.collection('ph_pqrs').create({
-    number,
-    property_id: input.propertyId,
-    pqrs_type: input.type,
-    priority: input.priority,
-    subject: input.subject.trim(),
-    description: input.description.trim(),
-    status: 'open',
-    opened_at: openedAt,
+  const attachments = (input.evidences || []).filter((f) => !!String(f?.uri || '').trim());
+
+  if (!attachments.length) {
+    try {
+      return await pb.collection('ph_pqrs').create({
+        number,
+        property_id: input.propertyId,
+        pqrs_type: input.type,
+        priority: input.priority,
+        subject: input.subject.trim(),
+        description: input.description.trim(),
+        status: 'open',
+        opened_at: openedAt,
+      });
+    } catch (err: any) {
+      throw new Error(normalizePqrsError(err, 'No fue posible radicar la PQRS.'));
+    }
+  }
+
+  const form = new FormData();
+  form.append('number', number);
+  form.append('property_id', input.propertyId);
+  form.append('pqrs_type', input.type);
+  form.append('priority', input.priority);
+  form.append('subject', input.subject.trim());
+  form.append('description', input.description.trim());
+  form.append('status', 'open');
+  form.append('opened_at', openedAt);
+
+  attachments.forEach((file, index) => {
+    const safeName = file.name || `evidencia_${index + 1}.txt`;
+    const safeType = detectMimeType(safeName, file.mimeType);
+    form.append('evidences', {
+      uri: file.uri,
+      name: safeName,
+      type: safeType,
+    } as any);
   });
+
+  try {
+    return await pb.collection('ph_pqrs').create(form as any);
+  } catch (err: any) {
+    throw new Error(normalizePqrsError(err, 'No fue posible radicar la PQRS con evidencias.'));
+  }
 }
 
 function todayAtMidnight() {

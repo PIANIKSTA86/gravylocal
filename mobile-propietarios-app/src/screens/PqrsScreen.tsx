@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '../theme/colors';
 import {
+  PqrsEvidenceInput,
   PhProperty,
   PhPqrs,
   createOwnerPqrs,
@@ -14,6 +16,8 @@ type Priority = 'baja' | 'media' | 'alta';
 
 const PQRS_TYPES: PqrsType[] = ['PETICION', 'QUEJA', 'RECLAMO', 'SUGERENCIA', 'FELICITACION'];
 const PRIORITIES: Priority[] = ['baja', 'media', 'alta'];
+const MAX_EVIDENCE_SIZE = 2 * 1024 * 1024;
+const MAX_EVIDENCES = 3;
 
 export function PqrsScreen() {
   const [properties, setProperties] = useState<PhProperty[]>([]);
@@ -25,14 +29,17 @@ export function PqrsScreen() {
   const [priority, setPriority] = useState<Priority>('media');
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
+  const [evidences, setEvidences] = useState<PqrsEvidenceInput[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ownerProperties, pqrs] = await Promise.all([getOwnerProperties(), getOwnerPqrs()]);
+      const [ownerPropertiesRes, pqrsRes] = await Promise.allSettled([getOwnerProperties(), getOwnerPqrs()]);
+      const ownerProperties = ownerPropertiesRes.status === 'fulfilled' ? ownerPropertiesRes.value : [];
+      const pqrs = pqrsRes.status === 'fulfilled' ? pqrsRes.value : [];
       setProperties(ownerProperties);
       setRows(pqrs);
-      if (!selectedProperty && ownerProperties.length) {
+      if (ownerProperties.length && (!selectedProperty || !ownerProperties.some((p) => p.id === selectedProperty))) {
         setSelectedProperty(ownerProperties[0].id);
       }
     } finally {
@@ -61,16 +68,59 @@ export function PqrsScreen() {
         priority,
         subject,
         description,
+        evidences,
       });
       setSubject('');
       setDescription('');
       setPqrsType('PETICION');
       setPriority('media');
+      setEvidences([]);
       await load();
       Alert.alert('PQRS radicada', 'Tu solicitud fue enviada a administración.');
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'No fue posible radicar la PQRS.');
     }
+  };
+
+  const pickEvidences = async () => {
+    try {
+      if (evidences.length >= MAX_EVIDENCES) {
+        Alert.alert('Límite alcanzado', `Solo puedes adjuntar hasta ${MAX_EVIDENCES} evidencias.`);
+        return;
+      }
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'application/pdf', 'text/plain'],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const next = [...evidences];
+      for (const asset of result.assets) {
+        if (next.length >= MAX_EVIDENCES) break;
+        const size = Number(asset.size || 0);
+        if (size > MAX_EVIDENCE_SIZE) {
+          Alert.alert('Archivo muy grande', `"${asset.name}" supera 2MB y fue omitido.`);
+          continue;
+        }
+        next.push({
+          uri: asset.uri,
+          name: asset.name,
+          mimeType: asset.mimeType || undefined,
+          size: size || undefined,
+        });
+      }
+
+      setEvidences(next);
+    } catch {
+      Alert.alert('Error', 'No fue posible seleccionar evidencias.');
+    }
+  };
+
+  const removeEvidence = (index: number) => {
+    setEvidences((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -80,17 +130,21 @@ export function PqrsScreen() {
 
       <Text style={styles.label}>Unidad</Text>
       <View style={styles.rowWrap}>
-        {properties.map((p) => (
-          <Pressable
-            key={p.id}
-            style={[styles.chip, selectedProperty === p.id && styles.chipActive]}
-            onPress={() => setSelectedProperty(p.id)}
-          >
-            <Text style={[styles.chipText, selectedProperty === p.id && styles.chipTextActive]}>
-              {p.name || p.code || p.id}
-            </Text>
-          </Pressable>
-        ))}
+        {properties.length ? (
+          properties.map((p) => (
+            <Pressable
+              key={p.id}
+              style={[styles.chip, selectedProperty === p.id && styles.chipActive]}
+              onPress={() => setSelectedProperty(p.id)}
+            >
+              <Text style={[styles.chipText, selectedProperty === p.id && styles.chipTextActive]}>
+                {p.name || p.code || p.id}
+              </Text>
+            </Pressable>
+          ))
+        ) : (
+          <Text style={styles.inlineHint}>No encontramos unidades asociadas a tu usuario.</Text>
+        )}
       </View>
 
       <Text style={styles.label}>Tipo</Text>
@@ -119,6 +173,25 @@ export function PqrsScreen() {
         onChangeText={setDescription}
         multiline
       />
+
+      <Text style={styles.label}>Evidencias (opcional)</Text>
+      <Pressable style={styles.attachBtn} onPress={pickEvidences}>
+        <Text style={styles.attachBtnText}>Agregar evidencias</Text>
+        <Text style={styles.attachHint}>Imagen, PDF o TXT - max 2MB c/u, hasta 3 archivos</Text>
+      </Pressable>
+
+      {evidences.length > 0 && (
+        <View style={styles.evidenceList}>
+          {evidences.map((file, index) => (
+            <View key={`${file.uri}-${index}`} style={styles.evidenceRow}>
+              <Text style={styles.evidenceName} numberOfLines={1}>{file.name || `Evidencia ${index + 1}`}</Text>
+              <Pressable onPress={() => removeEvidence(index)}>
+                <Text style={styles.removeEvidence}>Quitar</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
 
       <Pressable style={[styles.button, !canSubmit && styles.buttonDisabled]} onPress={submit}>
         <Text style={styles.buttonText}>Enviar PQRS</Text>
@@ -171,6 +244,11 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 10,
   },
+  inlineHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginBottom: 10,
+  },
   chip: {
     backgroundColor: '#E5E7EB',
     borderRadius: 999,
@@ -200,6 +278,49 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 84,
     textAlignVertical: 'top',
+  },
+  attachBtn: {
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  attachBtnText: {
+    color: '#1D4ED8',
+    fontWeight: '800',
+  },
+  attachHint: {
+    color: '#1E40AF',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  evidenceList: {
+    marginBottom: 10,
+    gap: 6,
+  },
+  evidenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  evidenceName: {
+    flex: 1,
+    color: colors.textPrimary,
+    marginRight: 10,
+    fontSize: 12,
+  },
+  removeEvidence: {
+    color: '#DC2626',
+    fontWeight: '700',
+    fontSize: 12,
   },
   button: {
     backgroundColor: colors.primary,

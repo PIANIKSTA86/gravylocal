@@ -526,24 +526,41 @@ onBootstrap((e) => {
   // ─────────────────────────────────────────────────────────
   try {
     const usersCol = $app.findCollectionByNameOrId("users");
-    usersCol.fields.add(new SelectField({
-      name: "role",
-      required: true,
-      values: ["admin","contador","auxiliar","auditor","viewer"],
-    }));
-    usersCol.fields.add(new TextField({
-      name: "full_name",
-      required: true,
-    }));
-    usersCol.fields.add(new BoolField({
-      name: "active",
-      required: false,
-    }));
+    const existing = new Set(usersCol.fields.fieldNames());
+    if (!existing.has('role')) {
+      usersCol.fields.add(new SelectField({
+        name: "role",
+        required: true,
+        values: ["admin","contador","auxiliar","auditor","viewer"],
+      }));
+    }
+    if (!existing.has('full_name')) {
+      usersCol.fields.add(new TextField({
+        name: "full_name",
+        required: true,
+      }));
+    }
+    if (!existing.has('active')) {
+      usersCol.fields.add(new BoolField({
+        name: "active",
+        required: false,
+      }));
+    }
+    if (!existing.has('owner_id')) {
+      const thirdPartiesCol = $app.findCollectionByNameOrId('third_parties');
+      usersCol.fields.add(new Field({
+        name: 'owner_id',
+        type: 'relation',
+        required: false,
+        collectionId: thirdPartiesCol.id,
+        cascadeDelete: false,
+      }));
+    }
     $app.save(usersCol);
-    console.log("[GRAVY] Campos de rol agregados a users correctamente.");
+    console.log("[GRAVY] Campos extendidos de users verificados correctamente.");
   } catch(err) {
     console.log("[GRAVY] Aviso al extender users: " + err);
-    console.log("[GRAVY] Agregue manualmente los campos role/full_name/active a la coleccion users en el panel admin.");
+    console.log("[GRAVY] Agregue manualmente los campos role/full_name/active/owner_id a la coleccion users en el panel admin.");
   }
 
   // ─────────────────────────────────────────────────────────

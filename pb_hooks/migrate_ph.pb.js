@@ -497,6 +497,35 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Aviso al normalizar permisos de facturación PH: ' + err);
   }
 
+  // Normalizar permisos de reservas para app móvil de propietarios.
+  try {
+    const reservationsCol = $app.findCollectionByNameOrId('ph_reservations');
+    const reservationsCreateRule = "@request.auth.collectionName = 'users' && @request.auth.id != ''";
+    const reservationsUpdateRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
+    const reservationsDeleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')";
+
+    let changedReservations = false;
+    if (reservationsCol.createRule !== reservationsCreateRule) {
+      reservationsCol.createRule = reservationsCreateRule;
+      changedReservations = true;
+    }
+    if (reservationsCol.updateRule !== reservationsUpdateRule) {
+      reservationsCol.updateRule = reservationsUpdateRule;
+      changedReservations = true;
+    }
+    if (reservationsCol.deleteRule !== reservationsDeleteRule) {
+      reservationsCol.deleteRule = reservationsDeleteRule;
+      changedReservations = true;
+    }
+
+    if (changedReservations) {
+      $app.save(reservationsCol);
+      console.log('[GRAVY-PH] Reglas sincronizadas para ph_reservations (create habilitado para usuarios autenticados).');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PH] Aviso al normalizar permisos de reservas PH: ' + err);
+  }
+
   // ──────────────────────────────────────────────────────────
   // TIPO DE TRANSACCIÓN: CF — Cuota Facturación PH
   // ──────────────────────────────────────────────────────────

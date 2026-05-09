@@ -1,58 +1,53 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
-title GRAVY v2.0 — Servidor Local
+title GRAVY v2.0 - Start Local
+
+set "ROOT=%~dp0"
+set "MOBILE_DIR=%ROOT%mobile-propietarios-app"
+set "PB_URL=http://127.0.0.1:8090"
+set "EXPO_PORT=8085"
 
 echo.
-echo  ╔══════════════════════════════════════════╗
-echo  ║        GRAVY v2.0 — Iniciando            ║
-echo  ╚══════════════════════════════════════════╝
+echo  ===============================================
+echo   GRAVY v2.0 - Inicio Local (Web + Movil)
+echo  ===============================================
 echo.
 
-:: Verificar si pocketbase.exe existe
-if not exist "%~dp0pocketbase.exe" (
-    echo  [ERROR] No se encontro pocketbase.exe
-    echo  Asegurate de que el archivo este en esta carpeta.
+if not exist "%ROOT%pocketbase.exe" (
+    echo  [ERROR] No se encontro pocketbase.exe en %ROOT%
     pause
     exit /b 1
 )
 
-:: Modo de arranque:
-:: - Por defecto: solo localhost (seguro)
-:: - LAN explícita: start.bat --lan
-set "BIND_ADDR=127.0.0.1:8090"
-set "ACCESS_LOCAL=http://localhost:8090"
-set "ACCESS_LAN=(deshabilitado)"
-
-if /I "%~1"=="--lan" (
-    set "BIND_ADDR=0.0.0.0:8090"
-    set "ACCESS_LAN=http://%COMPUTERNAME%:8090"
-)
-
-:: Verificar si ya hay una instancia escuchando en el puerto 8090
-netstat -ano | findstr /R /C:":8090 .*LISTENING" >nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo  [AVISO] El puerto 8090 ya esta en uso.
-    echo  GRAVY ya esta corriendo, abre tu navegador en:
-    echo.
-    echo         http://localhost:8090
-    echo.
+if not exist "%MOBILE_DIR%\package.json" (
+    echo  [ERROR] No se encontro la app movil en:
+    echo         %MOBILE_DIR%
     pause
-    exit /b 0
+    exit /b 1
 )
 
-echo  Iniciando servidor en %ACCESS_LOCAL%
-if /I "%~1"=="--lan" (
-    echo  Acceso desde red local habilitado: %ACCESS_LAN%
-) else (
-    echo  Modo seguro: solo acceso local (use --lan para habilitar LAN)
-)
+echo  Cerrando procesos anteriores en puertos 8090 y %EXPO_PORT%...
+PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ports = 8090,%EXPO_PORT%;" ^
+    "foreach ($p in $ports) {" ^
+    "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique;" ^
+    "  if ($pids) { $pids ^| ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }" ^
+    "}"
+
+echo  Iniciando PocketBase (localhost)...
+start "Gravy PocketBase Local" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
+
+echo  Iniciando Expo (localhost)...
+start "Gravy Mobile Local" cmd /k "cd /d "%MOBILE_DIR%" && set EXPO_PUBLIC_PB_URL=%PB_URL% && npx expo start --port %EXPO_PORT% --clear"
+
 echo.
-echo  Para detener el servidor, cierra esta ventana o ejecuta stop.bat
-echo  ─────────────────────────────────────────────────────────────────
+echo  URLs locales:
+echo    - Web/Backend:  http://localhost:8090
+echo    - Expo Dev:     http://localhost:%EXPO_PORT%
+echo.
+echo  Nota: para probar desde celular en la misma red, usa start-lan.bat
 echo.
 
-:: Abrir el navegador despues de 2 segundos
-start "" cmd /c "timeout /t 2 >nul & start %ACCESS_LOCAL%"
-
-:: Iniciar PocketBase sirviendo desde pb_public
-"%~dp0pocketbase.exe" serve --http="%BIND_ADDR%" --dir="%~dp0pb_data" --publicDir="%~dp0pb_public" --hooksDir="%~dp0pb_hooks"
+start "" http://localhost:8090
+exit /b 0

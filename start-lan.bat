@@ -1,76 +1,65 @@
 @echo off
+setlocal EnableExtensions
 chcp 65001 >nul
-title GRAVY v2.0 — Servidor LAN
+title GRAVY v2.0 - Start LAN
+
+set "ROOT=%~dp0"
+set "MOBILE_DIR=%ROOT%mobile-propietarios-app"
+set "EXPO_PORT=8085"
 
 echo.
-echo  ╔══════════════════════════════════════════╗
-echo  ║     GRAVY v2.0 — Modo Red Local         ║
-echo  ╚══════════════════════════════════════════╝
+echo  ===============================================
+echo   GRAVY v2.0 - Inicio LAN (Web + Movil)
+echo  ===============================================
 echo.
 
-:: Obtener la IP local automáticamente
-for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /R "IPv4.*192\."') do (
-    set "LOCAL_IP=%%A"
-    goto :found
-)
-for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /R "IPv4.*10\."') do (
-    set "LOCAL_IP=%%A"
-    goto :found
-)
-for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /R "IPv4.*172\."') do (
-    set "LOCAL_IP=%%A"
-    goto :found
-)
-set "LOCAL_IP= (no detectada)"
-
-:found
-:: Quitar espacio inicial de la IP
-set "LOCAL_IP=%LOCAL_IP: =%"
-
-if not exist "%~dp0pocketbase.exe" (
-    echo  [ERROR] No se encontro pocketbase.exe
-    pause
-    exit /b 1
+if not exist "%ROOT%pocketbase.exe" (
+  echo  [ERROR] No se encontro pocketbase.exe en %ROOT%
+  pause
+  exit /b 1
 )
 
-:: Abrir firewall si no está abierto (requiere admin)
-netsh advfirewall firewall show rule name="ContaCO PocketBase" >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo  Abriendo puerto 8090 en el firewall de Windows...
-    netsh advfirewall firewall add rule name="ContaCO PocketBase" dir=in action=allow protocol=TCP localport=8090 >nul 2>&1
-    if %ERRORLEVEL% NEQ 0 (
-        echo  [AVISO] No se pudo abrir el firewall automaticamente.
-        echo  Ejecuta este archivo como Administrador, o abre el puerto 8090 manualmente.
-        echo.
-    )
+if not exist "%MOBILE_DIR%\package.json" (
+  echo  [ERROR] No se encontro la app movil en:
+  echo         %MOBILE_DIR%
+  pause
+  exit /b 1
 )
 
-netstat -ano | find ":8090" >nul 2>&1
-if %ERRORLEVEL%==0 (
-    echo  [AVISO] El puerto 8090 ya esta en uso. GRAVY ya puede estar corriendo.
-    echo.
-    echo  Acceso local:       http://localhost:8090
-    echo  Acceso desde movil: http://%LOCAL_IP%:8090
-    echo.
-    pause
-    exit /b 0
-)
+for /f %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$ip=(Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object { $_.IPAddress -notlike '127.*' -and $_.InterfaceAlias -notmatch 'Loopback^|vEthernet^|WSL^|Hyper-V' } ^| Select-Object -First 1 -ExpandProperty IPAddress); if(-not $ip){$ip='localhost'}; Write-Output $ip"') do set "LOCAL_IP=%%I"
 
-echo  Servidor escuchando en TODAS las interfaces (red local habilitada)
+set "PB_URL=http://%LOCAL_IP%:8090"
+
+echo  IP detectada: %LOCAL_IP%
+echo  Backend URL:  %PB_URL%
 echo.
-echo  ┌─────────────────────────────────────────────────────┐
-echo  │  Acceso desde este PC:    http://localhost:8090     │
-echo  │  Acceso desde la red:     http://%LOCAL_IP%:8090    │
-echo  │                                                     │
-echo  │  Abre esa URL en el navegador del movil             │
-echo  │  (misma red WiFi)                                   │
-echo  └─────────────────────────────────────────────────────┘
+
+echo  Cerrando procesos anteriores en puertos 8090 y %EXPO_PORT%...
+PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ports = 8090,%EXPO_PORT%;" ^
+  "foreach ($p in $ports) {" ^
+  "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique;" ^
+  "  if ($pids) { $pids ^| ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }" ^
+  "}"
+
+echo  Intentando habilitar firewall para 8090 y %EXPO_PORT%...
+netsh advfirewall firewall add rule name="Gravy PocketBase 8090" dir=in action=allow protocol=TCP localport=8090 >nul 2>&1
+netsh advfirewall firewall add rule name="Gravy Expo 8085" dir=in action=allow protocol=TCP localport=%EXPO_PORT% >nul 2>&1
+
+echo  Iniciando PocketBase (LAN)...
+start "Gravy PocketBase LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
+
+echo  Iniciando Expo (LAN)...
+start "Gravy Mobile LAN" cmd /k "cd /d "%MOBILE_DIR%" && set EXPO_PUBLIC_PB_URL=%PB_URL% && npx expo start --lan --port %EXPO_PORT% --clear"
+
 echo.
-echo  Para detener el servidor cierra esta ventana.
-echo  ─────────────────────────────────────────────────────────
+echo  Accesos:
+echo    - Web/Backend (PC):  http://localhost:8090
+echo    - Web/Backend (LAN): %PB_URL%
+echo    - Expo QR/Dev:       exp://%LOCAL_IP%:%EXPO_PORT%
+echo.
+echo  Abre Expo Go en el movil y escanea el QR de la ventana "Gravy Mobile LAN".
+echo.
 
-:: Abrir navegador local
-start "" cmd /c "timeout /t 2 >nul & start http://localhost:8090"
-
-:: Iniciar PocketBase en todas las interfaces
-"%~dp0pocketbase.exe" serve --http="0.0.0.0:8090" --dir="%~dp0pb_data" --publicDir="%~dp0pb_public" --hooksDir="%~dp0pb_hooks"
+start "" http://localhost:8090
+exit /b 0

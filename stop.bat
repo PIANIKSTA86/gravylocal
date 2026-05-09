@@ -1,15 +1,25 @@
 @echo off
 chcp 65001 >nul
-title GRAVY - Detener servidor
+title GRAVY - Detener servicios
 
 echo.
-echo  Deteniendo GRAVY...
+echo  Deteniendo servicios de GRAVY (PocketBase + Expo)...
 
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$connections = Get-NetTCPConnection -LocalPort 8090 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^
-  "if (-not $connections) { Write-Output ' No se encontraron procesos activos en el puerto 8090.'; exit 0 }" ^
-  "$connections | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue; Write-Output (' Servidor detenido (PID ' + $_ + ').') }"
+  "$ports = 8090,8085,19000,19001,19002;" ^
+  "$stopped = @();" ^
+  "foreach ($p in $ports) {" ^
+  "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^
+  "  if ($pids) {" ^
+  "    foreach ($pid in $pids) {" ^
+  "      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue;" ^
+  "      $stopped += [PSCustomObject]@{ Port = $p; PID = $pid };" ^
+  "    }" ^
+  "  }" ^
+  "}" ^
+  "if ($stopped.Count -eq 0) { Write-Output ' No se encontraron procesos activos de PocketBase/Expo en puertos conocidos.' }" ^
+  "else { $stopped | Sort-Object Port,PID | ForEach-Object { Write-Output (' Proceso detenido: puerto ' + $_.Port + ' (PID ' + $_.PID + ').') } }"
 
-echo  GRAVY detenido correctamente.
+echo  Limpieza completada.
 echo.
 exit /b 0

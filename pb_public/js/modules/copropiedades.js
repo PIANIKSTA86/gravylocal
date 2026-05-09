@@ -766,14 +766,11 @@ function voidPhInvoiceModal(invoiceId) {
 async function renderPhCartera(c) {
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando cartera...</div>`;
   try {
-    // Obtener todas las propiedades
     const properties = await API.getPhProperties(false);
-    const selectedPropertyId = properties[0]?.id || '';
 
     c.innerHTML = `
-      <!-- Filtros -->
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           <div>
             <label class="form-label mb-1">Unidad</label>
             <select id="ph-cartera-unit-filter" class="form-input">
@@ -789,6 +786,12 @@ async function renderPhCartera(c) {
             <label class="form-label mb-1">Período hasta</label>
             <input id="ph-cartera-to" type="month" class="form-input">
           </div>
+          <div>
+            <label class="form-label mb-1">Concepto</label>
+            <select id="ph-cartera-concept-filter" class="form-input">
+              <option value="">— Todos —</option>
+            </select>
+          </div>
           <div class="flex items-end">
             <button class="btn btn-primary w-full" id="ph-cartera-refresh-btn">
               <i class="fas fa-sync"></i> Actualizar
@@ -797,69 +800,81 @@ async function renderPhCartera(c) {
         </div>
       </div>
 
-      <!-- Dos pestañas: Resumen y Detalle -->
+      <div id="ph-cartera-integrity" class="mb-4"></div>
+
       <div class="flex gap-1 mb-4 border-b" style="border-color:#E5E7EB">
         <button class="cartera-tab-btn active" data-tab="resumen">
-          <i class="fas fa-table mr-2"></i>Resumen por Concepto
+          <i class="fas fa-table mr-2"></i>Saldos Cuentas por Cobrar
         </button>
         <button class="cartera-tab-btn" data-tab="detalle">
-          <i class="fas fa-list mr-2"></i>Partidas Abiertas
+          <i class="fas fa-hourglass-half mr-2"></i>Cartera por Edades
         </button>
       </div>
 
-      <!-- TAB: Resumen por concepto -->
       <div id="ph-cartera-resumen" class="cartera-tab-content">
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
           <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
-            <span class="font-bold text-sm" style="color:#0D2137">Cartera Consolidada por Concepto</span>
+            <span class="font-bold text-sm" style="color:#0D2137">Saldos CxC PH por Unidad y Concepto</span>
+          </div>
+          <div id="ph-cartera-bal-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
+            <i class="fas fa-calendar-days mr-1"></i>Selecciona filtros y pulsa Actualizar.
           </div>
           <div class="overflow-x-auto">
             <table class="data-table" id="ph-cartera-resumen-table">
-              <thead>
+              <colgroup id="ph-cartera-resumen-colgroup">
+                <col style="width:260px">
+                <col style="width:160px">
+              </colgroup>
+              <thead id="ph-cartera-resumen-thead">
                 <tr>
-                  <th>Concepto</th>
-                  <th class="text-right">Vencido ($)</th>
-                  <th class="text-right">Por Vencer ($)</th>
-                  <th class="text-right">Total Pendiente ($)</th>
-                  <th class="text-right">Días Mora Máx</th>
+                  <th>Unidad</th>
+                  <th class="text-right">Total general</th>
                 </tr>
               </thead>
               <tbody id="ph-cartera-resumen-tbody">
-                <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+                <tr><td colspan="2" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
               </tbody>
+              <tfoot id="ph-cartera-resumen-tfoot"></tfoot>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- TAB: Partidas abiertas -->
       <div id="ph-cartera-detalle" class="cartera-tab-content" style="display:none">
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
           <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
-            <span class="font-bold text-sm" style="color:#0D2137">Partidas Abiertas por Concepto</span>
+            <span class="font-bold text-sm" style="color:#0D2137">Cartera por Edades PH por Concepto</span>
+          </div>
+          <div id="ph-cartera-aging-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
+            <i class="fas fa-hourglass-half mr-1"></i>Distribución por vencer / 0-30 / 31-60 / 61-90 / más de 90 días.
           </div>
           <div class="overflow-x-auto">
             <table class="data-table" id="ph-cartera-detalle-table">
               <thead>
                 <tr>
-                  <th>N° Factura</th>
-                  <th>Período</th>
+                  <th>Unidad</th>
                   <th>Concepto</th>
-                  <th class="text-right">Monto ($)</th>
+                  <th>Doc. Cruce</th>
+                  <th>Fecha Doc.</th>
+                  <th class="text-right">Plazo</th>
                   <th>Vencimiento</th>
-                  <th class="text-right">Días Vencidos</th>
-                  <th>Estado</th>
+                  <th class="text-right">Por Vencer</th>
+                  <th class="text-right">0-30 días</th>
+                  <th class="text-right">31-60 días</th>
+                  <th class="text-right">61-90 días</th>
+                  <th class="text-right">Más de 90</th>
+                  <th class="text-right">Total</th>
                 </tr>
               </thead>
               <tbody id="ph-cartera-detalle-tbody">
-                <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+                <tr><td colspan="12" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
               </tbody>
+              <tfoot id="ph-cartera-detalle-tfoot"></tfoot>
             </table>
           </div>
         </div>
       </div>`;
 
-    // Tabs
     c.querySelectorAll('.cartera-tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         c.querySelectorAll('.cartera-tab-btn').forEach(b => b.classList.toggle('active', b === btn));
@@ -869,74 +884,299 @@ async function renderPhCartera(c) {
       });
     });
 
-    // Función para cargar cartera
+    function renderIntegrity(info) {
+      const box = document.getElementById('ph-cartera-integrity');
+      if (!box) return;
+      if (!info) {
+        box.innerHTML = '';
+        return;
+      }
+      const tone = info.isBalanced
+        ? { bg: '#ECFDF5', border: '#6EE7B7', color: '#065F46', icon: 'fa-circle-check', title: 'Integridad OK' }
+        : { bg: '#FFF7ED', border: '#FDBA74', color: '#9A3412', icon: 'fa-triangle-exclamation', title: 'Descuadres detectados' };
+
+      box.innerHTML = `
+        <div class="rounded-2xl border p-4" style="background:${tone.bg};border-color:${tone.border}">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div class="font-bold" style="color:${tone.color}">
+              <i class="fas ${tone.icon} mr-2"></i>${tone.title}
+            </div>
+            <div class="text-sm" style="color:${tone.color}">
+              Facturas: <strong>${info.totals.invoices}</strong> | Líneas: <strong>${info.totals.lines}</strong>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm" style="color:${tone.color}">
+            <div>Total facturas: <strong>${fmt(info.totals.totalFacturas)}</strong></div>
+            <div>Total líneas: <strong>${fmt(info.totals.totalLineas)}</strong></div>
+            <div>Pendiente: <strong>${fmt(info.totals.totalPendiente)}</strong></div>
+            <div>Cancelado: <strong>${fmt(info.totals.totalCancelado)}</strong></div>
+            <div>Diferencia global: <strong>${fmt(info.totals.diferenciaGlobal)}</strong></div>
+          </div>
+          ${info.mismatches.length ? `
+            <div class="mt-3 text-sm" style="color:${tone.color}">
+              <div class="font-semibold mb-1">Facturas descuadradas (Top ${Math.min(5, info.mismatches.length)}):</div>
+              ${info.mismatches.slice(0, 5).map(m =>
+                `<div>#${esc(m.number)} (${esc(m.period)}): Factura ${fmt(m.totalFactura)} vs Líneas ${fmt(m.totalLineas)} (dif ${fmt(m.diferencia)})</div>`
+              ).join('')}
+            </div>` : ''}
+        </div>`;
+    }
+
     async function loadCartera() {
       const unitId = document.getElementById('ph-cartera-unit-filter')?.value || '';
       const fromPeriod = document.getElementById('ph-cartera-from')?.value || '';
       const toPeriod = document.getElementById('ph-cartera-to')?.value || '';
+      const conceptId = document.getElementById('ph-cartera-concept-filter')?.value || '';
+      const thead = document.getElementById('ph-cartera-resumen-thead');
+      const colgroup = document.getElementById('ph-cartera-resumen-colgroup');
 
-      if (!unitId) {
-        document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
-          <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Selecciona una unidad para ver la cartera</td></tr>`;
-        document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
-          <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Selecciona una unidad para ver las partidas</td></tr>`;
-        return;
-      }
+      const conceptKey = (label) => String(label || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
 
-      // Resumen
+      const openParties = await API.getPhCarteraOpenParties(unitId, fromPeriod, toPeriod, {
+        conceptoId: conceptId,
+        estado: 'all',
+      });
+      const activeParties = openParties.filter(p => p.estado !== 'cancelado');
+
       try {
-        const cartera = await API.getPhCarteraByUnit(unitId, fromPeriod, toPeriod);
-        if (cartera.length === 0) {
-          document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
-            <tr><td colspan="5" class="text-center py-4" style="color:#9CA3AF">Sin cartera en este período</td></tr>`;
-        } else {
-          document.getElementById('ph-cartera-resumen-tbody').innerHTML = cartera.map(c => `
+        const [cartera, integrity] = await Promise.all([
+          API.getPhCarteraByUnit(unitId, fromPeriod, toPeriod),
+          API.getPhCarteraIntegrity(unitId, fromPeriod, toPeriod),
+        ]);
+        renderIntegrity(integrity);
+
+        const conceptFilter = document.getElementById('ph-cartera-concept-filter');
+        if (conceptFilter) {
+          const current = conceptFilter.value;
+          conceptFilter.innerHTML = `<option value="">— Todos —</option>${cartera.map(x =>
+            `<option value="${esc(x.conceptoId)}">${esc(x.concepto)}</option>`).join('')}`;
+          conceptFilter.value = current;
+        }
+
+        if (cartera.length === 0 || activeParties.length === 0) {
+          if (colgroup) {
+            colgroup.innerHTML = `
+              <col style="width:260px">
+              <col style="width:160px">`;
+          }
+          if (thead) {
+            thead.innerHTML = `
             <tr>
-              <td><strong>${esc(c.concepto)}</strong></td>
-              <td class="text-right">${fmt(c.totalVencido)}</td>
-              <td class="text-right">${fmt(c.totalPorVencer)}</td>
-              <td class="text-right"><strong>${fmt(c.totalPendiente)}</strong></td>
-              <td class="text-right">${c.diasMoraMax > 0 ? `<span style="color:#EF4444"><strong>${c.diasMoraMax}</strong></span>` : '—'}</td>
+              <th>Unidad</th>
+              <th class="text-right">Total general</th>
+            </tr>`;
+          }
+          document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
+            <tr><td colspan="2" class="text-center py-4" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</td></tr>`;
+          document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
+          document.getElementById('ph-cartera-bal-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de saldo abierto.`;
+        } else {
+          const conceptMap = new Map();
+          for (const p of activeParties) {
+            const cLabel = String(p.concepto || 'Concepto').trim() || 'Concepto';
+            const cKey = conceptKey(cLabel);
+            if (!conceptMap.has(cKey)) conceptMap.set(cKey, cLabel);
+          }
+          const concepts = [...conceptMap.entries()]
+            .map(([id, label]) => ({ id, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+
+          const byUnit = new Map();
+          for (const p of activeParties) {
+            const uLabel = [p.propertyCode, p.propertyName].filter(Boolean).join(' - ') || 'Unidad';
+            const unitKey = `${p.propertyId}|${uLabel}`;
+            if (!byUnit.has(unitKey)) {
+              byUnit.set(unitKey, {
+                unidad: uLabel,
+                byConcept: {},
+                totalGeneral: 0,
+              });
+            }
+            const row = byUnit.get(unitKey);
+            const cKey = conceptKey(p.concepto || 'Concepto');
+            row.byConcept[cKey] = (row.byConcept[cKey] || 0) + Number(p.amount || 0);
+            row.totalGeneral += Number(p.amount || 0);
+          }
+
+          const rows = [...byUnit.values()].sort((a, b) => a.unidad.localeCompare(b.unidad, 'es'));
+
+          const totalByConcept = {};
+          let grandTotal = 0;
+          for (const r of rows) {
+            grandTotal += Number(r.totalGeneral || 0);
+            for (const c of concepts) {
+              totalByConcept[c.id] = (totalByConcept[c.id] || 0) + Number(r.byConcept[c.id] || 0);
+            }
+          }
+
+          const uniqueDocs = new Set(activeParties.map(p => String(p.invoiceId || ''))).size;
+
+          document.getElementById('ph-cartera-bal-meta').innerHTML =
+            `Unidades: <strong>${fmtN(rows.length)}</strong> · Conceptos: <strong>${fmtN(concepts.length)}</strong> · Documentos: <strong>${fmtN(uniqueDocs)}</strong> · Saldo abierto: <strong>${fmt(grandTotal)}</strong>`;
+
+          if (colgroup) {
+            colgroup.innerHTML = `
+              <col style="width:260px">
+              ${concepts.map(() => '<col style="width:150px">').join('')}
+              <col style="width:170px">`;
+          }
+
+          if (thead) {
+            thead.innerHTML = `
+            <tr>
+              <th>Unidad</th>
+              ${concepts.map(c => `<th class="text-right">${esc(c.label)}</th>`).join('')}
+              <th class="text-right">Total general</th>
+            </tr>`;
+          }
+
+          document.getElementById('ph-cartera-resumen-tbody').innerHTML = rows.map(r => `
+            <tr>
+              <td>${esc(r.unidad)}</td>
+              ${concepts.map(c => {
+                const v = Number(r.byConcept[c.id] || 0);
+                return `<td class="text-right">${v ? fmt(v) : ''}</td>`;
+              }).join('')}
+              <td class="text-right font-semibold" style="color:#065F46">${fmt(r.totalGeneral)}</td>
             </tr>`).join('');
+          document.getElementById('ph-cartera-resumen-tfoot').innerHTML = `
+            <tr>
+              <td class="font-bold">Total general</td>
+              ${concepts.map(c => `<td class="font-bold text-right">${totalByConcept[c.id] ? fmt(totalByConcept[c.id]) : ''}</td>`).join('')}
+              <td class="font-bold text-right">${fmt(grandTotal)}</td>
+            </tr>`;
         }
       } catch (err) {
         console.error(err);
+        if (colgroup) {
+          colgroup.innerHTML = `
+            <col style="width:260px">
+            <col style="width:160px">`;
+        }
+        if (thead) {
+          thead.innerHTML = `
+          <tr>
+            <th>Unidad</th>
+            <th class="text-right">Total general</th>
+          </tr>`;
+        }
         document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
-          <tr><td colspan="5" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+          <tr><td colspan="2" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+        document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
+        renderIntegrity(null);
       }
 
-      // Detalle
       try {
-        const parties = await API.getPhCarteraOpenParties(unitId, fromPeriod, toPeriod);
-        if (parties.length === 0) {
+        if (activeParties.length === 0) {
           document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
-            <tr><td colspan="7" class="text-center py-4" style="color:#9CA3AF">Sin partidas en este período</td></tr>`;
+            <tr><td colspan="12" class="text-center py-4" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</td></tr>`;
+          document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
+          document.getElementById('ph-cartera-aging-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de cartera por edades.`;
         } else {
-          document.getElementById('ph-cartera-detalle-tbody').innerHTML = parties.map(p => {
-            const estilo = p.estado === 'vencido' ? 'color:#EF4444;font-weight:bold' : p.estado === 'cancelado' ? 'color:#059669' : '';
-            return `<tr style="${estilo}">
-              <td class="font-mono text-xs">${esc(p.invoiceNumber)}</td>
-              <td>${esc(p.periodo)}</td>
-              <td>${esc(p.concepto)}</td>
-              <td class="text-right">${fmt(p.amount)}</td>
-              <td>${p.dueDate ? fmtDate(p.dueDate) : '—'}</td>
-              <td class="text-right">${p.diasMora > 0 ? `<strong>${p.diasMora}</strong>` : '—'}</td>
-              <td><span class="badge ${p.estado === 'vencido' ? 'badge-red' : p.estado === 'cancelado' ? 'badge-green' : p.estado === 'borrador' ? 'badge-orange' : 'badge-blue'}">${esc(p.estado)}</span></td>
+          const bucketize = (days) => {
+            const d = Number(days || 0);
+            if (d <= 0) return 'por_vencer';
+            if (d <= 30) return 'b0_30';
+            if (d <= 60) return 'b31_60';
+            if (d <= 90) return 'b61_90';
+            return 'b90p';
+          };
+
+          const rows = activeParties.map((p) => {
+            const bucket = bucketize(p.diasMora);
+            const amount = Number(p.amount || 0);
+            const uLabel = [p.propertyCode, p.propertyName].filter(Boolean).join(' - ') || 'Unidad';
+            return {
+              unidad: uLabel,
+              concepto: p.concepto,
+              docCruce: p.invoiceNumber,
+              fechaDoc: p.fechaDoc,
+              plazoDias: Number(p.plazoDias || 0),
+              vencimiento: p.dueDate,
+              por_vencer: bucket === 'por_vencer' ? amount : 0,
+              de_0_a_30: bucket === 'b0_30' ? amount : 0,
+              de_31_a_60: bucket === 'b31_60' ? amount : 0,
+              de_61_a_90: bucket === 'b61_90' ? amount : 0,
+              mayor_a_90: bucket === 'b90p' ? amount : 0,
+              total: amount,
+            };
+          }).sort((a, b) => `${a.unidad}|${a.concepto}|${a.fechaDoc}|${a.docCruce}`.localeCompare(`${b.unidad}|${b.concepto}|${b.fechaDoc}|${b.docCruce}`, 'es'));
+
+          const totals = rows.reduce((acc, r) => {
+            acc.por_vencer += r.por_vencer;
+            acc.de_0_a_30 += r.de_0_a_30;
+            acc.de_31_a_60 += r.de_31_a_60;
+            acc.de_61_a_90 += r.de_61_a_90;
+            acc.mayor_a_90 += r.mayor_a_90;
+            acc.total += r.total;
+            return acc;
+          }, { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
+
+          document.getElementById('ph-cartera-aging-meta').innerHTML =
+            `Documentos: <strong>${fmtN(rows.length)}</strong> · Total: <strong>${fmt(totals.total)}</strong>`;
+
+          const byUnit = new Map();
+          for (const r of rows) {
+            if (!byUnit.has(r.unidad)) byUnit.set(r.unidad, []);
+            byUnit.get(r.unidad).push(r);
+          }
+
+          const bodyRows = [];
+          for (const [unidad, uRows] of byUnit) {
+            bodyRows.push(`<tr style="background:#F0F4F8">
+              <td colspan="12" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
+                <i class="fas fa-building mr-1" style="color:#E87D1E"></i>${esc(unidad)}
+              </td>
+            </tr>`);
+            for (const r of uRows) {
+              bodyRows.push(`<tr>
+                <td>${esc(r.unidad)}</td>
+                <td>${esc(r.concepto)}</td>
+                <td><span class="font-mono">${esc(r.docCruce)}</span></td>
+                <td>${r.fechaDoc ? esc(r.fechaDoc) : '—'}</td>
+                <td class="text-right">${fmtN(r.plazoDias)}</td>
+                <td>${r.vencimiento ? esc(r.vencimiento) : '—'}</td>
+                <td class="text-right" style="color:#059669">${fmt(r.por_vencer)}</td>
+                <td class="text-right">${fmt(r.de_0_a_30)}</td>
+                <td class="text-right">${fmt(r.de_31_a_60)}</td>
+                <td class="text-right">${fmt(r.de_61_a_90)}</td>
+                <td class="text-right font-semibold">${fmt(r.mayor_a_90)}</td>
+                <td class="text-right font-semibold" style="color:#0D2137">${fmt(r.total)}</td>
+              </tr>`);
+            }
+          }
+
+          document.getElementById('ph-cartera-detalle-tbody').innerHTML = bodyRows.join('');
+          document.getElementById('ph-cartera-detalle-tfoot').innerHTML = `
+            <tr>
+              <td colspan="6" class="font-bold">Total general</td>
+              <td class="font-bold text-right" style="color:#059669">${fmt(totals.por_vencer)}</td>
+              <td class="font-bold text-right">${fmt(totals.de_0_a_30)}</td>
+              <td class="font-bold text-right">${fmt(totals.de_31_a_60)}</td>
+              <td class="font-bold text-right">${fmt(totals.de_61_a_90)}</td>
+              <td class="font-bold text-right">${fmt(totals.mayor_a_90)}</td>
+              <td class="font-bold text-right">${fmt(totals.total)}</td>
             </tr>`;
-          }).join('');
         }
       } catch (err) {
         console.error(err);
         document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
-          <tr><td colspan="7" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+          <tr><td colspan="12" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+        document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
       }
     }
 
-    // Event listener para actualizar
     document.getElementById('ph-cartera-refresh-btn')?.addEventListener('click', loadCartera);
     document.getElementById('ph-cartera-unit-filter')?.addEventListener('change', loadCartera);
+    document.getElementById('ph-cartera-from')?.addEventListener('change', loadCartera);
+    document.getElementById('ph-cartera-to')?.addEventListener('change', loadCartera);
+    document.getElementById('ph-cartera-concept-filter')?.addEventListener('change', loadCartera);
 
-    // Cargar inicial
     loadCartera();
 
   } catch (err) {

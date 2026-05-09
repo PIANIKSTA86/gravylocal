@@ -1803,133 +1803,238 @@ const API = {
   },
 
   /**
-   * Calcula días de mora desde una fecha de vencimiento.
+   * Calcula dias de mora desde una fecha de vencimiento.
    * dueDate: 'YYYY-MM-DD'
-   * Retorna: número de días vencidos (0 si aún no vence, negativo si vence en futuro)
    */
   calculateDaysOverdue(dueDate) {
     if (!dueDate) return 0;
-    const due = new Date(dueDate + 'T00:00:00Z');
+    const due = new Date(`${dueDate}T00:00:00Z`);
     const now = new Date();
     const diffMs = now.getTime() - due.getTime();
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   },
 
   /**
-   * Obtiene cartera consolidada por concepto de una unidad.
-   * Retorna: [{concepto, conceptoId, totalVencido, totalPorVencer, totalPendiente, diasMoraMax}]
+   * Normaliza etiquetas de concepto para reportes de cartera.
+   * Evita separar el mismo concepto por sufijos de fecha (ej. "Interes de mora a 2026-06-01").
    */
-  async getPhCarteraByUnit(propertyId, fromPeriod = '', toPeriod = '') {
-    const cartera = {};
+  normalizePhCarteraConceptLabel(rawLabel) {
+    const txt = String(rawLabel || '').trim();
+    if (!txt) return 'Concepto';
 
-    // Obtener todas las facturas de la unidad (no pagadas/voided)
+    // Unifica variantes de interes de mora con fecha de corte incrustada.
+    const moraDatePattern = /^inter[eé]s\s+de\s+mora\s+a\s+\d{4}-\d{2}-\d{2}$/i;
+    if (moraDatePattern.test(txt)) return 'Interés de mora';
+
+    return txt;
+  },
+
+  async _getPhCarteraDataset(propertyId, fromPeriod = '', toPeriod = '') {
+    const safePropertyId = pb.escapeFilterValue(propertyId);
+    const safeFrom = pb.escapeFilterValue(fromPeriod);
+    const safeTo = pb.escapeFilterValue(toPeriod);
+    let filter = `status!="voided"`;
+    if (propertyId) filter += ` && property_id="${safePropertyId}"`;
+    if (fromPeriod) filter += ` && period>="${safeFrom}"`;
+    if (toPeriod) filter += ` && period<="${safeTo}"`;
+
     let invoices = [];
-    const invStatuses = ['draft', 'posted', 'paid'];
-    for (const status of invStatuses) {
-      let filter = `property_id="${propertyId}" && status="${status}"`;
-      if (fromPeriod) filter += ` && period>="${fromPeriod}"`;
-      if (toPeriod) filter += ` && period<="${toPeriod}"`;
+    try {
+      const res = await pb.list('ph_invoices', { filter, perPage: 500, sort: '-date' });
+      invoices = res.items || [];
+    } catch (_) {
       try {
         const res = await pb.list('ph_invoices', { filter, perPage: 500 });
-        invoices.push(...res.items);
-      } catch (_) {}
+        invoices = res.items || [];
+      } catch (_2) {
+        invoices = [];
+      }
     }
 
-    if (invoices.length === 0) return [];
+    let properties = [];
+    try {
+      properties = await this.getPhProperties(false);
+    } catch (_) {
+      properties = [];
+    }
+    const propById = new Map((properties || []).map((p) => [String(p.id), p]));
 
-    // Obtener líneas de todas esas facturas
-    const allLines = [];
+    const rows = [];
     for (const inv of invoices) {
+      const prop = propById.get(String(inv.property_id)) || null;
+      let lines = [];
       try {
-        const lines = await this.getPhInvoiceLines(inv.id);
-        allLines.push(...lines.map(l => ({ ...l, invoiceId: inv.id, invoicePeriod: inv.period, invoiceDueDate: inv.due_date })));
-      } catch (_) {}
+        lines = await this.getPhInvoiceLines(inv.id);
+      } catch (_) {
+        lines = [];
+      }
+      for (const line of lines) {
+        const amount = Number(line.amount || 0);
+        const diasMora = Math.max(0, this.calculateDaysOverdue(inv.due_date));
+        const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
+        const venc = String(inv.due_date || '').slice(0, 10);
+        const fechaDocDt = fechaDoc ? new Date(`${fechaDoc}T00:00:00Z`) : null;
+        const vencDt = venc ? new Date(`${venc}T00:00:00Z`) : null;
+        const plazoDias = (fechaDocDt && vencDt)
+          ? Math.max(0, Math.floor((vencDt.getTime() - fechaDocDt.getTime()) / (1000 * 60 * 60 * 24)))
+          : 0;
+        const estado = inv.status === 'paid'
+          ? 'cancelado'
+          : inv.status === 'draft'
+            ? 'borrador'
+            : diasMora > 0
+              ? 'vencido'
+              : 'por_vencer';
+        const rawConcepto = line.description || line.account_code || 'Concepto';
+        const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
+        const normalizedConceptId = line.concept_id
+          ? String(line.concept_id)
+          : String(normalizedConcepto || line.account_code || 'OTROS').toUpperCase();
+
+        rows.push({
+          invoice: inv,
+          line,
+          amount,
+          diasMora,
+          plazoDias,
+          fechaDoc,
+          dueDate: venc,
+          estado,
+          propertyId: String(inv.property_id || ''),
+          propertyCode: String(prop?.code || ''),
+          propertyName: String(prop?.name || ''),
+          conceptoId: normalizedConceptId,
+          concepto: normalizedConcepto,
+        });
+      }
     }
+    return { invoices, rows };
+  },
 
-    if (allLines.length === 0) return [];
-
-    // Agrupar por concepto
-    for (const line of allLines) {
-      const conceptoId = line.concept_id || line.account_code || 'OTROS';
-      if (!cartera[conceptoId]) {
-        cartera[conceptoId] = {
-          conceptoId,
-          concepto: line.description || conceptoId,
+  /**
+   * Cartera consolidada por concepto de una unidad.
+   * Retorna: [{concepto, conceptoId, totalVencido, totalPorVencer, totalCancelado, totalPendiente, diasMoraMax}]
+   */
+  async getPhCarteraByUnit(propertyId, fromPeriod = '', toPeriod = '') {
+    const { rows } = await this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod);
+    const cartera = {};
+    for (const r of rows) {
+      if (!cartera[r.conceptoId]) {
+        cartera[r.conceptoId] = {
+          conceptoId: r.conceptoId,
+          concepto: r.concepto,
           totalVencido: 0,
           totalPorVencer: 0,
+          totalCancelado: 0,
           totalPendiente: 0,
           diasMoraMax: 0,
         };
       }
-
-      const amount = Number(line.amount || 0);
-      const diasMora = this.calculateDaysOverdue(line.invoiceDueDate);
-
-      cartera[conceptoId].totalPendiente += amount;
-      if (diasMora > 0) {
-        cartera[conceptoId].totalVencido += amount;
-        cartera[conceptoId].diasMoraMax = Math.max(cartera[conceptoId].diasMoraMax, diasMora);
+      if (r.estado === 'cancelado') {
+        cartera[r.conceptoId].totalCancelado += r.amount;
+      } else if (r.estado === 'vencido') {
+        cartera[r.conceptoId].totalVencido += r.amount;
+        cartera[r.conceptoId].totalPendiente += r.amount;
+        cartera[r.conceptoId].diasMoraMax = Math.max(cartera[r.conceptoId].diasMoraMax, r.diasMora);
       } else {
-        cartera[conceptoId].totalPorVencer += amount;
+        cartera[r.conceptoId].totalPorVencer += r.amount;
+        cartera[r.conceptoId].totalPendiente += r.amount;
       }
     }
-
-    return Object.values(cartera);
+    return Object.values(cartera).sort((a, b) => String(a.concepto).localeCompare(String(b.concepto), 'es'));
   },
 
   /**
-   * Obtiene partidas abiertas por concepto (línea por línea) con detalles de mora.
-   * Retorna: [{invoiceId, invoiceNumber, periodo, concepto, amount, dueDate, diasMora, estado}]
+   * Partidas por concepto (fila individual por linea de factura).
+   * opts: { conceptoId?: string, estado?: 'all'|'por_vencer'|'vencido'|'cancelado'|'borrador' }
    */
-  async getPhCarteraOpenParties(propertyId, fromPeriod = '', toPeriod = '') {
-    const parties = [];
-
-    // Obtener todas las facturas de la unidad (no voided)
-    let invoices = [];
-    const invStatuses = ['draft', 'posted', 'paid'];
-    for (const status of invStatuses) {
-      let filter = `property_id="${propertyId}" && status="${status}"`;
-      if (fromPeriod) filter += ` && period>="${fromPeriod}"`;
-      if (toPeriod) filter += ` && period<="${toPeriod}"`;
-      try {
-        const res = await pb.list('ph_invoices', { filter, perPage: 500, sort: '-date' });
-        invoices.push(...res.items);
-      } catch (_) {}
-    }
-
-    if (invoices.length === 0) return [];
-
-    // Obtener líneas de todas esas facturas
-    for (const inv of invoices) {
-      try {
-        const lines = await this.getPhInvoiceLines(inv.id);
-        for (const line of lines) {
-          const diasMora = this.calculateDaysOverdue(inv.due_date);
-          let estado = 'por_vencer';
-          if (diasMora > 0) {
-            estado = 'vencido';
-          } else if (inv.status === 'paid') {
-            estado = 'cancelado';
-          } else if (inv.status === 'draft') {
-            estado = 'borrador';
-          }
-
-          parties.push({
-            invoiceId: inv.id,
-            invoiceNumber: inv.number,
-            periodo: inv.period,
-            concepto: line.description || line.account_code || 'Concepto',
-            conceptoId: line.concept_id || line.account_code || 'OTROS',
-            amount: Number(line.amount || 0),
-            dueDate: inv.due_date,
-            diasMora: Math.max(0, diasMora),
-            estado,
-          });
-        }
-      } catch (_) {}
-    }
-
+  async getPhCarteraOpenParties(propertyId, fromPeriod = '', toPeriod = '', opts = {}) {
+    const { rows } = await this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod);
+    const conceptoFilter = String(opts.conceptoId || '').trim();
+    const estadoFilter = String(opts.estado || 'all').trim();
+    const parties = rows
+      .filter((r) => !conceptoFilter || String(r.conceptoId) === conceptoFilter)
+      .filter((r) => estadoFilter === 'all' || r.estado === estadoFilter)
+      .map((r) => ({
+        invoiceId: r.invoice.id,
+        invoiceNumber: r.invoice.number,
+        periodo: r.invoice.period,
+        propertyId: r.propertyId,
+        propertyCode: r.propertyCode,
+        propertyName: r.propertyName,
+        concepto: r.concepto,
+        conceptoId: r.conceptoId,
+        amount: r.amount,
+        fechaDoc: r.fechaDoc,
+        plazoDias: r.plazoDias,
+        dueDate: r.dueDate,
+        diasMora: r.diasMora,
+        estado: r.estado,
+      }))
+      .sort((a, b) => {
+        const u = String(a.propertyCode || '').localeCompare(String(b.propertyCode || ''));
+        if (u !== 0) return u;
+        const p = String(a.periodo || '').localeCompare(String(b.periodo || ''));
+        if (p !== 0) return p;
+        return String(a.invoiceNumber || '').localeCompare(String(b.invoiceNumber || ''));
+      });
     return parties;
+  },
+
+  /**
+   * Control de integridad para cartera PH de una unidad.
+   * Verifica cuadre global y diferencias por factura (total factura vs suma de lineas).
+   */
+  async getPhCarteraIntegrity(propertyId, fromPeriod = '', toPeriod = '') {
+    const { invoices, rows } = await this._getPhCarteraDataset(propertyId, fromPeriod, toPeriod);
+    const totals = {
+      invoices: invoices.length,
+      lines: rows.length,
+      totalFacturas: 0,
+      totalLineas: 0,
+      totalPendiente: 0,
+      totalCancelado: 0,
+      diferenciaGlobal: 0,
+    };
+
+    for (const inv of invoices) totals.totalFacturas += Number(inv.total || 0);
+    for (const r of rows) {
+      totals.totalLineas += Number(r.amount || 0);
+      if (r.estado === 'cancelado') totals.totalCancelado += Number(r.amount || 0);
+      else totals.totalPendiente += Number(r.amount || 0);
+    }
+    totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalLineas) * 100) / 100;
+
+    const byInvoice = {};
+    for (const r of rows) {
+      const id = r.invoice.id;
+      if (!byInvoice[id]) {
+        byInvoice[id] = {
+          invoiceId: id,
+          number: r.invoice.number,
+          period: r.invoice.period,
+          status: r.invoice.status,
+          totalFactura: Number(r.invoice.total || 0),
+          totalLineas: 0,
+          diferencia: 0,
+        };
+      }
+      byInvoice[id].totalLineas += Number(r.amount || 0);
+    }
+
+    const mismatches = Object.values(byInvoice)
+      .map((m) => {
+        m.diferencia = Math.round((m.totalFactura - m.totalLineas) * 100) / 100;
+        return m;
+      })
+      .filter((m) => Math.abs(m.diferencia) > 1)
+      .sort((a, b) => Math.abs(b.diferencia) - Math.abs(a.diferencia));
+
+    return {
+      totals,
+      mismatches,
+      isBalanced: Math.abs(totals.diferenciaGlobal) <= 1 && mismatches.length === 0,
+    };
   },
 };
 

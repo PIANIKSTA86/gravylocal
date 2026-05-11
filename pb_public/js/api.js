@@ -1803,14 +1803,19 @@ const API = {
   },
 
   /**
-   * Calcula dias de mora desde una fecha de vencimiento.
-   * dueDate: 'YYYY-MM-DD'
+   * Calcula dias de mora desde una fecha de vencimiento respecto a una fecha de corte.
+   * dueDate: 'YYYY-MM-DD', cutoffDate: 'YYYY-MM-DD' (opcional, por defecto hoy)
    */
-  calculateDaysOverdue(dueDate) {
+  calculateDaysOverdue(dueDate, cutoffDate = null) {
     if (!dueDate) return 0;
     const due = new Date(`${dueDate}T00:00:00Z`);
-    const now = new Date();
-    const diffMs = now.getTime() - due.getTime();
+    let ref = null;
+    if (cutoffDate) {
+      ref = new Date(`${cutoffDate}T23:59:59Z`);
+    } else {
+      ref = new Date();
+    }
+    const diffMs = ref.getTime() - due.getTime();
     return Math.floor(diffMs / (1000 * 60 * 60 * 24));
   },
 
@@ -1859,6 +1864,18 @@ const API = {
     }
     const propById = new Map((properties || []).map((p) => [String(p.id), p]));
 
+    // Determinar fecha de corte: acepta YYYY-MM-DD (fecha completa) o YYYY-MM (mes)
+    let cutoffDate = null;
+    if (toPeriod) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(toPeriod)) {
+        cutoffDate = toPeriod;
+      } else if (/^\d{4}-\d{2}$/.test(toPeriod)) {
+        const [y, m] = toPeriod.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate();
+        cutoffDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      }
+    }
+
     const rows = [];
     for (const inv of invoices) {
       const prop = propById.get(String(inv.property_id)) || null;
@@ -1870,7 +1887,7 @@ const API = {
       }
       for (const line of lines) {
         const amount = Number(line.amount || 0);
-        const diasMora = Math.max(0, this.calculateDaysOverdue(inv.due_date));
+        const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
         const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
         const venc = String(inv.due_date || '').slice(0, 10);
         const fechaDocDt = fechaDoc ? new Date(`${fechaDoc}T00:00:00Z`) : null;
@@ -1878,13 +1895,15 @@ const API = {
         const plazoDias = (fechaDocDt && vencDt)
           ? Math.max(0, Math.floor((vencDt.getTime() - fechaDocDt.getTime()) / (1000 * 60 * 60 * 24)))
           : 0;
-        const estado = inv.status === 'paid'
-          ? 'cancelado'
-          : inv.status === 'draft'
-            ? 'borrador'
-            : diasMora > 0
-              ? 'vencido'
-              : 'por_vencer';
+        let estado = 'por_vencer';
+        if (inv.status === 'paid') {
+          estado = 'cancelado';
+        } else if (inv.status === 'draft') {
+          estado = 'borrador';
+        } else if (diasMoraRaw >= 0) {
+          estado = 'vencido';
+        }
+        const diasMora = Math.max(0, diasMoraRaw); // Para mostrar, pero guardamos el raw para bucketize
         const rawConcepto = line.description || line.account_code || 'Concepto';
         const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
         const normalizedConceptId = line.concept_id
@@ -1895,7 +1914,8 @@ const API = {
           invoice: inv,
           line,
           amount,
-          diasMora,
+          diasMora, // solo para mostrar
+          diasMoraRaw, // para bucketize
           plazoDias,
           fechaDoc,
           dueDate: venc,

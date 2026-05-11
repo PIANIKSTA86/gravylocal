@@ -779,12 +779,8 @@ async function renderPhCartera(c) {
             </select>
           </div>
           <div>
-            <label class="form-label mb-1">Período desde</label>
-            <input id="ph-cartera-from" type="month" class="form-input">
-          </div>
-          <div>
-            <label class="form-label mb-1">Período hasta</label>
-            <input id="ph-cartera-to" type="month" class="form-input">
+            <label class="form-label mb-1">Fecha de corte</label>
+            <input id="ph-cartera-to" type="date" class="form-input">
           </div>
           <div>
             <label class="form-label mb-1">Concepto</label>
@@ -813,8 +809,11 @@ async function renderPhCartera(c) {
 
       <div id="ph-cartera-resumen" class="cartera-tab-content">
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
-          <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
+          <div class="px-5 py-3 border-b flex items-center justify-between gap-3" style="border-color:#F0F0F0">
             <span class="font-bold text-sm" style="color:#0D2137">Saldos CxC PH por Unidad y Concepto</span>
+            <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-bal" disabled>
+              <i class="fas fa-file-pdf"></i> PDF
+            </button>
           </div>
           <div id="ph-cartera-bal-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
             <i class="fas fa-calendar-days mr-1"></i>Selecciona filtros y pulsa Actualizar.
@@ -842,8 +841,11 @@ async function renderPhCartera(c) {
 
       <div id="ph-cartera-detalle" class="cartera-tab-content" style="display:none">
         <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
-          <div class="px-5 py-3 border-b" style="border-color:#F0F0F0">
+          <div class="px-5 py-3 border-b flex items-center justify-between gap-3" style="border-color:#F0F0F0">
             <span class="font-bold text-sm" style="color:#0D2137">Cartera por Edades PH por Concepto</span>
+            <button class="btn btn-outline btn-sm" id="ph-cartera-pdf-aging" disabled>
+              <i class="fas fa-file-pdf"></i> PDF
+            </button>
           </div>
           <div id="ph-cartera-aging-meta" class="p-4 border-b text-sm" style="border-color:#F3F4F6;color:#6B7280">
             <i class="fas fa-hourglass-half mr-1"></i>Distribución por vencer / 0-30 / 31-60 / 61-90 / más de 90 días.
@@ -883,6 +885,230 @@ async function renderPhCartera(c) {
         c.querySelector(`#ph-cartera-${tab}`).style.display = '';
       });
     });
+
+    let lastBalPdf = null;
+    let lastAgingPdf = null;
+
+    function getPhPdfDateStamp() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}${m}${day}`;
+    }
+
+    async function exportPhCarteraBalPdf() {
+      if (!lastBalPdf?.rows?.length) {
+        showToast('No hay datos para exportar en Saldos CxC.', 'warning');
+        return;
+      }
+      const jsPdfCtor = typeof getPdfCtorOrWarn === 'function' ? getPdfCtorOrWarn() : null;
+      if (!jsPdfCtor) return;
+      try {
+        const headerCtx = typeof getPdfHeaderContext === 'function'
+          ? await getPdfHeaderContext()
+          : {
+              companyName: 'GRAVY',
+              companyNit: 'N/A',
+              companyAddress: '',
+              softwareName: 'GRAVY v2.0',
+              userName: String(sessionStorage.getItem('user_name') || 'Usuario').trim(),
+              generatedAt: new Date().toLocaleString('es-CO'),
+            };
+        const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+        const unitSel = document.getElementById('ph-cartera-unit-filter');
+        const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
+        const fromPeriod = document.getElementById('ph-cartera-from')?.value || '—';
+        const toPeriod = document.getElementById('ph-cartera-to')?.value || '—';
+        const header = typeof drawPdfHeader === 'function'
+          ? drawPdfHeader(doc, headerCtx, {
+              title: 'Copropiedades - Saldos CxC por Concepto',
+              subtitles: [
+                `Unidad: ${unitLabel}`,
+                `Periodo: ${fromPeriod} a ${toPeriod}`,
+              ],
+            })
+          : { marginLeft: 24, marginRight: doc.internal.pageSize.getWidth() - 24, startY: 50 };
+
+        const head = [['Unidad', ...lastBalPdf.concepts.map(c => c.label), 'Total general']];
+        const body = lastBalPdf.rows.map((r) => [
+          r.unidad,
+          ...lastBalPdf.concepts.map((c) => {
+            const v = Number(r.byConcept[c.id] || 0);
+            return v ? (typeof fmtPdfNum === 'function' ? fmtPdfNum(v) : fmt(v)) : '';
+          }),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(r.totalGeneral || 0) : fmt(r.totalGeneral || 0),
+        ]);
+        body.push([
+          'TOTAL',
+          ...lastBalPdf.concepts.map((c) => {
+            const v = Number(lastBalPdf.totalByConcept[c.id] || 0);
+            return v ? (typeof fmtPdfNum === 'function' ? fmtPdfNum(v) : fmt(v)) : '';
+          }),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastBalPdf.grandTotal || 0) : fmt(lastBalPdf.grandTotal || 0),
+        ]);
+
+        doc.autoTable({
+          startY: header.startY,
+          head,
+          body,
+          theme: 'plain',
+          margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 24 },
+          styles: { font: 'helvetica', fontSize: 7, textColor: [55, 55, 55], cellPadding: 2.2, lineWidth: 0 },
+          headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.2, lineWidth: { bottom: 0.25 } },
+          didParseCell: (data) => {
+            if (data.section !== 'body') return;
+            const isTotal = data.row.index === body.length - 1;
+            if (isTotal) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [236, 236, 236];
+              data.cell.styles.textColor = [13, 33, 55];
+              data.cell.styles.lineWidth = { top: 0.2 };
+              data.cell.styles.lineColor = [13, 33, 55];
+            }
+            if (data.column.index > 0) data.cell.styles.halign = 'right';
+          },
+          didDrawPage: (data) => {
+            if (typeof drawPdfFooter === 'function') drawPdfFooter(doc, data.pageNumber);
+          },
+        });
+
+        doc.save(`ph_saldos_cxc_${getPhPdfDateStamp()}.pdf`);
+      } catch (err) {
+        showToast(`Error al generar PDF: ${err.message}`, 'error');
+      }
+    }
+
+    async function exportPhCarteraAgingPdf() {
+      if (!lastAgingPdf?.rows?.length) {
+        showToast('No hay datos para exportar en Cartera por Edades.', 'warning');
+        return;
+      }
+      const jsPdfCtor = typeof getPdfCtorOrWarn === 'function' ? getPdfCtorOrWarn() : null;
+      if (!jsPdfCtor) return;
+      try {
+        const headerCtx = typeof getPdfHeaderContext === 'function'
+          ? await getPdfHeaderContext()
+          : {
+              companyName: 'GRAVY',
+              companyNit: 'N/A',
+              companyAddress: '',
+              softwareName: 'GRAVY v2.0',
+              userName: String(sessionStorage.getItem('user_name') || 'Usuario').trim(),
+              generatedAt: new Date().toLocaleString('es-CO'),
+            };
+        const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+        const unitSel = document.getElementById('ph-cartera-unit-filter');
+        const unitLabel = unitSel?.selectedOptions?.[0]?.textContent?.trim() || 'Todas las unidades';
+        const fromPeriod = document.getElementById('ph-cartera-from')?.value || '—';
+        const toPeriod = document.getElementById('ph-cartera-to')?.value || '—';
+        const header = typeof drawPdfHeader === 'function'
+          ? drawPdfHeader(doc, headerCtx, {
+              title: 'Copropiedades - Cartera por Edades',
+              subtitles: [
+                `Unidad: ${unitLabel}`,
+                `Periodo: ${fromPeriod} a ${toPeriod}`,
+              ],
+            })
+          : { marginLeft: 24, marginRight: doc.internal.pageSize.getWidth() - 24, startY: 50 };
+
+        // Agrupar por unidad y agregar subtotales por unidad en el PDF (sin duplicados)
+        const rows = lastAgingPdf.rows;
+        const body = [];
+        let currentUnidad = null;
+        let subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (currentUnidad !== r.unidad) {
+            currentUnidad = r.unidad;
+            subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
+          }
+          body.push([
+            r.unidad,
+            r.concepto,
+            '', '', '', '',
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.por_vencer || 0) : fmt(r.por_vencer || 0),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.de_0_a_30 || 0) : fmt(r.de_0_a_30 || 0),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.de_31_a_60 || 0) : fmt(r.de_31_a_60 || 0),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.de_61_a_90 || 0) : fmt(r.de_61_a_90 || 0),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.mayor_a_90 || 0) : fmt(r.mayor_a_90 || 0),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.total || 0) : fmt(r.total || 0),
+          ]);
+          subtotal.por_vencer += r.por_vencer;
+          subtotal.de_0_a_30 += r.de_0_a_30;
+          subtotal.de_31_a_60 += r.de_31_a_60;
+          subtotal.de_61_a_90 += r.de_61_a_90;
+          subtotal.mayor_a_90 += r.mayor_a_90;
+          subtotal.total += r.total;
+          // Si es el último row o cambia de unidad en el siguiente, agregar subtotal
+          const nextUnidad = rows[i + 1]?.unidad;
+          if (nextUnidad !== currentUnidad) {
+            body.push([
+              `Subtotal ${currentUnidad}`, '', '', '', '', '',
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.por_vencer) : fmt(subtotal.por_vencer),
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.de_0_a_30) : fmt(subtotal.de_0_a_30),
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.de_31_a_60) : fmt(subtotal.de_31_a_60),
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.de_61_a_90) : fmt(subtotal.de_61_a_90),
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.mayor_a_90) : fmt(subtotal.mayor_a_90),
+              typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.total) : fmt(subtotal.total),
+            ]);
+          }
+        }
+        // Fila total general
+        body.push([
+          'TOTAL', '', '', '', '', '',
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.por_vencer || 0) : fmt(lastAgingPdf.totals.por_vencer || 0),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.de_0_a_30 || 0) : fmt(lastAgingPdf.totals.de_0_a_30 || 0),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.de_31_a_60 || 0) : fmt(lastAgingPdf.totals.de_31_a_60 || 0),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.de_61_a_90 || 0) : fmt(lastAgingPdf.totals.de_61_a_90 || 0),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.mayor_a_90 || 0) : fmt(lastAgingPdf.totals.mayor_a_90 || 0),
+          typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.total || 0) : fmt(lastAgingPdf.totals.total || 0),
+        ]);
+
+        doc.autoTable({
+          startY: header.startY,
+          head: [['Unidad', 'Concepto', '', '', '', '', 'Por Vencer', '0-30', '31-60', '61-90', 'Mas de 90', 'Total']],
+          body,
+          theme: 'plain',
+          margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 24 },
+          styles: { font: 'helvetica', fontSize: 6.8, textColor: [55, 55, 55], cellPadding: 2.1, lineWidth: 0 },
+          headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7, lineWidth: { bottom: 0.25 } },
+          columnStyles: {
+            0: { cellWidth: 110 },
+            1: { cellWidth: 95 },
+            2: { cellWidth: 20 },
+            3: { cellWidth: 20 },
+            4: { cellWidth: 20 },
+            5: { cellWidth: 20 },
+            6: { cellWidth: 58, halign: 'right' },
+            7: { cellWidth: 47, halign: 'right' },
+            8: { cellWidth: 47, halign: 'right' },
+            9: { cellWidth: 47, halign: 'right' },
+            10: { cellWidth: 54, halign: 'right' },
+            11: { cellWidth: 55, halign: 'right' },
+          },
+          didParseCell: (data) => {
+            if (data.section !== 'body') return;
+            const isTotal = data.row.index === body.length - 1;
+            const isSubtotal = data.row.raw[0]?.startsWith('Subtotal ');
+            if (isTotal || isSubtotal) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [236, 236, 236];
+              data.cell.styles.textColor = [13, 33, 55];
+              data.cell.styles.lineWidth = { top: 0.2 };
+              data.cell.styles.lineColor = [13, 33, 55];
+            }
+          },
+          didDrawPage: (data) => {
+            if (typeof drawPdfFooter === 'function') drawPdfFooter(doc, data.pageNumber);
+          },
+        });
+
+        doc.save(`ph_cartera_edades_${getPhPdfDateStamp()}.pdf`);
+      } catch (err) {
+        showToast(`Error al generar PDF: ${err.message}`, 'error');
+      }
+    }
 
     function renderIntegrity(info) {
       const box = document.getElementById('ph-cartera-integrity');
@@ -924,8 +1150,8 @@ async function renderPhCartera(c) {
 
     async function loadCartera() {
       const unitId = document.getElementById('ph-cartera-unit-filter')?.value || '';
-      const fromPeriod = document.getElementById('ph-cartera-from')?.value || '';
-      const toPeriod = document.getElementById('ph-cartera-to')?.value || '';
+      // Eliminar el uso de fromPeriod, solo usar fecha de corte
+      const toDate = document.getElementById('ph-cartera-to')?.value || '';
       const conceptId = document.getElementById('ph-cartera-concept-filter')?.value || '';
       const thead = document.getElementById('ph-cartera-resumen-thead');
       const colgroup = document.getElementById('ph-cartera-resumen-colgroup');
@@ -937,7 +1163,8 @@ async function renderPhCartera(c) {
         .trim()
         .toUpperCase();
 
-      const openParties = await API.getPhCarteraOpenParties(unitId, fromPeriod, toPeriod, {
+      // Pasar solo la fecha de corte como toPeriod, y vacío el fromPeriod
+      const openParties = await API.getPhCarteraOpenParties(unitId, '', toDate, {
         conceptoId: conceptId,
         estado: 'all',
       });
@@ -945,8 +1172,8 @@ async function renderPhCartera(c) {
 
       try {
         const [cartera, integrity] = await Promise.all([
-          API.getPhCarteraByUnit(unitId, fromPeriod, toPeriod),
-          API.getPhCarteraIntegrity(unitId, fromPeriod, toPeriod),
+          API.getPhCarteraByUnit(unitId, '', toDate),
+          API.getPhCarteraIntegrity(unitId, '', toDate),
         ]);
         renderIntegrity(integrity);
 
@@ -975,6 +1202,9 @@ async function renderPhCartera(c) {
             <tr><td colspan="2" class="text-center py-4" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</td></tr>`;
           document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-bal-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de saldo abierto.`;
+          lastBalPdf = null;
+          const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
+          if (pdfBtn) pdfBtn.disabled = true;
         } else {
           const conceptMap = new Map();
           for (const p of activeParties) {
@@ -1050,6 +1280,10 @@ async function renderPhCartera(c) {
               ${concepts.map(c => `<td class="font-bold text-right">${totalByConcept[c.id] ? fmt(totalByConcept[c.id]) : ''}</td>`).join('')}
               <td class="font-bold text-right">${fmt(grandTotal)}</td>
             </tr>`;
+
+          lastBalPdf = { concepts, rows, totalByConcept, grandTotal };
+          const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
+          if (pdfBtn) pdfBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
@@ -1069,6 +1303,9 @@ async function renderPhCartera(c) {
           <tr><td colspan="2" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
         document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
         renderIntegrity(null);
+        lastBalPdf = null;
+        const pdfBtn = document.getElementById('ph-cartera-pdf-bal');
+        if (pdfBtn) pdfBtn.disabled = true;
       }
 
       try {
@@ -1077,70 +1314,67 @@ async function renderPhCartera(c) {
             <tr><td colspan="12" class="text-center py-4" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</td></tr>`;
           document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-aging-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de cartera por edades.`;
+          lastAgingPdf = null;
+          const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
+          if (pdfBtn) pdfBtn.disabled = true;
         } else {
           const bucketize = (days) => {
             const d = Number(days || 0);
-            if (d <= 0) return 'por_vencer';
+            if (d < 0) return 'por_vencer';
             if (d <= 30) return 'b0_30';
             if (d <= 60) return 'b31_60';
             if (d <= 90) return 'b61_90';
             return 'b90p';
           };
 
-          const rows = activeParties.map((p) => {
-            const bucket = bucketize(p.diasMora);
+          // Group by unit and concept, aggregate buckets
+          const grouped = {};
+          for (const p of activeParties) {
+            const bucket = bucketize(p.diasMoraRaw !== undefined ? p.diasMoraRaw : p.diasMora);
             const amount = Number(p.amount || 0);
             const uLabel = [p.propertyCode, p.propertyName].filter(Boolean).join(' - ') || 'Unidad';
-            return {
-              unidad: uLabel,
-              concepto: p.concepto,
-              docCruce: p.invoiceNumber,
-              fechaDoc: p.fechaDoc,
-              plazoDias: Number(p.plazoDias || 0),
-              vencimiento: p.dueDate,
-              por_vencer: bucket === 'por_vencer' ? amount : 0,
-              de_0_a_30: bucket === 'b0_30' ? amount : 0,
-              de_31_a_60: bucket === 'b31_60' ? amount : 0,
-              de_61_a_90: bucket === 'b61_90' ? amount : 0,
-              mayor_a_90: bucket === 'b90p' ? amount : 0,
-              total: amount,
-            };
-          }).sort((a, b) => `${a.unidad}|${a.concepto}|${a.fechaDoc}|${a.docCruce}`.localeCompare(`${b.unidad}|${b.concepto}|${b.fechaDoc}|${b.docCruce}`, 'es'));
-
-          const totals = rows.reduce((acc, r) => {
-            acc.por_vencer += r.por_vencer;
-            acc.de_0_a_30 += r.de_0_a_30;
-            acc.de_31_a_60 += r.de_31_a_60;
-            acc.de_61_a_90 += r.de_61_a_90;
-            acc.mayor_a_90 += r.mayor_a_90;
-            acc.total += r.total;
-            return acc;
-          }, { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
-
-          document.getElementById('ph-cartera-aging-meta').innerHTML =
-            `Documentos: <strong>${fmtN(rows.length)}</strong> · Total: <strong>${fmt(totals.total)}</strong>`;
-
-          const byUnit = new Map();
-          for (const r of rows) {
-            if (!byUnit.has(r.unidad)) byUnit.set(r.unidad, []);
-            byUnit.get(r.unidad).push(r);
+            const concept = p.concepto || 'Concepto';
+            if (!grouped[uLabel]) grouped[uLabel] = {};
+            if (!grouped[uLabel][concept]) {
+              grouped[uLabel][concept] = {
+                unidad: uLabel,
+                concepto: concept,
+                por_vencer: 0,
+                de_0_a_30: 0,
+                de_31_a_60: 0,
+                de_61_a_90: 0,
+                mayor_a_90: 0,
+                total: 0,
+              };
+            }
+            const row = grouped[uLabel][concept];
+            if (bucket === 'por_vencer') row.por_vencer += amount;
+            else if (bucket === 'b0_30') row.de_0_a_30 += amount;
+            else if (bucket === 'b31_60') row.de_31_a_60 += amount;
+            else if (bucket === 'b61_90') row.de_61_a_90 += amount;
+            else if (bucket === 'b90p') row.mayor_a_90 += amount;
+            row.total += amount;
           }
 
+          // Prepare rows for rendering and PDF
+          const allRows = [];
           const bodyRows = [];
-          for (const [unidad, uRows] of byUnit) {
+          let totals = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
+          Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'es')).forEach(unidad => {
+            const concepts = grouped[unidad];
+            // Subtotal accumulator for this unit
+            let subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
             bodyRows.push(`<tr style="background:#F0F4F8">
               <td colspan="12" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
                 <i class="fas fa-building mr-1" style="color:#E87D1E"></i>${esc(unidad)}
               </td>
             </tr>`);
-            for (const r of uRows) {
+            Object.keys(concepts).sort((a, b) => a.localeCompare(b, 'es')).forEach(concepto => {
+              const r = concepts[concepto];
               bodyRows.push(`<tr>
                 <td>${esc(r.unidad)}</td>
                 <td>${esc(r.concepto)}</td>
-                <td><span class="font-mono">${esc(r.docCruce)}</span></td>
-                <td>${r.fechaDoc ? esc(r.fechaDoc) : '—'}</td>
-                <td class="text-right">${fmtN(r.plazoDias)}</td>
-                <td>${r.vencimiento ? esc(r.vencimiento) : '—'}</td>
+                <td colspan="4"></td>
                 <td class="text-right" style="color:#059669">${fmt(r.por_vencer)}</td>
                 <td class="text-right">${fmt(r.de_0_a_30)}</td>
                 <td class="text-right">${fmt(r.de_31_a_60)}</td>
@@ -1148,8 +1382,37 @@ async function renderPhCartera(c) {
                 <td class="text-right font-semibold">${fmt(r.mayor_a_90)}</td>
                 <td class="text-right font-semibold" style="color:#0D2137">${fmt(r.total)}</td>
               </tr>`);
-            }
-          }
+              // For PDF
+              allRows.push({ ...r });
+              // Subtotal
+              subtotal.por_vencer += r.por_vencer;
+              subtotal.de_0_a_30 += r.de_0_a_30;
+              subtotal.de_31_a_60 += r.de_31_a_60;
+              subtotal.de_61_a_90 += r.de_61_a_90;
+              subtotal.mayor_a_90 += r.mayor_a_90;
+              subtotal.total += r.total;
+            });
+            // Subtotal row
+            bodyRows.push(`<tr style="background:#FDF6E3">
+              <td colspan="6" class="font-bold">Subtotal ${esc(unidad)}</td>
+              <td class="font-bold text-right" style="color:#059669">${fmt(subtotal.por_vencer)}</td>
+              <td class="font-bold text-right">${fmt(subtotal.de_0_a_30)}</td>
+              <td class="font-bold text-right">${fmt(subtotal.de_31_a_60)}</td>
+              <td class="font-bold text-right">${fmt(subtotal.de_61_a_90)}</td>
+              <td class="font-bold text-right">${fmt(subtotal.mayor_a_90)}</td>
+              <td class="font-bold text-right">${fmt(subtotal.total)}</td>
+            </tr>`);
+            // Add to global totals
+            totals.por_vencer += subtotal.por_vencer;
+            totals.de_0_a_30 += subtotal.de_0_a_30;
+            totals.de_31_a_60 += subtotal.de_31_a_60;
+            totals.de_61_a_90 += subtotal.de_61_a_90;
+            totals.mayor_a_90 += subtotal.mayor_a_90;
+            totals.total += subtotal.total;
+          });
+
+          document.getElementById('ph-cartera-aging-meta').innerHTML =
+            `Unidades: <strong>${Object.keys(grouped).length}</strong> · Total: <strong>${fmt(totals.total)}</strong>`;
 
           document.getElementById('ph-cartera-detalle-tbody').innerHTML = bodyRows.join('');
           document.getElementById('ph-cartera-detalle-tfoot').innerHTML = `
@@ -1162,20 +1425,28 @@ async function renderPhCartera(c) {
               <td class="font-bold text-right">${fmt(totals.mayor_a_90)}</td>
               <td class="font-bold text-right">${fmt(totals.total)}</td>
             </tr>`;
+
+          lastAgingPdf = { rows: allRows, totals };
+          const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
+          if (pdfBtn) pdfBtn.disabled = false;
         }
       } catch (err) {
         console.error(err);
         document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
           <tr><td colspan="12" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
         document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
+        lastAgingPdf = null;
+        const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
+        if (pdfBtn) pdfBtn.disabled = true;
       }
     }
 
     document.getElementById('ph-cartera-refresh-btn')?.addEventListener('click', loadCartera);
     document.getElementById('ph-cartera-unit-filter')?.addEventListener('change', loadCartera);
-    document.getElementById('ph-cartera-from')?.addEventListener('change', loadCartera);
     document.getElementById('ph-cartera-to')?.addEventListener('change', loadCartera);
     document.getElementById('ph-cartera-concept-filter')?.addEventListener('change', loadCartera);
+    document.getElementById('ph-cartera-pdf-bal')?.addEventListener('click', exportPhCarteraBalPdf);
+    document.getElementById('ph-cartera-pdf-aging')?.addEventListener('click', exportPhCarteraAgingPdf);
 
     loadCartera();
 

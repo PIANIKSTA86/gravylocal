@@ -557,57 +557,14 @@ export async function getOwnerPqrs(): Promise<PhPqrs[]> {
     expand: 'property_id',
   })) as PhPqrs[];
 
-  return rows
-    .filter((row: any) => {
-      const candidates = [
-        row?.property_id,
-        row?.propertyId,
-        row?.expand?.property_id,
-      ];
-      for (const candidate of candidates) {
-        const relationId = relationValueToId(candidate);
-        if (relationId && propIds.has(relationId)) return true;
-      }
-      return false;
-    })
-    .sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+  return rows.filter((row) => propIds.has(String(row.property_id || '')));
 }
 
 export async function nextPqrsNumber() {
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const timeChunk = String(now.getTime()).slice(-6);
-  const randomChunk = String(Math.floor(Math.random() * 900) + 100);
-  return `PQR-${today}-${timeChunk}${randomChunk}`;
-}
-
-function detectMimeType(fileName?: string, providedMimeType?: string) {
-  const direct = String(providedMimeType || '').trim().toLowerCase();
-  if (direct) return direct;
-
-  const name = String(fileName || '').toLowerCase();
-  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
-  if (name.endsWith('.png')) return 'image/png';
-  if (name.endsWith('.webp')) return 'image/webp';
-  if (name.endsWith('.gif')) return 'image/gif';
-  if (name.endsWith('.pdf')) return 'application/pdf';
-  if (name.endsWith('.txt')) return 'text/plain';
-  return 'application/octet-stream';
-}
-
-function normalizePqrsError(err: any, fallback: string) {
-  const message = String(err?.response?.message || err?.message || '').trim();
-  const data = err?.response?.data;
-
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
-    const firstKey = Object.keys(data)[0];
-    const firstEntry = firstKey ? (data as AnyRecord)[firstKey] : null;
-    const detail = String(firstEntry?.message || '').trim();
-    if (detail) return `${message || fallback} (${detail})`;
-  }
-
-  if (message) return message;
-  return fallback;
+  const head = await pb.collection('ph_pqrs').getList(1, 1);
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const n = Number(head.totalItems || 0) + 1;
+  return `PQR-${today}-${String(n).padStart(4, '0')}`;
 }
 
 export async function createOwnerPqrs(input: {
@@ -624,20 +581,16 @@ export async function createOwnerPqrs(input: {
   const attachments = (input.evidences || []).filter((f) => !!String(f?.uri || '').trim());
 
   if (!attachments.length) {
-    try {
-      return await pb.collection('ph_pqrs').create({
-        number,
-        property_id: input.propertyId,
-        pqrs_type: input.type,
-        priority: input.priority,
-        subject: input.subject.trim(),
-        description: input.description.trim(),
-        status: 'open',
-        opened_at: openedAt,
-      });
-    } catch (err: any) {
-      throw new Error(normalizePqrsError(err, 'No fue posible radicar la PQRS.'));
-    }
+    return pb.collection('ph_pqrs').create({
+      number,
+      property_id: input.propertyId,
+      pqrs_type: input.type,
+      priority: input.priority,
+      subject: input.subject.trim(),
+      description: input.description.trim(),
+      status: 'open',
+      opened_at: openedAt,
+    });
   }
 
   const form = new FormData();
@@ -651,8 +604,8 @@ export async function createOwnerPqrs(input: {
   form.append('opened_at', openedAt);
 
   attachments.forEach((file, index) => {
-    const safeName = file.name || `evidencia_${index + 1}.txt`;
-    const safeType = detectMimeType(safeName, file.mimeType);
+    const safeName = file.name || `evidencia_${index + 1}`;
+    const safeType = file.mimeType || 'application/octet-stream';
     form.append('evidences', {
       uri: file.uri,
       name: safeName,
@@ -660,11 +613,21 @@ export async function createOwnerPqrs(input: {
     } as any);
   });
 
-  try {
-    return await pb.collection('ph_pqrs').create(form as any);
-  } catch (err: any) {
-    throw new Error(normalizePqrsError(err, 'No fue posible radicar la PQRS con evidencias.'));
+  const token = String(pb.authStore.token || '');
+  const response = await fetch(`${PB_URL}/api/collections/ph_pqrs/records`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(String((payload as AnyRecord)?.message || 'No fue posible radicar la PQRS con evidencias.'));
   }
+
+  return payload;
 }
 
 function todayAtMidnight() {

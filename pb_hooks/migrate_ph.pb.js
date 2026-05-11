@@ -339,7 +339,7 @@ onBootstrap((e) => {
         { name: 'closed_at',   type: 'text',     required: false },
         { name: 'assigned_to', type: 'text',     required: false },
         { name: 'evidences',   type: 'file',     required: false,
-          maxSelect: 3, maxSize: 2097152, mimeTypes: ['image/*', 'application/pdf', 'text/plain', 'application/octet-stream'] },
+          maxSelect: 3, maxSize: 2097152, mimeTypes: ['image/*', 'application/pdf', 'text/plain'] },
       ],
       indexes: ['CREATE UNIQUE INDEX idx_ph_pqrs_number ON ph_pqrs (number)'],
     });
@@ -506,18 +506,14 @@ onBootstrap((e) => {
     let pqrsChanged = false;
 
     if (!pqrsFields.has('evidences')) {
-      try {
-        pqrsCol.fields.add(new FileField({
-          name: 'evidences',
-          required: false,
-          maxSelect: 3,
-          maxSize: 2097152,
-          mimeTypes: ['image/*', 'application/pdf', 'text/plain', 'application/octet-stream'],
-        }));
-        pqrsChanged = true;
-      } catch (fieldErr) {
-        console.log('[GRAVY-PH] Aviso al crear campo evidences en ph_pqrs: ' + fieldErr);
-      }
+      pqrsCol.fields.add(new FileField({
+        name: 'evidences',
+        required: false,
+        maxSelect: 3,
+        maxSize: 2097152,
+        mimeTypes: ['image/*', 'application/pdf', 'text/plain'],
+      }));
+      pqrsChanged = true;
     }
 
     const pqrsCreateRule = "@request.auth.collectionName = 'users' && @request.auth.id != ''";

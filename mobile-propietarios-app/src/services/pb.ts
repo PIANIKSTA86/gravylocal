@@ -197,7 +197,7 @@ export async function registerWithPassword(input: {
     passwordConfirm: input.password,
     name: input.fullName.trim(),
     full_name: input.fullName.trim(),
-    role: 'viewer',
+    role: 'propietario',
     active: true,
     owner_id: owner.id,
   });

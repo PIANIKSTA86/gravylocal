@@ -1,0 +1,47 @@
+Plan de implementación del Modulo de tesoreria
+
+1. Doble capa: contable y de cartera
+
+Contable: una sola cuenta CxC por tercero para control del saldo total.
+Cartera auxiliar: un submayor por documento y por concepto, donde vive el detalle de qué se debe exactamente.
+2. Unidad mínima de cartera
+
+Cada línea facturada debe quedar como “partida abierta” con estos ejes:
+Tercero, unidad, factura, concepto, valor original, saldo pendiente, fecha vencimiento, días mora.
+Esto permite saber no solo cuánto debe, sino de qué concepto.
+3. Motor de aplicación de pagos
+
+Cuando entra un recaudo, no se “baja” solo la factura global.
+Se aplica a partidas abiertas según una regla parametrizable:
+Primero vencido primero.
+Primero mora luego capital.
+Prioridad por concepto (por ejemplo administración antes que sanciones).
+Asignación manual por tesorería.
+4. Abono parcial por concepto
+
+El usuario debe poder decir: de un pago de 500.000, aplica 300.000 a administración y 200.000 a parqueadero.
+El sistema reduce saldos por línea y deja trazabilidad de qué pago cubrió qué concepto.
+Así sale cartera por concepto real, no estimada.
+5. Asiento contable del recaudo
+
+Débito banco/caja.
+Crédito CxC control (total aplicado).
+Si hay descuentos, condonaciones o ajustes, van en cuentas separadas.
+El detalle por concepto no necesita partir CxC en múltiples cuentas para existir; vive en el auxiliar de cartera.
+6. Mora correcta sobre saldo remanente
+
+La mora no se calcula sobre el valor original histórico, sino sobre saldo vencido pendiente por concepto.
+Si hubo abonos parciales, la base de mora baja.
+Si no hubo pago y se acumulan períodos, la base sube.
+7. Reportes clave que esto habilita
+
+Estado de cuenta por unidad con columna de saldo por concepto.
+Edad de cartera por concepto y por tercero.
+Recaudo del mes por concepto.
+Tasa de recuperación (abonos vs facturación) por concepto.
+8. Política de negocio parametrizable
+
+Prioridad de aplicación de pagos.
+Si mora se capitaliza o no.
+Si pagos pueden tocar conceptos no vencidos.
+Si se permite sobregiro/anticipo por concepto.

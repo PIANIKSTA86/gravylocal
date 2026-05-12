@@ -181,12 +181,13 @@ const PERSON_TYPES = [
 ];
 
 const TP_TYPES = [
-  { code: 'CLIENTE',      name: 'Cliente' },
-  { code: 'PROVEEDOR',   name: 'Proveedor' },
-  { code: 'EMPLEADO',    name: 'Empleado' },
-  { code: 'ACREEDOR',    name: 'Acreedor' },
+  { code: 'CLIENTE',        name: 'Cliente' },
+  { code: 'PROVEEDOR',     name: 'Proveedor' },
+  { code: 'EMPLEADO',      name: 'Empleado' },
+  { code: 'PROPIETARIO',   name: 'Propietario' },
+  { code: 'ACREEDOR',      name: 'Acreedor' },
   { code: 'TRANSPORTISTA', name: 'Transportista' },
-  { code: 'OTRO',        name: 'Otro' },
+  { code: 'OTRO',          name: 'Otro' },
 ];
 
 /* Departamentos de Colombia (DANE) */

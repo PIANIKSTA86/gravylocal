@@ -45,9 +45,9 @@ onBootstrap((e) => {
     const typeField = col.fields.getByName('type');
     if (typeField) {
       const vals = typeField.values || [];
-      const needsUpdate = !vals.includes('ACREEDOR') || !vals.includes('TRANSPORTISTA');
+      const needsUpdate = !vals.includes('PROPIETARIO') || !vals.includes('ACREEDOR') || !vals.includes('TRANSPORTISTA');
       if (needsUpdate) {
-        typeField.values = ['CLIENTE', 'PROVEEDOR', 'EMPLEADO', 'ACREEDOR', 'TRANSPORTISTA', 'OTRO'];
+        typeField.values = ['CLIENTE', 'PROVEEDOR', 'EMPLEADO', 'PROPIETARIO', 'ACREEDOR', 'TRANSPORTISTA', 'OTRO'];
         col.fields.add(typeField); // add() reemplaza si mismo nombre/id
         changed = true;
       }

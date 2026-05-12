@@ -1442,13 +1442,9 @@ async function renderPhCartera(c) {
     }
 
     document.getElementById('ph-cartera-refresh-btn')?.addEventListener('click', loadCartera);
-    document.getElementById('ph-cartera-unit-filter')?.addEventListener('change', loadCartera);
-    document.getElementById('ph-cartera-to')?.addEventListener('change', loadCartera);
-    document.getElementById('ph-cartera-concept-filter')?.addEventListener('change', loadCartera);
     document.getElementById('ph-cartera-pdf-bal')?.addEventListener('click', exportPhCarteraBalPdf);
     document.getElementById('ph-cartera-pdf-aging')?.addEventListener('click', exportPhCarteraAgingPdf);
-
-    loadCartera();
+    // No ejecutar loadCartera automáticamente ni al cambiar filtros, solo con el botón Actualizar
 
   } catch (err) {
     c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
@@ -1568,9 +1564,15 @@ async function openPhUnitModal(unitId, container) {
   let terceros = [];
   try {
     [terceros] = await Promise.all([
-      API.getTerceros({ type: 'CLIENTE' }),
+      API.getTerceros(),
       unitId ? pb.get('ph_properties', unitId).then(u => { unit = u; }) : Promise.resolve(),
     ]);
+    // Filtrar solo los de rol 'propietario' (por campo 'role' o 'type')
+    terceros = terceros.filter(t => {
+      if (t.role) return String(t.role).toLowerCase() === 'propietario';
+      if (t.type) return String(t.type).toLowerCase() === 'propietario';
+      return false;
+    });
   } catch (err) {
     showToast('Error al cargar datos.', 'error');
     return;

@@ -115,7 +115,7 @@ onBootstrap((e) => {
     updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
     deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
     fields: [
-      { name: "type",               type: "select",  required: true,  values: ["CLIENTE","PROVEEDOR","EMPLEADO","OTRO"] },
+      { name: "type",               type: "select",  required: true,  values: ["CLIENTE","PROVEEDOR","EMPLEADO","PROPIETARIO","ACREEDOR","TRANSPORTISTA","OTRO"] },
       { name: "doc_type",           type: "select",  required: true,  values: ["NIT","CC","CE","TI","PAS","RC"] },
       { name: "doc_number",         type: "text",    required: true },
       { name: "dv",                 type: "text",    required: false },

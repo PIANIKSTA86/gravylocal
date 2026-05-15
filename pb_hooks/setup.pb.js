@@ -1,4 +1,4 @@
-﻿/// <reference path="../pb_data/types.d.ts" />
+/// <reference path="../pb_data/types.d.ts" />
 
 /**
  * GRAVY v2.0 — Setup inicial
@@ -1470,6 +1470,26 @@ onBootstrap((e) => {
       if (changedLines) $app.save(lineCol);
     } catch (mErr2) {
       console.log("[GRAVY] Aviso migrando campos de retención en purchase_invoice_lines: " + mErr2);
+    }
+
+    try {
+      const txCol = $app.findCollectionByNameOrId("transactions");
+      let changedTx = false;
+      const txExtra = [
+        ["teso_mode", new TextField({ name: "teso_mode", required: false })],
+        ["teso_params", new TextField({ name: "teso_params", required: false })],
+      ];
+      for (const [fname, fieldObj] of txExtra) {
+        let hasIt = false;
+        try { hasIt = !!txCol.fields.getByName(fname); } catch (_) { hasIt = String(txCol.fields || "").includes(fname); }
+        if (!hasIt) {
+          txCol.fields.add(fieldObj);
+          changedTx = true;
+        }
+      }
+      if (changedTx) $app.save(txCol);
+    } catch (err) {
+      console.log("[GRAVY] Aviso migrando transactions: " + err);
     }
   } catch (err) {
     console.log("[GRAVY] Aviso migrando colecciones de compras: " + err);

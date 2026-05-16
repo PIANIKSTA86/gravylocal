@@ -878,11 +878,25 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
   const tDir    = tObj.address || '';
   const enLetras = _numLetras(Number(data.monto||0));
 
-  const filaP = (data.partidas||[]).map((p:any)=>
-    `<tr style="border-bottom:1px solid #E5E7EB">
-      <td style="padding:5px 10px;font-size:12px">${_esc(p.ref||'')}${p.description?' - '+_esc(p.description):''}</td>
-      <td style="padding:5px 10px;font-size:12px;text-align:right">${_fmt(p.saldo)}</td>
-    </tr>`).join('');
+  const aplicados = lineasContables.filter(l => l.cross_doc_ref);
+  
+  const filaP = aplicados.length > 0 
+    ? aplicados.map(l => `
+        <tr style="border-bottom:1px solid #E5E7EB">
+          <td style="padding:5px 10px;font-size:12px">
+            <strong>${_esc(l.cross_doc_ref)}</strong> 
+            <span style="color:#6B7280;font-size:11px"> — Abono/Pago a documento</span>
+          </td>
+          <td style="padding:5px 10px;font-size:12px;text-align:right">
+            ${_fmt(isRC ? l.credit : l.debit)}
+          </td>
+        </tr>`).join('')
+    : `<tr style="border-bottom:1px solid #E5E7EB">
+        <td style="padding:5px 10px;font-size:12px;color:#6B7280;font-style:italic">
+          Monto total registrado (anticipo o concepto sin cruce de factura)
+        </td>
+        <td style="padding:5px 10px;font-size:12px;text-align:right">${_fmt(data.monto)}</td>
+      </tr>`;
 
   const filaL = lineasContables.map((l:any)=>
     `<tr style="border-bottom:1px solid #E5E7EB">
@@ -954,17 +968,16 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
     <div style="font-size:10px;color:#374151;margin-top:2px;font-style:italic">${enLetras}</div>
   </div>
 
-  ${(data.partidas||[]).length>0?`
   <div style="margin-bottom:12px">
     <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:#374151;margin-bottom:4px">DETALLE DE APLICACION</div>
     <table style="border:1px solid #E5E7EB">
       <thead><tr style="background:#F3F4F6">
         <th style="padding:5px 10px;text-align:left;font-size:11px">Documento / Concepto</th>
-        <th style="padding:5px 10px;text-align:right;font-size:11px">Valor</th>
+        <th style="padding:5px 10px;text-align:right;font-size:11px">Valor Aplicado</th>
       </tr></thead>
       <tbody>${filaP}</tbody>
     </table>
-  </div>`:'<div style="font-size:11px;color:#6B7280;margin-bottom:12px;font-style:italic">Registrado como anticipo - sin cartera abierta a la fecha.</div>'}
+  </div>
 
   ${filaL?`
   <div style="margin-bottom:12px">

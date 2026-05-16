@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GRAVY v2.0 — tesoreria.ts
  * Módulo Tesorería: pagos, recaudos, cartera y configuración.
  */
@@ -784,95 +784,229 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
 }
 
 // ─── RECIBO IMPRIMIBLE (Opción 2) ───────────────────────────────────────────
-function _showReciboPrint(data: any) {
-  const isRC = data.tipo.includes('CAJA');
-  const color = isRC ? '#059669' : '#DC2626';
-  const icon  = isRC ? 'fa-hand-holding-dollar' : 'fa-paper-plane';
 
-  const partidasHtml = data.partidas.length > 0
-    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
-        <thead>
-          <tr style="background:#F3F4F6">
-            <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Documento</th>
-            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Saldo Pendiente</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.partidas.map((p: any) => `
-            <tr style="border-bottom:1px solid #F3F4F6">
-              <td style="padding:5px 8px">${p.ref || ''} ${p.description ? '&mdash; ' + p.description : ''}</td>
-              <td style="padding:5px 8px;text-align:right">${_fmt(p.saldo)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>`
-    : '<p style="color:#6B7280;font-size:12px;margin-top:8px">Pago registrado como anticipo (sin cartera abierta).</p>';
-
-  const html = `
-    <div style="max-width:520px;margin:0 auto;font-family:'Segoe UI',sans-serif">
-      <!-- Cabecera -->
-      <div style="background:${color};color:#fff;padding:20px 24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px">
-        <i class="fas ${icon}" style="font-size:24px"></i>
-        <div>
-          <div style="font-size:18px;font-weight:700">${data.tipo}</div>
-          <div style="font-size:13px;opacity:0.85">Número: ${data.numero}</div>
-        </div>
-      </div>
-      <!-- Cuerpo -->
-      <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-          <div>
-            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Tercero</div>
-            <div style="font-weight:600;color:#111">${data.tercero}</div>
-          </div>
-          <div>
-            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Fecha</div>
-            <div style="font-weight:600;color:#111">${data.fecha}</div>
-          </div>
-          <div>
-            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Cuenta / Método</div>
-            <div style="font-size:13px;color:#374151">${data.cuenta}</div>
-          </div>
-          ${data.referencia ? `<div>
-            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Referencia</div>
-            <div style="font-size:13px;color:#374151">${data.referencia}</div>
-          </div>` : ''}
-        </div>
-        <div style="background:${isRC ? '#ECFDF5' : '#FEF2F2'};border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
-          <div style="font-size:11px;text-transform:uppercase;color:${color};font-weight:700">VALOR ${isRC ? 'RECIBIDO' : 'PAGADO'}</div>
-          <div style="font-size:32px;font-weight:800;color:${color}">${_fmt(data.monto)}</div>
-        </div>
-        ${partidasHtml}
-        ${data.observaciones ? `<div style="margin-top:12px;padding:10px;background:#F9FAFB;border-radius:8px;font-size:12px;color:#6B7280"><strong>Obs:</strong> ${data.observaciones}</div>` : ''}
-        <div style="margin-top:20px;padding-top:16px;border-top:1px dashed #E5E7EB;text-align:center;font-size:11px;color:#9CA3AF">
-          GRAVY v2.0 &mdash; Generado el ${new Date().toLocaleString('es-CO')}
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Abrir modal con el recibo + botones
-  (window as any).openModal(
-    `${data.tipo} registrado`,
-    html,
-    `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
-     <button class="btn btn-primary" onclick="window._printRecibo()"><i class="fas fa-print mr-1"></i>Imprimir</button>`,
-    false
-  );
+// --- NUMERO EN LETRAS (ES-CO) -----------------------------------------------
+function _numLetras(n: number): string {
+  const u = ['','uno','dos','tres','cuatro','cinco','seis','siete','ocho','nueve',
+    'diez','once','doce','trece','catorce','quince','dieciseis','diecisiete','dieciocho','diecinueve',
+    'veinte','veintiuno','veintidos','veintitres','veinticuatro','veinticinco','veintiseis','veintisiete','veintiocho','veintinueve'];
+  const d = ['','','veinte','treinta','cuarenta','cincuenta','sesenta','setenta','ochenta','noventa'];
+  const c = ['','ciento','doscientos','trescientos','cuatrocientos','quinientos','seiscientos','setecientos','ochocientos','novecientos'];
+  if (n === 0) return 'cero';
+  if (n < 0) return 'menos ' + _numLetras(-n);
+  const e = Math.floor(n);
+  const dec = Math.round((n - e) * 100);
+  let str = '';
+  if (e >= 1000000) { const m = Math.floor(e/1000000); str += (m===1?'un millon ':_numLetras(m)+' millones '); }
+  if (e >= 1000) { const mi = Math.floor((e%1000000)/1000); str += (mi===1?'mil ':_numLetras(mi)+' mil '); }
+  const ce = e % 1000;
+  if (ce >= 100) { str += (ce===100?'cien ':c[Math.floor(ce/100)]+' '); }
+  const re = ce % 100;
+  if (re > 0 && re < 30) str += u[re] + ' ';
+  else if (re >= 30) { str += d[Math.floor(re/10)] + (re%10 > 0 ? ' y ' + u[re%10] + ' ' : ' '); }
+  const result = str.trim();
+  return result.charAt(0).toUpperCase() + result.slice(1) + ' pesos' + (dec > 0 ? ' con ' + dec + '/100' : ' con 00/100') + ' M/Cte.';
 }
 
-(window as any)._printRecibo = () => {
-  const modal = document.getElementById('modal-body') || document.querySelector('[class*=modal] > div');
-  if (!modal) return window.print();
-  const w = window.open('', '_blank', 'width=640,height=700');
+// --- PLANTILLA CARTA ---------------------------------------------------------
+async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
+  const isRC = (data.tipo || '').includes('CAJA');
+  const acColor  = isRC ? '#1D6F42' : '#B91C1C';
+  const acBg     = isRC ? '#F0FDF4' : '#FFF1F2';
+  const acLight  = isRC ? '#D1FAE5' : '#FECDD3';
+  const tipoLbl  = isRC ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO';
+  const pb = _pb();
+  let emp = {name:'',nit:'',address:'',phone:'',email:''};
+  let elaboradoPor = '';
+  try {
+    const sets = await pb.listAll('settings', {});
+    const m: any = Object.fromEntries(sets.map((s:any) => [s.key, s.value||'']));
+    emp = {name:m.company_name||'',nit:m.company_nit||'',address:m.company_address||'',phone:m.company_phone||'',email:m.company_email||''};
+    elaboradoPor = m.representante_legal_name || m.legal_representative_name || '';
+  } catch(_) {}
+  const tObj    = data.terceroObj || {};
+  const tNombre = tObj.name || data.tercero || '';
+  const tDoc    = tObj.doc_number || '';
+  const tEmail  = tObj.email || '';
+  const tPhone  = tObj.phone || '';
+  const tDir    = tObj.address || '';
+  const enLetras = _numLetras(Number(data.monto||0));
+
+  const filaP = (data.partidas||[]).map((p:any)=>
+    `<tr style="border-bottom:1px solid #E5E7EB">
+      <td style="padding:5px 10px;font-size:12px">${_esc(p.ref||'')}${p.description?' - '+_esc(p.description):''}</td>
+      <td style="padding:5px 10px;font-size:12px;text-align:right">${_fmt(p.saldo)}</td>
+    </tr>`).join('');
+
+  const filaL = lineasContables.map((l:any)=>
+    `<tr style="border-bottom:1px solid #E5E7EB">
+      <td style="padding:4px 10px;font-size:11px;font-family:monospace">${_esc(l.expand?.account_id?.code||'')} - ${_esc(l.expand?.account_id?.name||'')}</td>
+      <td style="padding:4px 10px;font-size:11px;text-align:right">${Number(l.debit)>0?_fmt(l.debit):''}</td>
+      <td style="padding:4px 10px;font-size:11px;text-align:right">${Number(l.credit)>0?_fmt(l.credit):''}</td>
+      <td style="padding:4px 10px;font-size:11px;color:#9CA3AF">${_esc(l.cross_doc_ref||'')}</td>
+    </tr>`).join('');
+
+  return `<!DOCTYPE html><html lang="es"><head>
+  <meta charset="UTF-8">
+  <title>${tipoLbl} ${data.numero||''}</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#111;background:#fff}
+    .page{width:216mm;min-height:279mm;margin:0 auto;padding:14mm 16mm;background:#fff}
+    .no-print{text-align:center;padding:12px;background:#F3F4F6;border-top:1px solid #E5E7EB}
+    table{border-collapse:collapse;width:100%}
+    @media print{.no-print{display:none}@page{size:letter;margin:12mm 14mm}}
+  </style>
+</head><body>
+<div class="page">
+
+  <table style="margin-bottom:14px">
+    <tr>
+      <td style="width:65%;vertical-align:top">
+        <div style="font-size:18px;font-weight:800;color:#0D2137">${_esc(emp.name)||'Razon Social'}</div>
+        ${emp.nit?`<div style="font-size:11px;color:#6B7280">NIT: ${_esc(emp.nit)}</div>`:''}
+        ${emp.address?`<div style="font-size:11px;color:#6B7280">${_esc(emp.address)}</div>`:''}
+        ${emp.phone?`<div style="font-size:11px;color:#6B7280">Tel: ${_esc(emp.phone)}${emp.email?' | '+_esc(emp.email):''}</div>`:''}
+      </td>
+      <td style="width:35%;vertical-align:top;text-align:right">
+        <div style="display:inline-block;background:${acColor};color:#fff;padding:8px 16px;border-radius:8px;text-align:center">
+          <div style="font-size:11px;font-weight:800;letter-spacing:1px">${tipoLbl}</div>
+          <div style="font-size:22px;font-weight:900;letter-spacing:2px">No. ${_esc(data.numero||'')}</div>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <hr style="border:none;border-top:2px solid ${acColor};margin-bottom:12px">
+
+  <table style="margin-bottom:12px;font-size:12px">
+    <tr>
+      <td style="width:50%;vertical-align:top;padding-right:12px">
+        <div style="background:${acBg};border:1px solid ${acLight};border-radius:8px;padding:10px 12px">
+          <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:${acColor};margin-bottom:6px">DATOS DEL ${isRC?'CLIENTE':'PROVEEDOR'}</div>
+          <div style="font-weight:700;font-size:13px;color:#111">${_esc(tNombre)||'---'}</div>
+          ${tDoc?`<div style="color:#374151">C.C./NIT: <strong>${_esc(tDoc)}</strong></div>`:''}
+          ${tDir?`<div style="color:#6B7280;font-size:11px">${_esc(tDir)}</div>`:''}
+          ${tPhone?`<div style="color:#6B7280;font-size:11px">Tel: ${_esc(tPhone)}</div>`:''}
+          ${tEmail?`<div style="color:#6B7280;font-size:11px">${_esc(tEmail)}</div>`:''}
+        </div>
+      </td>
+      <td style="width:50%;vertical-align:top">
+        <table style="font-size:12px;width:100%">
+          <tr><td style="color:#6B7280;padding:3px 0">Fecha:</td><td style="font-weight:700;text-align:right">${_esc(String(data.fecha||'').slice(0,10))}</td></tr>
+          <tr><td style="color:#6B7280;padding:3px 0">Metodo ${isRC?'recaudo':'pago'}:</td><td style="text-align:right;font-size:11px">${_esc(data.cuenta||'')}</td></tr>
+          ${data.referencia?`<tr><td style="color:#6B7280;padding:3px 0">Referencia:</td><td style="font-weight:700;text-align:right">${_esc(data.referencia)}</td></tr>`:''}
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <div style="background:${acBg};border:1.5px solid ${acLight};border-radius:10px;padding:12px 16px;margin-bottom:12px">
+    <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:${acColor}">VALOR ${isRC?'RECIBIDO':'PAGADO'}</div>
+    <div style="font-size:28px;font-weight:900;color:${acColor}">${_fmt(data.monto||0)}</div>
+    <div style="font-size:10px;color:#374151;margin-top:2px;font-style:italic">${enLetras}</div>
+  </div>
+
+  ${(data.partidas||[]).length>0?`
+  <div style="margin-bottom:12px">
+    <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:#374151;margin-bottom:4px">DETALLE DE APLICACION</div>
+    <table style="border:1px solid #E5E7EB">
+      <thead><tr style="background:#F3F4F6">
+        <th style="padding:5px 10px;text-align:left;font-size:11px">Documento / Concepto</th>
+        <th style="padding:5px 10px;text-align:right;font-size:11px">Valor</th>
+      </tr></thead>
+      <tbody>${filaP}</tbody>
+    </table>
+  </div>`:'<div style="font-size:11px;color:#6B7280;margin-bottom:12px;font-style:italic">Registrado como anticipo - sin cartera abierta a la fecha.</div>'}
+
+  ${filaL?`
+  <div style="margin-bottom:12px">
+    <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:#374151;margin-bottom:4px">ASIENTO CONTABLE</div>
+    <table style="border:1px solid #E5E7EB">
+      <thead><tr style="background:#F3F4F6">
+        <th style="padding:4px 10px;text-align:left;font-size:11px">Cuenta</th>
+        <th style="padding:4px 10px;text-align:right;font-size:11px">Debito</th>
+        <th style="padding:4px 10px;text-align:right;font-size:11px">Credito</th>
+        <th style="padding:4px 10px;text-align:left;font-size:11px">Doc. Cruce</th>
+      </tr></thead>
+      <tbody>${filaL}</tbody>
+    </table>
+  </div>`:''}
+
+  ${data.observaciones?`
+  <div style="border:1px solid #E5E7EB;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px">
+    <span style="font-size:9px;text-transform:uppercase;font-weight:700;color:#6B7280">Observaciones: </span>
+    <span style="color:#374151">${_esc(data.observaciones)}</span>
+  </div>`:''}
+
+  <div style="display:flex;gap:40px;justify-content:space-around;margin-top:36px">
+    <div style="text-align:center;flex:1">
+      <div style="border-top:1px solid #374151;padding-top:6px;margin-top:40px">
+        <div style="font-size:11px;font-weight:700;color:#111">${elaboradoPor||'&nbsp;'}</div>
+        <div style="font-size:10px;color:#6B7280">Elaborado por</div>
+      </div>
+    </div>
+    <div style="text-align:center;flex:1">
+      <div style="border-top:1px solid #374151;padding-top:6px;margin-top:40px">
+        <div style="font-size:11px;font-weight:700;color:#111">&nbsp;</div>
+        <div style="font-size:10px;color:#6B7280">Firma Recibido</div>
+        ${tDoc?`<div style="font-size:9px;color:#9CA3AF">C.C./NIT: ${_esc(tDoc)}</div>`:''}
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;padding-top:8px;border-top:1px dashed #D1D5DB;text-align:center;font-size:9px;color:#9CA3AF">
+    GRAVY v2.0 - Generado el ${new Date().toLocaleString('es-CO')} - Documento de control interno
+  </div>
+
+</div>
+<div class="no-print">
+  <button onclick="window.print()" style="padding:9px 24px;background:#1E40AF;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600">
+    Imprimir
+  </button>
+  <button onclick="window.close()" style="margin-left:10px;padding:9px 20px;background:#E5E7EB;color:#374151;border:none;border-radius:8px;cursor:pointer;font-size:14px">
+    Cerrar
+  </button>
+</div>
+</body></html>`;
+}
+
+// --- SHOW RECIBO (post-registro) ---------------------------------------------
+async function _showReciboPrint(data: any) {
+  const isRC = (data.tipo||'').includes('CAJA');
+  if (_tesoCurrentThirdParty) data.terceroObj = _tesoCurrentThirdParty;
+  const html = await _buildReciboHTML(data);
+  const preview = `
+    <div style="font-size:12px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px;text-align:center">
+      <i class="fas fa-check-circle" style="font-size:24px;color:${isRC?'#059669':'#DC2626'}"></i>
+      <p style="font-weight:700;margin-top:8px;font-size:14px">${_esc(data.tipo)} registrado</p>
+      <p style="color:#6B7280;font-size:11px;margin-top:4px">No. <strong>${_esc(data.numero)}</strong> &bull; Valor: <strong>${_fmt(data.monto)}</strong></p>
+      <p style="color:#6B7280;font-size:11px;margin-top:4px">Haz clic en <strong>Imprimir Recibo</strong> para abrir el formato carta.</p>
+    </div>`;
+  (window as any).openModal(`${data.tipo} registrado`, preview,
+    `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
+     <button class="btn btn-primary" id="btn-print-recibo"><i class="fas fa-print mr-1"></i>Imprimir Recibo</button>`,
+    false);
+  setTimeout(() => {
+    document.getElementById('btn-print-recibo')?.addEventListener('click', () => {
+      const w = window.open('', '_blank', 'width=900,height=750');
+      if (w) { w.document.write(html); w.document.close(); }
+    });
+  }, 100);
+}
+
+(window as any)._printRecibo = async (htmlStr?: string) => {
+  if (htmlStr) {
+    const w = window.open('', '_blank', 'width=900,height=750');
+    if (w) { w.document.write(htmlStr); w.document.close(); }
+    return;
+  }
+  const modal = document.getElementById('modal-body') || document.querySelector('[id*=modal] > div');
+  if (!modal) return;
+  const w = window.open('', '_blank', 'width=900,height=750');
   if (!w) return;
-  w.document.write(`<!DOCTYPE html><html><head>
-    <title>Recibo GRAVY</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>body{margin:20px;font-family:'Segoe UI',sans-serif}@media print{.no-print{display:none}}</style>
-  </head><body>${modal.innerHTML}<br><div class="no-print" style="text-align:center;margin-top:16px">
-    <button onclick="window.print()" style="padding:8px 20px;background:#1E40AF;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">ð¨ Imprimir</button>
-  </div></body></html>`);
+  w.document.write(modal.innerHTML);
   w.document.close();
 };
 

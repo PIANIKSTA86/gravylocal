@@ -749,7 +749,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     const terceroNombre = _tesoCurrentThirdParty.name || _tesoCurrentThirdParty.doc_number || '';
     const cuentaNombre  = cuentaOpt?.text || '';
 
-    await pb.create('transactions', {
+    const txRecord = await pb.create('transactions', {
       tx_type_id:    typeRes[0].id,
       number:        txNum,
       date:          fecha,
@@ -759,6 +759,11 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       teso_mode:     modo,
       teso_params:   JSON.stringify(params)
     });
+
+    // Esperar al hook y obtener líneas contables para el recibo completo
+    await new Promise(r => setTimeout(r, 800));
+    let txLines: any[] = [];
+    try { txLines = await pb.listAll('tx_lines', { filter: `tx_id="${txRecord.id}"`, expand: 'account_id' }); } catch(_) {}
 
     _closeModal();
 
@@ -773,7 +778,8 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       referencia,
       observaciones,
       partidas:    _tesoCurrentOpenItems.slice(),
-      modo
+      modo,
+      lineas:      txLines
     });
 
     renderTesoListado(document.getElementById('teso-content')!, typeCode as any);
@@ -978,26 +984,41 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
 // --- SHOW RECIBO (post-registro) ---------------------------------------------
 async function _showReciboPrint(data: any) {
   const isRC = (data.tipo||'').includes('CAJA');
+  const acColor = isRC ? '#1D6F42' : '#B91C1C';
+  const acBg    = isRC ? '#F0FDF4' : '#FFF1F2';
   if (_tesoCurrentThirdParty) data.terceroObj = _tesoCurrentThirdParty;
-  const html = await _buildReciboHTML(data);
+
+  // Generar recibo carta completo con líneas contables del hook
+  const html = await _buildReciboHTML(data, data.lineas || []);
+
   const preview = `
-    <div style="font-size:12px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:16px;text-align:center">
-      <i class="fas fa-check-circle" style="font-size:24px;color:${isRC?'#059669':'#DC2626'}"></i>
-      <p style="font-weight:700;margin-top:8px;font-size:14px">${_esc(data.tipo)} registrado</p>
-      <p style="color:#6B7280;font-size:11px;margin-top:4px">No. <strong>${_esc(data.numero)}</strong> &bull; Valor: <strong>${_fmt(data.monto)}</strong></p>
-      <p style="color:#6B7280;font-size:11px;margin-top:4px">Haz clic en <strong>Imprimir Recibo</strong> para abrir el formato carta.</p>
+    <div style="font-size:13px;font-family:'Segoe UI',sans-serif">
+      <div style="display:flex;align-items:center;gap:12px;padding:14px;background:${acBg};border-radius:10px;margin-bottom:10px">
+        <i class="fas fa-check-circle" style="font-size:28px;color:${acColor};flex-shrink:0"></i>
+        <div style="flex:1">
+          <p style="font-weight:700;font-size:14px;color:#111;margin:0">${_esc(data.tipo)} registrado</p>
+          <p style="color:#6B7280;font-size:12px;margin:3px 0 0">No. <strong>${_esc(data.numero)}</strong> &bull; <strong>${_fmt(data.monto)}</strong></p>
+          <p style="color:#6B7280;font-size:11px;font-style:italic;margin:2px 0 0">${_numLetras(data.monto)}</p>
+        </div>
+      </div>
+      <p style="font-size:11px;color:#9CA3AF;text-align:center;margin:0">
+        El recibo incluye datos de empresa, tercero, asiento contable completo y firmas.
+      </p>
     </div>`;
+
   (window as any).openModal(`${data.tipo} registrado`, preview,
     `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
      <button class="btn btn-primary" id="btn-print-recibo"><i class="fas fa-print mr-1"></i>Imprimir Recibo</button>`,
     false);
+
   setTimeout(() => {
     document.getElementById('btn-print-recibo')?.addEventListener('click', () => {
-      const w = window.open('', '_blank', 'width=900,height=750');
+      const w = window.open('', '_blank', 'width=920,height=760');
       if (w) { w.document.write(html); w.document.close(); }
     });
   }, 100);
 }
+
 
 (window as any)._printRecibo = async (htmlStr?: string) => {
   if (htmlStr) {

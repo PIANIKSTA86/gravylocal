@@ -61,16 +61,17 @@ onRecordCreateRequest((e) => {
 
     if (propertyId) {
       allowedRefs = {};
-      // Facturas de la unidad
-      const invoices = $app.findRecordsByFilter(
-        "ph_invoices",
-        `property_id = '${propertyId}' && status != 'voided'`,
-        "", 10000, 0
-      ) || [];
+      const invoices = $app.findRecordsByFilter("ph_invoices", `property_id = '${propertyId}' && status != 'voided'`, "", 10000, 0) || [];
       for (const inv of invoices) allowedRefs[inv.get("number")] = true;
-      // Anticipo de esta unidad específica (siempre permitido)
       allowedRefs[anticipoRef] = true;
     } else {
+      // Modo Comercial: También debemos permitir facturas comerciales
+      allowedRefs = {};
+      try {
+        const commInvoices = $app.findRecordsByFilter("invoices", `third_party_id = '${thirdPartyId}' && status = 'posted'`, "", 10000, 0) || [];
+        for (const inv of commInvoices) allowedRefs[inv.get("number")] = true;
+      } catch(err) {}
+
       blockedRefs = {};
       try {
         const props = $app.findRecordsByFilter("ph_properties", `owner_id = '${thirdPartyId}'`, "", 1000, 0) || [];
@@ -78,11 +79,10 @@ onRecordCreateRequest((e) => {
         for (const p of props) propIds[p.id] = true;
 
         if (props.length > 0) {
-          const invoices = $app.findRecordsByFilter("ph_invoices", `status != 'voided'`, "", 10000, 0) || [];
-          for (const inv of invoices) {
+          const phInvoices = $app.findRecordsByFilter("ph_invoices", `status != 'voided'`, "", 10000, 0) || [];
+          for (const inv of phInvoices) {
             if (propIds[inv.get("property_id")]) blockedRefs[inv.get("number")] = true;
           }
-          // Bloquear anticipos de unidades (modo comercial no los ve)
           for (const p of props) blockedRefs[`ANT-${p.id}`] = true;
         }
       } catch(err) {}
@@ -95,7 +95,11 @@ onRecordCreateRequest((e) => {
         const ref = String(line.get("cross_doc_ref") || "").trim();
         if (!ref) continue;
 
-        // Verificar si la cuenta maneja cruce O si es la cuenta de anticipos
+        const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
+        const inAllowed = allowedRefs && (allowedRefs[ref] || allowedRefs[possibleBase]);
+        const inBlocked = blockedRefs && (blockedRefs[ref] || blockedRefs[possibleBase]);
+
+        // Verificar si la cuenta maneja cruce O si es la cuenta de anticipos O si está explícitamente permitida
         let cuentaValida = false;
         try {
           const acct = $app.findRecordById("accounts", lineAccountId);
@@ -103,21 +107,17 @@ onRecordCreateRequest((e) => {
         } catch(_) {}
         
         const esLineaAnticipo = anticipoAccountId && lineAccountId === anticipoAccountId && ref === anticipoRef;
-        if (!cuentaValida && !esLineaAnticipo) continue;
+        
+        // CRITERIO DE ACEPTACIÓN:
+        // 1. Es un anticipo válido
+        // 2. Está en la lista de permitidos (allowedRefs)
+        // 3. Maneja cruce y NO está en la lista de bloqueados
+        if (!esLineaAnticipo && !inAllowed) {
+           if (!cuentaValida || inBlocked) continue;
+        }
 
         const tx = $app.findRecordById("transactions", line.get("tx_id"));
         if (tx && tx.get("status") === "voided") continue;
-
-        const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
-
-        if (propertyId && allowedRefs) {
-          const isAllowed = allowedRefs[ref] || allowedRefs[possibleBase];
-          if (!isAllowed) continue;
-        }
-        if (!propertyId && blockedRefs) {
-          const isBlocked = blockedRefs[ref] || blockedRefs[possibleBase];
-          if (isBlocked) continue;
-        }
 
         const key = ref + "|" + lineAccountId;
         if (!docsMap[key]) {

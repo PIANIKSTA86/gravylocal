@@ -493,19 +493,24 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     if (propertyId) {
        const invoices = await pb.listAll('ph_invoices', { filter: `property_id="${propertyId}" && status!="voided"` });
        invoices.forEach((inv: any) => allowedRefs.add(inv.number));
-       // Siempre permitir la referencia de anticipo de esta unidad
        allowedRefs.add(anticipoRef);
-       if (allowedRefs.size <= 1) { // Solo la ref de anticipo, sin facturas
-         // Verificar si hay anticipo activo
+       if (allowedRefs.size <= 1) { 
          const hasAnticipo = allowedRefs.has(anticipoRef);
          if (!hasAnticipo) {
-           c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes para esta operación.</div>`;
+           c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes.</div>`;
            return;
          }
        }
     } else {
-       const invoices = await pb.listAll('ph_invoices', { filter: `property_id.owner_id="${thirdPartyId}" && status!="voided"` });
-       invoices.forEach((inv: any) => blockedRefs.add(inv.number));
+       // Modo Comercial: Buscar facturas comerciales para permitir su cruce
+       try {
+         const commInvoices = await pb.listAll('invoices', { filter: `third_party_id="${thirdPartyId}" && status="posted"` });
+         commInvoices.forEach((inv: any) => allowedRefs.add(inv.number));
+       } catch(_) {}
+       
+       // Bloquear facturas de PH para evitar cruces cruzados entre módulos
+       const phInvoices = await pb.listAll('ph_invoices', { filter: `property_id.owner_id="${thirdPartyId}" && status!="voided"` });
+       phInvoices.forEach((inv: any) => blockedRefs.add(inv.number));
     }
     
     const allLines = await pb.listAll('tx_lines', {
@@ -774,6 +779,25 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     if (modo === 'manual') {
       params.distribucion = distribucion;
     } else {
+      // MODO AUTOMÁTICO INTELIGENTE: El frontend calcula la distribución para asegurar 
+      // el cruce de facturas comerciales si existen partidas abiertas.
+      if (_tesoCurrentOpenItems.length > 0) {
+        let saldoRestante = monto;
+        const autoDist: any[] = [];
+        for (const item of _tesoCurrentOpenItems) {
+          if (saldoRestante <= 0) break;
+          const valorAbono = Math.min(saldoRestante, item.saldo);
+          autoDist.push({ 
+            key: item.key, 
+            cross_doc_ref: item.ref, 
+            account_id: item.accountId, 
+            monto: valorAbono 
+          });
+          saldoRestante -= valorAbono;
+        }
+        params.distribucion = autoDist;
+      }
+
       const sets = await pb.listAll('settings', { filter: `key="treasury_rules"` });
       let rules: any = { primeroVencido: true, primeroMora: true };
       if (sets.length && sets[0].value) { try { rules = JSON.parse(sets[0].value); } catch(_) {} }

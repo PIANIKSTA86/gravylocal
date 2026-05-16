@@ -1118,6 +1118,408 @@ const API = {
     await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
   },
 
+  // ── Ventas y POS (Comercial) ──────────────────────────────
+
+  /** Lista paginada de facturas de venta / recibos POS */
+  async getInvoices(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('invoices', {
+      page, perPage, filter, sort,
+      expand: 'customer_id,warehouse_id,tx_type_id,pos_shift_id',
+    });
+  },
+
+  /** Líneas de una factura de venta con expand de producto y cuenta */
+  async getInvoiceLines(invoiceId) {
+    const safe = pb.escapeFilterValue(invoiceId);
+    return pb.listAll('invoice_lines', {
+      filter:  `invoice_id="${safe}"`,
+      sort:    'line_order',
+      expand:  'product_id,account_id',
+    });
+  },
+
+  /** Crea cabecera + líneas de factura de venta en estado borrador */
+  async createInvoice(header, lines) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += l.subtotal || 0;
+      ivaTot   += l.iva_amount || 0;
+    }
+    const retTot = Number(header.ret_total || 0);
+    const total = subtotal + ivaTot;
+    const payableTotal = total - retTot;
+
+    const inv = await pb.create('invoices', {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+      ret_total: retTot,
+      payable_total: payableTotal,
+      status:    'draft',
+    });
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('invoice_lines', {
+        invoice_id: inv.id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+    await this.logAudit('CREATE', 'Invoice', inv.id, `Factura venta ${inv.number}`);
+    return inv;
+  },
+
+  /**
+   * Contabiliza una factura de venta (draft → posted):
+   * 1. Valida existencias en tiempo real para bienes.
+   * 2. Genera asiento FV/POS en transactions (debitos CxC/Caja ↔ ingresos + iva).
+   * 3. Registra el costo de ventas (COGS) para bienes físicos.
+   * 4. Para líneas de BIEN: crea movimiento SALIDA y lo aplica al stock.
+   * 5. Actualiza la factura con tx_id, inv_movement_id, status=posted.
+   */
+  async postInvoice(invoiceId) {
+    const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_type_id' });
+    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+
+    const lines = await this.getInvoiceLines(invoiceId);
+    if (!lines.length) throw new Error('La factura no tiene líneas.');
+
+    // Cargar productos para expandir
+    const products = await this.getProducts({ activeOnly: false });
+
+    // ── Validar stock en tiempo real y preparar COGS ───────────────────
+    const movLines = [];
+    for (const line of lines) {
+      const prod = products.find(p => p.id === line.product_id);
+      if (prod && prod.type === 'BIEN') {
+        if (!inv.warehouse_id) {
+          throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${prod.code || ''} ${prod.name || ''}.`);
+        }
+        const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
+        const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
+        if (qtyOnHand + 0.0001 < line.qty) {
+          throw new Error(`Existencias insuficientes para el producto "${prod.name}" en la bodega seleccionada. Solicitado: ${fmtN(line.qty)}, Disponible: ${fmtN(qtyOnHand)}.`);
+        }
+        const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
+        movLines.push({
+          product_id: line.product_id,
+          qty: line.qty,
+          unit_cost: avgCost,
+          notes: line.description || `Venta ${inv.number}`,
+        });
+      }
+    }
+
+    const accountByIdCache = {};
+    const accountByCodeCache = {};
+
+    const getAccById = async (id) => {
+      const key = String(id || '').trim();
+      if (!key) throw new Error('Cuenta contable inválida en la venta.');
+      if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
+      return accountByIdCache[key];
+    };
+
+    const findAccByCode = async (code) => {
+      const key = String(code || '').trim();
+      if (!key) throw new Error('Se requiere un código de cuenta válido.');
+      if (accountByCodeCache[key]) return accountByCodeCache[key];
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada en el plan de cuentas.`);
+      accountByCodeCache[key] = res.items[0];
+      accountByIdCache[res.items[0].id] = res.items[0];
+      return res.items[0];
+    };
+
+    const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '' }) => {
+      const acc = await getAccById(accountId);
+      const line = {
+        account_id: acc.id,
+        third_party_id: thirdPartyId,
+        debit,
+        credit,
+        description,
+        line_order: txLines.length + 1,
+      };
+      if (acc.maneja_cruce && String(crossDocRef || '').trim()) {
+        line.cross_doc_ref = String(crossDocRef || '').trim();
+      }
+      return line;
+    };
+
+    const txLines = [];
+
+    // ── Determinar cuenta de cobro / recaudo (Caja, Banco o Clientes CxC) ─
+    let paymentAccId = "";
+    if (inv.payment_method === 'CREDITO') {
+      const acc = await findAccByCode('130505');
+      paymentAccId = acc.id;
+    } else if (inv.payment_method === 'TRANSFERENCIA') {
+      let bankAccId = "";
+      try {
+        const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+        if (tesoSettings.items.length) bankAccId = tesoSettings.items[0].default_bank_account_id;
+      } catch (_) {}
+      if (bankAccId) paymentAccId = bankAccId;
+      else {
+        const acc = await findAccByCode('111005');
+        paymentAccId = acc.id;
+      }
+    } else { // EFECTIVO
+      let cashAccId = "";
+      try {
+        const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+        if (tesoSettings.items.length) cashAccId = tesoSettings.items[0].default_cash_account_id;
+      } catch (_) {}
+      if (cashAccId) paymentAccId = cashAccId;
+      else {
+        const acc = await findAccByCode('110505');
+        paymentAccId = acc.id;
+      }
+    }
+
+    // Débito a la cuenta de recaudo/CxC por el valor neto pagable
+    txLines.push(await buildTxLine({
+      accountId: paymentAccId,
+      thirdPartyId: inv.customer_id,
+      debit: inv.payable_total,
+      credit: 0,
+      description: `Venta ${inv.number} ${inv.payment_method}`,
+      crossDocRef: inv.number,
+    }));
+
+    // ── Construir créditos de ingresos e IVA ─────────────────────────────
+    const defaultIncome = await findAccByCode('413505');
+    const defaultIva = await findAccByCode('233501');
+
+    for (const line of lines) {
+      const prod = products.find(p => p.id === line.product_id);
+      let incomeAccId = line.account_id;
+      if (!incomeAccId && prod) {
+        incomeAccId = prod.income_account_id || defaultIncome.id;
+      }
+      if (!incomeAccId) {
+        incomeAccId = defaultIncome.id;
+      }
+
+      // Crédito de ingreso bruto de la línea
+      txLines.push(await buildTxLine({
+        accountId: incomeAccId,
+        thirdPartyId: inv.customer_id,
+        debit: 0,
+        credit: line.subtotal || 0,
+        description: line.description || prod?.name || `Línea de venta ${inv.number}`,
+        crossDocRef: inv.number,
+      }));
+
+      // Crédito de IVA Generado
+      if (Number(line.iva_amount || 0) > 0) {
+        txLines.push(await buildTxLine({
+          accountId: defaultIva.id,
+          thirdPartyId: null,
+          debit: 0,
+          credit: line.iva_amount,
+          description: `IVA Generado ${line.iva_rate}% venta ${inv.number}`,
+          crossDocRef: inv.number,
+        }));
+      }
+    }
+
+    // ── Desglose de retenciones aplicadas (Débito - Activo) ────────────
+    // Nota: El cliente nos retiene, lo cual representa un activo de retenciones a favor (1355) para nosotros.
+    if (Number(inv.ret_total || 0) > 0) {
+      // Mapea la cuenta de pasivo de la regla (2365) a la cuenta de activo de ventas (1355)
+      const mapToSalesRetAccount = (code) => {
+        const c = String(code || '').trim();
+        if (c.startsWith('2365')) return c.replace('2365', '1355');
+        if (c.startsWith('2368')) return c.replace('2368', '1355');
+        if (c.startsWith('2367')) return c.replace('2367', '1355');
+        return '135515'; // Cuenta por defecto de Retención en la Fuente Ventas
+      };
+
+      // Si hay desglose en la cabecera
+      let salesCfg = {};
+      try {
+        const rawCfg = await this.getSetting('sales_config_v1');
+        salesCfg = rawCfg ? JSON.parse(rawCfg) : {};
+      } catch (_) {}
+      const cfgRetRules = Array.isArray(salesCfg?.withholding_rules) ? salesCfg.withholding_rules : [];
+
+      const aggSub = Number(inv.subtotal || 0);
+      const aggIva = Number(inv.iva_total || 0);
+      const aggTotal = aggSub + aggIva;
+
+      const hdrRules = [
+        { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
+        { id: String(inv.ret_rule_ica_id   || '').trim(), kind: 'ica'   },
+        { id: String(inv.ret_rule_iva_id   || '').trim(), kind: 'iva'   },
+      ];
+
+      for (const { id, kind } of hdrRules) {
+        if (!id) continue;
+        const rule = cfgRetRules.find(r => String(r.id || '') === id);
+        if (!rule) continue;
+        const minBase = Number(rule.min_base || 0) || 0;
+        let base = kind === 'iva' ? aggIva : (String(rule.base_type).toUpperCase() === 'TOTAL' ? aggTotal : aggSub);
+        if (base <= 0 || base < minBase) continue;
+        const amt = base * Number(rule.rate || 0) / 100;
+        if (amt <= 0) continue;
+
+        const assetCode = mapToSalesRetAccount(rule.account_code || '236540');
+        const acc = await findAccByCode(assetCode);
+        txLines.push(await buildTxLine({
+          accountId: acc.id,
+          thirdPartyId: inv.customer_id,
+          debit: amt,
+          credit: 0,
+          description: `Retención ${rule.concept} a favor`,
+          crossDocRef: inv.number,
+        }));
+      }
+    }
+
+    // ── Registro de Costo de Ventas (COGS) ──────────────────────────────
+    const cogsAcc = await findAccByCode('613505'); // Costo de Mercancía
+    for (const mv of movLines) {
+      const prod = products.find(p => p.id === mv.product_id);
+      const cogsAmt = mv.qty * mv.unit_cost;
+      if (cogsAmt > 0) {
+        const invAcc = prod?.inventory_account_id
+          ? await getAccById(prod.inventory_account_id)
+          : await findAccByCode('143005');
+
+        // Débito al Costo
+        txLines.push(await buildTxLine({
+          accountId: cogsAcc.id,
+          thirdPartyId: inv.customer_id,
+          debit: cogsAmt,
+          credit: 0,
+          description: `Costo de Venta ${prod?.code} ${prod?.name}`,
+          crossDocRef: inv.number,
+        }));
+
+        // Crédito al Inventario
+        txLines.push(await buildTxLine({
+          accountId: invAcc.id,
+          thirdPartyId: inv.customer_id,
+          debit: 0,
+          credit: cogsAmt,
+          description: `Baja Inventario COGS ${prod?.code}`,
+          crossDocRef: inv.number,
+        }));
+      }
+    }
+
+    // ── Crear Transacción Contable ─────────────────────────────────────
+    let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
+    if (!effectiveTxTypeId) {
+      const code = inv.pos_shift_id ? 'POS' : 'FV';
+      const found = await pb.list('transaction_types', { filter: `code="${code}"`, perPage: 1 });
+      if (found.items.length) effectiveTxTypeId = found.items[0].id;
+    }
+    if (!effectiveTxTypeId) throw new Error('No se encontró el tipo de transacción contable (FV/POS) en el sistema.');
+
+    const txNumber = String(inv.tx_number || inv.number || 'AUTO').trim();
+
+    const tx = await this.createTransaction({
+      tx_type_id:    effectiveTxTypeId,
+      number:        txNumber,
+      date:          inv.date,
+      description:   `Factura Venta ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
+      third_party_id: inv.customer_id,
+      payment_days:  0,
+      cross_enabled: false,
+      status:        'draft',
+    }, txLines);
+
+    // ── Movimiento de Inventario de Salida ─────────────────────────────
+    let invMovId = null;
+    if (movLines.length && inv.warehouse_id) {
+      const today  = inv.date || new Date().toISOString().slice(0, 10);
+      const rand   = String(Date.now()).slice(-4);
+      const movNumber = `SAL-${today.replaceAll('-', '')}-${rand}`;
+      const mov = await pb.create('inventory_movements', {
+        number:       movNumber,
+        mov_type:     'SALIDA',
+        date:         inv.date,
+        warehouse_id: inv.warehouse_id,
+        third_party_id: inv.customer_id,
+        notes:        `Venta ${inv.number}`,
+        status:       'draft',
+        tx_id:        tx.id,
+      });
+      for (let i = 0; i < movLines.length; i++) {
+        await pb.create('inventory_movement_lines', { movement_id: mov.id, line_order: i + 1, ...movLines[i] });
+      }
+      await this.applyInventoryMovement(mov.id);
+      invMovId = mov.id;
+    }
+
+    // ── Actualizar Factura Comercial ────────────────────────────────────
+    await pb.update('invoices', invoiceId, {
+      status:          'posted',
+      tx_id:           tx.id,
+      inv_movement_id: invMovId,
+      tx_type_id:      effectiveTxTypeId,
+      tx_number:       txNumber,
+    });
+    await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
+    return { inv, tx };
+  },
+
+  /** Revierte los efectos contables e inventario de una factura */
+  async rollbackInvoicePosting(invoiceId, actionLabel = 'anular', reason = '') {
+    const inv = await pb.get('invoices', invoiceId);
+    if (inv.status !== 'posted') {
+      return { inv, txVoided: false, movementVoided: false };
+    }
+
+    if (typeof isPeriodClosed === 'function') {
+      const closed = await isPeriodClosed(inv.date);
+      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede ${actionLabel} la venta.`);
+    }
+
+    if (inv.tx_id) {
+      const tx = await pb.get('transactions', inv.tx_id).catch(() => null);
+      if (tx && tx.status !== 'voided') {
+        await this.voidTransaction(inv.tx_id, `${actionLabel} venta ${inv.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+      }
+    }
+
+    if (inv.inv_movement_id) {
+      const mov = await pb.get('inventory_movements', inv.inv_movement_id).catch(() => null);
+      if (mov && mov.status === 'applied') {
+        await this.voidInventoryMovement(inv.inv_movement_id, reason);
+      } else if (mov && mov.status !== 'voided') {
+        await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
+        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} — ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+      }
+    }
+
+    return {
+      inv,
+      txVoided: !!inv.tx_id,
+      movementVoided: !!inv.inv_movement_id,
+    };
+  },
+
+  /** Anula una factura de venta */
+  async voidInvoice(invoiceId, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
+    const inv = await pb.get('invoices', invoiceId);
+    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+    if (inv.status === 'posted') {
+      await this.rollbackInvoicePosting(invoiceId, 'anular', safeReason);
+    }
+    await pb.update('invoices', invoiceId, { status: 'voided' });
+    await this.logAudit('VOID', 'Invoice', invoiceId, `Anulada factura ${inv.number} | Motivo: ${safeReason}`);
+  },
+
   // ── Copropiedades (F8) ────────────────────────────────────
 
   /** Lista todas las unidades habitacionales */

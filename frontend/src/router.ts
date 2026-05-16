@@ -23,6 +23,8 @@ const PAGE_TITLES = {
   productos:         'Productos y Servicios',
   inventario:        'Inventarios',
   compras:           'Compras de Bienes y Servicios',
+  ventas:            'Ventas y Facturación Comercial',
+  pos:               'Punto de Venta POS',
   tesoreria:         'Tesorería',
   exogena:           'Información Exógena DIAN',
 };
@@ -46,6 +48,8 @@ const PAGE_RENDERERS = {
   productos:          () => typeof renderProductos         === 'function' && renderProductos($('#page-content')),
   inventario:         () => typeof renderInventario        === 'function' && renderInventario($('#page-content')),
   compras:            () => typeof renderCompras           === 'function' && renderCompras($('#page-content')),
+  ventas:             () => typeof renderVentas            === 'function' && renderVentas($('#page-content')),
+  pos:                () => typeof renderPOS               === 'function' && renderPOS($('#page-content')),
   copropiedades:      () => typeof renderCopropiedades     === 'function' && renderCopropiedades($('#page-content')),
   tesoreria:          () => typeof showTesoreriaScreen     === 'function' && showTesoreriaScreen($('#page-content')),
   exogena:            () => typeof renderExogena           === 'function' && renderExogena($('#page-content')),

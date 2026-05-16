@@ -2187,12 +2187,14 @@ async function renderPhConfig(c) {
     const cxcCode    = phCfg.cxc_code    || '130505';
     const incomeCode = phCfg.income_code || '413505';
     const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
+    const anticipoAccountCode = phCfg.anticipo_account_code || '';
     const activeLeafAccounts = (accounts || [])
       .filter(a => a.active !== false && Number(a.level || 0) >= 3)
       .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
     const accountByCode = new Map(activeLeafAccounts.map(a => [String(a.code || ''), a]));
     const cxcAccounts = activeLeafAccounts.filter(a => String(a.code || '').startsWith('1'));
     const incomeAccounts = activeLeafAccounts.filter(a => String(a.code || '').startsWith('4'));
+    const liabilityAccounts = activeLeafAccounts.filter(a => String(a.code || '').startsWith('2'));
     const accountOptions = (rows, selectedCode = '') => {
       const selected = String(selectedCode || '');
       const hasSelected = rows.some(a => String(a.code || '') === selected);
@@ -2222,6 +2224,11 @@ async function renderPhConfig(c) {
             <label class="form-label">Cuenta de Ingreso por Defecto (Crédito)</label>
             <select id="ph-cfg-income" class="form-input font-mono">${accountOptions(incomeAccounts, incomeCode)}</select>
             <p class="text-xs mt-1" style="color:#9CA3AF">Usada cuando el concepto no tiene cuenta propia asignada.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-piggy-bank mr-1" style="color:#059669"></i>Cuenta de Anticipos de Propietarios (Pasivo)</label>
+            <select id="ph-cfg-anticipo" class="form-input font-mono">${accountOptions(liabilityAccounts, anticipoAccountCode)}</select>
+            <p class="text-xs mt-1" style="color:#9CA3AF">Cuenta clase 2 donde se registran los saldos a favor de propietarios (ej: 280505 Anticipos de Clientes).</p>
           </div>
           <button class="btn btn-primary" id="ph-cfg-save-btn">
             <i class="fas fa-save mr-1"></i>Guardar Configuración
@@ -2337,7 +2344,8 @@ async function renderPhConfig(c) {
     document.getElementById('ph-cfg-save-btn')?.addEventListener('click', async () => {
       const cxc    = (document.getElementById('ph-cfg-cxc')?.value    || '').trim();
       const income = (document.getElementById('ph-cfg-income')?.value  || '').trim();
-      if (!cxc || !income) { showToast('Completa ambas cuentas.', 'warning'); return; }
+      const anticipo = (document.getElementById('ph-cfg-anticipo')?.value || '').trim();
+      if (!cxc || !income) { showToast('Completa la cuenta CxC y la cuenta de ingreso.', 'warning'); return; }
       if (!accountByCode.has(cxc) || !accountByCode.has(income)) {
         showToast('Selecciona cuentas válidas del PUC activo.', 'warning');
         return;
@@ -2353,7 +2361,15 @@ async function renderPhConfig(c) {
       const btn = document.getElementById('ph-cfg-save-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
-        const cfg = { ...phCfg, cxc_code: cxc, income_code: income };
+        // Obtener el account_id del anticipo (para el backend que usa ID no código)
+        let anticipoAccountId = null;
+        if (anticipo) {
+          try {
+            const antiRes = await pb.listAll('accounts', { filter: `code="${anticipo}"`, perPage: 1 });
+            if (antiRes.length) anticipoAccountId = antiRes[0].id;
+          } catch(_) {}
+        }
+        const cfg = { ...phCfg, cxc_code: cxc, income_code: income, anticipo_account_code: anticipo || null, anticipo_account_id: anticipoAccountId };
         await API.setSetting('ph_config_v1', JSON.stringify(cfg));
         showToast('Configuración guardada.', 'success');
       } catch (err) {

@@ -152,15 +152,31 @@ function _initTesoPropertyAutocomplete(
   if (input) { input.value = ''; input.oninput = null; input.onfocus = null; }
   if (hidden) hidden.value = '';
   if (results) { results.style.display = 'none'; results.onclick = null; }
-  if (container) container.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">Busca un ${origen === 'comercial' ? 'tercero' : 'inmueble'} para visualizar su cartera abierta.</div>`;
+  if (container) container.innerHTML = `
+    <div class="text-center w-full">
+      <div class="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-3">
+        <i class="fas fa-search text-2xl text-gray-400"></i>
+      </div>
+      <p class="font-medium text-gray-500">Busca un ${origen === 'comercial' ? 'tercero' : 'inmueble'} para visualizar su cartera abierta</p>
+    </div>
+  `;
   
   if (origen === 'comercial') {
-    if (lbl) lbl.textContent = 'Tercero (Cliente / Proveedor)';
-    if (input) input.placeholder = 'Buscar por documento o nombre...';
+    if (lbl) lbl.textContent = 'Proveedor / Acreedor';
+    if (input) input.placeholder = 'Buscar...';
     _initTesoTerceroAutocomplete(
       'modal-rc-wrap', 'modal-rc-search', 'modal-rc-hidden', 'modal-rc-results',
       () => true,
-      (t) => { _tesoCurrentThirdParty = t; _loadOpenItemsForModal(t.id, true); }
+      (t) => {
+        _tesoCurrentThirdParty = t;
+        _loadOpenItemsForModal(t.id, true).then(() => {
+          const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+          if (total > 0) {
+            const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
+            if (montoEl && !montoEl.value) montoEl.value = String(Math.round(total));
+          }
+        });
+      }
     );
   } else {
     if (lbl) lbl.textContent = 'Unidad PH (Apartamento / Casa)';
@@ -176,7 +192,13 @@ function _initTesoPropertyAutocomplete(
         _tesoCurrentPropertyId = p.id;
         if (p.expand?.owner_id) {
           _tesoCurrentThirdParty = p.expand.owner_id;
-          _loadOpenItemsForModal(p.expand.owner_id.id, true, p.id);
+          _loadOpenItemsForModal(p.expand.owner_id.id, true, p.id).then(() => {
+            const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+            if (total > 0) {
+              const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
+              if (montoEl && !montoEl.value) montoEl.value = String(Math.round(total));
+            }
+          });
         } else {
           _showToast('Esta unidad no tiene un propietario asignado', 'warning');
         }
@@ -214,10 +236,22 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
         <button class="btn btn-primary" onclick="${btnAction}"><i class="fas fa-plus mr-2"></i>${btnText}</button>
       </div>
 
-      <div class="bg-white rounded-2xl border border-gray-200 p-3 mb-4 flex gap-3 items-center flex-wrap">
-        <input id="teso-filter-q" class="form-input flex-1 min-w-48" placeholder="Buscar número, tercero...">
-        <input id="teso-filter-from" type="date" class="form-input" title="Desde">
-        <input id="teso-filter-to" type="date" class="form-input" title="Hasta">
+      <div class="bg-gray-50/50 backdrop-blur-sm rounded-xl border border-gray-200 p-2 mb-4 flex flex-col md:flex-row gap-3 items-center shadow-sm">
+        <div class="relative flex-1 w-full">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+            <i class="fas fa-search"></i>
+          </div>
+          <input id="teso-filter-q" class="form-input w-full pl-10 bg-white border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 rounded-lg transition-all" placeholder="Buscar por número o tercero...">
+        </div>
+        <div class="flex items-center gap-2 w-full md:w-auto">
+          <div class="relative flex-1 md:w-40">
+            <input id="teso-filter-from" type="date" class="form-input w-full bg-white text-sm rounded-lg border-gray-200" title="Fecha Desde">
+          </div>
+          <span class="text-gray-400 text-xs"><i class="fas fa-arrow-right"></i></span>
+          <div class="relative flex-1 md:w-40">
+            <input id="teso-filter-to" type="date" class="form-input w-full bg-white text-sm rounded-lg border-gray-200" title="Fecha Hasta">
+          </div>
+        </div>
       </div>
 
       <div class="overflow-x-auto border border-gray-200 rounded-xl">
@@ -229,16 +263,29 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
               <th class="p-3 text-left">Tercero</th>
               <th class="p-3 text-left">Descripción</th>
               <th class="p-3 text-center">Estado</th>
+              <th class="p-3 text-center" style="width:90px">Acciones</th>
             </tr>
           </thead>
           <tbody>
-            ${items.length === 0 ? `<tr><td colspan="5" class="text-center p-6 text-gray-500">No hay registros.</td></tr>` : items.map((i: any) => `
-              <tr data-q="${_esc(i.number)} ${_esc(i.expand?.third_party_id?.name || '')}" data-date="${_esc(i.date)}">
+            ${items.length === 0 ? `<tr><td colspan="6" class="text-center p-6 text-gray-500">No hay registros.</td></tr>` : items.map((i: any) => `
+              <tr class="hover:bg-blue-50/50 transition-colors duration-150 border-b border-gray-50 last:border-none" data-q="${_esc(i.number)} ${_esc(i.expand?.third_party_id?.name || '')}" data-date="${_esc(i.date)}" data-id="${_esc(i.id)}">
                 <td class="p-3 font-mono font-medium text-blue-800">${_esc(i.number)}</td>
                 <td class="p-3 text-gray-600">${_esc(i.date).slice(0, 10)}</td>
                 <td class="p-3 font-medium">${_esc(i.expand?.third_party_id?.name || 'N/A')}</td>
                 <td class="p-3 text-gray-500 text-sm">${_esc(i.description)}</td>
-                <td class="p-3 text-center"><span class="badge ${i.status==='active'?'badge-green':'badge-gray'}">${_esc(i.status)}</span></td>
+                <td class="p-3 text-center"><span class="badge ${i.status==='active'?'badge-green':'badge-gray'}">${i.status === 'active' ? 'Activo' : _esc(i.status)}</span></td>
+                <td class="p-3 text-center">
+                  <div class="flex items-center justify-center gap-1">
+                    <button title="Ver detalle" data-tx-id="${_esc(i.id)}" data-tx-tipo="${tipo}"
+                      class="teso-btn-ver inline-flex items-center justify-center w-7 h-7 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition-colors">
+                      <i class="fas fa-eye text-xs"></i>
+                    </button>
+                    <button title="Imprimir" data-tx-id="${_esc(i.id)}" data-tx-tipo="${tipo}"
+                      class="teso-btn-print inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-500 transition-colors">
+                      <i class="fas fa-print text-xs"></i>
+                    </button>
+                  </div>
+                </td>
               </tr>
             `).join('')}
           </tbody>
@@ -266,8 +313,112 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
     document.getElementById('teso-filter-from')?.addEventListener('change', filterTable);
     document.getElementById('teso-filter-to')?.addEventListener('change', filterTable);
 
+    // ── Botones Ver e Imprimir ─────────────────────────────────────────────────
+    c.querySelectorAll('.teso-btn-ver').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const b = btn as HTMLElement;
+        const txId = b.dataset.txId || '';
+        const txTipo = b.dataset.txTipo || 'RC';
+        await _tesoVerDetalle(txId, txTipo);
+      });
+    });
+    c.querySelectorAll('.teso-btn-print').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const b = btn as HTMLElement;
+        const txId = b.dataset.txId || '';
+        const txTipo = b.dataset.txTipo || 'RC';
+        await _tesoVerDetalle(txId, txTipo, true);
+      });
+    });
+
   } catch (err: any) {
     c.innerHTML = `<div class="p-4 text-red-600">Error: ${err.message}</div>`;
+  }
+}
+
+// ─── VER DETALLE / IMPRIMIR DESDE LISTADO ──────────────────────────────────
+async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
+  const pb = _pb();
+  try {
+    const tx = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
+    const lines = await pb.listAll('tx_lines', {
+      filter: `tx_id="${txId}"`,
+      expand: 'account_id'
+    });
+
+    const isRC = tipo === 'RC';
+    const color = isRC ? '#059669' : '#DC2626';
+    const icon  = isRC ? 'fa-hand-holding-dollar' : 'fa-paper-plane';
+    const tipoLabel = isRC ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO';
+
+    // Calcular monto total (suma débitos en RC, créditos en CE)
+    const montoTotal = lines.reduce((s: number, l: any) => s + (isRC ? Number(l.debit || 0) : Number(l.credit || 0)), 0);
+
+    const lineasHtml = lines.map((l: any) => `
+      <tr style="border-bottom:1px solid #F3F4F6">
+        <td style="padding:5px 8px;font-size:12px;font-family:monospace">${_esc(l.expand?.account_id?.code || '')} — ${_esc(l.expand?.account_id?.name || '')}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:12px">${Number(l.debit) > 0 ? _fmt(l.debit) : ''}</td>
+        <td style="padding:5px 8px;text-align:right;font-size:12px">${Number(l.credit) > 0 ? _fmt(l.credit) : ''}</td>
+        <td style="padding:5px 8px;font-size:11px;color:#9CA3AF">${_esc(l.cross_doc_ref || '')}</td>
+      </tr>`).join('');
+
+    const html = `
+      <div style="max-width:540px;margin:0 auto;font-family:'Segoe UI',sans-serif">
+        <div style="background:${color};color:#fff;padding:18px 22px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px">
+          <i class="fas ${icon}" style="font-size:22px"></i>
+          <div>
+            <div style="font-size:17px;font-weight:700">${tipoLabel}</div>
+            <div style="font-size:12px;opacity:0.85">Núm. ${_esc(tx.number)} &nbsp;&bull;&nbsp; ${String(tx.date || '').slice(0,10)}</div>
+          </div>
+        </div>
+        <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:18px 22px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Tercero</div>
+              <div style="font-weight:600;color:#111;font-size:14px">${_esc(tx.expand?.third_party_id?.name || tx.third_party_id || '—')}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Estado</div>
+              <div style="font-weight:600;color:${tx.status === 'active' ? '#059669' : '#6B7280'};font-size:14px">${_esc(tx.status || '')}</div>
+            </div>
+          </div>
+          <div style="background:${isRC ? '#ECFDF5' : '#FEF2F2'};border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
+            <div style="font-size:11px;text-transform:uppercase;color:${color};font-weight:700">VALOR ${isRC ? 'RECIBIDO' : 'PAGADO'}</div>
+            <div style="font-size:30px;font-weight:800;color:${color}">${_fmt(montoTotal)}</div>
+          </div>
+          ${tx.description ? `<div style="margin-bottom:12px;padding:8px;background:#F9FAFB;border-radius:8px;font-size:12px;color:#6B7280">${_esc(tx.description)}</div>` : ''}
+          <div style="font-size:11px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:6px">Asiento Contable</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:#F3F4F6">
+                <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Cuenta</th>
+                <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Débito</th>
+                <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Crédito</th>
+                <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Doc. Cruce</th>
+              </tr>
+            </thead>
+            <tbody>${lineasHtml}</tbody>
+          </table>
+          <div style="margin-top:18px;padding-top:14px;border-top:1px dashed #E5E7EB;text-align:center;font-size:11px;color:#9CA3AF">
+            GRAVY v2.0 &mdash; ${new Date().toLocaleString('es-CO')}
+          </div>
+        </div>
+      </div>`;
+
+    (window as any).openModal(
+      `${tipoLabel} — ${tx.number}`,
+      html,
+      `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
+       <button class="btn btn-primary" onclick="window._printRecibo()"><i class="fas fa-print mr-1"></i>Imprimir</button>`,
+      false
+    );
+
+    if (autoprint) {
+      setTimeout(() => (window as any)._printRecibo(), 400);
+    }
+
+  } catch(err: any) {
+    _showToast('Error al cargar el detalle: ' + err.message, 'error');
   }
 }
 
@@ -286,12 +437,31 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     let allowedRefs = new Set<string>();
     let blockedRefs = new Set<string>();
     
+    // Calcular referencia de anticipo según modo
+    const anticipoRef = propertyId ? `ANT-${propertyId}` : `ANT-${thirdPartyId}`;
+
+    // Leer cuenta de anticipos desde config PH
+    let anticipoAccountId: string | null = null;
+    try {
+      const cfgSets = await pb.listAll('settings', { filter: 'key="ph_config_v1"' });
+      if (cfgSets.length) {
+        const cfg = JSON.parse(cfgSets[0].value || '{}');
+        anticipoAccountId = cfg.anticipo_account_id || null;
+      }
+    } catch(_) {}
+
     if (propertyId) {
        const invoices = await pb.listAll('ph_invoices', { filter: `property_id="${propertyId}" && status!="voided"` });
        invoices.forEach((inv: any) => allowedRefs.add(inv.number));
-       if (allowedRefs.size === 0) {
-         c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes para esta operación.</div>`;
-         return;
+       // Siempre permitir la referencia de anticipo de esta unidad
+       allowedRefs.add(anticipoRef);
+       if (allowedRefs.size <= 1) { // Solo la ref de anticipo, sin facturas
+         // Verificar si hay anticipo activo
+         const hasAnticipo = allowedRefs.has(anticipoRef);
+         if (!hasAnticipo) {
+           c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes para esta operación.</div>`;
+           return;
+         }
        }
     } else {
        const invoices = await pb.listAll('ph_invoices', { filter: `property_id.owner_id="${thirdPartyId}" && status!="voided"` });
@@ -307,9 +477,12 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     
     for (const l of allLines) {
       if (l.expand?.tx_id?.status === 'voided') continue;
-      if (!l.expand?.account_id?.maneja_cruce) continue;
       const ref = (l.cross_doc_ref || '').trim();
       if (!ref) continue;
+
+      // Permitir cuenta de anticipos aunque no maneje cruce, si la ref es la de anticipo
+      const esAnticipo = ref === anticipoRef && anticipoAccountId && l.account_id === anticipoAccountId;
+      if (!esAnticipo && !l.expand?.account_id?.maneja_cruce) continue;
       
       const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
       
@@ -339,54 +512,94 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
       d.credit += Number(l.credit || 0);
     }
 
-    _tesoCurrentOpenItems = [...docs.values()].map(d => {
+    const allDocs = [...docs.values()].map(d => {
       const netOpen = d.debit - d.credit;
-      const saldo = isRecaudo ? netOpen : -netOpen;
-      return { ...d, saldo, netOpen };
-    }).filter(d => d.saldo > 0.01)
+      const isAnticipo = d.ref === anticipoRef;
+      // Para anticipos: saldo a favor = crédito > débito (netOpen < 0)
+      // Para CxC: saldo pendiente = débito > crédito (netOpen > 0)
+      let saldo: number;
+      if (isAnticipo) {
+        saldo = Math.abs(netOpen); // siempre positivo para display
+      } else {
+        saldo = isRecaudo ? netOpen : -netOpen;
+      }
+      return { ...d, saldo, netOpen, isAnticipo };
+    });
+
+    const anticipoItems = allDocs.filter(d => d.isAnticipo && d.saldo > 0.01);
+    _tesoCurrentOpenItems = allDocs
+      .filter(d => !d.isAnticipo && d.saldo > 0.01)
       .sort((a, b) => a.firstDate.localeCompare(b.firstDate));
 
-    if (_tesoCurrentOpenItems.length === 0) {
+    const totalAnticipo = anticipoItems.reduce((s, i) => s + i.saldo, 0);
+
+    if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
       c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El tercero no presenta saldos pendientes para esta operación.</div>`;
       return;
     }
 
+    // Banner de saldo a favor (anticipo)
+    const anticipoBanner = totalAnticipo > 0.01 ? `
+      <div class="flex items-center gap-3 p-3 rounded-xl mb-3" style="background:#ECFDF5;border:1.5px solid #6EE7B7">
+        <div class="bg-green-500 text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-piggy-bank text-sm"></i>
+        </div>
+        <div class="flex-1">
+          <p class="font-bold text-green-800 text-sm">Saldo a favor disponible</p>
+          <p class="text-xs text-green-700">Este cliente tiene un anticipo de <strong>${_fmt(totalAnticipo)}</strong> que se aplicará automáticamente antes de consumir el efectivo.</p>
+        </div>
+        <div class="font-bold text-green-700 text-lg">${_fmt(totalAnticipo)}</div>
+      </div>
+    ` : '';
+
+    const noCartera = _tesoCurrentOpenItems.length === 0 ? `
+      <div class="p-3 text-center text-gray-500 text-sm">
+        <i class="fas fa-check-circle text-green-500 mr-2"></i>Cartera al día. El pago se registrará como anticipo.
+      </div>
+    ` : '';
+
     c.innerHTML = `
-      <div class="overflow-x-auto border border-gray-200 rounded-lg mt-3 mb-4">
+      ${anticipoBanner}
+      ${noCartera}
+      ${_tesoCurrentOpenItems.length > 0 ? `
+      <div class="overflow-x-auto border border-gray-200 rounded-lg mb-2">
         <table class="w-full text-sm data-table">
-          <thead class="bg-gray-100">
+          <thead class="bg-gray-50">
             <tr>
-              <th class="p-2 text-left">Documento</th>
-              <th class="p-2 text-left">Concepto</th>
+              <th class="p-2 text-left">Documento / Concepto</th>
+              <th class="p-2 text-left">Cuenta</th>
               <th class="p-2 text-right">Saldo Pendiente</th>
               <th class="p-2 text-right" style="width: 140px">Abono a Aplicar</th>
             </tr>
           </thead>
           <tbody>
             ${_tesoCurrentOpenItems.map(i => `
-              <tr class="border-b border-gray-100 bg-white">
+              <tr class="border-b border-gray-100 hover:bg-blue-50/40 transition-colors">
                 <td class="p-2 font-medium">
-                  ${_tesoCurrentOrigen === 'ph' && i.description 
-                    ? `<span class="block">${_esc(i.description)}</span><span class="block text-xs text-gray-400">Fac: ${_esc(i.ref)} - ${_esc(i.firstDate)}</span>` 
-                    : `${_esc(i.ref)} <div class="text-xs text-gray-400">${_esc(i.firstDate)}</div>`}
+                  ${_tesoCurrentOrigen === 'ph' && i.description
+                    ? `<span class="block text-xs font-bold text-blue-700">${_esc(i.description)}</span><span class="block text-xs text-gray-400">${_esc(i.ref)} &middot; ${_esc(i.firstDate.slice(0,10))}</span>`
+                    : `<span class="font-mono text-xs">${_esc(i.ref)}</span><div class="text-xs text-gray-400">${_esc(i.firstDate.slice(0,10))}</div>`}
                 </td>
-                <td class="p-2 text-gray-600">${_esc(i.accountName)}</td>
-                <td class="p-2 text-right font-semibold ${isRecaudo ? 'text-red-600' : 'text-blue-600'}">${_fmt(i.saldo)}</td>
+                <td class="p-2 text-gray-500 text-xs">${_esc(i.accountName)}</td>
+                <td class="p-2 text-right font-bold ${isRecaudo ? 'text-red-600' : 'text-blue-600'}">${_fmt(i.saldo)}</td>
                 <td class="p-2 text-right">
-                  <input type="number" min="0" max="${i.saldo}" class="form-input text-right w-full teso-abono-input" data-key="${i.key}" data-ref="${i.ref}" data-account="${i.accountId}" data-max="${i.saldo}" placeholder="0" disabled>
+                  <input type="number" min="0" max="${i.saldo}" class="form-input text-right w-full teso-abono-input"
+                    data-key="${i.key}" data-ref="${i.ref}" data-account="${i.accountId}" data-max="${i.saldo}"
+                    placeholder="0" disabled>
                 </td>
               </tr>
             `).join('')}
           </tbody>
-          <tfoot class="bg-gray-50">
+          <tfoot class="bg-gray-50 border-t border-gray-200">
             <tr>
-              <td colspan="2" class="p-2 text-right font-bold">Total a Distribuir:</td>
+              <td colspan="2" class="p-2 text-right font-bold text-gray-700">Total cartera:</td>
+              <td class="p-2 text-right font-bold text-red-700">${_fmt(_tesoCurrentOpenItems.reduce((s,i) => s+i.saldo, 0))}</td>
               <td class="p-2 text-right font-bold" id="teso-modal-total-abonos">$0</td>
-              <td></td>
             </tr>
           </tfoot>
         </table>
       </div>
+      ` : ''}
     `;
 
     // Listener para inputs manuales si se cambia modo
@@ -410,25 +623,69 @@ function _toggleModalManualMode() {
     if (!isManual) inp.value = '';
   });
   if (!isManual) {
-    document.getElementById('teso-modal-total-abonos')!.textContent = '$0';
+    const totEl = document.getElementById('teso-modal-total-abonos');
+    if (totEl) totEl.textContent = '$0';
+  }
+}
+
+// ─── INDICADOR DE DIFERENCIA (Opción 1) ────────────────────────────────────
+function _updateMontoIndicator() {
+  const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
+  const indicatorEl = document.getElementById('teso-monto-indicator');
+  if (!montoEl || !indicatorEl) return;
+
+  const monto = Number(montoEl.value || 0);
+  const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+
+  if (monto <= 0 || totalCartera <= 0) {
+    indicatorEl.innerHTML = '';
+    return;
+  }
+
+  const diff = monto - totalCartera;
+  const absDiff = Math.abs(diff);
+
+  if (Math.abs(diff) < 1) {
+    indicatorEl.innerHTML = `
+      <span class="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+        <i class="fas fa-check-circle"></i> Cubre exactamente la cartera
+      </span>`;
+  } else if (diff < 0) {
+    indicatorEl.innerHTML = `
+      <span class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+        <i class="fas fa-exclamation-triangle"></i> Pago parcial &mdash; queda ${_fmt(absDiff)} por cobrar
+      </span>`;
+  } else {
+    indicatorEl.innerHTML = `
+      <span class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+        <i class="fas fa-piggy-bank"></i> Excedente ${_fmt(absDiff)} &rarr; se registrará como anticipo
+      </span>`;
   }
 }
 
 async function _saveTransaccionTeso(isRecaudo: boolean) {
   const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement;
   const modoSelect = document.getElementById('teso-modal-modo') as HTMLSelectElement;
-  const ctaSelect = document.getElementById('teso-modal-cuenta') as HTMLSelectElement;
-  
-  const monto = Number(montoInput.value);
-  const modo = modoSelect.value;
-  const bankAccountId = ctaSelect.value;
-  const cuentaOpt = ctaSelect.options[ctaSelect.selectedIndex];
-  const cuentaId = cuentaOpt ? cuentaOpt.dataset.account : null;
+  const ctaSelect  = document.getElementById('teso-modal-cuenta') as HTMLSelectElement;
+  const refInput   = document.getElementById('teso-modal-referencia') as HTMLInputElement;
+  const obsInput   = document.getElementById('teso-modal-obs') as HTMLInputElement;
 
-  if (!cuentaId || !bankAccountId) { _showToast('Debes seleccionar un método de pago válido', 'warning'); return; }
-  if (!_tesoCurrentThirdParty) { _showToast('Debes seleccionar un tercero', 'warning'); return; }
+  const monto = Number(montoInput?.value || 0);
+  const modo  = modoSelect?.value || 'auto';
+  const bankAccountId = ctaSelect?.value || '';
+  const cuentaOpt = ctaSelect?.options[ctaSelect.selectedIndex];
+  const cuentaId  = cuentaOpt?.dataset?.account || '';
+  const referencia = refInput?.value?.trim() || '';
+  const observaciones = obsInput?.value?.trim() || '';
 
-  // En modo manual sumamos de los inputs, en modo automático del input principal
+  // ── Validación reforzada (Opción 4) ──────────────────────────────────────
+  if (!_tesoCurrentThirdParty) {
+    _showToast('Debes seleccionar un tercero o unidad', 'warning'); return;
+  }
+  if (!cuentaId || !bankAccountId) {
+    _showToast('Debes seleccionar un método de pago válido', 'warning'); return;
+  }
+
   let distribucion: any[] = [];
   if (modo === 'manual') {
     let sum = 0;
@@ -440,66 +697,184 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
         sum += v;
       }
     });
-    if (sum <= 0) { _showToast('Debes indicar al menos un abono manual mayor a 0', 'warning'); return; }
+    if (sum <= 0) {
+      _showToast('Debes indicar al menos un abono manual mayor a 0', 'warning'); return;
+    }
   } else {
-    if (monto <= 0) { _showToast('El monto a aplicar debe ser mayor a 0', 'warning'); return; }
+    if (monto <= 0) {
+      _showToast('El monto debe ser mayor a $0 para poder registrar el recaudo', 'warning');
+      montoInput?.focus();
+      return;
+    }
+    const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+    if (totalCartera <= 0 && monto > 0) {
+      // Si no hay cartera, confirmar que se creará anticipo
+      const ok = window.confirm(`Este tercero no tiene cartera abierta.\nSe registrará un anticipo de ${_fmt(monto)} a su favor.\n\n¿Continuar?`);
+      if (!ok) return;
+    }
   }
 
   const btn = document.getElementById('btn-save-teso-tx') as HTMLButtonElement;
-  btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...'; }
 
   const typeCode = isRecaudo ? 'RC' : 'CE';
   try {
     const pb = _pb();
     const typeRes = await pb.listAll('transaction_types', { filter: `code="${typeCode}"` });
-    if (!typeRes.length) throw new Error(`Falta tipo ${typeCode}`);
+    if (!typeRes.length) throw new Error(`Falta tipo de transacción ${typeCode}`);
 
     const params: any = {
       third_party_id: _tesoCurrentThirdParty.id,
-      amount: modo === 'manual' ? distribucion.reduce((a,b)=>a+b.monto, 0) : monto,
-      contrapartida_account_id: cuentaId // El pb_hooks lo usará para la línea de banco/caja
+      amount: modo === 'manual' ? distribucion.reduce((a, b) => a + b.monto, 0) : monto,
+      contrapartida_account_id: cuentaId
     };
-
     if (_tesoCurrentOrigen === 'ph' && _tesoCurrentPropertyId) {
       params.ph_property_id = _tesoCurrentPropertyId;
     }
-
     if (modo === 'manual') {
       params.distribucion = distribucion;
     } else {
-      // Tomamos reglas del backend
       const sets = await pb.listAll('settings', { filter: `key="treasury_rules"` });
-      let rules = { primeroVencido: true, primeroMora: true };
-      if (sets.length && sets[0].value) {
-        try { rules = JSON.parse(sets[0].value); } catch(_) {}
-      }
+      let rules: any = { primeroVencido: true, primeroMora: true };
+      if (sets.length && sets[0].value) { try { rules = JSON.parse(sets[0].value); } catch(_) {} }
       params.reglas = rules;
     }
 
+    const montoFinal = params.amount;
+    const fecha      = new Date().toISOString().slice(0, 10);
+    const txNum      = `${typeCode}-${Date.now()}`;
+    const terceroNombre = _tesoCurrentThirdParty.name || _tesoCurrentThirdParty.doc_number || '';
+    const cuentaNombre  = cuentaOpt?.text || '';
+
     await pb.create('transactions', {
-      tx_type_id: typeRes[0].id,
-      number: `${typeCode}-${Date.now()}`, // En el mundo real se usaría consecutivo
-      date: new Date().toISOString().slice(0, 10),
+      tx_type_id:    typeRes[0].id,
+      number:        txNum,
+      date:          fecha,
       third_party_id: _tesoCurrentThirdParty.id,
-      description: `${isRecaudo ? 'Recaudo' : 'Pago'} vía Módulo Tesorería`,
-      status: 'active',
-      teso_mode: modo,
-      teso_params: JSON.stringify(params)
+      description:   observaciones || `${isRecaudo ? 'Recaudo' : 'Pago'} vía Módulo Tesorería${referencia ? ' Ref: ' + referencia : ''}`,
+      status:        'active',
+      teso_mode:     modo,
+      teso_params:   JSON.stringify(params)
     });
 
-    _showToast(`${typeCode} generado correctamente.`, 'success');
     _closeModal();
+
+    // ── Recibo Imprimible (Opción 2) ──────────────────────────────────────
+    _showReciboPrint({
+      tipo:        isRecaudo ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO',
+      numero:      txNum,
+      fecha,
+      tercero:     terceroNombre,
+      monto:       montoFinal,
+      cuenta:      cuentaNombre,
+      referencia,
+      observaciones,
+      partidas:    _tesoCurrentOpenItems.slice(),
+      modo
+    });
+
     renderTesoListado(document.getElementById('teso-content')!, typeCode as any);
 
   } catch (err: any) {
     console.error(err);
     const detail = err.data ? JSON.stringify(err.data) : '';
     _showToast(`Error: ${err.message} ${detail}`, 'error');
-    btn.disabled = false;
-    btn.innerHTML = `<i class="fas fa-check mr-2"></i>Registrar ${typeCode}`;
+    if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Registrar ${typeCode}`; }
   }
 }
+
+// ─── RECIBO IMPRIMIBLE (Opción 2) ───────────────────────────────────────────
+function _showReciboPrint(data: any) {
+  const isRC = data.tipo.includes('CAJA');
+  const color = isRC ? '#059669' : '#DC2626';
+  const icon  = isRC ? 'fa-hand-holding-dollar' : 'fa-paper-plane';
+
+  const partidasHtml = data.partidas.length > 0
+    ? `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">
+        <thead>
+          <tr style="background:#F3F4F6">
+            <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Documento</th>
+            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Saldo Pendiente</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.partidas.map((p: any) => `
+            <tr style="border-bottom:1px solid #F3F4F6">
+              <td style="padding:5px 8px">${p.ref || ''} ${p.description ? '&mdash; ' + p.description : ''}</td>
+              <td style="padding:5px 8px;text-align:right">${_fmt(p.saldo)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>`
+    : '<p style="color:#6B7280;font-size:12px;margin-top:8px">Pago registrado como anticipo (sin cartera abierta).</p>';
+
+  const html = `
+    <div style="max-width:520px;margin:0 auto;font-family:'Segoe UI',sans-serif">
+      <!-- Cabecera -->
+      <div style="background:${color};color:#fff;padding:20px 24px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px">
+        <i class="fas ${icon}" style="font-size:24px"></i>
+        <div>
+          <div style="font-size:18px;font-weight:700">${data.tipo}</div>
+          <div style="font-size:13px;opacity:0.85">Número: ${data.numero}</div>
+        </div>
+      </div>
+      <!-- Cuerpo -->
+      <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:20px 24px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Tercero</div>
+            <div style="font-weight:600;color:#111">${data.tercero}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Fecha</div>
+            <div style="font-weight:600;color:#111">${data.fecha}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Cuenta / Método</div>
+            <div style="font-size:13px;color:#374151">${data.cuenta}</div>
+          </div>
+          ${data.referencia ? `<div>
+            <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Referencia</div>
+            <div style="font-size:13px;color:#374151">${data.referencia}</div>
+          </div>` : ''}
+        </div>
+        <div style="background:${isRC ? '#ECFDF5' : '#FEF2F2'};border-radius:10px;padding:16px;margin-bottom:16px;text-align:center">
+          <div style="font-size:11px;text-transform:uppercase;color:${color};font-weight:700">VALOR ${isRC ? 'RECIBIDO' : 'PAGADO'}</div>
+          <div style="font-size:32px;font-weight:800;color:${color}">${_fmt(data.monto)}</div>
+        </div>
+        ${partidasHtml}
+        ${data.observaciones ? `<div style="margin-top:12px;padding:10px;background:#F9FAFB;border-radius:8px;font-size:12px;color:#6B7280"><strong>Obs:</strong> ${data.observaciones}</div>` : ''}
+        <div style="margin-top:20px;padding-top:16px;border-top:1px dashed #E5E7EB;text-align:center;font-size:11px;color:#9CA3AF">
+          GRAVY v2.0 &mdash; Generado el ${new Date().toLocaleString('es-CO')}
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Abrir modal con el recibo + botones
+  (window as any).openModal(
+    `${data.tipo} registrado`,
+    html,
+    `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
+     <button class="btn btn-primary" onclick="window._printRecibo()"><i class="fas fa-print mr-1"></i>Imprimir</button>`,
+    false
+  );
+}
+
+(window as any)._printRecibo = () => {
+  const modal = document.getElementById('modal-body') || document.querySelector('[class*=modal] > div');
+  if (!modal) return window.print();
+  const w = window.open('', '_blank', 'width=640,height=700');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head>
+    <title>Recibo GRAVY</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>body{margin:20px;font-family:'Segoe UI',sans-serif}@media print{.no-print{display:none}}</style>
+  </head><body>${modal.innerHTML}<br><div class="no-print" style="text-align:center;margin-top:16px">
+    <button onclick="window.print()" style="padding:8px 20px;background:#1E40AF;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">ð¨ Imprimir</button>
+  </div></body></html>`);
+  w.document.close();
+};
 
 async function openRecaudoModal() {
   _tesoCurrentOpenItems = [];
@@ -511,40 +886,77 @@ async function openRecaudoModal() {
   const metodosPago = await _pb().listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
 
   const bodyHtml = `
-    <div class="space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="form-group">
-          <label class="form-label" id="teso-lbl-tercero">Tercero (Cliente)</label>
+    <div class="flex flex-col h-full gap-3">
+      <!-- DASHBOARD PANORÁMICO DE 4 COLUMNAS -->
+      <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        
+        <!-- Tercero -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1" id="teso-lbl-tercero">Tercero (Cliente)</label>
           <div id="modal-rc-wrap" class="relative">
-            <input id="modal-rc-search" class="form-input" autocomplete="off" placeholder="Buscar por documento o nombre...">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-search"></i></div>
+            <input id="modal-rc-search" class="form-input pl-8 py-2 text-sm bg-gray-50 focus:bg-white transition-colors" autocomplete="off" placeholder="Buscar...">
             <input id="modal-rc-hidden" type="hidden" value="">
             <div id="modal-rc-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:50"></div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Método de Recaudo (Cuenta Destino)</label>
-          <select id="teso-modal-cuenta" class="form-input">
-            <option value="">— Seleccionar Método —</option>
-            ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)} - ${_esc(c.number)})</option>`).join('')}
-          </select>
+
+        <!-- Monto -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Monto a Recibir</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-green-600 font-bold">$</div>
+            <input id="teso-modal-monto" type="number" min="1"
+              class="form-input pl-7 py-2 font-bold text-green-700 bg-green-50/30 border-green-200 focus:border-green-500 focus:ring-green-100 placeholder-green-300"
+              placeholder="0.00" oninput="window._updateMontoIndicator()">
+          </div>
+          <div id="teso-monto-indicator" class="mt-1 min-h-[20px]"></div>
+        </div>
+
+        <!-- Método de Pago -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Método / Banco</label>
+          <div class="relative">
+             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-university"></i></div>
+             <select id="teso-modal-cuenta" class="form-input pl-8 py-2 text-sm bg-gray-50">
+               <option value="">— Seleccionar —</option>
+               ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)})</option>`).join('')}
+             </select>
+          </div>
+        </div>
+
+        <!-- Modo Aplicación -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Aplicación</label>
+          <div class="relative">
+             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-blue-500"><i class="fas fa-magic"></i></div>
+             <select id="teso-modal-modo" class="form-input pl-8 py-2 text-sm font-medium text-blue-700 bg-blue-50 border-blue-200 focus:border-blue-500" onchange="window._toggleModalManualMode()">
+               <option value="auto">Automática</option>
+               <option value="manual">Manual (Grilla)</option>
+             </select>
+          </div>
         </div>
       </div>
       
-      <div id="teso-modal-items-container" class="min-h-32 bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-center text-gray-400">
-        Busca un tercero para visualizar su cartera abierta.
+      <!-- CONTENEDOR DE CARTERA (GRILLA) -->
+      <div id="teso-modal-items-container" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-center text-gray-400 min-h-[300px] shadow-inner overflow-hidden">
+        <div class="text-center">
+          <div class="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-search-dollar text-2xl text-gray-400"></i>
+          </div>
+          <p class="font-medium text-gray-500">Busca un tercero para visualizar su cartera</p>
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-4 border border-blue-100 rounded-lg">
+      <!-- FILA INFERIOR: Referencia + Observaciones -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div class="form-group mb-0">
-          <label class="form-label">Monto Global a Recibir</label>
-          <input id="teso-modal-monto" type="number" min="1" class="form-input text-lg font-bold text-green-700" placeholder="$">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1"><i class="fas fa-hashtag mr-1"></i>Número de Referencia</label>
+          <input id="teso-modal-referencia" type="text" class="form-input py-2 text-sm" placeholder="No. recibo, transferencia, etc.">
         </div>
         <div class="form-group mb-0">
-          <label class="form-label">Modo de Aplicación</label>
-          <select id="teso-modal-modo" class="form-input" onchange="window._toggleModalManualMode()">
-            <option value="auto">Automático (Según Reglas Config.)</option>
-            <option value="manual">Manual (Distribuir en grilla)</option>
-          </select>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1"><i class="fas fa-comment-alt mr-1"></i>Observaciones</label>
+          <input id="teso-modal-obs" type="text" class="form-input py-2 text-sm" placeholder="Nota interna opcional...">
         </div>
       </div>
     </div>
@@ -553,7 +965,7 @@ async function openRecaudoModal() {
   const footerHtml = `
     <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
     <button class="btn btn-primary" id="btn-save-teso-tx" onclick="window._saveTransaccionTeso(true)">
-      <i class="fas fa-check mr-2"></i>Registrar RC
+      <i class="fas fa-paper-plane mr-2"></i>Registrar RC
     </button>
   `;
 
@@ -583,40 +995,74 @@ async function openPagoModal() {
   const metodosPago = await _pb().listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
 
   const bodyHtml = `
-    <div class="space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="form-group">
-          <label class="form-label">Tercero (Proveedor / Acreedor)</label>
+    <div class="flex flex-col h-full gap-3">
+      <!-- DASHBOARD PANORÁMICO DE 4 COLUMNAS -->
+      <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        
+        <!-- Tercero -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Proveedor / Acreedor</label>
           <div id="modal-eg-wrap" class="relative">
-            <input id="modal-eg-search" class="form-input" autocomplete="off" placeholder="Buscar por documento o nombre...">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-search"></i></div>
+            <input id="modal-eg-search" class="form-input pl-8 py-2 text-sm bg-gray-50 focus:bg-white transition-colors" autocomplete="off" placeholder="Buscar...">
             <input id="modal-eg-hidden" type="hidden" value="">
             <div id="modal-eg-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:50"></div>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Método de Pago (Cuenta Origen)</label>
-          <select id="teso-modal-cuenta" class="form-input">
-            <option value="">— Seleccionar Método —</option>
-            ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)} - ${_esc(c.number)})</option>`).join('')}
-          </select>
+
+        <!-- Monto -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Monto a Pagar</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-red-600 font-bold">$</div>
+            <input id="teso-modal-monto" type="number" min="1" class="form-input pl-7 py-2 font-bold text-red-700 bg-red-50/30 border-red-200 focus:border-red-500 focus:ring-red-100 placeholder-red-300" placeholder="0.00">
+          </div>
+        </div>
+
+        <!-- Método de Pago -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Cuenta de Origen</label>
+          <div class="relative">
+             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-university"></i></div>
+             <select id="teso-modal-cuenta" class="form-input pl-8 py-2 text-sm bg-gray-50">
+               <option value="">— Seleccionar —</option>
+               ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)})</option>`).join('')}
+             </select>
+          </div>
+        </div>
+
+        <!-- Modo Aplicación -->
+        <div class="form-group mb-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Aplicación</label>
+          <div class="relative">
+             <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-blue-500"><i class="fas fa-magic"></i></div>
+             <select id="teso-modal-modo" class="form-input pl-8 py-2 text-sm font-medium text-blue-700 bg-blue-50 border-blue-200 focus:border-blue-500" onchange="window._toggleModalManualMode()">
+               <option value="auto">Automática</option>
+               <option value="manual">Manual (Grilla)</option>
+             </select>
+          </div>
         </div>
       </div>
       
-      <div id="teso-modal-items-container" class="min-h-32 bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center justify-center text-gray-400">
-        Busca un proveedor para visualizar sus obligaciones pendientes.
+      <!-- CONTENEDOR DE CARTERA (GRILLA) -->
+      <div id="teso-modal-items-container" class="flex-1 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-center text-gray-400 min-h-[300px] shadow-inner overflow-hidden">
+        <div class="text-center">
+          <div class="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-file-invoice-dollar text-2xl text-gray-400"></i>
+          </div>
+          <p class="font-medium text-gray-500">Busca un proveedor para visualizar sus obligaciones</p>
+        </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-red-50 p-4 border border-red-100 rounded-lg">
+      <!-- FILA INFERIOR: Referencia + Observaciones -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div class="form-group mb-0">
-          <label class="form-label">Monto Global a Pagar</label>
-          <input id="teso-modal-monto" type="number" min="1" class="form-input text-lg font-bold text-red-700" placeholder="$">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1"><i class="fas fa-hashtag mr-1"></i>Número de Referencia</label>
+          <input id="teso-modal-referencia" type="text" class="form-input py-2 text-sm" placeholder="No. cheque, transferencia, etc.">
         </div>
         <div class="form-group mb-0">
-          <label class="form-label">Modo de Aplicación</label>
-          <select id="teso-modal-modo" class="form-input" onchange="window._toggleModalManualMode()">
-            <option value="auto">Automático (Según Reglas Config.)</option>
-            <option value="manual">Manual (Distribuir en grilla)</option>
-          </select>
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1"><i class="fas fa-comment-alt mr-1"></i>Observaciones</label>
+          <input id="teso-modal-obs" type="text" class="form-input py-2 text-sm" placeholder="Nota interna opcional...">
         </div>
       </div>
     </div>
@@ -625,7 +1071,7 @@ async function openPagoModal() {
   const footerHtml = `
     <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
     <button class="btn btn-danger" id="btn-save-teso-tx" onclick="window._saveTransaccionTeso(false)">
-      <i class="fas fa-check mr-2"></i>Registrar Egreso
+      <i class="fas fa-paper-plane mr-2"></i>Registrar Pago
     </button>
   `;
 
@@ -635,7 +1081,17 @@ async function openPagoModal() {
     _initTesoTerceroAutocomplete(
       'modal-eg-wrap', 'modal-eg-search', 'modal-eg-hidden', 'modal-eg-results',
       (t) => t.type === 'PROVEEDOR' || t.type === 'ACREEDOR',
-      (t) => { _tesoCurrentThirdParty = t; _loadOpenItemsForModal(t.id, false); }
+      (t) => {
+        _tesoCurrentThirdParty = t;
+        _loadOpenItemsForModal(t.id, false).then(() => {
+          // Autocompletar monto con total de CxP
+          const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+          if (total > 0) {
+            const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
+            if (montoEl && !montoEl.value) montoEl.value = String(Math.round(total));
+          }
+        });
+      }
     );
   }, 50);
 }
@@ -874,3 +1330,5 @@ if ((window as any).registerModule) {
 (window as any).openTesoreriaConfigModal = openTesoreriaConfigModal;
 (window as any)._toggleModalManualMode = _toggleModalManualMode;
 (window as any)._saveTransaccionTeso = _saveTransaccionTeso;
+(window as any)._updateMontoIndicator = _updateMontoIndicator;
+(window as any)._changeTesoOrigen = _changeTesoOrigen;

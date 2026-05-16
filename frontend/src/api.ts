@@ -1873,7 +1873,10 @@ const API = {
     let invoices = [];
     try {
       const res = await pb.listAll('ph_invoices', { filter, sort: '-date' });
-      invoices = res || [];
+      // Asegurar unicidad de facturas por ID
+      const uniqueMap = new Map();
+      (res || []).forEach(inv => uniqueMap.set(inv.id, inv));
+      invoices = Array.from(uniqueMap.values());
     } catch (_) { invoices = []; }
 
     // Determinar fecha de corte real (cutoffDate) para cálculos de mora y saldos
@@ -1900,11 +1903,10 @@ const API = {
     if (invoices.length === 0) return { invoices: [], rows: [] };
 
     // 1. Obtener todas las líneas de las facturas
-    const invoiceIds = invoices.map(i => i.id);
     const allInvLines = [];
-    for (const invId of invoiceIds) {
+    for (const inv of invoices) {
       try {
-        const lns = await this.getPhInvoiceLines(invId);
+        const lns = await this.getPhInvoiceLines(inv.id);
         allInvLines.push(...lns);
       } catch(_) {}
     }
@@ -1913,7 +1915,7 @@ const API = {
     // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo
     // CUADRE CRÍTICO: Buscamos tx_lines donde cross_doc_ref coincida con el número de factura
     // o empiece por el número de factura (para casos de desglose por concepto CF-001-ADMIN)
-    const invNumbers = invoices.map(i => i.number).filter(Boolean);
+    const invNumbers = invoices.map(i => String(i.number || '').toUpperCase()).filter(Boolean);
     const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
 
     if (invNumbers.length > 0) {
@@ -1930,10 +1932,7 @@ const API = {
         if (valAbono === 0) continue;
 
         // Buscamos si esta referencia pertenece a alguna de nuestras facturas
-        const matchedInv = invNumbers.find(num => {
-          const n = String(num).toUpperCase();
-          return ref === n || ref.startsWith(n + '-');
-        });
+        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + '-'));
         
         if (matchedInv) {
           abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
@@ -1973,10 +1972,11 @@ const API = {
         }
 
         const currentBalance = originalAmount - abonoAplicado;
-        if (currentBalance < 1) continue; // Si el saldo es despreciable, no va al reporte
-
+        
         let estado = 'por_vencer';
-        if (inv.status === 'draft') {
+        if (currentBalance < 1) {
+          estado = 'cancelado';
+        } else if (inv.status === 'draft') {
           estado = 'borrador';
         } else if (diasMoraRaw >= 0) {
           estado = 'vencido';
@@ -1991,7 +1991,9 @@ const API = {
         rows.push({
           invoice: inv,
           line,
-          amount: currentBalance,
+          amount: currentBalance, // Saldo para el reporte
+          originalAmount: originalAmount, // Valor original para integridad
+          abono: abonoAplicado,
           diasMora: Math.max(0, diasMoraRaw),
           diasMoraRaw,
           fechaDoc,
@@ -2088,19 +2090,22 @@ const API = {
       invoices: invoices.length,
       lines: rows.length,
       totalFacturas: 0,
-      totalLineas: 0,
+      totalOriginalLines: 0,
       totalPendiente: 0,
       totalCancelado: 0,
       diferenciaGlobal: 0,
+      totalLineas: 0,
     };
 
     for (const inv of invoices) totals.totalFacturas += Number(inv.total || 0);
     for (const r of rows) {
+      totals.totalOriginalLines += Number(r.originalAmount || 0);
       totals.totalLineas += Number(r.amount || 0);
-      if (r.estado === 'cancelado') totals.totalCancelado += Number(r.amount || 0);
+      if (r.estado === 'cancelado') totals.totalCancelado += Number(r.abono || 0);
       else totals.totalPendiente += Number(r.amount || 0);
     }
-    totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalLineas) * 100) / 100;
+    // La integridad se chequea contra el valor ORIGINAL de las líneas
+    totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalOriginalLines) * 100) / 100;
 
     const byInvoice = {};
     for (const r of rows) {
@@ -2112,11 +2117,11 @@ const API = {
           period: r.invoice.period,
           status: r.invoice.status,
           totalFactura: Number(r.invoice.total || 0),
-          totalLineas: 0,
+          totalOriginalLines: 0,
           diferencia: 0,
         };
       }
-      byInvoice[id].totalLineas += Number(r.amount || 0);
+      byInvoice[id].totalOriginalLines += Number(r.originalAmount || 0);
     }
 
     const mismatches = Object.values(byInvoice)

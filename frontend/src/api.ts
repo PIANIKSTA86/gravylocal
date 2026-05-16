@@ -1920,19 +1920,21 @@ const API = {
       // Optimizamos: traemos líneas contables que tengan un cross_doc_ref en el set de facturas
       // y cuya fecha sea <= fecha de corte
       const txLines = await pb.listAll('tx_lines', {
-        filter: `cross_doc_ref!="" && tx_id.date <= "${refDate}" && tx_id.status = "posted"`,
+        filter: `cross_doc_ref!="" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
         expand: 'tx_id'
       });
 
       for (const tl of txLines) {
-        const ref = String(tl.cross_doc_ref || '').trim();
-        // El abono en una CxC (RC) es un Crédito. En una devolución (ajuste) puede ser un Crédito.
+        const ref = String(tl.cross_doc_ref || '').trim().toUpperCase();
         const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
         if (valAbono === 0) continue;
 
         // Buscamos si esta referencia pertenece a alguna de nuestras facturas
-        // La referencia puede ser exacta "CF-001" o compuesta "CF-001-MORA"
-        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + '-'));
+        const matchedInv = invNumbers.find(num => {
+          const n = String(num).toUpperCase();
+          return ref === n || ref.startsWith(n + '-');
+        });
+        
         if (matchedInv) {
           abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
         }
@@ -1947,34 +1949,31 @@ const API = {
       const prop = propById.get(String(inv.property_id));
       const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
       
-      const invNumber = String(inv.number || '').trim();
+      const invNumber = String(inv.number || '').trim().toUpperCase();
       const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
       const venc = String(inv.due_date || '').slice(0, 10);
       const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
       
+      // Control de abono general para distribuir entre líneas
+      let generalAbono = abonosMap.get(invNumber) || 0;
+
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
         
-        // Calcular abono específico para esta línea/concepto
-        // Intentamos match exacto (CF-001-ADMIN) o proporcional si solo hay abono general
-        const conceptCode = line.expand?.concept_id?.code || ( /inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN');
+        // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
+        const conceptCode = (line.expand?.concept_id?.code || ( /inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
         const specificRef = `${invNumber}-${conceptCode}`;
-        
         let abonoAplicado = abonosMap.get(specificRef) || 0;
         
-        // Si no hay abono por concepto, pero hay abonos al número de factura general,
-        // esto suele pasar si la Tesorería no desglosó por concepto.
-        // En ese caso, el primer concepto se "come" el abono general (simplificación)
-        // o podríamos prorratear. Para GRAVY 2.0, Tesorería desglosa por concepto si puede.
-        if (abonoAplicado === 0 && abonosMap.has(invNumber)) {
-           // Si solo hay un abono general a la factura, lo aplicamos aquí y lo quitamos del mapa
-           // para que no se duplique en otras líneas de la misma factura.
-           abonoAplicado = abonosMap.get(invNumber) || 0;
-           abonosMap.delete(invNumber); 
+        // 2. Si hay abono general remanente, aplicarlo a esta línea
+        if (generalAbono > 0) {
+          const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
+          abonoAplicado += porAplicar;
+          generalAbono -= porAplicar;
         }
 
         const currentBalance = originalAmount - abonoAplicado;
-        if (Math.abs(currentBalance) < 1) continue; // Si está pagado a la fecha de corte, no va al reporte de saldos
+        if (currentBalance < 1) continue; // Si el saldo es despreciable, no va al reporte
 
         let estado = 'por_vencer';
         if (inv.status === 'draft') {
@@ -1992,7 +1991,7 @@ const API = {
         rows.push({
           invoice: inv,
           line,
-          amount: currentBalance, // El "amount" en el dataset ahora es el SALDO PENDIENTE
+          amount: currentBalance,
           diasMora: Math.max(0, diasMoraRaw),
           diasMoraRaw,
           fechaDoc,

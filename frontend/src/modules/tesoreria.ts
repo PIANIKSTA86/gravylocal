@@ -340,10 +340,11 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
 }
 
 // ─── VER DETALLE / IMPRIMIR DESDE LISTADO ──────────────────────────────────
+// ─── VER DETALLE / IMPRIMIR DESDE LISTADO ──────────────────────────────────
 async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
   const pb = _pb();
   try {
-    const tx    = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
+    const tx    = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id,user_id' });
     const lines = await pb.listAll('tx_lines', { filter: `tx_id="${txId}"`, expand: 'account_id' });
 
     const isRC       = tipo === 'RC';
@@ -354,50 +355,92 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
       s + (isRC ? Number(l.debit || 0) : Number(l.credit || 0)), 0);
 
     const tObj = tx.expand?.third_party_id || {};
+    const uObj = tx.expand?.user_id || {};
 
-    // Construir data compatible con _buildReciboHTML
-    const data = {
-      tipo:         tipoLabel,
-      numero:       tx.number  || '',
-      fecha:        String(tx.date || '').slice(0, 10),
-      tercero:      tObj.name  || '',
-      terceroObj:   tObj,
-      monto:        montoTotal,
-      cuenta:       '',
-      referencia:   '',
-      observaciones: tx.description || '',
-      partidas:     []
-    };
+    // 1. Generar HTML para el asiento contable dentro del modal
+    const tableRows = lines.map((l: any) => `
+      <tr style="border-bottom:1px solid #F3F4F6">
+        <td style="padding:8px;font-family:monospace;font-size:11px">
+          <div style="font-weight:700;color:#374151">${_esc(l.expand?.account_id?.code || '')}</div>
+          <div style="color:#9CA3AF;font-size:10px">${_esc(l.expand?.account_id?.name || '')}</div>
+        </td>
+        <td style="padding:8px;text-align:right;font-weight:500;color:#374151">${l.debit > 0 ? _fmt(l.debit) : '—'}</td>
+        <td style="padding:8px;text-align:right;font-weight:500;color:#374151">${l.credit > 0 ? _fmt(l.credit) : '—'}</td>
+      </tr>
+    `).join('');
 
-    // Generar recibo carta completo con asiento contable
-    const htmlCarta = await _buildReciboHTML(data, lines);
-
-    // Preview de confirmación dentro del modal de la app
-    const preview = `
-      <div style="font-size:13px;font-family:'Segoe UI',sans-serif">
-        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:${acBg};border-radius:10px;margin-bottom:10px">
-          <i class="fas fa-file-invoice-dollar" style="font-size:26px;color:${acColor};flex-shrink:0"></i>
-          <div style="flex:1;min-width:0">
-            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${tipoLabel}</p>
-            <p style="color:#6B7280;font-size:12px;margin:3px 0 0">
-              No. <strong>${_esc(tx.number||'')}</strong> &bull;
-              <strong>${_fmt(montoTotal)}</strong> &bull;
-              ${String(tx.date||'').slice(0,10)}
-            </p>
-            <p style="color:#6B7280;font-size:11px;margin:2px 0 0"><strong>${_esc(tObj.name||'—')}</strong>${tObj.doc_number?' &bull; Doc: '+_esc(tObj.doc_number):''}</p>
-            <p style="color:#9CA3AF;font-size:11px;font-style:italic;margin:2px 0 0">${_numLetras(montoTotal)}</p>
+    // 2. Construir la interfaz del modal (Dashboard de la transacción)
+    const htmlModal = `
+      <div style="font-family:'Segoe UI',sans-serif;color:#1F2937">
+        <!-- Encabezado con datos clave -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div style="padding:12px;background:#F9FAFB;border-radius:12px;border:1px solid #F3F4F6">
+            <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">Tercero / Beneficiario</p>
+            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${_esc(tObj.name || '—')}</p>
+            <p style="font-size:12px;color:#6B7280;margin:2px 0 0">NIT/CC: ${_esc(tObj.doc_number || '—')}</p>
+          </div>
+          <div style="padding:12px;background:#F9FAFB;border-radius:12px;border:1px solid #F3F4F6;text-align:right">
+            <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">Fecha y Número</p>
+            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${_esc(tx.number || '—')}</p>
+            <p style="font-size:12px;color:#6B7280;margin:2px 0 0">${String(tx.date || '').slice(0, 10)}</p>
           </div>
         </div>
-        <p style="font-size:11px;color:#9CA3AF;text-align:center;margin:0">
-          Haz clic en <strong>Imprimir Recibo</strong> para abrir el formato carta completo con asiento contable y firmas.
-        </p>
+
+        <!-- Valor Destacado -->
+        <div style="background:${acBg};border:1px solid ${acColor}33;border-radius:12px;padding:16px;text-align:center;margin-bottom:16px">
+          <p style="font-size:11px;text-transform:uppercase;color:${acColor};font-weight:800;margin-bottom:4px;letter-spacing:1px">Monto Total</p>
+          <p style="font-size:32px;font-weight:900;color:${acColor};margin:0">${_fmt(montoTotal)}</p>
+          <p style="font-size:11px;color:${acColor};font-style:italic;margin-top:4px">${_numLetras(montoTotal)}</p>
+        </div>
+
+        ${tx.description ? `
+        <div style="margin-bottom:16px">
+          <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:6px">Observaciones</p>
+          <div style="padding:10px;background:#FFF;border:1px solid #F3F4F6;border-radius:8px;font-size:12px;color:#4B5563;line-height:1.5">${_esc(tx.description)}</div>
+        </div>` : ''}
+
+        <!-- Tabla Contable -->
+        <p style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:8px">Asiento Contable</p>
+        <div style="border:1px solid #F3F4F6;border-radius:10px;overflow:hidden;background:#FFF">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead style="background:#F9FAFB">
+              <tr>
+                <th style="padding:8px;text-align:left;color:#6B7280;font-weight:600">Cuenta</th>
+                <th style="padding:8px;text-align:right;color:#6B7280;font-weight:600">Débito</th>
+                <th style="padding:8px;text-align:right;color:#6B7280;font-weight:600">Crédito</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+
+        <!-- Auditoría -->
+        <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;padding:10px;background:#F9FAFB;border-radius:8px;font-size:11px;color:#9CA3AF">
+          <span><i class="fas fa-user-edit mr-1"></i>Registrado por: <strong>${_esc(uObj.name || uObj.username || 'Sistema')}</strong></span>
+          <span><i class="fas fa-clock mr-1"></i>${new Date(tx.created).toLocaleString('es-CO')}</span>
+        </div>
       </div>`;
+
+    // 3. Preparar el HTML Carta para impresión (en segundo plano)
+    const dataPrint = {
+      tipo: tipoLabel,
+      numero: tx.number || '',
+      fecha: String(tx.date || '').slice(0, 10),
+      tercero: tObj.name || '',
+      terceroObj: tObj,
+      monto: montoTotal,
+      cuenta: '',
+      referencia: '',
+      observaciones: tx.description || '',
+      partidas: []
+    };
+    const htmlCarta = await _buildReciboHTML(dataPrint, lines);
 
     (window as any).openModal(
       `${tipoLabel} — ${tx.number}`,
-      preview,
-      `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
-       <button class="btn btn-primary" id="btn-print-detalle"><i class="fas fa-print mr-1"></i>Imprimir Recibo</button>`,
+      htmlModal,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+       <button class="btn btn-primary" id="btn-print-detalle"><i class="fas fa-print mr-2"></i>Imprimir Carta</button>`,
       false
     );
 
@@ -416,6 +459,7 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
     _showToast('Error al cargar el detalle: ' + err.message, 'error');
   }
 }
+
 
 
 // ─── MODALES TRANSACCIONALES ────────────────────────────────────────────────

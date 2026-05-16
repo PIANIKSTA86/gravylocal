@@ -1901,7 +1901,6 @@ const API = {
     }
 
     if (invoices.length === 0) return { invoices: [], rows: [] };
-
     // 1. Obtener todas las líneas de las facturas
     const allInvLines = [];
     for (const inv of invoices) {
@@ -1916,6 +1915,7 @@ const API = {
     // CUADRE CRÍTICO: Buscamos tx_lines donde cross_doc_ref coincida con el número de factura
     // o empiece por el número de factura (para casos de desglose por concepto CF-001-ADMIN)
     const invNumbers = invoices.map(i => String(i.number || '').toUpperCase()).filter(Boolean);
+    const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));
     const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
 
     if (invNumbers.length > 0) {
@@ -1927,6 +1927,9 @@ const API = {
       });
 
       for (const tl of txLines) {
+        // IGNORAR la causación original de la factura
+        if (causalityTxIds.has(tl.tx_id)) continue;
+
         const ref = String(tl.cross_doc_ref || '').trim().toUpperCase();
         const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
         if (valAbono === 0) continue;

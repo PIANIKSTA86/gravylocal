@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — tesoreria.ts
  * Módulo Tesorería: pagos, recaudos, cartera y configuración.
  */

@@ -24,6 +24,7 @@ const PAGE_TITLES = {
   inventario:        'Inventarios',
   compras:           'Compras de Bienes y Servicios',
   tesoreria:         'Tesorería',
+  exogena:           'Información Exógena DIAN',
 };
 
 const PAGE_RENDERERS = {
@@ -47,6 +48,7 @@ const PAGE_RENDERERS = {
   compras:            () => typeof renderCompras           === 'function' && renderCompras($('#page-content')),
   copropiedades:      () => typeof renderCopropiedades     === 'function' && renderCopropiedades($('#page-content')),
   tesoreria:          () => typeof showTesoreriaScreen     === 'function' && showTesoreriaScreen($('#page-content')),
+  exogena:            () => typeof renderExogena           === 'function' && renderExogena($('#page-content')),
 };
 
 let currentPage = 'dashboard';

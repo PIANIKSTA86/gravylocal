@@ -80,6 +80,7 @@ function _renderPhPage(c, activeTab) {
   const tabs = [
     { id: 'facturacion', label: 'Facturación',   icon: 'fa-file-invoice-dollar' },
     { id: 'cartera',     label: 'Cartera',       icon: 'fa-chart-line'          },
+    { id: 'presupuesto', label: 'Presupuesto',   icon: 'fa-sack-dollar'         },
     { id: 'unidades',    label: 'Unidades',       icon: 'fa-building'            },
     { id: 'reservas',    label: 'Reservas',       icon: 'fa-calendar-check'      },
     { id: 'pqrs',        label: 'PQRs',           icon: 'fa-comments'            },
@@ -109,6 +110,7 @@ function _renderPhPage(c, activeTab) {
     c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     if (tabId === 'facturacion') renderPhFacturacion(tabContent);
     if (tabId === 'cartera')     renderPhCartera(tabContent);
+    if (tabId === 'presupuesto') renderPhPresupuesto(tabContent);
     if (tabId === 'unidades')    renderPhUnidades(tabContent);
     if (tabId === 'reservas')    renderPhReservas(tabContent);
     if (tabId === 'pqrs')        renderPhPqrs(tabContent);
@@ -2947,6 +2949,276 @@ async function openPhIndividualConceptModal(conceptId, container, accountsPreloa
 (window as any).renderPhPqrs = renderPhPqrs;
 (window as any).PH_RES_STATUS = PH_RES_STATUS;
 (window as any).renderPhCartera = renderPhCartera;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: PRESUPUESTO
+// ══════════════════════════════════════════════════════════════════════════════
+async function renderPhPresupuesto(c) {
+  c.innerHTML = `
+    <div class="flex gap-1 mb-5">
+      <button class="btn btn-outline active" id="ph-pres-list-tab">Listado de Presupuestos</button>
+      <button class="btn btn-outline" id="ph-pres-exec-tab">Ejecución Presupuestal</button>
+    </div>
+    <div id="ph-pres-content"></div>`;
+
+  const content = c.querySelector('#ph-pres-content');
+  const tabs = {
+    list: c.querySelector('#ph-pres-list-tab'),
+    exec: c.querySelector('#ph-pres-exec-tab')
+  };
+
+  const switchSubTab = (t) => {
+    Object.values(tabs).forEach(b => b.classList.remove('active', 'btn-primary'));
+    tabs[t].classList.add('active', 'btn-primary');
+    if (t === 'list') _renderPhPresList(content);
+    if (t === 'exec') _renderPhPresExec(content);
+  };
+
+  tabs.list.addEventListener('click', () => switchSubTab('list'));
+  tabs.exec.addEventListener('click', () => switchSubTab('exec'));
+  switchSubTab('list');
+}
+
+async function _renderPhPresList(c) {
+  c.innerHTML = `<div class="py-10 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
+  try {
+    const budgets = await API.getPhBudgets();
+    c.innerHTML = `
+      <div class="flex justify-between items-center mb-4">
+        <h4 class="font-bold">Presupuestos Anuales</h4>
+        <button class="btn btn-primary" onclick="openPhBudgetModal()">
+          <i class="fas fa-plus mr-1"></i>Nuevo Presupuesto
+        </button>
+      </div>
+      <div class="bg-white rounded-2xl border overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Año</th><th>Nombre</th><th>Monto Total</th><th>Estado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${budgets.map(b => `
+              <tr>
+                <td>${b.year}</td>
+                <td>${esc(b.name)}</td>
+                <td>${fmt(b.total_amount || 0)}</td>
+                <td><span class="badge ${b.status === 'approved' ? 'badge-green' : 'badge-orange'}">${esc(b.status)}</span></td>
+                <td>
+                  <div class="flex gap-1">
+                    <button class="btn btn-outline btn-sm" onclick="openPhBudgetModal('${b.id}')"><i class="fas fa-pen"></i></button>
+                    <button class="btn btn-outline btn-sm" onclick="printPhBudget('${b.id}')"><i class="fas fa-print"></i></button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+            ${budgets.length === 0 ? '<tr><td colspan="5" class="text-center py-10">No hay presupuestos registrados.</td></tr>' : ''}
+          </tbody>
+        </table>
+      </div>`;
+  } catch (err) {
+    c.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`;
+  }
+}
+
+async function openPhBudgetModal(id = null) {
+  let budget = { name: '', year: new Date().getFullYear(), status: 'draft', total_amount: 0 };
+  let lines = [];
+  
+  if (id) {
+    try {
+      budget = await pb.get('ph_budgets', id);
+      lines = await API.getPhBudgetLines(id);
+    } catch (err) { return showToast(err.message, 'error'); }
+  }
+
+  const accounts = await API.getAccounts();
+
+  openModal(
+    id ? 'Editar Presupuesto' : 'Nuevo Presupuesto',
+    `
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="form-group">
+        <label class="form-label">Año</label>
+        <input id="pres-year" type="number" class="form-input" value="${budget.year}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nombre</label>
+        <input id="pres-name" class="form-input" value="${esc(budget.name)}" placeholder="Ej: Presupuesto 2026">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select id="pres-status" class="form-input">
+          <option value="draft" ${budget.status === 'draft' ? 'selected' : ''}>Borrador</option>
+          <option value="approved" ${budget.status === 'approved' ? 'selected' : ''}>Aprobado</option>
+        </select>
+      </div>
+    </div>
+    <div class="mb-2 flex justify-between items-center">
+      <h5 class="font-bold text-sm">Cuentas y Montos</h5>
+      <button class="btn btn-sm btn-outline" id="add-pres-line"><i class="fas fa-plus mr-1"></i>Añadir Cuenta</button>
+    </div>
+    <div class="overflow-x-auto" style="max-height: 400px">
+      <table class="data-table text-sm" id="pres-lines-table">
+        <thead>
+          <tr>
+            <th>Cuenta (PUC)</th><th class="text-right">Monto Anual</th><th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lines.map((l, idx) => `
+            <tr data-idx="${idx}">
+              <td>
+                <select class="form-input pres-acc-select" style="min-width: 250px">
+                  ${accounts.map(a => `<option value="${a.id}" ${l.account_id === a.id ? 'selected' : ''}>${a.code} - ${esc(a.name)}</option>`).join('')}
+                </select>
+              </td>
+              <td><input type="number" class="form-input text-right pres-amount" value="${l.annual_amount}"></td>
+              <td><button class="btn btn-danger btn-sm remove-line"><i class="fas fa-trash"></i></button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    `,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="save-pres-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+  );
+
+  const table = document.getElementById('pres-lines-table').querySelector('tbody');
+  
+  document.getElementById('add-pres-line').addEventListener('click', () => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>
+        <select class="form-input pres-acc-select" style="min-width: 250px">
+          ${accounts.map(a => `<option value="${a.id}">${a.code} - ${esc(a.name)}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="number" class="form-input text-right pres-amount" value="0"></td>
+      <td><button class="btn btn-danger btn-sm remove-line"><i class="fas fa-trash"></i></button></td>
+    `;
+    table.appendChild(tr);
+    tr.querySelector('.remove-line').addEventListener('click', () => tr.remove());
+  });
+
+  table.querySelectorAll('.remove-line').forEach(btn => {
+    btn.addEventListener('click', () => btn.closest('tr').remove());
+  });
+
+  document.getElementById('save-pres-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('save-pres-btn');
+    const newLines = [];
+    table.querySelectorAll('tr').forEach(tr => {
+      newLines.push({
+        account_id: tr.querySelector('.pres-acc-select').value,
+        annual_amount: parseFloat(tr.querySelector('.pres-amount').value) || 0
+      });
+    });
+
+    const total = newLines.reduce((s, l) => s + l.annual_amount, 0);
+    const data = {
+      id,
+      year: parseInt(document.getElementById('pres-year').value),
+      name: document.getElementById('pres-name').value,
+      status: document.getElementById('pres-status').value,
+      total_amount: total
+    };
+
+    if (!data.name || !data.year) return showToast('Nombre y Año son requeridos', 'warning');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...';
+    try {
+      await API.savePhBudget(data, newLines);
+      showToast('Presupuesto guardado correctamente', 'success');
+      closeModal();
+      _renderPhPresList(document.getElementById('ph-pres-content'));
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar';
+    }
+  });
+}
+
+async function _renderPhPresExec(c) {
+  c.innerHTML = `<div class="py-10 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando comparativa...</div>`;
+  try {
+    const budgets = await API.getPhBudgets();
+    if (budgets.length === 0) {
+      c.innerHTML = `<div class="py-12 text-center text-gray-500">No hay presupuestos creados para comparar ejecución.</div>`;
+      return;
+    }
+
+    c.innerHTML = `
+      <div class="bg-white rounded-2xl border p-4 mb-4 flex gap-4 items-end">
+        <div class="flex-1">
+          <label class="form-label">Selecciona Presupuesto</label>
+          <select id="exec-pres-id" class="form-input">
+            ${budgets.map(b => `<option value="${b.id}" data-year="${b.year}">${b.year} - ${esc(b.name)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" id="refresh-exec-btn"><i class="fas fa-sync mr-1"></i>Actualizar</button>
+      </div>
+      <div id="exec-results"></div>`;
+
+    const results = c.querySelector('#exec-results');
+    const refresh = async () => {
+      const select = document.getElementById('exec-pres-id');
+      const bid = select.value;
+      const year = select.options[select.selectedIndex].dataset.year;
+      results.innerHTML = `<div class="py-10 text-center"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando ejecución...</div>`;
+      try {
+        const data = await API.getBudgetExecution(bid, year);
+        results.innerHTML = `
+          <div class="bg-white rounded-2xl border overflow-hidden">
+            <table class="data-table text-sm">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th class="text-right">Presupuestado (Anual)</th>
+                  <th class="text-right">Ejecutado (Acumulado)</th>
+                  <th class="text-right">Diferencia</th>
+                  <th class="text-right">% Ejec.</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.map(l => {
+                  const diff = l.annual_amount - Math.abs(l.executed);
+                  const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
+                  const color = perc > 100 ? 'text-red-600' : (perc > 90 ? 'text-orange-600' : 'text-green-600');
+                  return `
+                    <tr>
+                      <td><span class="font-bold">${l.expand?.account_id?.code}</span> - ${esc(l.expand?.account_id?.name)}</td>
+                      <td class="text-right font-semibold">${fmt(l.annual_amount)}</td>
+                      <td class="text-right font-semibold">${fmt(Math.abs(l.executed))}</td>
+                      <td class="text-right ${diff < 0 ? 'text-red-600' : ''}">${fmt(diff)}</td>
+                      <td class="text-right font-bold ${color}">${perc.toFixed(1)}%</td>
+                    </tr>
+                  `;
+                }).join('')}
+                <tr class="bg-gray-50 font-bold">
+                  <td>TOTALES</td>
+                  <td class="text-right">${fmt(data.reduce((s, l) => s + l.annual_amount, 0))}</td>
+                  <td class="text-right">${fmt(data.reduce((s, l) => s + Math.abs(l.executed), 0))}</td>
+                  <td class="text-right">${fmt(data.reduce((s, l) => s + (l.annual_amount - Math.abs(l.executed)), 0))}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) { results.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`; }
+    };
+
+    document.getElementById('refresh-exec-btn').addEventListener('click', refresh);
+    refresh();
+  } catch (err) { c.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`; }
+}
+
+(window as any).renderPhPresupuesto = renderPhPresupuesto;
+(window as any).openPhBudgetModal = openPhBudgetModal;
+
 (window as any).renderPhPqrRows = renderPhPqrRows;
 (window as any).openPhAddIndividualLinesModal = openPhAddIndividualLinesModal;
 (window as any).PH_STATUS = PH_STATUS;

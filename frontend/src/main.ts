@@ -24,6 +24,7 @@ import './modules/productos.ts';
 import './modules/inventario.ts';
 import './modules/compras.ts';
 import './modules/copropiedades.ts';
+import './modules/exogena.ts';
 import './modules/tesoreria.ts';
 
 import './app.ts';

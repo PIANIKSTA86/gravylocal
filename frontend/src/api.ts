@@ -2141,8 +2141,151 @@ const API = {
       isBalanced: Math.abs(totals.diferenciaGlobal) <= 1 && mismatches.length === 0,
     };
   },
-};
+  // -- Presupuestos (PH) -------------------------------------
+  async getPhBudgets(year = null) {
+    let filter = '';
+    if (year) filter = `year=${Number(year)}`;
+    return pb.listAll('ph_budgets', { filter, sort: '-year' });
+  },
 
+  async getPhBudgetLines(budgetId) {
+    return pb.listAll('ph_budget_lines', {
+      filter: `budget_id="${pb.escapeFilterValue(budgetId)}"`,
+      expand: 'account_id',
+    });
+  },
+
+  async savePhBudget(budget, lines) {
+    let budgetId = budget.id;
+    const payload = { ...budget };
+    delete payload.id;
+    delete payload.created;
+    delete payload.updated;
+    delete payload.expand;
+
+    if (budgetId) {
+      await pb.update('ph_budgets', budgetId, payload);
+    } else {
+      const created = await pb.create('ph_budgets', payload);
+      budgetId = created.id;
+    }
+
+    // Update lines: delete all and recreate (simplest way for a local app)
+    const existing = await pb.listAll('ph_budget_lines', { filter: `budget_id="${pb.escapeFilterValue(budgetId)}"` });
+    for (const l of existing) await pb.delete('ph_budget_lines', l.id);
+
+    for (const line of lines) {
+      const lp = { ...line, budget_id: budgetId };
+      delete lp.id;
+      delete lp.expand;
+      await pb.create('ph_budget_lines', lp);
+    }
+    return budgetId;
+  },
+
+  async getBudgetExecution(budgetId, year) {
+    const lines = await this.getPhBudgetLines(budgetId);
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    // Fetch all movements for the accounts in the budget for that year
+    const accountIds = lines.map(l => l.account_id);
+    if (!accountIds.length) return lines.map(l => ({ ...l, executed: 0, monthly_executed: new Array(12).fill(0) }));
+
+    const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
+    // Note: PocketBase filter doesn't support easy "IN" for arrays in strings without joining
+    const accountFilter = accountIds.map(id => `account_id="${id}"`).join(' || ');
+    const fullFilter = `(${accountFilter}) && ${filter}`;
+
+    const txLines = await pb.listAll('tx_lines', { filter: fullFilter, expand: 'tx_id' });
+
+    const executionMap = {}; // accountId -> [jan, feb, ... dec]
+    for (const tl of txLines) {
+      const dStr = tl.expand?.tx_id?.date;
+      if (!dStr) continue;
+      const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
+      if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
+      
+      // Simple logic: if account starts with 4 (Income), Credit - Debit. 
+      // If starts with 5 or 6 (Expenses/Costs), Debit - Credit.
+      // We need to fetch account codes to be sure.
+      // For now we'll assume the caller knows the nature. 
+      // Let's just return raw Net (Debit - Credit) and let UI decide.
+      executionMap[tl.account_id][month] += (tl.debit || 0) - (tl.credit || 0);
+    }
+
+    return lines.map(l => {
+      const execArr = executionMap[l.account_id] || new Array(12).fill(0);
+      const totalExec = execArr.reduce((a, b) => a + b, 0);
+      return {
+        ...l,
+        executed: totalExec,
+        monthly_executed: execArr
+      };
+    });
+  },
+
+  // -- Información Exógena (DIAN) ----------------------------
+  async getExogenaConcepts(format = '1001') {
+    return pb.listAll('exogena_concepts', { filter: `format_type="${format}"`, sort: 'code' });
+  },
+
+  async saveExogenaConcept(concept) {
+    if (concept.id) return pb.update('exogena_concepts', concept.id, concept);
+    return pb.create('exogena_concepts', concept);
+  },
+
+  async generateExogenaDataset(year, formatId, mappings) {
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    const txLines = await pb.listAll('tx_lines', {
+      filter: `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`,
+      expand: 'tx_id,account_id,third_party_id'
+    });
+
+    const results = {}; 
+    for (const tl of txLines) {
+      const acc = tl.expand?.account_id;
+      if (!acc) continue;
+      const accCode = acc.code;
+
+      // Find concept match using mappings passed from frontend
+      let matchedConcept = null;
+      const formatMappings = mappings[formatId] || {};
+      for (const [concept, accounts] of Object.entries(formatMappings)) {
+        if ((accounts as string[]).some(a => accCode.startsWith(a))) {
+          matchedConcept = concept;
+          break;
+        }
+      }
+
+      if (!matchedConcept) continue;
+
+      const third = tl.expand?.third_party_id;
+      if (!third) continue; 
+
+      const key = `${third.id}-${matchedConcept}-${accCode}`;
+      if (!results[key]) {
+        results[key] = {
+          third,
+          conceptCode: matchedConcept,
+          accountCode: accCode,
+          accountName: acc.name,
+          debit: 0,
+          credit: 0,
+          net: 0
+        };
+      }
+
+      results[key].debit += tl.debit || 0;
+      results[key].credit += tl.credit || 0;
+      results[key].net += (tl.debit || 0) - (tl.credit || 0);
+    }
+
+    return Object.values(results);
+  },
+};
 
 // --- VITE MIGRATION GLOBALS ---
 (window as any).pb = pb;

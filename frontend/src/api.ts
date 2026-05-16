@@ -1862,33 +1862,21 @@ const API = {
     const safePropertyId = pb.escapeFilterValue(propertyId);
     const safeFrom = pb.escapeFilterValue(fromPeriod);
     const safeTo = pb.escapeFilterValue(toPeriod);
+    
+    // Filtro base: facturas no anuladas
     let filter = `status!="voided"`;
     if (propertyId) filter += ` && property_id="${safePropertyId}"`;
+    // El período es una cadena YYYY-MM, sirve para filtrar lotes de facturación
     if (fromPeriod) filter += ` && period>="${safeFrom}"`;
     if (toPeriod) filter += ` && period<="${safeTo}"`;
 
     let invoices = [];
     try {
-      const res = await pb.list('ph_invoices', { filter, perPage: 500, sort: '-date' });
-      invoices = res.items || [];
-    } catch (_) {
-      try {
-        const res = await pb.list('ph_invoices', { filter, perPage: 500 });
-        invoices = res.items || [];
-      } catch (_2) {
-        invoices = [];
-      }
-    }
+      const res = await pb.listAll('ph_invoices', { filter, sort: '-date' });
+      invoices = res || [];
+    } catch (_) { invoices = []; }
 
-    let properties = [];
-    try {
-      properties = await this.getPhProperties(false);
-    } catch (_) {
-      properties = [];
-    }
-    const propById = new Map((properties || []).map((p) => [String(p.id), p]));
-
-    // Determinar fecha de corte: acepta YYYY-MM-DD (fecha completa) o YYYY-MM (mes)
+    // Determinar fecha de corte real (cutoffDate) para cálculos de mora y saldos
     let cutoffDate = null;
     if (toPeriod) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(toPeriod)) {
@@ -1899,35 +1887,102 @@ const API = {
         cutoffDate = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       }
     }
+    const refDate = cutoffDate || new Date().toISOString().slice(0, 10);
+
+    // Filtrar facturas que fueron emitidas después de la fecha de corte si se especificó
+    if (cutoffDate) {
+      invoices = invoices.filter(inv => {
+        const invDate = (inv.date || inv.created || '').slice(0, 10);
+        return invDate <= cutoffDate;
+      });
+    }
+
+    if (invoices.length === 0) return { invoices: [], rows: [] };
+
+    // 1. Obtener todas las líneas de las facturas
+    const invoiceIds = invoices.map(i => i.id);
+    const allInvLines = [];
+    for (const invId of invoiceIds) {
+      try {
+        const lns = await this.getPhInvoiceLines(invId);
+        allInvLines.push(...lns);
+      } catch(_) {}
+    }
+
+    // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas)
+    // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo
+    // CUADRE CRÍTICO: Buscamos tx_lines donde cross_doc_ref coincida con el número de factura
+    // o empiece por el número de factura (para casos de desglose por concepto CF-001-ADMIN)
+    const invNumbers = invoices.map(i => i.number).filter(Boolean);
+    const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
+
+    if (invNumbers.length > 0) {
+      // Optimizamos: traemos líneas contables que tengan un cross_doc_ref en el set de facturas
+      // y cuya fecha sea <= fecha de corte
+      const txLines = await pb.listAll('tx_lines', {
+        filter: `cross_doc_ref!="" && expand.tx_id.date <= "${refDate}" && expand.tx_id.status = "posted"`,
+        expand: 'tx_id'
+      });
+
+      for (const tl of txLines) {
+        const ref = String(tl.cross_doc_ref || '').trim();
+        // El abono en una CxC (RC) es un Crédito. En una devolución (ajuste) puede ser un Crédito.
+        const valAbono = Number(tl.credit || 0) - Number(tl.debit || 0);
+        if (valAbono === 0) continue;
+
+        // Buscamos si esta referencia pertenece a alguna de nuestras facturas
+        // La referencia puede ser exacta "CF-001" o compuesta "CF-001-MORA"
+        const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + '-'));
+        if (matchedInv) {
+          abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
+        }
+      }
+    }
+
+    const properties = await this.getPhProperties(false).catch(() => []);
+    const propById = new Map(properties.map(p => [String(p.id), p]));
 
     const rows = [];
     for (const inv of invoices) {
-      const prop = propById.get(String(inv.property_id)) || null;
-      let lines = [];
-      try {
-        lines = await this.getPhInvoiceLines(inv.id);
-      } catch (_) {
-        lines = [];
-      }
-      for (const line of lines) {
-        const amount = Number(line.amount || 0);
-        const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
-        const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
-        const venc = String(inv.due_date || '').slice(0, 10);
-        const fechaDocDt = fechaDoc ? new Date(`${fechaDoc}T00:00:00Z`) : null;
-        const vencDt = venc ? new Date(`${venc}T00:00:00Z`) : null;
-        const plazoDias = (fechaDocDt && vencDt)
-          ? Math.max(0, Math.floor((vencDt.getTime() - fechaDocDt.getTime()) / (1000 * 60 * 60 * 24)))
-          : 0;
+      const prop = propById.get(String(inv.property_id));
+      const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
+      
+      const invNumber = String(inv.number || '').trim();
+      const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
+      const venc = String(inv.due_date || '').slice(0, 10);
+      const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
+      
+      for (const line of invLines) {
+        const originalAmount = Number(line.amount || 0);
+        
+        // Calcular abono específico para esta línea/concepto
+        // Intentamos match exacto (CF-001-ADMIN) o proporcional si solo hay abono general
+        const conceptCode = line.expand?.concept_id?.code || ( /inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN');
+        const specificRef = `${invNumber}-${conceptCode}`;
+        
+        let abonoAplicado = abonosMap.get(specificRef) || 0;
+        
+        // Si no hay abono por concepto, pero hay abonos al número de factura general,
+        // esto suele pasar si la Tesorería no desglosó por concepto.
+        // En ese caso, el primer concepto se "come" el abono general (simplificación)
+        // o podríamos prorratear. Para GRAVY 2.0, Tesorería desglosa por concepto si puede.
+        if (abonoAplicado === 0 && abonosMap.has(invNumber)) {
+           // Si solo hay un abono general a la factura, lo aplicamos aquí y lo quitamos del mapa
+           // para que no se duplique en otras líneas de la misma factura.
+           abonoAplicado = abonosMap.get(invNumber) || 0;
+           abonosMap.delete(invNumber); 
+        }
+
+        const currentBalance = originalAmount - abonoAplicado;
+        if (Math.abs(currentBalance) < 1) continue; // Si está pagado a la fecha de corte, no va al reporte de saldos
+
         let estado = 'por_vencer';
-        if (inv.status === 'paid') {
-          estado = 'cancelado';
-        } else if (inv.status === 'draft') {
+        if (inv.status === 'draft') {
           estado = 'borrador';
         } else if (diasMoraRaw >= 0) {
           estado = 'vencido';
         }
-        const diasMora = Math.max(0, diasMoraRaw); // Para mostrar, pero guardamos el raw para bucketize
+
         const rawConcepto = line.description || line.account_code || 'Concepto';
         const normalizedConcepto = this.normalizePhCarteraConceptLabel(rawConcepto);
         const normalizedConceptId = line.concept_id
@@ -1937,10 +1992,9 @@ const API = {
         rows.push({
           invoice: inv,
           line,
-          amount,
-          diasMora, // solo para mostrar
-          diasMoraRaw, // para bucketize
-          plazoDias,
+          amount: currentBalance, // El "amount" en el dataset ahora es el SALDO PENDIENTE
+          diasMora: Math.max(0, diasMoraRaw),
+          diasMoraRaw,
           fechaDoc,
           dueDate: venc,
           estado,

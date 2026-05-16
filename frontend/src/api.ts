@@ -1920,7 +1920,7 @@ const API = {
       // Optimizamos: traemos líneas contables que tengan un cross_doc_ref en el set de facturas
       // y cuya fecha sea <= fecha de corte
       const txLines = await pb.listAll('tx_lines', {
-        filter: `cross_doc_ref!="" && expand.tx_id.date <= "${refDate}" && expand.tx_id.status = "posted"`,
+        filter: `cross_doc_ref!="" && tx_id.date <= "${refDate}" && tx_id.status = "posted"`,
         expand: 'tx_id'
       });
 

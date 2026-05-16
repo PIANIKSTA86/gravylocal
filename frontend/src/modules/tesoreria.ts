@@ -1469,3 +1469,170 @@ if ((window as any).registerModule) {
 (window as any)._saveTransaccionTeso = _saveTransaccionTeso;
 (window as any)._updateMontoIndicator = _updateMontoIndicator;
 (window as any)._changeTesoOrigen = _changeTesoOrigen;
+
+// ─── CARGA MASIVA DE RECAUDOS PH ─────────────────────────────────────────────
+
+function _downloadPlantillaRC() {
+  const XLSX = (window as any).XLSX;
+  if (!XLSX) { _showToast('Librería XLSX no cargada', 'error'); return; }
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['codigo_unidad', 'fecha', 'valor', 'referencia', 'observaciones'],
+    ['A101', '2026-05-16', 450000, 'TRANSF-9821', 'Pago mayo'],
+    ['B202', '2026-05-16', 380000, '', 'Pago cuota ordinaria'],
+    ['C303', '2026-05-16', 520000, 'CHQ-4455', ''],
+  ]);
+  ws['!cols'] = [{wch:16},{wch:14},{wch:12},{wch:18},{wch:24}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Recaudos');
+  XLSX.writeFile(wb, 'plantilla_recaudos_ph.xlsx');
+}
+
+async function _openMassRCModal() {
+  const pb = _pb();
+  const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+  if (!metodosPago.length) { _showToast('No hay cuentas bancarias activas', 'warning'); return; }
+  let _massRows: any[] = [];
+  const optsPago = metodosPago.map((c:any) => `<option value="${_esc(c.id)}" data-account="${_esc(c.account_id)}">${_esc(c.name)} (${_esc(c.bank)})</option>`).join('');
+  const bodyHtml = `<div style="font-family:'Segoe UI',sans-serif">
+    <div id="mass-rc-step1">
+      <p class="text-sm text-gray-600 mb-3">Descarga la plantilla, completa los datos y súbela para registrar múltiples recaudos automáticamente.</p>
+      <div class="form-group"><label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-university mr-1"></i>Método de Pago (aplica a todos)</label>
+        <select id="mass-rc-cuenta" class="form-input"><option value="">-- Seleccionar --</option>${optsPago}</select></div>
+      <div id="mass-rc-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all mt-3" style="border-color:#D1D5DB;background:#FAFAFA">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+        <p class="text-sm font-medium text-gray-700">Arrastra el archivo aquí o <span style="color:#1D6F42;text-decoration:underline">haz clic</span></p>
+        <p class="text-xs mt-1 text-gray-400">Formato: .xlsx / .xls — máx. 8 MB</p>
+        <input type="file" id="mass-rc-file" accept=".xlsx,.xls" class="hidden">
+      </div>
+    </div>
+    <div id="mass-rc-step2" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-sm font-semibold text-gray-800">Vista previa y validación</p>
+        <span id="mass-rc-badge" class="text-xs font-semibold"></span>
+      </div>
+      <div class="border border-gray-200 rounded-xl overflow-hidden" style="max-height:340px;overflow-y:auto">
+        <table class="data-table w-full text-xs"><thead class="bg-gray-50"><tr>
+          <th class="p-2">Fila</th><th class="p-2 text-left">Unidad</th><th class="p-2 text-left">Propietario</th>
+          <th class="p-2 text-left">Fecha</th><th class="p-2 text-right">Valor</th><th class="p-2 text-left">Ref.</th>
+          <th class="p-2 text-center">Estado</th><th class="p-2 text-left">Detalle</th>
+        </tr></thead><tbody id="mass-rc-tbody"></tbody></table>
+      </div>
+    </div>
+    <div id="mass-rc-step3" class="hidden text-center">
+      <div class="rounded-xl p-5" style="background:#F0FDF4;border:1px solid #D1FAE5">
+        <i class="fas fa-spinner fa-spin text-3xl mb-3" id="mass-rc-spin" style="color:#059669"></i>
+        <i class="fas fa-check-circle text-3xl mb-3 hidden" id="mass-rc-done-icon" style="color:#059669"></i>
+        <p class="font-semibold text-gray-800 mb-3" id="mass-rc-status">Procesando recaudos...</p>
+        <div class="w-full rounded-full h-3 mb-2" style="background:#D1FAE5">
+          <div id="mass-rc-bar" class="h-3 rounded-full transition-all" style="background:#059669;width:0%"></div>
+        </div>
+        <p class="text-xs text-gray-500" id="mass-rc-detail"></p>
+      </div>
+      <div id="mass-rc-result" class="mt-3 hidden"></div>
+    </div>
+  </div>`;
+  const footerHtml = `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cancelar</button>
+    <button class="btn btn-outline" onclick="window._downloadPlantillaRC()"><i class="fas fa-download mr-1"></i>Plantilla</button>
+    <button class="btn btn-primary hidden" id="mass-rc-btn-next"></button>`;
+  (window as any).openModal('Carga Masiva de Recaudos PH', bodyHtml, footerHtml, true);
+  setTimeout(() => {
+    const drop = document.getElementById('mass-rc-drop');
+    const fileInp = document.getElementById('mass-rc-file') as HTMLInputElement;
+    const btnNext = document.getElementById('mass-rc-btn-next') as HTMLButtonElement;
+    const hilite = (on: boolean) => { if (!drop) return; drop.style.borderColor = on?'#1D6F42':'#D1D5DB'; drop.style.background = on?'#ECFDF5':'#FAFAFA'; };
+    drop?.addEventListener('click', () => fileInp?.click());
+    drop?.addEventListener('dragover', e => { e.preventDefault(); hilite(true); });
+    drop?.addEventListener('dragleave', () => hilite(false));
+    drop?.addEventListener('drop', e => { e.preventDefault(); hilite(false); const f=(e as DragEvent).dataTransfer?.files?.[0]; if(f) processFile(f); });
+    fileInp?.addEventListener('change', () => { if(fileInp.files?.[0]) processFile(fileInp.files[0]); });
+    btnNext?.addEventListener('click', () => execute());
+    async function processFile(file: File) {
+      if (file.size > 8*1024*1024) { _showToast('El archivo supera 8 MB','error'); return; }
+      const XLSX = (window as any).XLSX;
+      if (!XLSX) { _showToast('Librería XLSX no cargada','error'); return; }
+      const cuentaSel = document.getElementById('mass-rc-cuenta') as HTMLSelectElement;
+      if (!cuentaSel?.value) { _showToast('Selecciona un método de pago primero','warning'); return; }
+      const bankAccountId = cuentaSel.value;
+      const cuentaAccId = cuentaSel.options[cuentaSel.selectedIndex]?.dataset?.account||'';
+      const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval:'' }) as any[];
+      const norm = (k:string) => String(k||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_').trim();
+      const rows = raw.map(r => { const o:any={}; Object.entries(r).forEach(([k,v])=>{o[norm(k)]=v;}); return o; }).filter(r=>r.codigo_unidad||r.codigo||r.unidad);
+      if (!rows.length) { _showToast('No se encontraron filas con datos','warning'); return; }
+      const props = await pb.listAll('ph_properties', { filter:'active=true', expand:'owner_id', sort:'code' });
+      const propByCode = new Map(props.map((p:any) => [String(p.code||'').trim().toUpperCase(), p]));
+      const typeRes = await pb.listAll('transaction_types', { filter:'code="RC"' });
+      const txTypeId = typeRes[0]?.id||'';
+      _massRows = rows.map((r:any, i:number) => {
+        const codigo = String(r.codigo_unidad||r.codigo||r.unidad||'').toUpperCase().trim();
+        const raw_f  = r.fecha||r.date||'';
+        const raw_v  = r.valor||r.value||r.monto||0;
+        const ref    = String(r.referencia||r.reference||'').trim();
+        const obs    = String(r.observaciones||r.obs||'').trim();
+        let fecha = '';
+        if (raw_f instanceof Date) { fecha = raw_f.toISOString().slice(0,10); }
+        else { const s=String(raw_f).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)){fecha=s;} else if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){const[d,m,y]=s.split('/');fecha=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;} else {const d=new Date(s);if(!isNaN(d.getTime()))fecha=d.toISOString().slice(0,10);} }
+        const valor = Number(String(raw_v).replace(/[^0-9.]/g,''))||0;
+        const prop  = propByCode.get(codigo);
+        const errs: string[] = [];
+        if(!codigo) errs.push('Falta código'); else if(!prop) errs.push(`Unidad "${codigo}" no encontrada`); else if(!prop.expand?.owner_id) errs.push('Sin propietario');
+        if(!fecha) errs.push('Fecha inválida');
+        if(valor<=0) errs.push('Valor debe ser > 0');
+        return {rowNo:i+2,codigo,fecha,valor,ref,obs,prop,txTypeId,bankAccountId,cuentaAccId,owner:prop?.expand?.owner_id||null,ok:errs.length===0,errors:errs};
+      });
+      document.getElementById('mass-rc-step1')?.classList.add('hidden');
+      document.getElementById('mass-rc-step2')?.classList.remove('hidden');
+      const ok=_massRows.filter(r=>r.ok).length; const bad=_massRows.length-ok;
+      const badge=document.getElementById('mass-rc-badge');
+      if(badge) badge.innerHTML=`<span style="color:${bad>0?'#B91C1C':'#166534'}">${_massRows.length} filas · ${ok} válidas${bad>0?' · '+bad+' con error':''}</span>`;
+      const tbody=document.getElementById('mass-rc-tbody');
+      if(tbody) tbody.innerHTML=_massRows.map(r=>`<tr style="background:${r.ok?'':'#FFF7F7'}">
+        <td class="p-2 text-center text-gray-400">${r.rowNo}</td>
+        <td class="p-2 font-mono font-bold text-blue-800">${_esc(r.codigo)}</td>
+        <td class="p-2">${_esc(r.owner?.name||'—')}</td>
+        <td class="p-2">${_esc(r.fecha||'—')}</td>
+        <td class="p-2 text-right font-bold">${_fmt(r.valor)}</td>
+        <td class="p-2 text-xs text-gray-500">${_esc(r.ref||'—')}</td>
+        <td class="p-2 text-center">${r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>'}</td>
+        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.ok?(r.obs||'Listo'):r.errors.join(' · ')}</td>
+      </tr>`).join('');
+      if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s)`;}
+    }
+    async function execute() {
+      const valids=_massRows.filter(r=>r.ok); if(!valids.length) return;
+      document.getElementById('mass-rc-step2')?.classList.add('hidden');
+      document.getElementById('mass-rc-step3')?.classList.remove('hidden');
+      btnNext.classList.add('hidden');
+      const bar=document.getElementById('mass-rc-bar'); const status=document.getElementById('mass-rc-status'); const detail=document.getElementById('mass-rc-detail');
+      let created=0; let failed=0; const errList:string[]=[];
+      for(let i=0;i<valids.length;i++){
+        const r=valids[i];
+        if(bar) bar.style.width=`${Math.round((i/valids.length)*100)}%`;
+        if(status) status.textContent=`Procesando ${i+1} de ${valids.length}...`;
+        if(detail) detail.textContent=`Unidad ${r.codigo} — ${_fmt(r.valor)}`;
+        try {
+          await pb.create('transactions',{tx_type_id:r.txTypeId,number:`RC-MASIVO-${Date.now()}-${i}`,date:r.fecha,third_party_id:r.owner.id,
+            description:r.obs||`Recaudo carga masiva${r.ref?' Ref: '+r.ref:''}`,status:'active',teso_mode:'auto',
+            teso_params:JSON.stringify({third_party_id:r.owner.id,ph_property_id:r.prop.id,amount:r.valor,contrapartida_account_id:r.cuentaAccId,reglas:{primeroVencido:true,primeroMora:true}})});
+          created++;
+        } catch(err:any){ failed++; errList.push(`Unidad ${r.codigo}: ${err.message}`); }
+      }
+      if(bar) bar.style.width='100%'; if(status) status.textContent='Proceso completado'; if(detail) detail.textContent='';
+      document.getElementById('mass-rc-spin')?.classList.add('hidden');
+      document.getElementById('mass-rc-done-icon')?.classList.remove('hidden');
+      const result=document.getElementById('mass-rc-result');
+      if(result){result.classList.remove('hidden');result.innerHTML=`<div class="rounded-xl p-4" style="background:#F9FAFB;border:1px solid #E5E7EB">
+        <div class="flex gap-6 justify-center mb-3">
+          <div class="text-center"><div class="text-3xl font-bold" style="color:#059669">${created}</div><div class="text-xs text-gray-500 mt-1">Registrados</div></div>
+          ${failed>0?`<div class="text-center"><div class="text-3xl font-bold" style="color:#DC2626">${failed}</div><div class="text-xs text-gray-500 mt-1">Con error</div></div>`:''}
+        </div>
+        ${errList.length?`<div style="background:#FFF1F2;border-radius:8px;padding:8px;font-size:11px;color:#B91C1C">${errList.map(e=>`<div>• ${_esc(e)}</div>`).join('')}</div>`:`<p class="text-center text-xs text-green-700 font-medium">✓ Todos los recaudos fueron registrados exitosamente</p>`}
+      </div>`;}
+      const cont=document.getElementById('teso-content'); if(cont) renderTesoListado(cont,'RC');
+    }
+  }, 120);
+}
+
+(window as any)._openMassRCModal     = _openMassRCModal;
+(window as any)._downloadPlantillaRC = _downloadPlantillaRC;

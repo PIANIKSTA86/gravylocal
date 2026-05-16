@@ -343,87 +343,80 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
 async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
   const pb = _pb();
   try {
-    const tx = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
-    const lines = await pb.listAll('tx_lines', {
-      filter: `tx_id="${txId}"`,
-      expand: 'account_id'
-    });
+    const tx    = await pb.get('transactions', txId, { expand: 'third_party_id,tx_type_id' });
+    const lines = await pb.listAll('tx_lines', { filter: `tx_id="${txId}"`, expand: 'account_id' });
 
-    const isRC = tipo === 'RC';
-    const color = isRC ? '#059669' : '#DC2626';
-    const icon  = isRC ? 'fa-hand-holding-dollar' : 'fa-paper-plane';
-    const tipoLabel = isRC ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO';
+    const isRC       = tipo === 'RC';
+    const tipoLabel  = isRC ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO';
+    const acColor    = isRC ? '#1D6F42' : '#B91C1C';
+    const acBg       = isRC ? '#F0FDF4' : '#FFF1F2';
+    const montoTotal = lines.reduce((s: number, l: any) =>
+      s + (isRC ? Number(l.debit || 0) : Number(l.credit || 0)), 0);
 
-    // Calcular monto total (suma débitos en RC, créditos en CE)
-    const montoTotal = lines.reduce((s: number, l: any) => s + (isRC ? Number(l.debit || 0) : Number(l.credit || 0)), 0);
+    const tObj = tx.expand?.third_party_id || {};
 
-    const lineasHtml = lines.map((l: any) => `
-      <tr style="border-bottom:1px solid #F3F4F6">
-        <td style="padding:5px 8px;font-size:12px;font-family:monospace">${_esc(l.expand?.account_id?.code || '')} — ${_esc(l.expand?.account_id?.name || '')}</td>
-        <td style="padding:5px 8px;text-align:right;font-size:12px">${Number(l.debit) > 0 ? _fmt(l.debit) : ''}</td>
-        <td style="padding:5px 8px;text-align:right;font-size:12px">${Number(l.credit) > 0 ? _fmt(l.credit) : ''}</td>
-        <td style="padding:5px 8px;font-size:11px;color:#9CA3AF">${_esc(l.cross_doc_ref || '')}</td>
-      </tr>`).join('');
+    // Construir data compatible con _buildReciboHTML
+    const data = {
+      tipo:         tipoLabel,
+      numero:       tx.number  || '',
+      fecha:        String(tx.date || '').slice(0, 10),
+      tercero:      tObj.name  || '',
+      terceroObj:   tObj,
+      monto:        montoTotal,
+      cuenta:       '',
+      referencia:   '',
+      observaciones: tx.description || '',
+      partidas:     []
+    };
 
-    const html = `
-      <div style="max-width:540px;margin:0 auto;font-family:'Segoe UI',sans-serif">
-        <div style="background:${color};color:#fff;padding:18px 22px;border-radius:12px 12px 0 0;display:flex;align-items:center;gap:12px">
-          <i class="fas ${icon}" style="font-size:22px"></i>
-          <div>
-            <div style="font-size:17px;font-weight:700">${tipoLabel}</div>
-            <div style="font-size:12px;opacity:0.85">Núm. ${_esc(tx.number)} &nbsp;&bull;&nbsp; ${String(tx.date || '').slice(0,10)}</div>
+    // Generar recibo carta completo con asiento contable
+    const htmlCarta = await _buildReciboHTML(data, lines);
+
+    // Preview de confirmación dentro del modal de la app
+    const preview = `
+      <div style="font-size:13px;font-family:'Segoe UI',sans-serif">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;background:${acBg};border-radius:10px;margin-bottom:10px">
+          <i class="fas fa-file-invoice-dollar" style="font-size:26px;color:${acColor};flex-shrink:0"></i>
+          <div style="flex:1;min-width:0">
+            <p style="font-weight:700;font-size:14px;color:#111;margin:0">${tipoLabel}</p>
+            <p style="color:#6B7280;font-size:12px;margin:3px 0 0">
+              No. <strong>${_esc(tx.number||'')}</strong> &bull;
+              <strong>${_fmt(montoTotal)}</strong> &bull;
+              ${String(tx.date||'').slice(0,10)}
+            </p>
+            <p style="color:#6B7280;font-size:11px;margin:2px 0 0"><strong>${_esc(tObj.name||'—')}</strong>${tObj.doc_number?' &bull; Doc: '+_esc(tObj.doc_number):''}</p>
+            <p style="color:#9CA3AF;font-size:11px;font-style:italic;margin:2px 0 0">${_numLetras(montoTotal)}</p>
           </div>
         </div>
-        <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 12px 12px;padding:18px 22px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-            <div>
-              <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Tercero</div>
-              <div style="font-weight:600;color:#111;font-size:14px">${_esc(tx.expand?.third_party_id?.name || tx.third_party_id || '—')}</div>
-            </div>
-            <div>
-              <div style="font-size:10px;text-transform:uppercase;color:#9CA3AF;font-weight:700">Estado</div>
-              <div style="font-weight:600;color:${tx.status === 'active' ? '#059669' : '#6B7280'};font-size:14px">${_esc(tx.status || '')}</div>
-            </div>
-          </div>
-          <div style="background:${isRC ? '#ECFDF5' : '#FEF2F2'};border-radius:10px;padding:14px;margin-bottom:14px;text-align:center">
-            <div style="font-size:11px;text-transform:uppercase;color:${color};font-weight:700">VALOR ${isRC ? 'RECIBIDO' : 'PAGADO'}</div>
-            <div style="font-size:30px;font-weight:800;color:${color}">${_fmt(montoTotal)}</div>
-          </div>
-          ${tx.description ? `<div style="margin-bottom:12px;padding:8px;background:#F9FAFB;border-radius:8px;font-size:12px;color:#6B7280">${_esc(tx.description)}</div>` : ''}
-          <div style="font-size:11px;text-transform:uppercase;color:#9CA3AF;font-weight:700;margin-bottom:6px">Asiento Contable</div>
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead>
-              <tr style="background:#F3F4F6">
-                <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Cuenta</th>
-                <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Débito</th>
-                <th style="padding:5px 8px;text-align:right;border-bottom:1px solid #E5E7EB">Crédito</th>
-                <th style="padding:5px 8px;text-align:left;border-bottom:1px solid #E5E7EB">Doc. Cruce</th>
-              </tr>
-            </thead>
-            <tbody>${lineasHtml}</tbody>
-          </table>
-          <div style="margin-top:18px;padding-top:14px;border-top:1px dashed #E5E7EB;text-align:center;font-size:11px;color:#9CA3AF">
-            GRAVY v2.0 &mdash; ${new Date().toLocaleString('es-CO')}
-          </div>
-        </div>
+        <p style="font-size:11px;color:#9CA3AF;text-align:center;margin:0">
+          Haz clic en <strong>Imprimir Recibo</strong> para abrir el formato carta completo con asiento contable y firmas.
+        </p>
       </div>`;
 
     (window as any).openModal(
       `${tipoLabel} — ${tx.number}`,
-      html,
+      preview,
       `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cerrar</button>
-       <button class="btn btn-primary" onclick="window._printRecibo()"><i class="fas fa-print mr-1"></i>Imprimir</button>`,
+       <button class="btn btn-primary" id="btn-print-detalle"><i class="fas fa-print mr-1"></i>Imprimir Recibo</button>`,
       false
     );
 
-    if (autoprint) {
-      setTimeout(() => (window as any)._printRecibo(), 400);
-    }
+    setTimeout(() => {
+      document.getElementById('btn-print-detalle')?.addEventListener('click', () => {
+        const w = window.open('', '_blank', 'width=920,height=760');
+        if (w) { w.document.write(htmlCarta); w.document.close(); }
+      });
+      if (autoprint) {
+        const w = window.open('', '_blank', 'width=920,height=760');
+        if (w) { w.document.write(htmlCarta); w.document.close(); }
+      }
+    }, 150);
 
   } catch(err: any) {
     _showToast('Error al cargar el detalle: ' + err.message, 'error');
   }
 }
+
 
 // ─── MODALES TRANSACCIONALES ────────────────────────────────────────────────
 let _tesoCurrentOpenItems: any[] = [];

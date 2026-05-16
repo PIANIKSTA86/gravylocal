@@ -2321,7 +2321,7 @@ async function renderPhConfig(c) {
             <table class="data-table text-sm">
               <thead>
                 <tr>
-                  <th>Nombre</th><th>Descripción</th><th class="text-right">Valor ref.</th>
+                  <th>Código</th><th>Nombre</th><th>Descripción</th><th class="text-right">Valor ref.</th>
                   <th>Cuenta ingreso</th><th>Estado</th><th>Acciones</th>
                 </tr>
               </thead>
@@ -2477,6 +2477,7 @@ function renderPhIndividualConceptRows(concepts, accounts) {
     const effectiveAccCode = getIndividualConceptAccountCode(con);
     const accName = effectiveAccCode ? (accByCode.get(effectiveAccCode)?.name || effectiveAccCode) : '—';
     return `<tr>
+      <td class="font-mono text-xs font-bold">${esc(con.code || 'GEN')}</td>
       <td class="font-semibold" style="color:#0D2137">${esc(con.name || con.description || '—')}</td>
       <td class="text-xs" style="color:#6B7280">${esc(con.description || '')}</td>
       <td class="text-right font-semibold">${con.amount ? fmt(con.amount) : '—'}</td>
@@ -2739,9 +2740,10 @@ async function openPhAddIndividualLinesModal(invoiceId) {
           <div class="flex items-center gap-3 p-3 rounded-lg" style="background:#F8FAFF;border:1px solid #E5E7EB">
             <input type="checkbox" class="ph-add-ind-check" id="pic-chk-${i}"
               data-idx="${i}" data-name="${esc(con.name || con.description || '')}"
+              data-code="${esc(con.code || 'GEN')}"
               data-account="${esc(effectiveAccCode || '')}" style="width:18px;height:18px;cursor:pointer">
             <label for="pic-chk-${i}" class="flex-1 cursor-pointer">
-              <p class="font-medium text-sm" style="color:#0D2137">${esc(con.name || con.description || '—')}</p>
+              <p class="font-medium text-sm" style="color:#0D2137"><span class="badge badge-gray mr-2">${esc(con.code || 'GEN')}</span>${esc(con.name || con.description || '—')}</p>
               ${con.description ? `<p class="text-xs" style="color:#9CA3AF">${esc(con.description)}</p>` : ''}
             </label>
             <input type="number" class="form-input ph-add-ind-amount" data-idx="${i}"
@@ -2766,7 +2768,7 @@ async function openPhAddIndividualLinesModal(invoiceId) {
         const amount = parseFloat(amountEl?.value || 0) || 0;
         if (amount <= 0) return; // skip conceptos sin valor
         selected.push({
-          description: chk.dataset.name,
+          description: `[${chk.dataset.code || 'GEN'}] ${chk.dataset.name}`,
           amount,
           account_code: chk.dataset.account || '',
         });
@@ -2811,10 +2813,15 @@ async function openPhIndividualConceptModal(conceptId, container, accountsPreloa
   openModal(
     concept ? 'Editar Concepto Individual' : 'Nuevo Concepto Individual',
     `<div class="grid grid-cols-2 gap-4">
-      <div class="form-group col-span-2">
+      <div class="form-group">
+        <label class="form-label">Código <span class="text-red-500">*</span></label>
+        <input id="pic-code" class="form-input" value="${esc(concept?.code || '')}"
+          placeholder="Ej: MUL, PAR">
+      </div>
+      <div class="form-group">
         <label class="form-label">Nombre <span class="text-red-500">*</span></label>
         <input id="pic-name" class="form-input" value="${esc(concept?.name || concept?.description || '')}"
-          placeholder="Ej: Sanción de convivencia, Parqueadero extra, Servicio especial">
+          placeholder="Ej: Sanción de convivencia, Parqueadero extra">
       </div>
       <div class="form-group col-span-2">
         <label class="form-label">Descripción</label>
@@ -2852,18 +2859,20 @@ async function openPhIndividualConceptModal(conceptId, container, accountsPreloa
 
   setTimeout(() => {
     document.getElementById('pic-save-btn')?.addEventListener('click', async () => {
+      const code   = (document.getElementById('pic-code')?.value || '').trim().toUpperCase();
       const name   = (document.getElementById('pic-name')?.value || '').trim();
       const desc   = (document.getElementById('pic-desc')?.value || '').trim();
       const amount = parseFloat(document.getElementById('pic-amount')?.value || 0) || 0;
       const active = document.getElementById('pic-active')?.value !== 'false';
       const accCode = (document.getElementById('pic-account')?.value || '').trim();
-      if (!name) { showToast('El nombre es obligatorio.', 'warning'); return; }
+      if (!name || !code) { showToast('El código y el nombre son obligatorios.', 'warning'); return; }
       const btn = document.getElementById('pic-save-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
         const fallbackPropertyId = concept?.property_id || properties?.[0]?.id || null;
         const data = {
           // Esquema nuevo
+          code: code || 'GEN',
           name,
           description: desc || name,
           amount: amount || 0,

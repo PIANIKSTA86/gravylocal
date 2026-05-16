@@ -395,6 +395,10 @@ onBootstrap((e) => {
         phIC.fields.add(new BoolField({ name: 'active', required: false }));
         icChanged = true;
       }
+      if (!icFields.has('code')) {
+        phIC.fields.add(new TextField({ name: 'code', required: false }));
+        icChanged = true;
+      }
       // Hacer property_id opcional (ya no es necesario para conceptos globales)
       try {
         const propIdField = phIC.fields.getByName('property_id');

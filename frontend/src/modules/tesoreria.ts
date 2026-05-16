@@ -80,6 +80,111 @@ function _initTesoTerceroAutocomplete(
   setTimeout(() => document.addEventListener('click', outsideHandler), 0);
 }
 
+let _tesoAllProperties: any[] = [];
+let _tesoCurrentOrigen: 'comercial' | 'ph' = 'comercial';
+let _tesoCurrentPropertyId: string | null = null;
+
+function _initTesoPropertyAutocomplete(
+  wrapId: string, inputId: string, hiddenId: string, resultsId: string,
+  onSelect: (p: any) => void
+) {
+  const wrap = document.getElementById(wrapId);
+  const input = document.getElementById(inputId) as HTMLInputElement;
+  const hidden = document.getElementById(hiddenId) as HTMLInputElement;
+  const results = document.getElementById(resultsId);
+  if (!wrap || !input || !hidden || !results) return;
+
+  const render = (q = '') => {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    const data = !terms.length ? _tesoAllProperties.slice(0, 50) : _tesoAllProperties.filter(t => {
+      const hay = `${t.code || ''} ${t.name || ''} ${t.expand?.owner_id?.name || ''}`.toLowerCase();
+      return terms.every(w => hay.includes(w));
+    }).slice(0, 50);
+    
+    if (!data.length) {
+      results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-500">Sin resultados</div>';
+      return;
+    }
+    results.innerHTML = data.map(t =>
+      `<button type="button" data-teso-id="${t.id}" class="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 bg-white border-none cursor-pointer text-gray-800">
+        <div class="font-semibold">${_esc(t.code)} - ${_esc(t.name)}</div>
+        <div class="text-xs text-gray-500"><i class="fas fa-user mr-1"></i>${_esc(t.expand?.owner_id?.name || 'Sin propietario asignado')}</div>
+      </button>`
+    ).join('');
+  };
+
+  const syncDisplay = () => {
+    const found = _tesoAllProperties.find(t => t.id === hidden.value);
+    input.value = found ? `${found.code} - ${found.name}` : '';
+  };
+  syncDisplay();
+
+  input.onfocus = () => { render(input.value); results.style.display = 'block'; };
+  input.oninput = () => { hidden.value = ''; render(input.value); results.style.display = 'block'; };
+  results.onclick = (ev: Event) => {
+    const btn = (ev.target as Element).closest('[data-teso-id]') as HTMLElement | null;
+    if (!btn) return;
+    const id = btn.dataset.tesoId || '';
+    const found = _tesoAllProperties.find(t => t.id === id) || null;
+    hidden.value = id;
+    input.value = found ? `${found.code} - ${found.name}` : '';
+    results.style.display = 'none';
+    if (found) onSelect(found);
+  };
+  const outsideHandler = (ev: Event) => {
+    if (!wrap.contains(ev.target as Node)) results.style.display = 'none';
+  };
+  setTimeout(() => document.addEventListener('click', outsideHandler), 0);
+}
+
+(window as any)._changeTesoOrigen = async (origen: 'comercial' | 'ph') => {
+  _tesoCurrentOrigen = origen;
+  _tesoCurrentPropertyId = null;
+  _tesoCurrentThirdParty = null;
+  _tesoCurrentOpenItems = [];
+  
+  const lbl = document.getElementById('teso-lbl-tercero');
+  const input = document.getElementById('modal-rc-search') as HTMLInputElement;
+  const hidden = document.getElementById('modal-rc-hidden') as HTMLInputElement;
+  const results = document.getElementById('modal-rc-results');
+  const container = document.getElementById('teso-modal-items-container');
+  
+  if (input) { input.value = ''; input.oninput = null; input.onfocus = null; }
+  if (hidden) hidden.value = '';
+  if (results) { results.style.display = 'none'; results.onclick = null; }
+  if (container) container.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">Busca un ${origen === 'comercial' ? 'tercero' : 'inmueble'} para visualizar su cartera abierta.</div>`;
+  
+  if (origen === 'comercial') {
+    if (lbl) lbl.textContent = 'Tercero (Cliente / Proveedor)';
+    if (input) input.placeholder = 'Buscar por documento o nombre...';
+    _initTesoTerceroAutocomplete(
+      'modal-rc-wrap', 'modal-rc-search', 'modal-rc-hidden', 'modal-rc-results',
+      () => true,
+      (t) => { _tesoCurrentThirdParty = t; _loadOpenItemsForModal(t.id, true); }
+    );
+  } else {
+    if (lbl) lbl.textContent = 'Unidad PH (Apartamento / Casa)';
+    if (input) input.placeholder = 'Buscar por código (Ej: A101)...';
+    
+    if (!_tesoAllProperties.length) {
+      _tesoAllProperties = await _pb().listAll('ph_properties', { filter: 'active=true', expand: 'owner_id', sort: 'code' });
+    }
+    
+    _initTesoPropertyAutocomplete(
+      'modal-rc-wrap', 'modal-rc-search', 'modal-rc-hidden', 'modal-rc-results',
+      (p) => {
+        _tesoCurrentPropertyId = p.id;
+        if (p.expand?.owner_id) {
+          _tesoCurrentThirdParty = p.expand.owner_id;
+          _loadOpenItemsForModal(p.expand.owner_id.id, true, p.id);
+        } else {
+          _showToast('Esta unidad no tiene un propietario asignado', 'warning');
+        }
+      }
+    );
+  }
+};
+
 // ─── VISTAS DE LISTADO (RECAUDOS Y PAGOS) ──────────────────────────────────
 async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
   c.innerHTML = `<div class="p-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando transacciones...</div>`;
@@ -170,7 +275,7 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
 let _tesoCurrentOpenItems: any[] = [];
 let _tesoCurrentThirdParty: ThirdParty | null = null;
 
-async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean) {
+async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, propertyId?: string) {
   const c = document.getElementById('teso-modal-items-container');
   if (!c) return;
   c.innerHTML = '<div class="p-4 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando partidas abiertas...</div>';
@@ -178,16 +283,43 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean) 
   try {
     const pb = _pb();
     
+    let allowedRefs = new Set<string>();
+    let blockedRefs = new Set<string>();
+    
+    if (propertyId) {
+       const invoices = await pb.listAll('ph_invoices', { filter: `property_id="${propertyId}" && status!="voided"` });
+       invoices.forEach((inv: any) => allowedRefs.add(inv.number));
+       if (allowedRefs.size === 0) {
+         c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes para esta operación.</div>`;
+         return;
+       }
+    } else {
+       const invoices = await pb.listAll('ph_invoices', { filter: `property_id.owner_id="${thirdPartyId}" && status!="voided"` });
+       invoices.forEach((inv: any) => blockedRefs.add(inv.number));
+    }
+    
     const allLines = await pb.listAll('tx_lines', {
       filter: `third_party_id="${thirdPartyId}"`,
       expand: 'tx_id,account_id'
     });
 
     const docs = new Map();
+    
     for (const l of allLines) {
+      if (l.expand?.tx_id?.status === 'voided') continue;
       if (!l.expand?.account_id?.maneja_cruce) continue;
       const ref = (l.cross_doc_ref || '').trim();
       if (!ref) continue;
+      
+      const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
+      
+      if (propertyId) {
+          const isAllowed = allowedRefs.has(ref) || allowedRefs.has(possibleBase);
+          if (!isAllowed) continue;
+      } else {
+          const isBlocked = blockedRefs.has(ref) || blockedRefs.has(possibleBase);
+          if (isBlocked) continue;
+      }
       
       const key = `${ref}|${l.account_id}`;
       if (!docs.has(key)) {
@@ -197,6 +329,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean) 
           accountId: l.account_id,
           accountName: l.expand?.account_id?.name || '',
           firstDate: l.expand?.tx_id?.date || '',
+          description: l.description || '',
           debit: 0,
           credit: 0
         });
@@ -232,7 +365,11 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean) 
           <tbody>
             ${_tesoCurrentOpenItems.map(i => `
               <tr class="border-b border-gray-100 bg-white">
-                <td class="p-2 font-medium">${_esc(i.ref)} <div class="text-xs text-gray-400">${_esc(i.firstDate)}</div></td>
+                <td class="p-2 font-medium">
+                  ${_tesoCurrentOrigen === 'ph' && i.description 
+                    ? `<span class="block">${_esc(i.description)}</span><span class="block text-xs text-gray-400">Fac: ${_esc(i.ref)} - ${_esc(i.firstDate)}</span>` 
+                    : `${_esc(i.ref)} <div class="text-xs text-gray-400">${_esc(i.firstDate)}</div>`}
+                </td>
                 <td class="p-2 text-gray-600">${_esc(i.accountName)}</td>
                 <td class="p-2 text-right font-semibold ${isRecaudo ? 'text-red-600' : 'text-blue-600'}">${_fmt(i.saldo)}</td>
                 <td class="p-2 text-right">
@@ -284,9 +421,11 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
   
   const monto = Number(montoInput.value);
   const modo = modoSelect.value;
-  const cuentaId = ctaSelect.value;
+  const bankAccountId = ctaSelect.value;
+  const cuentaOpt = ctaSelect.options[ctaSelect.selectedIndex];
+  const cuentaId = cuentaOpt ? cuentaOpt.dataset.account : null;
 
-  if (!cuentaId) { _showToast('Debes seleccionar la cuenta origen/destino', 'warning'); return; }
+  if (!cuentaId || !bankAccountId) { _showToast('Debes seleccionar un método de pago válido', 'warning'); return; }
   if (!_tesoCurrentThirdParty) { _showToast('Debes seleccionar un tercero', 'warning'); return; }
 
   // En modo manual sumamos de los inputs, en modo automático del input principal
@@ -322,14 +461,18 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       contrapartida_account_id: cuentaId // El pb_hooks lo usará para la línea de banco/caja
     };
 
+    if (_tesoCurrentOrigen === 'ph' && _tesoCurrentPropertyId) {
+      params.ph_property_id = _tesoCurrentPropertyId;
+    }
+
     if (modo === 'manual') {
       params.distribucion = distribucion;
     } else {
       // Tomamos reglas del backend
-      const sets = await pb.listAll('treasury_settings');
+      const sets = await pb.listAll('settings', { filter: `key="treasury_rules"` });
       let rules = { primeroVencido: true, primeroMora: true };
-      if (sets.length && sets[0].auto_rules) {
-        try { rules = JSON.parse(sets[0].auto_rules); } catch(_) {}
+      if (sets.length && sets[0].value) {
+        try { rules = JSON.parse(sets[0].value); } catch(_) {}
       }
       params.reglas = rules;
     }
@@ -365,13 +508,13 @@ async function openRecaudoModal() {
   if (!_tesoAllTerceros.length) {
     _tesoAllTerceros = await _pb().listAll('third_parties', { filter: 'active=true', sort: 'name' });
   }
-  const cuentasCajaBancos = await _pb().listAll('accounts', { filter: 'level>=3 && (code~"1105" || code~"1110" || code~"1120")', sort: 'code' });
+  const metodosPago = await _pb().listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
 
   const bodyHtml = `
     <div class="space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="form-group">
-          <label class="form-label">Tercero (Cliente)</label>
+          <label class="form-label" id="teso-lbl-tercero">Tercero (Cliente)</label>
           <div id="modal-rc-wrap" class="relative">
             <input id="modal-rc-search" class="form-input" autocomplete="off" placeholder="Buscar por documento o nombre...">
             <input id="modal-rc-hidden" type="hidden" value="">
@@ -379,10 +522,10 @@ async function openRecaudoModal() {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Cuenta Destino (Caja/Bancos)</label>
+          <label class="form-label">Método de Recaudo (Cuenta Destino)</label>
           <select id="teso-modal-cuenta" class="form-input">
-            <option value="">— Seleccionar Cuenta —</option>
-            ${cuentasCajaBancos.map((c:any) => `<option value="${c.id}">${c.code} - ${c.name}</option>`).join('')}
+            <option value="">— Seleccionar Método —</option>
+            ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)} - ${_esc(c.number)})</option>`).join('')}
           </select>
         </div>
       </div>
@@ -416,12 +559,17 @@ async function openRecaudoModal() {
 
   _openModal('Nuevo Recibo de Caja', bodyHtml, footerHtml, true);
 
-  setTimeout(() => {
-    _initTesoTerceroAutocomplete(
-      'modal-rc-wrap', 'modal-rc-search', 'modal-rc-hidden', 'modal-rc-results',
-      () => true,
-      (t) => { _tesoCurrentThirdParty = t; _loadOpenItemsForModal(t.id, true); }
-    );
+  setTimeout(async () => {
+    try {
+      const sets = await _pb().listAll('settings', { filter: `key="treasury_rules"` });
+      let rules: any = { modoOperacion: 'comercial' };
+      if (sets.length && sets[0].value) {
+        try { rules = { ...rules, ...JSON.parse(sets[0].value) }; } catch(e) {}
+      }
+      (window as any)._changeTesoOrigen(rules.modoOperacion === 'ph' ? 'ph' : 'comercial');
+    } catch (e) {
+      (window as any)._changeTesoOrigen('comercial');
+    }
   }, 50);
 }
 
@@ -432,7 +580,7 @@ async function openPagoModal() {
   if (!_tesoAllTerceros.length) {
     _tesoAllTerceros = await _pb().listAll('third_parties', { filter: 'active=true', sort: 'name' });
   }
-  const cuentasCajaBancos = await _pb().listAll('accounts', { filter: 'level>=3 && (code~"1105" || code~"1110" || code~"1120")', sort: 'code' });
+  const metodosPago = await _pb().listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
 
   const bodyHtml = `
     <div class="space-y-4">
@@ -446,10 +594,10 @@ async function openPagoModal() {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Cuenta Origen (Caja/Bancos)</label>
+          <label class="form-label">Método de Pago (Cuenta Origen)</label>
           <select id="teso-modal-cuenta" class="form-input">
-            <option value="">— Seleccionar Cuenta —</option>
-            ${cuentasCajaBancos.map((c:any) => `<option value="${c.id}">${c.code} - ${c.name}</option>`).join('')}
+            <option value="">— Seleccionar Método —</option>
+            ${metodosPago.map((c:any) => `<option value="${c.id}" data-account="${c.account_id}">${_esc(c.name)} (${_esc(c.bank)} - ${_esc(c.number)})</option>`).join('')}
           </select>
         </div>
       </div>
@@ -534,16 +682,16 @@ async function renderTesoDashboard() {
 async function openTesoreriaConfigModal() {
   try {
     const pb = _pb();
-    const settingsReq = await pb.list('treasury_settings', { perPage: 1 });
+    const settingsReq = await pb.listAll('settings', { filter: `key="treasury_rules"` });
     const cuentas = await pb.listAll('accounts', { filter: 'level>=3', sort: 'code' });
     
     let rules: any = { primeroVencido: true, primeroMora: true, interesPrioridad: true, cuentasInteres: [] };
     let recordId = '';
     
-    if (settingsReq.items.length > 0) {
-      recordId = settingsReq.items[0].id;
-      if (settingsReq.items[0].auto_rules) {
-        try { rules = { ...rules, ...JSON.parse(settingsReq.items[0].auto_rules) }; } catch (_) {}
+    if (settingsReq.length > 0) {
+      recordId = settingsReq[0].id;
+      if (settingsReq[0].value) {
+        try { rules = { ...rules, ...JSON.parse(settingsReq[0].value) }; } catch (_) {}
       }
     }
 
@@ -551,6 +699,27 @@ async function openTesoreriaConfigModal() {
     
     const bodyHtml = `
       <div class="space-y-6">
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-4">
+          <h4 class="font-bold text-gray-800 mb-3"><i class="fas fa-building mr-2 text-blue-600"></i>Modo de Operación de Recaudos</h4>
+          <p class="text-xs text-gray-500 mb-4">Define el comportamiento predeterminado para buscar la cartera al hacer un Recibo de Caja.</p>
+          <div class="space-y-3">
+            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
+              <input type="radio" name="teso-cfg-modo-operacion" value="comercial" class="mt-1 w-4 h-4 text-blue-600" ${rules.modoOperacion !== 'ph' ? 'checked' : ''}>
+              <div>
+                <span class="block font-semibold text-sm text-gray-800">Comercial (Búsqueda por Tercero)</span>
+                <span class="block text-xs text-gray-500 mt-1">Busca clientes de forma global por nombre o documento.</span>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
+              <input type="radio" name="teso-cfg-modo-operacion" value="ph" class="mt-1 w-4 h-4 text-blue-600" ${rules.modoOperacion === 'ph' ? 'checked' : ''}>
+              <div>
+                <span class="block font-semibold text-sm text-gray-800">Propiedad Horizontal (Búsqueda por Unidad)</span>
+                <span class="block text-xs text-gray-500 mt-1">Busca inmuebles (Ej: APTO A101) para filtrar y pagar solo la cartera de esa unidad.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
         <div class="bg-gray-50 border border-gray-200 rounded-xl p-5">
           <h4 class="font-bold text-gray-800 mb-3"><i class="fas fa-sort-amount-down mr-2 text-blue-600"></i>Prioridad de Aplicación Automática</h4>
           <p class="text-xs text-gray-500 mb-4">Cuando se registre un pago o recaudo en modo "Automático", el sistema ordenará las partidas abiertas del tercero siguiendo estas reglas:</p>
@@ -608,9 +777,12 @@ async function openTesoreriaConfigModal() {
       const interes = (document.getElementById('teso-cfg-interes') as HTMLInputElement).checked;
       const ctasStr = (document.getElementById('teso-cfg-cuentas-interes') as HTMLInputElement).value;
       const cuentasArr = ctasStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
+      const modoOperacion = (document.querySelector('input[name="teso-cfg-modo-operacion"]:checked') as HTMLInputElement)?.value || 'comercial';
 
       const payload = {
-        auto_rules: JSON.stringify({
+        key: 'treasury_rules',
+        value: JSON.stringify({
+          modoOperacion,
           primeroVencido: fifo,
           primeroMora: mora,
           interesPrioridad: interes,
@@ -620,9 +792,9 @@ async function openTesoreriaConfigModal() {
 
       try {
         if (recordId) {
-          await pb.update('treasury_settings', recordId, payload);
+          await pb.update('settings', recordId, payload);
         } else {
-          await pb.create('treasury_settings', payload);
+          await pb.create('settings', payload);
         }
         _showToast('Reglas guardadas correctamente', 'success');
         _closeModal();

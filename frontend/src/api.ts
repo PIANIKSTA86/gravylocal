@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 � api.js
  * Capa de acceso a PocketBase REST API.
  * Reemplaza completamente a SQL.js / localStorage.
@@ -1606,6 +1606,17 @@ const API = {
     // Líneas de ingreso por concepto (crédito)
     for (const ln of lines) {
       const concept = ln.expand?.concept_id;
+      let conceptCode = concept?.code || 'GEN';
+      if (!concept) {
+        if (/inter[eé]s de mora/i.test(String(ln.description || ''))) {
+          conceptCode = 'MORA';
+        } else {
+          const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
+          if (m) conceptCode = m[1];
+        }
+      }
+      const refPorConcepto = `${crossRef}-${conceptCode}`;
+
       let incomeAccountId = incomeDefaultAccount.id;
       if (ln.account_code) {
         // Override directo en la línea (conceptos individuales manuales)
@@ -1613,7 +1624,7 @@ const API = {
         incomeAccountId = overrideAcc.id;
       } else if (concept?.account_id) {
         incomeAccountId = concept.account_id;
-      } else if (!ln.concept_id && /inter[eé]s de mora/i.test(String(ln.description || ''))) {
+      } else if (conceptCode === 'MORA') {
         const lateAcc = await findAccByCode(lateFeeIncomeCode);
         incomeAccountId = lateAcc.id;
       }
@@ -1623,20 +1634,33 @@ const API = {
         credit: Number(ln.amount || 0),
         description: ln.description,
         thirdPartyId: ownerId || null,
-        crossDocRef: crossRef,
+        crossDocRef: refPorConcepto,
       }));
     }
 
-    // Línea de débito a CxC (una sola línea por el total)
-    const totalAmount = lines.reduce((s, l) => s + Number(l.amount || 0), 0);
-    txLines.unshift(await buildTxLine({
-      accountId: cxcAccount.id,
-      debit: totalAmount,
-      credit: 0,
-      description: `Cuota ${inv.period} — ${property?.name || property?.code || inv.property_id}`,
-      thirdPartyId: ownerId || null,
-      crossDocRef: crossRef,
-    }));
+    // Línea de débito a CxC (una línea por cada concepto para permitir trazabilidad en recaudo)
+    for (const ln of lines) {
+      const concept = ln.expand?.concept_id;
+      let conceptCode = concept?.code || 'GEN';
+      if (!concept) {
+        if (/inter[eé]s de mora/i.test(String(ln.description || ''))) {
+          conceptCode = 'MORA';
+        } else {
+          const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
+          if (m) conceptCode = m[1];
+        }
+      }
+      const refPorConcepto = `${crossRef}-${conceptCode}`;
+
+      txLines.unshift(await buildTxLine({
+        accountId: cxcAccount.id,
+        debit: Number(ln.amount || 0),
+        credit: 0,
+        description: ln.description,
+        thirdPartyId: ownerId || null,
+        crossDocRef: refPorConcepto,
+      }));
+    }
     // Reordenar
     txLines.forEach((l, i) => { l.line_order = i + 1; });
 

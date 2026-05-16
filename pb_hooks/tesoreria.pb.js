@@ -31,7 +31,7 @@ onRecordCreateRequest((e) => {
     throw new BadRequestError("DB Error: " + (err.message || err));
   }
   
-  function getOpenItems(thirdPartyId) {
+  function getOpenItems(thirdPartyId, propertyId) {
     const lines = $app.findRecordsByFilter(
       "tx_lines", 
       `third_party_id = '${thirdPartyId}'`, 
@@ -39,26 +39,66 @@ onRecordCreateRequest((e) => {
       10000, 
       0
     ) || [];
+
+    let allowedRefs = null;
+    let blockedRefs = null;
+    
+    if (propertyId) {
+      allowedRefs = {};
+      const invoices = $app.findRecordsByFilter("ph_invoices", `property_id = '${propertyId}' && status != 'voided'`, "", 10000, 0) || [];
+      for (const inv of invoices) {
+        allowedRefs[inv.get("number")] = true;
+      }
+    } else {
+      blockedRefs = {};
+      try {
+        const props = $app.findRecordsByFilter("ph_properties", `owner_id = '${thirdPartyId}'`, "", 1000, 0) || [];
+        const propIds = {};
+        for (const p of props) propIds[p.id] = true;
+        
+        if (props.length > 0) {
+            const invoices = $app.findRecordsByFilter("ph_invoices", `status != 'voided'`, "", 10000, 0) || [];
+            for (const inv of invoices) {
+                if (propIds[inv.get("property_id")]) {
+                    blockedRefs[inv.get("number")] = true;
+                }
+            }
+        }
+      } catch(err) {}
+    }
     
     const docsMap = {};
+
     for (const line of lines) {
       try {
         const acct = $app.findRecordById("accounts", line.get("account_id"));
         if (!acct.get("maneja_cruce")) continue;
         
+        const tx = $app.findRecordById("transactions", line.get("tx_id"));
+        if (tx && tx.get("status") === "voided") continue;
+        
         const ref = String(line.get("cross_doc_ref") || "").trim();
         if (!ref) continue;
+        
+        let isAllowed = false;
+        let isBlocked = false;
+        const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
+        
+        if (propertyId && allowedRefs) {
+            isAllowed = allowedRefs[ref] || allowedRefs[possibleBase];
+            if (!isAllowed) continue;
+        }
+        if (!propertyId && blockedRefs) {
+            isBlocked = blockedRefs[ref] || blockedRefs[possibleBase];
+            if (isBlocked) continue;
+        }
 
         const accountId = line.get("account_id");
         const key = ref + "|" + accountId;
 
         if (!docsMap[key]) {
-          let firstDate = "";
-          try {
-            const tx = $app.findRecordById("transactions", line.get("tx_id"));
-            firstDate = tx.get("date") || tx.get("created");
-          } catch(err) {}
-
+          let firstDate = tx ? (tx.get("date") || tx.get("created")) : "";
+          
           docsMap[key] = {
             key: key,
             cross_doc_ref: ref,
@@ -166,7 +206,7 @@ onRecordCreateRequest((e) => {
     const third_party_id = params.third_party_id;
     const amount = Number(params.amount);
     const contrapartida_account_id = params.contrapartida_account_id;
-    const openItems = getOpenItems(third_party_id);
+    const openItems = getOpenItems(third_party_id, params.ph_property_id);
     
     let abonos = [];
     if (modo === 'manual') {

@@ -233,7 +233,10 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
           <h3 class="text-lg font-bold text-gray-800">${title}</h3>
           <p class="text-sm text-gray-500">Historial de ${isRecaudo ? 'recaudos aplicados' : 'pagos emitidos'}.</p>
         </div>
-        <button class="btn btn-primary" onclick="${btnAction}"><i class="fas fa-plus mr-2"></i>${btnText}</button>
+        <div class="flex gap-2">
+          ${isRecaudo ? `<button class="btn btn-outline" onclick="window._openMassRCModal()"><i class="fas fa-file-upload mr-2"></i>Carga Masiva</button>` : ''}
+          <button class="btn btn-primary" onclick="${btnAction}"><i class="fas fa-plus mr-2"></i>${btnText}</button>
+        </div>
       </div>
 
       <div class="bg-gray-50/50 backdrop-blur-sm rounded-xl border border-gray-200 p-2 mb-4 flex flex-col md:flex-row gap-3 items-center shadow-sm">

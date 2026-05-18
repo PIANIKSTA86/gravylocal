@@ -226,12 +226,10 @@ async function renderUtilidades(container) {
               </div>
             </div>
           </div>
-
           <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
             Crea o actualiza unidades en lote para el módulo de Copropiedades. Si el código ya existe,
             la unidad se actualiza; si no existe, se crea automáticamente.
           </p>
-
           <div class="flex gap-3 flex-wrap">
             <button id="btn-mass-ph-units-template" class="btn btn-outline btn-sm">
               <i class="fas fa-download"></i> Descargar plantilla
@@ -242,8 +240,327 @@ async function renderUtilidades(container) {
           </div>
         </div>
 
+        <!-- ── Tarjeta: Carga masiva de productos ───────────── -->
+        <div class="stat-card yellow" id="util-card-mass-products">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(234,179,8,.12)">
+                <i class="fas fa-boxes-stacked" style="color:#CA8A04;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga masiva de productos</h3>
+                <p class="text-xs" style="color:#6B7280">Importa productos y servicios desde CSV o Excel</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Crea o actualiza productos en lote usando una plantilla estándar. Si el código ya existe el producto se actualiza; si no existe, se crea automáticamente.
+          </p>
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-products-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-products-open" class="btn btn-secondary btn-sm">
+              <i class="fas fa-upload"></i> Cargar archivo
+            </button>
+          </div>
+        </div>
       </div>
     </div>`;
+
+    // Listeners de carga masiva de productos
+    $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
+    $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
+          /* ══════════════════════════════════════════════════════════
+             CARGA MASIVA DE PRODUCTOS
+          ══════════════════════════════════════════════════════════ */
+          function _downloadMassProductsTemplate() {
+            const header = [
+              'codigo','nombre','tipo','unidad','presentacion','categoria','linea','iva','precio_base','precio_venta_2','precio_venta_3','costo','activo','unspsc','ean','peso','cajas_en_pallet','und_empaque','peso_x_und_empaque','descripcion'
+            ].join(',');
+            const rows = [
+              'P-001,Producto demo,BIEN,UND,Caja x 12,Aseo,Hogar,19,12000,0,0,8000,Si,44121618,7702010123456,1.2,10,12,0.1,Producto de ejemplo',
+              'S-002,Servicio demo,SERVICIO,SVC,,Servicios,Consultoría,0,50000,0,0,0,Si,,,,,,,Servicio de ejemplo'
+            ].join('\n');
+            const blob = new Blob([header + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'plantilla_productos.csv'; a.click();
+            URL.revokeObjectURL(url);
+          }
+
+          async function _openMassProductsImportModal() {
+            if (!can('canWrite')) return showToast('No tienes permisos para importar productos', 'error');
+            if (window._massProductsImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+
+            openModal(
+              '<i class="fas fa-boxes-stacked mr-2" style="color:#CA8A04"></i>Carga masiva de productos',
+              `<div class="mb-2">
+                <p class="text-sm mb-3" style="color:#374151">
+                  Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con los productos a registrar o actualizar.<br>
+                  Si el <strong>código</strong> ya existe, el producto será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
+                </p>
+                <div class="rounded-xl p-3 mb-3" style="background:#FEF9C3;border:1px solid #FDE68A">
+                  <p class="text-xs font-semibold mb-1" style="color:#CA8A04;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
+                  <div class="flex flex-wrap gap-2 mb-2">
+                    ${['codigo','nombre','tipo','unidad'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#FEF3C7;color:#CA8A04">${c}</code>`).join('')}
+                    ${['presentacion','categoria','linea','iva','precio_base','precio_venta_2','precio_venta_3','costo','activo','unspsc','ean','peso','cajas_en_pallet','und_empaque','peso_x_und_empaque','descripcion'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+                  </div>
+                  <p class="text-xs" style="color:#CA8A04">
+                    <strong>tipo</strong>: BIEN o SERVICIO. <strong>unidad</strong>: UND, KG, SVC, etc. <strong>iva</strong>: 0, 5, 19.
+                  </p>
+                </div>
+                <div id="mass-products-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#FDE68A;background:#FFFBEB">
+                  <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
+                  <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#CA8A04;text-decoration:underline">haz clic para seleccionar</span></p>
+                  <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
+                  <input type="file" id="mass-products-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+                </div>
+                <div id="mass-products-progress-wrap" class="hidden mt-4">
+                  <div class="w-full rounded-full h-2" style="background:#E5E7EB">
+                    <div id="mass-products-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#CA8A04,#1A4B8C);width:0%"></div>
+                  </div>
+                  <p id="mass-products-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
+                </div>
+                <div id="mass-products-preview" class="mt-4 hidden">
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-sm font-semibold" style="color:#0D2137">Vista previa</p>
+                    <button class="btn btn-outline btn-sm" id="btn-mass-products-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+                  </div>
+                  <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
+                    <table class="data-table text-xs" id="mass-products-preview-table">
+                      <thead><tr>
+                        <th>#</th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Unidad</th><th>IVA</th><th>Precio</th><th>Estado</th><th>Detalle</th>
+                      </tr></thead>
+                      <tbody id="mass-products-preview-body"></tbody>
+                    </table>
+                  </div>
+                  <div id="mass-products-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+                </div>
+              </div>`,
+              `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+               <button class="btn btn-primary hidden" id="btn-mass-products-run"><i class="fas fa-bolt mr-1"></i>Ejecutar carga</button>`,
+              true
+            );
+
+            let parsedRows = [];
+            const dropZone = $('#mass-products-drop-zone');
+            const fileInput = $('#mass-products-file-input');
+            const runBtn = $('#btn-mass-products-run');
+            const clearBtn = $('#btn-mass-products-clear');
+
+            const resetPreview = () => {
+              parsedRows = [];
+              $('#mass-products-preview')?.classList.add('hidden');
+              runBtn?.classList.add('hidden');
+              const body = $('#mass-products-preview-body');
+              if (body) body.innerHTML = '';
+              const summary = $('#mass-products-summary');
+              if (summary) summary.innerHTML = '';
+              if (fileInput) fileInput.value = '';
+            };
+            const setDropDefault = () => {
+              if (!dropZone) return;
+              dropZone.style.borderColor = '#FDE68A';
+              dropZone.style.background = '#FFFBEB';
+            };
+            dropZone?.addEventListener('click', () => fileInput?.click());
+            dropZone?.addEventListener('dragover', e => {
+              e.preventDefault();
+              dropZone.style.borderColor = '#CA8A04';
+              dropZone.style.background = '#FEF9C3';
+            });
+            dropZone?.addEventListener('dragleave', () => setDropDefault());
+            dropZone?.addEventListener('drop', e => {
+              e.preventDefault();
+              setDropDefault();
+              const file = e.dataTransfer?.files?.[0];
+              if (file) processFile(file);
+            });
+            fileInput?.addEventListener('change', () => {
+              const file = fileInput.files?.[0];
+              if (file) processFile(file);
+            });
+            clearBtn?.addEventListener('click', resetPreview);
+            runBtn?.addEventListener('click', () => _executeMassProductsImport(parsedRows));
+
+            async function processFile(file) {
+              if (file.size > 8 * 1024 * 1024) return showToast('El archivo supera el límite de 8 MB', 'error');
+              const ext = String(file.name.split('.').pop() || '').toLowerCase();
+              let rawRows = [];
+              try {
+                if (ext === 'csv') {
+                  rawRows = _massTxParseCsv(await file.text());
+                } else if (ext === 'xlsx' || ext === 'xls') {
+                  rawRows = _massTxParseExcel(await file.arrayBuffer());
+                } else {
+                  return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+                }
+              } catch (err) {
+                return showToast(`Error al leer el archivo: ${err.message}`, 'error');
+              }
+              if (!rawRows.length) return showToast('El archivo no contiene datos', 'warning');
+              parsedRows = await _massProductsBuildDraft(rawRows);
+              _massProductsRenderPreview(parsedRows);
+            }
+          }
+
+          async function _massProductsBuildDraft(rawRows) {
+            // Cargar productos existentes para update/insert
+            const existing = await pb.listAll('products', {});
+            const byCode = new Map(existing.map(p => [String(p.code || '').toUpperCase(), p]));
+            const validTypes = new Set(['BIEN','SERVICIO']);
+            const validUnits = (typeof PRODUCT_UNITS !== 'undefined' ? PRODUCT_UNITS : ['UND','KG','SVC']);
+            const validIva = new Set([0,5,19]);
+            return rawRows.map((raw, i) => {
+              const rowNo = i + 2;
+              const get = (...keys) => {
+                for (const k of keys) {
+                  const v = raw[_massTxNormHeader(k)];
+                  if (v !== undefined && String(v).trim() !== '') return String(v).trim();
+                }
+                return '';
+              };
+              const code = get('codigo','code','código').toUpperCase();
+              const name = get('nombre','name');
+              const type = get('tipo','type').toUpperCase();
+              const unit = get('unidad','unit').toUpperCase();
+              const iva = Number(get('iva','iva_rate'));
+              const activeRaw = get('activo','active','estado').toLowerCase();
+              const active = !/^(no|0|false|inactivo|inactiva)$/i.test(activeRaw);
+              // Validaciones mínimas
+              if (!code) return { ok: false, rowNo, error: `Fila ${rowNo}: falta código` };
+              if (!name) return { ok: false, rowNo, error: `Fila ${rowNo}: falta nombre` };
+              if (!validTypes.has(type)) return { ok: false, rowNo, error: `Fila ${rowNo}: tipo inválido (${type})` };
+              if (!validUnits.includes(unit)) return { ok: false, rowNo, error: `Fila ${rowNo}: unidad inválida (${unit})` };
+              if (!validIva.has(iva)) return { ok: false, rowNo, error: `Fila ${rowNo}: IVA inválido (${iva})` };
+              // Payload
+              const payload = {
+                code,
+                name,
+                type,
+                unit,
+                presentacion: get('presentacion'),
+                categoria: get('categoria'),
+                linea: get('linea'),
+                iva_rate: iva,
+                base_price: parseFloat(get('precio_base')) || 0,
+                precio_venta_2: toNullableNumber(get('precio_venta_2')),
+                precio_venta_3: toNullableNumber(get('precio_venta_3')),
+                cost_price: parseFloat(get('costo')) || 0,
+                active,
+                unspsc_code: get('unspsc'),
+                ean_code: get('ean'),
+                peso: toNullableNumber(get('peso')),
+                cajas_en_pallet: toNullableNumber(get('cajas_en_pallet')),
+                und_empaque: toNullableNumber(get('und_empaque')),
+                peso_x_und_empaque: toNullableNumber(get('peso_x_und_empaque')),
+                description: get('descripcion'),
+              };
+              const exists = byCode.has(code);
+              return {
+                ok: true,
+                rowNo,
+                code,
+                name,
+                type,
+                unit,
+                iva,
+                price: payload.base_price,
+                active,
+                mode: exists ? 'update' : 'create',
+                existingId: exists ? byCode.get(code).id : null,
+                payload,
+              };
+            });
+          }
+
+          function _massProductsRenderPreview(rows) {
+            const preview = $('#mass-products-preview');
+            const tbody   = $('#mass-products-preview-body');
+            const summary = $('#mass-products-summary');
+            const runBtn  = $('#btn-mass-products-run');
+            if (!preview || !tbody || !summary || !runBtn) return;
+            const okRows  = rows.filter(r => r.ok);
+            const badRows = rows.filter(r => !r.ok);
+            tbody.innerHTML = rows.map(r => {
+              if (r.ok) {
+                return `<tr>
+                  <td>${r.rowNo}</td>
+                  <td><span class="font-semibold" style="color:#CA8A04">${esc(r.code)}</span></td>
+                  <td>${esc(r.name)}</td>
+                  <td>${esc(r.type)}</td>
+                  <td>${esc(r.unit)}</td>
+                  <td>${r.iva}</td>
+                  <td>${fmt(r.price)}</td>
+                  <td><span class="badge ${r.active ? 'badge-green' : 'badge-gray'}">${r.active ? 'Activo' : 'Inactivo'}</span></td>
+                  <td><span class="badge ${r.mode === 'update' ? 'badge-orange' : 'badge-blue'}">${r.mode === 'update' ? 'Actualizar' : 'Crear'}</span></td>
+                </tr>`;
+              }
+              return `<tr style="background:#FFF7F7">
+                <td>${r.rowNo}</td>
+                <td colspan="7" class="text-xs" style="color:#EF4444">${esc(r.error || 'Error')}</td>
+                <td><span class="badge badge-red">Error</span></td>
+              </tr>`;
+            }).join('');
+            summary.innerHTML = `<span style="color:${badRows.length ? '#B91C1C' : '#166534'}">
+              ${rows.length} fila(s): ${okRows.length} válida(s), ${badRows.length} con error.
+              ${badRows.length ? 'Las filas con error serán omitidas.' : 'Listo para ejecutar.'}
+            </span>`;
+            preview.classList.remove('hidden');
+            if (okRows.length) runBtn.classList.remove('hidden');
+            else runBtn.classList.add('hidden');
+          }
+
+          async function _executeMassProductsImport(rows) {
+            if (window._massProductsImportInProgress) return;
+            const valids = (rows || []).filter(r => r.ok && r.payload);
+            if (!valids.length) return showToast('No hay filas válidas para importar', 'warning');
+            window._massProductsImportInProgress = true;
+            const runBtn      = $('#btn-mass-products-run');
+            const progressWrap = $('#mass-products-progress-wrap');
+            const progressBar  = $('#mass-products-progress-bar');
+            const progressText = $('#mass-products-progress-text');
+            if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
+            progressWrap?.classList.remove('hidden');
+            let created = 0, updated = 0, failed = 0;
+            const failedRows = [];
+            try {
+              for (let i = 0; i < valids.length; i++) {
+                const row = valids[i];
+                const pct = (i / valids.length) * 100;
+                if (progressBar) progressBar.style.width = `${pct}%`;
+                if (progressText) progressText.textContent = `Procesando ${i + 1} de ${valids.length}: ${row.code}`;
+                try {
+                  if (row.mode === 'update' && row.existingId) {
+                    await pb.update('products', row.existingId, row.payload);
+                    updated++;
+                  } else {
+                    await pb.create('products', row.payload);
+                    created++;
+                  }
+                } catch (err) {
+                  failed++;
+                  failedRows.push(`Fila ${row.rowNo} (${row.code}): ${err.message}`);
+                }
+              }
+              if (progressBar) progressBar.style.width = '100%';
+              if (progressText) progressText.textContent = 'Proceso finalizado';
+              await API.logAudit('IMPORT', 'products', 'bulk', `${created} creados, ${updated} actualizados, ${failed} con error`);
+              if (failedRows.length) console.warn('[CargaMasivaProductos] Errores:', failedRows);
+              showToast(
+                `Carga completada: ${created} creados, ${updated} actualizados${failed ? `, ${failed} con error` : ''}`,
+                failed ? 'warning' : 'success',
+                5500
+              );
+              _loadSysInfo();
+              closeModal();
+            } finally {
+              window._massProductsImportInProgress = false;
+              if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga'; }
+            }
+          }
 
   _backupInProgress = false;
   _restoreInProgress = false;

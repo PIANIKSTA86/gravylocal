@@ -1,3 +1,154 @@
+// --- Configuración POS ---
+const POS_CONFIG_KEY = 'pos_settings_v1';
+function defaultPOSConfig() {
+  return {
+    operational: {
+      enable_discounts: true,
+      enable_freight: false,
+      enable_withholdings: true,
+      withholdings: {
+        reterenta: true,
+        reteiva: false,
+        reteica: true,
+      },
+      default_due_days: 0,
+      allow_negative_stock: false,
+      require_cash_count: true,
+    },
+    accounting: {
+      accounts: {
+        sales_code: '',
+        cash_code: '',
+        iva_by_rate: {
+          '0': '',
+          '5': '',
+          '19': '',
+        },
+        discount_code: '',
+        freight_code: '',
+      },
+      withholding_rules: [],
+    },
+    special: {
+      allow_price_edit: false,
+      require_customer: true,
+    }
+  };
+}
+
+async function getPOSConfig() {
+  try {
+    const raw = await (window as any).API.getSetting(POS_CONFIG_KEY);
+    if (!raw) return defaultPOSConfig();
+    return { ...defaultPOSConfig(), ...JSON.parse(raw) };
+  } catch {
+    return defaultPOSConfig();
+  }
+}
+
+async function savePOSConfig(cfg: any) {
+  await (window as any).API.setSetting(POS_CONFIG_KEY, JSON.stringify(cfg));
+  await (window as any).API.logAudit('CONFIG', 'POSConfig', null, 'Configuración de POS actualizada');
+}
+
+async function openPOSSettingsModal(onSaved: any = null) {
+  const [cfg, accounts] = await Promise.all([
+    getPOSConfig(),
+    (window as any).API.getAccounts(true),
+  ]);
+  const accountOptions = (selectedCode = '') => {
+    const rows = accounts.filter((a: any) => a.active && Number(a.level) >= 3).sort((a: any, b: any) => a.code.localeCompare(b.code));
+    return `<option value="">— Sin definir —</option>${rows.map((a: any) => `<option value="${(window as any).esc(a.code)}"${a.code === selectedCode ? ' selected' : ''}>${(window as any).esc(a.code)} — ${(window as any).esc(a.name)}</option>`).join('')}`;
+  };
+  const formHtml = `
+    <div class="space-y-5" style="color:#374151">
+      <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
+        <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-sliders mr-2"></i>Parámetros operativos</h4>
+        <p class="text-xs mb-3" style="color:#6B7280">Opciones generales del punto de venta.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-discount" type="checkbox" ${cfg.operational.enable_discounts ? 'checked' : ''}>Habilitar descuentos</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-freight" type="checkbox" ${cfg.operational.enable_freight ? 'checked' : ''}>Habilitar fletes</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-withholding" type="checkbox" ${cfg.operational.enable_withholdings ? 'checked' : ''}>Habilitar retenciones</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-neg-stock" type="checkbox" ${cfg.operational.allow_negative_stock ? 'checked' : ''}>Permitir stock negativo</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-cash-count" type="checkbox" ${cfg.operational.require_cash_count ? 'checked' : ''}>Exigir arqueo de caja</label>
+          <div class="form-group mb-0">
+            <label class="form-label">Plazo por defecto (días)</label>
+            <input id="pos-cfg-default-due" class="form-input" type="number" min="0" step="1" value="${(window as any).esc(String(cfg.operational.default_due_days || 0))}">
+          </div>
+        </div>
+      </div>
+      <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
+        <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-book mr-2"></i>Parámetros contables</h4>
+        <p class="text-xs mb-3" style="color:#6B7280">Cuentas usadas en la contabilización automática de ventas POS.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="form-group mb-0">
+            <label class="form-label">Cuenta Ventas (Cr)</label>
+            <select id="pos-cfg-sales" class="form-input">${accountOptions(cfg.accounting.accounts.sales_code)}</select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Cuenta Caja (Dr)</label>
+            <select id="pos-cfg-cash" class="form-input">${accountOptions(cfg.accounting.accounts.cash_code)}</select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Cuenta Descuentos</label>
+            <select id="pos-cfg-discount-acct" class="form-input">${accountOptions(cfg.accounting.accounts.discount_code)}</select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Cuenta Fletes</label>
+            <select id="pos-cfg-freight-acct" class="form-input">${accountOptions(cfg.accounting.accounts.freight_code)}</select>
+          </div>
+        </div>
+      </div>
+      <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
+        <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-cogs mr-2"></i>Opciones Especiales</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-price-edit" type="checkbox" ${cfg.special.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-require-customer" type="checkbox" ${cfg.special.require_customer ? 'checked' : ''}>Exigir cliente en cada venta</label>
+        </div>
+      </div>
+    </div>
+  `;
+  const footer = `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-pos-cfg-save">Guardar Cambios</button>`;
+  (window as any).openModal('Configuración POS', formHtml, footer, false);
+  setTimeout(() => {
+    document.getElementById('btn-pos-cfg-save')?.addEventListener('click', async () => {
+      const newCfg = {
+        operational: {
+          enable_discounts: (document.getElementById('pos-cfg-discount') as HTMLInputElement)?.checked,
+          enable_freight: (document.getElementById('pos-cfg-freight') as HTMLInputElement)?.checked,
+          enable_withholdings: (document.getElementById('pos-cfg-withholding') as HTMLInputElement)?.checked,
+          allow_negative_stock: (document.getElementById('pos-cfg-neg-stock') as HTMLInputElement)?.checked,
+          require_cash_count: (document.getElementById('pos-cfg-cash-count') as HTMLInputElement)?.checked,
+          default_due_days: Number((document.getElementById('pos-cfg-default-due') as HTMLInputElement)?.value || 0),
+          withholdings: {
+            reterenta: true, // Puedes expandir para más reglas
+            reteiva: false,
+            reteica: true,
+          },
+        },
+        accounting: {
+          accounts: {
+            sales_code: (document.getElementById('pos-cfg-sales') as HTMLSelectElement)?.value,
+            cash_code: (document.getElementById('pos-cfg-cash') as HTMLSelectElement)?.value,
+            discount_code: (document.getElementById('pos-cfg-discount-acct') as HTMLSelectElement)?.value,
+            freight_code: (document.getElementById('pos-cfg-freight-acct') as HTMLSelectElement)?.value,
+            iva_by_rate: cfg.accounting.accounts.iva_by_rate,
+          },
+          withholding_rules: [],
+        },
+        special: {
+          allow_price_edit: (document.getElementById('pos-cfg-price-edit') as HTMLInputElement)?.checked,
+          require_customer: (document.getElementById('pos-cfg-require-customer') as HTMLInputElement)?.checked,
+        }
+      };
+      await savePOSConfig(newCfg);
+      (window as any).showToast('Configuración guardada', 'success');
+      (window as any).closeModal();
+      if (onSaved) onSaved();
+    });
+  }, 100);
+}
 /**
  * GRAVY v2.0 — pos.ts
  * Módulo de Punto de Venta (POS) para Cajeros.
@@ -31,15 +182,22 @@ let selectedWarehouseId = "";
 export async function renderPOS(container: HTMLElement) {
   
   container.innerHTML = `
-    <div class="glass-panel p-6 space-y-6 min-h-[600px] flex flex-col justify-between">
+    <div class="rounded-xl border p-6 space-y-6 min-h-[600px] flex flex-col justify-between" style="border-color:#E5E7EB;background:#FCFCFD">
+      <div class="flex justify-end mb-2">
+        <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal()">
+          <i class="fas fa-cog"></i>
+        </button>
+      </div>
       <div id="pos-shift-container" class="flex-grow flex flex-col justify-center items-center py-12">
-        <div class="text-center text-white">
-          <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
-          <p class="text-sm text-gray-400">Verificando estado del turno de caja...</p>
+        <div class="text-center" style="color:#374151">
+          <i class="fas fa-spinner fa-spin text-4xl mb-4" style="color:#7F7CFF"></i>
+          <p class="text-sm" style="color:#6B7280">Verificando estado del turno de caja...</p>
         </div>
       </div>
     </div>
   `;
+// Exponer función global para el botón
+window.openPOSSettingsModal = openPOSSettingsModal;
 
   await window.checkActiveShift();
 }
@@ -52,10 +210,10 @@ window.checkActiveShift = async function() {
     const user = (window as any).pb.currentUser;
     if (!user) {
       container.innerHTML = `
-        <div class="text-center text-red-400 max-w-md p-6 border border-red-500/20 rounded-2xl bg-red-950/20">
+        <div class="text-center max-w-md p-6 border rounded-2xl" style="border-color:#FCA5A5;background:#FEF2F2;color:#DC2626">
           <i class="fas fa-exclamation-triangle text-4xl mb-3"></i>
           <h3 class="font-bold text-lg">Sesión no Iniciada</h3>
-          <p class="text-xs text-gray-400 mt-2">Por favor inicia sesión en la plataforma para poder abrir un turno de caja POS.</p>
+          <p class="text-xs mt-2" style="color:#6B7280">Por favor inicia sesión en la plataforma para poder abrir un turno de caja POS.</p>
         </div>
       `;
       return;
@@ -91,27 +249,27 @@ window.renderShiftOpeningForm = function() {
   if (!container) return;
 
   container.innerHTML = `
-    <div class="max-w-md w-full p-8 rounded-2xl border" style="border-color:rgba(255,255,255,0.08);background:rgba(10,15,30,0.6);backdrop-filter:blur(10px)">
+    <div class="max-w-md w-full p-8 rounded-2xl border" style="border-color:#E5E7EB;background:#FCFCFD">
       <div class="text-center space-y-2 mb-6">
-        <div class="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto text-blue-400 text-3xl">
+        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto text-blue-500 text-3xl">
           <i class="fas fa-cash-register"></i>
         </div>
-        <h3 class="text-xl font-bold text-white tracking-tight">Apertura de Turno de Caja</h3>
-        <p class="text-xs text-gray-400">Ingresa la base de efectivo inicial en cajón para abrir la jornada.</p>
+        <h3 class="text-xl font-bold" style="color:#0D2137">Apertura de Turno de Caja</h3>
+        <p class="text-xs" style="color:#6B7280">Ingresa la base de efectivo inicial en cajón para abrir la jornada.</p>
       </div>
 
       <div class="space-y-4">
         <div>
-          <label class="form-label text-gray-300 font-semibold mb-2 block">Base Inicial en Efectivo (COP) <span style="color:#EF4444">*</span></label>
+          <label class="form-label mb-2 block">Base Inicial en Efectivo (COP) <span style="color:#EF4444">*</span></label>
           <div class="relative">
             <span class="absolute left-3 top-2.5 text-gray-400 font-bold">$</span>
-            <input type="number" id="pos-initial-cash" class="form-input w-full pl-8 font-bold text-lg text-white" min="0" step="50" value="100000" style="background:rgba(255,255,255,0.05)">
+            <input type="number" id="pos-initial-cash" class="form-input w-full pl-8 font-bold text-lg" min="0" step="50" value="100000" style="background:#fff;color:#0D2137">
           </div>
         </div>
 
         <div>
-          <label class="form-label text-gray-300 font-semibold mb-2 block">Notas de Apertura</label>
-          <textarea id="pos-opening-notes" class="form-input w-full text-white" rows="2" placeholder="Ej: Billetes sencillos para cambio, turno mañana..." style="background:rgba(255,255,255,0.05)"></textarea>
+          <label class="form-label mb-2 block">Notas de Apertura</label>
+          <textarea id="pos-opening-notes" class="form-input w-full" rows="2" placeholder="Ej: Billetes sencillos para cambio, turno mañana..." style="background:#fff;color:#0D2137"></textarea>
         </div>
 
         <button class="btn btn-primary w-full py-3 font-bold text-sm tracking-wide mt-2" onclick="window.openPOSShift()">
@@ -186,7 +344,7 @@ window.loadPOSInterface = async function() {
           <div class="flex items-center gap-3">
             <div class="relative flex-grow">
               <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-              <input type="text" id="pos-search-product" class="form-input w-full pl-9 py-2.5 text-white" placeholder="Buscar por código de barra, código SKU o nombre del producto..." oninput="window.filterPosProducts()" style="background:rgba(255,255,255,0.05)">
+              <input type="text" id="pos-search-product" class="form-input w-full pl-9 py-2.5" placeholder="Buscar por código de barra, código SKU o nombre del producto..." oninput="window.filterPosProducts()" style="background:#fff;color:#0D2137">
             </div>
             <button class="btn btn-outline py-2.5" onclick="window.renderPOSStockReload()"><i class="fas fa-rotate"></i></button>
           </div>
@@ -200,28 +358,28 @@ window.loadPOSInterface = async function() {
         </div>
 
         <!-- Panel Derecho: Carrito de Compras (Col 5) -->
-        <div class="lg:col-span-5 flex flex-col justify-between rounded-2xl border p-5 h-full" style="border-color:rgba(255,255,255,0.08);background:rgba(10,15,30,0.5)">
+        <div class="lg:col-span-5 flex flex-col justify-between rounded-2xl border p-5 h-full" style="border-color:#E5E7EB;background:#FCFCFD">
           <div class="space-y-4 flex flex-col h-full justify-between">
             <!-- Barra superior del Carrito -->
-            <div class="flex justify-between items-center border-b pb-3" style="border-color:rgba(255,255,255,0.1)">
+            <div class="flex justify-between items-center border-b pb-3" style="border-color:#E5E7EB">
               <div>
-                <span class="font-bold text-white block text-sm"><i class="fas fa-cart-shopping text-blue-400 mr-1"></i> Carrito de Ventas</span>
-                <span class="text-xs text-gray-400">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
+                <span class="font-bold block text-sm" style="color:#0D2137"><i class="fas fa-cart-shopping text-blue-500 mr-1"></i> Carrito de Ventas</span>
+                <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
               </div>
-              <button class="btn btn-outline btn-sm text-red-400 hover:text-red-300" onclick="window.clearPOSCart()"><i class="fas fa-trash-can"></i> Vaciar</button>
+              <button class="btn btn-outline btn-sm text-red-500 hover:text-red-400" onclick="window.clearPOSCart()"><i class="fas fa-trash-can"></i> Vaciar</button>
             </div>
 
             <!-- Selector de Cliente y Bodega -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">Cliente</label>
-                <select id="pos-cart-customer" class="form-input w-full text-xs text-white" onchange="window.posOnCustomerChange()" style="background:rgba(255,255,255,0.05)">
+                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
+                <select id="pos-cart-customer" class="form-input w-full text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
                   ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
                 </select>
               </div>
               <div>
-                <label class="text-[10px] uppercase font-bold text-gray-400 block mb-1">Bodega</label>
-                <select id="pos-cart-warehouse" class="form-input w-full text-xs text-white" onchange="window.posOnWarehouseChange()" style="background:rgba(255,255,255,0.05)">
+                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Bodega</label>
+                <select id="pos-cart-warehouse" class="form-input w-full text-xs" onchange="window.posOnWarehouseChange()" style="background:#fff;color:#0D2137">
                   ${posWarehouses.map(w => `<option value="${w.id}"${selectedWarehouseId === w.id ? ' selected' : ''}>${w.name}</option>`).join('')}
                 </select>
               </div>
@@ -233,17 +391,17 @@ window.loadPOSInterface = async function() {
             </div>
 
             <!-- Resumen de Totales y Pago -->
-            <div class="border-t pt-4 space-y-3" style="border-color:rgba(255,255,255,0.1)">
+            <div class="border-t pt-4 space-y-3" style="border-color:#E5E7EB">
               <div class="space-y-1 text-xs">
-                <div class="flex justify-between text-gray-400"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold text-gray-200">$ 0</span></div>
-                <div class="flex justify-between text-gray-400"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold text-gray-200">$ 0</span></div>
-                <div class="flex justify-between text-base border-t pt-2 text-white font-extrabold" style="border-color:rgba(255,255,255,0.08)">
-                  <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-400 text-lg">$ 0</span>
+                <div class="flex justify-between" style="color:#6B7280"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold" style="color:#374151">$ 0</span></div>
+                <div class="flex justify-between" style="color:#6B7280"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold" style="color:#374151">$ 0</span></div>
+                <div class="flex justify-between text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137">
+                  <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-500 text-lg">$ 0</span>
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-3 pt-2">
-                <button class="btn btn-outline py-3 font-semibold text-xs text-orange-400 hover:text-orange-300" onclick="window.openArqueoPOSModal()">
+                <button class="btn btn-outline py-3 font-semibold text-xs text-orange-500 hover:text-orange-400" onclick="window.openArqueoPOSModal()">
                   <i class="fas fa-lock mr-1"></i> ARQUEO / CERRAR CAJA
                 </button>
                 <button class="btn btn-primary py-3 font-bold text-sm" id="btn-pos-checkout" onclick="window.openPOSPaymentModal()">
@@ -328,7 +486,8 @@ window.filterPosProducts = function() {
                 <span class="text-[9px] font-mono text-gray-500 block">[${(window as any).esc(p.code || 'S/C')}]</span>
                 <span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${stockBadgeClass}">${stockLabel}</span>
               </div>
-              <h4 class="font-semibold text-xs text-white mt-1.5 line-clamp-2" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
+              <h4 class="font-semibold text-xs text-black mt-1.5 line-clamp-2" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
+              <div class="text-[11px] text-blue-700 font-bold mt-1">${(window as any).fmt(p.sales_price || 0)}</div>
             </div>
             <div class="mt-3 flex justify-between items-center">
               <span class="font-extrabold text-blue-400 text-sm">${(window as any).fmt(p.sales_price || 0)}</span>
@@ -447,14 +606,14 @@ window.renderPOSCart = function() {
     return `
       <div class="rounded-xl p-3 border flex justify-between items-center gap-3 bg-white/[0.01]" style="border-color:rgba(255,255,255,0.05)">
         <div class="flex-grow">
-          <h5 class="font-bold text-xs text-white line-clamp-1">${(window as any).esc(item.name)}</h5>
+          <h5 class="font-bold text-xs text-black line-clamp-1">${(window as any).esc(item.name)}</h5>
           <div class="text-[10px] text-gray-400 mt-0.5">Precio: ${(window as any).fmt(item.sales_price)} | IVA: ${item.iva_rate}%</div>
         </div>
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-1 border rounded-lg p-0.5" style="border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.02)">
-            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-white hover:bg-white/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', -1)"><i class="fas fa-minus text-[10px]"></i></button>
-            <span class="text-xs text-white font-bold px-1.5">${(window as any).fmtN(item.qty)}</span>
-            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-white hover:bg-white/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', 1)"><i class="fas fa-plus text-[10px]"></i></button>
+            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', -1)"><i class="fas fa-minus text-[10px]"></i></button>
+            <span class="text-xs text-black font-bold px-1.5">${(window as any).fmtN(item.qty)}</span>
+            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', 1)"><i class="fas fa-plus text-[10px]"></i></button>
           </div>
           <button type="button" class="text-gray-500 hover:text-red-400 p-1 border-none bg-transparent cursor-pointer" onclick="window.removeCartItem('${item.id}')"><i class="fas fa-times text-sm"></i></button>
         </div>

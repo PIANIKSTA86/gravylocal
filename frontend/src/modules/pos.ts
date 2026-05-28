@@ -26,6 +26,11 @@ function defaultPOSConfig() {
         },
         discount_code: '',
         freight_code: '',
+        payment_accounts: {
+          efectivo_code: '',
+          transferencia_code: '',
+          credito_code: '',
+        },
       },
       withholding_rules: [],
     },
@@ -35,6 +40,7 @@ function defaultPOSConfig() {
       price_source: 'base_price',
       catalog_view_mode: 'grid',
       prices_include_iva: false,  // true = precios con IVA incluido (precio tax-in)
+      default_customer_id: '',
     }
   };
 }
@@ -58,6 +64,22 @@ function calcItemTax(salesPrice: number, ivaRate: number, cfg: any) {
   return { base: salesPrice, ivaAmount: Math.round(ivaAmount * 100) / 100, total: salesPrice + ivaAmount };
 }
 
+function playPOSBeep() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // Tono de 880Hz (La5)
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  } catch (_) {}
+}
+
 async function getPOSConfig() {
   try {
     const raw = await (window as any).API.getSetting(POS_CONFIG_KEY);
@@ -74,14 +96,21 @@ async function savePOSConfig(cfg: any) {
 }
 
 async function openPOSSettingsModal(onSaved: any = null) {
-  const [cfg, accounts] = await Promise.all([
+  const [cfg, accounts, thirds] = await Promise.all([
     getPOSConfig(),
     (window as any).API.getAccounts(true),
+    (window as any).API.getTerceros({ type: 'CLIENTE' }),
   ]);
   const accountOptions = (selectedCode = '') => {
     const rows = accounts.filter((a: any) => a.active && Number(a.level) >= 3).sort((a: any, b: any) => a.code.localeCompare(b.code));
     return `<option value="">— Sin definir —</option>${rows.map((a: any) => `<option value="${(window as any).esc(a.code)}"${a.code === selectedCode ? ' selected' : ''}>${(window as any).esc(a.code)} — ${(window as any).esc(a.name)}</option>`).join('')}`;
   };
+
+  const initialIvaRates = Array.from(new Set([
+    '0', '5', '19',
+    ...Object.keys(cfg.accounting?.accounts?.iva_by_rate || {}),
+  ])).sort((a, b) => Number(a) - Number(b));
+
   const formHtml = `
     <div class="space-y-5" style="color:#374151">
       <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
@@ -104,12 +133,8 @@ async function openPOSSettingsModal(onSaved: any = null) {
         <p class="text-xs mb-3" style="color:#6B7280">Cuentas usadas en la contabilización automática de ventas POS.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div class="form-group mb-0">
-            <label class="form-label">Cuenta Ventas (Cr)</label>
+            <label class="form-label">Cuenta Ventas Fallback (Cr)</label>
             <select id="pos-cfg-sales" class="form-input">${accountOptions(cfg.accounting.accounts.sales_code)}</select>
-          </div>
-          <div class="form-group mb-0">
-            <label class="form-label">Cuenta Caja (Dr)</label>
-            <select id="pos-cfg-cash" class="form-input">${accountOptions(cfg.accounting.accounts.cash_code)}</select>
           </div>
           <div class="form-group mb-0">
             <label class="form-label">Cuenta Descuentos</label>
@@ -119,6 +144,27 @@ async function openPOSSettingsModal(onSaved: any = null) {
             <label class="form-label">Cuenta Fletes</label>
             <select id="pos-cfg-freight-acct" class="form-input">${accountOptions(cfg.accounting.accounts.freight_code)}</select>
           </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Efectivo Cuenta Caja (Dr)</label>
+            <select id="pos-cfg-cash-acct" class="form-input">${accountOptions(cfg.accounting?.accounts?.payment_accounts?.efectivo_code || cfg.accounting.accounts.cash_code)}</select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Transferencia Cuenta Banco (Dr)</label>
+            <select id="pos-cfg-transfer-acct" class="form-input">${accountOptions(cfg.accounting?.accounts?.payment_accounts?.transferencia_code)}</select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Crédito Cuenta CxC (Dr)</label>
+            <select id="pos-cfg-credit-acct" class="form-input">${accountOptions(cfg.accounting?.accounts?.payment_accounts?.credito_code)}</select>
+          </div>
+
+          <div class="mt-4 rounded-xl border p-3 col-span-2" style="border-color:#E5E7EB;background:#fff">
+            <div class="flex items-center justify-between mb-2">
+              <label class="form-label" style="margin-bottom:0">Cuentas IVA Generado por tarifa</label>
+              <button type="button" class="btn btn-outline btn-sm" id="btn-pos-cfg-add-iva-rate"><i class="fas fa-plus"></i> Agregar tarifa</button>
+            </div>
+            <div id="pos-cfg-iva-rates-wrap" class="space-y-2"></div>
+            <p class="text-xs mt-2" style="color:#6B7280">La contabilización buscará la cuenta de pasivo según el IVA % de cada línea.</p>
+          </div>
         </div>
       </div>
       <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
@@ -127,6 +173,13 @@ async function openPOSSettingsModal(onSaved: any = null) {
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-price-edit" type="checkbox" ${cfg.special.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-require-customer" type="checkbox" ${cfg.special.require_customer ? 'checked' : ''}>Exigir cliente en cada venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-prices-include-iva" type="checkbox" ${cfg.special.prices_include_iva ? 'checked' : ''}><span>Precios <strong>incluyen IVA</strong> (precio tax-in)</span></label>
+          <div class="form-group mb-0">
+            <label class="form-label">Cliente Predeterminado</label>
+            <select id="pos-cfg-default-customer" class="form-input">
+              <option value="">— Consumidor Final / Ninguno —</option>
+              ${thirds.map((t: any) => `<option value="${t.id}"${cfg.special?.default_customer_id === t.id ? ' selected' : ''}>${(window as any).esc(t.name)} (${t.doc_number || t.nit})</option>`).join('')}
+            </select>
+          </div>
           <div class="form-group mb-0">
             <label class="form-label">Origen de Precio en POS</label>
             <select id="pos-cfg-price-source" class="form-input">
@@ -151,8 +204,45 @@ async function openPOSSettingsModal(onSaved: any = null) {
   const footer = `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
     <button class="btn btn-primary" id="btn-pos-cfg-save">Guardar Cambios</button>`;
   (window as any).openModal('Configuración POS', formHtml, footer, false);
+
   setTimeout(() => {
+    const ivaWrap = document.getElementById('pos-cfg-iva-rates-wrap');
+    const addIvaRateRow = (rate = '', accountCode = '') => {
+      if (!ivaWrap) return;
+      const row = document.createElement('div');
+      row.className = 'grid grid-cols-12 gap-2 items-center';
+      row.innerHTML = `
+        <div class="col-span-3">
+          <input class="form-input pos-cfg-iva-rate" type="number" min="0" step="0.01" placeholder="Tarifa %" value="${(window as any).esc(String(rate || ''))}">
+        </div>
+        <div class="col-span-8">
+          <select class="form-input pos-cfg-iva-acct">${accountOptions(accountCode)}</select>
+        </div>
+        <div class="col-span-1 text-right">
+          <button type="button" class="btn btn-danger btn-sm pos-cfg-iva-del"><i class="fas fa-trash"></i></button>
+        </div>`;
+      row.querySelector('.pos-cfg-iva-del')?.addEventListener('click', () => row.remove());
+      ivaWrap.appendChild(row);
+    };
+
+    if (initialIvaRates.length) {
+      initialIvaRates.forEach((rate) => addIvaRateRow(rate, cfg.accounting.accounts.iva_by_rate?.[rate] || ''));
+    } else {
+      addIvaRateRow('19', '');
+    }
+    document.getElementById('btn-pos-cfg-add-iva-rate')?.addEventListener('click', () => addIvaRateRow('', ''));
+
     document.getElementById('btn-pos-cfg-save')?.addEventListener('click', async () => {
+      const ivaByRate: any = {};
+      const rateRows = document.querySelectorAll('#pos-cfg-iva-rates-wrap > div');
+      rateRows.forEach(row => {
+        const rateVal = (row.querySelector('.pos-cfg-iva-rate') as HTMLInputElement)?.value.trim();
+        const acctVal = (row.querySelector('.pos-cfg-iva-acct') as HTMLSelectElement)?.value;
+        if (rateVal && acctVal) {
+          ivaByRate[rateVal] = acctVal;
+        }
+      });
+
       const newCfg = {
         operational: {
           enable_discounts: (document.getElementById('pos-cfg-discount') as HTMLInputElement)?.checked,
@@ -162,7 +252,7 @@ async function openPOSSettingsModal(onSaved: any = null) {
           require_cash_count: (document.getElementById('pos-cfg-cash-count') as HTMLInputElement)?.checked,
           default_due_days: Number((document.getElementById('pos-cfg-default-due') as HTMLInputElement)?.value || 0),
           withholdings: {
-            reterenta: true, // Puedes expandir para más reglas
+            reterenta: true,
             reteiva: false,
             reteica: true,
           },
@@ -170,10 +260,15 @@ async function openPOSSettingsModal(onSaved: any = null) {
         accounting: {
           accounts: {
             sales_code: (document.getElementById('pos-cfg-sales') as HTMLSelectElement)?.value,
-            cash_code: (document.getElementById('pos-cfg-cash') as HTMLSelectElement)?.value,
+            cash_code: (document.getElementById('pos-cfg-cash-acct') as HTMLSelectElement)?.value,
             discount_code: (document.getElementById('pos-cfg-discount-acct') as HTMLSelectElement)?.value,
             freight_code: (document.getElementById('pos-cfg-freight-acct') as HTMLSelectElement)?.value,
-            iva_by_rate: cfg.accounting.accounts.iva_by_rate,
+            payment_accounts: {
+              efectivo_code: (document.getElementById('pos-cfg-cash-acct') as HTMLSelectElement)?.value,
+              transferencia_code: (document.getElementById('pos-cfg-transfer-acct') as HTMLSelectElement)?.value,
+              credito_code: (document.getElementById('pos-cfg-credit-acct') as HTMLSelectElement)?.value,
+            },
+            iva_by_rate: ivaByRate,
           },
           withholding_rules: [],
         },
@@ -183,10 +278,11 @@ async function openPOSSettingsModal(onSaved: any = null) {
           prices_include_iva: (document.getElementById('pos-cfg-prices-include-iva') as HTMLInputElement)?.checked,
           price_source: (document.getElementById('pos-cfg-price-source') as HTMLSelectElement)?.value || 'base_price',
           catalog_view_mode: (document.getElementById('pos-cfg-catalog-view') as HTMLSelectElement)?.value || 'grid',
+          default_customer_id: (document.getElementById('pos-cfg-default-customer') as HTMLSelectElement)?.value || '',
         }
       };
       await savePOSConfig(newCfg);
-      posConfig = newCfg; // Actualizar variable a nivel de módulo
+      posConfig = newCfg;
       (window as any).showToast('Configuración guardada', 'success');
       (window as any).closeModal();
       if (onSaved) onSaved();
@@ -227,6 +323,8 @@ let selectedWarehouseId = "";
 let posConfig: any = null;
 let activeCategoryFilter = "";
 let activeLineFilter = "";
+let posDiscountPct = 0;
+let posFreightAmt = 0;
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
@@ -393,13 +491,18 @@ window.loadPOSInterface = async function() {
     posWarehouses = whs;
 
     // Buscar "Consumidor Final" por defecto
-    const consumer = posCustomers.find(c => c.doc_number === '222222222' || c.nit === '222222222' || c.name.toLowerCase().includes('consumidor'));
+    const defaultId = posConfig?.special?.default_customer_id;
+    const consumer = defaultId 
+      ? posCustomers.find(c => c.id === defaultId) 
+      : posCustomers.find(c => c.doc_number === '222222222' || c.nit === '222222222' || c.name.toLowerCase().includes('consumidor'));
     selectedCustomerId = consumer ? consumer.id : (posCustomers[0]?.id || "");
 
     // Bodega por defecto
     selectedWarehouseId = posWarehouses[0]?.id || "";
 
     posCart = [];
+    posDiscountPct = 0;
+    posFreightAmt = 0;
 
     // Render principal
     mainWrap.innerHTML = `
@@ -463,9 +566,25 @@ window.loadPOSInterface = async function() {
 
           <!-- Resumen de Totales y Pago (siempre visible al fondo) -->
           <div class="border-t px-5 pt-3 pb-4 space-y-3 flex-shrink-0" style="border-color:#E5E7EB;background:#FCFCFD">
+            ${(posConfig.operational.enable_discounts || posConfig.operational.enable_freight) ? `
+            <div class="grid grid-cols-2 gap-3 text-xs border-b pb-2 mb-2" style="border-color:#E5E7EB">
+              ${posConfig.operational.enable_discounts ? `
+              <div>
+                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Descuento (%)</label>
+                <input type="number" id="pos-cart-discount-input" class="form-input w-full text-xs py-1 px-2 font-bold" min="0" max="100" value="0" oninput="window.posUpdateDiscountFreight()" style="background:#fff;color:#0D2137;height:28px">
+              </div>` : ''}
+              ${posConfig.operational.enable_freight ? `
+              <div>
+                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Flete ($)</label>
+                <input type="number" id="pos-cart-freight-input" class="form-input w-full text-xs py-1 px-2 font-bold" min="0" value="0" oninput="window.posUpdateDiscountFreight()" style="background:#fff;color:#0D2137;height:28px">
+              </div>` : ''}
+            </div>` : ''}
+
             <div class="space-y-1 text-xs">
               <div class="flex justify-between" style="color:#6B7280"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold" style="color:#374151">$ 0</span></div>
               <div class="flex justify-between" style="color:#6B7280"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold" style="color:#374151">$ 0</span></div>
+              ${posConfig.operational.enable_discounts ? `<div class="flex justify-between text-red-500" id="pos-cart-discount-row" style="display:none"><span>Descuento:</span> <span id="pos-cart-discount-val" class="font-bold">-$ 0</span></div>` : ''}
+              ${posConfig.operational.enable_freight ? `<div class="flex justify-between text-emerald-600" id="pos-cart-freight-row" style="display:none"><span>Flete:</span> <span id="pos-cart-freight-val" class="font-bold">+$ 0</span></div>` : ''}
               <div class="flex justify-between text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137">
                 <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-500 text-lg">$ 0</span>
               </div>
@@ -486,6 +605,67 @@ window.loadPOSInterface = async function() {
     `;
 
     await window.loadPosProductsWithStock();
+
+    // Foco automático inicial y listeners de escáner y teclado
+    setTimeout(() => {
+      const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+
+        searchInput.addEventListener('keydown', async (ev) => {
+          if (ev.key === 'Enter') {
+            const val = searchInput.value.trim();
+            if (val === '') {
+              // Enter con buscador vacío -> Ir a Cobrar
+              ev.preventDefault();
+              if (posCart.length > 0 && typeof (window as any).openPOSPaymentModal === 'function') {
+                (window as any).openPOSPaymentModal();
+              }
+              return;
+            }
+
+            // Buscar coincidencia exacta por código de barra (SKU) u/o EAN
+            const exactMatch = posProducts.find(p => String(p.code || '').trim() === val || String(p.ean_code || '').trim() === val);
+            if (exactMatch) {
+              ev.preventDefault();
+              const allowNegative = posConfig?.operational?.allow_negative_stock;
+              const inCart = posCart.find(item => item.id === exactMatch.id);
+              const currentQty = inCart ? inCart.qty : 0;
+              
+              if (exactMatch.type === 'BIEN' && !allowNegative && currentQty + 1 > exactMatch.stock) {
+                (window as any).showToast(`Existencias insuficientes para ${exactMatch.name} (disp. ${exactMatch.stock}).`, 'warning');
+                return;
+              }
+
+              if (typeof (window as any).addToPOSCart === 'function') {
+                (window as any).addToPOSCart(exactMatch.id);
+              }
+              playPOSBeep();
+
+              searchInput.value = '';
+              if (typeof (window as any).filterPosProducts === 'function') {
+                (window as any).filterPosProducts();
+              }
+            }
+          }
+        });
+      }
+    }, 150);
+
+    // Evitar que el clic en zonas muertas de la pantalla robe el foco del buscador
+    const mainContainer = document.getElementById('pos-main-container') || mainWrap;
+    if (mainContainer) {
+      mainContainer.addEventListener('click', (ev) => {
+        const target = ev.target as HTMLElement;
+        const isInteractive = target.closest('input, textarea, select, button, a, [onclick], .btn, .interactive-item');
+        if (!isInteractive) {
+          const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }
+      });
+    }
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al iniciar POS', 'error');
   }
@@ -612,7 +792,7 @@ window.filterPosProducts = function() {
   // 3. Filtrar lista de productos
   const filtered = posProducts.filter(p => {
     if (query) {
-      return `${p.name} ${p.code}`.toLowerCase().includes(query);
+      return `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(query);
     }
     if (activeCategoryFilter) {
       if (activeCategoryFilter === "Sin Categoría") {
@@ -814,6 +994,19 @@ window.renderPOSCart = function() {
     if (sub) sub.textContent = (window as any).fmt(0);
     if (iva) iva.textContent = (window as any).fmt(0);
     if (tot) tot.textContent = (window as any).fmt(0);
+
+    const discRow = document.getElementById('pos-cart-discount-row');
+    if (discRow) discRow.style.display = 'none';
+    const freightRow = document.getElementById('pos-cart-freight-row');
+    if (freightRow) freightRow.style.display = 'none';
+
+    const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+    if (discInput) discInput.value = '0';
+    const freightInput = document.getElementById('pos-cart-freight-input') as HTMLInputElement;
+    if (freightInput) freightInput.value = '0';
+
+    posDiscountPct = 0;
+    posFreightAmt = 0;
     return;
   }
 
@@ -859,7 +1052,9 @@ window.renderPOSCart = function() {
     `;
   }).join('');
 
-  const total = subtotal + ivaTotal;
+  const discountAmount = Math.round(subtotal * (posDiscountPct / 100) * 100) / 100;
+  const freightAmount = Number(posFreightAmt || 0);
+  const total = subtotal - discountAmount + ivaTotal + freightAmount;
 
   const subLbl = document.getElementById('pos-cart-sub');
   const ivaLbl = document.getElementById('pos-cart-iva');
@@ -867,7 +1062,45 @@ window.renderPOSCart = function() {
 
   if (subLbl) subLbl.textContent = (window as any).fmt(subtotal);
   if (ivaLbl) ivaLbl.textContent = (window as any).fmt(ivaTotal);
+
+  const discRow = document.getElementById('pos-cart-discount-row');
+  const discLbl = document.getElementById('pos-cart-discount-val');
+  if (discRow && discLbl) {
+    if (discountAmount > 0) {
+      discRow.style.display = 'flex';
+      discLbl.textContent = `-${(window as any).fmt(discountAmount)}`;
+    } else {
+      discRow.style.display = 'none';
+    }
+  }
+
+  const freightRow = document.getElementById('pos-cart-freight-row');
+  const freightLbl = document.getElementById('pos-cart-freight-val');
+  if (freightRow && freightLbl) {
+    if (freightAmount > 0) {
+      freightRow.style.display = 'flex';
+      freightLbl.textContent = `+${(window as any).fmt(freightAmount)}`;
+    } else {
+      freightRow.style.display = 'none';
+    }
+  }
+
   if (totLbl) totLbl.textContent = (window as any).fmt(total);
+};
+
+window.posUpdateDiscountFreight = function() {
+  const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+  const freightInput = document.getElementById('pos-cart-freight-input') as HTMLInputElement;
+
+  if (discInput) {
+    const val = parseFloat(discInput.value);
+    posDiscountPct = Number.isNaN(val) ? 0 : Math.max(0, Math.min(100, val));
+  }
+  if (freightInput) {
+    const val = parseFloat(freightInput.value);
+    posFreightAmt = Number.isNaN(val) ? 0 : Math.max(0, val);
+  }
+  window.renderPOSCart();
 };
 
 window.updateCartItemPrice = function(id: string, val: string) {
@@ -999,11 +1232,19 @@ window.openPOSPaymentModal = function() {
     subtotal += item.qty * tax.base;
     ivaTotal += item.qty * tax.ivaAmount;
   });
-  const total = subtotal + ivaTotal;
+  const discountAmount = Math.round(subtotal * (posDiscountPct / 100) * 100) / 100;
+  const freightAmount = Number(posFreightAmt || 0);
+  const total = subtotal - discountAmount + ivaTotal + freightAmount;
   const includesIva = !!posConfig?.special?.prices_include_iva;
+  
+  let ivaModeDetails = `Base: ${(window as any).fmt(subtotal)}`;
+  if (discountAmount > 0) ivaModeDetails += ` - Desc: ${(window as any).fmt(discountAmount)}`;
+  ivaModeDetails += ` + IVA: ${(window as any).fmt(ivaTotal)}`;
+  if (freightAmount > 0) ivaModeDetails += ` + Flete: ${(window as any).fmt(freightAmount)}`;
+
   const ivaModeLabel = includesIva
-    ? `<span class="text-[10px] text-orange-600 font-bold"><i class="fas fa-circle-info mr-1"></i>Precios con IVA incluido — Base: ${(window as any).fmt(subtotal)} + IVA: ${(window as any).fmt(ivaTotal)}</span>`
-    : `<span class="text-[10px] text-gray-400">Base: ${(window as any).fmt(subtotal)} + IVA: ${(window as any).fmt(ivaTotal)}</span>`;
+    ? `<span class="text-[10px] text-orange-600 font-bold"><i class="fas fa-circle-info mr-1"></i>Precios con IVA incluido — ${ivaModeDetails}</span>`
+    : `<span class="text-[10px] text-gray-400">${ivaModeDetails}</span>`;
 
   const bodyHtml = `
     <div class="space-y-6 text-sm" style="color:#374151">
@@ -1013,15 +1254,18 @@ window.openPOSPaymentModal = function() {
         <div class="mt-1">${ivaModeLabel}</div>
       </div>
 
-      <div class="grid grid-cols-3 gap-3" id="pos-pay-methods-grid">
-        <button type="button" class="btn btn-outline py-3 flex flex-col items-center gap-1 active" data-pos-method="EFECTIVO" onclick="window.selectPosPayMethod('EFECTIVO')">
-          <i class="fas fa-money-bill-wave text-xl text-emerald-600"></i><span class="font-bold">Efectivo</span>
+      <div class="grid grid-cols-4 gap-2" id="pos-pay-methods-grid">
+        <button type="button" class="btn btn-outline py-2.5 px-1 flex flex-col items-center gap-1 active text-xs" data-pos-method="EFECTIVO" onclick="window.selectPosPayMethod('EFECTIVO')">
+          <i class="fas fa-money-bill-wave text-lg text-emerald-600"></i><span class="font-bold">Efectivo</span>
         </button>
-        <button type="button" class="btn btn-outline py-3 flex flex-col items-center gap-1" data-pos-method="TRANSFERENCIA" onclick="window.selectPosPayMethod('TRANSFERENCIA')">
-          <i class="fas fa-credit-card text-xl text-blue-600"></i><span class="font-bold">Tarjeta/Trans.</span>
+        <button type="button" class="btn btn-outline py-2.5 px-1 flex flex-col items-center gap-1 text-xs" data-pos-method="TRANSFERENCIA" onclick="window.selectPosPayMethod('TRANSFERENCIA')">
+          <i class="fas fa-credit-card text-lg text-blue-600"></i><span class="font-bold">Transfer.</span>
         </button>
-        <button type="button" class="btn btn-outline py-3 flex flex-col items-center gap-1" data-pos-method="CREDITO" onclick="window.selectPosPayMethod('CREDITO')">
-          <i class="fas fa-calendar-days text-xl text-orange-600"></i><span class="font-bold">Crédito</span>
+        <button type="button" class="btn btn-outline py-2.5 px-1 flex flex-col items-center gap-1 text-xs" data-pos-method="CREDITO" onclick="window.selectPosPayMethod('CREDITO')">
+          <i class="fas fa-calendar-days text-lg text-orange-600"></i><span class="font-bold">Crédito</span>
+        </button>
+        <button type="button" class="btn btn-outline py-2.5 px-1 flex flex-col items-center gap-1 text-xs" data-pos-method="MIXTO" onclick="window.selectPosPayMethod('MIXTO')">
+          <i class="fas fa-layer-group text-lg text-violet-600"></i><span class="font-bold">Mixto</span>
         </button>
       </div>
 
@@ -1038,11 +1282,55 @@ window.openPOSPaymentModal = function() {
           </div>
         </div>
 
-        <!-- Billetes rápidos -->
         <div>
           <label class="text-[10px] text-gray-500 font-bold uppercase block mb-1">Denominaciones rápidas</label>
           <div class="flex gap-2 flex-wrap" id="pos-quick-bills-wrap">
             <!-- Cargados por JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Sección Pago Mixto -->
+      <div id="pos-pay-mixed-sec" class="space-y-4 border-t pt-4" style="border-color:#E5E7EB; display:none">
+        <p class="text-xs text-gray-500 font-bold mb-2">Distribuye el total entre las formas de pago:</p>
+        <div class="space-y-3">
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-emerald-600"><i class="fas fa-money-bill-wave mr-1"></i> Efectivo</div>
+            <div class="col-span-8">
+              <input type="number" id="pos-mixed-efectivo" class="form-input w-full text-right font-bold text-emerald-800" min="0" value="${total}" oninput="window.posMixedCalc()">
+            </div>
+          </div>
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-blue-600"><i class="fas fa-credit-card mr-1"></i> Transferencia</div>
+            <div class="col-span-8">
+              <input type="number" id="pos-mixed-transferencia" class="form-input w-full text-right font-bold text-blue-800" min="0" value="0" oninput="window.posMixedCalc()">
+            </div>
+          </div>
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-orange-600"><i class="fas fa-calendar-days mr-1"></i> Crédito</div>
+            <div class="col-span-8">
+              <input type="number" id="pos-mixed-credito" class="form-input w-full text-right font-bold text-orange-800" min="0" value="0" oninput="window.posMixedCalc()">
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t pt-3 flex justify-between items-center text-xs font-bold" style="border-color:#E5E7EB">
+          <span>Total asignado:</span>
+          <span id="pos-mixed-assigned-val" class="text-emerald-600 font-extrabold text-sm">$ 0</span>
+        </div>
+        <div class="flex justify-between items-center text-xs font-bold text-gray-500" id="pos-mixed-status-row" style="display:none">
+          <span>Falta asignar:</span>
+          <span id="pos-mixed-status-val" class="font-extrabold text-sm">$ 0</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-3 items-center border-t pt-3" style="border-color:#E5E7EB">
+          <div class="col-span-4 text-xs font-bold text-gray-700">Efectivo Recibido</div>
+          <div class="col-span-4">
+            <input type="number" id="pos-mixed-received" class="form-input w-full text-right font-bold text-emerald-800 text-xs py-1" min="0" value="${total}" oninput="window.posMixedCalc()">
+          </div>
+          <div class="col-span-4 text-right">
+            <span class="text-[9px] text-gray-400 block font-bold uppercase">Vueltas</span>
+            <span id="pos-mixed-change" class="font-extrabold text-emerald-600 text-sm">$ 0</span>
           </div>
         </div>
       </div>
@@ -1057,6 +1345,26 @@ window.openPOSPaymentModal = function() {
   (window as any).openModal(`Checkout y Recaudo POS`, bodyHtml, footer, false);
 
   window.selectPosPayMethod('EFECTIVO');
+
+  // Auto-enfocar y seleccionar el input de efectivo recibido + Enter para cobrar
+  setTimeout(() => {
+    const fld = document.getElementById('pos-received-cash') as HTMLInputElement;
+    if (fld) {
+      fld.focus();
+      fld.select();
+      fld.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+          if (confirmBtn && !confirmBtn.disabled) {
+            if (typeof (window as any).confirmPOSPayment === 'function') {
+              (window as any).confirmPOSPayment();
+            }
+          }
+        }
+      });
+    }
+  }, 150);
 };
 
 let currentPOSPayMethod = 'EFECTIVO';
@@ -1064,7 +1372,6 @@ let currentPOSPayMethod = 'EFECTIVO';
 window.selectPosPayMethod = function(method: string) {
   currentPOSPayMethod = method;
   
-  // Cambia botones activos
   const btns = document.querySelectorAll('#pos-pay-methods-grid button');
   btns.forEach(btn => {
     const active = btn.getAttribute('data-pos-method') === method;
@@ -1074,11 +1381,52 @@ window.selectPosPayMethod = function(method: string) {
   });
 
   const cashSec = document.getElementById('pos-pay-cash-sec');
+  const mixedSec = document.getElementById('pos-pay-mixed-sec');
+  
   if (cashSec) cashSec.style.display = method === 'EFECTIVO' ? 'block' : 'none';
+  if (mixedSec) mixedSec.style.display = method === 'MIXTO' ? 'block' : 'none';
 
   if (method === 'EFECTIVO') {
     window.loadQuickBills();
     window.posCalcChange();
+    const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+    if (confirmBtn) confirmBtn.disabled = false;
+  } else if (method === 'MIXTO') {
+    const efecInput = document.getElementById('pos-mixed-efectivo') as HTMLInputElement;
+    const transInput = document.getElementById('pos-mixed-transferencia') as HTMLInputElement;
+    const credInput = document.getElementById('pos-mixed-credito') as HTMLInputElement;
+    const recInput = document.getElementById('pos-mixed-received') as HTMLInputElement;
+
+    const tot = parseFloat(document.getElementById('pos-pay-tot')?.getAttribute('data-val') || '0');
+    if (efecInput) efecInput.value = String(tot);
+    if (transInput) transInput.value = '0';
+    if (credInput) credInput.value = '0';
+    if (recInput) recInput.value = String(tot);
+
+    window.posMixedCalc();
+
+    setTimeout(() => {
+      if (efecInput) {
+        efecInput.focus();
+        efecInput.select();
+      }
+      if (recInput) {
+        recInput.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+            if (confirmBtn && !confirmBtn.disabled) {
+              if (typeof (window as any).confirmPOSPayment === 'function') {
+                (window as any).confirmPOSPayment();
+              }
+            }
+          }
+        });
+      }
+    }, 150);
+  } else {
+    const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+    if (confirmBtn) confirmBtn.disabled = false;
   }
 };
 
@@ -1087,12 +1435,11 @@ window.loadQuickBills = function() {
   const wrap = document.getElementById('pos-quick-bills-wrap');
   if (!wrap) return;
 
-  // Billetes colombianos de denominación común
   const bills = [1000, 2000, 5000, 10000, 20000, 50000, 100000];
   const higher = bills.filter(b => b >= tot).slice(0, 4);
 
   if (!higher.includes(tot)) {
-    higher.unshift(tot); // exacto
+    higher.unshift(tot);
   }
 
   wrap.innerHTML = higher.map(b => `
@@ -1119,16 +1466,85 @@ window.posCalcChange = function() {
   }
 };
 
+window.posMixedCalc = function() {
+  const total = parseFloat(document.getElementById('pos-pay-tot')?.getAttribute('data-val') || '0');
+  const efec = parseFloat((document.getElementById('pos-mixed-efectivo') as HTMLInputElement)?.value || '0') || 0;
+  const trans = parseFloat((document.getElementById('pos-mixed-transferencia') as HTMLInputElement)?.value || '0') || 0;
+  const cred = parseFloat((document.getElementById('pos-mixed-credito') as HTMLInputElement)?.value || '0') || 0;
+
+  const assigned = efec + trans + cred;
+  const diff = total - assigned;
+
+  const assignedLbl = document.getElementById('pos-mixed-assigned-val');
+  const statusRow = document.getElementById('pos-mixed-status-row');
+  const statusVal = document.getElementById('pos-mixed-status-val');
+  const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+
+  if (assignedLbl) assignedLbl.textContent = (window as any).fmt(assigned);
+
+  if (Math.abs(diff) < 0.01) {
+    if (assignedLbl) {
+      assignedLbl.className = "text-emerald-600 font-extrabold text-sm";
+      assignedLbl.innerHTML = `${(window as any).fmt(assigned)} <i class="fas fa-circle-check"></i>`;
+    }
+    if (statusRow) statusRow.style.display = 'none';
+    if (confirmBtn) confirmBtn.disabled = false;
+  } else {
+    if (assignedLbl) assignedLbl.className = "text-red-500 font-extrabold text-sm";
+    if (statusRow) {
+      statusRow.style.display = 'flex';
+      const statusText = diff > 0 ? 'Falta asignar:' : 'Excedente:';
+      statusRow.firstElementChild!.textContent = statusText;
+      if (statusVal) {
+        statusVal.textContent = (window as any).fmt(Math.abs(diff));
+        statusVal.className = diff > 0 ? "text-red-500 font-extrabold text-sm" : "text-orange-500 font-extrabold text-sm";
+      }
+    }
+    if (confirmBtn) confirmBtn.disabled = true;
+  }
+
+  const received = parseFloat((document.getElementById('pos-mixed-received') as HTMLInputElement)?.value || '0') || 0;
+  const change = Math.max(0, received - efec);
+  const changeLbl = document.getElementById('pos-mixed-change');
+  if (changeLbl) {
+    changeLbl.textContent = (window as any).fmt(change);
+  }
+};
+
 // --- Procesar y Guardar Venta POS ---
 
 window.confirmPOSPayment = async function() {
   const btn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
-  const received = parseFloat((document.getElementById('pos-received-cash') as HTMLInputElement)?.value || '0') || 0;
   const tot = parseFloat(document.getElementById('pos-pay-tot')?.getAttribute('data-val') || '0');
 
-  if (currentPOSPayMethod === 'EFECTIVO' && received < tot - 0.01) {
-    (window as any).showToast('El dinero recibido no puede ser inferior al total a pagar.', 'warning');
-    return;
+  let received = 0;
+  let change = 0;
+  let paymentSplit = null;
+
+  if (currentPOSPayMethod === 'EFECTIVO') {
+    received = parseFloat((document.getElementById('pos-received-cash') as HTMLInputElement)?.value || '0') || 0;
+    if (received < tot - 0.01) {
+      (window as any).showToast('El dinero recibido no puede ser inferior al total a pagar.', 'warning');
+      return;
+    }
+    change = received - tot;
+  } else if (currentPOSPayMethod === 'MIXTO') {
+    const efec = parseFloat((document.getElementById('pos-mixed-efectivo') as HTMLInputElement)?.value || '0') || 0;
+    const trans = parseFloat((document.getElementById('pos-mixed-transferencia') as HTMLInputElement)?.value || '0') || 0;
+    const cred = parseFloat((document.getElementById('pos-mixed-credito') as HTMLInputElement)?.value || '0') || 0;
+    
+    if (Math.abs(tot - (efec + trans + cred)) > 0.01) {
+      (window as any).showToast('La asignación de valores no coincide con el total.', 'warning');
+      return;
+    }
+    
+    received = parseFloat((document.getElementById('pos-mixed-received') as HTMLInputElement)?.value || '0') || 0;
+    if (received < efec - 0.01) {
+      (window as any).showToast('El efectivo recibido no puede ser inferior a la porción en efectivo asignada.', 'warning');
+      return;
+    }
+    change = received - efec;
+    paymentSplit = JSON.stringify({ EFECTIVO: efec, TRANSFERENCIA: trans, CREDITO: cred });
   }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Emitiendo ticket contable...'; }
@@ -1153,6 +1569,14 @@ window.confirmPOSPayment = async function() {
       };
     });
 
+    let subtotal = 0;
+    posCart.forEach(item => {
+      const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+      subtotal += item.qty * tax.base;
+    });
+    const discountAmount = Math.round(subtotal * (posDiscountPct / 100) * 100) / 100;
+    const freightAmount = Number(posFreightAmt || 0);
+
     const header = {
       number: invoiceNumber,
       customer_id: selectedCustomerId,
@@ -1164,6 +1588,9 @@ window.confirmPOSPayment = async function() {
       ret_total: 0,
       status: 'draft', // Empieza en draft y se contabiliza de inmediato
       pos_shift_id: activeShift.id,
+      discount_amount: discountAmount,
+      freight_amount: freightAmount,
+      payment_split: paymentSplit,
     };
 
     // 1. Crea factura
@@ -1182,7 +1609,7 @@ window.confirmPOSPayment = async function() {
     window.renderPOSCart();
 
     // Muestra simulador de Tirilla Térmica
-    window.showThermalTicketReceipt(inv.id, received, received - tot);
+    window.showThermalTicketReceipt(inv.id, received, change);
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al procesar cobro', 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'CONFIRMAR E IMPRIMIR'; }
@@ -1193,8 +1620,93 @@ window.confirmPOSPayment = async function() {
 
 window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
-    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
+
+    let einvoiceDoc = null;
+    if (inv.tx_id) {
+      try {
+        const docRes = await (window as any).pb.list('einvoice_docs', {
+          filter: `tx_id="${inv.tx_id}"`,
+          perPage: 1
+        });
+        if (docRes.items.length) {
+          einvoiceDoc = docRes.items[0];
+        }
+      } catch (err) {
+        console.log("No einvoice doc found or error querying", err);
+      }
+    }
+
+    const isAccepted = einvoiceDoc && einvoiceDoc.status === 'aceptada';
+    const title = isAccepted 
+      ? 'FACTURA ELECTRÓNICA DE VENTA' 
+      : 'DOCUMENTO EQUIVALENTE ELECTRÓNICO POS<br><span style="font-size:9px">(Tiquete de máquina registradora con sistema P.O.S.)</span>';
+
+    let clientName = inv.expand?.customer_id?.name || 'Consumidor Final';
+    let clientDoc = inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '222222222222';
+    if (clientDoc === '222222222') {
+      clientDoc = '222222222222';
+    }
+
+    const resolutionName = inv.expand?.tx_id?.expand?.tx_type_id?.name || 'DOCUMENTO EQUIVALENTE DE VENTA';
+    const resolutionDesc = inv.expand?.tx_id?.expand?.tx_type_id?.description || '';
+
+    const taxGroups: { [rate: number]: { base: number, tax: number } } = {};
+    for (const l of lines) {
+      const rate = Number(l.iva_rate || 0);
+      if (!taxGroups[rate]) {
+        taxGroups[rate] = { base: 0, tax: 0 };
+      }
+      taxGroups[rate].base += Number(l.subtotal || 0);
+      taxGroups[rate].tax += Number(l.iva_amount || 0);
+    }
+
+    let taxBreakdownHtml = `
+      <div>--------------------------------</div>
+      <div style="font-weight:bold;text-align:center">DESGLOSE DE IMPUESTOS (IVA)</div>
+      <div style="display:flex;justify-content:between;font-weight:bold">
+        <span>Tarifa</span>
+        <span style="width:33%;text-align:right">Base</span>
+        <span style="width:33%;text-align:right;float:right">Impuesto</span>
+      </div>
+    `;
+    for (const rate of Object.keys(taxGroups).map(Number).sort((a,b)=>a-b)) {
+      const g = taxGroups[rate];
+      taxBreakdownHtml += `
+        <div style="display:flex;justify-content:between">
+          <span>IVA ${rate}%</span>
+          <span style="width:33%;text-align:right">${(window as any).fmt(g.base)}</span>
+          <span style="width:33%;text-align:right;float:right">${(window as any).fmt(g.tax)}</span>
+        </div>
+      `;
+    }
+
+    let qrAndCufeHtml = '';
+    if (isAccepted && einvoiceDoc?.cufe) {
+      qrAndCufeHtml = `
+        <div>================================</div>
+        <div style="text-align:center;margin-top:8px">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + einvoiceDoc.cufe)}" style="display:inline-block;width:120px;height:120px;" alt="QR DIAN"/>
+        </div>
+        <div style="word-break:break-all;font-size:8px;text-align:center;margin-top:4px;line-height:1.1">
+          <strong>CUFE:</strong><br>${einvoiceDoc.cufe}
+        </div>
+      `;
+    }
+
+    let splitHtml = '';
+    if (inv.payment_method === 'MIXTO' && inv.payment_split) {
+      try {
+        const split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : inv.payment_split;
+        splitHtml = Object.keys(split).map(k => {
+          if (split[k] > 0) {
+            return `<div style="display:flex;justify-content:between;padding-left:10px"><span>- ${k}:</span><span style="float:right">${(window as any).fmt(split[k])}</span></div>`;
+          }
+          return '';
+        }).join('');
+      } catch (_) {}
+    }
 
     const ticketHtml = `
       <div class="space-y-4" style="color:#222">
@@ -1206,45 +1718,60 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
           <div class="text-center">Calle 26 Norte # 5-44, Cali</div>
           <div class="text-center">Teléfono: (602) 889-1002</div>
           <div class="text-center">================================</div>
-          <div class="text-center" style="font-weight:bold">RECIBO DE VENTA POS</div>
+          <div class="text-center" style="font-weight:bold;line-height:1.2">${title}</div>
           <div class="text-center" style="font-weight:bold">${inv.number}</div>
           <div>================================</div>
           <div>Fecha: ${(window as any).fmtDate(inv.date)} ${(window as any).nowStr().slice(11, 16)}</div>
           <div>Cajero: ${(window as any).esc((window as any).pb.currentUser?.name)}</div>
-          <div>Cliente: ${(window as any).esc(inv.expand?.customer_id?.name || 'Consumidor Final')}</div>
-          <div>NIT/C.C: ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '222222222'}</div>
+          <div>Cliente: ${(window as any).esc(clientName)}</div>
+          <div>NIT/C.C: ${clientDoc}</div>
           <div>================================</div>
           <div style="font-weight:bold;display:flex;justify-content:between"><span>DETALLE</span><span style="float:right">TOTAL</span></div>
           <div>--------------------------------</div>
           ${lines.map((l: any) => `
             <div style="margin-bottom:4px">
               <div style="font-weight:bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
+              <div style="color:#555;font-size:9px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
               <div style="display:flex;justify-content:between">
-                <span>${(window as any).fmtN(l.qty)} x ${(window as any).fmt(l.unit_price)}</span>
+                <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(l.unit_price)}</span>
                 <span style="float:right">${(window as any).fmt(l.total)}</span>
               </div>
             </div>
           `).join('')}
           <div>--------------------------------</div>
           <div style="display:flex;justify-content:between"><span>Subtotal:</span><span style="float:right">${(window as any).fmt(inv.subtotal || 0)}</span></div>
+          ${inv.discount_amount > 0 ? `<div style="display:flex;justify-content:between;color:#dc2626"><span>Descuento:</span><span style="float:right">-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
+          ${inv.freight_amount > 0 ? `<div style="display:flex;justify-content:between;color:#059669"><span>Flete:</span><span style="float:right">+${(window as any).fmt(inv.freight_amount)}</span></div>` : ''}
           <div style="display:flex;justify-content:between"><span>IVA:</span><span style="float:right">${(window as any).fmt(inv.iva_total || 0)}</span></div>
           <div style="display:flex;justify-content:between;font-weight:bold;font-size:12px"><span>TOTAL:</span><span style="float:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</span></div>
+          ${taxBreakdownHtml}
           <div>================================</div>
           <div style="display:flex;justify-content:between"><span>Método Pago:</span><span style="float:right">${inv.payment_method}</span></div>
-          ${inv.payment_method === 'EFECTIVO' ? `
+          ${splitHtml}
+          ${(inv.payment_method === 'EFECTIVO' || (inv.payment_method === 'MIXTO' && receivedCash > 0)) ? `
             <div style="display:flex;justify-content:between"><span>Recibido:</span><span style="float:right">${(window as any).fmt(receivedCash)}</span></div>
             <div style="display:flex;justify-content:between;font-weight:bold"><span>Vueltas:</span><span style="float:right">${(window as any).fmt(changeCash)}</span></div>
           ` : ''}
           <div>================================</div>
-          <div class="text-center" style="font-weight:bold">¡GRACIAS POR TU COMPRA!</div>
-          <div class="text-center" style="font-size:8px;color:#666">GRAVY v2.0 POS — Facturación Autorizada</div>
+          <div class="text-center" style="font-weight:bold;font-size:9px">${resolutionName}</div>
+          ${resolutionDesc ? `<div class="text-center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
+          <div class="text-center" style="font-size:8px;color:#555;margin-top:6px">
+            Software: GRAVY POS | Fabricante: GRAVY S.A.S. NIT: 901.442.115-3
+          </div>
+          ${qrAndCufeHtml}
         </div>
       </div>
     `;
 
-    const footer = `
+    let footer = `
       <button class="btn btn-outline" onclick="closeModal(); window.renderPOSCart(); window.loadPosProductsWithStock();">Nueva Venta</button>
-      <button class="btn btn-secondary" onclick="window.emitPosToDian('${invoiceId}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
+    `;
+    if (!isAccepted) {
+      footer += `
+        <button class="btn btn-secondary" onclick="window.emitPosToDian('${invoiceId}', ${receivedCash}, ${changeCash})"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
+      `;
+    }
+    footer += `
       <button class="btn btn-primary" onclick="window.printThermalReceipt('${invoiceId}', ${receivedCash}, ${changeCash})"><i class="fas fa-print"></i> Imprimir Tirilla</button>
     `;
 
@@ -1254,7 +1781,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
   }
 };
 
-window.emitPosToDian = async function(invoiceId: string) {
+window.emitPosToDian = async function(invoiceId: string, receivedCash: number = 0, changeCash: number = 0) {
   try {
     const inv = await (window as any).pb.get('invoices', invoiceId);
     const txId = inv.tx_id;
@@ -1278,7 +1805,7 @@ window.emitPosToDian = async function(invoiceId: string) {
           if (res && res.success) {
             (window as any).showToast(`Tiquete POS ${inv.number} emitido correctamente a la DIAN. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
             (window as any).closeModal();
-            window.renderPOSCart();
+            window.showThermalTicketReceipt(invoiceId, receivedCash, changeCash);
           } else {
             (window as any).showToast(`Error al emitir: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
           }
@@ -1294,8 +1821,93 @@ window.emitPosToDian = async function(invoiceId: string) {
 
 window.printThermalReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
-    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
+
+    let einvoiceDoc = null;
+    if (inv.tx_id) {
+      try {
+        const docRes = await (window as any).pb.list('einvoice_docs', {
+          filter: `tx_id="${inv.tx_id}"`,
+          perPage: 1
+        });
+        if (docRes.items.length) {
+          einvoiceDoc = docRes.items[0];
+        }
+      } catch (err) {
+        console.log("No einvoice doc found or error querying", err);
+      }
+    }
+
+    const isAccepted = einvoiceDoc && einvoiceDoc.status === 'aceptada';
+    const title = isAccepted 
+      ? 'FACTURA ELECTRÓNICA DE VENTA' 
+      : 'DOCUMENTO EQUIVALENTE ELECTRÓNICO POS<br>(Tiquete de máquina registradora con sistema P.O.S.)';
+
+    let clientName = inv.expand?.customer_id?.name || 'Consumidor Final';
+    let clientDoc = inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '222222222222';
+    if (clientDoc === '222222222') {
+      clientDoc = '222222222222';
+    }
+
+    const resolutionName = inv.expand?.tx_id?.expand?.tx_type_id?.name || 'DOCUMENTO EQUIVALENTE DE VENTA';
+    const resolutionDesc = inv.expand?.tx_id?.expand?.tx_type_id?.description || '';
+
+    const taxGroups: { [rate: number]: { base: number, tax: number } } = {};
+    for (const l of lines) {
+      const rate = Number(l.iva_rate || 0);
+      if (!taxGroups[rate]) {
+        taxGroups[rate] = { base: 0, tax: 0 };
+      }
+      taxGroups[rate].base += Number(l.subtotal || 0);
+      taxGroups[rate].tax += Number(l.iva_amount || 0);
+    }
+
+    let taxBreakdownHtml = `
+      <div class="hr"></div>
+      <div class="center bold">DESGLOSE DE IMPUESTOS (IVA)</div>
+      <div class="flex-between bold">
+        <span>Tarifa</span>
+        <span>Base</span>
+        <span>Impuesto</span>
+      </div>
+    `;
+    for (const rate of Object.keys(taxGroups).map(Number).sort((a,b)=>a-b)) {
+      const g = taxGroups[rate];
+      taxBreakdownHtml += `
+        <div class="flex-between">
+          <span>IVA ${rate}%</span>
+          <span>${(window as any).fmt(g.base)}</span>
+          <span>${(window as any).fmt(g.tax)}</span>
+        </div>
+      `;
+    }
+
+    let qrAndCufeHtml = '';
+    if (isAccepted && einvoiceDoc?.cufe) {
+      qrAndCufeHtml = `
+        <div class="dbl-hr"></div>
+        <div class="center" style="margin-top:8px">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + einvoiceDoc.cufe)}" style="display:inline-block;width:120px;height:120px;" />
+        </div>
+        <div class="center" style="word-break:break-all;font-size:8px;margin-top:4px;line-height:1.1">
+          <strong>CUFE:</strong><br>${einvoiceDoc.cufe}
+        </div>
+      `;
+    }
+
+    let splitHtml = '';
+    if (inv.payment_method === 'MIXTO' && inv.payment_split) {
+      try {
+        const split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : inv.payment_split;
+        splitHtml = Object.keys(split).map(k => {
+          if (split[k] > 0) {
+            return `<div class="flex-between" style="padding-left:10px"><span>- ${k}:</span><span>${(window as any).fmt(split[k])}</span></div>`;
+          }
+          return '';
+        }).join('');
+      } catch (_) {}
+    }
 
     const printWin = window.open('', '_blank');
     if (!printWin) {
@@ -1324,38 +1936,47 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         <div class="center">Calle 26 Norte # 5-44, Cali</div>
         <div class="center">Teléfono: (602) 889-1002</div>
         <div class="dbl-hr"></div>
-        <div class="center bold">RECIBO DE VENTA POS</div>
+        <div class="center bold">${title}</div>
         <div class="center bold">${inv.number}</div>
         <div class="dbl-hr"></div>
         <div>Fecha: ${(window as any).fmtDate(inv.date)} ${(window as any).nowStr().slice(11, 16)}</div>
         <div>Cajero: ${(window as any).esc((window as any).pb.currentUser?.name)}</div>
-        <div>Cliente: ${(window as any).esc(inv.expand?.customer_id?.name || 'Consumidor Final')}</div>
-        <div>NIT/C.C: ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '222222222'}</div>
+        <div>Cliente: ${(window as any).esc(clientName)}</div>
+        <div>NIT/C.C: ${clientDoc}</div>
         <div class="dbl-hr"></div>
         <div class="flex-between bold"><span>DETALLE</span><span>TOTAL</span></div>
         <div class="hr"></div>
         ${lines.map((l: any) => `
           <div style="margin-bottom:3px">
             <div class="bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
+            <div style="color:#555;font-size:10px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
             <div class="flex-between">
-              <span>${(window as any).fmtN(l.qty)} x ${(window as any).fmt(l.unit_price)}</span>
+              <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(l.unit_price)}</span>
               <span>${(window as any).fmt(l.total)}</span>
             </div>
           </div>
         `).join('')}
         <div class="hr"></div>
         <div class="flex-between"><span>Subtotal:</span><span>${(window as any).fmt(inv.subtotal || 0)}</span></div>
+        ${inv.discount_amount > 0 ? `<div class="flex-between" style="color:#dc2626"><span>Descuento:</span><span>-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
+        ${inv.freight_amount > 0 ? `<div class="flex-between" style="color:#059669"><span>Flete:</span><span>+${(window as any).fmt(inv.freight_amount)}</span></div>` : ''}
         <div class="flex-between"><span>IVA:</span><span>${(window as any).fmt(inv.iva_total || 0)}</span></div>
         <div class="flex-between total-row"><span>TOTAL:</span><span>${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</span></div>
+        ${taxBreakdownHtml}
         <div class="dbl-hr"></div>
         <div class="flex-between"><span>Método Pago:</span><span>${inv.payment_method}</span></div>
-        ${inv.payment_method === 'EFECTIVO' ? `
+        ${splitHtml}
+        ${(inv.payment_method === 'EFECTIVO' || (inv.payment_method === 'MIXTO' && receivedCash > 0)) ? `
           <div class="flex-between"><span>Recibido:</span><span>${(window as any).fmt(receivedCash)}</span></div>
           <div class="flex-between bold"><span>Vueltas:</span><span>${(window as any).fmt(changeCash)}</span></div>
         ` : ''}
         <div class="dbl-hr"></div>
-        <div class="center bold">¡GRACIAS POR TU COMPRA!</div>
-        <div class="center" style="font-size:7px;color:#666">GRAVY v2.0 POS — Facturación Autorizada</div>
+        <div class="center bold" style="font-size:9px">${resolutionName}</div>
+        ${resolutionDesc ? `<div class="center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
+        <div class="center" style="font-size:8px;color:#555;margin-top:6px">
+          Software: GRAVY POS | Fabricante: GRAVY S.A.S. NIT: 901.442.115-3
+        </div>
+        ${qrAndCufeHtml}
         <script>
           window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
         </script>
@@ -1370,3 +1991,100 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
 
 // Inyecciones globales
 (window as any).renderPOS = renderPOS;
+
+// --- Atajos de Teclado y Flujo Optimizado (Keyboard-First) ---
+window.addEventListener('keydown', (e) => {
+  // Solo procesar si el módulo POS está activo en la página actual
+  if (!document.body.classList.contains('pos-active-page')) return;
+
+  const isModalOpen = document.body.classList.contains('modal-open') || !!document.getElementById('modal-container');
+  const activeEl = document.activeElement;
+  const isEditingInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+  const isSearchInput = activeEl && activeEl.id === 'pos-search-product';
+
+  if (!isModalOpen) {
+    // 1. ESC / F2: Enfocar y limpiar buscador
+    if (e.key === 'Escape' || e.key === 'F2') {
+      const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (searchInput) {
+        e.preventDefault();
+        searchInput.value = '';
+        searchInput.focus();
+        if (typeof (window as any).filterPosProducts === 'function') {
+          (window as any).filterPosProducts();
+        }
+      }
+      return;
+    }
+
+    // 2. F8 / CTRL+Enter: Abrir Modal de Checkout
+    if (e.key === 'F8' || (e.key === 'Enter' && e.ctrlKey)) {
+      e.preventDefault();
+      if (typeof (window as any).openPOSPaymentModal === 'function') {
+        (window as any).openPOSPaymentModal();
+      }
+      return;
+    }
+
+    // 3. + o -: Modificar cantidad del último ítem del carrito (si el buscador está vacío)
+    if (isSearchInput && (e.key === '+' || e.key === '-')) {
+      const searchInput = activeEl as HTMLInputElement;
+      if (searchInput.value === '') {
+        e.preventDefault();
+        if (posCart.length > 0) {
+          const lastItem = posCart[posCart.length - 1];
+          const delta = e.key === '+' ? 1 : -1;
+          if (typeof (window as any).updateCartQty === 'function') {
+            (window as any).updateCartQty(lastItem.id, delta);
+          }
+        }
+      }
+    }
+
+    // 4. Escribir cualquier caracter alfanumérico cuando no hay foco en ningún input enfoca automáticamente el buscador
+    if (!isEditingInput && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+        // Dejamos que el evento fluya para que el navegador escriba el caracter de inmediato
+      }
+    }
+  } else {
+    // --- Atajos en Modal de Cobro Abierto ---
+    // F1-F4 para seleccionar forma de pago
+    if (e.key === 'F1' || e.key === 'F2' || e.key === 'F3' || e.key === 'F4') {
+      e.preventDefault();
+      const methods = { 'F1': 'EFECTIVO', 'F2': 'TRANSFERENCIA', 'F3': 'CREDITO', 'F4': 'MIXTO' };
+      const selected = (methods as any)[e.key];
+      if (selected && typeof (window as any).selectPosPayMethod === 'function') {
+        (window as any).selectPosPayMethod(selected);
+      }
+      return;
+    }
+
+    // Teclas 1-4 para seleccionar forma de pago si no estamos escribiendo en un input
+    if (!isEditingInput && (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4')) {
+      e.preventDefault();
+      const methods = { '1': 'EFECTIVO', '2': 'TRANSFERENCIA', '3': 'CREDITO', '4': 'MIXTO' };
+      const selected = (methods as any)[e.key];
+      if (selected && typeof (window as any).selectPosPayMethod === 'function') {
+        (window as any).selectPosPayMethod(selected);
+      }
+      return;
+    }
+
+    // Enter en el modal confirma el recaudo si el botón no está deshabilitado
+    if (e.key === 'Enter') {
+      const confirmBtn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
+      if (confirmBtn && !confirmBtn.disabled) {
+        // Solo prevenir por defecto si no estamos enfocados en otro botón del modal
+        if (activeEl?.tagName !== 'BUTTON') {
+          e.preventDefault();
+          if (typeof (window as any).confirmPOSPayment === 'function') {
+            (window as any).confirmPOSPayment();
+          }
+        }
+      }
+    }
+  }
+});

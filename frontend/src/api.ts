@@ -1179,9 +1179,12 @@ const API = {
       subtotal += l.subtotal || 0;
       ivaTot   += l.iva_amount || 0;
     }
+    const discountAmt = Number(header.discount_amount || 0);
+    const freightAmt = Number(header.freight_amount || 0);
     const retTot = Number(header.ret_total || 0);
-    const total = subtotal + ivaTot;
+    const total = subtotal - discountAmt + ivaTot + freightAmt;
     const payableTotal = total - retTot;
+
 
     const inv = await pb.create('invoices', {
       ...header,
@@ -1295,48 +1298,208 @@ const API = {
 
     const txLines = [];
 
-    // ── Determinar cuenta de cobro / recaudo (Caja, Banco o Clientes CxC) ─
-    let paymentAccId = "";
-    if (inv.payment_method === 'CREDITO') {
-      const acc = await findAccByCode('130505');
-      paymentAccId = acc.id;
-    } else if (inv.payment_method === 'TRANSFERENCIA') {
-      let bankAccId = "";
-      try {
-        const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
-        if (tesoSettings.items.length) bankAccId = tesoSettings.items[0].default_bank_account_id;
-      } catch (_) {}
-      if (bankAccId) paymentAccId = bankAccId;
-      else {
+    // Helper para resolver la cuenta contable según forma de pago y jerarquía (POS -> Tesorería -> Fallback)
+    const resolvePaymentAccount = async (method) => {
+      if (isPOS && posConfig?.accounting?.accounts) {
+        const accs = posConfig.accounting.accounts;
+        let code = "";
+        if (method === 'EFECTIVO') code = accs.payment_accounts?.efectivo_code || accs.cash_code;
+        else if (method === 'TRANSFERENCIA') code = accs.payment_accounts?.transferencia_code;
+        else if (method === 'CREDITO') code = accs.payment_accounts?.credito_code;
+        
+        if (code) {
+          try {
+            const acc = await findAccByCode(code);
+            if (acc) return acc.id;
+          } catch (_) {}
+        }
+      }
+
+      if (method === 'CREDITO') {
+        const acc = await findAccByCode('130505');
+        return acc.id;
+      } else if (method === 'TRANSFERENCIA') {
+        let bankAccId = "";
+        try {
+          const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+          if (tesoSettings.items.length) bankAccId = tesoSettings.items[0].default_bank_account_id;
+        } catch (_) {}
+        if (bankAccId) return bankAccId;
         const acc = await findAccByCode('111005');
-        paymentAccId = acc.id;
-      }
-    } else { // EFECTIVO
-      let cashAccId = "";
-      try {
-        const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
-        if (tesoSettings.items.length) cashAccId = tesoSettings.items[0].default_cash_account_id;
-      } catch (_) {}
-      if (cashAccId) paymentAccId = cashAccId;
-      else {
+        return acc.id;
+      } else { // EFECTIVO o cualquier otro
+        let cashAccId = "";
+        try {
+          const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+          if (tesoSettings.items.length) cashAccId = tesoSettings.items[0].default_cash_account_id;
+        } catch (_) {}
+        if (cashAccId) return cashAccId;
         const acc = await findAccByCode('110505');
-        paymentAccId = acc.id;
+        return acc.id;
       }
+    };
+
+    const resolveDiscountAccount = async () => {
+      // 1. POS config
+      if (isPOS && posConfig?.accounting?.accounts?.discount_code) {
+        try {
+          const acc = await findAccByCode(posConfig.accounting.accounts.discount_code);
+          if (acc) return acc.id;
+        } catch (_) {}
+      }
+      // 2. Sales config fallback
+      try {
+        const rawSalesCfg = await this.getSetting('sales_settings_v2');
+        if (rawSalesCfg) {
+          const sc = JSON.parse(rawSalesCfg);
+          const code = sc?.accounting?.accounts?.discount_code;
+          if (code) {
+            const acc = await findAccByCode(code);
+            if (acc) return acc.id;
+          }
+        }
+      } catch (_) {}
+      // 3. Fallbacks
+      const fallbacks = ['530535', '4175', '53053501', '417501'];
+      for (const code of fallbacks) {
+        try {
+          const acc = await findAccByCode(code);
+          if (acc) return acc.id;
+        } catch (_) {}
+      }
+      throw new Error('No se pudo determinar una cuenta contable para el Descuento. Por favor configure "discount_code" en los parámetros del POS o Ventas.');
+    };
+
+    const resolveFreightAccount = async () => {
+      // 1. POS config
+      if (isPOS && posConfig?.accounting?.accounts?.freight_code) {
+        try {
+          const acc = await findAccByCode(posConfig.accounting.accounts.freight_code);
+          if (acc) return acc.id;
+        } catch (_) {}
+      }
+      // 2. Sales config fallback
+      try {
+        const rawSalesCfg = await this.getSetting('sales_settings_v2');
+        if (rawSalesCfg) {
+          const sc = JSON.parse(rawSalesCfg);
+          const code = sc?.accounting?.accounts?.freight_code;
+          if (code) {
+            const acc = await findAccByCode(code);
+            if (acc) return acc.id;
+          }
+        }
+      } catch (_) {}
+      // 3. Fallbacks
+      const fallbacks = ['429550', '4145', '429595', '414595', '42959501', '41459501'];
+      for (const code of fallbacks) {
+        try {
+          const acc = await findAccByCode(code);
+          if (acc) return acc.id;
+        } catch (_) {}
+      }
+      throw new Error('No se pudo determinar una cuenta contable para el Flete. Por favor configure "freight_code" en los parámetros del POS o Ventas.');
+    };
+
+    // ── Registrar débito por recaudo/CxC (Soportando Pago Mixto) ───────────
+    if (inv.payment_method === 'MIXTO') {
+      let split = {};
+      try {
+        split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : (inv.payment_split || {});
+      } catch (_) {}
+
+      for (const method of Object.keys(split)) {
+        const amount = Number(split[method] || 0);
+        if (amount > 0) {
+          const paymentAccId = await resolvePaymentAccount(method);
+          txLines.push(await buildTxLine({
+            accountId: paymentAccId,
+            thirdPartyId: inv.customer_id,
+            debit: amount,
+            credit: 0,
+            description: `Venta ${inv.number} Pago mixto - ${method}`,
+            crossDocRef: inv.number,
+          }));
+        }
+      }
+    } else {
+      const paymentAccId = await resolvePaymentAccount(inv.payment_method);
+      txLines.push(await buildTxLine({
+        accountId: paymentAccId,
+        thirdPartyId: inv.customer_id,
+        debit: inv.payable_total,
+        credit: 0,
+        description: `Venta ${inv.number} ${inv.payment_method}`,
+        crossDocRef: inv.number,
+      }));
     }
 
-    // Débito a la cuenta de recaudo/CxC por el valor neto pagable
-    txLines.push(await buildTxLine({
-      accountId: paymentAccId,
-      thirdPartyId: inv.customer_id,
-      debit: inv.payable_total,
-      credit: 0,
-      description: `Venta ${inv.number} ${inv.payment_method}`,
-      crossDocRef: inv.number,
-    }));
+    // ── Debito de Descuento (si existe discount_amount) ─────────────────────
+    if (Number(inv.discount_amount || 0) > 0) {
+      const discountAccId = await resolveDiscountAccount();
+      txLines.push(await buildTxLine({
+        accountId: discountAccId,
+        thirdPartyId: inv.customer_id,
+        debit: inv.discount_amount,
+        credit: 0,
+        description: `Descuento concedido venta ${inv.number}`,
+        crossDocRef: inv.number,
+      }));
+    }
+
+    // ── Crédito de Flete (si existe freight_amount) ───────────────────────
+    if (Number(inv.freight_amount || 0) > 0) {
+      const freightAccId = await resolveFreightAccount();
+      txLines.push(await buildTxLine({
+        accountId: freightAccId,
+        thirdPartyId: inv.customer_id,
+        debit: 0,
+        credit: inv.freight_amount,
+        description: `Flete cobrado venta ${inv.number}`,
+        crossDocRef: inv.number,
+      }));
+    }
 
     // ── Construir créditos de ingresos e IVA ─────────────────────────────
-    const defaultIncome = await findAccByCode('413505');
-    const defaultIva = await findAccByCode('233501');
+    let fallbackIncomeCode = '413505';
+    if (isPOS && posConfig?.accounting?.accounts?.sales_code) {
+      fallbackIncomeCode = posConfig.accounting.accounts.sales_code;
+    } else {
+      try {
+        const rawSalesCfg = await this.getSetting('sales_settings_v2');
+        if (rawSalesCfg) {
+          const sc = JSON.parse(rawSalesCfg);
+          if (sc?.accounting?.accounts?.income_fallback_code) {
+            fallbackIncomeCode = sc.accounting.accounts.income_fallback_code;
+          }
+        }
+      } catch (_) {}
+    }
+    const defaultIncome = await findAccByCode(fallbackIncomeCode);
+
+    const resolveIvaAccount = async (rate) => {
+      const rateStr = String(rate || 0);
+      if (isPOS && posConfig?.accounting?.accounts?.iva_by_rate?.[rateStr]) {
+        try {
+          const acc = await findAccByCode(posConfig.accounting.accounts.iva_by_rate[rateStr]);
+          if (acc) return acc.id;
+        } catch (_) {}
+      }
+      try {
+        const rawSalesCfg = await this.getSetting('sales_settings_v2');
+        if (rawSalesCfg) {
+          const sc = JSON.parse(rawSalesCfg);
+          const salesCode = sc?.accounting?.accounts?.iva_by_rate?.[rateStr];
+          if (salesCode) {
+            const acc = await findAccByCode(salesCode);
+            if (acc) return acc.id;
+          }
+        }
+      } catch (_) {}
+
+      const acc = await findAccByCode('233501');
+      return acc.id;
+    };
 
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
@@ -1348,7 +1511,6 @@ const API = {
         incomeAccId = defaultIncome.id;
       }
 
-      // Crédito de ingreso bruto de la línea
       txLines.push(await buildTxLine({
         accountId: incomeAccId,
         thirdPartyId: inv.customer_id,
@@ -1358,10 +1520,10 @@ const API = {
         crossDocRef: inv.number,
       }));
 
-      // Crédito de IVA Generado
       if (Number(line.iva_amount || 0) > 0) {
+        const ivaAccId = await resolveIvaAccount(line.iva_rate);
         txLines.push(await buildTxLine({
-          accountId: defaultIva.id,
+          accountId: ivaAccId,
           thirdPartyId: null,
           debit: 0,
           credit: line.iva_amount,

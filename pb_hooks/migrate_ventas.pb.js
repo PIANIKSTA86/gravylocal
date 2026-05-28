@@ -184,6 +184,42 @@ onBootstrap((e) => {
     }
   }
 
+  // ── Migración: campos de descuento, flete y pago mixto en invoices ──
+  try {
+    const invCol = $app.findCollectionByNameOrId("invoices");
+    let changed = false;
+
+    const existingFields = new Set(invCol.fields.fieldNames());
+    if (!existingFields.has("discount_amount")) {
+      invCol.fields.add(new NumberField({ name: "discount_amount", required: false, min: 0 }));
+      changed = true;
+      console.log("[GRAVY-VENTAS] Campo discount_amount agregado a invoices.");
+    }
+    if (!existingFields.has("freight_amount")) {
+      invCol.fields.add(new NumberField({ name: "freight_amount", required: false, min: 0 }));
+      changed = true;
+      console.log("[GRAVY-VENTAS] Campo freight_amount agregado a invoices.");
+    }
+    if (!existingFields.has("payment_split")) {
+      invCol.fields.add(new TextField({ name: "payment_split", required: false }));
+      changed = true;
+      console.log("[GRAVY-VENTAS] Campo payment_split agregado a invoices.");
+    }
+
+    const payMethodField = invCol.fields.getByName("payment_method");
+    if (payMethodField && !payMethodField.values.includes("MIXTO")) {
+      payMethodField.values.push("MIXTO");
+      changed = true;
+      console.log("[GRAVY-VENTAS] Valor MIXTO añadido a payment_method en invoices.");
+    }
+
+    if (changed) {
+      $app.save(invCol);
+    }
+  } catch (err) {
+    console.log("[GRAVY-VENTAS] Error al extender campos en invoices: " + err);
+  }
+
   // Asegurar índice único en invoices de forma segura
   try {
     $app.nonconcurrentDB()
@@ -195,3 +231,4 @@ onBootstrap((e) => {
 
   console.log("[GRAVY-VENTAS] Migración de Ventas y POS completada.");
 });
+

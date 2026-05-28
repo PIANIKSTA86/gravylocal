@@ -441,6 +441,7 @@ function renderSoRow(inv: any) {
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesInvoiceDetail('${(window as any).esc(inv.id)}')"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm text-gray-500" title="Imprimir Carta" onclick="window.printInvoiceCarta('${(window as any).esc(inv.id)}')"><i class="fas fa-print"></i></button>
+          <button class="btn btn-outline btn-sm text-blue-500" title="Imprimir Tirilla (POS)" onclick="window.showThermalTicketReceipt('${(window as any).esc(inv.id)}', 0, 0)"><i class="fas fa-receipt"></i></button>
           ${inv.status === 'draft' ? `
             <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
             <button class="btn btn-primary btn-sm" title="Contabilizar" onclick="window.contabilizarVenta('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-check"></i> Contabilizar</button>
@@ -1374,6 +1375,7 @@ window.viewSalesInvoiceDetail = async function(id: string) {
     const footer = `
       <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
       <button class="btn btn-primary" onclick="window.printInvoiceCarta('${inv.id}')"><i class="fas fa-print"></i> Imprimir Carta</button>
+      <button class="btn btn-outline" onclick="window.showThermalTicketReceipt('${inv.id}', 0, 0)"><i class="fas fa-receipt mr-1"></i> Imprimir Tirilla</button>
       ${inv.status === 'draft' ? `
         <button class="btn btn-primary" onclick="closeModal(); window.editSalesInvoice('${inv.id}')"><i class="fas fa-pen"></i> Editar</button>
         <button class="btn btn-primary" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}')"><i class="fas fa-check-double"></i> Contabilizar</button>

@@ -28,5 +28,7 @@ import './modules/pos.ts';
 import './modules/copropiedades.ts';
 import './modules/exogena.ts';
 import './modules/tesoreria.ts';
+import './modules/licencias.ts';
+import './modules/superadmin.ts';
 
 import './app.ts';

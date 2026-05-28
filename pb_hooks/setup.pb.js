@@ -531,8 +531,15 @@ onBootstrap((e) => {
       usersCol.fields.add(new SelectField({
         name: "role",
         required: true,
-        values: ["admin","contador","auxiliar","auditor","viewer"],
+        values: ["superadmin","admin","contador","auxiliar","auditor","viewer"],
       }));
+    } else {
+      // Asegurar que superadmin esté en la lista de valores si el campo ya existe
+      const roleField = usersCol.fields.getByName("role");
+      if (roleField && !roleField.values.includes("superadmin")) {
+        roleField.values.push("superadmin");
+        console.log("[GRAVY] Rol superadmin añadido a users.");
+      }
     }
     if (!existing.has('full_name')) {
       usersCol.fields.add(new TextField({
@@ -1496,10 +1503,12 @@ onBootstrap((e) => {
   }
 });
 
+
 // ── Ruta custom de auditoría (sustituye createRule en audit_log) ──────────────
 // Solo usuarios autenticados pueden registrar eventos; el servidor escribe
 // directamente en audit_log con IP real y validación server-side.
 routerAdd("POST", "/api/audit-event", (e) => {
+
   const info = e.requestInfo();
   const auth = info?.auth;
   if (!auth) {

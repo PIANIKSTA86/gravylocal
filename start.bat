@@ -27,16 +27,22 @@ if not exist "%MOBILE_DIR%\package.json" (
     exit /b 1
 )
 
-echo  Cerrando procesos anteriores en puertos 8090 y %EXPO_PORT%...
+echo  Cerrando procesos anteriores en puertos 8089, 8090 y %EXPO_PORT%...
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ports = 8090,%EXPO_PORT%;" ^
+    "$ports = 8089, 8090,%EXPO_PORT%;" ^
     "foreach ($p in $ports) {" ^
     "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique;" ^
     "  if ($pids) { $pids ^| ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }" ^
     "}"
 
-echo  Iniciando PocketBase (localhost)...
-start "Gravy PocketBase Local" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
+echo  Iniciando GRAVY HUB (localhost:8089)...
+start "Gravy HUB" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:8089 --dir="%ROOT%hub\pb_data" --hooksDir="%ROOT%hub\pb_hooks""
+
+echo  Iniciando GRAVY Orquestador (localhost:8088)...
+start "Gravy Orchestrator" /B cmd /c "cd /d "%ROOT%" && node hub\orchestrator.js"
+
+echo  Iniciando Empresa Demo (localhost:8090)...
+start "Gravy Empresa Demo" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
 
 echo  Iniciando Expo (localhost)...
 start "Gravy Mobile Local" cmd /k "cd /d "%MOBILE_DIR%" && set EXPO_PUBLIC_PB_URL=%PB_URL% && npx expo start --port %EXPO_PORT% --clear"

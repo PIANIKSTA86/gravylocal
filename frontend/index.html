@@ -102,6 +102,27 @@ body { font-family: 'Plus Jakarta Sans', sans-serif; background: radial-gradient
 #screen-app.sidebar-collapsed #btn-menu-toggle { opacity: 0; pointer-events: none; transform: translateX(-6px); }
 #screen-app.sidebar-collapsed #topbar-brand { opacity: 1; transform: translateX(0); pointer-events: auto; }
 
+/* ─ Náv item bloqueado por licencia ───────────────────── */
+.nav-item.locked {
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: auto; /* sigue siendo clickeable para mostrar mensaje */
+  position: relative;
+}
+.nav-item.locked::after {
+  content: '\f023'; /* fa-lock unicode */
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-size: 10px;
+  color: rgba(127,124,255,.75);
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.sidebar.collapsed .nav-item.locked::after { display: none; }
+
 /* Topbar */
 .topbar { height: var(--topbar-h); background: rgba(255,255,255,.88); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: space-between; padding: 0 28px; position: sticky; top: 0; z-index: 40; }
 
@@ -321,32 +342,84 @@ select.form-input { appearance: none; background-image: url("data:image/svg+xml,
     </div>
     <div class="px-4 mb-2"><div class="h-px" style="background:rgba(255,255,255,.08)"></div></div>
     <nav class="flex-1 overflow-y-auto px-2 py-1" id="nav-menu">
-      <div class="nav-item active" data-page="dashboard" data-label="Dashboard"><i class="fas fa-gauge-high"></i><span class="nav-label">Dashboard</span></div>
+      <div class="nav-item active" data-page="dashboard" data-label="Dashboard">
+        <i class="fas fa-gauge-high"></i><span class="nav-label">Dashboard</span>
+      </div>
       <div class="nav-section">Maestros</div>
-      <div class="nav-item" data-page="plan-cuentas" data-label="Plan de Cuentas"><i class="fas fa-sitemap"></i><span class="nav-label">Plan de Cuentas</span></div>
-      <div class="nav-item" data-page="terceros" data-label="Terceros"><i class="fas fa-users"></i><span class="nav-label">Terceros</span></div>
-      <div class="nav-item" data-page="tipos-tx" data-label="Tipos de Transacción"><i class="fas fa-list-check"></i><span class="nav-label">Tipos de Transacción</span></div>
+      <div class="nav-item" data-page="plan-cuentas" data-label="Plan de Cuentas">
+        <i class="fas fa-sitemap"></i><span class="nav-label">Plan de Cuentas</span>
+      </div>
+      <div class="nav-item" data-page="terceros" data-label="Terceros">
+        <i class="fas fa-users"></i><span class="nav-label">Terceros</span>
+      </div>
+      <div class="nav-item" data-page="tipos-tx" data-label="Tipos de Transacción">
+        <i class="fas fa-list-check"></i><span class="nav-label">Tipos de Transacción</span>
+      </div>
       <div class="nav-section">Operaciones</div>
-      <div class="nav-item" data-page="consulta-tx" data-label="Consulta Transacciones"><i class="fas fa-magnifying-glass"></i><span class="nav-label">Consulta Transacciones</span></div>
+      <div class="nav-item" data-page="consulta-tx" data-label="Consulta Transacciones" data-module="contabilidad">
+        <i class="fas fa-magnifying-glass"></i><span class="nav-label">Consulta Transacciones</span>
+      </div>
       <div class="nav-section">Módulos</div>
-      <div class="nav-item" data-page="productos" data-label="Productos y Servicios"><i class="fas fa-box-open"></i><span class="nav-label">Productos y Servicios</span></div>
-      <div class="nav-item" data-page="inventario" data-label="Inventarios"><i class="fas fa-warehouse"></i><span class="nav-label">Inventarios</span></div>
-      <div class="nav-item" data-page="compras" data-label="Compras"><i class="fas fa-cart-flatbed"></i><span class="nav-label">Compras</span></div>
-      <div class="nav-item" data-page="ventas" data-label="Ventas"><i class="fas fa-receipt"></i><span class="nav-label">Ventas / Facturas</span></div>
-      <div class="nav-item" data-page="pos" data-label="POS"><i class="fas fa-cash-register"></i><span class="nav-label">Punto de Venta POS</span></div>
-      <div class="nav-item" data-page="copropiedades" data-label="Copropiedades"><i class="fas fa-city"></i><span class="nav-label">Copropiedades</span></div>
-      <div class="nav-item" data-page="tesoreria" data-label="Tesorería"><i class="fas fa-landmark"></i><span class="nav-label">Tesorería</span></div>
-      <div class="nav-item" data-page="conciliacion" data-label="Conciliación Bancaria"><i class="fas fa-scale-balanced"></i><span class="nav-label">Conciliación Bancaria</span></div>
-      <div class="nav-item" data-page="nomina" data-label="Nómina"><i class="fas fa-id-card"></i><span class="nav-label">Nómina</span></div>
-      <div class="nav-item" data-page="facturacion-dian" data-label="Facturación DIAN"><i class="fas fa-file-invoice"></i><span class="nav-label">Facturación DIAN</span></div>
-      <div class="nav-item" data-page="cierre" data-label="Periodos"><i class="fas fa-calendar-check"></i><span class="nav-label">Periodos</span></div>
-      <div class="nav-item" data-page="exogena" data-label="Información Exógena"><i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Información Exógena</span></div>
+      <div class="nav-item" data-page="productos" data-label="Productos y Servicios" data-module="comercial">
+        <i class="fas fa-box-open"></i><span class="nav-label">Productos y Servicios</span>
+      </div>
+      <div class="nav-item" data-page="inventario" data-label="Inventarios" data-module="comercial">
+        <i class="fas fa-warehouse"></i><span class="nav-label">Inventarios</span>
+      </div>
+      <div class="nav-item" data-page="compras" data-label="Compras" data-module="comercial">
+        <i class="fas fa-cart-flatbed"></i><span class="nav-label">Compras</span>
+      </div>
+      <div class="nav-item" data-page="ventas" data-label="Ventas" data-module="comercial">
+        <i class="fas fa-receipt"></i><span class="nav-label">Ventas / Facturas</span>
+      </div>
+      <div class="nav-item" data-page="pos" data-label="POS" data-module="comercial">
+        <i class="fas fa-cash-register"></i><span class="nav-label">Punto de Venta POS</span>
+      </div>
+      <div class="nav-item" data-page="copropiedades" data-label="Copropiedades" data-module="copropiedades">
+        <i class="fas fa-city"></i><span class="nav-label">Copropiedades</span>
+      </div>
+      <div class="nav-item" data-page="tesoreria" data-label="Tesorería" data-module="comercial">
+        <i class="fas fa-landmark"></i><span class="nav-label">Tesorería</span>
+      </div>
+      <div class="nav-item" data-page="conciliacion" data-label="Conciliación Bancaria" data-module="comercial">
+        <i class="fas fa-scale-balanced"></i><span class="nav-label">Conciliación Bancaria</span>
+      </div>
+      <div class="nav-item" data-page="nomina" data-label="Nómina" data-module="nomina">
+        <i class="fas fa-id-card"></i><span class="nav-label">Nómina</span>
+      </div>
+      <div class="nav-item" data-page="facturacion-dian" data-label="Facturación DIAN" data-module="contabilidad">
+        <i class="fas fa-file-invoice"></i><span class="nav-label">Facturación DIAN</span>
+      </div>
+      <div class="nav-item" data-page="cierre" data-label="Periodos" data-module="contabilidad">
+        <i class="fas fa-calendar-check"></i><span class="nav-label">Periodos</span>
+      </div>
+      <div class="nav-item" data-page="exogena" data-label="Información Exógena" data-module="contabilidad">
+        <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Información Exógena</span>
+      </div>
       <div class="nav-section">Reportes y Admin</div>
-      <div class="nav-item" data-page="reportes" data-label="Reportes"><i class="fas fa-chart-pie"></i><span class="nav-label">Reportes</span></div>
-      <div class="nav-item" data-page="configuracion" data-label="Configuración"><i class="fas fa-sliders"></i><span class="nav-label">Configuración</span></div>
-      <div class="nav-item" data-page="utilidades" data-label="Utilidades"><i class="fas fa-toolbox"></i><span class="nav-label">Utilidades</span></div>
-      <div class="nav-item" data-page="auditoria" id="nav-auditoria" data-label="Auditoría"><i class="fas fa-clipboard-list"></i><span class="nav-label">Auditoría</span></div>
-      <div class="nav-item" data-page="usuarios" id="nav-usuarios" data-label="Usuarios"><i class="fas fa-user-gear"></i><span class="nav-label">Usuarios</span></div>
+      <div class="nav-item" data-page="reportes" data-label="Reportes" data-module="contabilidad">
+        <i class="fas fa-chart-pie"></i><span class="nav-label">Reportes</span>
+      </div>
+      <div class="nav-item" data-page="configuracion" data-label="Configuración">
+        <i class="fas fa-sliders"></i><span class="nav-label">Configuración</span>
+      </div>
+      <div class="nav-item" data-page="utilidades" data-label="Utilidades" data-module="contabilidad">
+        <i class="fas fa-toolbox"></i><span class="nav-label">Utilidades</span>
+      </div>
+      <div class="nav-item" data-page="auditoria" id="nav-auditoria" data-label="Auditoría">
+        <i class="fas fa-clipboard-list"></i><span class="nav-label">Auditoría</span>
+      </div>
+      <div class="nav-item" data-page="usuarios" id="nav-usuarios" data-label="Usuarios">
+        <i class="fas fa-user-gear"></i><span class="nav-label">Usuarios</span>
+      </div>
+      <!-- SuperAdmin: solo visible para superadmin, controlado desde applyModuleVisibility() -->
+      <div class="nav-item" data-page="superadmin" id="nav-superadmin" data-label="SuperAdmin" style="display:none">
+        <i class="fas fa-crown"></i><span class="nav-label">SuperAdmin</span>
+      </div>
+      <!-- Licencias: solo visible para admin, controlado desde applyModuleVisibility() -->
+      <div class="nav-item" data-page="licencias" id="nav-licencias" data-label="Licencias" style="display:none">
+        <i class="fas fa-key"></i><span class="nav-label">Licencias</span>
+      </div>
     </nav>
     <div class="p-4 border-t" style="border-color:rgba(255,255,255,.08)">
       <div class="flex items-center gap-3 sidebar-footer-row">

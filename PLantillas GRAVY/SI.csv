@@ -1,0 +1,11 @@
+grupo,fecha,tipo,descripcion,tercero,plazo_dias,cuenta,debito,credito,tercero_linea,descripcion_linea,doc_cruce
+AP-00000001,2026-04-01,AP,Capital Inicial de la Empresa,77695075,0,11050501,15000000,0,77695075,Capital Inicial de la Empresa,
+AP-00000001,2026-04-01,AP,Capital Inicial de la Empresa,77695075,0,31050501,0,15000000,77695075,Capital Inicial de la Empresa,
+CE-00000001,2026-04-05,CE,Creacion de cuenta bancolombia para la empresa de pruebas sas,77695075,0,11200501,12500000,0,77695075,Creacion de cuenta bancolombia para la empresa de pruebas sas,
+CE-00000001,2026-04-05,CE,Creacion de cuenta bancolombia para la empresa de pruebas sas,77695075,0,11050501,0,12500000,77695075,Creacion de cuenta bancolombia para la empresa de pruebas sas,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,14350501,5000000,,900312654,Compra Inicial de producto de tecnologia a Motorola CO,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,62050501,,5000000,900312654,Compra Inicial de producto de tecnologia a Motorola CO,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,62050102,5000000,,900312654,Compra Inicial de producto de tecnologia a Motorola CO,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,24080201,1950000,,900312654,Compra Inicial de producto de tecnologia a Motorola CO,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,23654002,,200000,900312654,Compra Inicial de producto de tecnologia a Motorola CO,
+FC-00000001,2026-04-15,FC,Compra Inicial de producto de tecnologia a Motorola CO,900312654,0,22050501,,6750000,900312654,Compra Inicial de producto de tecnologia a Motorola CO,MCO-6549778

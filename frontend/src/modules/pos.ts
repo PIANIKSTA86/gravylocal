@@ -382,7 +382,8 @@ window.checkActiveShift = async function() {
       await window.loadPOSInterface();
     } else {
       activeShift = null;
-      window.renderShiftOpeningForm();
+      const registers = await (window as any).pb.listAll('pos_registers', { filter: 'active = true' }).catch(() => []);
+      window.renderShiftOpeningForm(registers);
     }
   } catch (err: any) {
     container.innerHTML = `
@@ -396,9 +397,23 @@ window.checkActiveShift = async function() {
 };
 
 // Renderiza formulario de Apertura de Caja
-window.renderShiftOpeningForm = function() {
+window.renderShiftOpeningForm = function(registers: any[] = []) {
   const container = document.getElementById('pos-shift-container');
   if (!container) return;
+
+  const currentAssignedId = localStorage.getItem('gravy_pos_register_id') || '';
+  let registerSelectHtml = '';
+  if (registers.length > 0) {
+    registerSelectHtml = `
+      <div>
+        <label class="form-label mb-2 block">Caja Registradora / Terminal <span style="color:#EF4444">*</span></label>
+        <select id="pos-opening-register" class="form-input w-full" style="background:#fff;color:#0D2137">
+          <option value="">— Seleccionar Caja —</option>
+          ${registers.map(r => `<option value="${r.id}" ${currentAssignedId === r.id ? 'selected' : ''}>${(window as any).esc(r.name)} (${(window as any).esc(r.terminal_key)})</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }
 
   container.innerHTML = `
     <div class="max-w-md w-full p-8 rounded-2xl border" style="border-color:#E5E7EB;background:#FCFCFD">
@@ -419,6 +434,8 @@ window.renderShiftOpeningForm = function() {
           </div>
         </div>
 
+        ${registerSelectHtml}
+
         <div>
           <label class="form-label mb-2 block">Notas de Apertura</label>
           <textarea id="pos-opening-notes" class="form-input w-full" rows="2" placeholder="Ej: Billetes sencillos para cambio, turno mañana..." style="background:#fff;color:#0D2137"></textarea>
@@ -436,9 +453,16 @@ window.renderShiftOpeningForm = function() {
 window.openPOSShift = async function() {
   const initialCash = parseFloat((document.getElementById('pos-initial-cash') as HTMLInputElement)?.value || '0');
   const notes = (document.getElementById('pos-opening-notes') as HTMLTextAreaElement)?.value.trim() || '';
+  const registerId = (document.getElementById('pos-opening-register') as HTMLSelectElement)?.value || localStorage.getItem('gravy_pos_register_id') || '';
 
   if (Number.isNaN(initialCash) || initialCash < 0) {
     (window as any).showToast('La base inicial debe ser un número igual o mayor a cero.', 'warning');
+    return;
+  }
+
+  const registerField = document.getElementById('pos-opening-register');
+  if (registerField && !registerId) {
+    (window as any).showToast('Por favor selecciona la caja registradora para este turno.', 'warning');
     return;
   }
 
@@ -451,8 +475,13 @@ window.openPOSShift = async function() {
       cash_sales: 0,
       cash_expected: initialCash,
       status: 'open',
-      notes: notes
+      notes: notes,
+      pos_register_id: registerId || null
     });
+
+    if (registerId) {
+      localStorage.setItem('gravy_pos_register_id', registerId);
+    }
 
     (window as any).showToast('Turno de caja abierto correctamente', 'success');
     activeShift = shift;
@@ -1550,9 +1579,7 @@ window.confirmPOSPayment = async function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Emitiendo ticket contable...'; }
 
   try {
-    const today = (window as any).todayStr().replaceAll('-', '');
-    const rand = String(Date.now()).slice(-4);
-    const invoiceNumber = `POS-${today}-${rand}`;
+    const invoiceNumber = "AUTO";
 
     const lines = posCart.map(item => {
       const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);

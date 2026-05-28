@@ -31,6 +31,7 @@ const PAGE_TITLES = {
   exogena:           'Información Exógena DIAN',
   licencias:         'Licencias y Módulos',
   superadmin:        'Panel SuperAdministrador',
+  resoluciones:      'Resoluciones y Consecutivos DIAN',
 };
 
 // Módulo de licencia requerido por cada página.
@@ -89,6 +90,7 @@ const PAGE_RENDERERS = {
   exogena:            () => typeof renderExogena           === 'function' && renderExogena($('#page-content')),
   licencias:          () => typeof renderLicencias         === 'function' && renderLicencias($('#page-content')),
   superadmin:         () => typeof renderSuperadmin        === 'function' && renderSuperadmin($('#page-content')),
+  resoluciones:       () => typeof renderResoluciones      === 'function' && renderResoluciones($('#page-content')),
 };
 
 let currentPage = 'dashboard';

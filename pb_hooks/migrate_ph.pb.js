@@ -28,7 +28,7 @@ onBootstrap((e) => {
   // Normalizar permisos de settings para roles con canWrite.
   try {
     const settingsCol = $app.findCollectionByNameOrId('settings');
-    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+    const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
     let changed = false;
     if (settingsCol.createRule !== writeRule) {
       settingsCol.createRule = writeRule;

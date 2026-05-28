@@ -257,6 +257,47 @@ select.form-input { appearance: none; background-image: url("data:image/svg+xml,
   .content-area { padding: 16px; }
   .tx-line-row { grid-template-columns: 1fr 100px 100px 36px; gap: 6px; }
 }
+
+/* POS Page Layout overrides for Desktop */
+@media (min-width: 1024px) {
+  .pos-active-page {
+    overflow: hidden;
+  }
+  .pos-active-page .content-area {
+    overflow: hidden !important;
+    padding: 16px !important;
+  }
+  .pos-active-page #pos-main-container {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 16px !important;
+  }
+  .pos-active-page .pos-grid {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+  }
+  .pos-active-page .pos-catalog-container {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .pos-active-page .pos-cart-container {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .pos-active-page #pos-catalog-grid {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    max-height: none !important;
+  }
+  .pos-active-page #pos-cart-body {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    max-height: none !important;
+  }
+}
 </style>
 </head>
 <body>

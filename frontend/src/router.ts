@@ -159,19 +159,19 @@ function showLockedModulePage(page: string, requiredModule: string): void {
       </div>
     </div>`;
 }
-
 function navigate(page) {
+  // Quitar la clase del POS por defecto
+  document.body.classList.remove('pos-active-page');
+
   if (!PAGE_RENDERERS[page]) { page = 'dashboard'; }
 
   // ── Verificar licencia de módulo ──────────────────────────
   const requiredModule = (MODULE_LICENSE as any)[page];
   if (requiredModule && typeof hasModule === 'function' && !hasModule(requiredModule)) {
-    // Actualizar sidebar activo y título igual que en una navegación normal
     currentPage = page;
     $$('#nav-menu .nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
     $('#page-title').textContent = (PAGE_TITLES as any)[page] ?? page;
     $('#sidebar')?.classList.remove('open');
-    // Mostrar pantalla de módulo bloqueado
     showLockedModulePage(page, requiredModule);
     return;
   }
@@ -196,6 +196,11 @@ function navigate(page) {
   // Scroll al inicio
   const content = $('#page-content');
   if (content) content.scrollTop = 0;
+
+  // Activar la clase del POS si corresponde
+  if (page === 'pos') {
+    document.body.classList.add('pos-active-page');
+  }
 
   // Renderizar módulo
   try {

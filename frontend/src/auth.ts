@@ -320,7 +320,14 @@ async function showApp() {
   const user = pb.currentUser;
   if (!user) { showLogin(); return; }
 
+  // Recuperar licencias locales y configurar URL del servidor
+  await loadLicenses();
   const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+  if (activeCompany && activeCompany.company_url) {
+    const resolvedUrl = resolveCompanyUrl(activeCompany.company_url);
+    (window as any).PB_URL = resolvedUrl;
+    pb.baseUrl = resolvedUrl;
+  }
 
   // Actualizar sidebar
   $('#sidebar-username').textContent = user.full_name || user.email;

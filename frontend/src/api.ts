@@ -492,9 +492,18 @@ const API = {
     const today = date || new Date().toISOString().slice(0, 10);
     let finalAvgCostForProductUpdate = null;
 
+    let posConfig = { operational: { allow_negative_stock: false } };
+    try {
+      const rawCfg = await this.getSetting('pos_settings_v1');
+      if (rawCfg) posConfig = JSON.parse(rawCfg);
+    } catch (_) {}
+    const allowNegative = !!posConfig?.operational?.allow_negative_stock;
+
     if (existing.items.length) {
       const rec = existing.items[0];
-      const newQty = Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
+      const newQty = allowNegative 
+        ? (rec.qty_on_hand ?? 0) + deltaQty
+        : Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
       
       let avgCost = Number(rec.avg_cost ?? 0);
       if (deltaQty > 0 && newAvgCost !== null) {
@@ -514,9 +523,10 @@ const API = {
       });
     } else {
       const initialCost = newAvgCost !== null ? newAvgCost : 0;
+      const initialQty = allowNegative ? deltaQty : Math.max(0, deltaQty);
       await pb.create('inventory_stock', {
         product_id: productId, warehouse_id: warehouseId,
-        qty_on_hand: Math.max(0, deltaQty),
+        qty_on_hand: initialQty,
         avg_cost: initialCost,
         last_mov_date: today,
       });
@@ -1213,6 +1223,15 @@ const API = {
     // Cargar productos para expandir
     const products = await this.getProducts({ activeOnly: false });
 
+    // Cargar configuración de POS para validar stock negativo
+    let posConfig = { operational: { allow_negative_stock: false } };
+    try {
+      const rawCfg = await this.getSetting('pos_settings_v1');
+      if (rawCfg) posConfig = JSON.parse(rawCfg);
+    } catch (_) {}
+    const isPOS = !!inv.pos_shift_id;
+    const allowNegative = isPOS && !!posConfig?.operational?.allow_negative_stock;
+
     // ── Validar stock en tiempo real y preparar COGS ───────────────────
     const movLines = [];
     for (const line of lines) {
@@ -1223,7 +1242,7 @@ const API = {
         }
         const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
         const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
-        if (qtyOnHand + 0.0001 < line.qty) {
+        if (!allowNegative && qtyOnHand + 0.0001 < line.qty) {
           throw new Error(`Existencias insuficientes para el producto "${prod.name}" en la bodega seleccionada. Solicitado: ${fmtN(line.qty)}, Disponible: ${fmtN(qtyOnHand)}.`);
         }
         const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);

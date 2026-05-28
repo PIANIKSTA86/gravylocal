@@ -31,8 +31,8 @@ onBootstrap((e) => {
     return;
   }
 
-  const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
-  const deleteRule = "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'";
+  const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
+  const deleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin')";
 
   // ──────────────────────────────────────────────────────────
   // 1. COLECCIÓN: pos_shifts (Turnos POS)

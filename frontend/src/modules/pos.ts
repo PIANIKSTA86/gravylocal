@@ -32,8 +32,30 @@ function defaultPOSConfig() {
     special: {
       allow_price_edit: false,
       require_customer: true,
+      price_source: 'base_price',
+      catalog_view_mode: 'grid',
+      prices_include_iva: false,  // true = precios con IVA incluido (precio tax-in)
     }
   };
+}
+
+/**
+ * Calcula base imponible e IVA para un ítem del carrito.
+ * - prices_include_iva = false (defecto): precio es la BASE. iva = base * rate/100
+ * - prices_include_iva = true:  precio es TOTAL con IVA. base = precio/(1+rate/100), iva = precio - base
+ */
+function calcItemTax(salesPrice: number, ivaRate: number, cfg: any) {
+  const includesIva = !!cfg?.special?.prices_include_iva;
+  const rate = Number(ivaRate || 0);
+  if (includesIva && rate > 0) {
+    const divisor = 1 + rate / 100;
+    const base = salesPrice / divisor;
+    const ivaAmount = salesPrice - base;
+    return { base: Math.round(base * 100) / 100, ivaAmount: Math.round(ivaAmount * 100) / 100, total: salesPrice };
+  }
+  // precio = base, IVA adicional
+  const ivaAmount = salesPrice * rate / 100;
+  return { base: salesPrice, ivaAmount: Math.round(ivaAmount * 100) / 100, total: salesPrice + ivaAmount };
 }
 
 async function getPOSConfig() {
@@ -101,9 +123,27 @@ async function openPOSSettingsModal(onSaved: any = null) {
       </div>
       <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
         <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-cogs mr-2"></i>Opciones Especiales</h4>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-price-edit" type="checkbox" ${cfg.special.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-require-customer" type="checkbox" ${cfg.special.require_customer ? 'checked' : ''}>Exigir cliente en cada venta</label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-prices-include-iva" type="checkbox" ${cfg.special.prices_include_iva ? 'checked' : ''}><span>Precios <strong>incluyen IVA</strong> (precio tax-in)</span></label>
+          <div class="form-group mb-0">
+            <label class="form-label">Origen de Precio en POS</label>
+            <select id="pos-cfg-price-source" class="form-input">
+              <option value="base_price" ${cfg.special.price_source === 'base_price' ? 'selected' : ''}>Precio 1 (Base)</option>
+              <option value="precio_venta_2" ${cfg.special.price_source === 'precio_venta_2' ? 'selected' : ''}>Precio 2</option>
+              <option value="precio_venta_3" ${cfg.special.price_source === 'precio_venta_3' ? 'selected' : ''}>Precio 3</option>
+              <option value="free" ${cfg.special.price_source === 'free' ? 'selected' : ''}>Precio Libre (Cajero Digita)</option>
+            </select>
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label">Vista del Catálogo</label>
+            <select id="pos-cfg-catalog-view" class="form-input">
+              <option value="grid" ${cfg.special.catalog_view_mode === 'grid' ? 'selected' : ''}>Cuadrícula Directa</option>
+              <option value="categories" ${cfg.special.catalog_view_mode === 'categories' ? 'selected' : ''}>Agrupado por Categorías</option>
+              <option value="lines" ${cfg.special.catalog_view_mode === 'lines' ? 'selected' : ''}>Agrupado por Líneas</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -140,12 +180,19 @@ async function openPOSSettingsModal(onSaved: any = null) {
         special: {
           allow_price_edit: (document.getElementById('pos-cfg-price-edit') as HTMLInputElement)?.checked,
           require_customer: (document.getElementById('pos-cfg-require-customer') as HTMLInputElement)?.checked,
+          prices_include_iva: (document.getElementById('pos-cfg-prices-include-iva') as HTMLInputElement)?.checked,
+          price_source: (document.getElementById('pos-cfg-price-source') as HTMLSelectElement)?.value || 'base_price',
+          catalog_view_mode: (document.getElementById('pos-cfg-catalog-view') as HTMLSelectElement)?.value || 'grid',
         }
       };
       await savePOSConfig(newCfg);
+      posConfig = newCfg; // Actualizar variable a nivel de módulo
       (window as any).showToast('Configuración guardada', 'success');
       (window as any).closeModal();
       if (onSaved) onSaved();
+      if (typeof (window as any).filterPosProducts === 'function') {
+        (window as any).filterPosProducts();
+      }
     });
   }, 100);
 }
@@ -177,17 +224,26 @@ let posWarehouses: any[] = [];
 let posCart: PosCartItem[] = [];
 let selectedCustomerId = "";
 let selectedWarehouseId = "";
+let posConfig: any = null;
+let activeCategoryFilter = "";
+let activeLineFilter = "";
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
-  
+  // Exponer función global para el botón de configuración
+  window.openPOSSettingsModal = openPOSSettingsModal;
+
+  const userRole = (window as any).pb.currentUser?.role ?? '';
+  const canSeeCfg = ['administrador', 'contador', 'superadmin'].includes(userRole);
+
   container.innerHTML = `
     <div class="rounded-xl border p-6 space-y-6 min-h-[600px] flex flex-col justify-between" style="border-color:#E5E7EB;background:#FCFCFD">
+      ${canSeeCfg ? `
       <div class="flex justify-end mb-2">
-        <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal()">
-          <i class="fas fa-cog"></i>
+        <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal()" style="color:#7F7CFF;border-color:#7F7CFF">
+          <i class="fas fa-cog mr-1"></i> Config. POS
         </button>
-      </div>
+      </div>` : ''}
       <div id="pos-shift-container" class="flex-grow flex flex-col justify-center items-center py-12">
         <div class="text-center" style="color:#374151">
           <i class="fas fa-spinner fa-spin text-4xl mb-4" style="color:#7F7CFF"></i>
@@ -196,8 +252,6 @@ export async function renderPOS(container: HTMLElement) {
       </div>
     </div>
   `;
-// Exponer función global para el botón
-window.openPOSSettingsModal = openPOSSettingsModal;
 
   await window.checkActiveShift();
 }
@@ -316,6 +370,17 @@ window.loadPOSInterface = async function() {
   if (!mainWrap) return;
 
   try {
+    // Cargar configuración de POS
+    posConfig = await getPOSConfig();
+    activeCategoryFilter = "";
+    activeLineFilter = "";
+
+    // Forzar el contenedor principal a ocupar el 100% de la altura en escritorio
+    mainWrap.id = 'pos-main-container';
+    mainWrap.style.minHeight = '0';
+    mainWrap.style.height = '100%';
+    mainWrap.className = 'rounded-xl border p-4 h-full flex flex-col justify-between';
+
     // Carga maestros
     const [prods, thirds, whs] = await Promise.all([
       (window as any).API.getProducts({ activeOnly: true }),
@@ -338,9 +403,9 @@ window.loadPOSInterface = async function() {
 
     // Render principal
     mainWrap.innerHTML = `
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-160px)] min-h-[500px]">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-160px)] min-h-[500px] pos-grid">
         <!-- Panel Izquierdo: Catálogo y Buscador (Col 7) -->
-        <div class="lg:col-span-7 flex flex-col justify-between space-y-4 h-full">
+        <div class="lg:col-span-7 flex flex-col justify-between space-y-4 h-full pos-catalog-container">
           <div class="flex items-center gap-3">
             <div class="relative flex-grow">
               <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
@@ -358,58 +423,64 @@ window.loadPOSInterface = async function() {
         </div>
 
         <!-- Panel Derecho: Carrito de Compras (Col 5) -->
-        <div class="lg:col-span-5 flex flex-col justify-between rounded-2xl border p-5 h-full" style="border-color:#E5E7EB;background:#FCFCFD">
-          <div class="space-y-4 flex flex-col h-full justify-between">
-            <!-- Barra superior del Carrito -->
-            <div class="flex justify-between items-center border-b pb-3" style="border-color:#E5E7EB">
-              <div>
-                <span class="font-bold block text-sm" style="color:#0D2137"><i class="fas fa-cart-shopping text-blue-500 mr-1"></i> Carrito de Ventas</span>
-                <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
-              </div>
+        <div class="lg:col-span-5 flex flex-col rounded-2xl border h-full pos-cart-container" style="border-color:#E5E7EB;background:#FCFCFD;overflow:hidden">
+
+          <!-- Barra superior del Carrito -->
+          <div class="flex justify-between items-center border-b px-5 pt-4 pb-3 flex-shrink-0" style="border-color:#E5E7EB">
+            <div>
+              <span class="font-bold block text-sm" style="color:#0D2137"><i class="fas fa-cart-shopping text-blue-500 mr-1"></i> Carrito de Ventas</span>
+              <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              ${['administrador','contador','superadmin'].includes((window as any).pb.currentUser?.role) ? `
+              <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
+                <i class="fas fa-cog"></i>
+              </button>` : ''}
               <button class="btn btn-outline btn-sm text-red-500 hover:text-red-400" onclick="window.clearPOSCart()"><i class="fas fa-trash-can"></i> Vaciar</button>
             </div>
+          </div>
 
-            <!-- Selector de Cliente y Bodega -->
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
-                <select id="pos-cart-customer" class="form-input w-full text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
-                  ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
-                </select>
-              </div>
-              <div>
-                <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Bodega</label>
-                <select id="pos-cart-warehouse" class="form-input w-full text-xs" onchange="window.posOnWarehouseChange()" style="background:#fff;color:#0D2137">
-                  ${posWarehouses.map(w => `<option value="${w.id}"${selectedWarehouseId === w.id ? ' selected' : ''}>${w.name}</option>`).join('')}
-                </select>
-              </div>
+          <!-- Selector de Cliente y Bodega -->
+          <div class="grid grid-cols-2 gap-3 px-5 pt-3 pb-2 flex-shrink-0">
+            <div>
+              <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
+              <select id="pos-cart-customer" class="form-input w-full text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
+                ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
+              </select>
             </div>
-
-            <!-- Lista de items del carrito -->
-            <div class="flex-grow overflow-y-auto pr-1 my-3 space-y-3" id="pos-cart-body" style="max-height:calc(100vh-420px)">
-              <!-- Items del carrito -->
-            </div>
-
-            <!-- Resumen de Totales y Pago -->
-            <div class="border-t pt-4 space-y-3" style="border-color:#E5E7EB">
-              <div class="space-y-1 text-xs">
-                <div class="flex justify-between" style="color:#6B7280"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold" style="color:#374151">$ 0</span></div>
-                <div class="flex justify-between" style="color:#6B7280"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold" style="color:#374151">$ 0</span></div>
-                <div class="flex justify-between text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137">
-                  <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-500 text-lg">$ 0</span>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-2 gap-3 pt-2">
-                <button class="btn btn-outline py-3 font-semibold text-xs text-orange-500 hover:text-orange-400" onclick="window.openArqueoPOSModal()">
-                  <i class="fas fa-lock mr-1"></i> ARQUEO / CERRAR CAJA
-                </button>
-                <button class="btn btn-primary py-3 font-bold text-sm" id="btn-pos-checkout" onclick="window.openPOSPaymentModal()">
-                  <i class="fas fa-cash-register mr-1"></i> PAGAR Y FACTURAR
-                </button>
-              </div>
+            <div>
+              <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Bodega</label>
+              <select id="pos-cart-warehouse" class="form-input w-full text-xs" onchange="window.posOnWarehouseChange()" style="background:#fff;color:#0D2137">
+                ${posWarehouses.map(w => `<option value="${w.id}"${selectedWarehouseId === w.id ? ' selected' : ''}>${w.name}</option>`).join('')}
+              </select>
             </div>
           </div>
+
+          <!-- Lista de items del carrito (scroll independiente) -->
+          <div class="flex-1 overflow-y-auto px-5 py-2 space-y-3" id="pos-cart-body">
+            <!-- Items del carrito -->
+          </div>
+
+          <!-- Resumen de Totales y Pago (siempre visible al fondo) -->
+          <div class="border-t px-5 pt-3 pb-4 space-y-3 flex-shrink-0" style="border-color:#E5E7EB;background:#FCFCFD">
+            <div class="space-y-1 text-xs">
+              <div class="flex justify-between" style="color:#6B7280"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold" style="color:#374151">$ 0</span></div>
+              <div class="flex justify-between" style="color:#6B7280"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold" style="color:#374151">$ 0</span></div>
+              <div class="flex justify-between text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137">
+                <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-500 text-lg">$ 0</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <button class="btn btn-outline py-3 font-semibold text-xs text-orange-500 hover:text-orange-400" onclick="window.openArqueoPOSModal()">
+                <i class="fas fa-lock mr-1"></i> ARQUEO / CERRAR CAJA
+              </button>
+              <button class="btn btn-primary py-3 font-bold text-sm" id="btn-pos-checkout" onclick="window.openPOSPaymentModal()">
+                <i class="fas fa-cash-register mr-1"></i> PAGAR Y FACTURAR
+              </button>
+            </div>
+          </div>
+
         </div>
       </div>
     `;
@@ -446,28 +517,166 @@ window.loadPosProductsWithStock = async function() {
   }
 };
 
+function getProductPriceByConfig(prod: any, cfg: any) {
+  const source = cfg?.special?.price_source || 'base_price';
+  if (source === 'free') {
+    // Si el precio es libre, sugerir base_price por defecto pero permitir editarlo.
+    return Number(prod.base_price ?? 0);
+  }
+  const price = Number(prod[source] ?? 0);
+  if (price <= 0 && source !== 'base_price') {
+    return Number(prod.base_price ?? 0); // Fallback a Precio 1 si el seleccionado está en cero o no definido
+  }
+  return price;
+}
+
+window.setCatalogCategoryFilter = function(cat: string) {
+  activeCategoryFilter = cat;
+  window.filterPosProducts();
+};
+
+window.setCatalogLineFilter = function(ln: string) {
+  activeLineFilter = ln;
+  window.filterPosProducts();
+};
+
+window.clearCatalogFilter = function() {
+  activeCategoryFilter = "";
+  activeLineFilter = "";
+  window.filterPosProducts();
+};
+
 window.filterPosProducts = function() {
   const query = (document.getElementById('pos-search-product') as HTMLInputElement)?.value.toLowerCase().trim() || '';
   const grid = document.getElementById('pos-catalog-grid');
   if (!grid) return;
 
-  const filtered = posProducts.filter(p => {
-    return `${p.name} ${p.code}`.toLowerCase().includes(query);
-  });
+  // Si hay una búsqueda, resetear filtros condicionales de navegación
+  if (query) {
+    activeCategoryFilter = "";
+    activeLineFilter = "";
+  }
 
-  if (!filtered.length) {
+  // 1. Mostrar categorías si está configurado y no hay filtros ni búsquedas activas
+  if (posConfig?.special?.catalog_view_mode === 'categories' && !activeCategoryFilter && !query) {
+    const cats = [...new Set(posProducts.map(p => p.categoria?.trim()).filter(Boolean))].sort();
+    if (posProducts.some(p => !p.categoria?.trim())) {
+      cats.push("Sin Categoría");
+    }
     grid.innerHTML = `
-      <div class="text-center py-12 text-gray-500 w-full col-span-3">
-        <i class="fas fa-box-open text-3xl mb-2 block"></i> No se encontraron productos/servicios en el catálogo.
+      <div class="mb-3 px-1 flex items-center gap-2">
+        <span class="text-xs font-bold uppercase tracking-wider text-gray-500"><i class="fas fa-folder-open text-blue-500 mr-1"></i> Categorías de Producto</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        ${cats.map(cat => `
+          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-blue-300" 
+               style="border-color:#E5E7EB;background:#FCFCFD"
+               onclick="window.setCatalogCategoryFilter('${(window as any).esc(cat)}')">
+            <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 text-lg">
+              <i class="fas fa-folder"></i>
+            </div>
+            <span class="font-bold text-xs text-gray-700 truncate max-w-full" title="${(window as any).esc(cat)}">${(window as any).esc(cat)}</span>
+          </div>
+        `).join('')}
       </div>
     `;
     return;
   }
 
+  // 2. Mostrar líneas si está configurado y no hay filtros ni búsquedas activas
+  if (posConfig?.special?.catalog_view_mode === 'lines' && !activeLineFilter && !query) {
+    const lns = [...new Set(posProducts.map(p => p.linea?.trim()).filter(Boolean))].sort();
+    if (posProducts.some(p => !p.linea?.trim())) {
+      lns.push("Sin Línea");
+    }
+    grid.innerHTML = `
+      <div class="mb-3 px-1 flex items-center gap-2">
+        <span class="text-xs font-bold uppercase tracking-wider text-gray-500"><i class="fas fa-tags text-violet-500 mr-1"></i> Líneas de Producto</span>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        ${lns.map(ln => `
+          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-violet-300" 
+               style="border-color:#E5E7EB;background:#FCFCFD"
+               onclick="window.setCatalogLineFilter('${(window as any).esc(ln)}')">
+            <div class="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-violet-500 text-lg">
+              <i class="fas fa-tag"></i>
+            </div>
+            <span class="font-bold text-xs text-gray-700 truncate max-w-full" title="${(window as any).esc(ln)}">${(window as any).esc(ln)}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    return;
+  }
+
+  // 3. Filtrar lista de productos
+  const filtered = posProducts.filter(p => {
+    if (query) {
+      return `${p.name} ${p.code}`.toLowerCase().includes(query);
+    }
+    if (activeCategoryFilter) {
+      if (activeCategoryFilter === "Sin Categoría") {
+        return !p.categoria?.trim();
+      }
+      return p.categoria?.trim() === activeCategoryFilter;
+    }
+    if (activeLineFilter) {
+      if (activeLineFilter === "Sin Línea") {
+        return !p.linea?.trim();
+      }
+      return p.linea?.trim() === activeLineFilter;
+    }
+    return true;
+  });
+
+  if (!filtered.length) {
+    let returnBtn = "";
+    if (activeCategoryFilter || activeLineFilter) {
+      returnBtn = `<button class="btn btn-outline btn-sm mt-3" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>`;
+    }
+    grid.innerHTML = `
+      <div class="text-center py-12 text-gray-500 w-full col-span-3">
+        <i class="fas fa-box-open text-3xl mb-2 block"></i> No se encontraron productos/servicios en el catálogo.
+        <br>${returnBtn}
+      </div>
+    `;
+    return;
+  }
+
+  // Generar miga de pan o barra de navegación para filtros activos
+  let filterBreadcrumb = "";
+  if (activeCategoryFilter) {
+    filterBreadcrumb = `
+      <div class="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl p-3 mb-3 text-xs text-blue-800 font-medium">
+        <span><i class="fas fa-folder-open mr-1"></i> Categoría: <strong>${(window as any).esc(activeCategoryFilter)}</strong></span>
+        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-blue-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>
+      </div>
+    `;
+  } else if (activeLineFilter) {
+    filterBreadcrumb = `
+      <div class="flex items-center justify-between bg-violet-50 border border-violet-100 rounded-xl p-3 mb-3 text-xs text-violet-800 font-medium">
+        <span><i class="fas fa-tags mr-1"></i> Línea: <strong>${(window as any).esc(activeLineFilter)}</strong></span>
+        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-violet-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>
+      </div>
+    `;
+  }
+
+  const maxToShow = 36;
+  const itemsToShow = filtered.slice(0, maxToShow);
+  const showMoreAlert = filtered.length > maxToShow 
+    ? `<div class="w-full text-center py-3 px-4 text-xs bg-blue-50/80 text-blue-700 rounded-xl border border-blue-100 font-medium mt-4 col-span-2 sm:col-span-3">
+         <i class="fas fa-circle-info mr-1"></i> Mostrando ${maxToShow} de ${filtered.length} productos. Refina tu búsqueda para ver otros artículos.
+       </div>`
+    : '';
+
   grid.innerHTML = `
+    ${filterBreadcrumb}
     <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
-      ${filtered.map(p => {
+      ${itemsToShow.map(p => {
+        const allowNegative = posConfig?.operational?.allow_negative_stock;
         const isOutOfStock = p.type === 'BIEN' && p.stock <= 0;
+        const isBlocked = isOutOfStock && !allowNegative;
+
         const stockLabel = p.type === 'SERVICIO' ? 'SERVICIO' : `${p.stock} DISP`;
         const stockBadgeClass = p.type === 'SERVICIO'
           ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
@@ -477,25 +686,35 @@ window.filterPosProducts = function() {
               ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
               : 'bg-red-500/10 text-red-400 border border-red-500/20';
 
+        const price = getProductPriceByConfig(p, posConfig);
+        const isFree = posConfig?.special?.price_source === 'free';
+        const priceLabel = isFree ? 'Precio Libre' : (window as any).fmt(price);
+        const includesIvaBadge = !isFree && posConfig?.special?.prices_include_iva
+          ? `<span class="text-[8px] text-orange-500 font-bold block leading-tight">IVA incl.</span>`
+          : '';
+
         return `
-          <div class="rounded-xl border p-3 flex flex-col justify-between relative select-none cursor-pointer transition-all duration-200 hover:scale-[1.02] ${isOutOfStock ? 'opacity-60 cursor-not-allowed' : ''}" 
-               style="border-color:rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)"
-               onclick="${isOutOfStock ? '' : `window.addToPOSCart('${p.id}')`}">
+          <div class="rounded-xl border p-3 flex flex-col justify-between relative select-none cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:border-blue-200 ${isBlocked ? 'opacity-55 cursor-not-allowed' : ''}" 
+               style="border-color:#E5E7EB;background:#FCFCFD"
+               onclick="${isBlocked ? '' : `window.addToPOSCart('${p.id}')`}">
             <div>
               <div class="flex justify-between items-start gap-1">
-                <span class="text-[9px] font-mono text-gray-500 block">[${(window as any).esc(p.code || 'S/C')}]</span>
+                <span class="text-[9px] font-mono text-gray-400 block">[${(window as any).esc(p.code || 'S/C')}]</span>
                 <span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${stockBadgeClass}">${stockLabel}</span>
               </div>
-              <h4 class="font-semibold text-xs text-black mt-1.5 line-clamp-2" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
-              <div class="text-[11px] text-blue-700 font-bold mt-1">${(window as any).fmt(p.sales_price || 0)}</div>
+              <h4 class="font-semibold text-xs text-gray-800 mt-1.5 line-clamp-2" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
             </div>
-            <div class="mt-3 flex justify-between items-center">
-              <span class="font-extrabold text-blue-400 text-sm">${(window as any).fmt(p.sales_price || 0)}</span>
-              <span class="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 text-xs hover:bg-blue-500/20"><i class="fas fa-plus"></i></span>
+            <div class="mt-3 flex justify-between items-end">
+              <div>
+                <span class="font-extrabold text-blue-600 text-sm">${priceLabel}</span>
+                ${includesIvaBadge}
+              </div>
+              <span class="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 text-xs hover:bg-blue-500/20"><i class="fas fa-plus"></i></span>
             </div>
           </div>
         `;
       }).join('')}
+      ${showMoreAlert}
     </div>
   `;
 };
@@ -517,11 +736,12 @@ window.addToPOSCart = function(productId: string) {
   const prod = posProducts.find(p => p.id === productId);
   if (!prod) return;
 
-  // Stock check
   const inCart = posCart.find(item => item.id === productId);
   const currentQty = inCart ? inCart.qty : 0;
 
-  if (prod.type === 'BIEN' && currentQty + 1 > prod.stock) {
+  const allowNegative = posConfig?.operational?.allow_negative_stock;
+
+  if (prod.type === 'BIEN' && !allowNegative && currentQty + 1 > prod.stock) {
     (window as any).showToast(`No puedes vender más de ${prod.stock} unidades de este producto (stock insuficiente).`, 'warning');
     return;
   }
@@ -529,11 +749,12 @@ window.addToPOSCart = function(productId: string) {
   if (inCart) {
     inCart.qty++;
   } else {
+    const price = getProductPriceByConfig(prod, posConfig);
     posCart.push({
       id: prod.id,
       code: prod.code,
       name: prod.name,
-      sales_price: prod.sales_price || 0,
+      sales_price: price,
       iva_rate: prod.iva_rate ?? 19,
       qty: 1,
       type: prod.type,
@@ -551,10 +772,12 @@ window.updateCartQty = function(id: string, delta: number) {
   const prod = posProducts.find(p => p.id === id);
   if (!prod) return;
 
+  const allowNegative = posConfig?.operational?.allow_negative_stock;
+
   if (item.qty + delta <= 0) {
     posCart = posCart.filter(x => x.id !== id);
   } else {
-    if (prod.type === 'BIEN' && item.qty + delta > prod.stock) {
+    if (prod.type === 'BIEN' && !allowNegative && item.qty + delta > prod.stock) {
       (window as any).showToast('Existencias insuficientes en bodega.', 'warning');
       return;
     }
@@ -596,18 +819,33 @@ window.renderPOSCart = function() {
 
   let subtotal = 0;
   let ivaTotal = 0;
+  const includesIva = !!posConfig?.special?.prices_include_iva;
 
   body.innerHTML = posCart.map(item => {
-    const itemSub = item.qty * item.sales_price;
-    const itemIva = itemSub * (item.iva_rate / 100);
+    const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+    const itemSub = item.qty * tax.base;
+    const itemIva = item.qty * tax.ivaAmount;
+    const itemTotal = item.qty * tax.total;
     subtotal += itemSub;
     ivaTotal += itemIva;
+
+    const isPriceEditable = posConfig?.special?.price_source === 'free' || posConfig?.special?.allow_price_edit;
+    const priceDisplay = isPriceEditable
+      ? `<input type="number" min="0" step="50" class="form-input py-0.5 px-1 text-xs w-24 font-bold inline-block text-right" value="${item.sales_price}" onchange="window.updateCartItemPrice('${item.id}', this.value)" style="background:#fff;color:#0D2137;border:1px solid #DCE6F8;height:24px">`
+      : `<strong>${(window as any).fmt(item.sales_price)}</strong>`;
+
+    const ivaLabel = includesIva
+      ? `<span class="text-orange-500 font-bold">(IVA incl. ${item.iva_rate}%)</span>`
+      : `<span>| IVA: ${item.iva_rate}%</span>`;
 
     return `
       <div class="rounded-xl p-3 border flex justify-between items-center gap-3 bg-white/[0.01]" style="border-color:rgba(255,255,255,0.05)">
         <div class="flex-grow">
           <h5 class="font-bold text-xs text-black line-clamp-1">${(window as any).esc(item.name)}</h5>
-          <div class="text-[10px] text-gray-400 mt-0.5">Precio: ${(window as any).fmt(item.sales_price)} | IVA: ${item.iva_rate}%</div>
+          <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-1.5 flex-wrap">
+            <span>Precio:</span> ${priceDisplay} ${ivaLabel}
+            <span class="ml-auto font-bold text-gray-600">${(window as any).fmt(itemTotal)}</span>
+          </div>
         </div>
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-1 border rounded-lg p-0.5" style="border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.02)">
@@ -630,6 +868,19 @@ window.renderPOSCart = function() {
   if (subLbl) subLbl.textContent = (window as any).fmt(subtotal);
   if (ivaLbl) ivaLbl.textContent = (window as any).fmt(ivaTotal);
   if (totLbl) totLbl.textContent = (window as any).fmt(total);
+};
+
+window.updateCartItemPrice = function(id: string, val: string) {
+  const price = parseFloat(val);
+  if (Number.isNaN(price) || price < 0) {
+    (window as any).showToast('Precio no válido', 'warning');
+    return;
+  }
+  const item = posCart.find(x => x.id === id);
+  if (item) {
+    item.sales_price = price;
+    window.renderPOSCart();
+  }
 };
 
 // --- Modal de Arqueo y Cierre ---
@@ -744,17 +995,22 @@ window.openPOSPaymentModal = function() {
   let subtotal = 0;
   let ivaTotal = 0;
   posCart.forEach(item => {
-    const s = item.qty * item.sales_price;
-    subtotal += s;
-    ivaTotal += s * (item.iva_rate / 100);
+    const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+    subtotal += item.qty * tax.base;
+    ivaTotal += item.qty * tax.ivaAmount;
   });
   const total = subtotal + ivaTotal;
+  const includesIva = !!posConfig?.special?.prices_include_iva;
+  const ivaModeLabel = includesIva
+    ? `<span class="text-[10px] text-orange-600 font-bold"><i class="fas fa-circle-info mr-1"></i>Precios con IVA incluido — Base: ${(window as any).fmt(subtotal)} + IVA: ${(window as any).fmt(ivaTotal)}</span>`
+    : `<span class="text-[10px] text-gray-400">Base: ${(window as any).fmt(subtotal)} + IVA: ${(window as any).fmt(ivaTotal)}</span>`;
 
   const bodyHtml = `
     <div class="space-y-6 text-sm" style="color:#374151">
       <div class="text-center p-4 rounded-xl" style="background:#EEF2F6">
         <span class="text-xs text-gray-500 uppercase font-black block">Total a Recaudar</span>
         <span class="text-3xl font-extrabold text-blue-700" id="pos-pay-tot" data-val="${total}">${(window as any).fmt(total)}</span>
+        <div class="mt-1">${ivaModeLabel}</div>
       </div>
 
       <div class="grid grid-cols-3 gap-3" id="pos-pay-methods-grid">
@@ -883,16 +1139,17 @@ window.confirmPOSPayment = async function() {
     const invoiceNumber = `POS-${today}-${rand}`;
 
     const lines = posCart.map(item => {
-      const subtotal = item.qty * item.sales_price;
-      const ivaAmt = subtotal * (item.iva_rate / 100);
+      const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+      const lineBase = item.qty * tax.base;
+      const lineIva  = item.qty * tax.ivaAmount;
       return {
         product_id: item.id,
         qty: item.qty,
-        unit_price: item.sales_price,
+        unit_price: tax.base,          // precio unitario SIN IVA (base contable)
         iva_rate: item.iva_rate,
-        iva_amount: ivaAmt,
-        subtotal,
-        total: subtotal + ivaAmt,
+        iva_amount: lineIva,
+        subtotal: lineBase,
+        total: lineBase + lineIva,
       };
     });
 
@@ -917,11 +1174,15 @@ window.confirmPOSPayment = async function() {
 
     (window as any).showToast('Venta procesada y contabilizada', 'success');
 
+    // Cerrar el modal de pago antes de mostrar la tirilla
+    (window as any).closeModal();
+
+    // Vaciar carrito y refrescar la vista de inmediato
+    posCart = [];
+    window.renderPOSCart();
+
     // Muestra simulador de Tirilla Térmica
     window.showThermalTicketReceipt(inv.id, received, received - tot);
-    
-    // Vaciar carrito
-    posCart = [];
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al procesar cobro', 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'CONFIRMAR E IMPRIMIR'; }
@@ -982,7 +1243,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
     `;
 
     const footer = `
-      <button class="btn btn-outline" onclick="closeModal(); window.renderPOSCart();">Cerrar</button>
+      <button class="btn btn-outline" onclick="closeModal(); window.renderPOSCart(); window.loadPosProductsWithStock();">Nueva Venta</button>
       <button class="btn btn-secondary" onclick="window.emitPosToDian('${invoiceId}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
       <button class="btn btn-primary" onclick="window.printThermalReceipt('${invoiceId}', ${receivedCash}, ${changeCash})"><i class="fas fa-print"></i> Imprimir Tirilla</button>
     `;

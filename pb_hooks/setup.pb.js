@@ -10,6 +10,19 @@
 onBootstrap((e) => {
   e.next();
 
+  // PARCHE POS: Remover restricción min: 0 de inventory_stock.qty_on_hand para permitir stock negativo
+  try {
+    const col = $app.findCollectionByNameOrId("inventory_stock");
+    const field = col.fields.getByName("qty_on_hand");
+    if (field && field.min !== null) {
+      field.min = null;
+      $app.save(col);
+      console.log("[GRAVY] Removida restricción min:0 de inventory_stock.qty_on_hand para permitir stock negativo.");
+    }
+  } catch (err) {
+    // Si la DB no está inicializada aún, se creará después en el setup principal
+  }
+
   // Evitar re-ejecución si ya existe la colección principal
   try {
     $app.findCollectionByNameOrId("settings");
@@ -36,8 +49,8 @@ onBootstrap((e) => {
     type: "base",
     listRule: "@request.auth.id != ''",
     viewRule: "@request.auth.id != ''",
-    createRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
-    updateRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
+    createRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')",
+    updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')",
     deleteRule: null,
     fields: [
       { name: "key",   type: "text", required: true },
@@ -512,7 +525,7 @@ onBootstrap((e) => {
     fields: [
       { name: "product_id",   type: "relation", required: true,  collectionId: productsId,    cascadeDelete: false },
       { name: "warehouse_id", type: "relation", required: true,  collectionId: warehousesId,  cascadeDelete: false },
-      { name: "qty_on_hand",  type: "number",   required: false, min: 0 },
+      { name: "qty_on_hand",  type: "number",   required: false },
       { name: "avg_cost",     type: "number",   required: false, min: 0 },
       { name: "last_mov_date",type: "text",     required: false },
     ],

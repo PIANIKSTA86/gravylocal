@@ -18,3 +18,8 @@ Thumbs.db
 frontend/node_modules/
 frontend/dist/
 *.local
+
+# Hub Runtime & Node modules
+hub/node_modules/
+hub/pb_data/
+

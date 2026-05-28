@@ -5,6 +5,20 @@
 
 'use strict';
 
+const getHubUrl = (): string => {
+  const { protocol, hostname, port } = window.location;
+  if (port) {
+    return `${protocol}//${hostname}:8089`;
+  }
+  const parts = hostname.split('.');
+  if (parts.length >= 3) {
+    return `${protocol}//hub.${parts.slice(1).join('.')}`;
+  }
+  return `${protocol}//hub.${hostname}`;
+};
+
+const HUB_URL = getHubUrl();
+
 async function renderSuperadmin(container: HTMLElement): Promise<void> {
   if (!container) return;
 
@@ -253,7 +267,7 @@ async function _loadSALicenses() {
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
     if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión en el HUB');
 
-    const res = await fetch(`http://localhost:8089/api/collections/licenses/records?filter=(company_id='${activeCompany.company_id}')`, {
+    const res = await fetch(`${HUB_URL}/api/collections/licenses/records?filter=(company_id='${activeCompany.company_id}')`, {
       headers: { 'Authorization': `Bearer ${hubToken}` }
     });
     const data = await res.json();
@@ -377,7 +391,7 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
     if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión en el HUB');
 
-    const res = await fetch(`http://localhost:8089/api/hub/toggle-license`, {
+    const res = await fetch(`${HUB_URL}/api/hub/toggle-license`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hubToken}` },
       body: JSON.stringify({ company_id: activeCompany.company_id, module_key: moduleKey, enabled }),
@@ -441,7 +455,7 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
   btn.innerHTML = '<i class=""fas fa-spinner fa-spin mr-2""></i> Creando... (Esto puede tomar unos segundos)';
 
   try {
-    const res = await fetch('http://localhost:8089/api/hub/create-company', {
+    const res = await fetch(`${HUB_URL}/api/hub/create-company`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 - configuracion.js
  */
 'use strict';
@@ -188,6 +188,65 @@ async function renderConfiguracion(c) {
         </div>
       </div>
 
+      <!-- SECCIÓN DIAN -->
+      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold" style="color:#0D2137">Facturación Electrónica DIAN</h4>
+            <p class="text-sm" style="color:#6B7280">Configuración técnica para la emisión de facturas, notas crédito/débito, nómina electrónica y documento soporte.</p>
+          </div>
+          ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-dian"><i class="fas fa-server mr-1"></i> Guardar configuración DIAN</button>' : ''}
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="form-group">
+            <label class="form-label">Ambiente de Destino</label>
+            <select id="dian-environment" class="form-input" ${canEdit ? '' : 'disabled'}>
+              <option value="2" ${byKey['dian_environment']?.value === '2' ? 'selected' : ''}>Ambiente de Pruebas / Habilitación</option>
+              <option value="1" ${byKey['dian_environment']?.value === '1' ? 'selected' : ''}>Ambiente de Producción</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">NIT del Facturador (sin dígito de verificación)</label>
+            <input id="dian-nit" class="form-input" value="${esc(byKey['dian_nit']?.value || '')}" placeholder="Ej: 900123456" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group md:col-span-2">
+            <label class="form-label">Clave Técnica (DIAN)</label>
+            <input id="dian-cltec" class="form-input" value="${esc(byKey['dian_cltec']?.value || '')}" placeholder="Ingrese la clave técnica entregada por la DIAN" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">ID del Software Autorizado (Software ID)</label>
+            <input id="dian-software-id" class="form-input" value="${esc(byKey['dian_software_id']?.value || '')}" placeholder="UUID del software en el portal DIAN" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">PIN del Software</label>
+            <input id="dian-software-pin" class="form-input" value="${esc(byKey['dian_software_pin']?.value || '')}" placeholder="Ej: 12345" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <div class="flex justify-between items-center mb-1">
+              <label class="form-label mb-0">Certificado Digital (.p12 / .pfx)</label>
+              <span id="dian-cert-status-indicator">
+                ${byKey['dian_certificate_base64']?.value 
+                  ? '<span class="text-xs font-semibold px-2 py-0.5 rounded bg-green-100 text-green-700"><i class="fas fa-check-circle mr-1"></i>Certificado Cargado</span>' 
+                  : '<span class="text-xs font-semibold px-2 py-0.5 rounded bg-yellow-100 text-yellow-700"><i class="fas fa-circle-exclamation mr-1"></i>Modo Simulado</span>'}
+              </span>
+            </div>
+            <input id="dian-cert-file" type="file" accept=".p12,.pfx" class="form-input" ${canEdit ? '' : 'disabled'}>
+            <p class="text-xs mt-1" style="color:#9CA3AF">Cargue su archivo de firma digital (.p12/.pfx). Si no se carga ninguno, operará en modo simulación.</p>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Contraseña del Certificado</label>
+            <input id="dian-cert-pass" type="password" class="form-input" value="${esc(byKey['dian_certificate_password']?.value || '')}" placeholder="Contraseña de la firma digital" ${canEdit ? '' : 'readonly'}>
+          </div>
+        </div>
+      </div>
+
       <div class="bg-white rounded-2xl border overflow-hidden mt-4" style="border-color:#F0F0F0">
         <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
           <h4 class="font-bold" style="color:#0D2137">Settings detectados</h4>
@@ -206,6 +265,54 @@ async function renderConfiguracion(c) {
           </table>
         </div>
       </div>`;
+
+    let uploadedCertBase64: string | null = null;
+    const certFileInput = $('#dian-cert-file') as HTMLInputElement | null;
+    certFileInput?.addEventListener('change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        const result = evt.target?.result as string;
+        const commaIndex = result.indexOf(',');
+        if (commaIndex !== -1) {
+          uploadedCertBase64 = result.substring(commaIndex + 1);
+          showToast('Certificado leído en memoria. Presione "Guardar configuración DIAN" para registrar.', 'info');
+          const indicator = $('#dian-cert-status-indicator');
+          if (indicator) {
+            indicator.innerHTML = '<span class="text-xs font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-700"><i class="fas fa-spinner fa-spin mr-1"></i>Listo para guardar</span>';
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    $('#btn-save-dian')?.addEventListener('click', async () => {
+      if (!canEdit) return showToast('Sin permisos para actualizar configuración', 'error');
+      
+      try {
+        const payload = [
+          ['dian_environment', getInputVal('dian-environment').trim()],
+          ['dian_nit', getInputVal('dian-nit').trim()],
+          ['dian_cltec', getInputVal('dian-cltec').trim()],
+          ['dian_software_id', getInputVal('dian-software-id').trim()],
+          ['dian_software_pin', getInputVal('dian-software-pin').trim()],
+          ['dian_certificate_password', getInputVal('dian-cert-pass').trim()],
+        ];
+        
+        if (uploadedCertBase64) {
+          payload.push(['dian_certificate_base64', uploadedCertBase64]);
+        }
+        
+        await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
+        showToast('Configuración de la DIAN guardada con éxito', 'success');
+        renderConfiguracion(c);
+      } catch (err: any) {
+        showToast(err.message || 'No se pudo guardar la configuración de la DIAN', 'error');
+      }
+    });
 
     $('#btn-save-config')?.addEventListener('click', async () => {
       try {

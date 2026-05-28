@@ -1379,6 +1379,7 @@ window.viewSalesInvoiceDetail = async function(id: string) {
         <button class="btn btn-primary" onclick="closeModal(); window.contabilizarVenta('${inv.id}', '${inv.number}')"><i class="fas fa-check-double"></i> Contabilizar</button>
       ` : ''}
       ${inv.status === 'posted' ? `
+        <button class="btn btn-secondary" onclick="window.emitInvoiceToDian('${inv.tx_id}', '${inv.number}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
         <button class="btn btn-danger" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')"><i class="fas fa-ban"></i> Anular Factura</button>
       ` : ''}
     `;
@@ -1387,6 +1388,41 @@ window.viewSalesInvoiceDetail = async function(id: string) {
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al cargar detalle', 'error');
   }
+};
+
+window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
+  if (!txId) {
+    (window as any).showToast('Esta factura no tiene una transacción contable asociada para emitir a la DIAN', 'warning');
+    return;
+  }
+  
+  (window as any).confirmDialog(
+    'Emitir a la DIAN',
+    `¿Deseas firmar digitalmente y emitir la factura <strong>${docNumber}</strong> a la DIAN?<br><br>Esta acción enviará la información de la transacción y generará el XML UBL 2.1 firmado.`,
+    async () => {
+      try {
+        (window as any).showToast('Generando y firmando XML UBL 2.1...', 'info');
+        const res = await (window as any).pb.send('/api/dian/emit', {
+          method: 'POST',
+          body: JSON.stringify({ txId: txId }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (res && res.success) {
+          (window as any).showToast(`Factura ${docNumber} emitida correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+          (window as any).closeModal();
+          const content = document.getElementById('page-content');
+          if (content) {
+            (window as any).renderVentas(content);
+          }
+        } else {
+          (window as any).showToast(`Error al emitir factura: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
+        }
+      } catch (err: any) {
+        (window as any).showToast(err.message || 'Error al emitir a la DIAN', 'error');
+      }
+    }
+  );
 };
 
 window.editSalesInvoice = function(id: string) {

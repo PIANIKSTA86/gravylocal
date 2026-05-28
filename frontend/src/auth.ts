@@ -113,7 +113,38 @@ function requireRole(...roles) {
 }
 
 /* -- Flujo Multi-Empresa (HUB) ------------------------------- */
-const HUB_URL = "http://localhost:8089";
+const getHubUrl = (): string => {
+  const { protocol, hostname, port } = window.location;
+  if (port) {
+    return `${protocol}//${hostname}:8089`;
+  }
+  const parts = hostname.split('.');
+  if (parts.length >= 3) {
+    return `${protocol}//hub.${parts.slice(1).join('.')}`;
+  }
+  return `${protocol}//hub.${hostname}`;
+};
+
+const HUB_URL = getHubUrl();
+
+function resolveCompanyUrl(url: string): string {
+  if (!url) return window.location.origin;
+  const currentHost = window.location.hostname;
+  const currentProto = window.location.protocol;
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") {
+      if (currentHost !== "localhost" && currentHost !== "127.0.0.1") {
+        if (window.location.port) {
+          return `${currentProto}//${currentHost}:${urlObj.port}`;
+        } else {
+          return `${currentProto}//${currentHost}`;
+        }
+      }
+    }
+  } catch (_) {}
+  return url;
+}
 
 interface CompanyAccess {
   access_id:     string;
@@ -225,8 +256,9 @@ function renderCompanySelector(companies: CompanyAccess[]) {
 async function selectCompany(co: CompanyAccess) {
   try {
     // Configurar la URL de PocketBase para la empresa seleccionada
-    (window as any).PB_URL = co.company_url;
-    pb.baseUrl = co.company_url;
+    const resolvedUrl = resolveCompanyUrl(co.company_url);
+    (window as any).PB_URL = resolvedUrl;
+    pb.baseUrl = resolvedUrl;
 
     // Iniciar sesión en el Tenant usando credenciales sincronizadas
     await pb.authWithPassword(co.company_email, co.company_pass);

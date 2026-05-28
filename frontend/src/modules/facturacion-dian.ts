@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 ? facturacion-dian.js
  */
 'use strict';
@@ -97,9 +97,7 @@ async function renderFacturacionDIAN(c) {
                     <div class="flex gap-1">
                       <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewDianDetail('${esc(d.id)}')"><i class="fas fa-eye"></i></button>
                       ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Editar" onclick="editDianDoc('${esc(d.id)}')"><i class="fas fa-pen"></i></button>` : ''}
-                      ${can('canWrite') && (s === 'pendiente') ? `<button class="btn btn-secondary btn-sm" title="Enviar a DIAN" onclick="setDianStatus('${esc(d.id)}','enviada')"><i class="fas fa-paper-plane"></i> Enviar</button>` : ''}
-                      ${can('canWrite') && s === 'enviada' ? `<button class="btn btn-primary btn-sm" title="Aceptar" onclick="setDianStatus('${esc(d.id)}','aceptada')"><i class="fas fa-check"></i></button>` : ''}
-                      ${can('canWrite') && s === 'enviada' ? `<button class="btn btn-danger btn-sm" title="Rechazar" onclick="setDianStatus('${esc(d.id)}','rechazada')"><i class="fas fa-xmark"></i></button>` : ''}
+                      ${can('canWrite') && (s === 'pendiente' || s === 'rechazada') ? `<button class="btn btn-secondary btn-sm" title="Enviar a DIAN" onclick="window.emitDianDocFromList('${esc(d.id)}','${esc(d.tx_id)}')"><i class="fas fa-paper-plane mr-1"></i> Enviar</button>` : ''}
                     </div>
                   </td>
                 </tr>`;
@@ -174,8 +172,8 @@ async function viewDianDetail(id) {
           <div class="col-span-2 md:col-span-3"><span class="form-label">Respuesta DIAN</span><p class="p-2 rounded text-sm" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(d.dian_response || '?')}</p></div>
         </div>
         <div>
-          <span class="form-label">Contenido XML (simulaci?n)</span>
-          <textarea readonly class="form-input font-mono text-xs mt-1" rows="8" style="resize:vertical">${esc(xmlContent)}</textarea>
+          <span class="form-label">Contenido XML (Firmado / UBL 2.1)</span>
+          <textarea readonly class="form-input font-mono text-xs mt-1" rows="12" style="resize:vertical">${esc(d.xml_content || xmlContent)}</textarea>
         </div>
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
@@ -193,28 +191,31 @@ function generateMockCufe(txId, dateStr) {
   }
 }
 
-async function setDianStatus(id, newStatus) {
-  const labels = { enviada: 'Enviar a DIAN', aceptada: 'Marcar como Aceptada', rechazada: 'Marcar como Rechazada' };
-  confirmDialog(labels[newStatus] || 'Cambiar estado', `?Confirmas el cambio de estado del documento?`, async () => {
+window.emitDianDocFromList = async function(id, txId) {
+  if (!txId) {
+    showToast('No hay una transacción vinculada a este documento.', 'warning');
+    return;
+  }
+  confirmDialog('Emitir Documento a DIAN', '¿Confirmas el envío y firmado digital de este documento contable ante la DIAN?', async () => {
     try {
-      const current = await pb.get('einvoice_docs', id);
-      const prev = current.status || 'pendiente';
-      const allowed = { pendiente: ['enviada'], enviada: ['aceptada', 'rechazada'], aceptada: [], rechazada: [] };
-      if (!(allowed[prev] || []).includes(newStatus)) return showToast(`Transici?n no permitida: ${prev} ? ${newStatus}`, 'warning');
-      const payload = { status: newStatus };
-      if (newStatus === 'enviada') {
-        payload.sent_at = todayStr();
-        payload.cufe = current.cufe || generateMockCufe(current.tx_id, payload.sent_at);
-        payload.dian_response = current.dian_response || 'Documento enviado a DIAN (simulaci?n).';
+      showToast('Transmitiendo a la DIAN...', 'info');
+      const res = await pb.send('/api/dian/emit', {
+        method: 'POST',
+        body: JSON.stringify({ txId: txId }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (res && res.success) {
+        showToast(`Documento emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+        renderFacturacionDIAN($('#page-content'));
+      } else {
+        showToast(`Error al emitir: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
       }
-      if (newStatus === 'aceptada') payload.dian_response = 'Documento aceptado por DIAN. Procesado correctamente.';
-      if (newStatus === 'rechazada') payload.dian_response = 'Documento rechazado por DIAN. Verifique inconsistencias.';
-      await pb.update('einvoice_docs', id, payload);
-      showToast(`Estado actualizado a: ${newStatus}`, 'success');
-      renderFacturacionDIAN($('#page-content'));
-    } catch (err) { showToast(err.message, 'error'); }
+    } catch (err) {
+      showToast(err.message || 'Error en comunicación con la DIAN', 'error');
+    }
   });
-}
+};
 
 function openDianForm(transactions, row = null) {
   if (!row && (!transactions || !transactions.length)) {
@@ -300,7 +301,7 @@ async function editDianDoc(id) {
 
 
 // --- VITE MIGRATION GLOBALS ---
-(window as any).setDianStatus = setDianStatus;
+(window as any).emitDianDocFromList = window.emitDianDocFromList;
 (window as any).filterDianByStatus = filterDianByStatus;
 (window as any).generateMockCufe = generateMockCufe;
 (window as any).viewDianDetail = viewDianDetail;

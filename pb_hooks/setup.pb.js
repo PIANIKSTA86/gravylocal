@@ -583,6 +583,13 @@ onBootstrap((e) => {
     ["company_phone",   "601-555-0100"],
     ["company_email",   "info@miempresa.com"],
     ["smv_year",        String(new Date().getFullYear())],
+    ["dian_environment", "2"],
+    ["dian_nit",        ""],
+    ["dian_cltec",      ""],
+    ["dian_software_id", ""],
+    ["dian_software_pin", ""],
+    ["dian_certificate_base64", ""],
+    ["dian_certificate_password", ""],
   ];
   for (const [k, v] of seedSettings) {
     const r = new Record(settingsCol2, { key: k, value: v });

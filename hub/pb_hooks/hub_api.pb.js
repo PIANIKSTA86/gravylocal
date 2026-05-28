@@ -201,3 +201,110 @@ routerAdd("POST", "/api/hub/create-company", (e) => {
     e.json(500, { message: "Fallo general aprovisionando: " + String(err) });
   }
 });
+
+// Endpoint para sincronizar usuarios creados en los tenants
+routerAdd("POST", "/api/hub/sync-tenant-user", (e) => {
+  let body = {};
+  try { body = e.requestInfo().body || {}; } catch (_) {}
+  if (!body.email) {
+    try { body = $apis.requestInfo(e).body || {}; } catch (_) {}
+  }
+
+  const email = String(body.email || "").trim().toLowerCase();
+  const fullName = String(body.fullName || "").trim();
+  let role = String(body.role || "viewer").trim().toLowerCase();
+  const validRoles = ["admin", "contador", "auxiliar", "auditor", "viewer"];
+  if (!validRoles.includes(role)) {
+    if (role === "superadmin" || role === "owner") {
+      role = "admin";
+    } else {
+      role = "viewer";
+    }
+  }
+  const active = body.active !== false;
+  const password = String(body.password || "").trim();
+  const companyName = String(body.companyName || "").trim();
+  const companyNit = String(body.companyNit || "").trim();
+
+  if (!email) {
+    e.json(400, { message: "El email es requerido" });
+    return;
+  }
+
+  try {
+    // 1. Encontrar la empresa correspondiente
+    let company = null;
+    if (companyNit) {
+      try {
+        company = $app.findFirstRecordByFilter("companies", "nit = '" + companyNit.replace(/'/g, "''") + "'");
+      } catch (_) {}
+    }
+    if (!company && companyName) {
+      try {
+        company = $app.findFirstRecordByFilter("companies", "name = '" + companyName.replace(/'/g, "''") + "'");
+      } catch (_) {}
+    }
+
+    if (!company) {
+      // Fallback: buscar la de puerto 8090 si es la demo
+      try {
+        company = $app.findFirstRecordByFilter("companies", "port = 8090");
+      } catch (_) {
+        e.json(404, { message: "Empresa no identificada en el HUB" });
+        return;
+      }
+    }
+
+    // 2. Buscar o crear el usuario en hub_users
+    const hubUsersCol = $app.findCollectionByNameOrId("hub_users");
+    let hubUser = null;
+    try {
+      hubUser = $app.findFirstRecordByFilter("hub_users", "email = '" + email.replace(/'/g, "''") + "'");
+      if (fullName && hubUser.getString("full_name") !== fullName) {
+        hubUser.set("full_name", fullName);
+      }
+      if (password) {
+        hubUser.setPassword(password);
+      }
+      $app.save(hubUser);
+    } catch (_) {
+      hubUser = new Record(hubUsersCol);
+      hubUser.set("email", email);
+      hubUser.set("full_name", fullName || email.split('@')[0]);
+      hubUser.set("is_superadmin", false);
+      hubUser.setPassword(password || "Admin1234!");
+      $app.save(hubUser);
+      console.log("[GRAVY HUB] Creado usuario hub_user para: " + email);
+    }
+
+    // 3. Crear o actualizar el acceso user_company_access
+    const ucaCol = $app.findCollectionByNameOrId("user_company_access");
+    let access = null;
+    try {
+      access = $app.findFirstRecordByFilter("user_company_access", "hub_user_id = '" + hubUser.id + "' && company_id = '" + company.id + "'");
+      access.set("role", role);
+      access.set("company_email", email);
+      access.set("active", active);
+      if (password) {
+        access.set("company_pass", password);
+      }
+      $app.save(access);
+      console.log("[GRAVY HUB] Actualizado acceso UCA para: " + email);
+    } catch (_) {
+      access = new Record(ucaCol);
+      access.set("hub_user_id", hubUser.id);
+      access.set("company_id", company.id);
+      access.set("role", role);
+      access.set("company_email", email);
+      access.set("company_pass", password || "Admin1234!");
+      access.set("active", active);
+      $app.save(access);
+      console.log("[GRAVY HUB] Creado acceso UCA para: " + email);
+    }
+
+    e.json(200, { success: true, message: "Usuario sincronizado correctamente con el HUB" });
+  } catch (err) {
+    console.error("[GRAVY HUB] Error en sync-tenant-user:", err);
+    e.json(500, { message: "Error interno del HUB: " + String(err) });
+  }
+});

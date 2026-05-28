@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — transacciones.js
  */
 'use strict';
@@ -1351,6 +1351,53 @@ async function seeTxDetail(id) {
   try {
     const tx = await pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' });
     const lines = await API.getTxLines(id);
+    
+    const txTypeCode = tx.expand?.tx_type_id?.code || '';
+    const isDianDoc = ['FV', 'POS', 'NC', 'ND'].includes(txTypeCode);
+    
+    let isEmitted = false;
+    let dianStatus = 'no_enviado';
+    let cufe = '';
+    let dianResponse = '';
+    if (isDianDoc) {
+      try {
+        const docList = await pb.collection('einvoice_docs').getList(1, 1, { filter: `tx_id="${id}"` });
+        if (docList.items.length) {
+          const doc = docList.items[0];
+          isEmitted = true;
+          dianStatus = doc.status || 'pendiente';
+          cufe = doc.cufe || '';
+          dianResponse = doc.dian_response || '';
+        }
+      } catch (_) {}
+    }
+    
+    let dianHtml = '';
+    if (isDianDoc) {
+      const badgeClass = dianStatus === 'aceptada' ? 'badge-green' : (dianStatus === 'rechazada' ? 'badge-red' : 'badge-orange');
+      const badgeIcon = dianStatus === 'aceptada' ? 'fa-circle-check' : (dianStatus === 'rechazada' ? 'fa-circle-xmark' : 'fa-clock');
+      const statusLabel = dianStatus.charAt(0).toUpperCase() + dianStatus.slice(1);
+      
+      dianHtml = `
+      <div class="p-3 rounded-xl mb-4 border text-xs" style="background:#F9FAFB;border-color:#E5E7EB">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <span class="text-xs font-semibold uppercase" style="color:#4B5563">Estado Facturación Electrónica (DIAN)</span>
+            <div class="flex items-center gap-2 mt-1">
+              <span class="badge ${badgeClass}"><i class="fas ${badgeIcon} mr-1"></i>${statusLabel}</span>
+              ${cufe ? `<span class="font-mono text-xs" style="color:#6B7280" title="${esc(cufe)}">CUFE: ${esc(cufe.slice(0, 20))}...</span>` : ''}
+            </div>
+            ${dianResponse ? `<p class="text-xs mt-1" style="color:#4B5563"><strong>Respuesta:</strong> ${esc(dianResponse)}</p>` : ''}
+          </div>
+          ${(dianStatus !== 'aceptada' && tx.status === 'active') ? `
+            <button class="btn btn-secondary btn-sm" onclick="window.emitTxToDianFromDetail('${esc(tx.id)}', '${esc(tx.number||'')}')">
+              <i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN
+            </button>
+          ` : ''}
+        </div>
+      </div>`;
+    }
+
     openModal(
       `Transacción ${esc(tx.number || '')}`,
       `
@@ -1359,7 +1406,10 @@ async function seeTxDetail(id) {
         <div><strong>Tercero:</strong> ${esc(tx.expand?.third_party_id?.name || '—')}</div>
         <div><strong>Estado:</strong> ${esc(tx.status)}</div>
       </div>
-      <p class="mb-4" style="color:#6B7280">${esc(tx.description || '')}</p>
+      <p class="mb-4 text-sm" style="color:#6B7280">${esc(tx.description || '')}</p>
+      
+      ${dianHtml}
+      
       <div class="overflow-x-auto">
         <table class="data-table"><thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
           <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
@@ -1373,6 +1423,36 @@ async function seeTxDetail(id) {
     showToast(err.message, 'error');
   }
 }
+
+window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
+  (window as any).confirmDialog(
+    'Emitir Documento a la DIAN',
+    `¿Deseas firmar digitalmente y emitir el documento <strong>${txNumber}</strong> a la DIAN?<br><br>Esta acción enviará la información de la transacción y generará el XML UBL 2.1 firmado.`,
+    async () => {
+      try {
+        (window as any).showToast('Transmitiendo a la DIAN...', 'info');
+        const res = await (window as any).pb.send('/api/dian/emit', {
+          method: 'POST',
+          body: JSON.stringify({ txId: txId }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (res && res.success) {
+          (window as any).showToast(`Documento ${txNumber} emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+          (window as any).closeModal();
+          const content = document.getElementById('page-content');
+          if (content && (window as any).currentPage === 'consulta-tx') {
+            (window as any).loadConsultaTxPage();
+          }
+        } else {
+          (window as any).showToast(`Error al emitir: ${res.dianResponse || 'Respuesta de DIAN rechazada'}`, 'error');
+        }
+      } catch (err: any) {
+        (window as any).showToast(err.message || 'Error al emitir a la DIAN', 'error');
+      }
+    }
+  );
+};
 
 function approveTx(id, number) {
   if (!can('canApprove')) return showToast('No tienes permisos para aprobar transacciones', 'error');
@@ -2087,6 +2167,7 @@ async function renderTransacciones(c) {
 }
 
 // --- VITE MIGRATION GLOBALS ---
+(window as any).emitTxToDianFromDetail = window.emitTxToDianFromDetail;
 (window as any).TX_EDIT_STATE = TX_EDIT_STATE;
 (window as any).editEditTxLineComment = editEditTxLineComment;
 (window as any).renderNuevaTx = renderNuevaTx;

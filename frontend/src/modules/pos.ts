@@ -983,12 +983,51 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
 
     const footer = `
       <button class="btn btn-outline" onclick="closeModal(); window.renderPOSCart();">Cerrar</button>
+      <button class="btn btn-secondary" onclick="window.emitPosToDian('${invoiceId}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
       <button class="btn btn-primary" onclick="window.printThermalReceipt('${invoiceId}', ${receivedCash}, ${changeCash})"><i class="fas fa-print"></i> Imprimir Tirilla</button>
     `;
 
     (window as any).openModal(`Tirilla de Venta Emitida`, ticketHtml, footer, false);
   } catch (err: any) {
     (window as any).showToast('Error al generar tirilla', 'error');
+  }
+};
+
+window.emitPosToDian = async function(invoiceId: string) {
+  try {
+    const inv = await (window as any).pb.get('invoices', invoiceId);
+    const txId = inv.tx_id;
+    if (!txId) {
+      (window as any).showToast('Esta venta no tiene transacción contable asociada.', 'warning');
+      return;
+    }
+    
+    (window as any).confirmDialog(
+      'Emitir Factura POS a la DIAN',
+      `¿Deseas firmar digitalmente y emitir el tiquete POS <strong>${inv.number}</strong> a la DIAN como factura electrónica?`,
+      async () => {
+        try {
+          (window as any).showToast('Generando y emitiendo XML POS a DIAN...', 'info');
+          const res = await (window as any).pb.send('/api/dian/emit', {
+            method: 'POST',
+            body: JSON.stringify({ txId: txId }),
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (res && res.success) {
+            (window as any).showToast(`Tiquete POS ${inv.number} emitido correctamente a la DIAN. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+            (window as any).closeModal();
+            window.renderPOSCart();
+          } else {
+            (window as any).showToast(`Error al emitir: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
+          }
+        } catch (err: any) {
+          (window as any).showToast(err.message || 'Error en comunicación', 'error');
+        }
+      }
+    );
+  } catch (err: any) {
+    (window as any).showToast('Error al cargar datos del tiquete: ' + err.message, 'error');
   }
 };
 

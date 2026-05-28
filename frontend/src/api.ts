@@ -490,24 +490,43 @@ const API = {
       perPage: 1,
     });
     const today = date || new Date().toISOString().slice(0, 10);
+    let finalAvgCostForProductUpdate = null;
+
     if (existing.items.length) {
       const rec = existing.items[0];
       const newQty = Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
-      const avgCost = newAvgCost !== null ? newAvgCost : (rec.avg_cost ?? 0);
+      
+      let avgCost = Number(rec.avg_cost ?? 0);
+      if (deltaQty > 0 && newAvgCost !== null) {
+        const currentQty = Number(rec.qty_on_hand ?? 0);
+        const currentCost = Number(rec.avg_cost ?? 0);
+        const totalNewQty = currentQty + deltaQty;
+        if (totalNewQty > 0) {
+          avgCost = Math.round((((currentQty * currentCost) + (deltaQty * newAvgCost)) / totalNewQty) * 100) / 100;
+        } else {
+          avgCost = newAvgCost;
+        }
+        finalAvgCostForProductUpdate = avgCost;
+      }
+      
       await pb.update('inventory_stock', rec.id, {
         qty_on_hand: newQty, avg_cost: avgCost, last_mov_date: today,
       });
     } else {
+      const initialCost = newAvgCost !== null ? newAvgCost : 0;
       await pb.create('inventory_stock', {
         product_id: productId, warehouse_id: warehouseId,
         qty_on_hand: Math.max(0, deltaQty),
-        avg_cost: newAvgCost ?? 0,
+        avg_cost: initialCost,
         last_mov_date: today,
       });
+      if (deltaQty > 0 && newAvgCost !== null) {
+        finalAvgCostForProductUpdate = initialCost;
+      }
     }
     // Actualizar último costo en el producto cuando viene de una entrada con costo
-    if (newAvgCost !== null && newAvgCost > 0) {
-      await pb.update('products', productId, { cost_price: newAvgCost });
+    if (finalAvgCostForProductUpdate !== null && finalAvgCostForProductUpdate > 0) {
+      await pb.update('products', productId, { cost_price: finalAvgCostForProductUpdate });
     }
     return;
   },
@@ -548,8 +567,12 @@ const API = {
     for (const line of lines) {
       const delta = isIn ? line.qty : isOut ? -line.qty : 0;
       if (isTran) {
+        // Obtener costo promedio en la bodega origen
+        const sourceStock = await this.getInventoryStock({ warehouseId: mov.warehouse_id, productId: line.product_id }).catch(() => []);
+        const sourceAvgCost = Number(sourceStock[0]?.avg_cost || 0);
+
         await this.upsertStock(line.product_id, mov.warehouse_id,      -line.qty, null, today);
-        await this.upsertStock(line.product_id, mov.dest_warehouse_id,  line.qty, null, today);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id,  line.qty, sourceAvgCost, today);
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today);
       }

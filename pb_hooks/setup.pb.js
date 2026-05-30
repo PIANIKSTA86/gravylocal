@@ -23,6 +23,19 @@ onBootstrap((e) => {
     // Si la DB no está inicializada aún, se creará después en el setup principal
   }
 
+  // PARCHE IVA: Quitar required: true del campo iva_rate en products para permitir IVA 0
+  try {
+    const col = $app.findCollectionByNameOrId("products");
+    const field = col.fields.getByName("iva_rate");
+    if (field && field.required) {
+      field.required = false;
+      $app.save(col);
+      console.log("[GRAVY] Parche iva_rate: required establecido a false en products.");
+    }
+  } catch (err) {
+    // Si la DB no está inicializada aún, se creará después en el setup principal
+  }
+
   // Evitar re-ejecución si ya existe la colección principal
   try {
     $app.findCollectionByNameOrId("settings");
@@ -417,7 +430,7 @@ onBootstrap((e) => {
       { name: "presentacion",          type: "text",     required: false },
       { name: "categoria",             type: "text",     required: false },
       { name: "linea",                 type: "text",     required: false },
-      { name: "iva_rate",              type: "number",   required: true,  min: 0 },
+      { name: "iva_rate",              type: "number",   required: false, min: 0 },
       { name: "income_account_id",     type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
       { name: "cost_account_id",       type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
       { name: "inventory_account_id",  type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
@@ -1162,7 +1175,7 @@ onBootstrap((e) => {
         { name: "presentacion",         type: "text",     required: false },
         { name: "categoria",            type: "text",     required: false },
         { name: "linea",                type: "text",     required: false },
-        { name: "iva_rate",             type: "number",   required: true,  min: 0 },
+        { name: "iva_rate",             type: "number",   required: false, min: 0 },
         { name: "income_account_id",    type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
         { name: "cost_account_id",      type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },
         { name: "inventory_account_id", type: "relation", required: false, collectionId: accountsId, cascadeDelete: false },

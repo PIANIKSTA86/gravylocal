@@ -42,12 +42,20 @@ onRecordCreateRequest((e) => {
       }
     } else {
       // Buscar resolución genérica
-      resolution = $app.findFirstRecordByFilter("dian_resolutions", filter + " && pos_register_id = ''");
+      try {
+        resolution = $app.findFirstRecordByFilter("dian_resolutions", filter + " && pos_register_id = ''");
+      } catch (_) {}
     }
 
     if (!resolution) {
       // Intentar obtener cualquier resolución activa de este tipo si no se encontró con los filtros anteriores
-      resolution = $app.findFirstRecordByFilter("dian_resolutions", filter);
+      try {
+        resolution = $app.findFirstRecordByFilter("dian_resolutions", filter);
+      } catch (_) {}
+    }
+
+    if (!resolution) {
+      throw new Error("No se encontró ninguna resolución activa de tipo " + docType + ".");
     }
 
     const nextNumber = resolution.getInt("current_number") + 1;
@@ -70,7 +78,7 @@ onRecordCreateRequest((e) => {
 
     // Generar y asignar el número definitivo
     const prefix = resolution.getString("prefix");
-    const formattedNumber = prefix ? (prefix + "-" + nextNumber) : String(nextNumber);
+    const formattedNumber = prefix ? (prefix + "-" + String(nextNumber).padStart(8, '0')) : String(nextNumber).padStart(8, '0');
     
     record.set("number", formattedNumber);
 

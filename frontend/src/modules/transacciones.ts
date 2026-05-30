@@ -1215,7 +1215,7 @@ async function loadConsultaTxPage() {
     const request = {
       page: CTXQ_STATE.page,
       perPage: CTXQ_STATE.perPage,
-      sort: '-id',
+      sort: '-number',
       filter: filters.join(' && ') || '',
       expand: 'tx_type_id,third_party_id',
     };
@@ -1332,7 +1332,7 @@ async function exportConsultaTx() {
       const safe = pb.escapeFilterValue(q);
       filters.push(`(number~"${safe}" || description~"${safe}")`);
     }
-    const all = await pb.listAll('transactions', { sort: '-id', filter: filters.join(' && ') || '', expand: 'tx_type_id,third_party_id' });
+    const all = await pb.listAll('transactions', { sort: '-number', filter: filters.join(' && ') || '', expand: 'tx_type_id,third_party_id' });
     exportToExcel(
       all.map(t => ({
         'Número': t.number || '',

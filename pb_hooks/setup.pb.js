@@ -780,9 +780,31 @@ onRecordCreateRequest((e) => {
     return;
   }
 
-  // En algunos contextos de JSVM la relación puede llegar como string o array.
+  // Si ya tiene un número explícito y no es "AUTO", lo conservamos.
+  const rawNumber = String(rec.get("number") || "").trim();
   const rawTxType = rec.get("tx_type_id");
   const txTypeId = String(Array.isArray(rawTxType) ? (rawTxType[0] || "") : (rawTxType || "")).trim();
+
+  if (rawNumber && rawNumber !== "AUTO") {
+    // Intentar sincronizar el consecutivo en la serie para evitar desajustes futuros
+    try {
+      const parts = rawNumber.split("-");
+      if (parts.length === 2 && txTypeId) {
+        const numPart = parseInt(parts[1], 10);
+        if (Number.isFinite(numPart)) {
+          const txType = $app.findRecordById("transaction_types", txTypeId);
+          const currentConsec = Number(txType.get("consecutive") || 0);
+          if (numPart > currentConsec) {
+            txType.set("consecutive", numPart);
+            $app.save(txType);
+          }
+        }
+      }
+    } catch (_) {}
+    e.next();
+    return;
+  }
+
   if (!txTypeId) {
     throw new BadRequestError("tx_type_id es obligatorio para generar consecutivo");
   }

@@ -1622,8 +1622,33 @@ const API = {
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     if (!effectiveTxTypeId) {
       const code = inv.pos_shift_id ? 'POS' : 'FV';
-      const found = await pb.list('transaction_types', { filter: `code="${code}"`, perPage: 1 });
-      if (found.items.length) effectiveTxTypeId = found.items[0].id;
+      
+      // Intentar buscar por el prefijo del número de factura para asociarla a la serie contable correspondiente
+      const invNum = String(inv.number || "").trim();
+      const prefixCandidate = invNum.includes("-") ? invNum.split("-")[0].toUpperCase() : "";
+      
+      let found = null;
+      if (prefixCandidate) {
+        try {
+          const safePrefix = pb.escapeFilterValue(prefixCandidate);
+          found = await pb.list('transaction_types', {
+            filter: `active=true && code="${code}" && prefix="${safePrefix}"`,
+            perPage: 1,
+          });
+        } catch (_) {}
+      }
+      
+      // Fallback si no se encontró serie específica con ese prefijo
+      if (!found || !found.items.length) {
+        found = await pb.list('transaction_types', {
+          filter: `active=true && code="${code}"`,
+          perPage: 1,
+        });
+      }
+      
+      if (found && found.items.length) {
+        effectiveTxTypeId = found.items[0].id;
+      }
     }
     if (!effectiveTxTypeId) throw new Error('No se encontró el tipo de transacción contable (FV/POS) en el sistema.');
 

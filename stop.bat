@@ -11,9 +11,9 @@ PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
   "foreach ($p in $ports) {" ^
   "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^
   "  if ($pids) {" ^
-  "    foreach ($pid in $pids) {" ^
-  "      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue;" ^
-  "      $stopped += [PSCustomObject]@{ Port = $p; PID = $pid };" ^
+  "    foreach ($procId in $pids) {" ^
+  "      Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue;" ^
+  "      $stopped += [PSCustomObject]@{ Port = $p; PID = $procId };" ^
   "    }" ^
   "  }" ^
   "}" ^

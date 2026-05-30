@@ -39,6 +39,7 @@ function _renderInvPage(c, activeTab, ctx = {}) {
   const tabs = [
     { id: 'stock',      label: 'Stock actual',   icon: 'fa-boxes-stacked'  },
     { id: 'movimientos',label: 'Movimientos',    icon: 'fa-arrows-rotate'  },
+    { id: 'kardex',     label: 'Kardex',         icon: 'fa-table'          },
     { id: 'bodegas',    label: 'Bodegas',        icon: 'fa-warehouse'      },
   ];
 
@@ -63,6 +64,7 @@ function _renderInvPage(c, activeTab, ctx = {}) {
     c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     if (tabId === 'stock')       renderStockTab(tabContent, ctx);
     if (tabId === 'movimientos') renderMovimientosTab(tabContent, ctx);
+    if (tabId === 'kardex')      renderKardexTab(tabContent, ctx);
     if (tabId === 'bodegas')     renderBodegasTab(tabContent, ctx);
   }
 
@@ -667,6 +669,299 @@ function invKpi(label, value, icon, color, bg) {
   </div>`;
 }
 
+// ── TAB: KARDEX CARD ──────────────────────────────────────────────────────────
+async function renderKardexTab(c, ctx = {}) {
+  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando filtros...</div>`;
+  try {
+    const [products, warehouses] = await Promise.all([
+      API.getProducts({ activeOnly: false }),
+      ctx.warehouses ? Promise.resolve(ctx.warehouses) : API.getWarehouses(false)
+    ]);
+    
+    const goods = products.filter((p: any) => p.type === 'BIEN');
+
+    c.innerHTML = `
+      <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
+        <h4 class="text-sm font-bold mb-3" style="color:#0D2137"><i class="fas fa-filter mr-2" style="color:#1A4B8C"></i>Consultar Kardex de Referencia</h4>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div class="form-group">
+            <label class="form-label font-bold text-xs">Producto / Referencia <span style="color:#EF4444">*</span></label>
+            <select id="kd-prod" class="form-input w-full text-xs">
+              <option value="">— Seleccione Producto —</option>
+              ${goods.map((p: any) => `<option value="${esc(p.id)}">${esc(p.code)} — ${esc(p.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-bold text-xs">Bodega <span style="color:#EF4444">*</span></label>
+            <select id="kd-wh" class="form-input w-full text-xs">
+              <option value="">— Seleccione Bodega —</option>
+              ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary flex-1 py-2 text-xs" id="kd-btn-search"><i class="fas fa-magnifying-glass mr-1"></i>Consultar</button>
+            <button class="btn btn-outline py-2" id="kd-btn-excel" disabled title="Exportar a Excel"><i class="fas fa-file-excel text-[#059669]"></i></button>
+          </div>
+        </div>
+      </div>
+
+      <div id="kardex-results-container">
+        <div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#9CA3AF">
+          <i class="fas fa-table mr-2" style="font-size:24px"></i>
+          <p class="mt-2 text-sm">Selecciona un producto y una bodega para consultar los movimientos del Kardex.</p>
+        </div>
+      </div>
+    `;
+
+    let currentKardexData: any[] = [];
+    let currentProductName = "";
+    let currentWarehouseName = "";
+
+    const searchKardex = async () => {
+      const prodId = getSelectVal('kd-prod');
+      const whId = getSelectVal('kd-wh');
+      if (!prodId) return showToast('Selecciona un producto.', 'warning');
+      if (!whId) return showToast('Selecciona una bodega.', 'warning');
+
+      const searchBtn = document.getElementById('kd-btn-search') as HTMLButtonElement;
+      const excelBtn = document.getElementById('kd-btn-excel') as HTMLButtonElement;
+      const resultsContainer = document.getElementById('kardex-results-container');
+      
+      if (searchBtn) { searchBtn.disabled = true; searchBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Consultando...'; }
+      if (excelBtn) excelBtn.disabled = true;
+      if (resultsContainer) resultsContainer.innerHTML = `<div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando movimientos...</div>`;
+
+      try {
+        const prod = goods.find((p: any) => p.id === prodId);
+        const wh = warehouses.find((w: any) => w.id === whId);
+        currentProductName = prod ? `${prod.code} - ${prod.name}` : 'Producto';
+        currentWarehouseName = wh ? wh.name : 'Bodega';
+
+        const lines = await (window as any).pb.listAll('inventory_movement_lines', {
+          filter: `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied"`,
+          expand: 'movement_id,movement_id.warehouse_id,movement_id.dest_warehouse_id,movement_id.third_party_id'
+        });
+
+        const filteredLines = lines.filter((line: any) => {
+          const mov = line.expand?.movement_id;
+          if (!mov) return false;
+          if (mov.mov_type === 'TRASLADO') {
+            return mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
+          }
+          return mov.warehouse_id === whId;
+        });
+
+        filteredLines.sort((a: any, b: any) => {
+          const movA = a.expand?.movement_id;
+          const movB = b.expand?.movement_id;
+          const dateA = movA?.date || '';
+          const dateB = movB?.date || '';
+          if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+          const timeA = movA?.created || '';
+          const timeB = movB?.created || '';
+          if (timeA !== timeB) return timeA.localeCompare(timeB);
+
+          return (a.line_order || 0) - (b.line_order || 0);
+        });
+
+        let runningQty = 0;
+        let runningAvgCost = 0;
+
+        currentKardexData = filteredLines.map((line: any) => {
+          const mov = line.expand?.movement_id;
+          const partner = mov.expand?.third_party_id?.name || '—';
+          
+          let isInput = false;
+          let isOutput = false;
+
+          if (mov.mov_type === 'TRASLADO') {
+            if (mov.dest_warehouse_id === whId) isInput = true;
+            else if (mov.warehouse_id === whId) isOutput = true;
+          } else {
+            isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+            isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+          }
+
+          const qty = line.qty || 0;
+          const cost = line.unit_cost || 0;
+
+          let qtyIn = 0;
+          let costIn = 0;
+          let totalIn = 0;
+          let qtyOut = 0;
+          let costOut = 0;
+          let totalOut = 0;
+
+          if (isInput) {
+            qtyIn = qty;
+            costIn = cost;
+            totalIn = qty * cost;
+
+            const prevQty = runningQty;
+            const prevCost = runningAvgCost;
+            runningQty += qty;
+            if (runningQty > 0) {
+              runningAvgCost = ((prevQty * prevCost) + (qty * cost)) / runningQty;
+            } else {
+              runningAvgCost = cost;
+            }
+            runningAvgCost = Math.round(runningAvgCost * 100) / 100;
+          } else if (isOutput) {
+            qtyOut = qty;
+            costOut = runningAvgCost;
+            totalOut = qty * costOut;
+
+            runningQty -= qty;
+          }
+
+          const runningTotal = runningQty * runningAvgCost;
+
+          return {
+            date: mov.date,
+            docNumber: mov.number,
+            movType: mov.mov_type,
+            notes: line.notes || mov.notes || '',
+            partner,
+            qtyIn,
+            costIn,
+            totalIn,
+            qtyOut,
+            costOut,
+            totalOut,
+            qtyBal: runningQty,
+            costBal: runningAvgCost,
+            totalBal: runningTotal
+          };
+        });
+
+        if (resultsContainer) {
+          if (currentKardexData.length === 0) {
+            resultsContainer.innerHTML = `
+              <div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#9CA3AF">
+                <i class="fas fa-circle-exclamation mr-2" style="font-size:24px; color:#C46516"></i>
+                <p class="mt-2 text-sm">No se encontraron movimientos registrados para este producto en la bodega seleccionada.</p>
+              </div>
+            `;
+          } else {
+            resultsContainer.innerHTML = `
+              <div class="bg-white rounded-2xl border overflow-hidden shadow-sm" style="border-color:#F0F0F0">
+                <div class="overflow-x-auto">
+                  <table class="data-table text-xs w-full" id="kardex-table" style="min-width:1100px">
+                    <thead>
+                      <tr class="bg-gray-50 border-b font-bold" style="border-color:#E5E7EB">
+                        <th colspan="5" class="border-r py-2.5 text-center text-gray-700" style="border-color:#E5E7EB">Datos del Documento</th>
+                        <th colspan="3" class="border-r text-center bg-green-50/50" style="border-color:#E5E7EB; color:#047857">Entradas</th>
+                        <th colspan="3" class="border-r text-center bg-red-50/50" style="border-color:#E5E7EB; color:#B91C1C">Salidas</th>
+                        <th colspan="3" class="text-center bg-blue-50/50" style="color:#1D4ED8">Saldos</th>
+                      </tr>
+                      <tr class="bg-gray-100/50 font-bold border-b text-gray-600" style="border-color:#E5E7EB">
+                        <th class="py-2">Fecha</th>
+                        <th>Documento</th>
+                        <th>Tipo</th>
+                        <th>Tercero</th>
+                        <th class="border-r" style="border-color:#E5E7EB">Detalle / Notas</th>
+                        
+                        <th class="text-right bg-green-50/20" style="color:#047857">Cant.</th>
+                        <th class="text-right bg-green-50/20" style="color:#047857">Costo U.</th>
+                        <th class="text-right border-r bg-green-50/20" style="border-color:#E5E7EB; color:#047857">Total</th>
+                        
+                        <th class="text-right bg-red-50/20" style="color:#B91C1C">Cant.</th>
+                        <th class="text-right bg-red-50/20" style="color:#B91C1C">Costo U.</th>
+                        <th class="text-right border-r bg-red-50/20" style="border-color:#E5E7EB; color:#B91C1C">Total</th>
+                        
+                        <th class="text-right bg-blue-50/20" style="color:#1D4ED8">Cant.</th>
+                        <th class="text-right bg-blue-50/20" style="color:#1D4ED8">Costo Prom.</th>
+                        <th class="text-right bg-blue-50/20" style="color:#1D4ED8">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${currentKardexData.map(row => `
+                        <tr class="hover:bg-gray-50 border-b" style="border-color:#F3F4F6">
+                          <td class="py-2">${esc(row.date)}</td>
+                          <td class="font-mono font-semibold" style="color:#1A4B8C">${esc(row.docNumber)}</td>
+                          <td><span class="text-[10px] font-bold uppercase">${esc(row.movType)}</span></td>
+                          <td>${esc(row.partner)}</td>
+                          <td class="border-r text-gray-500 max-w-xs truncate" style="border-color:#E5E7EB" title="${esc(row.notes)}">${esc(row.notes)}</td>
+                          
+                          <td class="text-right font-semibold text-green-700 bg-green-50/30">${row.qtyIn ? fmtN(row.qtyIn) : '—'}</td>
+                          <td class="text-right text-green-700 bg-green-50/30">${row.qtyIn ? fmt(row.costIn) : '—'}</td>
+                          <td class="text-right border-r font-semibold text-green-700 bg-green-50/30" style="border-color:#E5E7EB">${row.qtyIn ? fmt(row.totalIn) : '—'}</td>
+                          
+                          <td class="text-right font-semibold text-red-700 bg-red-50/30">${row.qtyOut ? fmtN(row.qtyOut) : '—'}</td>
+                          <td class="text-right text-red-700 bg-red-50/30">${row.qtyOut ? fmt(row.costOut) : '—'}</td>
+                          <td class="text-right border-r font-semibold text-red-700 bg-red-50/30" style="border-color:#E5E7EB">${row.qtyOut ? fmt(row.totalOut) : '—'}</td>
+                          
+                          <td class="text-right font-bold text-blue-800 bg-blue-50/30">${fmtN(row.qtyBal)}</td>
+                          <td class="text-right text-blue-800 bg-blue-50/30">${fmt(row.costBal)}</td>
+                          <td class="text-right font-bold text-blue-800 bg-blue-50/30">${fmt(row.totalBal)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `;
+            if (excelBtn) excelBtn.disabled = false;
+          }
+        }
+      } catch (err: any) {
+        showToast(err.message, 'error');
+        if (resultsContainer) resultsContainer.innerHTML = `<div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}</div>`;
+      } finally {
+        if (searchBtn) { searchBtn.disabled = false; searchBtn.innerHTML = '<i class="fas fa-magnifying-glass mr-1"></i>Consultar'; }
+      }
+    };
+
+    const exportKardexExcel = () => {
+      if (!currentKardexData.length) return;
+      const dataToExport = currentKardexData.map(row => ({
+        'Fecha': row.date,
+        'Documento': row.docNumber,
+        'Tipo': row.movType,
+        'Tercero': row.partner,
+        'Notas': row.notes,
+        'Entradas Cant.': row.qtyIn || 0,
+        'Entradas Costo Unit.': row.costIn || 0,
+        'Entradas Costo Total': row.totalIn || 0,
+        'Salidas Cant.': row.qtyOut || 0,
+        'Salidas Costo Unit.': row.costOut || 0,
+        'Salidas Costo Total': row.totalOut || 0,
+        'Saldo Cant.': row.qtyBal,
+        'Saldo Costo Prom.': row.costBal,
+        'Saldo Costo Total': row.totalBal
+      }));
+
+      const headers = [
+        { key: 'Fecha', label: 'Fecha' },
+        { key: 'Documento', label: 'Documento' },
+        { key: 'Tipo', label: 'Tipo Movimiento' },
+        { key: 'Tercero', label: 'Tercero / Cliente / Prov' },
+        { key: 'Notas', label: 'Notas' },
+        { key: 'Entradas Cant.', label: 'Entradas Cant.' },
+        { key: 'Entradas Costo Unit.', label: 'Entradas Costo Unit.' },
+        { key: 'Entradas Costo Total', label: 'Entradas Costo Total' },
+        { key: 'Salidas Cant.', label: 'Salidas Cant.' },
+        { key: 'Salidas Costo Unit.', label: 'Salidas Costo Unit.' },
+        { key: 'Salidas Costo Total', label: 'Salidas Costo Total' },
+        { key: 'Saldo Cant.', label: 'Saldo Cant. Saldo' },
+        { key: 'Saldo Costo Prom.', label: 'Saldo Costo Prom.' },
+        { key: 'Saldo Costo Total', label: 'Saldo Costo Total' }
+      ];
+
+      const cleanProdName = currentProductName.replace(/[^a-zA-Z0-9]/g, '_');
+      const filename = `Kardex_${cleanProdName}_${currentWarehouseName.replace(/\s+/g, '_')}`;
+      (window as any).exportToExcel(dataToExport, headers, filename);
+      showToast('Kardex exportado a Excel.', 'success');
+    };
+
+    $('#kd-btn-search')?.addEventListener('click', searchKardex);
+    $('#kd-btn-excel')?.addEventListener('click', exportKardexExcel);
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
+  }
+}
+
 // --- VITE MIGRATION GLOBALS ---
 (window as any).renderStockTab = renderStockTab;
 (window as any).filterStockTable = filterStockTable;
@@ -685,3 +980,4 @@ function invKpi(label, value, icon, color, bg) {
 (window as any).viewMovDetail = viewMovDetail;
 (window as any)._renderInvPage = _renderInvPage;
 (window as any).INV_MOV_TYPES = INV_MOV_TYPES;
+(window as any).renderKardexTab = renderKardexTab;

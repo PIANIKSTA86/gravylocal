@@ -553,8 +553,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
         <div class="form-group relative">
           <label class="form-label font-bold">Cliente / Adquirente <span style="color:#EF4444">*</span></label>
-          <div id="so-supplier-search-wrap" class="relative">
+          <div id="so-supplier-search-wrap" class="relative flex gap-1 items-center">
             <input id="so-supplier-search" class="form-input" autocomplete="off" placeholder="Escribe NIT o nombre del cliente...">
+            <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.soQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
+              <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
+            </button>
             <input id="so-supplier" type="hidden" value="${(window as any).esc(inv?.customer_id || '')}">
             <div id="so-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
           </div>
@@ -716,6 +719,27 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     if (hidden && input) {
       hidden.value = id;
       input.value = text;
+    }
+  };
+
+  (window as any).soQuickAddCustomer = function() {
+    if (typeof (window as any).openTerceroForm === 'function') {
+      (window as any).openTerceroForm(null, async (createdRecord: any) => {
+        try {
+          const thirds = await (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
+          customers.length = 0;
+          customers.push(...thirds);
+          const docNum = createdRecord.doc_number || createdRecord.nit || '';
+          const nameText = createdRecord.name || '';
+          const selectText = docNum ? `${docNum} - ${nameText}` : nameText;
+          (window as any).selectSoSupplier(createdRecord.id, selectText);
+          (window as any).showToast('Cliente creado y seleccionado en la venta.', 'success');
+        } catch (err: any) {
+          (window as any).showToast('Error al recargar clientes: ' + err.message, 'error');
+        }
+      });
+    } else {
+      (window as any).showToast('Módulo de terceros no disponible.', 'warning');
     }
   };
 

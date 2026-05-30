@@ -1240,21 +1240,49 @@ const API = {
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       if (prod && prod.type === 'BIEN') {
-        if (!inv.warehouse_id) {
-          throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${prod.code || ''} ${prod.name || ''}.`);
+        if (prod.is_combo) {
+          const comps = await pb.listAll('product_components', { filter: `parent_id="${pb.escapeFilterValue(prod.id)}"`, expand: 'component_id' });
+          if (!comps.length) {
+            throw new Error(`El combo "${prod.name}" no tiene componentes configurados.`);
+          }
+          for (const comp of comps) {
+            const compProd = products.find(p => p.id === comp.component_id);
+            const compName = compProd ? compProd.name : (comp.expand?.component_id?.name || 'Componente');
+            const compCode = compProd ? compProd.code : (comp.expand?.component_id?.code || '');
+            const compQty = line.qty * comp.qty;
+            if (!inv.warehouse_id) {
+              throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${compCode} ${compName}.`);
+            }
+            const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: comp.component_id }).catch(() => []);
+            const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
+            if (!allowNegative && qtyOnHand + 0.0001 < compQty) {
+              throw new Error(`Existencias insuficientes para el componente "${compName}" (necesario para el combo "${prod.name}") en la bodega seleccionada. Solicitado: ${fmtN(compQty)}, Disponible: ${fmtN(qtyOnHand)}.`);
+            }
+            const avgCost = Number(stockRows[0]?.avg_cost || (compProd ? compProd.cost_price : 0) || 0);
+            movLines.push({
+              product_id: comp.component_id,
+              qty: compQty,
+              unit_cost: avgCost,
+              notes: line.description || `Componente Combo: ${prod.name} (Venta ${inv.number})`,
+            });
+          }
+        } else {
+          if (!inv.warehouse_id) {
+            throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${prod.code || ''} ${prod.name || ''}.`);
+          }
+          const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
+          const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
+          if (!allowNegative && qtyOnHand + 0.0001 < line.qty) {
+            throw new Error(`Existencias insuficientes para el producto "${prod.name}" en la bodega seleccionada. Solicitado: ${fmtN(line.qty)}, Disponible: ${fmtN(qtyOnHand)}.`);
+          }
+          const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
+          movLines.push({
+            product_id: line.product_id,
+            qty: line.qty,
+            unit_cost: avgCost,
+            notes: line.description || `Venta ${inv.number}`,
+          });
         }
-        const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
-        const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
-        if (!allowNegative && qtyOnHand + 0.0001 < line.qty) {
-          throw new Error(`Existencias insuficientes para el producto "${prod.name}" en la bodega seleccionada. Solicitado: ${fmtN(line.qty)}, Disponible: ${fmtN(qtyOnHand)}.`);
-        }
-        const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
-        movLines.push({
-          product_id: line.product_id,
-          qty: line.qty,
-          unit_cost: avgCost,
-          notes: line.description || `Venta ${inv.number}`,
-        });
       }
     }
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — terceros.js (v2)
  * Maestro de Terceros: clientes, proveedores, empleados, acreedores y transportistas.
  */
@@ -578,7 +578,7 @@ function _tpfValidate(p) {
 /* ═══════════════════════════════════════════════════════════
    ABRIR FORMULARIO
 ═══════════════════════════════════════════════════════════ */
-function openTerceroForm(row = null) {
+function openTerceroForm(row = null, onSaveSuccess = null) {
   if (!can('canWrite')) return showToast('No tienes permisos para gestionar terceros', 'error');
   openModal(
     row ? 'Editar Tercero' : 'Nuevo Tercero',
@@ -615,19 +615,24 @@ function openTerceroForm(row = null) {
     const btn = $('#btn-save-tp');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
     try {
+      let savedRecord = null;
       if (row?.id) {
-        await pb.update('third_parties', row.id, payload);
+        savedRecord = await pb.update('third_parties', row.id, payload);
         await API.logAudit('UPDATE', 'Tercero', row.id,
           `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
       } else {
-        const created = await pb.create('third_parties', payload);
-        await API.logAudit('CREATE', 'Tercero', created.id,
+        savedRecord = await pb.create('third_parties', payload);
+        await API.logAudit('CREATE', 'Tercero', savedRecord.id,
           `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
       }
       closeModal();
       showToast('Tercero guardado correctamente', 'success');
-      renderTerceros($('#page-content'));
-    } catch (err) {
+      if (onSaveSuccess) {
+        onSaveSuccess(savedRecord);
+      } else {
+        renderTerceros($('#page-content'));
+      }
+    } catch (err: any) {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
       showToast(err.message, 'error');
     }

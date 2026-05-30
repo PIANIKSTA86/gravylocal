@@ -471,7 +471,10 @@ async function viewProductDetail(id) {
 }
 
 // ── Formulario crear/editar ───────────────────────────────────────────────────
-async function openProductForm(row = null, accounts = null, catalog = {}) {
+async function openProductForm(row = null, accounts = null, catalog = {}, initialComponents = []) {
+  const allGoods = await API.getProducts({ activeOnly: true }).catch(() => []);
+  const allGoodsFiltered = allGoods.filter((p: any) => p.type === 'BIEN' && p.id !== row?.id && !p.is_combo);
+
   if (!accounts) {
     accounts = await API.getAccounts(false).catch(() => []);
   }
@@ -613,11 +616,143 @@ async function openProductForm(row = null, accounts = null, catalog = {}) {
         <label class="form-label">Descripción</label>
         <textarea id="pf-desc" class="form-input" rows="2" placeholder="Descripción opcional para documentos comerciales">${esc(row?.description || '')}</textarea>
       </div>
+
+      <!-- Combo / Kit Config -->
+      <div class="form-group md:col-span-3 border-t pt-3 mt-2" style="border-color:#F0F0F0">
+        <label class="inline-flex items-center gap-2 cursor-pointer font-bold" style="color:#0D2137">
+          <input type="checkbox" id="pf-is-combo" class="rounded text-[#E87D1E] focus:ring-[#E87D1E]" ${row?.is_combo ? 'checked' : ''}>
+          <span>¿Es un Combo / Kit / Ensamble de Mercancía?</span>
+        </label>
+        <p class="text-xs text-gray-500 mt-1">Al activar esta opción, al vender este producto se descontará el inventario de sus componentes individuales.</p>
+        
+        <div id="pf-combo-section" style="${row?.is_combo ? '' : 'display:none'}" class="mt-3 p-4 rounded-xl border bg-gray-50" style="border-color:#E5E7EB">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-xs font-bold uppercase text-gray-600">Componentes del Combo</span>
+            <button type="button" class="btn btn-outline btn-sm shadow-sm" id="pf-btn-add-comp" style="font-size: 11px; padding: 4px 8px;"><i class="fas fa-plus mr-1"></i>Agregar</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table text-xs w-full">
+              <thead>
+                <tr>
+                  <th>Componente (Producto Físico)</th>
+                  <th class="text-right" style="width:100px">Cantidad</th>
+                  <th class="text-right" style="width:120px">Costo Unit.</th>
+                  <th class="text-right" style="width:120px">Costo Subtotal</th>
+                  <th style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="pf-combo-body">
+                <!-- Se cargan dinámicamente -->
+              </tbody>
+              <tfoot>
+                <tr class="font-bold">
+                  <td colspan="3" class="text-right py-2">Costo Total del Combo:</td>
+                  <td class="text-right py-2 text-[#E87D1E]" id="pf-combo-total-cost">$ 0</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
      <button class="btn btn-primary" id="btn-save-product"><i class="fas fa-floppy-disk"></i> Guardar</button>`,
     true
   );
+
+  let compCounter = 0;
+  function addCompLine(comp = null) {
+    compCounter++;
+    const idx = compCounter;
+    const tbody = document.getElementById('pf-combo-body');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.id = `pf-comp-row-${idx}`;
+    tr.className = "border-b";
+    tr.style.borderColor = "#F3F4F6";
+    tr.innerHTML = `
+      <td class="py-1">
+        <select class="form-input text-xs w-full pf-comp-select" id="pf-comp-prod-${idx}" style="min-width:180px">
+          <option value="">— Seleccione Producto —</option>
+          ${allGoodsFiltered.map((p: any) => `<option value="${esc(p.id)}" data-cost="${p.cost_price || 0}">${esc(p.code)} — ${esc(p.name)}</option>`).join('')}
+        </select>
+      </td>
+      <td class="py-1">
+        <input type="number" min="0.0001" step="0.0001" class="form-input text-xs text-right w-full pf-comp-qty" id="pf-comp-qty-${idx}" placeholder="0" value="${comp ? comp.qty : '1'}">
+      </td>
+      <td class="text-right py-1 text-gray-500 font-mono" id="pf-comp-cost-${idx}">$ 0</td>
+      <td class="text-right py-1 font-semibold font-mono pf-comp-subtotal" id="pf-comp-subtotal-${idx}">$ 0</td>
+      <td class="text-center py-1">
+        <button type="button" class="btn btn-danger btn-sm p-1" onclick="document.getElementById('pf-comp-row-${idx}').remove(); window.recalcComboCost();" style="border-radius:6px; padding: 2px 6px;"><i class="fas fa-times text-xs"></i></button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    const select = document.getElementById(`pf-comp-prod-${idx}`);
+    const qtyInput = document.getElementById(`pf-comp-qty-${idx}`);
+
+    const updateLineCosts = () => {
+      const opt = select.selectedOptions[0];
+      const unitCost = opt ? parseFloat(opt.dataset.cost || '0') : 0;
+      const qty = parseFloat(qtyInput.value) || 0;
+      const subtotal = qty * unitCost;
+
+      const costLabel = document.getElementById(`pf-comp-cost-${idx}`);
+      const subtotalLabel = document.getElementById(`pf-comp-subtotal-${idx}`);
+      
+      if (costLabel) costLabel.textContent = (window as any).fmt(unitCost);
+      if (subtotalLabel) {
+        subtotalLabel.textContent = (window as any).fmt(subtotal);
+        subtotalLabel.setAttribute('data-subtotal', String(subtotal));
+      }
+      (window as any).recalcComboCost();
+    };
+
+    select.addEventListener('change', updateLineCosts);
+    qtyInput.addEventListener('input', updateLineCosts);
+
+    if (comp) {
+      select.value = comp.component_id;
+      qtyInput.value = comp.qty;
+      updateLineCosts();
+    }
+  }
+
+  (window as any).recalcComboCost = function() {
+    let total = 0;
+    const subs = document.querySelectorAll('.pf-comp-subtotal');
+    subs.forEach((el: any) => {
+      total += parseFloat(el.getAttribute('data-subtotal') || '0');
+    });
+    const totalEl = document.getElementById('pf-combo-total-cost');
+    if (totalEl) totalEl.textContent = (window as any).fmt(total);
+
+    const costPriceInput = document.getElementById('pf-cost-price');
+    if (costPriceInput) {
+      costPriceInput.value = String(total);
+    }
+  };
+
+  document.getElementById('pf-is-combo')?.addEventListener('change', function(e: any) {
+    const isChecked = e.target.checked;
+    const section = document.getElementById('pf-combo-section');
+    if (section) section.style.display = isChecked ? '' : 'none';
+    if (isChecked) {
+      const tbody = document.getElementById('pf-combo-body');
+      if (tbody && tbody.children.length === 0) {
+        addCompLine();
+      }
+      (window as any).recalcComboCost();
+    }
+  });
+
+  document.getElementById('pf-btn-add-comp')?.addEventListener('click', () => addCompLine());
+
+  if (row?.is_combo && initialComponents && initialComponents.length > 0) {
+    initialComponents.forEach((c: any) => addCompLine(c));
+  }
 
   $('#btn-save-product')?.addEventListener('click', async () => {
     const btn = $('#btn-save-product');
@@ -634,6 +769,30 @@ async function openProductForm(row = null, accounts = null, catalog = {}) {
         const safeCode = pb.escapeFilterValue(code);
         const dup = await pb.list('products', { filter: `code="${safeCode}"`, perPage: 1 });
         if (dup.items.length) return showToast(`Ya existe un producto con el código ${code}`, 'warning');
+      }
+
+      const isCombo = getCheckVal('pf-is-combo');
+      const componentsData = [];
+      if (isCombo) {
+        let lineIdx = 1;
+        while (true) {
+          const select = document.getElementById(`pf-comp-prod-${lineIdx}`) as HTMLSelectElement;
+          if (!select) {
+            lineIdx++;
+            if (lineIdx > compCounter + 5) break;
+            continue;
+          }
+          const compId = select.value;
+          const qty = parseFloat((document.getElementById(`pf-comp-qty-${lineIdx}`) as HTMLInputElement)?.value || '0');
+          if (compId && qty > 0) {
+            componentsData.push({ component_id: compId, qty });
+          }
+          lineIdx++;
+          if (lineIdx > compCounter + 2) break;
+        }
+        if (!componentsData.length) {
+          throw new Error('Un combo debe tener al menos un componente con cantidad válida.');
+        }
       }
 
       const payload = {
@@ -660,16 +819,35 @@ async function openProductForm(row = null, accounts = null, catalog = {}) {
         income_account_id:    getSelectVal('pf-income-acct')    || null,
         cost_account_id:      getSelectVal('pf-cost-acct')      || null,
         inventory_account_id: getSelectVal('pf-inv-acct')       || null,
+        is_combo:             isCombo,
       };
 
+      let savedId = "";
       if (row?.id) {
         await pb.update('products', row.id, payload);
         await API.logAudit('UPDATE', 'Producto', row.id, `${payload.code} — ${payload.name}`);
         showToast('Producto actualizado', 'success');
+        savedId = row.id;
       } else {
         const created = await pb.create('products', payload);
         await API.logAudit('CREATE', 'Producto', created.id, `${payload.code} — ${payload.name}`);
         showToast('Producto creado', 'success');
+        savedId = created.id;
+      }
+
+      // Guardar componentes
+      const existingComps = await pb.listAll('product_components', { filter: `parent_id="${pb.escapeFilterValue(savedId)}"` });
+      for (const c of existingComps) {
+        await pb.delete('product_components', c.id);
+      }
+      if (isCombo) {
+        for (const c of componentsData) {
+          await pb.create('product_components', {
+            parent_id: savedId,
+            component_id: c.component_id,
+            qty: c.qty
+          });
+        }
       }
 
       closeModal();
@@ -706,12 +884,13 @@ async function openProductForm(row = null, accounts = null, catalog = {}) {
 // ── Editar ────────────────────────────────────────────────────────────────────
 async function editProduct(id) {
   try {
-    const [row, accounts, catalog] = await Promise.all([
+    const [row, accounts, catalog, components] = await Promise.all([
       pb.get('products', id),
       API.getAccounts(false),
       loadProductCatalog(),
+      pb.listAll('product_components', { filter: `parent_id="${pb.escapeFilterValue(id)}"`, expand: 'component_id' }).catch(() => []),
     ]);
-    openProductForm(row, accounts, catalog);
+    openProductForm(row, accounts, catalog, components);
   } catch (err) { showToast(err.message, 'error'); }
 }
 

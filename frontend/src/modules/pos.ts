@@ -576,9 +576,14 @@ window.loadPOSInterface = async function() {
           <div class="grid grid-cols-2 gap-3 px-5 pt-3 pb-2 flex-shrink-0">
             <div>
               <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
-              <select id="pos-cart-customer" class="form-input w-full text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
-                ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
-              </select>
+              <div class="flex gap-1 items-center">
+                <select id="pos-cart-customer" class="form-input flex-1 text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
+                  ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
+                </select>
+                <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.posQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
+                  <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
+                </button>
+              </div>
             </div>
             <div>
               <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Bodega</label>
@@ -2018,6 +2023,27 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
 
 // Inyecciones globales
 (window as any).renderPOS = renderPOS;
+
+window.posQuickAddCustomer = function() {
+  if (typeof (window as any).openTerceroForm === 'function') {
+    (window as any).openTerceroForm(null, async (createdRecord: any) => {
+      try {
+        const thirds = await (window as any).API.getTerceros({ type: 'CLIENTE' });
+        posCustomers = thirds;
+        selectedCustomerId = createdRecord.id;
+        const select = document.getElementById('pos-cart-customer') as HTMLSelectElement;
+        if (select) {
+          select.innerHTML = posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('');
+        }
+        (window as any).showToast('Cliente creado y seleccionado en la venta.', 'success');
+      } catch (err: any) {
+        (window as any).showToast('Error al recargar clientes: ' + err.message, 'error');
+      }
+    });
+  } else {
+    (window as any).showToast('Módulo de terceros no disponible.', 'warning');
+  }
+};
 
 // --- Atajos de Teclado y Flujo Optimizado (Keyboard-First) ---
 window.addEventListener('keydown', (e) => {

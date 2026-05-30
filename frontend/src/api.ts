@@ -1586,8 +1586,11 @@ const API = {
       }
     }
 
-    // ── Registro de Costo de Ventas (COGS) ──────────────────────────────
+    // ── Registro de Costo de Ventas (COGS) Consolidado ──────────────────
     const cogsAcc = await findAccByCode('613505'); // Costo de Mercancía
+    const cogsGroups: { [accId: string]: number } = {};
+    let totalCogsDebit = 0;
+
     for (const mv of movLines) {
       const prod = products.find(p => p.id === mv.product_id);
       const cogsAmt = mv.qty * mv.unit_cost;
@@ -1596,25 +1599,36 @@ const API = {
           ? await getAccById(prod.inventory_account_id)
           : await findAccByCode('143005');
 
-        // Débito al Costo
-        txLines.push(await buildTxLine({
-          accountId: cogsAcc.id,
-          thirdPartyId: inv.customer_id,
-          debit: cogsAmt,
-          credit: 0,
-          description: `Costo de Venta ${prod?.code} ${prod?.name}`,
-          crossDocRef: inv.number,
-        }));
+        cogsGroups[invAcc.id] = (cogsGroups[invAcc.id] || 0) + cogsAmt;
+        totalCogsDebit += cogsAmt;
+      }
+    }
 
-        // Crédito al Inventario
-        txLines.push(await buildTxLine({
-          accountId: invAcc.id,
-          thirdPartyId: inv.customer_id,
-          debit: 0,
-          credit: cogsAmt,
-          description: `Baja Inventario COGS ${prod?.code}`,
-          crossDocRef: inv.number,
-        }));
+    if (totalCogsDebit > 0) {
+      // 1. Un solo Débito al Costo
+      txLines.push(await buildTxLine({
+        accountId: cogsAcc.id,
+        thirdPartyId: inv.customer_id,
+        debit: totalCogsDebit,
+        credit: 0,
+        description: `Costo de Ventas consolidado — ${inv.number}`,
+        crossDocRef: inv.number,
+      }));
+
+      // 2. Crédito al Inventario agrupado por cuenta contable
+      for (const invAccId of Object.keys(cogsGroups)) {
+        const amount = cogsGroups[invAccId];
+        if (amount > 0) {
+          const invAcc = await getAccById(invAccId);
+          txLines.push(await buildTxLine({
+            accountId: invAcc.id,
+            thirdPartyId: inv.customer_id,
+            debit: 0,
+            credit: amount,
+            description: `Baja Inventario COGS consolidada — ${inv.number}`,
+            crossDocRef: inv.number,
+          }));
+        }
       }
     }
 

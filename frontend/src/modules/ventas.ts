@@ -353,6 +353,11 @@ async function _loadVentasPage(c: HTMLElement) {
   const posted = invoices.filter((i: any) => i.status === 'posted').length;
   const totalVal = invoices.filter((i: any) => i.status !== 'voided').reduce((s: number, i: any) => s + (i.payable_total ?? i.total ?? 0), 0);
 
+  const prefixes = [...new Set(invoices.map((i: any) => {
+    const num = String(i.number || '').trim();
+    return num.includes('-') ? num.split('-')[0].toUpperCase() : 'SIN_PREFIJO';
+  }))].filter(Boolean).sort();
+
   c.innerHTML = `
     <!-- KPIs -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -381,6 +386,10 @@ async function _loadVentasPage(c: HTMLElement) {
         <option value="draft">Borrador</option>
         <option value="posted">Contabilizada</option>
         <option value="voided">Anulada</option>
+      </select>
+      <select id="so-prefix-f" class="form-input" style="max-width:180px">
+        <option value="">Todos los prefijos</option>
+        ${prefixes.map(p => `<option value="${p}">${p}</option>`).join('')}
       </select>
       <input id="so-from" type="date" class="form-input" style="max-width:160px" title="Desde">
       <input id="so-to"   type="date" class="form-input" style="max-width:160px" title="Hasta">
@@ -418,6 +427,7 @@ async function _loadVentasPage(c: HTMLElement) {
   const applySoFilter = () => filterSoTable();
   document.getElementById('so-q')?.addEventListener('input', applySoFilter);
   document.getElementById('so-status-f')?.addEventListener('change', applySoFilter);
+  document.getElementById('so-prefix-f')?.addEventListener('change', applySoFilter);
   document.getElementById('so-from')?.addEventListener('change', applySoFilter);
   document.getElementById('so-to')?.addEventListener('change', applySoFilter);
 }
@@ -426,8 +436,10 @@ function renderSoRow(inv: any) {
   const meta = INV_STATUS[inv.status] || { label: inv.status, badge: 'badge-gray' };
   const client = inv.expand?.customer_id;
   const wh = inv.expand?.warehouse_id;
+  const num = String(inv.number || '').trim();
+  const prefix = num.includes('-') ? num.split('-')[0].toUpperCase() : 'SIN_PREFIJO';
   return `
-    <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}">
+    <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}" data-soprefix="${(window as any).esc(prefix)}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(inv.number)}</span></td>
       <td>${(window as any).esc(inv.date)}</td>
       <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
@@ -460,6 +472,7 @@ function renderSoRow(inv: any) {
 function filterSoTable() {
   const q = ((document.getElementById('so-q') as HTMLInputElement)?.value || '').toLowerCase().trim();
   const st = (document.getElementById('so-status-f') as HTMLSelectElement)?.value || '';
+  const prefixF = (document.getElementById('so-prefix-f') as HTMLSelectElement)?.value || '';
   const from = (document.getElementById('so-from') as HTMLInputElement)?.value || '';
   const to = (document.getElementById('so-to') as HTMLInputElement)?.value || '';
 
@@ -468,13 +481,15 @@ function filterSoTable() {
     const text = row.textContent.toLowerCase();
     const status = row.getAttribute('data-sostatus');
     const date = row.getAttribute('data-sodate');
+    const prefix = row.getAttribute('data-soprefix');
 
     const matchesQ = !q || text.includes(q);
     const matchesStatus = !st || status === st;
+    const matchesPrefix = !prefixF || prefix === prefixF;
     const matchesFrom = !from || date >= from;
     const matchesTo = !to || date <= to;
 
-    row.style.display = (matchesQ && matchesStatus && matchesFrom && matchesTo) ? '' : 'none';
+    row.style.display = (matchesQ && matchesStatus && matchesPrefix && matchesFrom && matchesTo) ? '' : 'none';
   });
 }
 
@@ -1459,9 +1474,40 @@ window.deleteSalesInvoiceDraft = function(id: string, number: string) {
       try {
         const lines = await (window as any).API.getInvoiceLines(id);
         for (const l of lines) await (window as any).pb.delete('invoice_lines', l.id);
+
+        // Buscar y eliminar transacciones huérfanas asociadas en estado borrador
+        try {
+          const safeNum = (window as any).pb.escapeFilterValue(number);
+          const txs = await (window as any).pb.list('transactions', { filter: `number="${safeNum}" && status="draft"`, perPage: 1 });
+          if (txs.items.length) {
+            const tx = txs.items[0];
+            const tLines = await (window as any).pb.listAll('tx_lines', { filter: `tx_id="${tx.id}"` });
+            for (const tl of tLines) await (window as any).pb.delete('tx_lines', tl.id);
+            await (window as any).pb.delete('transactions', tx.id);
+            console.log(`[GRAVY] Eliminada transacción borrador huérfana para factura: ${number}`);
+          }
+        } catch (txErr) {
+          console.error('[GRAVY] Error eliminando transacción huérfana:', txErr);
+        }
+
+        // Buscar y eliminar movimientos de inventario huérfanos asociados en estado borrador
+        try {
+          const safeNotes = (window as any).pb.escapeFilterValue(`Venta ${number}`);
+          const movs = await (window as any).pb.list('inventory_movements', { filter: `notes~"${safeNotes}" && status="draft"`, perPage: 1 });
+          if (movs.items.length) {
+            const mov = movs.items[0];
+            const mLines = await (window as any).pb.listAll('inventory_movement_lines', { filter: `movement_id="${mov.id}"` });
+            for (const ml of mLines) await (window as any).pb.delete('inventory_movement_lines', ml.id);
+            await (window as any).pb.delete('inventory_movements', mov.id);
+            console.log(`[GRAVY] Eliminado movimiento borrador huérfano para factura: ${number}`);
+          }
+        } catch (movErr) {
+          console.error('[GRAVY] Error eliminando movimiento huérfano:', movErr);
+        }
+
         await (window as any).pb.delete('invoices', id);
         await (window as any).API.logAudit('DELETE', 'Invoice', id, `Eliminado borrador de factura comercial ${number}`);
-        (window as any).showToast('Factura borrador eliminada correctamente', 'success');
+        (window as any).showToast('Factura borrador y componentes asociados eliminados', 'success');
         renderVentas(document.getElementById('page-content')!);
       } catch (err: any) {
         (window as any).showToast(err.message || 'Error al eliminar borrador', 'error');

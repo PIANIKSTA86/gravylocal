@@ -46,9 +46,9 @@ const pb = {
   /** GET /api/collections/:col/records con filtro y paginaci�n */
   async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '' } = {}) {
     const params = new URLSearchParams({ page, perPage });
-    if (filter)  params.set('filter', filter);
-    if (sort)    params.set('sort', sort);
-    if (expand)  params.set('expand', expand);
+    if (filter) params.set('filter', filter);
+    if (sort) params.set('sort', sort);
+    if (expand) params.set('expand', expand);
     const res = await fetch(`${PB_URL}/api/collections/${collection}/records?${params}`, {
       headers: this.headers(),
     });
@@ -120,7 +120,7 @@ const pb = {
     });
     if (!res.ok) throw await this._err(res);
     const data = await res.json();
-    this.authToken  = data.token;
+    this.authToken = data.token;
     this.currentUser = data.record;
     return data;
   },
@@ -133,19 +133,19 @@ const pb = {
       headers: this.headers(),
     });
     if (!res.ok) {
-      this.authToken   = null;
+      this.authToken = null;
       this.currentUser = null;
       return null;
     }
     const data = await res.json();
-    this.authToken   = data.token;
+    this.authToken = data.token;
     this.currentUser = data.record;
     return data;
   },
 
   /** Cerrar sesi�n */
   logout() {
-    this.authToken   = null;
+    this.authToken = null;
     this.currentUser = null;
   },
 
@@ -167,7 +167,7 @@ const pb = {
     const msg = body?.message ?? body?.data?.identity?.message ?? fieldMessages[0] ?? 'Error desconocido';
     const err = new Error(msg);
     err.status = res.status;
-    err.data   = body;
+    err.data = body;
     return err;
   },
 };
@@ -209,10 +209,10 @@ const API = {
         method: 'POST',
         headers: pb.headers(),
         body: JSON.stringify({
-          action:    String(action    || ''),
-          entity:    String(entity    || ''),
+          action: String(action || ''),
+          entity: String(entity || ''),
           entity_id: entityId ? String(entityId) : '',
-          details:   String(details   || ''),
+          details: String(details || ''),
         }),
       });
     } catch (_) {
@@ -311,7 +311,7 @@ const API = {
       }
     } catch (lineErr) {
       // Evita dejar cabeceras hu�rfanas si falla la persistencia de una l�nea.
-      try { await pb.delete('transactions', tx.id); } catch (_) {}
+      try { await pb.delete('transactions', tx.id); } catch (_) { }
       throw lineErr;
     }
 
@@ -451,7 +451,7 @@ const API = {
     const [txCount, tpCount, acCount] = await Promise.all([
       pb.list('transactions', { perPage: 1 }),
       pb.list('third_parties', { filter: 'active=true', perPage: 1 }),
-      pb.list('accounts',       { filter: 'active=true', perPage: 1 }),
+      pb.list('accounts', { filter: 'active=true', perPage: 1 }),
     ]);
     return {
       totalTx: txCount.totalItems,
@@ -473,10 +473,10 @@ const API = {
     const { warehouseId = '', productId = '' } = opts;
     let filter = '';
     if (warehouseId) filter += `warehouse_id="${pb.escapeFilterValue(warehouseId)}"`;
-    if (productId)   filter += (filter ? ' && ' : '') + `product_id="${pb.escapeFilterValue(productId)}"`;
+    if (productId) filter += (filter ? ' && ' : '') + `product_id="${pb.escapeFilterValue(productId)}"`;
     return pb.listAll('inventory_stock', {
       filter,
-      sort:   'product_id',
+      sort: 'product_id',
       expand: 'product_id,warehouse_id',
     });
   },
@@ -496,15 +496,15 @@ const API = {
     try {
       const rawCfg = await this.getSetting('pos_settings_v1');
       if (rawCfg) posConfig = JSON.parse(rawCfg);
-    } catch (_) {}
+    } catch (_) { }
     const allowNegative = !!posConfig?.operational?.allow_negative_stock;
 
     if (existing.items.length) {
       const rec = existing.items[0];
-      const newQty = allowNegative 
+      const newQty = allowNegative
         ? (rec.qty_on_hand ?? 0) + deltaQty
         : Math.max(0, (rec.qty_on_hand ?? 0) + deltaQty);
-      
+
       let avgCost = Number(rec.avg_cost ?? 0);
       if (deltaQty > 0 && newAvgCost !== null) {
         const currentQty = Number(rec.qty_on_hand ?? 0);
@@ -517,7 +517,7 @@ const API = {
         }
         finalAvgCostForProductUpdate = avgCost;
       }
-      
+
       await pb.update('inventory_stock', rec.id, {
         qty_on_hand: newQty, avg_cost: avgCost, last_mov_date: today,
       });
@@ -555,23 +555,23 @@ const API = {
     const safe = pb.escapeFilterValue(movementId);
     return pb.listAll('inventory_movement_lines', {
       filter: `movement_id="${safe}"`,
-      sort:   'line_order',
+      sort: 'line_order',
       expand: 'product_id',
     });
   },
 
   /** Aplica un movimiento: actualiza stock + genera asiento contable si procede */
   async applyInventoryMovement(movId) {
-    const mov   = await pb.get('inventory_movements', movId, { expand: 'warehouse_id,dest_warehouse_id' });
+    const mov = await pb.get('inventory_movements', movId, { expand: 'warehouse_id,dest_warehouse_id' });
     if (mov.status === 'applied') throw new Error('El movimiento ya fue aplicado.');
-    if (mov.status === 'voided')  throw new Error('El movimiento está anulado.');
+    if (mov.status === 'voided') throw new Error('El movimiento está anulado.');
 
     const lines = await this.getInventoryMovementLines(movId);
     if (!lines.length) throw new Error('El movimiento no tiene líneas.');
 
-    const today  = mov.date || new Date().toISOString().slice(0, 10);
-    const isIn   = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
-    const isOut  = mov.mov_type === 'SALIDA'  || mov.mov_type === 'AJUSTE_NEGATIVO';
+    const today = mov.date || new Date().toISOString().slice(0, 10);
+    const isIn = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+    const isOut = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
     const isTran = mov.mov_type === 'TRASLADO';
 
     for (const line of lines) {
@@ -581,8 +581,8 @@ const API = {
         const sourceStock = await this.getInventoryStock({ warehouseId: mov.warehouse_id, productId: line.product_id }).catch(() => []);
         const sourceAvgCost = Number(sourceStock[0]?.avg_cost || 0);
 
-        await this.upsertStock(line.product_id, mov.warehouse_id,      -line.qty, null, today);
-        await this.upsertStock(line.product_id, mov.dest_warehouse_id,  line.qty, sourceAvgCost, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, -line.qty, null, today);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id, line.qty, sourceAvgCost, today);
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today);
       }
@@ -595,19 +595,19 @@ const API = {
 
   /** Anula un movimiento aplicado revirtiendo el stock */
   async voidInventoryMovement(movId, reason = '') {
-    const mov   = await pb.get('inventory_movements', movId);
+    const mov = await pb.get('inventory_movements', movId);
     if (mov.status !== 'applied') throw new Error('Solo se pueden anular movimientos ya aplicados.');
 
     const lines = await this.getInventoryMovementLines(movId);
-    const today  = new Date().toISOString().slice(0, 10);
-    const isIn   = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
-    const isOut  = mov.mov_type === 'SALIDA'  || mov.mov_type === 'AJUSTE_NEGATIVO';
+    const today = new Date().toISOString().slice(0, 10);
+    const isIn = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+    const isOut = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
     const isTran = mov.mov_type === 'TRASLADO';
 
     for (const line of lines) {
       const delta = isIn ? -line.qty : isOut ? line.qty : 0;
       if (isTran) {
-        await this.upsertStock(line.product_id, mov.warehouse_id,      line.qty,  null, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, line.qty, null, today);
         await this.upsertStock(line.product_id, mov.dest_warehouse_id, -line.qty, null, today);
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, null, today);
@@ -633,9 +633,9 @@ const API = {
   async getPurchaseInvoiceLines(invoiceId) {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('purchase_invoice_lines', {
-      filter:  `invoice_id="${safe}"`,
-      sort:    'line_order',
-      expand:  'product_id,account_id',
+      filter: `invoice_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'product_id,account_id',
     });
   },
 
@@ -650,18 +650,18 @@ const API = {
     let subtotal = 0, ivaTot = 0, retTot = 0;
     for (const l of lines) {
       subtotal += l.subtotal || 0;
-      ivaTot   += l.iva_amount || 0;
-      retTot   += l.ret_amount || 0;
+      ivaTot += l.iva_amount || 0;
+      retTot += l.ret_amount || 0;
     }
     const payableTotal = (subtotal + ivaTot) - retTot;
     const inv = await pb.create('purchase_invoices', {
       ...header,
       subtotal,
       iva_total: ivaTot,
-      total:     payableTotal,
+      total: payableTotal,
       ret_total: retTot,
       payable_total: payableTotal,
-      status:    'draft',
+      status: 'draft',
     });
 
     // Refuerzo de persistencia para instalaciones donde el esquema pudo estar desfasado.
@@ -695,9 +695,9 @@ const API = {
    * 3. Actualiza la factura con tx_id, inv_movement_id, status=posted
    */
   async postPurchaseInvoice(invoiceId) {
-    const inv   = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
-    if (inv.status === 'posted')  throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided')  throw new Error('La factura está anulada.');
+    const inv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
+    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
     const lines = await this.getPurchaseInvoiceLines(invoiceId);
     if (!lines.length) throw new Error('La factura no tiene líneas.');
@@ -758,7 +758,7 @@ const API = {
       return line;
     };
 
-    const accProveedor  = await findAccByCode(codePayable);   // Proveedores
+    const accProveedor = await findAccByCode(codePayable);   // Proveedores
     const accExpFallback = await findAccByCode(codeExpFallback);
     const ivaAccountCache = {};
 
@@ -831,13 +831,13 @@ const API = {
     // el invoice guarda ret_rule_renta_id / ret_rule_ica_id / ret_rule_iva_id.
     // Computamos esos montos aquí para que queden en retByAccount.
     {
-      const aggSub   = lines.reduce((s, l) => s + Number(l.subtotal    || 0), 0);
-      const aggIva   = lines.reduce((s, l) => s + Number(l.iva_amount  || 0), 0);
+      const aggSub = lines.reduce((s, l) => s + Number(l.subtotal || 0), 0);
+      const aggIva = lines.reduce((s, l) => s + Number(l.iva_amount || 0), 0);
       const aggTotal = aggSub + aggIva;
       const hdrRules = [
         { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
-        { id: String(inv.ret_rule_ica_id   || '').trim(), kind: 'ica'   },
-        { id: String(inv.ret_rule_iva_id   || '').trim(), kind: 'iva'   },
+        { id: String(inv.ret_rule_ica_id || '').trim(), kind: 'ica' },
+        { id: String(inv.ret_rule_iva_id || '').trim(), kind: 'iva' },
       ];
       for (const { id, kind } of hdrRules) {
         if (!id) continue;
@@ -950,31 +950,31 @@ const API = {
     }
 
     const tx = await this.createTransaction({
-      tx_type_id:    effectiveTxTypeId,
-      number:        effectiveTxNumber,
-      date:          inv.date,
-      description:   `Compra ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
+      tx_type_id: effectiveTxTypeId,
+      number: effectiveTxNumber,
+      date: inv.date,
+      description: `Compra ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
       third_party_id: inv.supplier_id,
-      payment_days:  0,
+      payment_days: 0,
       cross_enabled: false,
-      status:        'draft',
+      status: 'draft',
     }, txLines);
 
     // ── Movimiento de inventario para bienes ─────────────────────────────
     let invMovId = null;
     if (bienLines.length && inv.warehouse_id) {
-      const today  = inv.date || new Date().toISOString().slice(0, 10);
-      const rand   = String(Date.now()).slice(-4);
+      const today = inv.date || new Date().toISOString().slice(0, 10);
+      const rand = String(Date.now()).slice(-4);
       const movNumber = `ENT-${today.replaceAll('-', '')}-${rand}`;
       const mov = await pb.create('inventory_movements', {
-        number:       movNumber,
-        mov_type:     'ENTRADA',
-        date:         inv.date,
+        number: movNumber,
+        mov_type: 'ENTRADA',
+        date: inv.date,
         warehouse_id: inv.warehouse_id,
         third_party_id: inv.supplier_id,
-        notes:        `Compra ${inv.number}`,
-        status:       'draft',
-        tx_id:        tx.id,
+        notes: `Compra ${inv.number}`,
+        status: 'draft',
+        tx_id: tx.id,
       });
       for (let i = 0; i < bienLines.length; i++) {
         await pb.create('inventory_movement_lines', { movement_id: mov.id, line_order: i + 1, ...bienLines[i] });
@@ -985,11 +985,11 @@ const API = {
 
     // ── Actualizar factura ───────────────────────────────────────────────
     await pb.update('purchase_invoices', invoiceId, {
-      status:          'posted',
-      tx_id:           tx.id,
+      status: 'posted',
+      tx_id: tx.id,
       inv_movement_id: invMovId,
-      ret_total:       retTotal,
-      payable_total:   payableCredit,
+      ret_total: retTotal,
+      payable_total: payableCredit,
     });
     await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
     return { inv, tx };
@@ -1166,9 +1166,9 @@ const API = {
   async getInvoiceLines(invoiceId) {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('invoice_lines', {
-      filter:  `invoice_id="${safe}"`,
-      sort:    'line_order',
-      expand:  'product_id,account_id',
+      filter: `invoice_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'product_id,account_id',
     });
   },
 
@@ -1177,7 +1177,7 @@ const API = {
     let subtotal = 0, ivaTot = 0;
     for (const l of lines) {
       subtotal += l.subtotal || 0;
-      ivaTot   += l.iva_amount || 0;
+      ivaTot += l.iva_amount || 0;
     }
     const discountAmt = Number(header.discount_amount || 0);
     const freightAmt = Number(header.freight_amount || 0);
@@ -1193,7 +1193,7 @@ const API = {
       total,
       ret_total: retTot,
       payable_total: payableTotal,
-      status:    'draft',
+      status: 'draft',
     });
 
     for (let i = 0; i < lines.length; i++) {
@@ -1231,7 +1231,7 @@ const API = {
     try {
       const rawCfg = await this.getSetting('pos_settings_v1');
       if (rawCfg) posConfig = JSON.parse(rawCfg);
-    } catch (_) {}
+    } catch (_) { }
     const isPOS = !!inv.pos_shift_id;
     const allowNegative = isPOS && !!posConfig?.operational?.allow_negative_stock;
 
@@ -1306,12 +1306,12 @@ const API = {
         if (method === 'EFECTIVO') code = accs.payment_accounts?.efectivo_code || accs.cash_code;
         else if (method === 'TRANSFERENCIA') code = accs.payment_accounts?.transferencia_code;
         else if (method === 'CREDITO') code = accs.payment_accounts?.credito_code;
-        
+
         if (code) {
           try {
             const acc = await findAccByCode(code);
             if (acc) return acc.id;
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
@@ -1323,7 +1323,7 @@ const API = {
         try {
           const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
           if (tesoSettings.items.length) bankAccId = tesoSettings.items[0].default_bank_account_id;
-        } catch (_) {}
+        } catch (_) { }
         if (bankAccId) return bankAccId;
         const acc = await findAccByCode('111005');
         return acc.id;
@@ -1332,7 +1332,7 @@ const API = {
         try {
           const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
           if (tesoSettings.items.length) cashAccId = tesoSettings.items[0].default_cash_account_id;
-        } catch (_) {}
+        } catch (_) { }
         if (cashAccId) return cashAccId;
         const acc = await findAccByCode('110505');
         return acc.id;
@@ -1345,7 +1345,7 @@ const API = {
         try {
           const acc = await findAccByCode(posConfig.accounting.accounts.discount_code);
           if (acc) return acc.id;
-        } catch (_) {}
+        } catch (_) { }
       }
       // 2. Sales config fallback
       try {
@@ -1358,14 +1358,14 @@ const API = {
             if (acc) return acc.id;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       // 3. Fallbacks
       const fallbacks = ['530535', '4175', '53053501', '417501'];
       for (const code of fallbacks) {
         try {
           const acc = await findAccByCode(code);
           if (acc) return acc.id;
-        } catch (_) {}
+        } catch (_) { }
       }
       throw new Error('No se pudo determinar una cuenta contable para el Descuento. Por favor configure "discount_code" en los parámetros del POS o Ventas.');
     };
@@ -1376,7 +1376,7 @@ const API = {
         try {
           const acc = await findAccByCode(posConfig.accounting.accounts.freight_code);
           if (acc) return acc.id;
-        } catch (_) {}
+        } catch (_) { }
       }
       // 2. Sales config fallback
       try {
@@ -1389,14 +1389,14 @@ const API = {
             if (acc) return acc.id;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       // 3. Fallbacks
       const fallbacks = ['429550', '4145', '429595', '414595', '42959501', '41459501'];
       for (const code of fallbacks) {
         try {
           const acc = await findAccByCode(code);
           if (acc) return acc.id;
-        } catch (_) {}
+        } catch (_) { }
       }
       throw new Error('No se pudo determinar una cuenta contable para el Flete. Por favor configure "freight_code" en los parámetros del POS o Ventas.');
     };
@@ -1406,7 +1406,7 @@ const API = {
       let split = {};
       try {
         split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : (inv.payment_split || {});
-      } catch (_) {}
+      } catch (_) { }
 
       for (const method of Object.keys(split)) {
         const amount = Number(split[method] || 0);
@@ -1473,7 +1473,7 @@ const API = {
             fallbackIncomeCode = sc.accounting.accounts.income_fallback_code;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
     const defaultIncome = await findAccByCode(fallbackIncomeCode);
 
@@ -1483,7 +1483,7 @@ const API = {
         try {
           const acc = await findAccByCode(posConfig.accounting.accounts.iva_by_rate[rateStr]);
           if (acc) return acc.id;
-        } catch (_) {}
+        } catch (_) { }
       }
       try {
         const rawSalesCfg = await this.getSetting('sales_settings_v2');
@@ -1495,7 +1495,7 @@ const API = {
             if (acc) return acc.id;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       const acc = await findAccByCode('233501');
       return acc.id;
@@ -1550,7 +1550,7 @@ const API = {
       try {
         const rawCfg = await this.getSetting('sales_config_v1');
         salesCfg = rawCfg ? JSON.parse(rawCfg) : {};
-      } catch (_) {}
+      } catch (_) { }
       const cfgRetRules = Array.isArray(salesCfg?.withholding_rules) ? salesCfg.withholding_rules : [];
 
       const aggSub = Number(inv.subtotal || 0);
@@ -1559,8 +1559,8 @@ const API = {
 
       const hdrRules = [
         { id: String(inv.ret_rule_renta_id || '').trim(), kind: 'renta' },
-        { id: String(inv.ret_rule_ica_id   || '').trim(), kind: 'ica'   },
-        { id: String(inv.ret_rule_iva_id   || '').trim(), kind: 'iva'   },
+        { id: String(inv.ret_rule_ica_id || '').trim(), kind: 'ica' },
+        { id: String(inv.ret_rule_iva_id || '').trim(), kind: 'iva' },
       ];
 
       for (const { id, kind } of hdrRules) {
@@ -1587,48 +1587,61 @@ const API = {
     }
 
     // ── Registro de Costo de Ventas (COGS) Consolidado ──────────────────
-    const cogsAcc = await findAccByCode('613505'); // Costo de Mercancía
-    const cogsGroups: { [accId: string]: number } = {};
-    let totalCogsDebit = 0;
+    const defaultCogsAcc = await findAccByCode('613505'); // Costo de Mercancía por defecto
+    const defaultInvAcc = await findAccByCode('143005');  // Inventario por defecto
+    
+    // Agrupamos por la combinación de cuenta de costo (débito) y cuenta de inventario (crédito)
+    // Clave: `cogsAccId_invAccId`
+    const cogsGroups: { [key: string]: { cogsAccId: string, invAccId: string, amount: number } } = {};
 
     for (const mv of movLines) {
       const prod = products.find(p => p.id === mv.product_id);
       const cogsAmt = mv.qty * mv.unit_cost;
       if (cogsAmt > 0) {
-        const invAcc = prod?.inventory_account_id
-          ? await getAccById(prod.inventory_account_id)
-          : await findAccByCode('143005');
+        const cogsAccId = prod?.cost_account_id || defaultCogsAcc.id;
+        const invAccId = prod?.inventory_account_id || defaultInvAcc.id;
 
-        cogsGroups[invAcc.id] = (cogsGroups[invAcc.id] || 0) + cogsAmt;
-        totalCogsDebit += cogsAmt;
+        // Si por alguna razón la cuenta de costo y la de inventario son iguales, no genera movimiento (se anulan)
+        if (cogsAccId === invAccId) {
+          console.log(`[GRAVY] Omitida línea de COGS ya que la cuenta de costo e inventario son idénticas: ${cogsAccId}`);
+          continue;
+        }
+
+        const groupKey = `${cogsAccId}_${invAccId}`;
+        if (!cogsGroups[groupKey]) {
+          cogsGroups[groupKey] = {
+            cogsAccId,
+            invAccId,
+            amount: 0
+          };
+        }
+        cogsGroups[groupKey].amount += cogsAmt;
       }
     }
 
-    if (totalCogsDebit > 0) {
-      // 1. Un solo Débito al Costo
-      txLines.push(await buildTxLine({
-        accountId: cogsAcc.id,
-        thirdPartyId: inv.customer_id,
-        debit: totalCogsDebit,
-        credit: 0,
-        description: `Costo de Ventas consolidado — ${inv.number}`,
-        crossDocRef: inv.number,
-      }));
+    // Registrar en txLines las partidas consolidadas
+    for (const groupKey of Object.keys(cogsGroups)) {
+      const { cogsAccId, invAccId, amount } = cogsGroups[groupKey];
+      if (amount > 0) {
+        // 1. Débito consolidado al Costo de Ventas correspondiente
+        txLines.push(await buildTxLine({
+          accountId: cogsAccId,
+          thirdPartyId: inv.customer_id,
+          debit: amount,
+          credit: 0,
+          description: `Costo de Ventas consolidado — ${inv.number}`,
+          crossDocRef: inv.number,
+        }));
 
-      // 2. Crédito al Inventario agrupado por cuenta contable
-      for (const invAccId of Object.keys(cogsGroups)) {
-        const amount = cogsGroups[invAccId];
-        if (amount > 0) {
-          const invAcc = await getAccById(invAccId);
-          txLines.push(await buildTxLine({
-            accountId: invAcc.id,
-            thirdPartyId: inv.customer_id,
-            debit: 0,
-            credit: amount,
-            description: `Baja Inventario COGS consolidada — ${inv.number}`,
-            crossDocRef: inv.number,
-          }));
-        }
+        // 2. Crédito consolidado a la cuenta de Inventario correspondiente
+        txLines.push(await buildTxLine({
+          accountId: invAccId,
+          thirdPartyId: inv.customer_id,
+          debit: 0,
+          credit: amount,
+          description: `Baja Inventario COGS consolidada — ${inv.number}`,
+          crossDocRef: inv.number,
+        }));
       }
     }
 
@@ -1636,11 +1649,11 @@ const API = {
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     if (!effectiveTxTypeId) {
       const code = inv.pos_shift_id ? 'POS' : 'FV';
-      
+
       // Intentar buscar por el prefijo del número de factura para asociarla a la serie contable correspondiente
       const invNum = String(inv.number || "").trim();
       const prefixCandidate = invNum.includes("-") ? invNum.split("-")[0].toUpperCase() : "";
-      
+
       let found = null;
       if (prefixCandidate) {
         try {
@@ -1649,9 +1662,9 @@ const API = {
             filter: `active=true && code="${code}" && prefix="${safePrefix}"`,
             perPage: 1,
           });
-        } catch (_) {}
+        } catch (_) { }
       }
-      
+
       // Fallback si no se encontró serie específica con ese prefijo
       if (!found || !found.items.length) {
         found = await pb.list('transaction_types', {
@@ -1659,7 +1672,7 @@ const API = {
           perPage: 1,
         });
       }
-      
+
       if (found && found.items.length) {
         effectiveTxTypeId = found.items[0].id;
       }
@@ -1668,50 +1681,79 @@ const API = {
 
     const txNumber = String(inv.tx_number || inv.number || 'AUTO').trim();
 
-    const tx = await this.createTransaction({
-      tx_type_id:    effectiveTxTypeId,
-      number:        txNumber,
-      date:          inv.date,
-      description:   `Factura Venta ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
-      third_party_id: inv.customer_id,
-      payment_days:  0,
-      cross_enabled: false,
-      status:        'draft',
-    }, txLines);
-
-    // ── Movimiento de Inventario de Salida ─────────────────────────────
-    let invMovId = null;
-    if (movLines.length && inv.warehouse_id) {
-      const today  = inv.date || new Date().toISOString().slice(0, 10);
-      const rand   = String(Date.now()).slice(-4);
-      const movNumber = `SAL-${today.replaceAll('-', '')}-${rand}`;
-      const mov = await pb.create('inventory_movements', {
-        number:       movNumber,
-        mov_type:     'SALIDA',
-        date:         inv.date,
-        warehouse_id: inv.warehouse_id,
+    let txCreated = null;
+    let movCreated = null;
+    try {
+      txCreated = await this.createTransaction({
+        tx_type_id: effectiveTxTypeId,
+        number: txNumber,
+        date: inv.date,
+        description: `Factura Venta ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
         third_party_id: inv.customer_id,
-        notes:        `Venta ${inv.number}`,
-        status:       'draft',
-        tx_id:        tx.id,
-      });
-      for (let i = 0; i < movLines.length; i++) {
-        await pb.create('inventory_movement_lines', { movement_id: mov.id, line_order: i + 1, ...movLines[i] });
-      }
-      await this.applyInventoryMovement(mov.id);
-      invMovId = mov.id;
-    }
+        payment_days: 0,
+        cross_enabled: false,
+        status: 'draft',
+      }, txLines);
 
-    // ── Actualizar Factura Comercial ────────────────────────────────────
-    await pb.update('invoices', invoiceId, {
-      status:          'posted',
-      tx_id:           tx.id,
-      inv_movement_id: invMovId,
-      tx_type_id:      effectiveTxTypeId,
-      tx_number:       txNumber,
-    });
-    await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
-    return { inv, tx };
+      // ── Movimiento de Inventario de Salida ─────────────────────────────
+      let invMovId = null;
+      if (movLines.length && inv.warehouse_id) {
+        const today = inv.date || new Date().toISOString().slice(0, 10);
+        const rand = String(Date.now()).slice(-4);
+        const movNumber = `SAL-${today.replaceAll('-', '')}-${rand}`;
+        movCreated = await pb.create('inventory_movements', {
+          number: movNumber,
+          mov_type: 'SALIDA',
+          date: inv.date,
+          warehouse_id: inv.warehouse_id,
+          third_party_id: inv.customer_id,
+          notes: `Venta ${inv.number}`,
+          status: 'draft',
+          tx_id: txCreated.id,
+        });
+        invMovId = movCreated.id;
+        for (let i = 0; i < movLines.length; i++) {
+          await pb.create('inventory_movement_lines', { movement_id: movCreated.id, line_order: i + 1, ...movLines[i] });
+        }
+        await this.applyInventoryMovement(movCreated.id);
+      }
+
+      // ── Actualizar Factura Comercial ────────────────────────────────────
+      await pb.update('invoices', invoiceId, {
+        status: 'posted',
+        tx_id: txCreated.id,
+        inv_movement_id: invMovId,
+        tx_type_id: effectiveTxTypeId,
+        tx_number: txNumber,
+      });
+      await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} → TX ${txCreated.number}`);
+      return { inv, tx: txCreated };
+    } catch (postErr) {
+      // ROLLBACK atómico en caso de fallo intermedio
+      if (movCreated) {
+        try {
+          const currentMov = await pb.get('inventory_movements', movCreated.id).catch(() => null);
+          if (currentMov && currentMov.status === 'applied') {
+            await this.voidInventoryMovement(movCreated.id, 'Rollback por fallo de contabilización');
+          }
+          const mLines = await pb.listAll('inventory_movement_lines', { filter: `movement_id="${pb.escapeFilterValue(movCreated.id)}"` }).catch(() => []);
+          for (const ml of mLines) {
+            await pb.delete('inventory_movement_lines', ml.id).catch(() => {});
+          }
+          await pb.delete('inventory_movements', movCreated.id).catch(() => {});
+        } catch (_) {}
+      }
+      if (txCreated) {
+        try {
+          const tLines = await pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(txCreated.id)}"` }).catch(() => []);
+          for (const tl of tLines) {
+            await pb.delete('tx_lines', tl.id).catch(() => {});
+          }
+          await pb.delete('transactions', txCreated.id).catch(() => {});
+        } catch (_) {}
+      }
+      throw postErr;
+    }
   },
 
   /** Revierte los efectos contables e inventario de una factura */
@@ -1729,7 +1771,16 @@ const API = {
     if (inv.tx_id) {
       const tx = await pb.get('transactions', inv.tx_id).catch(() => null);
       if (tx && tx.status !== 'voided') {
-        await this.voidTransaction(inv.tx_id, `${actionLabel} venta ${inv.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+        if (tx.status === 'draft') {
+          const tLines = await pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(tx.id)}"` }).catch(() => []);
+          for (const tl of tLines) {
+            await pb.delete('tx_lines', tl.id).catch(() => {});
+          }
+          await pb.delete('transactions', tx.id).catch(() => {});
+          console.log(`[GRAVY] Eliminada transacción borrador vinculada a la factura anulada: ${inv.number}`);
+        } else {
+          await this.voidTransaction(inv.tx_id, `${actionLabel} venta ${inv.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+        }
       }
     }
 
@@ -1805,7 +1856,7 @@ const API = {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('ph_invoice_lines', {
       filter: `invoice_id="${safe}"`,
-      sort:   'line_order',
+      sort: 'line_order',
       expand: 'concept_id,concept_id.account_id',
     });
   },
@@ -1822,7 +1873,7 @@ const API = {
       this.getSetting('ph_config_v1'),
     ]);
     if (!properties.length) throw new Error('No hay unidades activas registradas.');
-    if (!concepts.length)   throw new Error('No hay conceptos de facturación activos.');
+    if (!concepts.length) throw new Error('No hay conceptos de facturación activos.');
 
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
@@ -1869,10 +1920,10 @@ const API = {
         if (amount <= 0) continue;
         total += amount;
         lines.push({
-          concept_id:  c.id,
+          concept_id: c.id,
           description: c.name,
-          amount:      Math.round(amount),
-          line_order:  order++,
+          amount: Math.round(amount),
+          line_order: order++,
         });
       }
 
@@ -1915,10 +1966,10 @@ const API = {
           const roundedLate = Math.round(lateAmount);
           total += roundedLate;
           lines.push({
-            concept_id:  null,
+            concept_id: null,
             description: `Interés de mora a ${asOfStr}`,
-            amount:      roundedLate,
-            line_order:  order++,
+            amount: roundedLate,
+            line_order: order++,
           });
         }
       }
@@ -1934,12 +1985,12 @@ const API = {
         number,
         period,
         property_id: prop.id,
-        date:         dateStr,
-        due_date:     dueDateStr,
-        subtotal:     Math.round(total),
-        total:        Math.round(total),
-        status:       'draft',
-        notes:        '',
+        date: dateStr,
+        due_date: dueDateStr,
+        subtotal: Math.round(total),
+        total: Math.round(total),
+        status: 'draft',
+        notes: '',
       });
 
       for (const ln of lines) {
@@ -2172,10 +2223,10 @@ const API = {
       phCfg = raw ? JSON.parse(raw) : {};
     } catch (_) { phCfg = {}; }
 
-    const cxcCode    = String(phCfg.cxc_code    || '130505').trim();
-    const incomeCode = String(phCfg.income_code  || '413505').trim();
+    const cxcCode = String(phCfg.cxc_code || '130505').trim();
+    const incomeCode = String(phCfg.income_code || '413505').trim();
     const lateFeeIncomeCode = String(phCfg.late_fee_income_code || incomeCode).trim();
-    const crossRef   = String(inv.number || '').trim();
+    const crossRef = String(inv.number || '').trim();
 
     // Buscar tipo de transacción CF
     const cfTypes = await pb.list('transaction_types', {
@@ -2187,7 +2238,7 @@ const API = {
 
     // Propietario de la unidad (para third_party en asiento)
     const property = inv.expand?.property_id;
-    const ownerId  = property?.owner_id || null;
+    const ownerId = property?.owner_id || null;
 
     const accountByIdCache = {};
     const accountByCodeCache = {};
@@ -2312,14 +2363,14 @@ const API = {
     // Crear transacción contable
     const userId = pb.currentUser?.id || '';
     const tx = await pb.create('transactions', {
-      tx_type_id:    txType.id,
-      number:        'AUTO',
-      date:          inv.date,
-      description:   `Factura PH ${inv.number} — ${property?.name || inv.property_id} — ${inv.period}`,
+      tx_type_id: txType.id,
+      number: 'AUTO',
+      date: inv.date,
+      description: `Factura PH ${inv.number} — ${property?.name || inv.property_id} — ${inv.period}`,
       third_party_id: ownerId || null,
       cross_enabled: txLines.some(l => !!l.cross_doc_ref),
-      status:        'active',
-      user_id:       userId || undefined,
+      status: 'active',
+      user_id: userId || undefined,
     });
     for (const ln of txLines) {
       await pb.create('tx_lines', { tx_id: tx.id, ...ln });
@@ -2386,7 +2437,7 @@ const API = {
   /** Genera número de PQR con prefijo PQR-YYYYMMDD-NNNN */
   async nextPhPqrNumber() {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const res   = await pb.list('ph_pqrs', { perPage: 1 });
+    const res = await pb.list('ph_pqrs', { perPage: 1 });
     const count = (res.totalItems || 0) + 1;
     return `PQR-${today}-${String(count).padStart(4, '0')}`;
   },
@@ -2404,12 +2455,12 @@ const API = {
     let lineOrder = Math.max(0, ...existingLines.map(l => Number(l.line_order || 0))) + 1;
     for (const ln of lines) {
       await pb.create('ph_invoice_lines', {
-        invoice_id:   invoiceId,
-        concept_id:   null,
-        description:  String(ln.description || ''),
-        amount:       Math.round(Number(ln.amount || 0)),
+        invoice_id: invoiceId,
+        concept_id: null,
+        description: String(ln.description || ''),
+        amount: Math.round(Number(ln.amount || 0)),
         account_code: String(ln.account_code || ''),
-        line_order:   lineOrder++,
+        line_order: lineOrder++,
       });
     }
     // Recalcular total
@@ -2507,7 +2558,7 @@ const API = {
     const safePropertyId = pb.escapeFilterValue(propertyId);
     const safeFrom = pb.escapeFilterValue(fromPeriod);
     const safeTo = pb.escapeFilterValue(toPeriod);
-    
+
     // Filtro base: facturas no anuladas
     let filter = `status!="voided"`;
     if (propertyId) filter += ` && property_id="${safePropertyId}"`;
@@ -2552,7 +2603,7 @@ const API = {
       try {
         const lns = await this.getPhInvoiceLines(inv.id);
         allInvLines.push(...lns);
-      } catch(_) {}
+      } catch (_) { }
     }
 
     // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas)
@@ -2581,7 +2632,7 @@ const API = {
 
         // Buscamos si esta referencia pertenece a alguna de nuestras facturas
         const matchedInv = invNumbers.find(num => ref === num || ref.startsWith(num + '-'));
-        
+
         if (matchedInv) {
           abonosMap.set(ref, (abonosMap.get(ref) || 0) + valAbono);
         }
@@ -2595,23 +2646,23 @@ const API = {
     for (const inv of invoices) {
       const prop = propById.get(String(inv.property_id));
       const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
-      
+
       const invNumber = String(inv.number || '').trim().toUpperCase();
       const fechaDoc = String(inv.date || inv.created || '').slice(0, 10);
       const venc = String(inv.due_date || '').slice(0, 10);
       const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
-      
+
       // Control de abono general para distribuir entre líneas
       let generalAbono = abonosMap.get(invNumber) || 0;
 
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
-        
+
         // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
-        const conceptCode = (line.expand?.concept_id?.code || ( /inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
+        const conceptCode = (line.expand?.concept_id?.code || (/inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
         const specificRef = `${invNumber}-${conceptCode}`;
         let abonoAplicado = abonosMap.get(specificRef) || 0;
-        
+
         // 2. Si hay abono general remanente, aplicarlo a esta línea
         if (generalAbono > 0) {
           const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
@@ -2620,7 +2671,7 @@ const API = {
         }
 
         const currentBalance = originalAmount - abonoAplicado;
-        
+
         let estado = 'por_vencer';
         if (currentBalance < 1) {
           estado = 'cancelado';
@@ -2850,7 +2901,7 @@ const API = {
       if (!dStr) continue;
       const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
       if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
-      
+
       // Simple logic: if account starts with 4 (Income), Credit - Debit. 
       // If starts with 5 or 6 (Expenses/Costs), Debit - Credit.
       // We need to fetch account codes to be sure.
@@ -2889,7 +2940,7 @@ const API = {
       expand: 'tx_id,account_id,third_party_id'
     });
 
-    const results = {}; 
+    const results = {};
     for (const tl of txLines) {
       const acc = tl.expand?.account_id;
       if (!acc) continue;
@@ -2908,7 +2959,7 @@ const API = {
       if (!matchedConcept) continue;
 
       const third = tl.expand?.third_party_id;
-      if (!third) continue; 
+      if (!third) continue;
 
       const key = `${third.id}-${matchedConcept}-${accCode}`;
       if (!results[key]) {

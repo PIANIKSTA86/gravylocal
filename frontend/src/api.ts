@@ -1501,6 +1501,10 @@ const API = {
       return acc.id;
     };
 
+    // ── Registro de Ingresos e IVA Consolidados ──────────────────────────
+    const incomeGroups: { [accId: string]: number } = {};
+    const ivaGroups: { [key: string]: { ivaAccId: string, rate: number, amount: number } } = {};
+
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       let incomeAccId = line.account_id;
@@ -1511,23 +1515,52 @@ const API = {
         incomeAccId = defaultIncome.id;
       }
 
-      txLines.push(await buildTxLine({
-        accountId: incomeAccId,
-        thirdPartyId: inv.customer_id,
-        debit: 0,
-        credit: line.subtotal || 0,
-        description: line.description || prod?.name || `Línea de venta ${inv.number}`,
-        crossDocRef: inv.number,
-      }));
+      const subtotal = Number(line.subtotal || 0);
+      if (subtotal > 0) {
+        incomeGroups[incomeAccId] = (incomeGroups[incomeAccId] || 0) + subtotal;
+      }
 
-      if (Number(line.iva_amount || 0) > 0) {
-        const ivaAccId = await resolveIvaAccount(line.iva_rate);
+      const ivaAmount = Number(line.iva_amount || 0);
+      if (ivaAmount > 0) {
+        const rate = line.iva_rate || 0;
+        const ivaAccId = await resolveIvaAccount(rate);
+        const groupKey = `${ivaAccId}_${rate}`;
+        if (!ivaGroups[groupKey]) {
+          ivaGroups[groupKey] = {
+            ivaAccId,
+            rate,
+            amount: 0
+          };
+        }
+        ivaGroups[groupKey].amount += ivaAmount;
+      }
+    }
+
+    // 1. Agregar créditos consolidados de ingresos
+    for (const incomeAccId of Object.keys(incomeGroups)) {
+      const amount = incomeGroups[incomeAccId];
+      if (amount > 0) {
+        txLines.push(await buildTxLine({
+          accountId: incomeAccId,
+          thirdPartyId: inv.customer_id,
+          debit: 0,
+          credit: amount,
+          description: `Ingresos por ventas consolidados — ${inv.number}`,
+          crossDocRef: inv.number,
+        }));
+      }
+    }
+
+    // 2. Agregar créditos consolidados de IVA
+    for (const key of Object.keys(ivaGroups)) {
+      const { ivaAccId, rate, amount } = ivaGroups[key];
+      if (amount > 0) {
         txLines.push(await buildTxLine({
           accountId: ivaAccId,
           thirdPartyId: null,
           debit: 0,
-          credit: line.iva_amount,
-          description: `IVA Generado ${line.iva_rate}% venta ${inv.number}`,
+          credit: amount,
+          description: `IVA Generado ${rate}% venta ${inv.number}`,
           crossDocRef: inv.number,
         }));
       }

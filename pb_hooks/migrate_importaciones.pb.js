@@ -7,11 +7,13 @@ onBootstrap((e) => {
   let usersId = "";
   let productsId = "";
   let purchaseInvoicesId = "";
+  let transactionsId = "";
 
   try {
     thirdPartiesId = $app.findCollectionByNameOrId("third_parties").id;
     usersId = $app.findCollectionByNameOrId("users").id;
     productsId = $app.findCollectionByNameOrId("products").id;
+    transactionsId = $app.findCollectionByNameOrId("transactions").id;
   } catch (err) {
     console.log("[GRAVY-IMPORTACIONES] Error: no se pudieron obtener colecciones base: " + err);
     return;
@@ -201,6 +203,83 @@ onBootstrap((e) => {
     }
   } catch (err) {
     console.log("[GRAVY-IMPORTACIONES] Aviso al agregar divisa CNY a imports: " + err);
+  }
+
+  // 3c. Extender imports con campos de causaciones por etapas
+  try {
+    const impCol = $app.findCollectionByNameOrId("imports");
+    const impFields = new Set(impCol.fields.fieldNames());
+    let needsSaveImp = false;
+
+    // Campos de relación de transacción
+    const txFields = [
+      "tx_fob_id",
+      "tx_freight_id",
+      "tx_insurance_id",
+      "tx_customs_id",
+      "tx_local_carrier_id",
+      "tx_local_other_id"
+    ];
+    for (const f of txFields) {
+      if (!impFields.has(f) && transactionsId) {
+        impCol.fields.add(new RelationField({
+          name: f,
+          required: false,
+          collectionId: transactionsId,
+          cascadeDelete: false,
+          maxSelect: 1
+        }));
+        needsSaveImp = true;
+      }
+    }
+
+    // Campos de relación de proveedor (tercero)
+    const supplierFields = [
+      { name: "freight_supplier_id", col: thirdPartiesId },
+      { name: "insurance_supplier_id", col: thirdPartiesId },
+      { name: "customs_supplier_id", col: thirdPartiesId },
+      { name: "local_carrier_id", col: thirdPartiesId },
+      { name: "local_other_supplier_id", col: thirdPartiesId }
+    ];
+    for (const f of supplierFields) {
+      if (!impFields.has(f.name) && f.col) {
+        impCol.fields.add(new RelationField({
+          name: f.name,
+          required: false,
+          collectionId: f.col,
+          cascadeDelete: false,
+          maxSelect: 1
+        }));
+        needsSaveImp = true;
+      }
+    }
+
+    // Campos de número de factura (text)
+    const invoiceFields = [
+      "supplier_invoice_num",
+      "freight_invoice_num",
+      "insurance_invoice_num",
+      "customs_invoice_num",
+      "local_carrier_invoice_num",
+      "local_other_invoice_num"
+    ];
+    for (const f of invoiceFields) {
+      if (!impFields.has(f)) {
+        impCol.fields.add(new Field({
+          name: f,
+          type: "text",
+          required: false
+        }));
+        needsSaveImp = true;
+      }
+    }
+
+    if (needsSaveImp) {
+      $app.save(impCol);
+      console.log("[GRAVY-IMPORTACIONES] Campos de etapas y causaciones agregados a imports.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORTACIONES] Error al extender imports: " + err);
   }
 
   // Asegurar índices

@@ -154,8 +154,8 @@ function renderImportRow(imp: any) {
             <button class="btn btn-danger btn-sm" title="Anular" onclick="window.cancelImportDirect('${(window as any).esc(imp.id)}', '${(window as any).esc(imp.number)}')"><i class="fas fa-ban"></i></button>
           ` : ''}
           
-          ${imp.status === 'recibido' && imp.purchase_invoice_id ? `
-            <span class="badge badge-green" title="Factura de compra generada"><i class="fas fa-file-invoice mr-1"></i>Capitalizado</span>
+          ${imp.status === 'recibido' ? `
+            <span class="badge badge-green" title="Importación finalizada y capitalizada"><i class="fas fa-boxes-packing mr-1"></i>Capitalizado</span>
           ` : ''}
         </div>
       </td>
@@ -192,6 +192,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
     (window as any).API.getProducts({ activeOnly: true }),
   ]);
+
+  const getSupplierOptions = (selectedId: string) => {
+    return `<option value="">— Seleccionar —</option>` + suppliers.map((s: any) => `
+      <option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>
+        ${(window as any).esc(s.name)} (${s.doc_number || s.nit || 'S/N'})
+      </option>
+    `).join('');
+  };
 
   if (importId) {
     [imp, existingLines] = await Promise.all([
@@ -332,41 +340,216 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         </div>
       </div>
 
-      <!-- 4. Liquidación y Gastos de Nacionalización (COP) -->
+      <!-- 4. Causaciones por Etapas y Gastos de Nacionalización -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        <!-- Gastos en Colombia (COP / USD) -->
-        <div class="p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
-          <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-calculator mr-1 text-blue-700"></i> Liquidación de Gastos de Importación</h4>
+        <!-- Tabla de Causaciones Contables -->
+        <div class="p-4 rounded-xl border col-span-1" style="background:#F9FAFB;border-color:#E5E7EB">
+          <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-calculator mr-1 text-blue-700"></i> Causación Contable por Etapas</h4>
           
-          <div class="space-y-3">
-            <div class="grid grid-cols-2 gap-3">
-              <div class="form-group">
-                <label class="form-label font-bold" id="lbl-freight-cost">Flete Internacional (USD)</label>
-                <input type="number" id="imp-freight-cost" class="form-input text-right" min="0" step="0.01" value="${imp?.freight_cost || '0'}" oninput="window.impRecalcTotals()">
-              </div>
-              <div class="form-group">
-                <label class="form-label font-bold" id="lbl-insurance-cost">Seguro Internacional (USD)</label>
-                <input type="number" id="imp-insurance-cost" class="form-input text-right" min="0" step="0.01" value="${imp?.insurance_cost || '0'}" oninput="window.impRecalcTotals()">
-              </div>
-            </div>
+          <div style="overflow-x:auto">
+            <table class="w-full text-xs text-left border-collapse" id="imp-stages-table">
+              <thead>
+                <tr class="border-b text-gray-500 font-semibold" style="border-color:#E5E7EB">
+                  <th class="pb-2">Etapa</th>
+                  <th class="pb-2">Proveedor / Tercero</th>
+                  <th class="pb-2" style="width:120px">Factura Nro</th>
+                  <th class="pb-2 text-right" style="width:90px">Monto</th>
+                  <th class="pb-2 text-center" style="width:130px">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                
+                <!-- FOB Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">FOB Mercancía <span class="text-[10px] text-gray-400" id="lbl-fob-currency">(USD)</span></td>
+                  <td class="py-2">
+                    <span class="font-medium text-xs text-gray-700" id="stage-fob-supplier-name">${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}</span>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-supplier-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.supplier_invoice_num || '')}" ${imp?.tx_fob_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <input type="number" id="imp-fob-total" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.fob_total || '0'}" readonly style="background:#F3F4F6">
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_fob_id ? `
+                      <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_fob_id}')">
+                        <i class="fas fa-receipt mr-1"></i> Ver Asiento
+                      </button>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-fob" onclick="window.triggerStageCausacion('fob')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
 
-            <div class="h-px bg-gray-200 my-2"></div>
+                <!-- Freight Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">Flete Internacional <span class="text-[10px] text-gray-400" id="lbl-freight-currency">(USD)</span></td>
+                  <td class="py-2">
+                    <select id="imp-freight-supplier-id" class="form-input text-xs py-1" ${imp?.tx_freight_id ? 'disabled' : ''}>
+                      ${getSupplierOptions(imp?.freight_supplier_id || '')}
+                    </select>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-freight-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.freight_invoice_num || '')}" ${imp?.tx_freight_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <input type="number" id="imp-freight-cost" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.freight_cost || '0'}" step="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('freight')" data-original-val="${imp?.freight_cost || '0'}">
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_freight_id ? `
+                      <div class="flex flex-col gap-1 items-center">
+                        <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_freight_id}')">
+                          <i class="fas fa-receipt mr-1"></i> Asiento
+                        </button>
+                        <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-freight" onclick="window.triggerStageAdjustment('freight')">
+                          <i class="fas fa-pen-nib mr-1"></i> Ajustar
+                        </button>
+                      </div>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-freight" onclick="window.triggerStageCausacion('freight')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
 
-            <div class="grid grid-cols-3 gap-2">
-              <div class="form-group">
-                <label class="form-label font-bold text-xs">Gastos Nacionalización (COP)</label>
-                <input type="number" id="imp-gastos-nacionalizacion" class="form-input text-right" min="0" step="1" value="${imp?.gastos_nacionalizacion || '0'}" oninput="window.impRecalcTotals()">
-              </div>
-              <div class="form-group">
-                <label class="form-label font-bold text-xs">Transporte Nacional (COP)</label>
-                <input type="number" id="imp-transporte-nacional" class="form-input text-right" min="0" step="1" value="${imp?.transporte_nacional || '0'}" oninput="window.impRecalcTotals()">
-              </div>
-              <div class="form-group">
-                <label class="form-label font-bold text-xs">Otros Gastos Locales (COP)</label>
-                <input type="number" id="imp-otros-gastos" class="form-input text-right" min="0" step="1" value="${imp?.otros_gastos || '0'}" oninput="window.impRecalcTotals()">
-              </div>
-            </div>
+                <!-- Insurance Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">Seguro Internacional <span class="text-[10px] text-gray-400" id="lbl-insurance-currency">(USD)</span></td>
+                  <td class="py-2">
+                    <select id="imp-insurance-supplier-id" class="form-input text-xs py-1" ${imp?.tx_insurance_id ? 'disabled' : ''}>
+                      ${getSupplierOptions(imp?.insurance_supplier_id || '')}
+                    </select>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-insurance-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.insurance_invoice_num || '')}" ${imp?.tx_insurance_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <input type="number" id="imp-insurance-cost" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.insurance_cost || '0'}" step="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('insurance')" data-original-val="${imp?.insurance_cost || '0'}">
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_insurance_id ? `
+                      <div class="flex flex-col gap-1 items-center">
+                        <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_insurance_id}')">
+                          <i class="fas fa-receipt mr-1"></i> Asiento
+                        </button>
+                        <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-insurance" onclick="window.triggerStageAdjustment('insurance')">
+                          <i class="fas fa-pen-nib mr-1"></i> Ajustar
+                        </button>
+                      </div>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-insurance" onclick="window.triggerStageCausacion('insurance')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
+
+                <!-- Customs Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">Aduana / DIAN <span class="text-[10px] text-gray-400">(COP)</span></td>
+                  <td class="py-2">
+                    <select id="imp-customs-supplier-id" class="form-input text-xs py-1" ${imp?.tx_customs_id ? 'disabled' : ''}>
+                      ${getSupplierOptions(imp?.customs_supplier_id || '')}
+                    </select>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-customs-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.customs_invoice_num || '')}" ${imp?.tx_customs_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <div class="flex flex-col gap-1">
+                      <input type="number" id="imp-gastos-nacionalizacion" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.gastos_nacionalizacion || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('customs')" data-original-val="${imp?.gastos_nacionalizacion || '0'}">
+                      <div class="text-[9px] text-gray-500 text-right">Arancel: <span id="stage-customs-arancel">$ 0</span></div>
+                    </div>
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_customs_id ? `
+                      <div class="flex flex-col gap-1 items-center">
+                        <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_customs_id}')">
+                          <i class="fas fa-receipt mr-1"></i> Asiento
+                        </button>
+                        <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-customs" onclick="window.triggerStageAdjustment('customs')">
+                          <i class="fas fa-pen-nib mr-1"></i> Ajustar
+                        </button>
+                      </div>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-customs" onclick="window.triggerStageCausacion('customs')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
+
+                <!-- Local Carrier Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">Transporte Local <span class="text-[10px] text-gray-400">(COP)</span></td>
+                  <td class="py-2">
+                    <select id="imp-local-carrier-id" class="form-input text-xs py-1" ${imp?.tx_local_carrier_id ? 'disabled' : ''}>
+                      ${getSupplierOptions(imp?.local_carrier_id || '')}
+                    </select>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-local-carrier-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.local_carrier_invoice_num || '')}" ${imp?.tx_local_carrier_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <input type="number" id="imp-transporte-nacional" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.transporte_nacional || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_carrier')" data-original-val="${imp?.transporte_nacional || '0'}">
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_local_carrier_id ? `
+                      <div class="flex flex-col gap-1 items-center">
+                        <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_local_carrier_id}')">
+                          <i class="fas fa-receipt mr-1"></i> Asiento
+                        </button>
+                        <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-local_carrier" onclick="window.triggerStageAdjustment('local_carrier')">
+                          <i class="fas fa-pen-nib mr-1"></i> Ajustar
+                        </button>
+                      </div>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-local_carrier" onclick="window.triggerStageCausacion('local_carrier')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
+
+                <!-- Local Other Row -->
+                <tr class="align-middle">
+                  <td class="py-2 font-semibold text-gray-700">Otros Gastos <span class="text-[10px] text-gray-400">(COP)</span></td>
+                  <td class="py-2">
+                    <select id="imp-local-other-supplier-id" class="form-input text-xs py-1" ${imp?.tx_local_other_id ? 'disabled' : ''}>
+                      ${getSupplierOptions(imp?.local_other_supplier_id || '')}
+                    </select>
+                  </td>
+                  <td class="py-2">
+                    <input type="text" id="imp-local-other-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.local_other_invoice_num || '')}" ${imp?.tx_local_other_id ? 'disabled' : ''}>
+                  </td>
+                  <td class="py-2">
+                    <input type="number" id="imp-otros-gastos" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.otros_gastos || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_other')" data-original-val="${imp?.otros_gastos || '0'}">
+                  </td>
+                  <td class="py-2 text-center">
+                    ${imp?.tx_local_other_id ? `
+                      <div class="flex flex-col gap-1 items-center">
+                        <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_local_other_id}')">
+                          <i class="fas fa-receipt mr-1"></i> Asiento
+                        </button>
+                        <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-local_other" onclick="window.triggerStageAdjustment('local_other')">
+                          <i class="fas fa-pen-nib mr-1"></i> Ajustar
+                        </button>
+                      </div>
+                    ` : `
+                      <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-local_other" onclick="window.triggerStageCausacion('local_other')">
+                        <i class="fas fa-calculator mr-1"></i> Causar
+                      </button>
+                    `}
+                  </td>
+                </tr>
+
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -445,6 +628,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (hidden && input) {
       hidden.value = id;
       input.value = text;
+      // Actualizar nombre del proveedor FOB en la tabla de etapas
+      const stageFobSupplier = document.getElementById('stage-fob-supplier-name');
+      if (stageFobSupplier) {
+        const nameOnly = text.split(' - ').pop() || '';
+        stageFobSupplier.textContent = nameOnly;
+      }
     }
   };
 
@@ -471,12 +660,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   (window as any).impUpdateCurrencyLabel = function() {
     const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
     const thFobPrice = document.getElementById('lbl-th-fob-price');
-    const lblFreight = document.getElementById('lbl-freight-cost');
-    const lblInsurance = document.getElementById('lbl-insurance-cost');
+    const lblFobCurrency = document.getElementById('lbl-fob-currency');
+    const lblFreightCurrency = document.getElementById('lbl-freight-currency');
+    const lblInsuranceCurrency = document.getElementById('lbl-insurance-currency');
 
     if (thFobPrice) thFobPrice.textContent = `P. FOB (${currency})`;
-    if (lblFreight) lblFreight.textContent = `Flete Internacional (${currency})`;
-    if (lblInsurance) lblInsurance.textContent = `Seguro Internacional (${currency})`;
+    if (lblFobCurrency) lblFobCurrency.textContent = `(${currency})`;
+    if (lblFreightCurrency) lblFreightCurrency.textContent = `(${currency})`;
+    if (lblInsuranceCurrency) lblInsuranceCurrency.textContent = `(${currency})`;
 
     window.impRecalcTotals();
   };
@@ -604,6 +795,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
 
     let totalFOBCop = 0;
+    let totalFOBUri = 0;
     const rows = document.querySelectorAll('#imp-lines-body tr');
     
     // 1. Primer barrido para calcular el FOB Total en pesos (COP)
@@ -619,9 +811,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (productId && qty > 0 && fobPrice >= 0) {
         const lineFOBCop = qty * fobPrice * exchangeRate;
         totalFOBCop += lineFOBCop;
+        totalFOBUri += (qty * fobPrice);
         activeLines.push({ idx, qty, fobPrice, arancelRate, ivaRate, lineFOBCop });
       }
     });
+
+    // Actualizar valor de FOB total en la tabla de etapas
+    const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
+    if (fobTotalInput) {
+      fobTotalInput.value = totalFOBUri.toFixed(2);
+    }
 
     let arancelTotalCOP = 0;
     let grandTotalCOP = 0;
@@ -652,6 +851,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       grandTotalCOP += lineTotalCOP;
     });
 
+    // Actualizar total aduana (arancel + gastos nac) en la tabla de etapas
+    const stageCustomsArancel = document.getElementById('stage-customs-arancel');
+    const stageCustomsTotal = document.getElementById('stage-customs-total');
+    if (stageCustomsArancel) stageCustomsArancel.textContent = (window as any).fmt(arancelTotalCOP);
+    if (stageCustomsTotal) stageCustomsTotal.textContent = (window as any).fmt(arancelTotalCOP + localPortVal);
+
     // Costo total de importación es FOB + todos los gastos prorrateados + aranceles acumulados
     const finalTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
 
@@ -681,12 +886,190 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   // Ejecutar primera calculadora al abrir
   setTimeout(() => (window as any).impUpdateCurrencyLabel(), 100);
 
+  // Lock supplier & TRM inputs if FOB is already caused
+  if (imp?.tx_fob_id) {
+    setTimeout(() => {
+      const mainSuppSearch = document.getElementById('imp-supplier-search') as HTMLInputElement;
+      if (mainSuppSearch) {
+        mainSuppSearch.disabled = true;
+        mainSuppSearch.style.background = '#F3F4F6';
+      }
+    }, 120);
+  }
+
+  // --- Handlers de Causación Contable por Etapas ---
+  (window as any).viewStageTx = function(txId: string) {
+    (window as any).closeModal();
+    setTimeout(() => {
+      if (typeof (window as any).seeTxDetail === 'function') {
+        (window as any).seeTxDetail(txId);
+      } else {
+        (window as any).showToast('No se encontró el visualizador de transacciones.', 'error');
+      }
+    }, 300);
+  };
+
+  (window as any).checkStageAmountChange = function(stage: string) {
+    const input = document.getElementById(`imp-${stage === 'freight' ? 'freight-cost' : stage === 'insurance' ? 'insurance-cost' : stage === 'customs' ? 'gastos-nacionalizacion' : stage === 'local_carrier' ? 'transporte-nacional' : 'otros-gastos'}`) as HTMLInputElement;
+    const btnAdjust = document.getElementById(`btn-adjust-${stage}`);
+    if (!input || !btnAdjust) return;
+
+    const originalVal = parseFloat(input.getAttribute('data-original-val') || '0');
+    const currentVal = parseFloat(input.value || '0');
+
+    if (Math.abs(currentVal - originalVal) > 0.001) {
+      btnAdjust.classList.remove('hidden');
+    } else {
+      btnAdjust.classList.add('hidden');
+    }
+  };
+
+  (window as any).triggerStageCausacion = async function(stage: string) {
+    if (!importId) {
+      (window as any).showToast('Por favor guarda la importación primero como Borrador antes de realizar causaciones.', 'warning');
+      return;
+    }
+
+    try {
+      let supplierId = '';
+      let invoiceNum = '';
+      let amount = 0;
+
+      if (stage === 'fob') {
+        supplierId = (document.getElementById('imp-supplier-id') as HTMLInputElement)?.value;
+        invoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim();
+        const fobTotalVal = parseFloat((document.getElementById('imp-fob-total') as HTMLInputElement)?.value || '0');
+        const exchangeRateVal = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+        amount = fobTotalVal * exchangeRateVal;
+      } else if (stage === 'freight') {
+        supplierId = (document.getElementById('imp-freight-supplier-id') as HTMLSelectElement)?.value;
+        invoiceNum = (document.getElementById('imp-freight-invoice-num') as HTMLInputElement)?.value.trim();
+        const costVal = parseFloat((document.getElementById('imp-freight-cost') as HTMLInputElement)?.value || '0');
+        const exchangeRateVal = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+        amount = costVal * exchangeRateVal;
+      } else if (stage === 'insurance') {
+        supplierId = (document.getElementById('imp-insurance-supplier-id') as HTMLSelectElement)?.value;
+        invoiceNum = (document.getElementById('imp-insurance-invoice-num') as HTMLInputElement)?.value.trim();
+        const costVal = parseFloat((document.getElementById('imp-insurance-cost') as HTMLInputElement)?.value || '0');
+        const exchangeRateVal = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+        amount = costVal * exchangeRateVal;
+      } else if (stage === 'customs') {
+        supplierId = (document.getElementById('imp-customs-supplier-id') as HTMLSelectElement)?.value;
+        invoiceNum = (document.getElementById('imp-customs-invoice-num') as HTMLInputElement)?.value.trim();
+        
+        const arancelTotalVal = parseFloat(document.getElementById('lbl-res-arancel-cop')?.textContent?.replace(/[^0-9.-]+/g, '') || '0') || 0;
+        const gastosNacVal = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
+        amount = arancelTotalVal + gastosNacVal;
+      } else if (stage === 'local_carrier') {
+        supplierId = (document.getElementById('imp-local-carrier-id') as HTMLSelectElement)?.value;
+        invoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim();
+        amount = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
+      } else if (stage === 'local_other') {
+        supplierId = (document.getElementById('imp-local-other-supplier-id') as HTMLSelectElement)?.value;
+        invoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim();
+        amount = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
+      }
+
+      if (!supplierId) throw new Error('Debes seleccionar un proveedor para esta etapa.');
+      if (!invoiceNum) throw new Error('Debes ingresar el número de factura/soporte.');
+      if (amount <= 0) throw new Error('El monto a causar debe ser mayor a cero.');
+
+      const btn = document.getElementById(`btn-causar-${stage}`) as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>...';
+      }
+
+      await (window as any).API.postImportStage(importId, stage, supplierId, invoiceNum, amount);
+      (window as any).showToast('Causación contable generada exitosamente.', 'success');
+      
+      (window as any).closeModal();
+      setTimeout(() => {
+        openImportForm(importId, onDone);
+      }, 300);
+
+    } catch (err: any) {
+      (window as any).showToast(err.message, 'error');
+      const btn = document.getElementById(`btn-causar-${stage}`) as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-calculator mr-1"></i> Causar';
+      }
+    }
+  };
+
+  (window as any).triggerStageAdjustment = async function(stage: string) {
+    if (!importId) return;
+
+    try {
+      const input = document.getElementById(`imp-${stage === 'freight' ? 'freight-cost' : stage === 'insurance' ? 'insurance-cost' : stage === 'customs' ? 'gastos-nacionalizacion' : stage === 'local_carrier' ? 'transporte-nacional' : 'otros-gastos'}`) as HTMLInputElement;
+      if (!input) return;
+
+      const originalVal = parseFloat(input.getAttribute('data-original-val') || '0');
+      const currentVal = parseFloat(input.value || '0');
+      const exchangeRateVal = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+
+      let deltaAmount = 0;
+      let invoiceNum = '';
+
+      if (stage === 'fob') {
+        invoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = (currentVal - originalVal) * exchangeRateVal;
+      } else if (stage === 'freight') {
+        invoiceNum = (document.getElementById('imp-freight-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = (currentVal - originalVal) * exchangeRateVal;
+      } else if (stage === 'insurance') {
+        invoiceNum = (document.getElementById('imp-insurance-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = (currentVal - originalVal) * exchangeRateVal;
+      } else if (stage === 'customs') {
+        invoiceNum = (document.getElementById('imp-customs-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = currentVal - originalVal; // COP
+      } else if (stage === 'local_carrier') {
+        invoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = currentVal - originalVal; // COP
+      } else if (stage === 'local_other') {
+        invoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim();
+        deltaAmount = currentVal - originalVal; // COP
+      }
+
+      if (Math.abs(deltaAmount) < 0.01) {
+        throw new Error('No hay variación en el monto para realizar ajuste.');
+      }
+
+      const reason = prompt(`Estás ajustando contablemente esta etapa por una diferencia de ${(window as any).fmt(deltaAmount)}.\nPor favor ingresa el motivo del ajuste:`);
+      if (reason === null) return;
+      if (!reason.trim()) throw new Error('Debes ingresar un motivo para el ajuste contable.');
+
+      const btn = document.getElementById(`btn-adjust-${stage}`) as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>...';
+      }
+
+      await (window as any).API.postImportAdjustment(importId, stage, deltaAmount, invoiceNum, reason);
+      (window as any).showToast('Nota de ajuste contable generada exitosamente.', 'success');
+
+      (window as any).closeModal();
+      setTimeout(() => {
+        openImportForm(importId, onDone);
+      }, 300);
+
+    } catch (err: any) {
+      (window as any).showToast(err.message, 'error');
+      const btn = document.getElementById(`btn-adjust-${stage}`) as HTMLButtonElement;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-pen-nib mr-1"></i> Ajustar';
+      }
+    }
+  };
+
   // Guardar Borrador
   document.getElementById('btn-save-import')?.addEventListener('click', async () => {
     const btn = document.getElementById('btn-save-import') as HTMLButtonElement;
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
+      btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardando...';
     }
 
     try {
@@ -706,6 +1089,21 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const gastosNacionalizacion = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
       const transporteNacional = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
       const otrosGastos = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
+
+      // Proveedores de Etapas
+      const freightSupplierId = (document.getElementById('imp-freight-supplier-id') as HTMLSelectElement)?.value || null;
+      const insuranceSupplierId = (document.getElementById('imp-insurance-supplier-id') as HTMLSelectElement)?.value || null;
+      const customsSupplierId = (document.getElementById('imp-customs-supplier-id') as HTMLSelectElement)?.value || null;
+      const localCarrierId = (document.getElementById('imp-local-carrier-id') as HTMLSelectElement)?.value || null;
+      const localOtherSupplierId = (document.getElementById('imp-local-other-supplier-id') as HTMLSelectElement)?.value || null;
+
+      // Facturas de Etapas
+      const supplierInvoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const freightInvoiceNum = (document.getElementById('imp-freight-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const insuranceInvoiceNum = (document.getElementById('imp-insurance-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const customsInvoiceNum = (document.getElementById('imp-customs-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const localCarrierInvoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const localOtherInvoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim() || null;
 
       if (!supplierId) throw new Error('Por favor selecciona un proveedor internacional.');
       if (exchangeRate <= 0) throw new Error('La tasa de cambio debe ser un número positivo.');
@@ -751,7 +1149,6 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           arancel_rate: arancelRate,
           iva_rate: ivaRate,
           manifest_number: manifestNumber,
-          // Se llenarán en background al aplicar la fórmula
           lineFOBCop,
         });
       });
@@ -771,7 +1168,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         l.total_cop = lineTotalCOP;
         
         arancelTotalCOP += l.arancel_amount;
-        delete l.lineFOBCop; // Quitar campo temporal
+        delete l.lineFOBCop;
       });
 
       const grandTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
@@ -796,6 +1193,20 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         total_gastos_cif: totalCIFExpensesCOP,
         total_gastos_locales: totalLocalExpensesCOP,
         total: grandTotalCOP,
+
+        // Relaciones y facturas de causación
+        freight_supplier_id: freightSupplierId,
+        insurance_supplier_id: insuranceSupplierId,
+        customs_supplier_id: customsSupplierId,
+        local_carrier_id: localCarrierId,
+        local_other_supplier_id: localOtherSupplierId,
+
+        supplier_invoice_num: supplierInvoiceNum,
+        freight_invoice_num: freightInvoiceNum,
+        insurance_invoice_num: insuranceInvoiceNum,
+        customs_invoice_num: customsInvoiceNum,
+        local_carrier_invoice_num: localCarrierInvoiceNum,
+        local_other_invoice_num: localOtherInvoiceNum,
       };
 
       if (importId) {
@@ -825,7 +1236,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 async function viewImportDetail(importId: string) {
   try {
     const [imp, lines] = await Promise.all([
-      (window as any).pb.get('imports', importId, { expand: 'supplier_id,user_id,purchase_invoice_id' }),
+      (window as any).pb.get('imports', importId, {
+        expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id'
+      }),
       (window as any).API.getImportLines(importId),
     ]);
 
@@ -833,6 +1246,18 @@ async function viewImportDetail(importId: string) {
     const supplier = imp.expand?.supplier_id;
     const user = imp.expand?.user_id;
     const transport = TRANSPORTS.find(t => t.value === imp.transport_type)?.label || imp.transport_type || '—';
+
+    const renderStageTxLink = (label: string, tx: any) => {
+      if (!tx) return `<div class="flex justify-between items-center text-[10px]"><span>${label}:</span> <span class="text-gray-400 italic">No causado</span></div>`;
+      return `
+        <div class="flex justify-between items-center text-[10px]">
+          <span>${label}:</span>
+          <button onclick="closeModal(); window.viewStageTx('${tx.id}')" class="text-blue-600 font-bold hover:underline font-mono" title="${(window as any).esc(tx.description || '')}">
+            ${tx.number}
+          </button>
+        </div>
+      `;
+    };
 
     const modalBody = `
       <div class="space-y-6 text-sm" style="color:#374151">
@@ -858,15 +1283,15 @@ async function viewImportDetail(importId: string) {
         </div>
 
         <!-- Bloque Logístico y Contabilidad -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="p-4 rounded-xl border" style="background:#fff;border-color:#E5E7EB">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-4 rounded-xl border col-span-1" style="background:#fff;border-color:#E5E7EB">
             <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-truck mr-1 text-blue-700"></i> Datos Logísticos</h4>
             <div class="space-y-1.5 text-xs">
               <div class="flex justify-between"><span>Incoterm:</span> <span class="font-semibold">${(window as any).esc(imp.incoterm || '—')}</span></div>
               <div class="flex justify-between"><span>Guía B/L o AWB:</span> <span class="font-mono font-semibold">${(window as any).esc(imp.bl_awb || '—')}</span></div>
               <div class="flex justify-between"><span>Medio Transporte:</span> <span class="font-semibold">${transport}</span></div>
               <div class="flex justify-between"><span>Fecha Arribo (ETA):</span> <span class="font-semibold text-blue-700">${(window as any).esc(imp.estimated_arrival || '—')}</span></div>
-              <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+              <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 font-semibold">
                 <span>Documento B/L:</span>
                 ${imp.bl_document ? `
                   <a href="${(window as any).PB_URL}/api/files/imports/${imp.id}/${imp.bl_document}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="btn btn-outline btn-xs text-blue-700 font-bold flex items-center gap-1">
@@ -877,19 +1302,30 @@ async function viewImportDetail(importId: string) {
             </div>
           </div>
 
-          <div class="p-4 rounded-xl border" style="background:#fff;border-color:#E5E7EB">
-            <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-receipt mr-1 text-blue-700"></i> Integración Contable</h4>
-            <div class="space-y-1.5 text-xs">
-              <div class="flex justify-between"><span>Moneda de Compra:</span> <span class="font-semibold">${(window as any).esc(imp.currency)}</span></div>
-              <div class="flex justify-between"><span>Tasa de Cambio (TRM):</span> <span class="font-semibold">${(window as any).fmt(imp.exchange_rate).replace('COP', '')} COP</span></div>
-              <div class="flex justify-between"><span>Registrado Por:</span> <span class="font-semibold">${user ? (window as any).esc(user.full_name) : '—'}</span></div>
-              <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
-                <span>Factura de Compra:</span>
-                ${imp.purchase_invoice_id ? `
-                  <button onclick="closeModal(); window.viewPurchaseDetail('${(window as any).esc(imp.purchase_invoice_id)}')" class="btn btn-outline btn-xs text-green-700 font-bold flex items-center gap-1">
-                    <i class="fas fa-file-invoice"></i> Ver Factura FC
-                  </button>
-                ` : '<span class="badge badge-orange">Pendiente por Capitalizar</span>'}
+          <div class="p-4 rounded-xl border col-span-1 md:col-span-2 flex flex-col justify-between" style="background:#fff;border-color:#E5E7EB">
+            <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-receipt mr-1 text-blue-700"></i> Integración y Causaciones Contables</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1">
+              <div class="space-y-1.5 text-xs">
+                <div class="flex justify-between"><span>Moneda de Compra:</span> <span class="font-semibold">${(window as any).esc(imp.currency)}</span></div>
+                <div class="flex justify-between"><span>Tasa de Cambio (TRM):</span> <span class="font-semibold">${(window as any).fmt(imp.exchange_rate).replace('COP', '')} COP</span></div>
+                <div class="flex justify-between"><span>Registrado Por:</span> <span class="font-semibold">${user ? (window as any).esc(user.full_name) : '—'}</span></div>
+                <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 font-semibold text-gray-700">
+                  <span>Estado Contable:</span>
+                  ${imp.status === 'recibido' ? `
+                    <span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i> Capitalizado</span>
+                  ` : `
+                    <span class="badge badge-orange"><i class="fas fa-clock mr-1"></i> Tránsito / Pendiente</span>
+                  `}
+                </div>
+              </div>
+              <div class="space-y-1 text-xs border-l pl-4 border-gray-100">
+                <div class="font-bold text-gray-500 uppercase text-[10px] tracking-wider mb-1">Causaciones por Etapa</div>
+                ${renderStageTxLink('FOB Mercancía', imp.expand?.tx_fob_id)}
+                ${renderStageTxLink('Flete Internacional', imp.expand?.tx_freight_id)}
+                ${renderStageTxLink('Seguro Internacional', imp.expand?.tx_insurance_id)}
+                ${renderStageTxLink('Aduanas / DIAN', imp.expand?.tx_customs_id)}
+                ${renderStageTxLink('Transporte Local', imp.expand?.tx_local_carrier_id)}
+                ${renderStageTxLink('Otros Gastos', imp.expand?.tx_local_other_id)}
               </div>
             </div>
           </div>
@@ -1049,44 +1485,10 @@ async function confirmFinalizarImportacion(importId: string) {
         if (!txTypeId) throw new Error('Por favor selecciona el tipo de comprobante contable.');
         if (!txNumber) throw new Error('Por favor ingresa la numeración del comprobante de compra.');
 
-        // 1. Estructurar factura de compra a partir de los datos de importación
-        const fcHeader = {
-          number: txNumber,
-          date: imp.date_created,
-          due_date: (window as any).addDaysToDateStr(imp.date_created, 30),
-          supplier_id: imp.supplier_id,
-          supplier_ref: `IMP: ${imp.number} | B/L: ${imp.bl_awb || 'S/N'}`,
-          tx_type_id: txTypeId,
-          tx_number: txNumber,
-          warehouse_id: whId,
-          notes: `Importación capitalizada automáticamente. Consecutivo origen: ${imp.number}.`,
-          import_id: importId
-        };
+        // 1. Ejecutar la capitalización contable directa (traslado contable Tránsito -> Bodega y Entrada de Inventario)
+        await (window as any).API.capitalizeImport(importId, whId, txTypeId, txNumber);
 
-        const fcLines = lines.map((l: any, idx: number) => {
-          // El precio unitario de compra contable ya es el Landed Cost (FOB + Prorrateo + Arancel)
-          return {
-            product_id: l.product_id,
-            qty: l.qty,
-            unit_price: l.unit_cost_cop,
-            iva_rate: l.iva_rate || 0,
-            subtotal: l.qty * l.unit_cost_cop,
-            iva_amount: (l.qty * l.unit_cost_cop) * ((l.iva_rate || 0) / 100),
-            total: (l.qty * l.unit_cost_cop) * (1 + ((l.iva_rate || 0) / 100)),
-            line_order: idx + 1
-          };
-        });
-
-        // 2. Crear borrador de factura de compra
-        const createdInvoice = await (window as any).API.createPurchaseInvoice(fcHeader, fcLines);
-
-        // 3. Actualizar estado de importación a recibido y enlazar factura
-        await (window as any).pb.update('imports', importId, {
-          status: 'recibido',
-          purchase_invoice_id: createdInvoice.id
-        });
-
-        (window as any).showToast(`Importación finalizada. Se generó borrador de factura ${txNumber}.`, 'success');
+        (window as any).showToast(`Importación finalizada. Traslado contable y entrada a bodega registrados con éxito.`, 'success');
         closeModal();
         
         // Recargar página
@@ -1132,6 +1534,16 @@ async function cancelImportDirect(importId: string, number: string) {
 (window as any).viewImportDetail = viewImportDetail;
 (window as any).confirmFinalizarImportacion = confirmFinalizarImportacion;
 (window as any).cancelImportDirect = cancelImportDirect;
+(window as any).viewStageTx = (txId: string) => {
+  (window as any).closeModal();
+  setTimeout(() => {
+    if (typeof (window as any).seeTxDetail === 'function') {
+      (window as any).seeTxDetail(txId);
+    } else {
+      (window as any).showToast('No se encontró el visualizador de transacciones.', 'error');
+    }
+  }, 300);
+};
 
 async function openImportSettingsModal(onSaved = null) {
   try {
@@ -1148,42 +1560,91 @@ async function openImportSettingsModal(onSaved = null) {
     };
 
     const modalBody = `
-      <div class="space-y-5 text-sm" style="color:#374151">
+      <div class="space-y-5 text-sm" style="color:#374151; max-height: 70vh; overflow-y: auto;">
         <div class="rounded-xl border p-4" style="border-color:#E5E7EB;background:#FCFCFD">
           <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-book mr-2"></i>Parámetros contables de importaciones</h4>
-          <p class="text-xs mb-3" style="color:#6B7280">Estas cuentas se usan para acumular gastos durante el tránsito y realizar la posterior capitalización a bodega.</p>
+          <p class="text-xs mb-4" style="color:#6B7280">Estas cuentas se usan para debitar activos en tránsito, registrar IVA e individualizar los pasivos por cada tipo de gasto.</p>
           
-          <div class="space-y-4">
+          <h5 class="font-bold text-xs uppercase tracking-wider text-blue-700 mb-3 border-b pb-1">1. Cuentas de Activo y Tránsito (Débitos)</h5>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
             <div class="form-group">
-              <label class="form-label font-bold">Cuenta de Mercancías en Tránsito (Db)</label>
-              <select id="imp-cfg-transito" class="form-input">
+              <label class="form-label font-bold text-xs">Mercancías en Tránsito</label>
+              <select id="imp-cfg-transito" class="form-input py-1 text-xs">
                 ${accountOptions(cfg.accounting?.accounts?.transito_account_code || '143505')}
               </select>
-              <p class="text-[10px] text-gray-500 mt-1">Cuenta puente transitoria para acumular FOB, fletes, seguros y gastos locales de nacionalización.</p>
             </div>
 
             <div class="form-group">
-              <label class="form-label font-bold">Cuenta de Inventario en Bodega (Db)</label>
-              <select id="imp-cfg-inventario" class="form-input">
+              <label class="form-label font-bold text-xs">Inventario en Bodega</label>
+              <select id="imp-cfg-inventario" class="form-input py-1 text-xs">
                 ${accountOptions(cfg.accounting?.accounts?.inventario_account_code || '143501')}
               </select>
-              <p class="text-[10px] text-gray-500 mt-1">Cuenta definitiva donde ingresa el inventario físico al finalizar la importación.</p>
             </div>
 
             <div class="form-group">
-              <label class="form-label font-bold">Cuenta de Anticipos a Proveedores de Importación (Db)</label>
-              <select id="imp-cfg-anticipo" class="form-input">
+              <label class="form-label font-bold text-xs">Anticipos a Proveedores</label>
+              <select id="imp-cfg-anticipo" class="form-input py-1 text-xs">
                 ${accountOptions(cfg.accounting?.accounts?.anticipo_account_code || '133025')}
               </select>
-              <p class="text-[10px] text-gray-500 mt-1">Cuenta utilizada en egresos de tesorería antes de radicar las facturas correspondientes.</p>
             </div>
 
             <div class="form-group">
-              <label class="form-label font-bold">Cuenta de IVA Descontable por Importaciones (Db)</label>
-              <select id="imp-cfg-iva" class="form-input">
+              <label class="form-label font-bold text-xs">IVA Descontable por Importaciones</label>
+              <select id="imp-cfg-iva" class="form-input py-1 text-xs">
                 ${accountOptions(cfg.accounting?.accounts?.iva_account_code || '240810')}
               </select>
-              <p class="text-[10px] text-gray-500 mt-1">Cuenta del IVA descontable liquidado en la declaración de importación.</p>
+            </div>
+          </div>
+
+          <h5 class="font-bold text-xs uppercase tracking-wider text-blue-700 mb-3 border-b pb-1">2. Cuentas de Proveedores y Acreedores (Créditos)</h5>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Proveedores de Mercancía</label>
+              <select id="imp-cfg-fob" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.fob_payable_account_code || '220505')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Flete Internacional</label>
+              <select id="imp-cfg-freight" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.freight_payable_account_code || '233545')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Seguro Internacional</label>
+              <select id="imp-cfg-insurance" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.insurance_payable_account_code || '233555')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Aduana / DIAN (Tasas y Brokerage)</label>
+              <select id="imp-cfg-customs" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.customs_payable_account_code || '233595')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Arancel</label>
+              <select id="imp-cfg-arancel" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.arancel_payable_account_code || '233595')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Transporte Local</label>
+              <select id="imp-cfg-local-carrier" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.local_carrier_payable_account_code || '233545')}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-bold text-xs">Otros Gastos</label>
+              <select id="imp-cfg-local-other" class="form-input py-1 text-xs">
+                ${accountOptions(cfg.accounting?.accounts?.local_other_payable_account_code || '233595')}
+              </select>
             </div>
           </div>
         </div>
@@ -1210,13 +1671,28 @@ async function openImportSettingsModal(onSaved = null) {
         const anticipo = (document.getElementById('imp-cfg-anticipo') as HTMLSelectElement)?.value || '133025';
         const iva = (document.getElementById('imp-cfg-iva') as HTMLSelectElement)?.value || '240810';
 
+        const fob = (document.getElementById('imp-cfg-fob') as HTMLSelectElement)?.value || '220505';
+        const freight = (document.getElementById('imp-cfg-freight') as HTMLSelectElement)?.value || '233545';
+        const insurance = (document.getElementById('imp-cfg-insurance') as HTMLSelectElement)?.value || '233555';
+        const customs = (document.getElementById('imp-cfg-customs') as HTMLSelectElement)?.value || '233595';
+        const arancel = (document.getElementById('imp-cfg-arancel') as HTMLSelectElement)?.value || '233595';
+        const localCarrier = (document.getElementById('imp-cfg-local-carrier') as HTMLSelectElement)?.value || '233545';
+        const localOther = (document.getElementById('imp-cfg-local-other') as HTMLSelectElement)?.value || '233595';
+
         const payload = {
           accounting: {
             accounts: {
               transito_account_code: transito,
               inventario_account_code: inventario,
               anticipo_account_code: anticipo,
-              iva_account_code: iva
+              iva_account_code: iva,
+              fob_payable_account_code: fob,
+              freight_payable_account_code: freight,
+              insurance_payable_account_code: insurance,
+              customs_payable_account_code: customs,
+              arancel_payable_account_code: arancel,
+              local_carrier_payable_account_code: localCarrier,
+              local_other_payable_account_code: localOther
             }
           }
         };

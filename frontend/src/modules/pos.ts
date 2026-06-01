@@ -1269,10 +1269,17 @@ window.closePOSShift = async function() {
 
 // --- Modal de Pago Rápido POS ---
 
-window.openPOSPaymentModal = function() {
+window.openPOSPaymentModal = async function() {
   if (!posCart.length) {
     (window as any).showToast('Agrega productos al carrito primero.', 'warning');
     return;
+  }
+
+  let sellers: any[] = [];
+  try {
+    sellers = await (window as any).pb.listAll('third_parties', { filter: 'type="VENDEDOR" && active=true', sort: 'name' });
+  } catch (err) {
+    console.warn("Fallo al obtener vendedores en POS:", err);
   }
 
   let subtotal = 0;
@@ -1302,6 +1309,14 @@ window.openPOSPaymentModal = function() {
         <span class="text-xs text-gray-500 uppercase font-black block">Total a Recaudar</span>
         <span class="text-3xl font-extrabold text-blue-700" id="pos-pay-tot" data-val="${total}">${(window as any).fmt(total)}</span>
         <div class="mt-1">${ivaModeLabel}</div>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="form-label font-bold text-gray-700 mb-1 block">Vendedor Asignado</label>
+        <select id="pos-pay-seller" class="form-input w-full">
+          <option value="">— Seleccionar Vendedor —</option>
+          ${sellers.map(s => `<option value="${(window as any).esc(s.id)}">${(window as any).esc(s.name)}</option>`).join('')}
+        </select>
       </div>
 
       <div class="grid grid-cols-4 gap-2" id="pos-pay-methods-grid">
@@ -1566,6 +1581,7 @@ window.posMixedCalc = function() {
 window.confirmPOSPayment = async function() {
   const btn = document.getElementById('btn-pos-pay-confirm') as HTMLButtonElement;
   const tot = parseFloat(document.getElementById('pos-pay-tot')?.getAttribute('data-val') || '0');
+  const sellerId = (document.getElementById('pos-pay-seller') as HTMLSelectElement)?.value || null;
 
   let received = 0;
   let change = 0;
@@ -1625,10 +1641,40 @@ window.confirmPOSPayment = async function() {
     const discountAmount = Math.round(subtotal * (posDiscountPct / 100) * 100) / 100;
     const freightAmount = Number(posFreightAmt || 0);
 
+    // Precalcular comisiones si es histórico
+    let commissionRate = 0;
+    let commissionAmount = 0;
+    if (sellerId) {
+      try {
+        const commSettingsRaw = await (window as any).API.getSetting('commission_settings_v1');
+        const commSettings = commSettingsRaw ? JSON.parse(commSettingsRaw) : { method: 'dinamico' };
+        if (commSettings.method === 'historico') {
+          // Cargar reglas de comisión activas
+          const rules = await (window as any).pb.listAll('commission_rules', { filter: 'active=true' });
+          // Calcular para cada línea
+          for (const line of lines) {
+            const matchedRule = rules.find((r: any) => r.seller_id === sellerId && r.product_id === line.product_id) ||
+                                rules.find((r: any) => !r.seller_id && r.product_id === line.product_id) ||
+                                rules.find((r: any) => r.seller_id === sellerId && r.type === 'total_sale') ||
+                                rules.find((r: any) => !r.seller_id && r.type === 'total_sale');
+            if (matchedRule) {
+              commissionAmount += (matchedRule.rate / 100) * (line.subtotal || 0);
+            }
+          }
+          commissionRate = subtotal > 0 ? (commissionAmount / subtotal) * 100 : 0;
+        }
+      } catch (err) {
+        console.warn("Fallo al pre-calcular comisión histórica en POS:", err);
+      }
+    }
+
     const header = {
       number: invoiceNumber,
       customer_id: selectedCustomerId,
       warehouse_id: selectedWarehouseId,
+      seller_id: sellerId,
+      commission_rate: commissionRate,
+      commission_amount: commissionAmount,
       date: (window as any).todayStr(),
       due_date: (window as any).todayStr(),
       notes: `Venta POS turno #${activeShift.id.slice(-5)}`,

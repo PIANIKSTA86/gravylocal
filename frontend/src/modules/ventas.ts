@@ -505,6 +505,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     (window as any).pb.listAll('transaction_types', { filter: 'active=true', sort: 'name' }),
   ]);
 
+  const sellers = customers.filter((c: any) => c.type === 'VENDEDOR');
+
   if (invoiceId) {
     [inv, existingLines] = await Promise.all([
       (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' }),
@@ -619,6 +621,13 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           <select id="so-warehouse" class="form-input" onchange="window.soRecalcLine(0)">
             <option value="">— Sin bodega —</option>
             ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && warehouses.length === 1)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold">Vendedor Asignado</label>
+          <select id="so-seller" class="form-input">
+            <option value="">— Seleccionar vendedor —</option>
+            ${sellers.map(s => `<option value="${(window as any).esc(s.id)}"${inv?.seller_id === s.id ? ' selected' : ''}>${(window as any).esc(s.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group col-span-1 md:col-span-3">
@@ -1077,6 +1086,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     const payMethod = (document.getElementById('so-payment-method') as HTMLSelectElement)?.value;
     const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value;
     const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value;
+    const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || null;
     const notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
 
     if (!customerId) throw new Error('Debes seleccionar un cliente.');
@@ -1162,10 +1172,40 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
     const salesOrderId = (document.getElementById('so-sales-order-id') as HTMLInputElement)?.value || null;
 
+    // Precalcular comisiones si es histórico
+    let commissionRate = 0;
+    let commissionAmount = 0;
+    if (sellerId) {
+      try {
+        const commSettingsRaw = await (window as any).API.getSetting('commission_settings_v1');
+        const commSettings = commSettingsRaw ? JSON.parse(commSettingsRaw) : { method: 'dinamico' };
+        if (commSettings.method === 'historico') {
+          // Cargar reglas de comisión activas
+          const rules = await (window as any).pb.listAll('commission_rules', { filter: 'active=true' });
+          // Calcular para cada línea
+          for (const line of lines) {
+            const matchedRule = rules.find((r: any) => r.seller_id === sellerId && r.product_id === line.product_id) ||
+                                rules.find((r: any) => !r.seller_id && r.product_id === line.product_id) ||
+                                rules.find((r: any) => r.seller_id === sellerId && r.type === 'total_sale') ||
+                                rules.find((r: any) => !r.seller_id && r.type === 'total_sale');
+            if (matchedRule) {
+              commissionAmount += (matchedRule.rate / 100) * (line.subtotal || 0);
+            }
+          }
+          commissionRate = subtotal > 0 ? (commissionAmount / subtotal) * 100 : 0;
+        }
+      } catch (err) {
+        console.warn("Fallo al pre-calcular comisión histórica:", err);
+      }
+    }
+
     const header = {
       number,
       customer_id: customerId,
       warehouse_id: warehouseId || null,
+      seller_id: sellerId,
+      commission_rate: commissionRate,
+      commission_amount: commissionAmount,
       date,
       due_date: due || null,
       notes: notes.trim(),

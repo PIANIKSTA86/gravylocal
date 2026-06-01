@@ -27,6 +27,7 @@ import './modules/pedidos.ts';
 import './modules/importaciones.ts';
 import './modules/ventas.ts';
 import './modules/pos.ts';
+import './modules/comisiones.ts';
 import './modules/resoluciones.ts';
 import './modules/copropiedades.ts';
 import './modules/exogena.ts';

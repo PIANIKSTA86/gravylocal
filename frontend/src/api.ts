@@ -178,6 +178,39 @@ const pb = {
   },
 };
 
+/* -- Helpers internos de resolución de cuentas ---------------- */
+const _apiAccountCache = {};
+async function _apiFindAccByCode(code) {
+  const key = String(code || '').trim();
+  if (!key) throw new Error('Se requiere un código de cuenta válido.');
+  if (_apiAccountCache[key]) return _apiAccountCache[key];
+  const safeCode = pb.escapeFilterValue(key);
+  const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+  if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada en el plan de cuentas.`);
+  _apiAccountCache[key] = res.items[0];
+  return res.items[0];
+}
+
+async function _apiResolvePayableAccountForThirdParty(thirdParty) {
+  const code = String(thirdParty.type || '').toLowerCase();
+  if (code.includes('exterior') || code.includes('extranjero')) {
+    return await _apiFindAccByCode('220505'); // Proveedores del exterior
+  }
+  if (thirdParty.name.toLowerCase().includes('dian') || thirdParty.doc_number === '800197268') {
+    return await _apiFindAccByCode('233595'); // DIAN / Otros
+  }
+  // Fallback general a proveedores nacionales o acreedores de flete
+  try {
+    return await _apiFindAccByCode('233545'); // Acreedores varios - Transportes
+  } catch(_) {
+    try {
+      return await _apiFindAccByCode('233595');
+    } catch(_) {
+      return await _apiFindAccByCode('220501'); // Proveedores nacionales
+    }
+  }
+}
+
 /* -- Helpers de API con logging de auditoria ---------------- */
 const API = {
 
@@ -3396,30 +3429,46 @@ const API = {
 
   /** Obtener la configuración del módulo de importaciones */
   async getImportConfig() {
+    const defaultCfg = {
+      accounting: {
+        accounts: {
+          transito_account_code: '143505',
+          inventario_account_code: '143501',
+          anticipo_account_code: '133025',
+          iva_account_code: '240810',
+          fob_payable_account_code: '220505',
+          freight_payable_account_code: '233545',
+          insurance_payable_account_code: '233555',
+          customs_payable_account_code: '233595',
+          arancel_payable_account_code: '233595',
+          local_carrier_payable_account_code: '233545',
+          local_other_payable_account_code: '233595'
+        }
+      }
+    };
     try {
       const raw = await this.getSetting('import_config_v1');
-      if (!raw) return {
-        accounting: {
-          accounts: {
-            transito_account_code: '143505',
-            inventario_account_code: '143501',
-            anticipo_account_code: '133025',
-            iva_account_code: '240810'
-          }
-        }
-      };
-      return JSON.parse(raw);
+      if (!raw) return defaultCfg;
+      const parsed = JSON.parse(raw);
+      if (parsed.accounting && parsed.accounting.accounts) {
+        const accs = parsed.accounting.accounts;
+        accs.transito_account_code = accs.transito_account_code || '143505';
+        accs.inventario_account_code = accs.inventario_account_code || '143501';
+        accs.anticipo_account_code = accs.anticipo_account_code || '133025';
+        accs.iva_account_code = accs.iva_account_code || '240810';
+        accs.fob_payable_account_code = accs.fob_payable_account_code || '220505';
+        accs.freight_payable_account_code = accs.freight_payable_account_code || '233545';
+        accs.insurance_payable_account_code = accs.insurance_payable_account_code || '233555';
+        accs.customs_payable_account_code = accs.customs_payable_account_code || '233595';
+        accs.arancel_payable_account_code = accs.arancel_payable_account_code || '233595';
+        accs.local_carrier_payable_account_code = accs.local_carrier_payable_account_code || '233545';
+        accs.local_other_payable_account_code = accs.local_other_payable_account_code || '233595';
+      } else {
+        return defaultCfg;
+      }
+      return parsed;
     } catch {
-      return {
-        accounting: {
-          accounts: {
-            transito_account_code: '143505',
-            inventario_account_code: '143501',
-            anticipo_account_code: '133025',
-            iva_account_code: '240810'
-          }
-        }
-      };
+      return defaultCfg;
     }
   },
 
@@ -3431,21 +3480,50 @@ const API = {
   },
 
   /** Obtiene todos los datos para armar el reporte de trazabilidad de una importación */
-  async getImportTraceabilityData(importId) {
+  async getImportTraceabilityData(importId: string) {
     const [imp, lines] = await Promise.all([
-      pb.get('imports', importId, { expand: 'supplier_id,user_id,purchase_invoice_id' }),
+      pb.get('imports', importId, { expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id' }),
       this.getImportLines(importId)
     ]);
     
     const importNumber = imp.number;
+    const invoiceNums = [
+      imp.supplier_invoice_num,
+      imp.freight_invoice_num,
+      imp.insurance_invoice_num,
+      imp.customs_invoice_num,
+      imp.local_carrier_invoice_num,
+      imp.local_other_invoice_num
+    ].filter(Boolean);
+
+    const txIds = [
+      imp.tx_fob_id,
+      imp.tx_freight_id,
+      imp.tx_insurance_id,
+      imp.tx_customs_id,
+      imp.tx_local_carrier_id,
+      imp.tx_local_other_id
+    ].filter(Boolean);
+
+    const filters = [`cross_doc_ref="${pb.escapeFilterValue(importNumber)}"`];
     
-    // Buscar transacciones contables asociadas (CE, RC, etc.) donde se haya usado la ref de la importación
-    const txLines = await pb.listAll('tx_lines', {
-      filter: `cross_doc_ref="${pb.escapeFilterValue(importNumber)}"`,
+    if (txIds.length) {
+      const idsFilter = txIds.map(id => `tx_id="${pb.escapeFilterValue(id)}"`).join(' || ');
+      filters.push(`(${idsFilter})`);
+    }
+    
+    if (invoiceNums.length) {
+      const invsFilter = invoiceNums.map(num => `cross_doc_ref="${pb.escapeFilterValue(num)}"`).join(' || ');
+      filters.push(`(${invsFilter})`);
+    }
+
+    const filterString = filters.join(' || ');
+    const txLines = filterString ? await pb.listAll('tx_lines', {
+      filter: filterString,
       expand: 'tx_id,account_id,third_party_id'
-    });
+    }) : [];
     
-    const transactionsMap = {};
+    const transactionsMap: any = {};
     for (const tl of txLines) {
       const tx = tl.expand?.tx_id;
       if (!tx || tx.status === 'voided') continue;
@@ -3469,7 +3547,6 @@ const API = {
     }
     const transactions = Object.values(transactionsMap);
     
-    // Buscar facturas de compra asociadas
     const purchaseInvoices = await pb.listAll('purchase_invoices', {
       filter: `import_id="${pb.escapeFilterValue(importId)}" && status!="voided"`,
       expand: 'supplier_id,warehouse_id'
@@ -3481,6 +3558,332 @@ const API = {
       transactions,
       purchaseInvoices
     };
+  },
+
+  /** Causa contabilidad individual de una etapa de importación */
+  async postImportStage(importId: string, stageName: string, supplierId: string, invoiceNum: string, amount: number) {
+    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!stageName) throw new Error('Se requiere el nombre de la etapa.');
+    if (!supplierId) throw new Error('Se requiere el ID del proveedor.');
+    if (!invoiceNum) throw new Error('Se requiere el número de factura/soporte.');
+    if (amount <= 0) throw new Error('El monto a causar debe ser mayor a cero.');
+
+    const imp = await pb.get('imports', importId);
+    
+    const mappings: Record<string, { txField: string; supplierField: string; invoiceField: string; label: string }> = {
+      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB Mercancía' },
+      freight: { txField: 'tx_freight_id', supplierField: 'freight_supplier_id', invoiceField: 'freight_invoice_num', label: 'Flete Internacional' },
+      insurance: { txField: 'tx_insurance_id', supplierField: 'insurance_supplier_id', invoiceField: 'insurance_invoice_num', label: 'Seguro Internacional' },
+      customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
+      local_carrier: { txField: 'tx_local_carrier_id', supplierField: 'local_carrier_id', invoiceField: 'local_carrier_invoice_num', label: 'Transporte Local' },
+      local_other: { txField: 'tx_local_other_id', supplierField: 'local_other_supplier_id', invoiceField: 'local_other_invoice_num', label: 'Otros Gastos' },
+    };
+
+    const map = mappings[stageName];
+    if (!map) throw new Error(`Etapa '${stageName}' no es válida.`);
+
+    if (imp[map.txField]) {
+      throw new Error(`La etapa ${map.label} ya tiene una causación contable registrada.`);
+    }
+
+    const cfg = await this.getImportConfig();
+    const transitoCode = cfg.accounting?.accounts?.transito_account_code || '143505';
+    const accTransito = await _apiFindAccByCode(transitoCode);
+
+    const accountsCfg = cfg.accounting?.accounts || {};
+    const stageAccountMapping: Record<string, string> = {
+      fob: accountsCfg.fob_payable_account_code || '220505',
+      freight: accountsCfg.freight_payable_account_code || '233545',
+      insurance: accountsCfg.insurance_payable_account_code || '233555',
+      customs: accountsCfg.customs_payable_account_code || '233595',
+      local_carrier: accountsCfg.local_carrier_payable_account_code || '233545',
+      local_other: accountsCfg.local_other_payable_account_code || '233595'
+    };
+
+    const targetAccountCode = stageAccountMapping[stageName];
+    let accPayable = await _apiFindAccByCode(targetAccountCode).catch(async () => {
+      const thirdParty = await pb.get('third_parties', supplierId);
+      return await _apiResolvePayableAccountForThirdParty(thirdParty);
+    });
+
+    const txTypes = await pb.listAll('transaction_types', { filter: 'code="FC"', perPage: 1 });
+    if (!txTypes.length) throw new Error('Tipo de transacción FC (Factura de Compra) no encontrado en el sistema.');
+    const txTypeId = txTypes[0].id;
+
+    let lines: any[] = [];
+    if (stageName === 'customs') {
+      const arancelAmt = imp.arancel_total || 0;
+      const customsAmt = imp.gastos_nacionalizacion || 0;
+      const customsCode = accountsCfg.customs_payable_account_code || '233595';
+      const arancelCode = accountsCfg.arancel_payable_account_code || '233595';
+
+      if (arancelAmt > 0 && customsAmt > 0 && customsCode !== arancelCode && Math.abs(arancelAmt + customsAmt - amount) < 1.0) {
+        const accCustoms = await _apiFindAccByCode(customsCode).catch(async () => accPayable);
+        const accArancel = await _apiFindAccByCode(arancelCode).catch(async () => accPayable);
+        lines = [
+          {
+            account_id: accTransito.id,
+            third_party_id: supplierId,
+            debit: amount,
+            credit: 0,
+            description: `Causación Aduana/DIAN - Importación ${imp.number}`,
+            line_order: 1
+          },
+          {
+            account_id: accCustoms.id,
+            third_party_id: supplierId,
+            debit: 0,
+            credit: customsAmt,
+            description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}`,
+            line_order: 2,
+            cross_doc_ref: invoiceNum
+          },
+          {
+            account_id: accArancel.id,
+            third_party_id: supplierId,
+            debit: 0,
+            credit: arancelAmt,
+            description: `Aranceles DIAN - Importación ${imp.number}`,
+            line_order: 3,
+            cross_doc_ref: invoiceNum
+          }
+        ];
+      }
+    }
+
+    if (!lines.length) {
+      lines = [
+        {
+          account_id: accTransito.id,
+          third_party_id: supplierId,
+          debit: amount,
+          credit: 0,
+          description: `Causación ${map.label} - Importación ${imp.number}`,
+          line_order: 1
+        },
+        {
+          account_id: accPayable.id,
+          third_party_id: supplierId,
+          debit: 0,
+          credit: amount,
+          description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}`,
+          line_order: 2,
+          cross_doc_ref: invoiceNum
+        }
+      ];
+    }
+
+    const txData = {
+      tx_type_id: txTypeId,
+      number: 'AUTO',
+      date: new Date().toISOString().slice(0, 10),
+      description: `Causación ${map.label} Importación ${imp.number}`,
+      third_party_id: supplierId,
+      status: 'active'
+    };
+
+    const tx = await this.createTransaction(txData, lines);
+
+    const updateData: Record<string, any> = {};
+    updateData[map.txField] = tx.id;
+    updateData[map.supplierField] = supplierId;
+    updateData[map.invoiceField] = invoiceNum;
+
+    await pb.update('imports', importId, updateData);
+    await this.logAudit('POST_STAGE', 'imports', importId, `Causación contable etapa ${map.label} realizada. Transacción: ${tx.number}`);
+
+    return tx;
+  },
+
+  /** Registra nota de ajuste contable por diferencia en costo */
+  async postImportAdjustment(importId: string, stageName: string, deltaAmount: number, invoiceNum: string, reason: string = '') {
+    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!stageName) throw new Error('Se requiere el nombre de la etapa.');
+    if (deltaAmount === 0) throw new Error('El monto de ajuste no puede ser cero.');
+
+    const imp = await pb.get('imports', importId);
+
+    const mappings: Record<string, { txField: string; supplierField: string; invoiceField: string; label: string }> = {
+      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB Mercancía' },
+      freight: { txField: 'tx_freight_id', supplierField: 'freight_supplier_id', invoiceField: 'freight_invoice_num', label: 'Flete Internacional' },
+      insurance: { txField: 'tx_insurance_id', supplierField: 'insurance_supplier_id', invoiceField: 'insurance_invoice_num', label: 'Seguro Internacional' },
+      customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
+      local_carrier: { txField: 'tx_local_carrier_id', supplierField: 'local_carrier_id', invoiceField: 'local_carrier_invoice_num', label: 'Transporte Local' },
+      local_other: { txField: 'tx_local_other_id', supplierField: 'local_other_supplier_id', invoiceField: 'local_other_invoice_num', label: 'Otros Gastos' },
+    };
+
+    const map = mappings[stageName];
+    if (!map) throw new Error(`Etapa '${stageName}' no es válida.`);
+
+    if (!imp[map.txField]) {
+      throw new Error(`No se puede realizar un ajuste en ${map.label} porque aún no ha sido causada.`);
+    }
+
+    const supplierId = imp[map.supplierField];
+    if (!supplierId) throw new Error(`No se encontró un proveedor asociado a la etapa ${map.label}.`);
+
+    const cfg = await this.getImportConfig();
+    const transitoCode = cfg.accounting?.accounts?.transito_account_code || '143505';
+    const accTransito = await _apiFindAccByCode(transitoCode);
+
+    const accountsCfg = cfg.accounting?.accounts || {};
+    const stageAccountMapping: Record<string, string> = {
+      fob: accountsCfg.fob_payable_account_code || '220505',
+      freight: accountsCfg.freight_payable_account_code || '233545',
+      insurance: accountsCfg.insurance_payable_account_code || '233555',
+      customs: accountsCfg.customs_payable_account_code || '233595',
+      local_carrier: accountsCfg.local_carrier_payable_account_code || '233545',
+      local_other: accountsCfg.local_other_payable_account_code || '233595'
+    };
+
+    const targetAccountCode = stageAccountMapping[stageName];
+    const accPayable = await _apiFindAccByCode(targetAccountCode).catch(async () => {
+      const thirdParty = await pb.get('third_parties', supplierId);
+      return await _apiResolvePayableAccountForThirdParty(thirdParty);
+    });
+
+    let txTypeId = '';
+    const txTypes = await pb.listAll('transaction_types', { filter: 'code="NC"', perPage: 1 });
+    if (txTypes.length) {
+      txTypeId = txTypes[0].id;
+    } else {
+      const txTypesFC = await pb.listAll('transaction_types', { filter: 'code="FC"', perPage: 1 });
+      if (txTypesFC.length) txTypeId = txTypesFC[0].id;
+    }
+
+    if (!txTypeId) throw new Error('No se encontró ningún tipo de transacción contable válido para el ajuste (NC o FC).');
+
+    const absDelta = Math.abs(deltaAmount);
+    const isIncrease = deltaAmount > 0;
+
+    const lines = [
+      {
+        account_id: accTransito.id,
+        third_party_id: supplierId,
+        debit: isIncrease ? absDelta : 0,
+        credit: isIncrease ? 0 : absDelta,
+        description: `Nota de Ajuste ${map.label} - Importación ${imp.number}. Motivo: ${reason}`,
+        line_order: 1
+      },
+      {
+        account_id: accPayable.id,
+        third_party_id: supplierId,
+        debit: isIncrease ? 0 : absDelta,
+        credit: isIncrease ? absDelta : 0,
+        description: `Nota de Ajuste ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}. Motivo: ${reason}`,
+        line_order: 2,
+        cross_doc_ref: invoiceNum
+      }
+    ];
+
+    const txData = {
+      tx_type_id: txTypeId,
+      number: 'AUTO',
+      date: new Date().toISOString().slice(0, 10),
+      description: `Ajuste Contable ${map.label} Importación ${imp.number} | Factura ${invoiceNum}`,
+      third_party_id: supplierId,
+      status: 'active'
+    };
+
+    const tx = await this.createTransaction(txData, lines);
+    await this.logAudit('POST_ADJUSTMENT', 'imports', importId, `Ajuste contable realizado en etapa ${map.label}. Diferencia: ${deltaAmount}. Transacción: ${tx.number}`);
+
+    return tx;
+  },
+
+  /** Finaliza la importación, traslada costo de Tránsito a Inventario y registra stock */
+  async capitalizeImport(importId: string, warehouseId: string, txTypeId: string, txNumber: string) {
+    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!warehouseId) throw new Error('Se requiere la bodega de destino.');
+    if (!txTypeId) throw new Error('Se requiere el tipo de transacción contable.');
+    if (!txNumber) throw new Error('Se requiere el número del comprobante contable.');
+
+    const imp = await pb.get('imports', importId);
+    if (imp.status === 'recibido') {
+      throw new Error('Esta importación ya ha sido finalizada y capitalizada.');
+    }
+    const lines = await this.getImportLines(importId);
+    if (!lines.length) {
+      throw new Error('La importación no contiene productos para capitalizar.');
+    }
+
+    const cfg = await this.getImportConfig();
+    const transitoCode = cfg.accounting?.accounts?.transito_account_code || '143505';
+    const inventarioCode = cfg.accounting?.accounts?.inventario_account_code || '143501';
+
+    const accTransito = await _apiFindAccByCode(transitoCode);
+    const accInventario = await _apiFindAccByCode(inventarioCode);
+
+    const totalAmount = imp.total || 0;
+    if (totalAmount <= 0) {
+      throw new Error('El valor total acumulado de la importación debe ser mayor a cero para capitalizar.');
+    }
+
+    const txLines = [
+      {
+        account_id: accInventario.id,
+        third_party_id: imp.supplier_id,
+        debit: totalAmount,
+        credit: 0,
+        description: `Capitalización Importación ${imp.number} - Ingreso a Bodega`,
+        line_order: 1
+      },
+      {
+        account_id: accTransito.id,
+        third_party_id: imp.supplier_id,
+        debit: 0,
+        credit: totalAmount,
+        description: `Capitalización Importación ${imp.number} - Cierre Cuenta Tránsito`,
+        line_order: 2
+      }
+    ];
+
+    const txData = {
+      tx_type_id: txTypeId,
+      number: txNumber,
+      date: new Date().toISOString().slice(0, 10),
+      description: `Capitalización Importación ${imp.number}`,
+      third_party_id: imp.supplier_id,
+      status: 'active'
+    };
+
+    const tx = await this.createTransaction(txData, txLines);
+
+    const movNumber = `ENT-IMP-${imp.number.split('-').pop()}`;
+    const movData = {
+      number: movNumber,
+      mov_type: 'ENTRADA',
+      date: new Date().toISOString().slice(0, 10),
+      warehouse_id: warehouseId,
+      third_party_id: imp.supplier_id,
+      notes: `Ingreso físico por capitalización de Importación ${imp.number}. Transacción contable: ${tx.number}`,
+      status: 'draft',
+      tx_id: tx.id
+    };
+
+    const mov = await pb.create('inventory_movements', movData);
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      await pb.create('inventory_movement_lines', {
+        movement_id: mov.id,
+        product_id: l.product_id,
+        qty: l.qty,
+        unit_cost: l.unit_cost_cop || 0,
+        notes: `Importación ${imp.number} - Línea ${i + 1}`,
+        line_order: i + 1
+      });
+    }
+
+    await this.applyInventoryMovement(mov.id);
+
+    await pb.update('imports', importId, {
+      status: 'recibido'
+    });
+
+    await this.logAudit('CAPITALIZE', 'imports', importId, `Importación capitalizada y trasladada a bodega. Transacción: ${tx.number}. Movimiento: ${mov.number}`);
+
+    return { tx, mov };
   },
 };
 

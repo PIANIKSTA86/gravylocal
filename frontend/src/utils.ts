@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — utils.js
  * Funciones utilitarias globales. Sin dependencias externas.
  */
@@ -184,6 +184,7 @@ const TP_TYPES = [
   { code: 'CLIENTE',        name: 'Cliente' },
   { code: 'PROVEEDOR',     name: 'Proveedor' },
   { code: 'EMPLEADO',      name: 'Empleado' },
+  { code: 'VENDEDOR',      name: 'Vendedor' },
   { code: 'PROPIETARIO',   name: 'Propietario' },
   { code: 'ACREEDOR',      name: 'Acreedor' },
   { code: 'TRANSPORTISTA', name: 'Transportista' },

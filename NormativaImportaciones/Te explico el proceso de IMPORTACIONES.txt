@@ -1,0 +1,233 @@
+Te explico el proceso completo como lo haría un agente de importación en Colombia, desde la compra en el exterior hasta la venta en tu punto comercial. No omito ningún paso clave del flujo.
+
+🌍 1. Planeación de la importación
+Antes de comprar, defines:
+
+Tipo de producto (clasificación arancelaria – partida arancelaria)
+
+País de origen
+
+Cantidad y valor
+
+Proveedor internacional
+
+Costos estimados (producto + flete + impuestos)
+
+🔎 Aquí es crítico:
+
+Verificar si el producto requiere registro o permiso previo (INVIMA, ICA, MinCIT, etc.)
+
+Validar si tiene restricciones o vistos buenos
+
+🏭 2. Negociación y compra internacional
+Se acuerda con el proveedor:
+
+Precio (FOB, CIF, EXW, etc.) → uso de Incoterms
+
+Forma de pago:
+
+Transferencia internacional
+
+Carta de crédito
+
+Plataformas (Alibaba, etc.)
+
+📄 Documentos que debes obtener:
+
+Factura comercial (Commercial Invoice)
+
+Lista de empaque (Packing List)
+
+Certificado de origen (si aplica)
+
+Ficha técnica del producto
+
+🚢 3. Logística internacional (transporte)
+Seleccionas tipo de transporte:
+
+Marítimo (más económico)
+
+Aéreo (más rápido)
+
+Courier (pequeños envíos)
+
+📦 Se coordina:
+
+Reserva con naviera o aerolínea
+
+Seguro internacional de carga
+
+Agente de carga (freight forwarder)
+
+📄 Documento clave:
+
+Bill of Lading (BL) → marítimo
+
+Air Waybill (AWB) → aéreo
+
+🛃 4. Llegada a Colombia y proceso aduanero
+Cuando la mercancía llega a puerto o aeropuerto:
+
+Intervienen:
+Dirección de Impuestos y Aduanas Nacionales
+
+Agencia de aduanas (obligatoria en muchos casos)
+
+4.1. Clasificación arancelaria
+Se define:
+
+Código arancelario
+
+Impuestos aplicables:
+
+Arancel (%)
+
+IVA (%)
+
+4.2. Declaración de importación
+Se presenta ante la DIAN:
+
+Declaración de importación
+
+Valor CIF (Costo + Seguro + Flete)
+
+💰 Pago de:
+
+Arancel
+
+IVA
+
+Tasas adicionales (si aplica)
+
+4.3. Inspección aduanera (si aplica)
+Puede haber:
+
+Inspección documental
+
+Inspección física
+
+Inspección automática
+
+4.4. Levante de mercancía
+Una vez aprobado:
+👉 Se autoriza retirar la mercancía
+
+🚛 5. Transporte nacional
+Traslado desde puerto/aeropuerto a bodega
+
+Puede requerir:
+
+Transporte terrestre
+
+Seguro local
+
+🏬 6. Recepción y almacenamiento
+En tu bodega:
+
+Verificación de mercancía
+
+Control de inventario
+
+Registro contable
+
+📊 Aquí ya puedes:
+
+Costear producto real (costo importación total)
+
+💰 7. Costeo completo del producto
+Incluye:
+
+Valor del producto
+
+Flete internacional
+
+Seguro
+
+Arancel
+
+IVA
+
+Gastos de nacionalización
+
+Transporte interno
+
+👉 Esto define tu precio de venta
+
+🧾 8. Registro contable
+Debes registrar:
+
+Importación como inventario
+
+Impuestos descontables (IVA)
+
+Costos asociados
+
+(Según normas contables colombianas)
+
+🏷️ 9. Etiquetado y cumplimiento normativo
+Dependiendo del producto:
+
+Etiquetas en español
+
+Registro sanitario (si aplica)
+
+Normas técnicas (ICONTEC, RETIE, etc.)
+
+🛍️ 10. Comercialización
+Ya puedes vender:
+
+Opciones:
+Punto físico
+
+Ecommerce
+
+Distribución mayorista
+
+📄 Obligaciones:
+
+Facturación electrónica
+
+Registro de ventas
+
+Manejo de IVA
+
+🔁 11. Postventa y reposición
+Garantías
+
+Devoluciones
+
+Nuevas importaciones (reposición de inventario)
+
+⚠️ ERRORES COMUNES (muy importante)
+No validar permisos previos
+
+Clasificar mal el producto (arancel incorrecto)
+
+Subestimar costos
+
+No usar agencia de aduanas
+
+No asegurar la mercancía
+
+🧠 RESUMEN DEL FLUJO COMPLETO
+Planeación
+
+Negociación
+
+Compra
+
+Transporte internacional
+
+Nacionalización (DIAN)
+
+Transporte interno
+
+Almacenamiento
+
+Costeo
+
+Cumplimiento normativo
+
+Venta
+
+Postventa

@@ -34,20 +34,28 @@ echo  IP detectada: %LOCAL_IP%
 echo  Backend URL:  %PB_URL%
 echo.
 
-echo  Cerrando procesos anteriores en puertos 8090 y %EXPO_PORT%...
+echo  Cerrando procesos anteriores en puertos 8088, 8089, 8090 y %EXPO_PORT%...
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ports = 8090,%EXPO_PORT%;" ^
+  "$ports = 8088, 8089, 8090,%EXPO_PORT%;" ^
   "foreach ($p in $ports) {" ^
   "  $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue ^| Select-Object -ExpandProperty OwningProcess -Unique;" ^
   "  if ($pids) { $pids ^| ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }" ^
   "}"
 
-echo  Intentando habilitar firewall para 8090 y %EXPO_PORT%...
+echo  Intentando habilitar firewall para 8088, 8089, 8090 y %EXPO_PORT%...
+netsh advfirewall firewall add rule name="Gravy Orchestrator 8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
+netsh advfirewall firewall add rule name="Gravy Hub 8089" dir=in action=allow protocol=TCP localport=8089 >nul 2>&1
 netsh advfirewall firewall add rule name="Gravy PocketBase 8090" dir=in action=allow protocol=TCP localport=8090 >nul 2>&1
 netsh advfirewall firewall add rule name="Gravy Expo 8085" dir=in action=allow protocol=TCP localport=%EXPO_PORT% >nul 2>&1
 
-echo  Iniciando PocketBase (LAN)...
-start "Gravy PocketBase LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
+echo  Iniciando GRAVY HUB (LAN)...
+start "Gravy HUB LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8089 --dir="%ROOT%hub\pb_data" --hooksDir="%ROOT%hub\pb_hooks""
+
+echo  Iniciando GRAVY Orquestador (LAN)...
+start "Gravy Orchestrator LAN" /B cmd /c "cd /d "%ROOT%" && node hub\orchestrator.js"
+
+echo  Iniciando Empresa Demo (LAN)...
+start "Gravy Empresa Demo LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
 
 echo  Iniciando Expo (LAN)...
 start "Gravy Mobile LAN" cmd /k "cd /d "%MOBILE_DIR%" && set EXPO_PUBLIC_PB_URL=%PB_URL% && npx expo start --lan --port %EXPO_PORT% --clear"
@@ -56,6 +64,8 @@ echo.
 echo  Accesos:
 echo    - Web/Backend (PC):  http://localhost:8090
 echo    - Web/Backend (LAN): %PB_URL%
+echo    - Hub (PC):          http://localhost:8089
+echo    - Hub (LAN):         http://%LOCAL_IP%:8089
 echo    - Expo QR/Dev:       exp://%LOCAL_IP%:%EXPO_PORT%
 echo.
 echo  Abre Expo Go en el movil y escanea el QR de la ventana "Gravy Mobile LAN".

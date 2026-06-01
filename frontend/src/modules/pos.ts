@@ -325,6 +325,7 @@ let activeCategoryFilter = "";
 let activeLineFilter = "";
 let posDiscountPct = 0;
 let posFreightAmt = 0;
+let loadedSalesOrderId: string | null = null;
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
@@ -532,6 +533,7 @@ window.loadPOSInterface = async function() {
     posCart = [];
     posDiscountPct = 0;
     posFreightAmt = 0;
+    loadedSalesOrderId = null;
 
     // Render principal
     mainWrap.innerHTML = `
@@ -564,6 +566,9 @@ window.loadPOSInterface = async function() {
               <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
             </div>
             <div class="flex items-center gap-2">
+              <button class="btn btn-outline btn-sm" onclick="window.posLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#7F7CFF; color:#7F7CFF">
+                <i class="fas fa-file-import mr-1"></i> Cargar Pedido
+              </button>
               ${['administrador','contador','superadmin'].includes((window as any).pb.currentUser?.role) ? `
               <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
                 <i class="fas fa-cog"></i>
@@ -590,6 +595,14 @@ window.loadPOSInterface = async function() {
               <select id="pos-cart-warehouse" class="form-input w-full text-xs" onchange="window.posOnWarehouseChange()" style="background:#fff;color:#0D2137">
                 ${posWarehouses.map(w => `<option value="${w.id}"${selectedWarehouseId === w.id ? ' selected' : ''}>${w.name}</option>`).join('')}
               </select>
+            </div>
+          </div>
+
+          <!-- Banner Pedido Cargado -->
+          <div id="pos-loaded-order-banner" class="px-5 py-2 flex-shrink-0" style="display:none">
+            <div class="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl p-2 text-xs text-blue-800 font-medium">
+              <span><i class="fas fa-file-invoice mr-1"></i> Pedido cargado: <strong id="pos-loaded-order-number">PED-XXXX</strong></span>
+              <button class="btn btn-sm btn-outline py-0.5 px-2 text-[10px] text-blue-700 bg-white" onclick="window.posUnloadOrder()"><i class="fas fa-times"></i> Quitar</button>
             </div>
           </div>
 
@@ -1008,6 +1021,9 @@ window.removeCartItem = function(id: string) {
 
 window.clearPOSCart = function() {
   posCart = [];
+  loadedSalesOrderId = null;
+  const banner = document.getElementById('pos-loaded-order-banner');
+  if (banner) banner.style.display = 'none';
   window.renderPOSCart();
 };
 
@@ -1623,6 +1639,7 @@ window.confirmPOSPayment = async function() {
       discount_amount: discountAmount,
       freight_amount: freightAmount,
       payment_split: paymentSplit,
+      sales_order_id: loadedSalesOrderId,
     };
 
     // 1. Crea factura
@@ -1638,6 +1655,9 @@ window.confirmPOSPayment = async function() {
 
     // Vaciar carrito y refrescar la vista de inmediato
     posCart = [];
+    loadedSalesOrderId = null;
+    const banner = document.getElementById('pos-loaded-order-banner');
+    if (banner) banner.style.display = 'none';
     window.renderPOSCart();
 
     // Muestra simulador de Tirilla Térmica
@@ -2043,6 +2063,135 @@ window.posQuickAddCustomer = function() {
   } else {
     (window as any).showToast('Módulo de terceros no disponible.', 'warning');
   }
+};
+
+window.posLoadPendingOrderModal = async function() {
+  let filter = 'status="pending"';
+  const currentCust = posCustomers.find(c => c.id === selectedCustomerId);
+  const isGeneric = currentCust && (currentCust.doc_number === '222222222' || currentCust.nit === '222222222' || currentCust.name.toLowerCase().includes('consumidor'));
+  if (selectedCustomerId && !isGeneric) {
+    filter += ` && customer_id="${(window as any).pb.escapeFilterValue(selectedCustomerId)}"`;
+  }
+  
+  try {
+    const orders = await (window as any).API.getSalesOrders({ filter, perPage: 100 });
+    const list = orders.items || [];
+    
+    let html = "";
+    if (!list.length) {
+      html = `<div class="p-8 text-center text-gray-400"><i class="fas fa-info-circle mr-2"></i>No hay pedidos pendientes ${selectedCustomerId && !isGeneric ? 'para este cliente' : ''}.</div>`;
+    } else {
+      html = `
+        <div class="overflow-x-auto text-sm" style="color:#374151">
+          <table class="data-table w-full">
+            <thead>
+              <tr style="background:#F4F8FF">
+                <th>Número</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th class="text-right">Total</th>
+                <th class="text-center">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map((o: any) => `
+                <tr>
+                  <td><span class="font-mono font-semibold">${(window as any).esc(o.number)}</span></td>
+                  <td>${(window as any).esc(o.date)}</td>
+                  <td>${(window as any).esc(o.expand?.customer_id?.name || '—')}</td>
+                  <td class="text-right font-semibold font-mono">${(window as any).fmt(o.total || 0)}</td>
+                  <td class="text-center">
+                    <button class="btn btn-primary btn-sm" onclick="window.posApplyOrderToCart('${o.id}')">Cargar</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+    
+    (window as any).openModal('Cargar Pedido Pendiente en POS', html, `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`, false);
+    
+    (window as any).posApplyOrderToCart = async function(orderId: string) {
+      (window as any).closeModal();
+      try {
+        (window as any).showToast('Cargando pedido...', 'info');
+        const order = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id' });
+        const orderLines = await (window as any).API.getSalesOrderLines(orderId);
+
+        loadedSalesOrderId = order.id;
+
+        // Set customer
+        selectedCustomerId = order.customer_id;
+        const custSelect = document.getElementById('pos-cart-customer') as HTMLSelectElement;
+        if (custSelect) custSelect.value = selectedCustomerId;
+
+        // Set warehouse if specified
+        if (order.warehouse_id) {
+          selectedWarehouseId = order.warehouse_id;
+          const whSelect = document.getElementById('pos-cart-warehouse') as HTMLSelectElement;
+          if (whSelect) whSelect.value = selectedWarehouseId;
+          await window.loadPosProductsWithStock();
+        }
+
+        // Set discount percentage if it exists on order
+        if (order.discount_amount && order.subtotal) {
+          posDiscountPct = Math.round((order.discount_amount / order.subtotal) * 100);
+          const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+          if (discInput) discInput.value = String(posDiscountPct);
+        } else {
+          posDiscountPct = 0;
+          const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+          if (discInput) discInput.value = '0';
+        }
+
+        // Load lines into posCart
+        const includesIva = !!posConfig?.special?.prices_include_iva;
+        posCart = orderLines.map((l: any) => {
+          const prod = l.expand?.product_id;
+          const salesPrice = includesIva 
+            ? Math.round(l.unit_price * (1 + (l.iva_rate || 0) / 100) * 100) / 100 
+            : l.unit_price;
+
+          return {
+            id: l.product_id,
+            code: prod?.code || '',
+            name: prod?.name || l.description || '',
+            sales_price: salesPrice,
+            iva_rate: l.iva_rate ?? 19,
+            qty: l.qty,
+            type: prod?.type || 'BIEN'
+          };
+        });
+
+        // Show loaded order banner
+        const banner = document.getElementById('pos-loaded-order-banner');
+        const numLabel = document.getElementById('pos-loaded-order-number');
+        if (banner && numLabel) {
+          numLabel.textContent = order.number;
+          banner.style.display = 'block';
+        }
+
+        window.renderPOSCart();
+        (window as any).showToast(`Pedido ${order.number} cargado con éxito`, 'success');
+      } catch (err: any) {
+        console.error(err);
+        (window as any).showToast('Error al cargar líneas del pedido: ' + err.message, 'error');
+      }
+    };
+  } catch (err: any) {
+    (window as any).showToast('Error al buscar pedidos: ' + err.message, 'error');
+  }
+};
+
+window.posUnloadOrder = function() {
+  loadedSalesOrderId = null;
+  const banner = document.getElementById('pos-loaded-order-banner');
+  if (banner) banner.style.display = 'none';
+  posCart = [];
+  window.renderPOSCart();
+  (window as any).showToast('Pedido desvinculado del carrito', 'info');
 };
 
 // --- Atajos de Teclado y Flujo Optimizado (Keyboard-First) ---

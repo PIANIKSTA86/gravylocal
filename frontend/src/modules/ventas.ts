@@ -494,7 +494,7 @@ function filterSoTable() {
 }
 
 // --- Formulario Reactivo de Creación / Edición ---
-async function openSalesForm(invoiceId: string | null = null, onDone: any = null) {
+async function openSalesForm(invoiceId: string | null = null, onDone: any = null, preloadedOrderId: string | null = null) {
   let inv: any = null, existingLines: any[] = [];
   
   const [soConfig, customers, warehouses, products, txTypes] = await Promise.all([
@@ -510,6 +510,31 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' }),
       (window as any).API.getInvoiceLines(invoiceId),
     ]);
+  } else if (preloadedOrderId) {
+    try {
+      const preloadedOrder = await (window as any).pb.get('sales_orders', preloadedOrderId);
+      const lines = await (window as any).API.getSalesOrderLines(preloadedOrderId);
+      inv = {
+        customer_id: preloadedOrder.customer_id,
+        warehouse_id: preloadedOrder.warehouse_id,
+        notes: preloadedOrder.notes || `Pedido ${preloadedOrder.number}`,
+        date: (window as any).todayStr(),
+        payment_method: 'CREDITO',
+        sales_order_id: preloadedOrder.id
+      };
+      existingLines = lines.map((l: any) => ({
+        product_id: l.product_id,
+        qty: l.qty,
+        unit_price: l.unit_price,
+        iva_rate: l.iva_rate,
+        iva_amount: l.iva_amount,
+        subtotal: l.subtotal,
+        total: l.total
+      }));
+    } catch (err: any) {
+      console.error("Error precargando pedido:", err);
+      (window as any).showToast("Error al precargar datos del pedido: " + err.message, "error");
+    }
   }
 
   let lineCounter = 0;
@@ -558,7 +583,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.soQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
               <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
             </button>
+            <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.soLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#D1D5DB; background:#fff;color:#1A4B8C">
+              <i class="fas fa-file-import text-xs"></i>
+            </button>
             <input id="so-supplier" type="hidden" value="${(window as any).esc(inv?.customer_id || '')}">
+            <input id="so-sales-order-id" type="hidden" value="${(window as any).esc(inv?.sales_order_id || '')}">
             <div id="so-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
           </div>
         </div>
@@ -740,6 +769,62 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       });
     } else {
       (window as any).showToast('Módulo de terceros no disponible.', 'warning');
+    }
+  };
+
+  (window as any).soLoadPendingOrderModal = async function() {
+    const selectedCust = (document.getElementById('so-supplier') as HTMLInputElement)?.value;
+    let filter = 'status="pending"';
+    if (selectedCust) {
+      filter += ` && customer_id="${(window as any).pb.escapeFilterValue(selectedCust)}"`;
+    }
+    
+    try {
+      const orders = await (window as any).API.getSalesOrders({ filter, perPage: 100 });
+      const list = orders.items || [];
+      
+      let html = "";
+      if (!list.length) {
+        html = `<div class="p-8 text-center text-gray-400"><i class="fas fa-info-circle mr-2"></i>No hay pedidos pendientes ${selectedCust ? 'para este cliente' : ''}.</div>`;
+      } else {
+        html = `
+          <div class="overflow-x-auto text-sm" style="color:#374151">
+            <table class="data-table w-full">
+              <thead>
+                <tr style="background:#F4F8FF">
+                  <th>Número</th>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th class="text-right">Total</th>
+                  <th class="text-center">Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${list.map((o: any) => `
+                  <tr>
+                    <td><span class="font-mono font-semibold">${(window as any).esc(o.number)}</span></td>
+                    <td>${(window as any).esc(o.date)}</td>
+                    <td>${(window as any).esc(o.expand?.customer_id?.name || '—')}</td>
+                    <td class="text-right font-semibold font-mono">${(window as any).fmt(o.total || 0)}</td>
+                    <td class="text-center">
+                      <button class="btn btn-primary btn-sm" onclick="window.soApplyOrderToForm('${o.id}')">Cargar</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+      
+      (window as any).openModal('Cargar Pedido Pendiente', html, `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`, false);
+      
+      (window as any).soApplyOrderToForm = function(orderId: string) {
+        (window as any).closeModal();
+        openSalesForm(invoiceId, onDone, orderId);
+      };
+    } catch (err: any) {
+      (window as any).showToast('Error al cargar pedidos: ' + err.message, 'error');
     }
   };
 
@@ -1075,6 +1160,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       number = `FV-${todayStr}-${rand}`;
     }
 
+    const salesOrderId = (document.getElementById('so-sales-order-id') as HTMLInputElement)?.value || null;
+
     const header = {
       number,
       customer_id: customerId,
@@ -1091,6 +1178,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       ret_rule_renta_id: retRuleRenta,
       ret_rule_ica_id: retRuleIca,
       tx_type_id: txTypeId,
+      sales_order_id: salesOrderId || null,
       status: 'draft',
     };
 
@@ -1496,41 +1584,7 @@ window.deleteSalesInvoiceDraft = function(id: string, number: string) {
     `¿Estás seguro de eliminar el borrador de factura comercial <strong>${number}</strong>? Esta acción es definitiva.`,
     async () => {
       try {
-        const lines = await (window as any).API.getInvoiceLines(id);
-        for (const l of lines) await (window as any).pb.delete('invoice_lines', l.id);
-
-        // Buscar y eliminar transacciones huérfanas asociadas en estado borrador
-        try {
-          const safeNum = (window as any).pb.escapeFilterValue(number);
-          const txs = await (window as any).pb.list('transactions', { filter: `number="${safeNum}" && status="draft"`, perPage: 1 });
-          if (txs.items.length) {
-            const tx = txs.items[0];
-            const tLines = await (window as any).pb.listAll('tx_lines', { filter: `tx_id="${tx.id}"` });
-            for (const tl of tLines) await (window as any).pb.delete('tx_lines', tl.id);
-            await (window as any).pb.delete('transactions', tx.id);
-            console.log(`[GRAVY] Eliminada transacción borrador huérfana para factura: ${number}`);
-          }
-        } catch (txErr) {
-          console.error('[GRAVY] Error eliminando transacción huérfana:', txErr);
-        }
-
-        // Buscar y eliminar movimientos de inventario huérfanos asociados en estado borrador
-        try {
-          const safeNotes = (window as any).pb.escapeFilterValue(`Venta ${number}`);
-          const movs = await (window as any).pb.list('inventory_movements', { filter: `notes~"${safeNotes}" && status="draft"`, perPage: 1 });
-          if (movs.items.length) {
-            const mov = movs.items[0];
-            const mLines = await (window as any).pb.listAll('inventory_movement_lines', { filter: `movement_id="${mov.id}"` });
-            for (const ml of mLines) await (window as any).pb.delete('inventory_movement_lines', ml.id);
-            await (window as any).pb.delete('inventory_movements', mov.id);
-            console.log(`[GRAVY] Eliminado movimiento borrador huérfano para factura: ${number}`);
-          }
-        } catch (movErr) {
-          console.error('[GRAVY] Error eliminando movimiento huérfano:', movErr);
-        }
-
-        await (window as any).pb.delete('invoices', id);
-        await (window as any).API.logAudit('DELETE', 'Invoice', id, `Eliminado borrador de factura comercial ${number}`);
+        await (window as any).API.deleteInvoiceDraft(id);
         (window as any).showToast('Factura borrador y componentes asociados eliminados', 'success');
         renderVentas(document.getElementById('page-content')!);
       } catch (err: any) {

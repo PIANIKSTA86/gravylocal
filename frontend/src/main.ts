@@ -23,6 +23,7 @@ import './modules/utilidades.ts';
 import './modules/productos.ts';
 import './modules/inventario.ts';
 import './modules/compras.ts';
+import './modules/pedidos.ts';
 import './modules/ventas.ts';
 import './modules/pos.ts';
 import './modules/resoluciones.ts';

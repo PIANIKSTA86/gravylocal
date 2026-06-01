@@ -1787,6 +1787,13 @@ const API = {
         tx_type_id: effectiveTxTypeId,
         tx_number: txNumber,
       });
+      if (inv.sales_order_id) {
+        await pb.update('sales_orders', inv.sales_order_id, {
+          status: 'invoiced',
+          invoice_id: invoiceId
+        });
+        await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido marcado como facturado por factura ${inv.number}`);
+      }
       await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} → TX ${txCreated.number}`);
       return { inv, tx: txCreated };
     } catch (postErr) {
@@ -1853,6 +1860,14 @@ const API = {
         await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
         await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} — ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
       }
+    }
+
+    if (inv.sales_order_id) {
+      await pb.update('sales_orders', inv.sales_order_id, {
+        status: 'pending',
+        invoice_id: null
+      });
+      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulación/reapertura de factura ${inv.number}`);
     }
 
     return {
@@ -3041,6 +3056,156 @@ const API = {
     }
 
     return Object.values(results);
+  },
+
+  // ── Pedidos y Cotizaciones ──────────────────────────────────
+
+  /** Lista paginada de pedidos de venta */
+  async getSalesOrders(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('sales_orders', {
+      page, perPage, filter, sort,
+      expand: 'customer_id,warehouse_id,invoice_id,user_id',
+    });
+  },
+
+  /** Líneas de un pedido de venta con expand de producto y cuenta */
+  async getSalesOrderLines(orderId) {
+    const safe = pb.escapeFilterValue(orderId);
+    return pb.listAll('sales_order_lines', {
+      filter: `sales_order_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'product_id,account_id',
+    });
+  },
+
+  /** Crea cabecera + líneas de pedido de venta en estado pendiente */
+  async createSalesOrder(header, lines) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += l.subtotal || 0;
+      ivaTot += l.iva_amount || 0;
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    // Obtener consecutivo
+    let orderNum = header.number;
+    if (!orderNum || orderNum === 'AUTO') {
+      orderNum = await this.nextOrderConsecutive();
+    }
+
+    const order = await pb.create('sales_orders', {
+      ...header,
+      number: orderNum,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+      status: 'pending',
+      user_id: pb.currentUser?.id
+    });
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('sales_order_lines', {
+        sales_order_id: order.id,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+    await this.logAudit('CREATE', 'SalesOrder', order.id, `Pedido creado ${order.number}`);
+    return order;
+  },
+
+  /** Actualiza cabecera + líneas de un pedido de venta pendiente */
+  async updateSalesOrder(orderId, header, lines) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += l.subtotal || 0;
+      ivaTot += l.iva_amount || 0;
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    await pb.update('sales_orders', orderId, {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+    });
+
+    // Eliminar líneas viejas
+    const oldLines = await pb.listAll('sales_order_lines', { filter: `sales_order_id="${pb.escapeFilterValue(orderId)}"` });
+    for (const l of oldLines) {
+      await pb.delete('sales_order_lines', l.id);
+    }
+
+    // Crear líneas nuevas
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('sales_order_lines', {
+        sales_order_id: orderId,
+        line_order: i + 1,
+        ...lines[i],
+      });
+    }
+
+    await this.logAudit('UPDATE', 'SalesOrder', orderId, `Pedido actualizado ${header.number || ''}`);
+    return pb.get('sales_orders', orderId);
+  },
+
+  /** Anula un pedido de venta cambiando su estado a cancelled */
+  async cancelSalesOrder(orderId, reason = '') {
+    const order = await pb.get('sales_orders', orderId);
+    if (order.status !== 'pending') {
+      throw new Error(`Solo se pueden anular pedidos en estado Pendiente. Estado actual: ${order.status}`);
+    }
+    await pb.update('sales_orders', orderId, { status: 'cancelled' });
+    await this.logAudit('VOID', 'SalesOrder', orderId, `Pedido anulado ${order.number} | Motivo: ${reason}`);
+    return pb.get('sales_orders', orderId);
+  },
+
+  /** Obtiene y avanza el siguiente consecutivo de pedido */
+  async nextOrderConsecutive() {
+    let currentConsecutive = 0;
+    let recordId = "";
+    try {
+      const res = await pb.list('settings', { filter: 'key="order_consecutive"', perPage: 1 });
+      if (res.items.length) {
+        currentConsecutive = parseInt(res.items[0].value || '0', 10);
+        recordId = res.items[0].id;
+      }
+    } catch (_) {}
+
+    const next = currentConsecutive + 1;
+    const nextStr = String(next);
+    
+    if (recordId) {
+      await pb.update('settings', recordId, { value: nextStr });
+    } else {
+      await pb.create('settings', { key: 'order_consecutive', value: nextStr });
+    }
+
+    return `PED-${String(next).padStart(8, '0')}`;
+  },
+
+  /** Elimina borrador de factura de venta y restablece pedidos asociados */
+  async deleteInvoiceDraft(invoiceId) {
+    const inv = await pb.get('invoices', invoiceId);
+    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar facturas en estado Borrador.');
+    if (inv.sales_order_id) {
+      await pb.update('sales_orders', inv.sales_order_id, {
+        status: 'pending',
+        invoice_id: null
+      });
+      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por eliminación de borrador de factura`);
+    }
+    // Eliminar líneas de factura
+    const lines = await this.getInvoiceLines(invoiceId);
+    for (const l of lines) {
+      await pb.delete('invoice_lines', l.id);
+    }
+    // Eliminar cabecera
+    await pb.delete('invoices', invoiceId);
+    await this.logAudit('DELETE', 'Invoice', invoiceId, `Eliminado borrador de factura ${inv.number}`);
   },
 };
 

@@ -1211,6 +1211,16 @@ window.printInvoiceCarta = async function(invoiceId: string) {
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_country').catch(() => ''),
+    ]);
+
     const printWin = window.open('', '_blank');
     if (!printWin) {
       (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
@@ -1251,11 +1261,12 @@ window.printInvoiceCarta = async function(invoiceId: string) {
         <table class="hdr-table">
           <tr>
             <td class="hdr-left">
-              <div class="company-name">GRAVY S.A.S</div>
-              <div>NIT: 901.442.115-3</div>
-              <div>Dirección: Calle 26 Norte # 5-44, Cali</div>
-              <div>Teléfono: (602) 889-1002</div>
-              <div>Email: facturacion@gravy.com</div>
+              <div class="company-name">${(window as any).esc(compName)}</div>
+              <div>NIT: ${(window as any).esc(compNit)}</div>
+              ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
+              ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
+              ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
+              ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
             </td>
             <td class="hdr-right">
               <div class="invoice-title">FACTURA DE VENTA</div>

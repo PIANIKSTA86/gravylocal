@@ -1675,6 +1675,16 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_country').catch(() => ''),
+    ]);
+
     let einvoiceDoc = null;
     if (inv.tx_id) {
       try {
@@ -1765,10 +1775,10 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
         <p class="text-xs text-center text-gray-500">A continuación puedes previsualizar e imprimir la tirilla térmica legal de venta de 80mm.</p>
         
         <div id="pos-thermal-tirilla" class="mx-auto p-5 border shadow-inner font-mono text-[11px] leading-tight text-black max-w-[280px]" style="background:#fffff8;border-color:#e2e8f0;box-shadow:inset 0 0 10px rgba(0,0,0,0.05)">
-          <div class="text-center" style="font-weight:bold;font-size:13px">GRAVY S.A.S</div>
-          <div class="text-center">NIT: 901.442.115-3</div>
-          <div class="text-center">Calle 26 Norte # 5-44, Cali</div>
-          <div class="text-center">Teléfono: (602) 889-1002</div>
+          <div class="text-center" style="font-weight:bold;font-size:13px">${(window as any).esc(compName)}</div>
+          <div class="text-center">NIT: ${(window as any).esc(compNit)}</div>
+          ${compAddress ? `<div class="text-center">${(window as any).esc(compAddress)}</div>` : ''}
+          ${compPhone ? `<div class="text-center">Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
           <div class="text-center">================================</div>
           <div class="text-center" style="font-weight:bold;line-height:1.2">${title}</div>
           <div class="text-center" style="font-weight:bold">${inv.number}</div>
@@ -1808,7 +1818,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
           <div class="text-center" style="font-weight:bold;font-size:9px">${resolutionName}</div>
           ${resolutionDesc ? `<div class="text-center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
           <div class="text-center" style="font-size:8px;color:#555;margin-top:6px">
-            Software: GRAVY POS | Fabricante: GRAVY S.A.S. NIT: 901.442.115-3
+            Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
           </div>
           ${qrAndCufeHtml}
         </div>
@@ -1875,6 +1885,16 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
   try {
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
+
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_country').catch(() => ''),
+    ]);
 
     let einvoiceDoc = null;
     if (inv.tx_id) {
@@ -1983,10 +2003,10 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size:13px">GRAVY S.A.S</div>
-        <div class="center">NIT: 901.442.115-3</div>
-        <div class="center">Calle 26 Norte # 5-44, Cali</div>
-        <div class="center">Teléfono: (602) 889-1002</div>
+        <div class="center bold" style="font-size:13px">${(window as any).esc(compName)}</div>
+        <div class="center">NIT: ${(window as any).esc(compNit)}</div>
+        ${compAddress ? `<div class="center">${(window as any).esc(compAddress)}</div>` : ''}
+        ${compPhone ? `<div class="center">Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
         <div class="dbl-hr"></div>
         <div class="center bold">${title}</div>
         <div class="center bold">${inv.number}</div>
@@ -2026,7 +2046,7 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         <div class="center bold" style="font-size:9px">${resolutionName}</div>
         ${resolutionDesc ? `<div class="center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
         <div class="center" style="font-size:8px;color:#555;margin-top:6px">
-          Software: GRAVY POS | Fabricante: GRAVY S.A.S. NIT: 901.442.115-3
+          Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
         </div>
         ${qrAndCufeHtml}
         <script>

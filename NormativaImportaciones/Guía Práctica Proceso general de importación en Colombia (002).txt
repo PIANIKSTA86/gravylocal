@@ -1,0 +1,338 @@
+Guía Práctica:
+
+PROCESO GENERAL DE UNA IMPORTACIÓN EN COLOMBIA.
+
+
+
+La Cámara de Comercio de Bogotá tiene el gusto de presentar a los empresarios de Bogotá y la región esta práctica guía que resume los trámites necesarios para importar bienes a nuestro país.
+
+Se realiza un breve resumen de los principales pasos para realizar un proceso de importación, por ende, usted debe tener en cuenta los siguientes puntos:
+
+
+
+1. CREACIÓN DE EMPRESA.
+
+
+El proceso de importación de mercancías en Colombia exige que la empresa o persona natural formalice su actividad comercial, exigiendo que la persona obtenga o actualice el RUT en la casilla 54, donde se habilita como usuario aduanero – importador, que lo obliga a operar bajo el Régimen Común con sus respectivas obligaciones, lo anterior se debe realizar en una de las oficinas de la DIAN. En el siguiente link puede ampliar la información al respecto de los ítems mencionados y otros que son importantes para la creación de la empresa. https://www.dian.gov.co/impuestos/personas/Paginas/preguntas.aspx
+
+En virtud de lo anterior, la Cámara de Comercio de Bogotá, a través del Modelo de Servicios Empresariales, le ofrece asesoría presencial y virtual para crear, formalizar y consolidar su empresa, puede ampliar la información ingresando a  http://www.ccb.org.co/Cree-su-empresa
+
+Recuerde que el importador debe inscribirse en la Ventanilla Única de Comercio Exterior – VUCE, dentro del cual se realizan diversos trámites, por ejemplo, las respectivas autorizaciones previas, permisos, certificaciones y vistos buenos que otorgan las entidades gubernamentales en los procesos de importación y exportación.
+
+Recuerde que es necesario obtener previamente la firma digital en CERTICAMARA (Entidad filial de la Cámara de Comercio de Bogotá -  www.certicamara.com) que otorga un usuario y contraseña para acceder a la VUCE.
+
+
+
+2. DETERMINACION DE LA POSICION ARANCELARIA.
+
+
+La clasificación arancelaria es un sistema de clasificación de mercancías (Sistema Armonizado creado por la Organización Mundial de Aduanas) cuyos primeros seis dígitos se denominan subpartida arancelaria e identifica un producto en cualquier país del mundo, cada país realiza una  des agregación  en  su  Arancel  de  Aduanas,  que  agrega  otros  dígitos  para efectos
+
+
+Actualizado por UBC – Diciembre 2019.
+estadísticos y de control que generalmente son cuatro dígitos adicionales formando la posición
+Arancelaria (Ejemplo de posición arancelaria. 15.01.10.00.00).
+La consulta de arancel de aduanas se puede realizar por medio de la página de la DIAN en el siguiente link https://muisca.dian.gov.co/WebArancel/DefMenuConsultas.faces, teniendo presente que al ingresar puede realizar la consulta por código de nomenclatura, por índice alfabético o por texto y que dentro de este mismo link se encuentran las reglas generales de clasificación, las cuales permiten sustentar una decisión de clasificación basado en una metodología. Se debe mencionar que en Colombia existe la Resolución de Clasificación Arancelaria, que es el acto mediante el cual la Unidad Administrativa Especial DIAN realiza la clasificación arancelaria en aplicación a sus características físicas, químicas y técnicas (Decreto 1165 de 2019, Art. 303) de manera anticipada, de oficio o a solicitud de cualquier interesado, el costo de dicho trámite se encuentra entre medio y un salario mínimo mensual legal vigente.
+
+El realizar una adecuada clasificación arancelaria permite identificar los principales requerimientos para importación, incluyendo aspectos como:
+
+a. Vistos buenos o permisos previos que deben ser tramitados como soporte de la declaración de Importación:
+De acuerdo a la naturaleza de la mercancía y de la normatividad legal vigente se hace necesario para algunos productos solicitar autorizaciones ante diferentes Entidades como el ICA, INVIMA, Superintendencia de Industria y Comercio, Ministerio de Transporte, Ministerio de Agricultura, Agencia Nacional Minera, INDUMIL, AUNAP, entre otras.
+
+Para consultar las Entidades que otorgan los vistos buenos y los productos que le corresponden, se recomienda consultar la Circular 37 de 2016 del MINCIT. Se ilustran los principales.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Actualizado por UBC – Diciembre 2019.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+b. Condiciones de acceso al mercado colombiano:
+
+Este punto hace referencia a las condiciones que debe cumplir la mercancía para su legal introducción al país basado en la normatividad legal vigente; Por ejemplo, determinar el pago de derechos e impuestos a la importación, discriminando el correspondiente arancel e IVA, vistos buenos requeridos por las autoridades nacionales, permisos, documentos, entre otros. Para ampliar este concepto  se  sugiere consultar la Guía  Práctica  “Condiciones  de Acceso a Mercados Internacionales” en la cual pueden ampliar la información al respecto.
+
+
+
+3. DETERMINACION DEL REGIMEN DE IMPORTACION:
+
+Se debe mencionar que en Colombia existen tres regímenes de importación, el de libre (Registro de importación para algunos productos), previa (Licencia de importación) y prohibida importación, el cual se encuentra contemplado en el Decreto 925 de 2013 y Circular 37 de
+2016 del MINCIT.
+
+•   Libre: productos que se pueden importar libremente previo cumplimiento de los requisitos, permisos o autorizaciones de los siguientes productos: se incluyen Productos de la pesca y acuicultura, equipos de vigilancia y seguridad privada, isotopos radiactivos y material radiactivo, prendas privativas de la Fuerza Pública, hidrocarburos y gasolina, productos con control sanitario (humano, animal o vegetal), productos con reglamentos técnicos, homologación vehicular, controles para garantizar la protección del medio ambiente.
+
+
+
+
+Actualizado por UBC – Diciembre 2019.
+•   Previa: Productos que antes de su llegada al territorio aduanero nacional, deben obtener autorización por parte del Gobierno Nacional para ser importados; la autorización se otorga por medio de una “Licencia Previa de Importación” que aplica para productos que se clasifique como saldos, productos con condiciones especiales de mercado, bienes que soliciten exención de gravamen arancelario, productos controlados por el Fondo Nacional de Estupefacientes – FNE, Consejo Nacional de Estupefacientes – CNE o Industria Militar
+– INDUMIL, los productos destinados a las Fuerzas Militares y a la Policía Nacional clasificados como bienes de seguridad y defensa nacional, material de guerra o reservado, vehículos (caso especiales como donaciones, clásicos y antiguos, diplomáticos) y los productos a los que se les otorgue licencia anual (normalmente industrias mineras. Petroleras o para las fuerzas militares o de policía).
+
+•   Prohibida: Productos que bajo ninguna circunstancia puede ser importados por estar establecido en la Constitución política de Colombia o por cuidado para el ser humano, animal, vegetal o medio ambiente.
+
+
+
+4. TRAMITES EN LA VENTANILLA UNICA DE COMERCIO EXTERIOR - VUCE:
+
+De acuerdo al régimen de importación (mencionado anteriormente) los bienes que deben tramitar registro de importación (libre) o los bienes que deben tramitar licencia de importación (previa) debe realizar dicho trámite por intermedio de la Ventanilla Única de Comercio exterior
+– VUCE bien sea directamente por el importador, autorizando a una Agencia de Aduanas o por intervención de un apoderado. Se recomienda consultar la página oficial para ampliar la información. http://www.vuce.gov.co/
+Para efectuar dichos procedimientos existen dos opciones:
+
+a.  Diligenciamiento y radicación virtual a título personal del Registro de importación y demás permisos correspondientes al producto de importación mediante el módulo “Importaciones” que se encuentra en el sistema VUCE, a la cual se puede acceder a través de la página oficial (citada anteriormente).
+Es importante recordar que, para realizar estos trámites a título personal se debe adquirir la firma digital en CERTICAMARA (Entidad filial de la Cámara de Comercio de Bogotá - www.certicamara.com) que otorga un usuario y contraseña para acceder a la VUCE.
+
+b. Diligenciamiento y radicación virtual realizada por un tercero, generalmente un agente aduanero,  del  registro  o  licencia  de  importación  y demás  permisos  correspondientes  al producto de importación en nombre del importador.
+
+
+
+5. CONTRATO DE COMPRA VENTA INTERNACIONAL.
+
+Existe un requerimiento fundamental para el proceso de importación, que es dejar pactado los términos en los cuales se desarrollara la negociación, dentro de lo cual normalmente el exportador emite y remite la factura comercial como documento probatorio de una transacción entre las partes, se debe mencionar que existen varios aspectos que no quedan regulados, estipulados o pactados en dicho documento, siendo allí donde cobra importancia dos aspectos
+
+Actualizado por UBC – Diciembre 2019.
+fundamentales, la elaboración de un contrato de compraventa internacional y el empleo de los términos de negociación internacional.
+
+Es importante ofrecer herramientas a los empresarios que permitan blindarse ante posibles eventualidades futuras, por lo que se suministra un modelo genérico de contrato de compraventa internacional que puede ser adaptado por los empresarios PYMES y que ha sido elaborado por el Centro de Comercio Internacional como fuente de consulta gratuita en el siguiente link: http://www.intracen.org/itc/exportadores/modelos-de-contratos/
+
+
+
+6. TERMINOS DE NEGOCIACION INTERNACIONAL – INCOTERMS:
+
+Previo a la firma de un contrato de compraventa internacional, a la elaboración de la factura e incluso a la aceptación de una oferta comercial (cotización) es necesario determinar el Termino de Negociación Internacional – INCOTERMS que se ajuste a las necesidades, recursos y conocimientos tanto del importador como del exportador.
+
+Es de resaltar que los INCOTERMS tienen la función principal de definir las obligaciones, los riesgos y los costos entre las partes (vendedor / exportador y comprador / importador), haciendo claridad que no regulan especificaciones de las mercancías; Momento, lugar, método o divisa de pago; Consecuencias de incumplimientos o sanciones por incumplimiento entre las partes que intervienen. Estos términos son actualizados por la Cámara Internacional de Comercio – ICC (Siglas en inglés) cada diez años, estando vigente la versión 2020.
+
+De acuerdo a dicha actualización los términos vigentes se clasifican en dos grandes grupos:
+
+a.  Reglas para cualquier modo(s) de transporte.
+b.  Reglas para transporte marítimo y vías navegables interiores.
+
+Reglas para cualquier modo(s) de transporte.
+
+
+SIGLA.                    ESPAÑOL.                                       INGLES.
+EXW       En Fabrica.                                             Ex Works. FCA       Franco Porteador.                                  Free Carrier.
+CPT       Transporte Pagado Hasta.                     Carriage Paid To.
+CIP        Transporte y Seguro Pagados Hasta.    Carriage and Insurance Paid To. DAP       Entregar en Lugar.                                 Delivered at Place.
+DPU       Entregada en Lugar.                               Delivered at Place Unloaded. DDP       Entregada Derechos Pagados.              Delivered Duty Paid.
+
+Reglas para transporte marítimo y vías navegables interiores
+
+
+SIGLA.                    ESPAÑOL.                                       INGLES.
+FAS       Franco al Costado del Buque.                Free Alongside Ship. FOB       Franco a Bordo.                                      Free On Board.
+CFR       Costo y Flete.                                         Cost and Freight.
+
+Actualizado por UBC – Diciembre 2019.
+CIF        Costo, Seguro y Flete.                            Cost, Insurance and Freight.
+
+Para entender la aplicación y la importancia de estos términos se sugiere consultar la Guía Práctica “INCOTERMS 2020” y para ampliar la información sobre costeo del proceso de una exportación se sugiere consultar la Guía práctica de “Costeo de exportación” en la cual pueden ampliar la información al respecto.
+
+
+
+7. MANEJO LOGISTICO DE LA IMPORTACION.
+
+Partiendo que el importador ha evaluado los puntos anteriores, que han establecido un contrato de compraventa internacional, que han acordado el INCOTERMS más favorable para las partes, que han llegado a acuerdos en la documentación previa exigida para el proceso de importación (por ejemplo factura comercial, lista de empaque, certificados de pre embarque, registros sanitarios en país de origen, homologaciones en el país de destino, certificados o vistos buenos de origen y/o requisitos para importación) y que han contemplado los diferentes factores en los cuales estarán inmersos por la negociación se procede al manejo logístico del proceso de importación.
+
+Dicho proceso puede realizarse directamente por coordinación entre el exportador, el importador y los respectivos eslabones del proceso (agentes internacionales aeroportuarios, marítimos o terrestres, transportadores, agentes aduaneros, depósitos) o puede coordinarse por intermedio de empresas especializadas en el manejo logístico conocidos como Freight Forwarder, que, por supuesto tienen unos mayores costos, pero garantizan en gran parte la trazabilidad y logística de los embarques.
+
+En este punto se hace necesario mencionar la importancia de los costos, de los tiempos y de la optimización de los mismos puesto que afectan directamente toda la cadena.
+
+
+
+8. PROCEDIMEINTO ADUANERO DE LA IMPORTACION.
+
+El procedimiento aduanero de una importación inicia con la llegada de la mercancía al territorio aduanero nacional en el medio transporte internacional seleccionado, que genera unas obligaciones a los transportadores internacionales, en caso de querer ampliar dicha temática puede consultar el Decreto 1165 de 2019, Articulo 140 y subsiguientes.
+
+8.1.   Ingreso de mercancía a deposito o zona franca:
+La mercancía descargada en puerto o aeropuerto quedara bajo responsabilidad del transportador o agente de carga internacional hasta la entrega al depósito habilitado, al declarante, al importador o al usuario operador de zona franca, teniendo máximo dos días para transporte aéreo y cinco para transporte por vía marítima después de presentar el informe de descargue e inconsistencia por parte del transportador, o se puede solicitar el régimen de transito cuando proceda. En el caso de las zonas francas se recibirá la mercancía con la planilla de envío para su ingreso.
+
+
+
+Actualizado por UBC – Diciembre 2019.
+Recuerde que el tiempo de permanencia en depósito para obtener el levante es de un mes contado desde la llegada al territorio aduanero nacional, podrá ser prorrogado hasta por un mes adicional realizando la respectiva solicitud y en los términos establecidos.
+
+8.2.   Generalidades de la importación:
+Se define como la introducción de mercancía extranjera al territorio aduanero nacional para permanecer de forma indefinida, en libre disposición y que genera las siguientes obligaciones:
+•   Presentar la declaración de importación cumpliendo la normatividad legal vigente.
+•   Pago de los tributos aduaneros liquidados.
+•   Conservar los documentos soportes de la operación.
+
+8.3.   Documentos soportes de la declaración de importación:
+Para efectos aduaneros el declarante está obligado a obtener antes de la presentación y aceptación de la declaración y a conservarlos por un periodo de cinco años los siguientes documentos:
+•   Registros o licencias de importación.
+•   Factura comercial, cuando hubiera lugar.
+Documento de transporte: aéreo (guía aérea), marítimo (conocimiento de embarque) y terrestre (carta porte).
+•   Pruebas de origen – certificado de origen.
+•   Certificados de sanidad y aquellos documentos exigibles por normas especiales.
+•   Lista de empaque, cuando hubiera lugar a ella.
+•   Mandato aduanero, cuando se emplee agente aduanero.
+•   Declaración Andina de Valor, cuando el valor de la mercancía sea superior a USD5.000.
+•   Los demás que contempla el Decreto 1165 de 2019. Artículo 177.
+
+
+
+8.4.   Declaración de importación:
+La declaración de importación es el documento mediante el cual el declarante indica el régimen aduanero que aplicara a las mercancías, suministra la información correspondiente para el cumplimiento de la normatividad legal vigente y paga los tributos aduaneros que garantizan la legalidad de la carga en el país. El formulario de la declaración de importación es el número
+500 que puede ser consultado en la página de la DIAN. https://www.dian.gov.co/atencionciudadano/formulariosinstructivos/Paginas/default.aspx Recuerde que existe la cartilla de la “Declaración de importación, elaborada por la DIAN” donde podrá consultar cada una de las casillas que compone el formulario y su correspondiente diligenciamiento.
+
+El tipo de declaración de importación hace referencia a la casilla 32 del formulario, en donde se indica que se puede presentar de forma inicial (no está precedida por otra), de forma anticipada (con antelación NO superior a 15 días hábiles antes de la llegada de la mercancía, en algunos casos es de forma obligatoria consultar Resolución 0027 del 2 Mayo de 2018), como corrección (Para corregir errores formales voluntario u obligatorios en diligenciamiento del  formulario), para legalizar  (se  emplea  para  declarar  las mercancías de  procedencia extranjera presentadas a la aduana en el momento de su importación, respecto de las cuales
+
+
+
+Actualizado por UBC – Diciembre 2019.
+se hubiere incumplido alguna obligación aduanera que dé lugar a su aprehensión) o para modificar (cuando el régimen de importación lo permita para cambiar o terminar la modalidad).
+
+8.5.   Determinación de inspección aduanera o levante:
+Efectuado el pago de los tributos aduaneros (arancel e IVA), las sanciones a haya lugar, que deberá realizarse a través de los bancos autorizados por la DIAN, se procederá a determinar la autorización de levante automático de la mercancía o a realizar inspección aduanera que puede ser documental (revisar la trazabilidad documental de la carga), física de la carga (confrontar los documentos soportes de la importación con la mercancía) o no intrusiva (por medio de tecnologías de inspección – escáner).
+
+8.6.   Modalidades de importación:
+Es importante resaltar que existen modalidades de importación que permiten optimizar los recursos y brindar ventajas competitivas a los empresarios colombianos, por lo que los invitamos a realizar la consulta. Decreto 1165 de 2019, Articulo 193 y subsiguientes.
+
+Las modalidades de importación son:
+•   Importación ordinaria.
+•   Importación con franquicia.
+•   Reimportación por perfeccionamiento pasivo.
+•   Reimportación en el mismo estado.
+•   Importación en cumplimiento de garantía.
+•   Importación temporal para reexportación en el mismo estado.
+•   Importación temporal para perfeccionamiento activo.
+•   Importación para transformación y/o ensamble.
+•   Importación por tráfico postal y envíos urgentes.
+•   Entregas urgentes.
+•   Viajeros.
+•   Muestras sin valor comercial.
+8.7.   Diagrama general de un proceso de importación:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Actualizado por UBC – Diciembre 2019.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+9. PROCEDIMIENTO CAMBIARIO:
+
+
+Es necesario pactar previamente con su contraparte en el exterior el medio de pago a utilizar, ya sea giro directo (anticipado, contra entrega de documentos, etc.) o alguno que utilice una cobertura de riesgo, tal como las cartas de crédito o las garantías Stand By. Para ampliar los conceptos se sugiere consultar la Guía práctica de “Medios de pago internacional”.
+
+
+Recuerde que por normatividad legal vigente la canalización de las divisas producto de importaciones denominado “Reembolso” debe ser canalizada a través de intermediarios del mercado cambiario autorizados (banco comercial o cuenta de compensación) exclusivamente.
+
+
+
+FUENTES DE CONSULTA:
+MINCIT – Tratados comerciales de Colombia. http://www.tlc.gov.co/
+
+
+
+Actualización realizada por:
+UBC - Usa Business Colombia S.A.S.
+Sergio Iván Salguero R.
+Diciembre de 2019.
+
+
+
+Actualizado por UBC – Diciembre 2019.

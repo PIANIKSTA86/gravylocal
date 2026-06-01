@@ -135,6 +135,8 @@ function renderOrderRow(ord: any) {
       <td>
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
+          <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#f97316" title="Imprimir Tirilla" onclick="window.printOrderTirilla('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i></button>
           ${ord.status === 'pending' ? `
             <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
             <button class="btn btn-primary btn-sm" title="Facturar" onclick="window.invoiceSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i> Facturar</button>
@@ -625,7 +627,15 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
       </div>
     `;
 
-    const footer = `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`;
+    const footer = `
+      <div class="flex justify-between items-center w-full">
+        <div class="flex gap-2">
+          <button class="btn btn-outline" style="border-color:#3b82f6;color:#3b82f6" onclick="window.printOrderCarta('${ord.id}')"><i class="fas fa-print mr-1"></i> Imprimir Carta</button>
+          <button class="btn btn-outline" style="border-color:#f97316;color:#f97316" onclick="window.printOrderTirilla('${ord.id}')"><i class="fas fa-receipt mr-1"></i> Imprimir Tirilla</button>
+        </div>
+        <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+      </div>
+    `;
     (window as any).openModal(`Detalle del Pedido: ${ord.number}`, detailHtml, footer, false);
   } catch (err: any) {
     (window as any).showToast('Error al cargar detalle del pedido: ' + err.message, 'error');
@@ -688,6 +698,245 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
       (window as any).viewSalesInvoiceDetail(invoiceId);
     }
   }, 250);
+};
+
+// --- Impresión de Pedidos (Carta y Tirilla) ---
+window.printOrderCarta = async function(orderId: string) {
+  try {
+    const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' });
+    const lines = await (window as any).API.getSalesOrderLines(orderId);
+
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_country').catch(() => ''),
+    ]);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
+      return;
+    }
+
+    const isCotizacion = String(ord.notes || '').toLowerCase().includes('cotiz') || String(ord.notes || '').toLowerCase().includes('presupuesto');
+    const docTitle = isCotizacion ? 'COTIZACIÓN DE VENTA' : 'PEDIDO DE VENTA';
+
+    const docStr = printWin.document;
+    docStr.write(`
+      <html>
+      <head>
+        <title>${docTitle} — ${ord.number}</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #222; margin: 40px; font-size: 13px; line-height: 1.5; }
+          .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+          .hdr-left { vertical-align: top; width: 60%; }
+          .hdr-right { vertical-align: top; width: 40%; text-align: right; }
+          .company-name { font-size: 24px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
+          .document-title { font-size: 22px; font-weight: 800; color: #1e3a8a; margin-bottom: 5px; }
+          .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f8fafc; margin-bottom: 20px; }
+          .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 10px; color: #1e293b; }
+          .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
+          .details-grid div span { font-weight: bold; color: #475569; }
+          .lines-table { width: 100%; border-collapse: collapse; margin: 30px 0; }
+          .lines-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; }
+          .lines-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+          .lines-table tr:last-child td { border-bottom: 2px solid #0f172a; }
+          .totals-table { width: 40%; float: right; border-collapse: collapse; margin-bottom: 30px; }
+          .totals-table td { padding: 8px 10px; }
+          .totals-table tr.grand-total td { font-size: 15px; font-weight: bold; color: #1e3a8a; border-top: 1px solid #cbd5e1; }
+          .footer { clear: both; text-align: center; border-top: 1.5px dashed #cbd5e1; padding-top: 20px; color: #64748b; font-size: 11px; margin-top: 40px; }
+          @media print {
+            body { margin: 20px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <table class="hdr-table">
+          <tr>
+            <td class="hdr-left">
+              <div class="company-name">${(window as any).esc(compName)}</div>
+              <div>NIT: ${(window as any).esc(compNit)}</div>
+              ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
+              ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
+              ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
+              ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
+            </td>
+            <td class="hdr-right">
+              <div class="document-title">${docTitle}</div>
+              <div style="font-size:16px;font-weight:bold;color:#ef4444;margin-bottom:10px">${(window as any).esc(ord.number)}</div>
+              <div>Fecha Emisión: ${(window as any).fmtDate(ord.date)}</div>
+              ${ord.due_date ? `<div>Vencimiento/Entrega: ${(window as any).fmtDate(ord.due_date)}</div>` : ''}
+              <div>Estado: <span style="font-weight:bold;text-transform:uppercase;color:${ord.status === 'invoiced' ? 'green' : (ord.status === 'cancelled' ? 'red' : 'orange')}">${ord.status === 'invoiced' ? 'FACTURADO' : (ord.status === 'cancelled' ? 'ANULADO' : 'PENDIENTE')}</span></div>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Datos del Cliente -->
+        <div class="box">
+          <div class="box-title">Cliente / Adquirente</div>
+          <div class="details-grid">
+            <div><span>Nombre/Razón Social:</span> ${(window as any).esc(ord.expand?.customer_id?.name || '—')}</div>
+            <div><span>NIT/Documento:</span> ${(window as any).esc(ord.expand?.customer_id?.doc_number || ord.expand?.customer_id?.nit || '—')}</div>
+            <div><span>Dirección:</span> ${(window as any).esc(ord.expand?.customer_id?.address || '—')}</div>
+            <div><span>Teléfono:</span> ${(window as any).esc(ord.expand?.customer_id?.phone || '—')}</div>
+            <div><span>Bodega Despacho:</span> ${(window as any).esc(ord.expand?.warehouse_id?.name || '—')}</div>
+            <div><span>Observaciones:</span> ${(window as any).esc(ord.notes || '—')}</div>
+          </div>
+        </div>
+
+        <!-- Tabla de Artículos -->
+        <table class="lines-table">
+          <thead>
+            <tr>
+              <th>Detalle del Artículo / Servicio</th>
+              <th style="text-align:right">Cantidad</th>
+              <th style="text-align:right">Precio Unitario</th>
+              <th style="text-align:right">IVA %</th>
+              <th style="text-align:right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${lines.map((l: any) => `
+              <tr>
+                <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Pedido')}</td>
+                <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                <td style="text-align:right">${l.iva_rate}%</td>
+                <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <!-- Totales -->
+        <table class="totals-table">
+          <tr>
+            <td>Subtotal:</td>
+            <td style="text-align:right;font-weight:600">${(window as any).fmt(ord.subtotal || 0)}</td>
+          </tr>
+          <tr>
+            <td>IVA Calculado:</td>
+            <td style="text-align:right;font-weight:600">${(window as any).fmt(ord.iva_total || 0)}</td>
+          </tr>
+          ${ord.discount_amount > 0 ? `
+          <tr>
+            <td style="color:#dc2626">Descuento:</td>
+            <td style="text-align:right;font-weight:600;color:#dc2626">- ${(window as any).fmt(ord.discount_amount)}</td>
+          </tr>
+          ` : ''}
+          <tr class="grand-total">
+            <td>TOTAL PEDIDO:</td>
+            <td style="text-align:right">${(window as any).fmt(ord.total || 0)}</td>
+          </tr>
+        </table>
+
+        <div class="footer">
+          <p>Este documento constituye un soporte administrativo de pedido/cotización y no representa una factura de venta ni título valor contable.</p>
+          <p>Software de Gestión GRAVY v2.0 — Control Administrativo Autorizado.</p>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `);
+    docStr.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir cotización en formato carta: ' + err.message, 'error');
+  }
+};
+
+window.printOrderTirilla = async function(orderId: string) {
+  try {
+    const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' });
+    const lines = await (window as any).API.getSalesOrderLines(orderId);
+
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_country').catch(() => ''),
+    ]);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
+      return;
+    }
+
+    const isCotizacion = String(ord.notes || '').toLowerCase().includes('cotiz') || String(ord.notes || '').toLowerCase().includes('presupuesto');
+    const docTitle = isCotizacion ? 'COTIZACIÓN DE VENTA' : 'PEDIDO DE VENTA';
+
+    const docStr = printWin.document;
+    docStr.write(`
+      <html>
+      <head>
+        <title>${docTitle} — ${ord.number}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { font-family: monospace; font-size: 11px; margin: 5mm; color:#000; width: 70mm; line-height: 1.3; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .flex-between { display: flex; justify-content: space-between; }
+          .hr { border-top: 1px dashed #000; margin: 5px 0; }
+          .dbl-hr { border-top: 1.5px double #000; margin: 5px 0; }
+          .total-row { font-size: 12px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size:13px">${(window as any).esc(compName)}</div>
+        <div class="center">NIT: ${(window as any).esc(compNit)}</div>
+        ${compAddress ? `<div class="center">${(window as any).esc(compAddress)}</div>` : ''}
+        ${compPhone ? `<div class="center">Tel: ${(window as any).esc(compPhone)}</div>` : ''}
+        <div class="dbl-hr"></div>
+        <div class="center bold">${docTitle}</div>
+        <div class="center bold">${(window as any).esc(ord.number)}</div>
+        <div class="dbl-hr"></div>
+        <div>Fecha: ${(window as any).fmtDate(ord.date)}</div>
+        ${ord.due_date ? `<div>Vence: ${(window as any).fmtDate(ord.due_date)}</div>` : ''}
+        <div>Cliente: ${(window as any).esc(ord.expand?.customer_id?.name || '—')}</div>
+        <div>NIT/C.C: ${(window as any).esc(ord.expand?.customer_id?.doc_number || ord.expand?.customer_id?.nit || '—')}</div>
+        <div class="dbl-hr"></div>
+        <div class="flex-between bold"><span>DETALLE</span><span>TOTAL</span></div>
+        <div class="hr"></div>
+        ${lines.map((l: any) => `
+          <div style="margin-bottom:3px">
+            <div class="bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
+            <div style="color:#555;font-size:10px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate}%</div>
+            <div class="flex-between">
+              <span>${(window as any).fmtN(l.qty)} x ${(window as any).fmt(l.unit_price)}</span>
+              <span>${(window as any).fmt(l.total)}</span>
+            </div>
+          </div>
+        `).join('')}
+        <div class="hr"></div>
+        <div class="flex-between"><span>Subtotal:</span><span>${(window as any).fmt(ord.subtotal || 0)}</span></div>
+        <div class="flex-between"><span>IVA:</span><span>${(window as any).fmt(ord.iva_total || 0)}</span></div>
+        ${ord.discount_amount > 0 ? `<div class="flex-between" style="color:#dc2626"><span>Descuento:</span><span>-${(window as any).fmt(ord.discount_amount)}</span></div>` : ''}
+        <div class="flex-between total-row"><span>TOTAL:</span><span>${(window as any).fmt(ord.total || 0)}</span></div>
+        <div class="dbl-hr"></div>
+        <div class="center" style="font-size:8px;color:#555">
+          Este documento es un soporte administrativo y no posee validez como factura de venta ni título contable.
+        </div>
+        <script>
+          window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
+        </script>
+      </body>
+      </html>
+    `);
+    docStr.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir cotización en formato tirilla: ' + err.message, 'error');
+  }
 };
 
 // Exponer renderPedidos globalmente

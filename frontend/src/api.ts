@@ -79,29 +79,35 @@ const pb = {
     return res.json();
   },
 
-  /** POST � crear registro */
+  /** POST  crear registro */
   async create(collection, data) {
+    const isForm = data instanceof FormData;
+    const headers = isForm ? (this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}) : this.headers();
+    const body = isForm ? data : JSON.stringify(data);
     const res = await fetch(`${PB_URL}/api/collections/${collection}/records`, {
       method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(data),
+      headers: headers,
+      body,
     });
     if (!res.ok) throw await this._err(res);
     return res.json();
   },
 
-  /** PATCH � actualizar registro */
+  /** PATCH  actualizar registro */
   async update(collection, id, data) {
+    const isForm = data instanceof FormData;
+    const headers = isForm ? (this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}) : this.headers();
+    const body = isForm ? data : JSON.stringify(data);
     const res = await fetch(`${PB_URL}/api/collections/${collection}/records/${id}`, {
       method: 'PATCH',
-      headers: this.headers(),
-      body: JSON.stringify(data),
+      headers: headers,
+      body,
     });
     if (!res.ok) throw await this._err(res);
     return res.json();
   },
 
-  /** DELETE � eliminar registro */
+  /** DELETE  eliminar registro */
   async delete(collection, id) {
     const res = await fetch(`${PB_URL}/api/collections/${collection}/records/${id}`, {
       method: 'DELETE',
@@ -3206,6 +3212,275 @@ const API = {
     // Eliminar cabecera
     await pb.delete('invoices', invoiceId);
     await this.logAudit('DELETE', 'Invoice', invoiceId, `Eliminado borrador de factura ${inv.number}`);
+  },
+
+  // ── Importaciones ──────────────────────────────────────────
+
+  /** Lista paginada de importaciones */
+  async getImports(opts: any = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date_created' } = opts;
+    return pb.list('imports', {
+      page, perPage, filter, sort,
+      expand: 'supplier_id,user_id,purchase_invoice_id',
+    });
+  },
+
+  /** Líneas de una importación */
+  async getImportLines(importId: string) {
+    const safe = pb.escapeFilterValue(importId);
+    return pb.listAll('import_lines', {
+      filter: `import_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'product_id',
+    });
+  },
+
+  /** Crea una importación con FormData para soporte de archivos */
+  async createImport(header: any, lines: any[], files: any = {}) {
+    const formData = new FormData();
+    for (const key of Object.keys(header)) {
+      if (header[key] !== undefined && header[key] !== null) {
+        formData.append(key, String(header[key]));
+      }
+    }
+    if (files.bl_document) {
+      formData.append('bl_document', files.bl_document);
+    }
+    const tStr = typeof (window as any).todayStr === 'function' ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+    formData.append('date_created', tStr);
+    formData.append('user_id', pb.currentUser?.id || '');
+
+    let fobTotal = 0;
+    for (const l of lines) {
+      fobTotal += (l.qty || 0) * (l.fob_price || 0);
+    }
+    formData.append('fob_total', String(fobTotal));
+
+    const record = await pb.create('imports', formData);
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      const lineData = new FormData();
+      lineData.append('import_id', record.id);
+      lineData.append('line_order', String(i + 1));
+      lineData.append('product_id', l.product_id);
+      lineData.append('qty', String(l.qty || 0));
+      lineData.append('fob_price', String(l.fob_price || 0));
+      lineData.append('arancel_rate', String(l.arancel_rate || 0));
+      lineData.append('arancel_amount', String(l.arancel_amount || 0));
+      lineData.append('iva_rate', String(l.iva_rate || 0));
+      lineData.append('iva_amount', String(l.iva_amount || 0));
+      lineData.append('prorated_cost', String(l.prorated_cost || 0));
+      lineData.append('unit_cost_cop', String(l.unit_cost_cop || 0));
+      lineData.append('total_cop', String(l.total_cop || 0));
+      if (l.manifest_number) {
+        lineData.append('manifest_number', l.manifest_number);
+      }
+      if (files[`manifest_file_${i}`]) {
+        lineData.append('manifest_file', files[`manifest_file_${i}`]);
+      }
+      await pb.create('import_lines', lineData);
+    }
+
+    await this.logAudit('CREATE', 'Import', record.id, `Importación creada ${record.number}`);
+    return record;
+  },
+
+  /** Actualiza cabecera, líneas e incorpora nuevos adjuntos subidos */
+  async updateImport(importId: string, header: any, lines: any[], files: any = {}) {
+    const formData = new FormData();
+    for (const key of Object.keys(header)) {
+      if (header[key] !== undefined && header[key] !== null) {
+        formData.append(key, String(header[key]));
+      }
+    }
+    if (files.bl_document) {
+      formData.append('bl_document', files.bl_document);
+    } else if (files.bl_document === null) {
+      formData.append('bl_document', '');
+    }
+
+    const record = await pb.update('imports', importId, formData);
+
+    const oldLines = await pb.listAll('import_lines', { filter: `import_id="${pb.escapeFilterValue(importId)}"` });
+    const oldLinesMap: any = {};
+    oldLines.forEach((l: any) => { oldLinesMap[l.id] = l; });
+
+    const keepIds = new Set();
+
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      const lineData = new FormData();
+      lineData.append('import_id', importId);
+      lineData.append('line_order', String(i + 1));
+      lineData.append('product_id', l.product_id);
+      lineData.append('qty', String(l.qty || 0));
+      lineData.append('fob_price', String(l.fob_price || 0));
+      lineData.append('arancel_rate', String(l.arancel_rate || 0));
+      lineData.append('arancel_amount', String(l.arancel_amount || 0));
+      lineData.append('iva_rate', String(l.iva_rate || 0));
+      lineData.append('iva_amount', String(l.iva_amount || 0));
+      lineData.append('prorated_cost', String(l.prorated_cost || 0));
+      lineData.append('unit_cost_cop', String(l.unit_cost_cop || 0));
+      lineData.append('total_cop', String(l.total_cop || 0));
+      lineData.append('manifest_number', l.manifest_number || '');
+
+      if (files[`manifest_file_${i}`]) {
+        lineData.append('manifest_file', files[`manifest_file_${i}`]);
+      } else if (files[`manifest_file_${i}`] === null) {
+        lineData.append('manifest_file', '');
+      }
+
+      if (l.id && oldLinesMap[l.id]) {
+        await pb.update('import_lines', l.id, lineData);
+        keepIds.add(l.id);
+      } else {
+        const newL = await pb.create('import_lines', lineData);
+        keepIds.add(newL.id);
+      }
+    }
+
+    for (const oldId of Object.keys(oldLinesMap)) {
+      if (!keepIds.has(oldId)) {
+        await pb.delete('import_lines', oldId);
+      }
+    }
+
+    await this.logAudit('UPDATE', 'Import', importId, `Importación actualizada ${record.number}`);
+    return pb.get('imports', importId);
+  },
+
+  /** Anula una importación en estado borrador/transito */
+  async cancelImport(importId: string, reason: string = '') {
+    const imp = await pb.get('imports', importId);
+    if (imp.status === 'recibido') {
+      throw new Error('No se puede anular una importación ya finalizada.');
+    }
+    await pb.update('imports', importId, { status: 'anulado' });
+    await this.logAudit('VOID', 'Import', importId, `Importación anulada ${imp.number} | Motivo: ${reason}`);
+    return pb.get('imports', importId);
+  },
+
+  /** Genera el consecutivo IMP-XXXXXX */
+  async nextImportConsecutive() {
+    let currentConsecutive = 0;
+    let recordId = "";
+    try {
+      const res = await pb.list('settings', { filter: 'key="import_consecutive"', perPage: 1 });
+      if (res.items.length) {
+        currentConsecutive = parseInt(res.items[0].value || '0', 10);
+        recordId = res.items[0].id;
+      }
+    } catch (_) {}
+
+    const next = currentConsecutive + 1;
+    const nextStr = String(next);
+    
+    if (recordId) {
+      await pb.update('settings', recordId, { value: nextStr });
+    } else {
+      await pb.create('settings', { key: 'import_consecutive', value: nextStr });
+    }
+
+    return `IMP-${String(next).padStart(6, '0')}`;
+  },
+
+  /** Consulta el stock en camino por producto en importaciones activas */
+  async getIncomingStockForProduct(productId) {
+    const safe = pb.escapeFilterValue(productId);
+    return pb.listAll('import_lines', {
+      filter: `product_id="${safe}" && (import_id.status="transito" || import_id.status="nacionalizacion")`,
+      expand: 'import_id',
+    });
+  },
+
+  /** Obtener la configuración del módulo de importaciones */
+  async getImportConfig() {
+    try {
+      const raw = await this.getSetting('import_config_v1');
+      if (!raw) return {
+        accounting: {
+          accounts: {
+            transito_account_code: '143505',
+            inventario_account_code: '143501',
+            anticipo_account_code: '133025',
+            iva_account_code: '240810'
+          }
+        }
+      };
+      return JSON.parse(raw);
+    } catch {
+      return {
+        accounting: {
+          accounts: {
+            transito_account_code: '143505',
+            inventario_account_code: '143501',
+            anticipo_account_code: '133025',
+            iva_account_code: '240810'
+          }
+        }
+      };
+    }
+  },
+
+  /** Guardar la configuración del módulo de importaciones */
+  async saveImportConfig(cfg) {
+    await this.setSetting('import_config_v1', JSON.stringify(cfg));
+    await this.logAudit('CONFIG', 'ImportConfig', null, 'Configuración de importaciones actualizada');
+    return cfg;
+  },
+
+  /** Obtiene todos los datos para armar el reporte de trazabilidad de una importación */
+  async getImportTraceabilityData(importId) {
+    const [imp, lines] = await Promise.all([
+      pb.get('imports', importId, { expand: 'supplier_id,user_id,purchase_invoice_id' }),
+      this.getImportLines(importId)
+    ]);
+    
+    const importNumber = imp.number;
+    
+    // Buscar transacciones contables asociadas (CE, RC, etc.) donde se haya usado la ref de la importación
+    const txLines = await pb.listAll('tx_lines', {
+      filter: `cross_doc_ref="${pb.escapeFilterValue(importNumber)}"`,
+      expand: 'tx_id,account_id,third_party_id'
+    });
+    
+    const transactionsMap = {};
+    for (const tl of txLines) {
+      const tx = tl.expand?.tx_id;
+      if (!tx || tx.status === 'voided') continue;
+      if (!transactionsMap[tx.id]) {
+        transactionsMap[tx.id] = {
+          id: tx.id,
+          number: tx.number,
+          date: tx.date,
+          description: tx.description,
+          lines: []
+        };
+      }
+      transactionsMap[tx.id].lines.push({
+        account_code: tl.expand?.account_id?.code || '',
+        account_name: tl.expand?.account_id?.name || '',
+        debit: tl.debit || 0,
+        credit: tl.credit || 0,
+        third_party_name: tl.expand?.third_party_id?.name || '',
+        description: tl.description || ''
+      });
+    }
+    const transactions = Object.values(transactionsMap);
+    
+    // Buscar facturas de compra asociadas
+    const purchaseInvoices = await pb.listAll('purchase_invoices', {
+      filter: `import_id="${pb.escapeFilterValue(importId)}" && status!="voided"`,
+      expand: 'supplier_id,warehouse_id'
+    });
+    
+    return {
+      import: imp,
+      lines,
+      transactions,
+      purchaseInvoices
+    };
   },
 };
 

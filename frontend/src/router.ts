@@ -33,6 +33,7 @@ const PAGE_TITLES = {
   licencias:         'Licencias y Módulos',
   superadmin:        'Panel SuperAdministrador',
   resoluciones:      'Resoluciones y Consecutivos DIAN',
+  importaciones:     'Gestión de Importaciones',
 };
 
 // Módulo de licencia requerido por cada página.
@@ -55,6 +56,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'conciliacion':     'comercial',
   'nomina':           'nomina',
   'copropiedades':    'copropiedades',
+  'importaciones':     'comercial',
 };
 
 // Etiquetas visibles de los módulos para mensajes al usuario
@@ -94,6 +96,7 @@ const PAGE_RENDERERS = {
   licencias:          () => typeof renderLicencias         === 'function' && renderLicencias($('#page-content')),
   superadmin:         () => typeof renderSuperadmin        === 'function' && renderSuperadmin($('#page-content')),
   resoluciones:       () => typeof renderResoluciones      === 'function' && renderResoluciones($('#page-content')),
+  importaciones:      () => typeof renderImportaciones     === 'function' && renderImportaciones($('#page-content')),
 };
 
 let currentPage = 'dashboard';

@@ -359,6 +359,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
           <input type="hidden" id="ordl-prod-id-${idx}" value="${line?.product_id || ''}">
           <div id="ordl-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:180px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
         </div>
+        <div id="ordl-incoming-stock-${idx}" class="text-[10px] mt-1 hidden" style="color:#0284C7;font-weight:600"></div>
       </td>
       <td><input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-semibold" min="0.001" step="0.001" value="${line?.qty || '1'}" oninput="window.ordRecalcLine(${idx})"></td>
       <td><input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" min="0" step="0.01" value="${line?.unit_price || ''}" oninput="window.ordRecalcLine(${idx})"></td>
@@ -411,6 +412,9 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
     input.addEventListener('blur', () => { setTimeout(() => { if (results) results.style.display = 'none'; }, 200); });
 
     window.ordRecalcLine(idx);
+    if (line && line.product_id && typeof (window as any).ordCheckIncomingStock === 'function') {
+      (window as any).ordCheckIncomingStock(idx, line.product_id);
+    }
   };
 
   (window as any).selectOrdLineProduct = function(idx: number, id: string, label: string, price: number, ivaRate: number) {
@@ -425,6 +429,37 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
       priceInput.value = String(price);
       ivaInput.value = String(ivaRate);
       window.ordRecalcLine(idx);
+      if (typeof (window as any).ordCheckIncomingStock === 'function') {
+        (window as any).ordCheckIncomingStock(idx, id);
+      }
+    }
+  };
+
+  (window as any).ordCheckIncomingStock = async function(idx: number, productId: string) {
+    const container = document.getElementById(`ordl-incoming-stock-${idx}`);
+    if (!container) return;
+    try {
+      const incoming = await (window as any).API.getIncomingStockForProduct(productId);
+      if (incoming && incoming.length > 0) {
+        incoming.sort((a: any, b: any) => {
+          const etaA = a.expand?.import_id?.estimated_arrival || '9999-99-99';
+          const etaB = b.expand?.import_id?.estimated_arrival || '9999-99-99';
+          return etaA.localeCompare(etaB);
+        });
+
+        const totalQty = incoming.reduce((sum: number, item: any) => sum + (item.qty || 0), 0);
+        const earliest = incoming[0];
+        const imp = earliest.expand?.import_id;
+        const eta = imp?.estimated_arrival ? (window as any).fmtDate(imp.estimated_arrival) : 'Sin fecha';
+
+        container.innerHTML = `<i class="fas fa-ship text-[9px] mr-1"></i>En camino: <strong>${(window as any).fmtN(totalQty)}</strong> unds (ETA: ${eta} en ${imp?.number || 'IMP'})`;
+        container.classList.remove('hidden');
+      } else {
+        container.classList.add('hidden');
+      }
+    } catch (err) {
+      console.warn('[Pedidos] Error al consultar stock entrante:', err);
+      container.classList.add('hidden');
     }
   };
 

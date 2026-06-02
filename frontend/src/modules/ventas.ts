@@ -575,133 +575,185 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   const retRuleOptionsIva = (sel = '') => retRuleOptions(retRulesIva, sel);
 
   const formHtml = `
-    <div class="space-y-6 text-sm" style="color:#374151">
-      <!-- Encabezado -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
-        <div class="form-group relative">
-          <label class="form-label font-bold">Cliente / Adquirente <span style="color:#EF4444">*</span></label>
-          <div id="so-supplier-search-wrap" class="relative flex gap-1 items-center">
-            <input id="so-supplier-search" class="form-input" autocomplete="off" placeholder="Escribe NIT o nombre del cliente...">
-            <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.soQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
-              <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
-            </button>
-            <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.soLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#D1D5DB; background:#fff;color:#1A4B8C">
-              <i class="fas fa-file-import text-xs"></i>
-            </button>
-            <input id="so-supplier" type="hidden" value="${(window as any).esc(inv?.customer_id || '')}">
-            <input id="so-sales-order-id" type="hidden" value="${(window as any).esc(inv?.sales_order_id || '')}">
-            <div id="so-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
+    <div class="space-y-4 text-sm" style="color:#374151">
+
+      <!-- ══ HEADER COMPACTO ══ -->
+      <div class="rounded-xl p-3" style="background:#F9FAFB;border:1px solid #E5E7EB">
+        <!-- Fila 1: Cliente (con botones) + Comprobante + Fecha + Vence -->
+        <div class="grid gap-2 mb-2" style="grid-template-columns:1fr 180px 140px 140px">
+          <!-- Cliente con botones integrados -->
+          <div>
+            <label class="so-hdr-label">Cliente / Adquirente <span style="color:#EF4444">*</span></label>
+            <div id="so-supplier-search-wrap" class="relative flex gap-1 items-center">
+              <input id="so-supplier-search" class="form-input so-compact-inp flex-1" autocomplete="off" placeholder="NIT o nombre del cliente...">
+              <button type="button" class="btn btn-outline so-icon-btn" onclick="window.soQuickAddCustomer()" title="Nuevo Cliente">
+                <i class="fas fa-user-plus" style="font-size:11px;color:#4B5563"></i>
+              </button>
+              <button type="button" class="btn btn-outline so-icon-btn" onclick="window.soLoadPendingOrderModal()" title="Cargar Pedido" style="color:#1A4B8C">
+                <i class="fas fa-file-import" style="font-size:11px"></i>
+              </button>
+              <input id="so-supplier" type="hidden" value="${(window as any).esc(inv?.customer_id || '')}">
+              <input id="so-sales-order-id" type="hidden" value="${(window as any).esc(inv?.sales_order_id || '')}">
+              <div id="so-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
+            </div>
+          </div>
+          <!-- Comprobante -->
+          <div>
+            <label class="so-hdr-label">Comprobante <span style="color:#EF4444">*</span></label>
+            <select id="so-tx-type" class="form-input so-compact-inp">
+              <option value="">— Seleccionar —</option>
+              ${txTypeOptions}
+            </select>
+          </div>
+          <!-- Fecha Emisión -->
+          <div>
+            <label class="so-hdr-label">Fecha <span style="color:#EF4444">*</span></label>
+            <input id="so-date" type="date" class="form-input so-compact-inp" value="${(window as any).esc(billDate)}" onchange="window.soSuggestDueDate()">
+          </div>
+          <!-- Vencimiento -->
+          <div>
+            <label class="so-hdr-label">Vencimiento</label>
+            <input id="so-due-date" type="date" class="form-input so-compact-inp" value="${(window as any).esc(defaultDueDate || '')}">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Fecha Emisión <span style="color:#EF4444">*</span></label>
-          <input id="so-date" type="date" class="form-input" value="${(window as any).esc(billDate)}" onchange="window.soSuggestDueDate()">
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Fecha Vencimiento</label>
-          <input id="so-due-date" type="date" class="form-input" value="${(window as any).esc(defaultDueDate || '')}">
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Forma de Pago <span style="color:#EF4444">*</span></label>
-          <select id="so-payment-method" class="form-input" onchange="window.soOnPaymentMethodChange()">
-            <option value="EFECTIVO"${inv?.payment_method === 'EFECTIVO' ? ' selected' : ''}>Efectivo</option>
-            <option value="TRANSFERENCIA"${inv?.payment_method === 'TRANSFERENCIA' ? ' selected' : ''}>Tarjeta / Transferencia</option>
-            <option value="CREDITO"${(inv?.payment_method === 'CREDITO' || !inv) ? ' selected' : ''}>Crédito Comercial</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Comprobante Contable <span style="color:#EF4444">*</span></label>
-          <select id="so-tx-type" class="form-input">
-            <option value="">— Seleccionar comprobante —</option>
-            ${txTypeOptions}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Bodega Origen <span style="font-size:10px;color:#9CA3AF">(despacho)</span></label>
-          <select id="so-warehouse" class="form-input" onchange="window.soRecalcLine(0)">
-            <option value="">— Sin bodega —</option>
-            ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && warehouses.length === 1)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Vendedor Asignado</label>
-          <select id="so-seller" class="form-input">
-            <option value="">— Seleccionar vendedor —</option>
-            ${sellers.map(s => `<option value="${(window as any).esc(s.id)}"${inv?.seller_id === s.id ? ' selected' : ''}>${(window as any).esc(s.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group col-span-1 md:col-span-3">
-          <label class="form-label font-bold">Notas u Observaciones</label>
-          <input id="so-notes" class="form-input" placeholder="Ej: despacho inmediato, pago a 30 días, etc." value="${(window as any).esc(inv?.notes || '')}">
+        <!-- Fila 2: Pago + Bodega + Vendedor + Notas -->
+        <div class="grid gap-2" style="grid-template-columns:160px 175px 175px 1fr">
+          <!-- Forma de Pago -->
+          <div>
+            <label class="so-hdr-label">Forma de Pago <span style="color:#EF4444">*</span></label>
+            <select id="so-payment-method" class="form-input so-compact-inp" onchange="window.soOnPaymentMethodChange()">
+              <option value="EFECTIVO"${inv?.payment_method === 'EFECTIVO' ? ' selected' : ''}>Efectivo</option>
+              <option value="TRANSFERENCIA"${inv?.payment_method === 'TRANSFERENCIA' ? ' selected' : ''}>Tarjeta / Transf.</option>
+              <option value="CREDITO"${(inv?.payment_method === 'CREDITO' || !inv) ? ' selected' : ''}>Crédito Comercial</option>
+            </select>
+          </div>
+          <!-- Bodega -->
+          <div>
+            <label class="so-hdr-label">Bodega <span style="font-size:10px;color:#9CA3AF">(despacho)</span></label>
+            <select id="so-warehouse" class="form-input so-compact-inp" onchange="window.soRecalcLine(0)">
+              <option value="">— Sin bodega —</option>
+              ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && warehouses.length === 1)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
+            </select>
+          </div>
+          <!-- Vendedor -->
+          <div>
+            <label class="so-hdr-label">Vendedor</label>
+            <select id="so-seller" class="form-input so-compact-inp">
+              <option value="">— Sin vendedor —</option>
+              ${sellers.map(s => `<option value="${(window as any).esc(s.id)}"${inv?.seller_id === s.id ? ' selected' : ''}>${(window as any).esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
+          <!-- Notas -->
+          <div>
+            <label class="so-hdr-label">Notas / Observaciones</label>
+            <input id="so-notes" class="form-input so-compact-inp" placeholder="Observaciones, condiciones de entrega..." value="${(window as any).esc(inv?.notes || '')}">
+          </div>
         </div>
       </div>
 
-      <!-- Líneas de Venta -->
-      <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
-        <!-- Barra superior de la tabla -->
-        <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+      <!-- ══ BUSCADOR GLOBAL DE PRODUCTOS ══ -->
+      <div class="relative">
+        <i class="fas fa-search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
+        <input id="so-prod-search-global" class="form-input"
+               style="padding-left:38px;font-size:14px;border-color:#DCE6F8"
+               autocomplete="off"
+               placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
+        <div id="so-prod-results-global"
+             style="display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);max-height:300px;overflow:auto;background:#fff;border:1.5px solid #DCE6F8;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
+        </div>
+      </div>
+
+      <!-- ══ TABLA DE LÍNEAS ══ -->
+      <div class="border rounded-xl overflow-hidden" style="border-color:#E5E7EB">
+        <!-- Barra superior con toggle retención -->
+        <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F4F8FF;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios</span>
-          <div class="flex items-center gap-3 flex-wrap">
-            <label class="flex items-center gap-2 cursor-pointer select-none" style="font-size:12px;font-weight:600;color:#374151" title="Captura de Retenciones">
-              <span id="so-ret-mode-lbl-hdr" style="color:#1A4B8C">Global</span>
-              <div style="position:relative;display:inline-block;width:38px;height:20px">
-                <input type="checkbox" id="so-ret-mode-switch" style="opacity:0;width:0;height:0;position:absolute" onchange="window.soSetRetMode(this.checked)">
-                <span id="so-ret-mode-track" onclick="var sw=document.getElementById('so-ret-mode-switch');sw.checked=!sw.checked;window.soSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#1A4B8C;border-radius:10px;cursor:pointer;transition:background .2s"></span>
-                <span id="so-ret-mode-knob" style="position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
-              </div>
-              <span id="so-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
-            </label>
-            <button type="button" class="btn btn-outline btn-sm" id="btn-add-so-line"><i class="fas fa-plus"></i> Agregar línea</button>
-          </div>
+          <label class="flex items-center gap-2 cursor-pointer select-none" style="font-size:12px;font-weight:600;color:#374151" title="Modo de captura de retenciones">
+            <span id="so-ret-mode-lbl-hdr" style="color:#1A4B8C">Global</span>
+            <div style="position:relative;display:inline-block;width:38px;height:20px">
+              <input type="checkbox" id="so-ret-mode-switch" style="opacity:0;width:0;height:0;position:absolute" onchange="window.soSetRetMode(this.checked)">
+              <span id="so-ret-mode-track" onclick="var sw=document.getElementById('so-ret-mode-switch');sw.checked=!sw.checked;window.soSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#1A4B8C;border-radius:10px;cursor:pointer;transition:background .2s"></span>
+              <span id="so-ret-mode-knob" style="position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
+            </div>
+            <span id="so-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
+          </label>
         </div>
 
-        <!-- Tabla -->
-        <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
-          <table class="data-table" id="so-lines-table" style="min-width:740px">
+        <!-- Tabla con scroll vertical -->
+        <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
+          <table class="data-table so-lines-tbl" id="so-lines-table" style="min-width:960px">
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
-                <th style="min-width:220px;background:#F4F8FF;color:#374151">Producto / Servicio</th>
-                <th class="text-right" style="width:75px;background:#F4F8FF;color:#374151">Cant.</th>
-                <th class="text-right" style="width:115px;background:#F4F8FF;color:#374151">P. Unitario</th>
-                <th class="text-right" style="width:72px;background:#F4F8FF;color:#374151">IVA %</th>
-                <th class="so-ret-col" style="min-width:190px;background:#F4F8FF;color:#374151;display:none">Retención</th>
-                <th class="so-ret-col text-right" style="width:115px;background:#F4F8FF;color:#374151;display:none">Vlr Ret.</th>
-                <th class="text-right" style="width:115px;background:#F4F8FF;color:#374151">Total línea</th>
-                <th style="width:58px;background:#F4F8FF;color:#374151">Acción</th>
+                <th style="min-width:200px;background:#F4F8FF;color:#374151">Producto / Servicio</th>
+                <th class="text-right" style="width:110px;background:#F4F8FF;color:#374151">Cantidad</th>
+                <th class="text-right" style="width:155px;background:#F4F8FF;color:#374151">P. Unitario</th>
+                <th class="text-right" style="width:95px;background:#F4F8FF;color:#374151">IVA %</th>
+                <th class="text-right" style="width:95px;background:#F4F8FF;color:#374151">Dscto %</th>
+                <th class="so-ret-col" style="min-width:185px;background:#F4F8FF;color:#374151;display:none">Retención</th>
+                <th class="so-ret-col text-right" style="width:105px;background:#F4F8FF;color:#374151;display:none">Vlr Ret.</th>
+                <th class="text-right" style="width:145px;background:#F4F8FF;color:#374151">Total línea</th>
+                <th style="width:48px;background:#F4F8FF;color:#374151">Acción</th>
               </tr>
             </thead>
             <tbody id="so-lines-body"></tbody>
           </table>
         </div>
-      </div>
 
-      <!-- Totales -->
-      <div class="flex justify-end p-4 rounded-xl" style="background:#F9FAFB">
-        <div class="text-sm space-y-1 min-w-80">
-          <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span> <span id="so-total-sub" class="font-semibold">$ 0</span></div>
-          <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA:</span>      <span id="so-total-iva" class="font-semibold">$ 0</span></div>
-          <div id="so-hdr-ret-wrap" class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
-              <span style="color:#6B7280;white-space:nowrap">ReteRenta (A favor):</span>
-              <div class="flex items-center gap-2">
-                <select id="so-hdr-ret-rule-renta" class="form-input text-xs py-1" style="min-width:170px" onchange="window.soRecalcLine(0)">
-                  ${retRuleOptionsRenta(inv?.ret_rule_renta_id || '')}
-                </select>
-                <span id="so-total-ret-renta" class="font-semibold text-orange-600" style="min-width:90px;text-align:right">$ 0</span>
+        <!-- ══ TOTALES EN GRID 3 COLUMNAS ══ -->
+        <div class="border-t p-4" style="border-color:#E5E7EB;background:#F9FAFB">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5 text-sm">
+
+            <!-- Col 1: Subtotal · IVA · Descuento -->
+            <div class="space-y-2">
+              <div class="flex justify-between gap-4">
+                <span style="color:#6B7280">Subtotal:</span>
+                <span id="so-total-sub" class="font-semibold" style="color:#0D2137">$ 0</span>
+              </div>
+              <div class="flex justify-between gap-4">
+                <span style="color:#6B7280">IVA:</span>
+                <span id="so-total-iva" class="font-semibold" style="color:#0D2137">$ 0</span>
+              </div>
+              <div class="flex justify-between gap-4" style="color:#EF4444">
+                <span class="font-medium">Descuento líneas:</span>
+                <span id="so-total-discount" class="font-semibold">-$ 0</span>
               </div>
             </div>
-            <div class="flex items-center justify-between gap-2">
-              <span style="color:#6B7280;white-space:nowrap">ReteICA (A favor):</span>
-              <div class="flex items-center gap-2">
-                <select id="so-hdr-ret-rule-ica" class="form-input text-xs py-1" style="min-width:170px" onchange="window.soRecalcLine(0)">
-                  ${retRuleOptionsIca(inv?.ret_rule_ica_id || '')}
-                </select>
-                <span id="so-total-ret-ica" class="font-semibold text-orange-600" style="min-width:90px;text-align:right">$ 0</span>
+
+            <!-- Col 2: Retenciones -->
+            <div id="so-hdr-ret-wrap" class="space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span style="color:#6B7280;white-space:nowrap;font-size:11px">ReteFuente (A favor):</span>
+                <div class="flex items-center gap-1 flex-1 justify-end">
+                  <select id="so-hdr-ret-rule-renta" class="form-input text-xs" style="min-width:115px;max-width:150px;height:26px;padding:2px 24px 2px 7px;font-size:11px" onchange="window.soRecalcLine(0)">
+                    ${retRuleOptionsRenta(inv?.ret_rule_renta_id || '')}
+                  </select>
+                  <span id="so-total-ret-renta" class="font-semibold text-orange-600" style="min-width:68px;text-align:right">$ 0</span>
+                </div>
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span style="color:#6B7280;white-space:nowrap;font-size:11px">ReteICA (A favor):</span>
+                <div class="flex items-center gap-1 flex-1 justify-end">
+                  <select id="so-hdr-ret-rule-ica" class="form-input text-xs" style="min-width:115px;max-width:150px;height:26px;padding:2px 24px 2px 7px;font-size:11px" onchange="window.soRecalcLine(0)">
+                    ${retRuleOptionsIca(inv?.ret_rule_ica_id || '')}
+                  </select>
+                  <span id="so-total-ret-ica" class="font-semibold text-orange-600" style="min-width:68px;text-align:right">$ 0</span>
+                </div>
+              </div>
+              <div class="flex justify-between gap-4 text-orange-600 border-t pt-1" style="border-color:#FED7AA">
+                <span class="font-semibold text-xs">Total Retenciones:</span>
+                <span id="so-total-ret" class="font-bold">$ 0</span>
               </div>
             </div>
+
+            <!-- Col 3: TOTAL NETO destacado -->
+            <div class="flex flex-col justify-end">
+              <div class="rounded-xl p-3 text-right" style="background:linear-gradient(135deg,#EEF4FF,#F0FBFF);border:1.5px solid #DCE6F8">
+                <p class="text-xs font-bold uppercase tracking-wide mb-1" style="color:#6B7280">Total Neto (CxC)</p>
+                <p id="so-total-net" class="text-2xl font-extrabold" style="color:#1A4B8C">$ 0</p>
+              </div>
+            </div>
+
           </div>
-          <div class="flex justify-between gap-8 text-orange-600"><span class="font-semibold">Total Retenciones:</span> <span id="so-total-ret" class="font-bold">$ 0</span></div>
-          <div class="flex justify-between gap-8 text-base border-t pt-2" style="border-color:#E5E7EB"><span class="font-extrabold text-gray-900">TOTAL NETO (CxC):</span> <span id="so-total-net" class="font-extrabold text-blue-700 text-lg">$ 0</span></div>
         </div>
       </div>
     </div>
@@ -713,6 +765,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   `;
 
   (window as any).openModal(invoiceId ? 'Editar Factura de Venta' : 'Nueva Factura de Venta', formHtml, footer, true);
+  const mbox = document.getElementById('modal-box');
+  if (mbox) { mbox.classList.add('xl'); mbox.classList.remove('wide'); }
 
   // --- AutoComplete de Clientes ---
   function initSoSupplierSearch() {
@@ -839,111 +893,170 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   initSoSupplierSearch();
 
-  // --- Manejo de Líneas ---
-  (window as any).addSoInvoiceLine = function(line: any = null) {
+  // --- Manejo de Líneas (sin buscador por fila — se usa el buscador global) ---
+  (window as any).addSoInvoiceLine = function(prod: any = null, preloadedLine: any = null) {
     lineCounter++;
     const idx = lineCounter;
     const tbody = document.getElementById('so-lines-body');
     if (!tbody) return;
 
+    // Datos del producto (viene del buscador global o de una línea existente al editar)
+    const productId   = prod?.id   || preloadedLine?.product_id || '';
+    const productCode = prod?.code || '';
+    const productName = prod?.name || preloadedLine?._name || '(producto)';
+    const initQty     = preloadedLine?.qty        ?? 1;
+    const initPrice   = preloadedLine?.unit_price ?? (prod?.sales_price || prod?.base_price || 0);
+    const initIva     = preloadedLine?.iva_rate   ?? prod?.iva_rate ?? 19;
+    const initDisc    = preloadedLine?.discount_pct ?? 0;
+
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
     tr.innerHTML = `
       <td>
-        <div id="sol-prod-wrap-${idx}" class="relative">
-          <input id="sol-prod-search-${idx}" class="form-input w-full" autocomplete="off" placeholder="Buscar producto o servicio...">
-          <input type="hidden" id="sol-prod-id-${idx}" value="${line?.product_id || ''}">
-          <div id="sol-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:180px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          </div>
+          <input type="hidden" id="sol-prod-id-${idx}" value="${(window as any).esc(productId)}">
         </div>
       </td>
-      <td><input type="number" id="sol-qty-${idx}" class="form-input text-right w-full font-semibold" min="0.001" step="0.001" value="${line?.qty || '1'}" oninput="window.soRecalcLine(${idx})"></td>
-      <td><input type="number" id="sol-price-${idx}" class="form-input text-right w-full" min="0" step="0.01" value="${line?.unit_price || ''}" oninput="window.soRecalcLine(${idx})"></td>
-      <td><input type="number" id="sol-iva-${idx}" class="form-input text-right w-full" min="0" max="100" step="1" value="${line?.iva_rate ?? '19'}" oninput="window.soRecalcLine(${idx})"></td>
+      <td><input type="number" id="sol-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:13px" min="0.001" step="0.001" value="${initQty}" oninput="window.soRecalcLine(${idx})"></td>
+      <td><input type="number" id="sol-price-${idx}" class="form-input text-right w-full" style="font-size:13px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.soRecalcLine(${idx})"></td>
+      <td>
+        <select id="sol-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" onchange="window.soRecalcLine(${idx})">
+          <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
+          <option value="5"  ${initIva == 5  ? 'selected' : ''}>5 %</option>
+          <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
+        </select>
+      </td>
+      <td><input type="number" id="sol-disc-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.01" value="${initDisc}" placeholder="0" oninput="window.soRecalcLine(${idx})"></td>
       <td class="so-ret-col" style="display:none">
         <select id="sol-ret-rule-${idx}" class="form-input text-xs py-1 w-full" onchange="window.soRecalcLine(${idx})">
-          ${retRuleOptions(withholdingRules, line?.ret_rule_id || '')}
+          ${retRuleOptions(withholdingRules, preloadedLine?.ret_rule_id || '')}
         </select>
       </td>
       <td class="so-ret-col text-right text-orange-600 font-bold" style="display:none" id="sol-ret-val-${idx}">$ 0</td>
-      <td class="text-right font-extrabold text-blue-700" id="sol-total-${idx}">$ 0</td>
+      <td class="text-right font-extrabold" style="color:#1A4B8C;font-size:13px" id="sol-total-${idx}">$ 0</td>
       <td class="text-center">
         <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('so-row-${idx}').remove(); window.soRecalcLine(0)"><i class="fas fa-trash"></i></button>
       </td>
     `;
     tbody.appendChild(tr);
 
-    // AutoComplete de Productos por línea
-    window.initSoProductSearch(idx, line);
-
-    // Refrescar visibilidad de columnas de retención
+    // Visibilidad columnas retención
     const isPerLine = (window as any).__soRetMode === 'line';
     tr.querySelectorAll('.so-ret-col').forEach((el: any) => { el.style.display = isPerLine ? '' : 'none'; });
 
     window.soRecalcLine(idx);
   };
 
-  (window as any).initSoProductSearch = function(rowIdx: number, line: any) {
-    const input = document.getElementById(`sol-prod-search-${rowIdx}`) as HTMLInputElement;
-    const hidden = document.getElementById(`sol-prod-id-${rowIdx}`) as HTMLInputElement;
-    const results = document.getElementById(`sol-prod-results-${rowIdx}`);
-    if (!input || !hidden || !results) return;
+  // --- Buscador Global de Productos (único, con navegación por teclado) ---
+  function initSoGlobalProductSearch() {
+    const input = document.getElementById('so-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('so-prod-results-global');
+    if (!input || !dropdown) return;
 
-    if (line && line.product_id) {
-      const match = products.find((p: any) => p.id === line.product_id);
-      if (match) input.value = `[${match.code || 'S/C'}] ${match.name}`;
-    }
+    let highlighted = -1;
 
-    const performSearch = (val: string) => {
-      const query = val.toLowerCase().trim();
-      const filtered = !query
-        ? products.slice(0, 30)
-        : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(query)).slice(0, 30);
-
+    const renderResults = (filtered: any[]) => {
       if (!filtered.length) {
-        results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+        dropdown.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400"><i class="fas fa-box-open mr-1"></i>Sin resultados para esta búsqueda.</div>';
         return;
       }
-
-      results.innerHTML = filtered.map((p: any) => `
-        <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
-                onclick="window.selectSoProduct(${rowIdx}, '${(window as any).esc(p.id)}', '${(window as any).esc(p.code || 'S/C')}', '${(window as any).esc(p.name)}', ${p.sales_price || 0}, ${p.iva_rate ?? 19})">
-          <div class="font-bold text-gray-800">[${p.code || 'S/C'}] ${p.name}</div>
-          <div class="text-[10px] text-gray-500">Precio Sugerido: ${(window as any).fmt(p.sales_price || 0)} | IVA: ${p.iva_rate}%</div>
+      dropdown.innerHTML = filtered.map((p: any, i: number) => `
+        <button type="button"
+          id="so-gsr-item-${i}"
+          data-prod-idx="${i}"
+          class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block so-gsr-row"
+          style="border-bottom:1px solid #F3F4F6;transition:background .1s"
+          onmouseenter="this.style.background='#F0FBFF'"
+          onmouseleave="this.style.background=''"
+          onclick="window.soGlobalSelectProduct(${i})">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[9px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(p.code || 'S/C')}]</span>
+              <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 text-right">
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+              <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.sales_price || p.base_price || 0)}</span>
+            </div>
+          </div>
         </button>
       `).join('');
+      highlighted = -1;
+      (window as any).__soGlobalFilteredProds = filtered;
     };
 
-    input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
-    input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
-    input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
+    const highlightItem = (idx: number, items: NodeListOf<Element>) => {
+      items.forEach((el: any) => { el.style.background = ''; el.style.fontWeight = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+        (items[idx] as any).scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q
+        ? products.slice(0, 40)
+        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('focus', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('keydown', (ev: KeyboardEvent) => {
+      const items = dropdown.querySelectorAll('.so-gsr-row');
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlighted = Math.min(highlighted + 1, items.length - 1); highlightItem(highlighted, items); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
+      else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const selIdx = highlighted >= 0 ? highlighted : 0;
+        window.soGlobalSelectProduct(selIdx);
+      } else if (ev.key === 'Escape') {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
+  }
+
+  (window as any).soGlobalSelectProduct = function(idx: number) {
+    const filtered: any[] = (window as any).__soGlobalFilteredProds || [];
+    const prod = filtered[idx];
+    if (!prod) return;
+    (window as any).addSoInvoiceLine(prod, null);
+    const input = document.getElementById('so-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('so-prod-results-global');
+    if (input) { input.value = ''; input.focus(); }
+    if (dropdown) dropdown.style.display = 'none';
+    // Scroll al fondo de la tabla para ver la línea recién añadida
+    const tableWrap = document.querySelector('#so-lines-table')?.closest('div[style*="overflow"]') as HTMLElement;
+    if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
   };
 
-  (window as any).selectSoProduct = function(rowIdx: number, id: string, code: string, name: string, price: number, ivaRate: number) {
-    const hidden = document.getElementById(`sol-prod-id-${rowIdx}`) as HTMLInputElement;
-    const input = document.getElementById(`sol-prod-search-${rowIdx}`) as HTMLInputElement;
-    const priceFld = document.getElementById(`sol-price-${rowIdx}`) as HTMLInputElement;
-    const ivaFld = document.getElementById(`sol-iva-${rowIdx}`) as HTMLInputElement;
-
-    if (hidden && input) {
-      hidden.value = id;
-      input.value = `[${code}] ${name}`;
-      if (priceFld && !priceFld.value) priceFld.value = String(price);
-      if (ivaFld) ivaFld.value = String(ivaRate);
-      window.soRecalcLine(rowIdx);
-    }
-  };
-
-  // Carga líneas iniciales
+  // Carga líneas existentes (modo edición)
   if (existingLines.length) {
-    existingLines.forEach(l => (window as any).addSoInvoiceLine(l));
-  } else {
-    (window as any).addSoInvoiceLine();
+    existingLines.forEach((l: any) => {
+      // Enriquecer con nombre del producto para mostrar en la celda
+      const match = products.find((p: any) => p.id === l.product_id);
+      if (match) l._name = match.name;
+      (window as any).addSoInvoiceLine(null, l);
+    });
   }
 
   // Configurar eventos del modal
-  document.getElementById('btn-add-so-line')?.addEventListener('click', () => (window as any).addSoInvoiceLine());
-  document.getElementById('btn-save-so')?.addEventListener('click', () => saveInvoiceDraftWrapper(invoiceId, onDone));
+  document.getElementById('btn-save-so')?.addEventListener('click', () => saveInvoiceDraftWrapper(invoiceId, onDone, inv));
 
+  initSoGlobalProductSearch();
   window.soSuggestDueDate();
   window.soSetRetMode(inv?.ret_total > 0 && !(inv?.ret_rule_renta_id || inv?.ret_rule_ica_id));
 }
@@ -982,6 +1095,7 @@ window.soRecalcLine = function(rowIdx: number) {
   let subtotalSum = 0;
   let ivaSum = 0;
   let retSum = 0;
+  let discountSum = 0;
 
   const isPerLine = (window as any).__soRetMode === 'line';
   const tableRows = document.querySelectorAll('#so-lines-body tr');
@@ -990,12 +1104,15 @@ window.soRecalcLine = function(rowIdx: number) {
     const idParts = row.id.split('-');
     const idx = idParts[idParts.length - 1];
 
-    const qty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
-    const pr = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
-    const ivaRate = parseFloat((document.getElementById(`sol-iva-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+    const qty      = parseFloat((document.getElementById(`sol-qty-${idx}`)   as HTMLInputElement)?.value || '0') || 0;
+    const pr       = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+    const ivaRate  = parseFloat((document.getElementById(`sol-iva-${idx}`)   as HTMLSelectElement)?.value || '0') || 0;
+    const discPct  = parseFloat((document.getElementById(`sol-disc-${idx}`)  as HTMLInputElement)?.value || '0') || 0;
 
-    const lineSub = qty * pr;
-    const lineIva = lineSub * (ivaRate / 100);
+    const lineGross = qty * pr;
+    const lineDisc  = lineGross * (discPct / 100);
+    const lineSub   = lineGross - lineDisc;          // base after discount
+    const lineIva   = lineSub * (ivaRate / 100);
     let lineRet = 0;
 
     if (isPerLine) {
@@ -1010,9 +1127,10 @@ window.soRecalcLine = function(rowIdx: number) {
       if (retFld) retFld.textContent = (window as any).fmt(lineRet);
     }
 
-    subtotalSum += lineSub;
-    ivaSum += lineIva;
-    retSum += lineRet;
+    subtotalSum  += lineGross;
+    ivaSum       += lineIva;
+    retSum       += lineRet;
+    discountSum  += lineDisc;
 
     const lineTot = lineSub + lineIva - lineRet;
     const totFld = document.getElementById(`sol-total-${idx}`);
@@ -1023,6 +1141,8 @@ window.soRecalcLine = function(rowIdx: number) {
   let valRenta = 0;
   let valIca = 0;
 
+  const netSubtotal = subtotalSum - discountSum; // subtotal real después de descuentos
+
   if (!isPerLine) {
     const payMethod = (document.getElementById('so-payment-method') as HTMLSelectElement)?.value;
     if (payMethod === 'CREDITO' && (window as any).__soRetRulesCache) {
@@ -1031,24 +1151,25 @@ window.soRecalcLine = function(rowIdx: number) {
 
       if (rentaId) {
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === rentaId);
-        if (r && subtotalSum >= r.min_base) valRenta = subtotalSum * (r.rate / 100);
+        if (r && netSubtotal >= r.min_base) valRenta = netSubtotal * (r.rate / 100);
       }
       if (icaId) {
         const r = (window as any).__soRetRulesCache.find((x: any) => x.id === icaId);
-        if (r && subtotalSum >= r.min_base) valIca = subtotalSum * (r.rate / 100);
+        if (r && netSubtotal >= r.min_base) valIca = netSubtotal * (r.rate / 100);
       }
       retSum = valRenta + valIca;
     }
   }
 
-  const netTotal = subtotalSum + ivaSum - retSum;
+  const netTotal = netSubtotal + ivaSum - retSum;
 
-  if (document.getElementById('so-total-sub')) (document.getElementById('so-total-sub') as any).textContent = (window as any).fmt(subtotalSum);
-  if (document.getElementById('so-total-iva')) (document.getElementById('so-total-iva') as any).textContent = (window as any).fmt(ivaSum);
+  if (document.getElementById('so-total-sub'))      (document.getElementById('so-total-sub') as any).textContent = (window as any).fmt(subtotalSum);
+  if (document.getElementById('so-total-iva'))      (document.getElementById('so-total-iva') as any).textContent = (window as any).fmt(ivaSum);
+  if (document.getElementById('so-total-discount')) (document.getElementById('so-total-discount') as any).textContent = discountSum > 0 ? `-${(window as any).fmt(discountSum)}` : '-$ 0';
   if (document.getElementById('so-total-ret-renta')) (document.getElementById('so-total-ret-renta') as any).textContent = (window as any).fmt(valRenta);
-  if (document.getElementById('so-total-ret-ica')) (document.getElementById('so-total-ret-ica') as any).textContent = (window as any).fmt(valIca);
-  if (document.getElementById('so-total-ret')) (document.getElementById('so-total-ret') as any).textContent = (window as any).fmt(retSum);
-  if (document.getElementById('so-total-net')) (document.getElementById('so-total-net') as any).textContent = (window as any).fmt(netTotal);
+  if (document.getElementById('so-total-ret-ica'))  (document.getElementById('so-total-ret-ica') as any).textContent = (window as any).fmt(valIca);
+  if (document.getElementById('so-total-ret'))      (document.getElementById('so-total-ret') as any).textContent = (window as any).fmt(retSum);
+  if (document.getElementById('so-total-net'))      (document.getElementById('so-total-net') as any).textContent = (window as any).fmt(netTotal);
 };
 
 // --- Retention Mode Toggle Logic ---
@@ -1075,7 +1196,7 @@ window.soSetRetMode = function(isPerLine: boolean) {
 };
 
 // --- Persistencia Borrador Factura ---
-async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = null) {
+async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = null, inv: any = null) {
   const btn = document.getElementById('btn-save-so') as HTMLButtonElement;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
@@ -1093,6 +1214,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     if (!date) throw new Error('La fecha de emisión es obligatoria.');
     if (!payMethod) throw new Error('Selecciona la forma de pago.');
     if (!txTypeId) throw new Error('Selecciona el tipo de comprobante.');
+    if (!warehouseId) throw new Error('Debes seleccionar la bodega origen (despacho).');
 
     const tableRows = document.querySelectorAll('#so-lines-body tr');
     const lines: any[] = [];

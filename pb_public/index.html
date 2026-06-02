@@ -182,6 +182,8 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
 .modal-overlay.show { display: flex; }
 .modal-box { background: #fff; border-radius: 20px; width: 100%; max-width: 640px; max-height: 94vh; overflow: hidden; box-shadow: 0 25px 60px rgba(0,0,0,.15); animation: slideInUp .3s ease; }
 .modal-box.wide { max-width: 1200px; }
+.modal-box.xl   { max-width: 1500px; }
+.modal-box.xl .modal-body { max-height: calc(96vh - 130px); }
 .modal-header { padding: 20px 24px; border-bottom: 1px solid #F0F0F0; display: flex; align-items: center; justify-content: space-between; }
 .modal-body   { padding: 24px; overflow-y: auto; max-height: calc(94vh - 140px); }
 .modal-footer { padding: 16px 24px; border-top: 1px solid #F0F0F0; display: flex; justify-content: flex-end; gap: 10px; }
@@ -300,8 +302,17 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
     max-height: none !important;
   }
 }
+/* ── Ventas — Header compacto del formulario ─────────────── */
+.so-hdr-label { display:block; font-size:10px; font-weight:700; color:#6B7280; text-transform:uppercase; letter-spacing:.4px; margin-bottom:4px; }
+.so-compact-inp { padding:6px 10px !important; font-size:13px !important; }
+.so-icon-btn { padding:0 !important; width:30px; height:30px; display:flex !important; align-items:center; justify-content:center; flex-shrink:0; border-color:#D1D5DB; background:#fff; }
+/* ── Ventas — Filas compactas de artículos ───────────────── */
+.so-lines-tbl thead th { padding: 7px 8px !important; font-size: 11px !important; }
+.so-lines-tbl tbody td { padding: 5px 6px !important; }
+.so-lines-tbl .form-input { padding: 5px 8px !important; font-size: 13px !important; height: 32px; }
+.so-lines-tbl select.form-input { padding-right: 28px !important; }
 </style>
-  <script type="module" crossorigin src="/assets/index-BsK_Qb_N.js"></script>
+  <script type="module" crossorigin src="/assets/index-BeIMsTAm.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-BW6hN5Bm.css">
 </head>
 <body>

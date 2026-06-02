@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="GRAVY - El software de gestión ERP y POS local y offline-first diseñado para Pymes y Copropiedades en Colombia. Sigue facturando sin depender de internet.">
+  <meta name="keywords" content="ERP local, POS offline, facturacion electronica DIAN, copropiedades propiedad horizontal, inventario PEPS, importaciones, comisiones a vendedores, software administrativo colombia">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://pianiksta86.github.io/gravylocal/">
+  <meta property="og:title" content="GRAVY - ERP Local, POS e Inventario Offline-First">
+  <meta property="og:description" content="Software ERP y POS local que no se detiene si internet falla. Módulos de POS, Inventarios, Copropiedades, Importaciones y Facturación Electrónica DIAN.">
+  <meta property="og:image" content="https://pianiksta86.github.io/gravylocal/assets/gravy-logo.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:title" content="GRAVY - ERP Local, POS e Inventario Offline-First">
+  <meta property="twitter:description" content="Software ERP y POS local que no se detiene si internet falla. Módulos de POS, Inventarios, Copropiedades, Importaciones y Facturación Electrónica DIAN.">
+
+  <title>GRAVY - ERP Local, POS e Inventario Offline-First</title>
+  
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="./style.css">
+  
+  <!-- FontAwesome for Premium Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2364E1FF'/%3E%3Cstop offset='100%25' stop-color='%237F7CFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ctext x='96' y='135' font-size='110' font-weight='800' text-anchor='middle' fill='%23050814' font-family='sans-serif'%3EG%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+  <!-- ==========================================================================
+       HEADER & NAVBAR
+       ========================================================================== */ -->
+  <header class="header" id="header">
+    <div class="container nav-container">
+      <a href="#inicio" class="brand">
+        <div class="logo-container">
+          <img src="./gravy-logo.png" alt="Logo GRAVY" class="logo-img">
+        </div>
+        <span class="brand-name">GRAVY<span class="brand-dot">.</span></span>
+      </a>
+
+      <nav class="nav-menu" id="nav-menu">
+        <a href="#inicio" class="nav-link active">Inicio</a>
+        <a href="#beneficios" class="nav-link">Beneficios</a>
+        <a href="#modulos" class="nav-link">Módulos</a>
+        <a href="#precios" class="nav-link">Precios</a>
+        <a href="#contacto" class="nav-link">Contacto</a>
+      </nav>
+
+      <div class="nav-cta">
+        <a href="#contacto" class="btn btn-primary btn-sm">Solicitar Demo</a>
+      </div>
+
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle Navigation Menu">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ==========================================================================
+         HERO SECTION
+         ========================================================================== */ -->
+    <section class="hero" id="inicio">
+      <div class="container hero-grid">
+        <div class="hero-content">
+          <div class="hero-tag">
+            <i class="fas fa-circle-dot"></i> Lanzamiento Oficial Versión 2.0
+          </div>
+          <h1 class="hero-title">El ERP local y <span class="gradient-text">offline-first</span> que nunca se detiene</h1>
+          <p class="hero-desc">
+            Gestiona tu negocio sin depender de internet. Facturación simplificada, POS, control de inventarios PEPS, importaciones, nómina y copropiedades en red local con sincronización inteligente.
+          </p>
+          <div class="hero-actions">
+            <a href="#precios" class="btn btn-primary">Ver Planes y Tarifas</a>
+            <a href="#contacto" class="btn btn-secondary"><i class="fas fa-calendar-check"></i> Agendar Demo</a>
+          </div>
+          <div class="hero-trust">
+            <div class="trust-item">
+              <i class="fas fa-shield-halved trust-icon"></i>
+              <span class="trust-text">Datos en tu red<br>100% control local</span>
+            </div>
+            <div class="trust-item">
+              <i class="fas fa-bolt trust-icon"></i>
+              <span class="trust-text">Velocidad LAN<br>Sin retrasos</span>
+            </div>
+            <div class="trust-item">
+              <i class="fas fa-cubes trust-icon"></i>
+              <span class="trust-text">Modularidad total<br>Paga lo que usas</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="mockup-wrapper">
+            <div class="mockup-base">
+              <div class="mockup-header">
+                <div class="mockup-dot red"></div>
+                <div class="mockup-dot yellow"></div>
+                <div class="mockup-dot green"></div>
+              </div>
+              <div class="mockup-body">
+                <div class="mockup-layout">
+                  <div class="mockup-sidebar">
+                    <div class="mockup-sidebar-item active"></div>
+                    <div class="mockup-sidebar-item" style="width: 70%"></div>
+                    <div class="mockup-sidebar-item" style="width: 60%"></div>
+                    <div class="mockup-sidebar-item" style="width: 65%"></div>
+                    <div class="mockup-sidebar-item" style="width: 50%"></div>
+                  </div>
+                  <div class="mockup-content">
+                    <div class="mockup-stats">
+                      <div class="mockup-stat-card">
+                        <div class="mockup-bar"></div>
+                        <span style="font-size: 10px; font-weight: 700; color: var(--accent-cyan)">$4.2M</span>
+                      </div>
+                      <div class="mockup-stat-card">
+                        <div class="mockup-bar"></div>
+                        <span style="font-size: 10px; font-weight: 700; color: var(--accent-violet)">+18%</span>
+                      </div>
+                      <div class="mockup-stat-card">
+                        <div class="mockup-bar"></div>
+                        <span style="font-size: 10px; font-weight: 700; color: #10b981">99.9%</span>
+                      </div>
+                    </div>
+                    <div class="mockup-chart">
+                      <div class="mockup-chart-bar"></div>
+                      <div class="mockup-chart-bar"></div>
+                      <div class="mockup-chart-bar"></div>
+                      <div class="mockup-chart-bar"></div>
+                      <div class="mockup-chart-bar"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mockup-overlay-badge">
+                <i class="fas fa-wifi-slash"></i> Offline Activo
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         KEY BENEFITS / USPS
+         ========================================================================== */ -->
+    <section class="features" id="beneficios">
+      <div class="container text-center">
+        <span class="section-tag">¿Por qué GRAVY?</span>
+        <h2 class="section-title">Diseñado para la realidad de tu empresa</h2>
+        <p class="section-subtitle">
+          Supera las limitaciones de los sistemas en la nube convencionales con una arquitectura híbrida optimizada para el mercado real.
+        </p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon-wrapper">
+              <i class="fas fa-shuffle"></i>
+            </div>
+            <h3>Flexibilidad Híbrida (Local/Cloud)</h3>
+            <p>
+              Elige cómo trabajar. Ejecuta el sistema de forma 100% local en tu red interna (LAN) sin depender de internet para proteger tus datos y facturar rápido, o conéctalo a la Nube (Cloud) para acceso remoto y multisede.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-wrapper">
+              <i class="fas fa-vault"></i>
+            </div>
+            <h3>Privacidad y Control de Datos</h3>
+            <p>
+              Tú eres el único dueño de tu información financiera. GRAVY almacena la base de datos localmente con PocketBase, reduciendo la dependencia de costosos servidores en la nube de terceros y aumentando la seguridad.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon-wrapper">
+              <i class="fas fa-puzzle-piece"></i>
+            </div>
+            <h3>Esquema Modular Flexible</h3>
+            <p>
+              Evita pagar suscripciones por softwares ERP sobredimensionados. Adquiere el Core contable obligatorio y adiciona únicamente los módulos que tu negocio requiere (POS, Copropiedades, Importaciones, etc.).
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         MODULES CATALOGUE
+         ========================================================================== */ -->
+    <section class="modules" id="modulos">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag">Módulos del Sistema</span>
+          <h2 class="section-title">Una solución para cada área</h2>
+          <p class="section-subtitle">
+            Módulos integrados de forma nativa que comparten clientes, inventarios y contabilidad en tiempo real sin interfaces complejas.
+          </p>
+        </div>
+
+        <div class="modules-filter">
+          <button class="filter-btn active" data-filter="all">Todos los Módulos</button>
+          <button class="filter-btn" data-filter="comercial">Comercial y POS</button>
+          <button class="filter-btn" data-filter="contable">Contabilidad y DIAN</button>
+          <button class="filter-btn" data-filter="copropiedades">Copropiedades / PH</button>
+        </div>
+
+        <div class="modules-grid" id="modules-grid">
+          <!-- POS -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-cash-register"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Punto de Venta POS</h3>
+            <p class="module-desc">Venta rápida de mostrador ideal para supermercados, almacenes y retail. Sincronización instantánea de stock.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cuadre y cierre de caja ciego</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Integración con lectores 2D y 3D</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Tiquete POS con resolución DIAN</div>
+            </div>
+          </div>
+
+          <!-- INVENTARIOS -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-boxes-stacked"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Inventarios y Kárdex</h3>
+            <p class="module-desc">Control exacto de existencias en múltiples bodegas con metodologías de valuación de costo estándar.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Costeo PEPS y Promedio ponderado</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Ajustes de stock, traslados y mermas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Alertas automáticas de stock mínimo</div>
+            </div>
+          </div>
+
+          <!-- FACTURACION DIAN -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Facturación Electrónica DIAN</h3>
+            <p class="module-desc">Emisión oficial de facturas de venta, notas débito y crédito bajo el estándar UBL 2.1 vigente.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Firma digital directa sin intermediarios</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Envío automático de XML y PDF a clientes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Acuses de recibo y aceptación de facturas</div>
+            </div>
+          </div>
+
+          <!-- COPROPIEDADES -->
+          <div class="module-card copropiedades" data-category="copropiedades">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-building"></i></div>
+              <span class="module-category">Copropiedades</span>
+            </div>
+            <h3 class="module-title">Copropiedades y PH</h3>
+            <p class="module-desc">Administración especializada de propiedad horizontal residencial y comercial con control de unidades.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Facturación masiva de expensas comunes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Reservas de zonas comunes y salones</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Gestión de PQRSD de propietarios</div>
+            </div>
+          </div>
+
+          <!-- TESORERIA -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-hand-holding-dollar"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Tesorería y Cartera</h3>
+            <p class="module-desc">Registros de caja, conciliación bancaria y un potente motor inteligente para aplicación de recaudos.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Aplicación automática de abonos por reglas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cartera auxiliar por concepto y unidad</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cálculo automático de intereses de mora</div>
+            </div>
+          </div>
+
+          <!-- IMPORTACIONES -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-ship"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Gestión de Importaciones</h3>
+            <p class="module-desc">Control integral de compras del exterior desde la orden internacional hasta el ingreso a bodega.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Prorrateo inteligente de aranceles y fletes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Registro de tránsitos y gastos logísticos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Costeo exacto nacionalizado del producto</div>
+            </div>
+          </div>
+
+          <!-- COMISIONES -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-users-gear"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Comisiones a Vendedores</h3>
+            <p class="module-desc">Parametrización avanzada y liquidación automática de incentivos comerciales de forma transparente.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Reglas dinámicas (generales o por producto)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cálculo sobre base facturada o cobrada</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Historial y auditoría de liquidación</div>
+            </div>
+          </div>
+
+          <!-- CONTABILIDAD PUC -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-calculator"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Contabilidad PUC</h3>
+            <p class="module-desc">Contabilidad completa integrada por debajo de la operación comercial y del día a día del negocio.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> PUC comercial colombiano de 6 niveles</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Asientos automáticos en partida doble</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Balance General y Estado de Resultados</div>
+            </div>
+          </div>
+
+          <!-- NOMINA -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-header">
+              <div class="module-icon"><i class="fas fa-people-group"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Nómina Electrónica</h3>
+            <p class="module-desc">Liquidación de salarios de empleados, horas extras, prestaciones sociales y su reporte obligatorio a la DIAN.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Nómina individual y provisión de cesantías</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Transmisión directa de nómina electrónica</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Integración contable y de tesorería automática</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         PRICING SECTION
+         ========================================================================== */ -->
+    <section class="pricing" id="precios">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag">Planes y Precios</span>
+          <h2 class="section-title">Esquemas de inversión flexibles</h2>
+          <p class="section-subtitle">
+            Elige el modelo que mejor se adapte a tu flujo de caja. Puedes suscribirte mensualmente o comprar la licencia vitalicia única.
+          </p>
+        </div>
+
+        <div class="pricing-switch-wrapper">
+          <span class="pricing-switch-label active" id="label-monthly">Suscripción Mensual</span>
+          <label class="switch-control">
+            <input type="checkbox" id="pricing-toggle" aria-label="Toggle pricing mode between monthly and lifetime">
+            <span class="slider"></span>
+          </label>
+          <span class="pricing-switch-label" id="label-lifetime">Licencia Vitalicia <span class="badge-discount">-50% Lanzamiento</span></span>
+        </div>
+        <div class="pricing-deployment-desc text-center" id="pricing-deployment-desc" style="margin-top: -30px; margin-bottom: 45px; font-size: 13px; font-weight: 700; color: var(--accent-violet-strong); transition: var(--transition-normal);">
+          <i class="fas fa-cloud"></i> Servicio Cloud Integrado (Suscripción incluye base de datos Cloud sincronizada)
+        </div>
+
+        <div class="pricing-grid" id="pricing-grid">
+          <!-- CORE CONTABLE -->
+          <div class="pricing-card" data-plan="core">
+            <h3 class="plan-name">Plan Core Contable</h3>
+            <p class="plan-desc">El motor fundamental para empresas y contadores independientes.</p>
+            <div class="plan-price-wrapper">
+              <span class="plan-currency">$</span>
+              <span class="plan-price" data-monthly="89.000" data-lifetime="979.000">89.000</span>
+              <span class="plan-period" id="period-core">/ mes</span>
+            </div>
+            <div class="plan-features">
+              <div class="plan-feature-item deployment-feature"><i class="fas fa-cloud"></i> Servidor Cloud Sincronizado</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Contabilidad PUC completa</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Gestión de Terceros (CRM)</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Auditoría de transacciones</div>
+              <div class="plan-feature-item disabled"><i class="fas fa-circle-xmark"></i> Punto de Venta POS</div>
+              <div class="plan-feature-item disabled"><i class="fas fa-circle-xmark"></i> Factura Electrónica DIAN</div>
+            </div>
+            <a href="#contacto" class="btn btn-secondary">Comenzar</a>
+          </div>
+
+          <!-- PYME COMERCIAL -->
+          <div class="pricing-card" data-plan="pyme">
+            <h3 class="plan-name">Plan Pyme Comercial</h3>
+            <p class="plan-desc">Diseñado para almacenes, distribuidores y comercios minoristas.</p>
+            <div class="plan-price-wrapper">
+              <span class="plan-currency">$</span>
+              <span class="plan-price" data-monthly="129.000" data-lifetime="1.419.000">129.000</span>
+              <span class="plan-period" id="period-pyme">/ mes</span>
+            </div>
+            <div class="plan-features">
+              <div class="plan-feature-item deployment-feature"><i class="fas fa-cloud"></i> Servidor Cloud Sincronizado</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Punto de Venta POS Rápido</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Inventario & Kárdex PEPS</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Comisiones a Vendedores</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Pedidos, Compras y Cotizaciones</div>
+              <div class="plan-feature-item disabled"><i class="fas fa-circle-xmark"></i> Factura Electrónica DIAN</div>
+            </div>
+            <a href="#contacto" class="btn btn-secondary">Comenzar</a>
+          </div>
+
+          <!-- COPROPIEDADES -->
+          <div class="pricing-card" data-plan="copropiedades">
+            <h3 class="plan-name">Plan Copropiedades</h3>
+            <p class="plan-desc">Solución dedicada a la administración de Propiedad Horizontal.</p>
+            <div class="plan-price-wrapper">
+              <span class="plan-currency">$</span>
+              <span class="plan-price" data-monthly="159.000" data-lifetime="1.749.000">159.000</span>
+              <span class="plan-period" id="period-copropiedades">/ mes</span>
+            </div>
+            <div class="plan-features">
+              <div class="plan-feature-item deployment-feature"><i class="fas fa-cloud"></i> Servidor Cloud Sincronizado</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Módulo de Propiedad Horizontal</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Facturación Masiva de Expensas</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Tesorería y Cartera de unidades</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Gestión de Reservas y PQRS</div>
+              <div class="plan-feature-item disabled"><i class="fas fa-circle-xmark"></i> Factura Electrónica DIAN</div>
+            </div>
+            <a href="#contacto" class="btn btn-secondary">Comenzar</a>
+          </div>
+
+          <!-- ERP FULL -->
+          <div class="pricing-card popular" data-plan="full">
+            <div class="popular-badge">Recomendado</div>
+            <h3 class="plan-name">Plan ERP Full</h3>
+            <p class="plan-desc">Acceso completo a todos los módulos y cumplimiento fiscal.</p>
+            <div class="plan-price-wrapper">
+              <span class="plan-currency">$</span>
+              <span class="plan-price" data-monthly="199.000" data-lifetime="2.189.000">199.000</span>
+              <span class="plan-period" id="period-full">/ mes</span>
+            </div>
+            <div class="plan-features">
+              <div class="plan-feature-item deployment-feature"><i class="fas fa-cloud"></i> Servidor Cloud Sincronizado</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Todos los módulos de GRAVY</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Facturación y Nómina Electrónica</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Módulo de Importaciones Completo</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Generación de Medios Magnéticos</div>
+              <div class="plan-feature-item"><i class="fas fa-circle-check"></i> Conciliación Bancaria Avanzada</div>
+            </div>
+            <a href="#contacto" class="btn btn-primary">Adquirir Plan</a>
+          </div>
+        </div>
+
+        <!-- Modular pricing block -->
+        <div class="pricing-modular">
+          <h3 class="modular-title">
+            <i class="fas fa-puzzle-piece"></i> Licenciamiento Modular / A la Carta
+          </h3>
+          <p class="modular-desc">
+            Si tus requerimientos son específicos, puedes adquirir el <strong>Core Contable Obligatorio</strong> y sumarle los módulos individuales que necesites de forma independiente:
+          </p>
+          <div class="modular-grid">
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Core Contable (Requerido)</span>
+                <span class="modular-item-type">Base</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="$89.000" data-lifetime="$979.000">$89.000</span>
+                <span class="modular-item-period">Base / mes</span>
+              </div>
+            </div>
+
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Punto de Venta POS</span>
+                <span class="modular-item-type">Add-on</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="+$35.000" data-lifetime="+$385.000">+$35.000</span>
+                <span class="modular-item-period">Adicional / mes</span>
+              </div>
+            </div>
+
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Inventarios y Kárdex PEPS</span>
+                <span class="modular-item-type">Add-on</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="+$35.000" data-lifetime="+$385.000">+$35.000</span>
+                <span class="modular-item-period">Adicional / mes</span>
+              </div>
+            </div>
+
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Factura y Nómina Electrónica DIAN</span>
+                <span class="modular-item-type">Add-on</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="+$45.000" data-lifetime="+$495.000">+$45.000</span>
+                <span class="modular-item-period">Adicional / mes</span>
+              </div>
+            </div>
+
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Importaciones Especializadas</span>
+                <span class="modular-item-type">Add-on</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="+$50.000" data-lifetime="+$550.000">+$50.000</span>
+                <span class="modular-item-period">Adicional / mes</span>
+              </div>
+            </div>
+
+            <div class="modular-item">
+              <div class="modular-item-info">
+                <span class="modular-item-name">Copropiedades (Propiedad Horizontal)</span>
+                <span class="modular-item-type">Add-on</span>
+              </div>
+              <div class="modular-item-price">
+                <span class="modular-item-val" data-monthly="+$65.000" data-lifetime="+$715.000">+$65.000</span>
+                <span class="modular-item-period">Adicional / mes</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================================================
+         CONTACT & SUPPORT SECTION
+         ========================================================================== */ -->
+    <section class="contact" id="contacto">
+      <div class="container contact-grid">
+        <div class="contact-info">
+          <span class="section-tag">Contacto y Soporte</span>
+          <h2 class="section-title">¿Listo para transformar tu gestión?</h2>
+          <p class="section-subtitle" style="margin-left: 0; text-align: left;">
+            Ponte en contacto con nuestro equipo comercial para solicitar una demostración interactiva guiada por un especialista o resolver cualquier duda sobre licenciamiento y despliegue local.
+          </p>
+
+          <div class="contact-details">
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fas fa-envelope"></i></div>
+              <div class="contact-text">
+                <h4>Correo Electrónico</h4>
+                <p><a href="mailto:ventas@gravy.local">ventas.gravy@gmail.com</a></p>
+              </div>
+            </div>
+
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fab fa-whatsapp"></i></div>
+              <div class="contact-text">
+                <h4>Ventas y Soporte WhatsApp</h4>
+                <p><a href="https://wa.me/573233273136?text=Hola,%20deseo%20m%C3%A1s%20informaci%C3%B3n%20sobre%20el%20software%20GRAVY" target="_blank" rel="noopener">+57 323 327 3136</a></p>
+              </div>
+            </div>
+
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fas fa-location-dot"></i></div>
+              <div class="contact-text">
+                <h4>Cobertura y Despliegue</h4>
+                <p>Instalación en red local para toda Colombia.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-form-wrapper">
+          <div class="form-alert success" id="form-success">
+            <i class="fas fa-circle-check"></i> ¡Mensaje enviado con éxito! Un asesor se contactará por WhatsApp pronto.
+          </div>
+          <div class="form-alert error" id="form-error">
+            <i class="fas fa-circle-xmark"></i> Por favor completa todos los campos del formulario.
+          </div>
+          
+          <form class="contact-form" id="contact-form" action="#" method="POST">
+            <div class="form-group">
+              <label for="form-name" class="form-label">Nombre Completo</label>
+              <input type="text" id="form-name" class="form-input" placeholder="Ej. Juan Pérez" required>
+            </div>
+            
+            <div class="form-group">
+              <label for="form-phone" class="form-label">Teléfono / WhatsApp</label>
+              <input type="tel" id="form-phone" class="form-input" placeholder="Ej. 300 123 4567" required>
+            </div>
+
+            <div class="form-group">
+              <label for="form-email" class="form-label">Correo Electrónico</label>
+              <input type="email" id="form-email" class="form-input" placeholder="Ej. juan@empresa.com" required>
+            </div>
+
+            <div class="form-group">
+              <label for="form-plan" class="form-label">Plan de Interés</label>
+              <select id="form-plan" class="form-input">
+                <option value="core">Plan Core Contable</option>
+                <option value="pyme">Plan Pyme Comercial</option>
+                <option value="copropiedades">Plan Copropiedades</option>
+                <option value="full" selected>Plan ERP Full</option>
+                <option value="modular">Esquema Modular / A la Carta</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="form-msg" class="form-label">Mensaje o Requerimientos</label>
+              <textarea id="form-msg" class="form-input" placeholder="Cuéntanos un poco sobre tu negocio (ej. cantidad de bodegas, si requieres POS, facturación DIAN, etc.)" required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Enviar Solicitud</button>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ==========================================================================
+       WHATSAPP FLOATING BUTTON
+       ========================================================================== */ -->
+  <a href="https://wa.me/573233273136?text=Hola,%20deseo%20m%C3%A1s%20informaci%C3%B3n%20sobre%20el%20software%20GRAVY" class="whatsapp-float" target="_blank" rel="noopener" aria-label="Contactar a soporte por WhatsApp">
+    <i class="fab fa-whatsapp"></i>
+  </a>
+
+  <!-- ==========================================================================
+       FOOTER
+       ========================================================================== */ -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a href="#inicio" class="brand">
+          <div class="logo-container" style="width: 36px; height: 36px; padding: 4px;">
+            <img src="./gravy-logo.png" alt="Logo GRAVY" class="logo-img">
+          </div>
+          <span class="brand-name" style="font-size: 18px;">GRAVY<span class="brand-dot">.</span></span>
+        </a>
+        <p class="footer-desc">
+          Software ERP y POS híbrido y local diseñado para el mercado colombiano. Estabilidad e independencia de internet para tu administración comercial y de copropiedades.
+        </p>
+      </div>
+
+      <div class="footer-nav">
+        <h4>Enlaces Rápidos</h4>
+        <div class="footer-links">
+          <a href="#inicio" class="footer-link">Inicio</a>
+          <a href="#beneficios" class="footer-link">Beneficios</a>
+          <a href="#modulos" class="footer-link">Módulos del Sistema</a>
+          <a href="#precios" class="footer-link">Planes y Precios</a>
+        </div>
+      </div>
+
+      <div class="footer-nav">
+        <h4>Soporte y Ventas</h4>
+        <div class="footer-links">
+          <a href="https://wa.me/573233273136?text=Hola,%20deseo%20soporte%20t%C3%A9cnico%20de%20GRAVY" class="footer-link"><i class="fab fa-whatsapp"></i> Soporte de Implementación</a>
+          <a href="https://wa.me/573233273136?text=Hola,%20deseo%20cotizar%20GRAVY" class="footer-link"><i class="fab fa-whatsapp"></i> Ventas Corporativas</a>
+          <a href="mailto:ventas.gravy@gmail.com" class="footer-link"><i class="fas fa-envelope"></i> ventas.gravy@gmail.com</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="container footer-bottom">
+      <p class="copyright">&copy; 2026 GRAVY Software. Todos los derechos reservados. Diseñado para alta disponibilidad local.</p>
+      <div class="footer-legal">
+        <a href="#inicio" class="footer-legal-link">Términos de Licencia</a>
+        <a href="#inicio" class="footer-legal-link">Política de Datos Privada</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JS Logic -->
+  <script src="./script.js"></script>
+</body>
+</html>

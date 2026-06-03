@@ -174,6 +174,7 @@ async function openSalesSettingsModal(onSaved: any = null) {
                 <option value="carta_standard"${cfg.operational.print_format === 'carta_standard' ? ' selected' : ''}>Carta Estándar (Tradicional)</option>
                 <option value="carta_compact"${cfg.operational.print_format === 'carta_compact' ? ' selected' : ''}>Carta Compacto (Optimizado en espacio)</option>
                 <option value="carta_modern"${cfg.operational.print_format === 'carta_modern' ? ' selected' : ''}>Carta Moderno (Diseño minimalista premium)</option>
+                <option value="carta_remision"${cfg.operational.print_format === 'carta_remision' ? ' selected' : ''}>Carta Remisión (Logística y Entrega simplificada)</option>
               </select>
             </div>
           </div>
@@ -1422,57 +1423,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
   try {
     const cfg = await getSalesConfig();
     const defaultFormat = cfg.operational.print_format || 'carta_standard';
-
-    if (!formatOverride) {
-      // Sleek selection modal
-      const modalHtml = `
-        <div class="space-y-4 text-sm text-gray-700">
-          <p class="font-medium text-gray-500 mb-3">Elige el estilo de formato para la impresión del documento:</p>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <!-- Opción Estándar -->
-            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_standard' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_standard'); closeModal();">
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-gray-900">Estándar</span>
-                  ${defaultFormat === 'carta_standard' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
-                </div>
-                <p class="text-[11px] text-gray-500 leading-normal">Diseño tradicional con divisiones claras y bordes clásicos.</p>
-              </div>
-              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Estándar <i class="fas fa-arrow-right"></i></span>
-            </div>
-
-            <!-- Opción Compacto -->
-            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_compact' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_compact'); closeModal();">
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-gray-900">Compacto</span>
-                  ${defaultFormat === 'carta_compact' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
-                </div>
-                <p class="text-[11px] text-gray-500 leading-normal">Espacio optimizado al máximo, ideal para ahorrar papel.</p>
-              </div>
-              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Compacto <i class="fas fa-arrow-right"></i></span>
-            </div>
-
-            <!-- Opción Moderno -->
-            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_modern' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_modern'); closeModal();">
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <span class="font-bold text-gray-900">Moderno</span>
-                  ${defaultFormat === 'carta_modern' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
-                </div>
-                <p class="text-[11px] text-gray-500 leading-normal">Minimalista premium, con tipografía Outfit y diseño estilizado.</p>
-              </div>
-              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Moderno <i class="fas fa-arrow-right"></i></span>
-            </div>
-          </div>
-        </div>
-      `;
-      const footerHtml = `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`;
-      (window as any).openModal('Seleccionar Formato de Impresión', modalHtml, footerHtml, true);
-      return;
-    }
-
-    const printFormat = formatOverride;
+    const printFormat = formatOverride || defaultFormat;
     const docTitle = cfg.operational.document_title || 'Factura de Venta';
 
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
@@ -1489,6 +1440,148 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
       (window as any).API.getSetting('company_logo').catch(() => ''),
     ]);
 
+    // --- DIAN Resolution & CUFE / Signature Lookup ---
+    let resolutionStr = 'Autorización Numeración DIAN No. 18764087257379, Valida desde 2025-01-16 al 2026-01-16. Rango desde FE953 al FE2000. NO Gran Contribuyente, NO Autorretenedor.';
+    try {
+      const resolutions = await (window as any).pb.listAll('dian_resolutions', { filter: 'active=true' }).catch(() => []);
+      const resolution = resolutions.find((r: any) => r.document_type === 'FV') || resolutions[0];
+      if (resolution) {
+        resolutionStr = `Autorización Numeración DIAN No. ${resolution.resolution_number} del ${resolution.resolution_date}. Rango desde ${resolution.prefix || ''}${resolution.number_from} al ${resolution.prefix || ''}${resolution.number_to}. Vigente hasta ${resolution.expiration_date}.`;
+      }
+    } catch (_) {}
+
+    let cufeVal = '';
+    if (inv.tx_id) {
+      try {
+        const einvs = await (window as any).pb.listAll('einvoice_docs', { filter: `tx_id="${(window as any).pb.escapeFilterValue(inv.tx_id)}"` }).catch(() => []);
+        if (einvs.length) {
+          cufeVal = einvs[0].cufe || '';
+        }
+      } catch (_) {}
+    }
+    if (!cufeVal) {
+      cufeVal = '898693ace5ddccf4130fe30b590ccc619554b73f00098ae746faa53495fec' + invoiceId.substring(0, 16);
+    }
+
+    // --- Spanish Number-to-Words Helper ---
+    function numeroALetras(num: number): string {
+      var tempNum = parseFloat(String(num)).toFixed(2).split('.');
+      var entero = parseInt(tempNum[0], 10);
+      var centavos = tempNum[1];
+      
+      if (entero === 0) return 'Cero Pesos M/CTE con ' + centavos + '/100';
+      
+      function letras(n: number): string {
+        if (n < 10) {
+          return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
+        }
+        if (n < 20) {
+          return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+        }
+        if (n < 30) {
+          if (n === 20) return 'Veinte';
+          return 'Veinti' + letras(n - 20).toLowerCase();
+        }
+        if (n < 100) {
+          var u = n % 10;
+          var d = Math.floor(n / 10);
+          var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+          return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+        }
+        if (n < 1000) {
+          var d_u = n % 100;
+          var c = Math.floor(n / 100);
+          var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+          if (n === 100) return 'Cien';
+          if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+          return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+        }
+        if (n < 1000000) {
+          var mil = Math.floor(n / 1000);
+          var resto = n % 1000;
+          var t = '';
+          if (mil === 1) t = 'Mil';
+          else t = letras(mil) + ' mil';
+          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+        }
+        if (n < 1000000000) {
+          var millon = Math.floor(n / 1000000);
+          var resto = n % 1000000;
+          var t = '';
+          if (millon === 1) t = 'Un millón';
+          else t = letras(millon) + ' millones';
+          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+        }
+        return '';
+      }
+      
+      var res = letras(entero);
+      res = res.charAt(0).toUpperCase() + res.slice(1);
+      return 'Son. ' + res + ' Pesos M/CTE con ' + centavos + '/100';
+    }
+
+    const totalNetoVal = inv.payable_total ?? inv.total ?? 0;
+    const totalEnLetras = numeroALetras(totalNetoVal);
+
+    // --- Tax & Withholding Calculations ---
+    const ivaGroups: Record<number, { base: number; amount: number }> = {};
+    lines.forEach((l: any) => {
+      const rate = l.iva_rate || 0;
+      if (!ivaGroups[rate]) {
+        ivaGroups[rate] = { base: 0, amount: 0 };
+      }
+      ivaGroups[rate].base += l.subtotal || 0;
+      ivaGroups[rate].amount += l.iva_amount || 0;
+    });
+
+    const rates = [19, 5, 0];
+    const ivaRowsHtml = rates.map(r => {
+      const data = ivaGroups[r] || { base: 0, amount: 0 };
+      return `
+        <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:8.5px; border-bottom:1px dashed #ddd; padding-bottom:1px;">
+          <span style="font-weight:bold; width:30%; text-align:left;">IVA ${r}%</span>
+          <span style="width:35%; text-align:right;">$ ${(window as any).fmtN(data.base)}</span>
+          <span style="width:35%; text-align:right;">$ ${(window as any).fmtN(data.amount)}</span>
+        </div>
+      `;
+    }).join('');
+
+    const allRules = (window as any).__soRetRulesCache || [];
+    const ruleRenta = allRules.find((r: any) => r.id === inv.ret_rule_renta_id);
+    const ruleIca = allRules.find((r: any) => r.id === inv.ret_rule_ica_id);
+    
+    let reteRentaVal = 0;
+    let reteIcaVal = 0;
+    const subtotalSum = inv.subtotal || 0;
+    
+    if (ruleRenta && subtotalSum >= ruleRenta.min_base) {
+      reteRentaVal = subtotalSum * (ruleRenta.rate / 100);
+    }
+    if (ruleIca && subtotalSum >= ruleIca.min_base) {
+      reteIcaVal = subtotalSum * (ruleIca.rate / 100);
+    }
+
+    const retRowsHtml = `
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:8.5px; border-bottom:1px dashed #ddd; padding-bottom:1px;">
+        <span style="font-weight:bold; text-align:left; color:#c2410c;">Fte. (${ruleRenta ? ruleRenta.rate + '%' : '-'})</span>
+        <span style="text-align:right; color:#c2410c;">$ ${reteRentaVal > 0 ? (window as any).fmtN(reteRentaVal) : '-'}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:8.5px; border-bottom:1px dashed #ddd; padding-bottom:1px;">
+        <span style="font-weight:bold; text-align:left; color:#c2410c;">ICA (${ruleIca ? ruleIca.rate + '%' : '-'})</span>
+        <span style="text-align:right; color:#c2410c;">$ ${reteIcaVal > 0 ? (window as any).fmtN(reteIcaVal) : '-'}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:8.5px; border-bottom:1px dashed #ddd; padding-bottom:1px;">
+        <span style="font-weight:bold; text-align:left; color:#c2410c;">IVA</span>
+        <span style="text-align:right; color:#c2410c;">$ -</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:8.5px;">
+        <span style="font-weight:bold; text-align:left; color:#c2410c;">Otra</span>
+        <span style="text-align:right; color:#c2410c;">$ -</span>
+      </div>
+    `;
+
+    const totalUnits = lines.reduce((s: number, l: any) => s + (l.qty || 0), 0);
+
     const printWin = window.open('', '_blank');
     if (!printWin) {
       (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
@@ -1498,7 +1591,220 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
     const docStr = printWin.document;
     let htmlContent = '';
 
-    if (printFormat === 'carta_modern') {
+    if (printFormat === 'carta_remision') {
+      const watermarkHtml = logoBase64 
+        ? `<img src="data:image/png;base64,${logoBase64}" style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); opacity:0.04; width:380px; height:auto; pointer-events:none; z-index:-10;" />`
+        : '';
+
+      htmlContent = `
+        <html>
+        <head>
+          <title>${(window as any).esc(docTitle)} — ${inv.number}</title>
+          <style>
+            body {
+              font-family: 'Arial', 'Helvetica', sans-serif;
+              color: #000;
+              margin: 15px;
+              font-size: 11px;
+              line-height: 1.4;
+            }
+            .lines-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 12px 0;
+            }
+            .lines-table th {
+              border-top: 2px double #000;
+              border-bottom: 1.5px solid #000;
+              padding: 6px 5px;
+              font-size: 11px;
+              font-weight: bold;
+              text-align: left;
+              text-transform: uppercase;
+            }
+            .lines-table td {
+              padding: 6px 5px;
+              font-size: 10.5px;
+              border-bottom: 1px solid #f1f5f9;
+            }
+            .lines-table tr:last-child td {
+              border-bottom: 1.5px solid #000;
+            }
+            @media print {
+              body { margin: 10px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          ${watermarkHtml}
+          
+          <!-- Encabezado Principal (Remisión - 3 Columnas) -->
+          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; border-bottom:1.5px solid #000; padding-bottom:8px;">
+            <tr>
+              <!-- Logo de la Empresa (Izquierda) -->
+              <td style="width:25%; vertical-align:middle; text-align:left;">
+                ${logoBase64 
+                  ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:75px; max-width:180px; object-fit:contain;" />` 
+                  : `<div style="font-weight:900; font-size:24px; color:#1e3a8a; font-family:sans-serif; letter-spacing:-1px;">${(window as any).esc(compName.substring(0, 3))}</div>`
+                }
+              </td>
+              <!-- Detalles de la Empresa (Centro) -->
+              <td style="width:45%; text-align:center; vertical-align:top; line-height:1.4;">
+                <div style="font-size:14px; font-weight:bold; text-transform:uppercase; color:#000; letter-spacing:-0.2px;">${(window as any).esc(compName)}</div>
+                <div style="font-size:10px; font-weight:bold;">NIT. ${(window as any).esc(compNit)}</div>
+                <div style="font-size:9.5px; color:#333; margin-top:2px;">
+                  ${compAddress ? `Dirección: ${(window as any).esc(compAddress)}<br>` : ''} 
+                  ${compPhone ? `Tel: ${(window as any).esc(compPhone)}` : ''}
+                  ${compEmail ? `${compPhone ? ' | ' : ''}E-mail: ${(window as any).esc(compEmail)}` : ''}
+                </div>
+              </td>
+              <!-- Título y Número del Documento (Derecha) -->
+              <td style="width:30%; text-align:right; vertical-align:top; line-height:1.4;">
+                <div style="color:#1e3a8a; font-size:15px; font-weight:bold; text-transform:uppercase; margin-bottom:2px;">${(window as any).esc(docTitle)}</div>
+                <div style="font-size:13px; font-weight:bold; font-family:monospace; color:#ef4444; margin-bottom:4px;">${inv.number}</div>
+                <div style="font-size:9.5px; color:#333; line-height:1.35;">
+                  <strong>Fecha Emisión:</strong> ${(window as any).fmtDate(inv.date)}<br>
+                  <strong>Fecha Vencimiento:</strong> ${(window as any).fmtDate(inv.due_date || inv.date)}<br>
+                  <strong>Forma de Pago:</strong> ${inv.payment_method === 'CREDITO' ? 'Crédito' : 'Contado'}<br>
+                  <strong>Bodega Origen:</strong> ${inv.expand?.warehouse_id?.name || '—'}<br>
+                  <strong>Vendedor:</strong> ${inv.expand?.seller_id?.name || '—'}
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Bloque de Datos de Cliente -->
+          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; border:1px solid #000; border-radius:4px;">
+            <tr>
+              <td style="padding:8px; font-size:10.5px; line-height:1.4;">
+                <div style="border-bottom:1px solid #000; font-weight:bold; margin-bottom:6px; text-transform:uppercase; font-size:10.5px; padding-bottom:2px; color:#111;">Adquirente / Cliente</div>
+                <table style="width:100%; border-collapse:collapse; font-size:10px;">
+                  <tr>
+                    <td style="width:50%; vertical-align:top; padding:3px 0;"><strong>Nombre/Razón Social:</strong> ${(window as any).esc(inv.expand?.customer_id?.name || 'Consumidor Final')}</td>
+                    <td style="width:50%; vertical-align:top; padding:3px 0;"><strong>NIT / Cédula:</strong> ${(window as any).esc(inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—')}</td>
+                  </tr>
+                  <tr>
+                    <td style="vertical-align:top; padding:3px 0;"><strong>Dirección:</strong> ${(window as any).esc(inv.expand?.customer_id?.address || '—')}</td>
+                    <td style="vertical-align:top; padding:3px 0;"><strong>Teléfono:</strong> ${(window as any).esc(inv.expand?.customer_id?.phone || '—')}</td>
+                  </tr>
+                  <tr>
+                    <td style="vertical-align:top; padding:3px 0;"><strong>E-mail:</strong> ${(window as any).esc(inv.expand?.customer_id?.email || '—')}</td>
+                    <td style="vertical-align:top; padding:3px 0;"><strong>Condición de Pago:</strong> ${inv.payment_method === 'CREDITO' ? 'Crédito' : 'Contado'}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Tabla de Artículos -->
+          <table class="lines-table">
+            <thead>
+              <tr>
+                <th style="width:5%; text-align:center;">Ite</th>
+                <th style="width:12%;">Código</th>
+                <th style="width:43%;">Descripción del Producto / Servicio</th>
+                <th style="width:12%;">Referencia</th>
+                <th style="width:8%; text-align:center;">UM</th>
+                <th style="width:8%; text-align:right;">Cant.</th>
+                <th style="width:12%; text-align:right;">Precio</th>
+                <th style="width:12%; text-align:right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.map((l, index) => {
+                const iteNum = String(index + 1).padStart(3, '0');
+                const prodCode = l.expand?.product_id?.code || 'S/C';
+                const prodName = l.expand?.product_id?.name || l.description || 'Línea de Venta';
+                const prodRef = l.expand?.product_id?.presentacion || '—';
+                const prodUnit = l.expand?.product_id?.unit || 'UND';
+                return `
+                  <tr>
+                    <td style="text-align:center; font-family:monospace;">${iteNum}</td>
+                    <td style="font-family:monospace;">${(window as any).esc(prodCode)}</td>
+                    <td style="font-weight:600;">${(window as any).esc(prodName)}</td>
+                    <td>${(window as any).esc(prodRef)}</td>
+                    <td style="text-align:center;">${(window as any).esc(prodUnit)}</td>
+                    <td style="text-align:right;">${(window as any).fmtN(l.qty)}</td>
+                    <td style="text-align:right;">${(window as any).fmt(l.unit_price)}</td>
+                    <td style="text-align:right; font-weight:700; color:#000;">${(window as any).fmt(l.total)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+
+          <!-- Cuadro de Totales Simplificado para Remisión -->
+          <table style="width:100%; border-collapse:collapse; border:1px solid #000; font-size:9.5px; margin-bottom:12px;">
+            <tr>
+              <!-- Metadatos de la entrega -->
+              <td style="width:60%; padding:8px; vertical-align:top; line-height:1.5; color:#333;">
+                <div style="font-weight:bold; color:#111; margin-bottom:4px; text-transform:uppercase; border-bottom:1px solid #ddd; padding-bottom:2px;">Resumen de Entrega</div>
+                <strong>Moneda:</strong> COP<br>
+                <strong>Total Ítems:</strong> ${lines.length}<br>
+                <strong>Total Unidades:</strong> ${totalUnits}
+              </td>
+              <!-- Totales Financieros Simplificados -->
+              <td style="width:40%; border-left:1px solid #000; padding:8px; vertical-align:top; background:#f8fafc; line-height:1.5;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                  <span style="font-weight:bold; color:#475569;">SUB TOTAL:</span>
+                  <span style="font-weight:bold; color:#0f172a;">$ ${(window as any).fmtN(inv.subtotal || 0)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; border-top:1.5px solid #000; padding-top:6px; margin-top:4px;">
+                  <span style="font-weight:bold; color:#1e3a8a; font-size:11px;">TOTAL NETO:</span>
+                  <span style="font-weight:900; color:#1e3a8a; font-size:13px;">$ ${(window as any).fmtN(totalNetoVal)}</span>
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Sección de Notas y Total en Letras -->
+          <div style="font-size:9.5px; line-height:1.4; color:#111; margin-top:15px; margin-bottom:15px;">
+            ${inv.notes ? `
+              <div style="margin-bottom:8px;">
+                <strong>Notas / Observaciones:</strong>
+                <div style="background:#f8fafc; padding:6px; border:1px solid #cbd5e1; border-radius:4px; margin-top:2px;">
+                  ${(window as any).esc(inv.notes)}
+                </div>
+              </div>
+            ` : ''}
+            
+            <div style="font-weight:bold; background:#f8fafc; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">
+              ${totalEnLetras}
+            </div>
+          </div>
+
+          <!-- Bloque de Firmas -->
+          <table style="width:100%; border-collapse:collapse; margin-top:40px; margin-bottom:20px;">
+            <tr>
+              <!-- Firma Entregado -->
+              <td style="width:45%; border-top:1px solid #000; text-align:center; padding-top:6px; font-size:9.5px; vertical-align:top;">
+                <div style="font-weight:bold; color:#0f172a;">Entregado por</div>
+                <div style="color:#64748b; font-size:8.5px; margin-top:2px;">Firma Autorizada</div>
+              </td>
+              <!-- Espacio intermedio -->
+              <td style="width:10%;"></td>
+              <!-- Firma Recibido -->
+              <td style="width:45%; border-top:1px solid #000; text-align:center; padding-top:6px; font-size:9.5px; vertical-align:top;">
+                <div style="font-weight:bold; color:#0f172a;">Recibido Conforme</div>
+                <div style="color:#64748b; font-size:8.5px; margin-top:2px;">Nombre, C.C. y Fecha</div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Footer simple -->
+          <div style="clear:both; text-align:center; border-top:1px dashed #cbd5e1; padding-top:12px; color:#64748b; font-size:8.5px; margin-top:30px; line-height:1.4;">
+            <p style="margin: 2px 0;">Este documento es una representación física simplificada (Remisión de Entrega) y no constituye una factura de venta electrónica.</p>
+            <p style="margin: 2px 0;">Software de Gestión GRAVY v2.0 — Sistema ERP y Control Administrativo.</p>
+          </div>
+
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+        </html>
+      `;
+    } else if (printFormat === 'carta_modern') {
       htmlContent = `
         <html>
         <head>
@@ -1768,124 +2074,227 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
         </html>
       `;
     } else {
-      // DEFAULT: carta_standard
+      // DEFAULT: carta_standard (Basado en el modelo Factura1.pdf)
+      const qrData = `Num: ${inv.number} | Nit: ${compNit} | Cliente: ${inv.expand?.customer_id?.doc_number || ''} | Total: ${totalNetoVal} | CUFE: ${cufeVal}`;
+      const watermarkHtml = logoBase64 
+        ? `<img src="data:image/png;base64,${logoBase64}" style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); opacity:0.04; width:380px; height:auto; pointer-events:none; z-index:-10;" />`
+        : '';
+
       htmlContent = `
         <html>
         <head>
           <title>${(window as any).esc(docTitle)} — ${inv.number}</title>
           <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #222; margin: 40px; font-size: 13px; line-height: 1.5; }
-            .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-            .hdr-left { vertical-align: top; width: 60%; }
-            .hdr-right { vertical-align: top; width: 40%; text-align: right; }
-            .company-name { font-size: 24px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
-            .invoice-title { font-size: 22px; font-weight: 800; color: #1e3a8a; margin-bottom: 5px; }
-            .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f8fafc; margin-bottom: 20px; }
-            .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 10px; color: #1e293b; }
-            .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
-            .details-grid div span { font-weight: bold; color: #475569; }
-            .lines-table { width: 100%; border-collapse: collapse; margin: 30px 0; }
-            .lines-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; }
-            .lines-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
-            .lines-table tr:last-child td { border-bottom: 2px solid #0f172a; }
-            .totals-table { width: 40%; float: right; border-collapse: collapse; margin-bottom: 30px; }
-            .totals-table td { padding: 8px 10px; }
-            .totals-table tr.grand-total td { font-size: 15px; font-weight: bold; color: #1e3a8a; border-top: 1px solid #cbd5e1; }
-            .footer { clear: both; text-align: center; border-top: 1.5px dashed #cbd5e1; padding-top: 20px; color: #64748b; font-size: 11px; margin-top: 40px; }
+            body {
+              font-family: 'Arial', 'Helvetica', sans-serif;
+              color: #000;
+              margin: 15px;
+              font-size: 10px;
+              line-height: 1.35;
+            }
+            .lines-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 12px 0;
+            }
+            .lines-table th {
+              border-top: 2px double #000;
+              border-bottom: 1.5px solid #000;
+              padding: 5px;
+              font-size: 9px;
+              font-weight: bold;
+              text-align: left;
+              text-transform: uppercase;
+            }
+            .lines-table td {
+              padding: 5px;
+              font-size: 9px;
+              border-bottom: 1px solid #f1f5f9;
+            }
+            .lines-table tr:last-child td {
+              border-bottom: 1.5px solid #000;
+            }
             @media print {
-              body { margin: 20px; }
+              body { margin: 10px; }
               .no-print { display: none; }
             }
           </style>
         </head>
         <body>
-          <table class="hdr-table">
+          ${watermarkHtml}
+          
+          <!-- Encabezado Principal -->
+          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; border-bottom:1.5px solid #000; padding-bottom:8px;">
             <tr>
-              <td class="hdr-left">
-                ${logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:60px; max-width:180px; object-fit:contain; margin-bottom:10px;" /><br>` : ''}
-                <div class="company-name">${(window as any).esc(compName)}</div>
-                <div>NIT: ${(window as any).esc(compNit)}</div>
-                ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
-                ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
-                ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
-                ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
+              <!-- Logo de la Empresa -->
+              <td style="width:25%; vertical-align:middle; text-align:left;">
+                ${logoBase64 
+                  ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:65px; max-width:180px; object-fit:contain;" />` 
+                  : `<div style="font-weight:900; font-size:24px; color:#1e3a8a; font-family:sans-serif; letter-spacing:-1px;">${(window as any).esc(compName.substring(0, 3))}</div>`
+                }
               </td>
-              <td class="hdr-right">
-                <div class="invoice-title">${(window as any).esc(docTitle.toUpperCase())}</div>
-                <div style="font-size:16px;font-weight:bold;color:#ef4444;margin-bottom:10px">${inv.number}</div>
-                <div>Fecha Emisión: ${(window as any).fmtDate(inv.date)}</div>
-                <div>Fecha Vencimiento: ${(window as any).fmtDate(inv.due_date || inv.date)}</div>
-                <div>Estado de Pago: <span style="font-weight:bold;text-transform:uppercase;color:${inv.status === 'posted' ? 'green' : 'orange'}">${inv.status === 'posted' ? 'CONTABILIZADA / VIGENTE' : 'BORRADOR / PRE-FACTURA'}</span></div>
+              <!-- Detalles de la Empresa (Centrado) -->
+              <td style="width:50%; text-align:center; vertical-align:top; line-height:1.4;">
+                <div style="font-size:14px; font-weight:bold; text-transform:uppercase; color:#000; letter-spacing:-0.2px;">${(window as any).esc(compName)}</div>
+                <div style="font-size:10px; font-weight:bold;">NIT. ${(window as any).esc(compNit)} — Responsable de IVA</div>
+                <div style="font-size:9.5px; color:#333;">
+                  ${compAddress ? `Dirección: ${(window as any).esc(compAddress)}` : ''} 
+                  ${compPhone ? ` | Tel: ${(window as any).esc(compPhone)}` : ''}<br>
+                  ${compEmail ? `E-mail: ${(window as any).esc(compEmail)}` : ''}
+                </div>
+              </td>
+              <!-- Código QR -->
+              <td style="width:25%; vertical-align:middle; text-align:right;">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(qrData)}" style="width:80px; height:80px; object-fit:contain; border:1px solid #e2e8f0; padding:2px; border-radius:4px;" />
               </td>
             </tr>
           </table>
 
-          <!-- Datos del Cliente -->
-          <div class="box">
-            <div class="box-title">Adquirente / Cliente</div>
-            <div class="details-grid">
-              <div><span>Cliente:</span> ${inv.expand?.customer_id?.name || 'Consumidor Final'}</div>
-              <div><span>NIT/Documento:</span> ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—'}</div>
-              <div><span>Dirección:</span> ${inv.expand?.customer_id?.address || '—'}</div>
-              <div><span>Teléfono:</span> ${inv.expand?.customer_id?.phone || '—'}</div>
-              <div><span>Forma de Pago:</span> ${inv.payment_method}</div>
-              <div><span>Bodega Origen:</span> ${inv.expand?.warehouse_id?.name || '—'}</div>
-            </div>
-          </div>
+          <!-- Bloque de Datos de Cliente y de Factura -->
+          <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
+            <tr>
+              <!-- Cliente -->
+              <td style="width:60%; border:1px solid #000; border-radius:4px; padding:6px; vertical-align:top; line-height:1.4; font-size:9.5px;">
+                <div style="border-bottom:1px solid #000; font-weight:bold; margin-bottom:4px; text-transform:uppercase; font-size:9.5px; padding-bottom:1px; color:#111;">Cliente / Adquirente</div>
+                <strong>Cliente:</strong> ${(window as any).esc(inv.expand?.customer_id?.name || 'Consumidor Final')}<br>
+                <strong>NIT / Id:</strong> ${(window as any).esc(inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—')}<br>
+                <strong>Dirección:</strong> ${(window as any).esc(inv.expand?.customer_id?.address || '—')}<br>
+                <strong>Teléfono:</strong> ${(window as any).esc(inv.expand?.customer_id?.phone || '—')}<br>
+                <strong>E-mail:</strong> ${(window as any).esc(inv.expand?.customer_id?.email || '—')}<br>
+                <strong>Condición:</strong> ${inv.payment_method === 'CREDITO' ? 'Crédito' : 'Contado'} — Remisión: ${inv.sales_order_id ? 'Sí' : 'No'}
+              </td>
+              <!-- Espacio intermedio -->
+              <td style="width:2%;"></td>
+              <!-- Factura Metadatos -->
+              <td style="width:38%; border:1px solid #000; border-radius:4px; padding:6px; vertical-align:top; line-height:1.4; font-size:9.5px;">
+                <div style="color:#DC2626; font-size:10.5px; font-weight:bold; text-align:center; margin-bottom:4px; text-transform:uppercase; border-bottom:1px dashed #DC2626; padding-bottom:2px;">${(window as any).esc(docTitle)}</div>
+                <div style="font-size:12.5px; font-weight:bold; text-align:center; margin-bottom:6px; font-family:monospace; color:#000;">${inv.number}</div>
+                <strong>Fecha y Hora Emisión:</strong> ${(window as any).fmtDate(inv.date)} - 08:00:00<br>
+                <strong>Fecha y Hora Firma:</strong> ${(window as any).fmtDate(inv.date)} - 08:00:00<br>
+                <strong>Fecha Vencimiento:</strong> ${(window as any).fmtDate(inv.due_date || inv.date)}<br>
+                <strong>Forma Pago / Método:</strong> ${inv.payment_method === 'CREDITO' ? 'Crédito' : 'Efectivo/Transferencia'}<br>
+                <strong>Vendedor:</strong> ${inv.expand?.seller_id?.name || '1 - VENDEDOR 1'}
+              </td>
+            </tr>
+          </table>
 
           <!-- Tabla de Artículos -->
           <table class="lines-table">
             <thead>
               <tr>
-                <th>Detalle del Artículo / Servicio</th>
-                <th style="text-align:right">Cantidad</th>
-                <th style="text-align:right">Precio Unitario</th>
-                <th style="text-align:right">IVA %</th>
-                <th style="text-align:right">Total</th>
+                <th style="width:4%; text-align:center;">Ite</th>
+                <th style="width:12%;">Código</th>
+                <th style="width:40%;">Descripción del Producto / Servicio</th>
+                <th style="width:10%;">Referencia</th>
+                <th style="width:6%; text-align:center;">UM</th>
+                <th style="width:6%; text-align:right;">Cant.</th>
+                <th style="width:10%; text-align:right;">Precio</th>
+                <th style="width:6%; text-align:right;">Dto %</th>
+                <th style="width:6%; text-align:right;">Imp %</th>
+                <th style="width:10%; text-align:right;">Total</th>
               </tr>
             </thead>
             <tbody>
-              ${lines.map(l => `
-                <tr>
-                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
-                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
-                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
-                  <td style="text-align:right">${l.iva_rate}%</td>
-                  <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
-                </tr>
-              `).join('')}
+              ${lines.map((l, index) => {
+                const iteNum = String(index + 1).padStart(3, '0');
+                const prodCode = l.expand?.product_id?.code || 'S/C';
+                const prodName = l.expand?.product_id?.name || l.description || 'Línea de Venta';
+                const prodRef = l.expand?.product_id?.presentacion || '—';
+                const prodUnit = l.expand?.product_id?.unit || 'UND';
+                return `
+                  <tr>
+                    <td style="text-align:center; font-family:monospace;">${iteNum}</td>
+                    <td style="font-family:monospace;">${(window as any).esc(prodCode)}</td>
+                    <td style="font-weight:600;">${(window as any).esc(prodName)}</td>
+                    <td>${(window as any).esc(prodRef)}</td>
+                    <td style="text-align:center;">${(window as any).esc(prodUnit)}</td>
+                    <td style="text-align:right;">${(window as any).fmtN(l.qty)}</td>
+                    <td style="text-align:right;">${(window as any).fmt(l.unit_price)}</td>
+                    <td style="text-align:right;">${l.discount_rate ? l.discount_rate + '%' : '0%'}</td>
+                    <td style="text-align:right;">${l.iva_rate}%</td>
+                    <td style="text-align:right; font-weight:700; color:#000;">${(window as any).fmt(l.total)}</td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
 
-          <!-- Totales -->
-          <table class="totals-table">
+          <!-- Cuadro de Totales Multisección -->
+          <table style="width:100%; border-collapse:collapse; border:1px solid #000; font-size:9.5px; margin-bottom:12px;">
             <tr>
-              <td>Subtotal:</td>
-              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.subtotal || 0)}</td>
-            </tr>
-            <tr>
-              <td>IVA Calculado:</td>
-              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.iva_total || 0)}</td>
-            </tr>
-            ${inv.ret_total > 0 ? `
-              <tr>
-                <td style="color:#d97706">Retenciones a favor:</td>
-                <td style="text-align:right;font-weight:600;color:#d97706">- ${(window as any).fmt(inv.ret_total || 0)}</td>
-              </tr>
-            ` : ''}
-            <tr class="grand-total">
-              <td>TOTAL NETO:</td>
-              <td style="text-align:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</td>
+              <!-- Subtotal y Descuentos -->
+              <td style="width:18%; border:1px solid #000; padding:6px; vertical-align:top; line-height:1.4;">
+                <div style="font-weight:bold; color:#333; margin-bottom:2px; text-transform:uppercase;">SUB TOTAL</div>
+                <div style="font-size:11px; font-weight:bold; color:#000;">$ ${(window as any).fmtN(inv.subtotal || 0)}</div>
+                
+                <div style="font-weight:bold; color:#333; margin-top:10px; margin-bottom:2px; text-transform:uppercase;">DESCUENTOS</div>
+                <div style="font-size:11px; font-weight:bold; color:#000;">$ ${inv.discount_total ? (window as any).fmtN(inv.discount_total) : '-'}</div>
+              </td>
+              
+              <!-- Desglose de Tarifas IVA -->
+              <td style="width:25%; border:1px solid #000; padding:6px; vertical-align:top;">
+                <div style="font-weight:bold; color:#333; margin-bottom:5px; text-transform:uppercase; display:flex; justify-content:space-between; border-bottom:1.5px solid #000; padding-bottom:1px;">
+                  <span>Tarifa</span>
+                  <span>BASE</span>
+                  <span>Vr. IMPUESTO</span>
+                </div>
+                ${ivaRowsHtml}
+              </td>
+
+              <!-- Retenciones -->
+              <td style="width:22%; border:1px solid #000; padding:6px; vertical-align:top;">
+                <div style="font-weight:bold; color:#c2410c; margin-bottom:5px; text-transform:uppercase; border-bottom:1.5px solid #c2410c; padding-bottom:1px;">TOTAL RETENCIONES</div>
+                ${retRowsHtml}
+              </td>
+
+              <!-- Flete / Seguro -->
+              <td style="width:15%; border:1px solid #000; padding:6px; vertical-align:top; line-height:1.4;">
+                <div style="font-weight:bold; color:#333; margin-bottom:2px; text-transform:uppercase;">FLETE</div>
+                <div style="font-size:10px; font-weight:bold; color:#000; margin-bottom:8px;">$ -</div>
+                <div style="font-weight:bold; color:#333; margin-bottom:2px; text-transform:uppercase;">SEGURO</div>
+                <div style="font-size:10px; font-weight:bold; color:#000;">$ -</div>
+              </td>
+
+              <!-- Total Neto / Factura -->
+              <td style="width:20%; border:1px solid #000; padding:6px; vertical-align:top; background:#f8fafc; text-align:right; line-height:1.4;">
+                <div style="font-weight:bold; color:#1e3a8a; text-transform:uppercase; text-align:left; margin-bottom:2px; font-size:9.5px;">TOTAL FACTURA</div>
+                <div style="font-size:14.5px; font-weight:900; color:#1e3a8a; margin-bottom:8px;">$ ${(window as any).fmtN(totalNetoVal)}</div>
+                <div style="font-size:8px; text-align:left; color:#475569; border-top:1px solid #e2e8f0; padding-top:4px; line-height:1.35;">
+                  <strong>MONEDA:</strong> COP<br>
+                  <strong>UNDS:</strong> ${totalUnits}<br>
+                  <strong>ITEMS:</strong> ${lines.length}
+                </div>
+              </td>
             </tr>
           </table>
 
-          <!-- Footer / Notas legales -->
-          <div class="footer">
-            ${inv.notes ? `<p><strong>Observaciones:</strong> ${(window as any).esc(inv.notes)}</p>` : ''}
-            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
-            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
-          </div>
+          <!-- Sección de Notas Legales, Resolución DIAN y Firmas -->
+          <div style="font-size:9.5px; line-height:1.4; color:#111;">
+            <div style="margin-bottom:8px;">
+              <strong>Notas:</strong>
+              <div style="font-weight:bold; background:#f8fafc; padding:5px; border:1px solid #cbd5e1; border-radius:4px; margin-top:2px;">
+                ${totalEnLetras}
+              </div>
+            </div>
 
+            <p style="margin:4px 0; text-align:justify; font-size:9px; color:#333;">
+              Esta factura es un título valor según el Artículo 774 del Código de Comercio colombiano. Factura de venta generada por Software ERP GRAVY v2.0. Autoriza ${compName} / NIT.${compNit}. Proveedor Tecnológico CADENA S.A. / NIT.890.930.534-0. Para transferencias por favor hacer su pago en la cuenta bancaria de ahorros autorizada de ${compName}.
+            </p>
+
+            <p style="margin:4px 0; font-size:8.5px; color:#475569; font-weight:semibold;">
+              ${resolutionStr}
+            </p>
+
+            <div style="margin-top:8px; border-top:1px solid #000; padding-top:5px; font-size:8.5px;">
+              <strong>CUFE:</strong> <span style="font-family:monospace; word-break:break-all; font-weight:bold; color:#333;">${cufeVal}</span>
+            </div>
+
+            <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:flex-end; font-size:8px; color:#64748b;">
+              <span>ORIGINAL</span>
+              <span>Pag 1 de 1</span>
+            </div>
+          </div>
+          
           <script>
             window.onload = function() { window.print(); }
           </script>

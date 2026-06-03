@@ -126,12 +126,21 @@ async function renderConfiguracion(c) {
         </div>
 
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
-          <h4 class="font-bold mb-3" style="color:#0D2137">Flujo de configuración</h4>
-          <div class="space-y-3 text-sm" style="color:#6B7280">
-            <p>La razón social se refleja en la barra superior de la aplicación.</p>
-            <p>Las firmas de reportes ahora se administran aquí, junto con los datos generales de la empresa.</p>
-            <p>La preferencia de firmas por defecto impacta el Balance de Prueba al abrir el reporte.</p>
-            <p>Si agregas más parámetros en base de datos, aparecerán abajo en la tabla de settings detectados.</p>
+          <h4 class="font-bold mb-3" style="color:#0D2137">Logo de la Empresa</h4>
+          <div class="space-y-3 text-sm">
+            <div id="cfg-logo-preview-wrap" class="flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-4 gap-2 mb-2 text-center" style="border-color:#E5E7EB; min-height:140px; background:#FAFAFA">
+              ${byKey['company_logo']?.value 
+                ? `<img id="cfg-logo-preview" src="data:image/png;base64,${byKey['company_logo'].value}" style="max-height:90px; max-width:180px; object-fit:contain" />` 
+                : `<i class="fas fa-image text-3xl text-gray-300"></i><span class="text-xs text-gray-400">Sin logotipo comercial</span>`}
+            </div>
+            ${canEdit ? `
+              <div class="flex flex-col gap-2">
+                <input id="cfg-logo-file" type="file" accept="image/png, image/jpeg, image/jpg" class="hidden">
+                <button type="button" class="btn btn-outline btn-sm w-full" onclick="document.getElementById('cfg-logo-file').click()"><i class="fas fa-upload mr-1"></i> Seleccionar Imagen</button>
+                <button type="button" class="btn btn-danger btn-sm w-full ${byKey['company_logo']?.value ? '' : 'hidden'}" id="btn-delete-logo"><i class="fas fa-trash-can mr-1"></i> Eliminar Logo</button>
+              </div>
+            ` : ''}
+            <p class="text-[11px] leading-relaxed" style="color:#9CA3AF">Se recomienda una imagen PNG transparente (escala 3:1) no mayor a 200KB.</p>
           </div>
         </div>
       </div>
@@ -289,6 +298,48 @@ async function renderConfiguracion(c) {
       reader.readAsDataURL(file);
     });
 
+    // Lógica para carga de Logo Comercial de la Empresa
+    let uploadedLogoBase64: string | null = null;
+    let logoDeleted = false;
+    const logoFileInput = $('#cfg-logo-file') as HTMLInputElement | null;
+    logoFileInput?.addEventListener('change', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        const result = evt.target?.result as string;
+        const commaIndex = result.indexOf(',');
+        if (commaIndex !== -1) {
+          uploadedLogoBase64 = result.substring(commaIndex + 1);
+          logoDeleted = false;
+          
+          const previewWrap = $('#cfg-logo-preview-wrap');
+          if (previewWrap) {
+            previewWrap.innerHTML = `<img id="cfg-logo-preview" src="${result}" style="max-height:90px; max-width:180px; object-fit:contain" />`;
+          }
+          
+          const delBtn = $('#btn-delete-logo');
+          if (delBtn) delBtn.classList.remove('hidden');
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    $('#btn-delete-logo')?.addEventListener('click', () => {
+      logoDeleted = true;
+      uploadedLogoBase64 = null;
+      
+      const previewWrap = $('#cfg-logo-preview-wrap');
+      if (previewWrap) {
+        previewWrap.innerHTML = `<i class="fas fa-image text-3xl text-gray-300"></i><span class="text-xs text-gray-400">Sin logotipo comercial</span>`;
+      }
+      
+      $('#btn-delete-logo')?.classList.add('hidden');
+      if (logoFileInput) logoFileInput.value = '';
+    });
+
     $('#btn-save-dian')?.addEventListener('click', async () => {
       if (!canEdit) return showToast('Sin permisos para actualizar configuración', 'error');
       
@@ -318,6 +369,14 @@ async function renderConfiguracion(c) {
       try {
         const payload = CONFIG_FIELDS.map((field) => [field.key, getInputVal(`cfg-${field.key}`).trim()]);
         await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
+        
+        // Guardar o eliminar el logo de la empresa
+        if (logoDeleted) {
+          await API.setSetting('company_logo', '');
+        } else if (uploadedLogoBase64) {
+          await API.setSetting('company_logo', uploadedLogoBase64);
+        }
+
         $('#topbar-company').textContent = getInputVal('cfg-company_name').trim();
         showToast('Configuración actualizada correctamente', 'success');
         renderConfiguracion(c);

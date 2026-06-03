@@ -34,6 +34,9 @@ function defaultSalesConfig() {
         reteica: true,
       },
       default_due_days: 30,
+      immediate_posting: false,
+      print_format: 'carta_standard',
+      document_title: 'Factura de Venta',
     },
     accounting: {
       accounts: {
@@ -91,6 +94,9 @@ function normalizeSalesConfig(cfg: any) {
         reteica: op?.withholdings?.reteica !== false,
       },
       default_due_days: Math.max(0, Number(op.default_due_days ?? base.operational.default_due_days) || 0),
+      immediate_posting: op.immediate_posting === true,
+      print_format: String(op.print_format || 'carta_standard'),
+      document_title: String(op.document_title || 'Factura de Venta'),
     },
     accounting: {
       accounts: {
@@ -152,9 +158,23 @@ async function openSalesSettingsModal(onSaved: any = null) {
             <label class="inline-flex items-center gap-2"><input id="so-cfg-discount" type="checkbox" ${cfg.operational.enable_discounts ? 'checked' : ''}>Habilitar descuentos</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-freight" type="checkbox" ${cfg.operational.enable_freight ? 'checked' : ''}>Habilitar fletes en ventas</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-withholding" type="checkbox" ${cfg.operational.enable_withholdings ? 'checked' : ''}>Habilitar retenciones (a favor)</label>
+            <label class="inline-flex items-center gap-2 md:col-span-2"><input id="so-cfg-immediate-posting" type="checkbox" ${cfg.operational.immediate_posting ? 'checked' : ''}><strong>Contabilización inmediata al guardar (Evitar Borrador)</strong></label>
+            
             <div class="form-group mb-0">
               <label class="form-label">Plazo por defecto (días)</label>
               <input id="so-cfg-default-due" class="form-input" type="number" min="0" step="1" value="${(window as any).esc(String(cfg.operational.default_due_days || 0))}">
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label">Título del Documento Impreso</label>
+              <input id="so-cfg-doc-title" class="form-input" type="text" placeholder="Ej: Factura de Venta, Remisión" value="${(window as any).esc(String(cfg.operational.document_title || 'Factura de Venta'))}">
+            </div>
+            <div class="form-group mb-0 md:col-span-2">
+              <label class="form-label">Formato de Impresión (Carta)</label>
+              <select id="so-cfg-print-format" class="form-input">
+                <option value="carta_standard"${cfg.operational.print_format === 'carta_standard' ? ' selected' : ''}>Carta Estándar (Tradicional)</option>
+                <option value="carta_compact"${cfg.operational.print_format === 'carta_compact' ? ' selected' : ''}>Carta Compacto (Optimizado en espacio)</option>
+                <option value="carta_modern"${cfg.operational.print_format === 'carta_modern' ? ' selected' : ''}>Carta Moderno (Diseño minimalista premium)</option>
+              </select>
             </div>
           </div>
           <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
@@ -308,6 +328,9 @@ async function openSalesSettingsModal(onSaved: any = null) {
               reteiva: getCheckVal('so-cfg-ret-iva'),
               reteica: getCheckVal('so-cfg-ret-ica'),
             },
+            immediate_posting: getCheckVal('so-cfg-immediate-posting'),
+            print_format: getSelectVal('so-cfg-print-format') || 'carta_standard',
+            document_title: getInputVal('so-cfg-doc-title') || 'Factura de Venta',
           },
           accounting: {
             accounts: {
@@ -761,7 +784,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   const footer = `
     <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" id="btn-save-so"><i class="fas fa-floppy-disk"></i> Guardar Borrador</button>
+    <button class="btn btn-primary" id="btn-save-so">
+      ${soConfig.operational.immediate_posting 
+        ? '<i class="fas fa-check-double mr-1"></i> Guardar y Contabilizar' 
+        : '<i class="fas fa-floppy-disk mr-1"></i> Guardar Borrador'}
+    </button>
   `;
 
   (window as any).openModal(invoiceId ? 'Editar Factura de Venta' : 'Nueva Factura de Venta', formHtml, footer, true);
@@ -1197,8 +1224,14 @@ window.soSetRetMode = function(isPerLine: boolean) {
 
 // --- Persistencia Borrador Factura ---
 async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = null, inv: any = null) {
+  const soConfig = await getSalesConfig();
   const btn = document.getElementById('btn-save-so') as HTMLButtonElement;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = soConfig.operational.immediate_posting
+      ? '<i class="fas fa-spinner fa-spin"></i> Contabilizando...'
+      : '<i class="fas fa-spinner fa-spin"></i> Guardando...';
+  }
 
   try {
     const customerId = (document.getElementById('so-supplier') as HTMLInputElement)?.value;
@@ -1352,10 +1385,22 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         await (window as any).pb.create('invoice_lines', { invoice_id: invoiceId, line_order: i + 1, ...lines[i] });
       }
       await (window as any).API.logAudit('UPDATE', 'Invoice', invoiceId, `Actualizada factura borrador ${number}`);
-      (window as any).showToast('Factura comercial borrador actualizada', 'success');
+      
+      if (soConfig.operational.immediate_posting) {
+        await (window as any).API.postInvoice(invoiceId);
+        (window as any).showToast(`Factura ${number} guardada y contabilizada exitosamente`, 'success');
+      } else {
+        (window as any).showToast('Factura comercial borrador actualizada', 'success');
+      }
     } else {
-      await (window as any).API.createInvoice(header, lines);
-      (window as any).showToast('Nueva factura de venta guardada en borrador', 'success');
+      const newInv = await (window as any).API.createInvoice(header, lines);
+      
+      if (soConfig.operational.immediate_posting) {
+        await (window as any).API.postInvoice(newInv.id);
+        (window as any).showToast(`Nueva factura ${number} guardada y contabilizada exitosamente`, 'success');
+      } else {
+        (window as any).showToast('Nueva factura de venta guardada en borrador', 'success');
+      }
     }
 
     (window as any).closeModal();
@@ -1363,17 +1408,77 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al guardar factura', 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Borrador'; }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = soConfig.operational.immediate_posting
+        ? '<i class="fas fa-check-double mr-1"></i> Guardar y Contabilizar'
+        : '<i class="fas fa-floppy-disk mr-1"></i> Guardar Borrador';
+    }
   }
 }
 
 // --- Impresión Carta Premium ---
-window.printInvoiceCarta = async function(invoiceId: string) {
+window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: string) {
   try {
+    const cfg = await getSalesConfig();
+    const defaultFormat = cfg.operational.print_format || 'carta_standard';
+
+    if (!formatOverride) {
+      // Sleek selection modal
+      const modalHtml = `
+        <div class="space-y-4 text-sm text-gray-700">
+          <p class="font-medium text-gray-500 mb-3">Elige el estilo de formato para la impresión del documento:</p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- Opción Estándar -->
+            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_standard' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_standard'); closeModal();">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-gray-900">Estándar</span>
+                  ${defaultFormat === 'carta_standard' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
+                </div>
+                <p class="text-[11px] text-gray-500 leading-normal">Diseño tradicional con divisiones claras y bordes clásicos.</p>
+              </div>
+              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Estándar <i class="fas fa-arrow-right"></i></span>
+            </div>
+
+            <!-- Opción Compacto -->
+            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_compact' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_compact'); closeModal();">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-gray-900">Compacto</span>
+                  ${defaultFormat === 'carta_compact' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
+                </div>
+                <p class="text-[11px] text-gray-500 leading-normal">Espacio optimizado al máximo, ideal para ahorrar papel.</p>
+              </div>
+              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Compacto <i class="fas fa-arrow-right"></i></span>
+            </div>
+
+            <!-- Opción Moderno -->
+            <div class="border rounded-xl p-4 cursor-pointer hover:border-blue-500 transition-all flex flex-col justify-between h-36 ${defaultFormat === 'carta_modern' ? 'border-2 border-blue-600 bg-blue-50/20' : 'border-gray-200 bg-white'}" onclick="window.printInvoiceCarta('${invoiceId}', 'carta_modern'); closeModal();">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-bold text-gray-900">Moderno</span>
+                  ${defaultFormat === 'carta_modern' ? '<span class="text-[10px] bg-blue-600 text-white font-bold px-1.5 py-0.5 rounded-full">Por defecto</span>' : ''}
+                </div>
+                <p class="text-[11px] text-gray-500 leading-normal">Minimalista premium, con tipografía Outfit y diseño estilizado.</p>
+              </div>
+              <span class="text-xs text-blue-600 font-semibold mt-2 flex items-center gap-1">Usar Moderno <i class="fas fa-arrow-right"></i></span>
+            </div>
+          </div>
+        </div>
+      `;
+      const footerHtml = `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`;
+      (window as any).openModal('Seleccionar Formato de Impresión', modalHtml, footerHtml, true);
+      return;
+    }
+
+    const printFormat = formatOverride;
+    const docTitle = cfg.operational.document_title || 'Factura de Venta';
+
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, logoBase64] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -1381,6 +1486,7 @@ window.printInvoiceCarta = async function(invoiceId: string) {
       (window as any).API.getSetting('company_email').catch(() => ''),
       (window as any).API.getSetting('company_city').catch(() => ''),
       (window as any).API.getSetting('company_country').catch(() => ''),
+      (window as any).API.getSetting('company_logo').catch(() => ''),
     ]);
 
     const printWin = window.open('', '_blank');
@@ -1390,125 +1496,405 @@ window.printInvoiceCarta = async function(invoiceId: string) {
     }
 
     const docStr = printWin.document;
-    docStr.write(`
-      <html>
-      <head>
-        <title>Factura de Venta — ${inv.number}</title>
-        <style>
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #222; margin: 40px; font-size: 13px; line-height: 1.5; }
-          .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-          .hdr-left { vertical-align: top; width: 60%; }
-          .hdr-right { vertical-align: top; width: 40%; text-align: right; }
-          .company-name { font-size: 24px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
-          .invoice-title { font-size: 22px; font-weight: 800; color: #1e3a8a; margin-bottom: 5px; }
-          .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f8fafc; margin-bottom: 20px; }
-          .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 10px; color: #1e293b; }
-          .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
-          .details-grid div span { font-weight: bold; color: #475569; }
-          .lines-table { width: 100%; border-collapse: collapse; margin: 30px 0; }
-          .lines-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; }
-          .lines-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
-          .lines-table tr:last-child td { border-bottom: 2px solid #0f172a; }
-          .totals-table { width: 40%; float: right; border-collapse: collapse; margin-bottom: 30px; }
-          .totals-table td { padding: 8px 10px; }
-          .totals-table tr.grand-total td { font-size: 15px; font-weight: bold; color: #1e3a8a; border-top: 1px solid #cbd5e1; }
-          .footer { clear: both; text-align: center; border-top: 1.5px dashed #cbd5e1; padding-top: 20px; color: #64748b; font-size: 11px; margin-top: 40px; }
-          @media print {
-            body { margin: 20px; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <table class="hdr-table">
-          <tr>
-            <td class="hdr-left">
+    let htmlContent = '';
+
+    if (printFormat === 'carta_modern') {
+      htmlContent = `
+        <html>
+        <head>
+          <title>${(window as any).esc(docTitle)} — ${inv.number}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+            body { font-family: 'Outfit', sans-serif; color: #1e293b; margin: 40px; font-size: 13px; line-height: 1.5; background: #ffffff; }
+            .hdr-wrapper { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 35px; border-bottom: 2px solid #f1f5f9; padding-bottom: 25px; }
+            .hdr-left { max-width: 65%; }
+            .hdr-right { text-align: right; min-width: 30%; }
+            .logo-container { height: 60px; margin-bottom: 12px; display: flex; align-items: center; }
+            .logo-container img { max-height: 60px; max-width: 180px; object-fit: contain; }
+            .company-name { font-size: 22px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; margin-bottom: 4px; }
+            .company-details { color: #64748b; font-size: 12.5px; line-height: 1.4; }
+            .invoice-title { font-size: 22px; font-weight: 900; color: #2563eb; letter-spacing: -1px; text-transform: uppercase; margin-bottom: 2px; }
+            .invoice-number { font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 15px; font-family: monospace; }
+            .meta-list { display: flex; flex-direction: column; gap: 4px; color: #64748b; font-size: 12.5px; align-items: flex-end; }
+            .meta-list div { display: flex; gap: 6px; }
+            .meta-list span { font-weight: 600; color: #0f172a; }
+            
+            .customer-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; background: #f8fafc; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02); }
+            .customer-card-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
+            .customer-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 12px 24px; font-size: 13px; }
+            .customer-grid div { display: flex; flex-direction: column; }
+            .customer-grid label { font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px; }
+            .customer-grid value { font-weight: 600; color: #334155; }
+
+            .lines-table { width: 100%; border-collapse: collapse; margin: 30px 0; font-size: 13px; }
+            .lines-table th { background: #f1f5f9; color: #475569; font-weight: 700; text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .lines-table th:first-child { border-radius: 8px 0 0 8px; }
+            .lines-table th:last-child { border-radius: 0 8px 8px 0; text-align: right; }
+            .lines-table td { padding: 14px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; }
+            .lines-table tr:last-child td { border-bottom: 2px solid #e2e8f0; }
+            
+            .footer-section { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 30px; }
+            .notes-container { max-width: 50%; color: #64748b; font-size: 12px; line-height: 1.6; }
+            .notes-title { font-weight: bold; color: #475569; margin-bottom: 4px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+            
+            .totals-wrapper { width: 40%; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+            .total-row { display: flex; justify-content: space-between; padding: 4px 0; color: #475569; }
+            .total-row.grand-total { border-top: 2px solid #f1f5f9; padding-top: 12px; margin-top: 4px; }
+            .total-row.grand-total .label { font-size: 13.5px; font-weight: 800; color: #0f172a; }
+            .total-row.grand-total .value { font-size: 18px; font-weight: 800; color: #2563eb; }
+            
+            .legal-footer { clear: both; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 25px; color: #94a3b8; font-size: 11px; margin-top: 60px; line-height: 1.6; }
+            @media print {
+              body { margin: 20px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="hdr-wrapper">
+            <div class="hdr-left">
+              ${logoBase64 ? `<div class="logo-container"><img src="data:image/png;base64,${logoBase64}" alt="Logo" /></div>` : ''}
               <div class="company-name">${(window as any).esc(compName)}</div>
-              <div>NIT: ${(window as any).esc(compNit)}</div>
-              ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
-              ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
-              ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
-              ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
-            </td>
-            <td class="hdr-right">
-              <div class="invoice-title">FACTURA DE VENTA</div>
-              <div style="font-size:16px;font-weight:bold;color:#ef4444;margin-bottom:10px">${inv.number}</div>
-              <div>Fecha Emisión: ${(window as any).fmtDate(inv.date)}</div>
-              <div>Fecha Vencimiento: ${(window as any).fmtDate(inv.due_date || inv.date)}</div>
-              <div>Estado de Pago: <span style="font-weight:bold;text-transform:uppercase;color:${inv.status === 'posted' ? 'green' : 'orange'}">${inv.status === 'posted' ? 'CONTABILIZADA / VIGENTE' : 'BORRADOR / PRE-FACTURA'}</span></div>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Datos del Cliente -->
-        <div class="box">
-          <div class="box-title">Adquirente / Cliente</div>
-          <div class="details-grid">
-            <div><span>Cliente:</span> ${inv.expand?.customer_id?.name || 'Consumidor Final'}</div>
-            <div><span>NIT/Documento:</span> ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—'}</div>
-            <div><span>Dirección:</span> ${inv.expand?.customer_id?.address || '—'}</div>
-            <div><span>Teléfono:</span> ${inv.expand?.customer_id?.phone || '—'}</div>
-            <div><span>Forma de Pago:</span> ${inv.payment_method}</div>
-            <div><span>Bodega Origen:</span> ${inv.expand?.warehouse_id?.name || '—'}</div>
+              <div class="company-details">
+                NIT: ${(window as any).esc(compNit)}<br>
+                ${compAddress ? `Dirección: ${(window as any).esc(compAddress)}<br>` : ''}
+                ${compPhone ? `Teléfono: ${(window as any).esc(compPhone)}<br>` : ''}
+                ${compEmail ? `Email: ${(window as any).esc(compEmail)}<br>` : ''}
+                ${(compCity || compCountry) ? `${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}` : ''}
+              </div>
+            </div>
+            <div class="hdr-right">
+              <div class="invoice-title">${(window as any).esc(docTitle)}</div>
+              <div class="invoice-number">${inv.number}</div>
+              <div class="meta-list">
+                <div>Fecha Emisión: <span>${(window as any).fmtDate(inv.date)}</span></div>
+                <div>Fecha Vencimiento: <span>${(window as any).fmtDate(inv.due_date || inv.date)}</span></div>
+                <div>Estado de Pago: <span style="text-transform:uppercase;color:${inv.status === 'posted' ? '#16a34a' : '#ea580c'}">${inv.status === 'posted' ? 'VIGENTE' : 'BORRADOR'}</span></div>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <!-- Tabla de Artículos -->
-        <table class="lines-table">
-          <thead>
-            <tr>
-              <th>Detalle del Artículo / Servicio</th>
-              <th style="text-align:right">Cantidad</th>
-              <th style="text-align:right">Precio Unitario</th>
-              <th style="text-align:right">IVA %</th>
-              <th style="text-align:right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${lines.map(l => `
+          <!-- Datos del Cliente -->
+          <div class="customer-card">
+            <div class="customer-card-title">Adquirente / Cliente</div>
+            <div class="customer-grid">
+              <div><label>Cliente / Razón Social</label><value>${inv.expand?.customer_id?.name || 'Consumidor Final'}</value></div>
+              <div><label>NIT / Cédula</label><value>${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—'}</value></div>
+              <div><label>Dirección</label><value>${inv.expand?.customer_id?.address || '—'}</value></div>
+              <div><label>Teléfono</label><value>${inv.expand?.customer_id?.phone || '—'}</value></div>
+              <div><label>Forma de Pago</label><value>${inv.payment_method}</value></div>
+              <div><label>Bodega Origen</label><value>${inv.expand?.warehouse_id?.name || '—'}</value></div>
+            </div>
+          </div>
+
+          <!-- Tabla de Artículos -->
+          <table class="lines-table">
+            <thead>
               <tr>
-                <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
-                <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
-                <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
-                <td style="text-align:right">${l.iva_rate}%</td>
-                <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
+                <th>Detalle del Artículo / Servicio</th>
+                <th style="text-align:right; width: 10%;">Cantidad</th>
+                <th style="text-align:right; width: 20%;">Precio Unitario</th>
+                <th style="text-align:right; width: 10%;">IVA</th>
+                <th style="text-align:right; width: 20%;">Total</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${lines.map(l => `
+                <tr>
+                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
+                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                  <td style="text-align:right">${l.iva_rate}%</td>
+                  <td style="text-align:right;font-weight:700;color:#2563eb">${(window as any).fmt(l.total)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
 
-        <!-- Totales -->
-        <table class="totals-table">
-          <tr>
-            <td>Subtotal:</td>
-            <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.subtotal || 0)}</td>
-          </tr>
-          <tr>
-            <td>IVA Calculado:</td>
-            <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.iva_total || 0)}</td>
-          </tr>
-          <tr>
-            <td style="color:#d97706">Retenciones a favor:</td>
-            <td style="text-align:right;font-weight:600;color:#d97706">- ${(window as any).fmt(inv.ret_total || 0)}</td>
-          </tr>
-          <tr class="grand-total">
-            <td>TOTAL NETO:</td>
-            <td style="text-align:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</td>
-          </tr>
-        </table>
+          <!-- Sección inferior -->
+          <div class="footer-section">
+            <div class="notes-container">
+              ${inv.notes ? `
+                <div class="notes-title">Notas / Observaciones</div>
+                <p>${(window as any).esc(inv.notes)}</p>
+              ` : ''}
+            </div>
+            
+            <div class="totals-wrapper">
+              <div class="total-row"><span>Subtotal:</span><span>${(window as any).fmt(inv.subtotal || 0)}</span></div>
+              <div class="total-row"><span>IVA Calculado:</span><span>${(window as any).fmt(inv.iva_total || 0)}</span></div>
+              ${inv.ret_total > 0 ? `<div class="total-row" style="color:#ea580c"><span>Retenciones:</span><span>- ${(window as any).fmt(inv.ret_total || 0)}</span></div>` : ''}
+              <div class="total-row grand-total">
+                <span class="label">TOTAL NETO:</span>
+                <span class="value">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</span>
+              </div>
+            </div>
+          </div>
 
-        <!-- Footer / Notas legales -->
-        <div class="footer">
-          <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
-          <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
-        </div>
+          <!-- Footer legal -->
+          <div class="legal-footer">
+            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
+            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
+          </div>
 
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
-      </body>
-      </html>
-    `);
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+        </html>
+      `;
+    } else if (printFormat === 'carta_compact') {
+      htmlContent = `
+        <html>
+        <head>
+          <title>${(window as any).esc(docTitle)} — ${inv.number}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #222; margin: 15px; font-size: 11px; line-height: 1.35; }
+            .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+            .hdr-left { vertical-align: top; width: 60%; }
+            .hdr-right { vertical-align: top; width: 40%; text-align: right; }
+            .company-name { font-size: 18px; font-weight: bold; color: #0f172a; margin-bottom: 2px; }
+            .invoice-title { font-size: 16px; font-weight: 800; color: #1e3a8a; margin-bottom: 2px; }
+            .box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; background: #f8fafc; margin-bottom: 12px; }
+            .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 2px; margin-bottom: 6px; color: #1e293b; font-size: 11px; }
+            .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 4px; }
+            .details-grid div span { font-weight: bold; color: #475569; }
+            .lines-table { width: 100%; border-collapse: collapse; margin: 15px 0 10px 0; }
+            .lines-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 6px; font-size: 10.5px; text-transform: uppercase; }
+            .lines-table td { padding: 5px 6px; border-bottom: 1px solid #e2e8f0; }
+            .lines-table tr:last-child td { border-bottom: 2px solid #0f172a; }
+            .totals-table { width: 35%; float: right; border-collapse: collapse; margin-bottom: 15px; font-size: 11px; }
+            .totals-table td { padding: 4px 6px; }
+            .totals-table tr.grand-total td { font-size: 13px; font-weight: bold; color: #1e3a8a; border-top: 1px solid #cbd5e1; }
+            .footer { clear: both; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 10px; color: #64748b; font-size: 10px; margin-top: 15px; }
+            @media print {
+              body { margin: 10px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <table class="hdr-table">
+            <tr>
+              <td class="hdr-left">
+                ${logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:50px; max-width:150px; object-fit:contain; margin-bottom:5px;" /><br>` : ''}
+                <div class="company-name">${(window as any).esc(compName)}</div>
+                <div>NIT: ${(window as any).esc(compNit)}</div>
+                ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
+                ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
+                ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
+                ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
+              </td>
+              <td class="hdr-right">
+                <div class="invoice-title">${(window as any).esc(docTitle.toUpperCase())}</div>
+                <div style="font-size:14px;font-weight:bold;color:#ef4444;margin-bottom:5px">${inv.number}</div>
+                <div>Fecha Emisión: ${(window as any).fmtDate(inv.date)}</div>
+                <div>Fecha Vencimiento: ${(window as any).fmtDate(inv.due_date || inv.date)}</div>
+                <div>Estado de Pago: <span style="font-weight:bold;text-transform:uppercase;color:${inv.status === 'posted' ? 'green' : 'orange'}">${inv.status === 'posted' ? 'CONTABILIZADA / VIGENTE' : 'BORRADOR'}</span></div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Datos del Cliente -->
+          <div class="box">
+            <div class="box-title">Adquirente / Cliente</div>
+            <div class="details-grid">
+              <div><span>Cliente:</span> ${inv.expand?.customer_id?.name || 'Consumidor Final'}</div>
+              <div><span>NIT/Documento:</span> ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—'}</div>
+              <div><span>Dirección:</span> ${inv.expand?.customer_id?.address || '—'}</div>
+              <div><span>Teléfono:</span> ${inv.expand?.customer_id?.phone || '—'}</div>
+              <div><span>Forma de Pago:</span> ${inv.payment_method}</div>
+              <div><span>Bodega Origen:</span> ${inv.expand?.warehouse_id?.name || '—'}</div>
+            </div>
+          </div>
+
+          <!-- Tabla de Artículos -->
+          <table class="lines-table">
+            <thead>
+              <tr>
+                <th>Detalle del Artículo / Servicio</th>
+                <th style="text-align:right">Cantidad</th>
+                <th style="text-align:right">Precio Unitario</th>
+                <th style="text-align:right">IVA %</th>
+                <th style="text-align:right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.map(l => `
+                <tr>
+                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
+                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                  <td style="text-align:right">${l.iva_rate}%</td>
+                  <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <!-- Totales -->
+          <table class="totals-table">
+            <tr>
+              <td>Subtotal:</td>
+              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.subtotal || 0)}</td>
+            </tr>
+            <tr>
+              <td>IVA Calculado:</td>
+              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.iva_total || 0)}</td>
+            </tr>
+            ${inv.ret_total > 0 ? `
+              <tr>
+                <td style="color:#d97706">Retenciones:</td>
+                <td style="text-align:right;font-weight:600;color:#d97706">- ${(window as any).fmt(inv.ret_total || 0)}</td>
+              </tr>
+            ` : ''}
+            <tr class="grand-total">
+              <td>TOTAL NETO:</td>
+              <td style="text-align:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</td>
+            </tr>
+          </table>
+
+          <!-- Footer / Notas legales -->
+          <div class="footer">
+            ${inv.notes ? `<p><strong>Observaciones:</strong> ${(window as any).esc(inv.notes)}</p>` : ''}
+            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
+            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
+          </div>
+
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+        </html>
+      `;
+    } else {
+      // DEFAULT: carta_standard
+      htmlContent = `
+        <html>
+        <head>
+          <title>${(window as any).esc(docTitle)} — ${inv.number}</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #222; margin: 40px; font-size: 13px; line-height: 1.5; }
+            .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+            .hdr-left { vertical-align: top; width: 60%; }
+            .hdr-right { vertical-align: top; width: 40%; text-align: right; }
+            .company-name { font-size: 24px; font-weight: bold; color: #0f172a; margin-bottom: 4px; }
+            .invoice-title { font-size: 22px; font-weight: 800; color: #1e3a8a; margin-bottom: 5px; }
+            .box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f8fafc; margin-bottom: 20px; }
+            .box-title { font-weight: bold; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; margin-bottom: 10px; color: #1e293b; }
+            .details-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 8px; }
+            .details-grid div span { font-weight: bold; color: #475569; }
+            .lines-table { width: 100%; border-collapse: collapse; margin: 30px 0; }
+            .lines-table th { background: #0f172a; color: #ffffff; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; }
+            .lines-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+            .lines-table tr:last-child td { border-bottom: 2px solid #0f172a; }
+            .totals-table { width: 40%; float: right; border-collapse: collapse; margin-bottom: 30px; }
+            .totals-table td { padding: 8px 10px; }
+            .totals-table tr.grand-total td { font-size: 15px; font-weight: bold; color: #1e3a8a; border-top: 1px solid #cbd5e1; }
+            .footer { clear: both; text-align: center; border-top: 1.5px dashed #cbd5e1; padding-top: 20px; color: #64748b; font-size: 11px; margin-top: 40px; }
+            @media print {
+              body { margin: 20px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <table class="hdr-table">
+            <tr>
+              <td class="hdr-left">
+                ${logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" style="max-height:60px; max-width:180px; object-fit:contain; margin-bottom:10px;" /><br>` : ''}
+                <div class="company-name">${(window as any).esc(compName)}</div>
+                <div>NIT: ${(window as any).esc(compNit)}</div>
+                ${compAddress ? `<div>Dirección: ${(window as any).esc(compAddress)}</div>` : ''}
+                ${compPhone ? `<div>Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
+                ${compEmail ? `<div>Email: ${(window as any).esc(compEmail)}</div>` : ''}
+                ${(compCity || compCountry) ? `<div>${(window as any).esc(compCity)}${compCity && compCountry ? ', ' : ''}${(window as any).esc(compCountry)}</div>` : ''}
+              </td>
+              <td class="hdr-right">
+                <div class="invoice-title">${(window as any).esc(docTitle.toUpperCase())}</div>
+                <div style="font-size:16px;font-weight:bold;color:#ef4444;margin-bottom:10px">${inv.number}</div>
+                <div>Fecha Emisión: ${(window as any).fmtDate(inv.date)}</div>
+                <div>Fecha Vencimiento: ${(window as any).fmtDate(inv.due_date || inv.date)}</div>
+                <div>Estado de Pago: <span style="font-weight:bold;text-transform:uppercase;color:${inv.status === 'posted' ? 'green' : 'orange'}">${inv.status === 'posted' ? 'CONTABILIZADA / VIGENTE' : 'BORRADOR / PRE-FACTURA'}</span></div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Datos del Cliente -->
+          <div class="box">
+            <div class="box-title">Adquirente / Cliente</div>
+            <div class="details-grid">
+              <div><span>Cliente:</span> ${inv.expand?.customer_id?.name || 'Consumidor Final'}</div>
+              <div><span>NIT/Documento:</span> ${inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—'}</div>
+              <div><span>Dirección:</span> ${inv.expand?.customer_id?.address || '—'}</div>
+              <div><span>Teléfono:</span> ${inv.expand?.customer_id?.phone || '—'}</div>
+              <div><span>Forma de Pago:</span> ${inv.payment_method}</div>
+              <div><span>Bodega Origen:</span> ${inv.expand?.warehouse_id?.name || '—'}</div>
+            </div>
+          </div>
+
+          <!-- Tabla de Artículos -->
+          <table class="lines-table">
+            <thead>
+              <tr>
+                <th>Detalle del Artículo / Servicio</th>
+                <th style="text-align:right">Cantidad</th>
+                <th style="text-align:right">Precio Unitario</th>
+                <th style="text-align:right">IVA %</th>
+                <th style="text-align:right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.map(l => `
+                <tr>
+                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
+                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                  <td style="text-align:right">${l.iva_rate}%</td>
+                  <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <!-- Totales -->
+          <table class="totals-table">
+            <tr>
+              <td>Subtotal:</td>
+              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.subtotal || 0)}</td>
+            </tr>
+            <tr>
+              <td>IVA Calculado:</td>
+              <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.iva_total || 0)}</td>
+            </tr>
+            ${inv.ret_total > 0 ? `
+              <tr>
+                <td style="color:#d97706">Retenciones a favor:</td>
+                <td style="text-align:right;font-weight:600;color:#d97706">- ${(window as any).fmt(inv.ret_total || 0)}</td>
+              </tr>
+            ` : ''}
+            <tr class="grand-total">
+              <td>TOTAL NETO:</td>
+              <td style="text-align:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</td>
+            </tr>
+          </table>
+
+          <!-- Footer / Notas legales -->
+          <div class="footer">
+            ${inv.notes ? `<p><strong>Observaciones:</strong> ${(window as any).esc(inv.notes)}</p>` : ''}
+            <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
+            <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
+          </div>
+
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+        </html>
+      `;
+    }
+
+    docStr.write(htmlContent);
     docStr.close();
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al imprimir factura', 'error');

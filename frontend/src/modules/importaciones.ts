@@ -316,7 +316,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes-packing mr-1 text-blue-700"></i> Mercancía de Importación</span>
-          <button type="button" class="btn btn-primary btn-sm" id="btn-add-imp-line"><i class="fas fa-plus"></i> Agregar artículo</button>
+        </div>
+        <!-- Buscador Global de Productos -->
+        <div class="relative p-2 bg-white border-b" style="border-color:#E5E7EB">
+          <i class="fas fa-search" style="position:absolute;left:21px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
+          <input id="imp-prod-search-global" class="form-input"
+                 style="padding-left:38px;font-size:14px;border-color:#DCE6F8"
+                 autocomplete="off"
+                 placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
+          <div id="imp-prod-results-global"
+               style="display:none;position:absolute;left:8px;right:8px;top:calc(100% + 3px);max-height:240px;overflow:auto;background:#fff;border:1.5px solid #DCE6F8;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
+          </div>
         </div>
 
         <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
@@ -324,10 +334,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
                 <th style="min-width:220px;background:#F4F8FF">Producto</th>
-                <th class="text-right" style="width:75px;background:#F4F8FF">Cant.</th>
-                <th class="text-right" style="width:110px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
-                <th class="text-right" style="width:85px;background:#F4F8FF">Arancel %</th>
-                <th class="text-right" style="width:85px;background:#F4F8FF">IVA %</th>
+                <th class="text-right" style="width:95px;background:#F4F8FF">Cant.</th>
+                <th class="text-right" style="width:135px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
+                <th class="text-right" style="width:95px;background:#F4F8FF">Arancel %</th>
+                <th class="text-right" style="width:95px;background:#F4F8FF">IVA %</th>
                 <th style="min-width:180px;background:#F4F8FF">Nro. Manifiesto</th>
                 <th style="width:170px;background:#F4F8FF">Archivo Manifiesto (PDF)</th>
                 <th class="text-right" style="width:115px;background:#F4F8FF">Costo Est. (COP)</th>
@@ -673,215 +683,183 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   };
 
   // Agregar línea de artículo
-  (window as any).addImpLine = function(line: any = null, fileUrl: string = '') {
+  (window as any).addImpLine = function(prod: any = null, preloadedLine: any = null) {
     lineCounter++;
     const idx = lineCounter;
     const tbody = document.getElementById('imp-lines-body');
     if (!tbody) return;
 
+    const productId = prod?.id || preloadedLine?.product_id || '';
+    const productCode = prod?.code || preloadedLine?._code || '';
+    const productName = prod?.name || preloadedLine?._name || '(producto)';
+    const initQty = preloadedLine?.qty ?? 1;
+
+    // Sugerir FOB price en la divisa elegida
+    let initPrice = 0;
+    if (preloadedLine) {
+      initPrice = preloadedLine.fob_price ?? 0;
+    } else if (prod) {
+      const refPrice = prod.cost_price || 0;
+      const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
+      const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
+      if (currency !== 'COP' && refPrice > 0) {
+        initPrice = parseFloat((refPrice / exchangeRate).toFixed(2));
+      } else {
+        initPrice = refPrice;
+      }
+    }
+
+    const initArancel = preloadedLine?.arancel_rate ?? prod?.arancel_rate ?? 10;
+    const initIva = preloadedLine?.iva_rate ?? prod?.iva_rate ?? 19;
+    const manifestNum = preloadedLine?.manifest_number || '';
+    const manifestFile = preloadedLine?.manifest_file || '';
+    const lineId = preloadedLine?.id || '';
+
     const tr = document.createElement('tr');
     tr.id = `imp-row-${idx}`;
-    tr.setAttribute('data-lineid', line?.id || '');
+    tr.setAttribute('data-lineid', lineId);
     tr.innerHTML = `
       <td>
-        <div id="impl-prod-wrap-${idx}" class="relative">
-          <input id="impl-prod-search-${idx}" class="form-input w-full" autocomplete="off" placeholder="Buscar producto...">
-          <input type="hidden" id="impl-prod-id-${idx}" value="${line?.product_id || ''}">
-          <div id="impl-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:160px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          </div>
+          <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
         </div>
       </td>
-      <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-semibold" min="0.001" step="0.001" value="${line?.qty || '1'}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full" min="0" step="0.01" value="${line?.fob_price || ''}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full" min="0" max="100" step="0.1" value="${line?.arancel_rate ?? '10'}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-iva-${idx}" class="form-input text-right w-full" min="0" max="100" step="1" value="${line?.iva_rate ?? '19'}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="text" id="impl-manifest-num-${idx}" class="form-input w-full font-mono text-xs" placeholder="Ej: 260500..." value="${line?.manifest_number || ''}"></td>
+      <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="1" value="${initIva}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="text" id="impl-manifest-num-${idx}" class="form-input w-full font-mono text-xs" style="height:32px" placeholder="Ej: 260500..." value="${(window as any).esc(manifestNum)}"></td>
       <td>
         <div class="flex items-center gap-1.5">
           <input type="file" id="file-manifest-${idx}" accept="application/pdf,image/*" style="display:none" onchange="window.impHandleFileSelect('manifest_file_${idx - 1}', this.files)">
-          <button type="button" class="btn btn-outline btn-sm w-full py-1 text-xs" onclick="document.getElementById('file-manifest-${idx}').click()">
-            <i class="fas fa-upload"></i> <span id="lbl-manifest-${idx - 1}">${line?.manifest_file ? 'Reemplazar' : 'Adjuntar PDF'}</span>
+          <button type="button" class="btn btn-outline btn-sm w-full py-1 text-xs" style="height:32px" onclick="document.getElementById('file-manifest-${idx}').click()">
+            <i class="fas fa-upload"></i> <span id="lbl-manifest-${idx - 1}">${manifestFile ? 'Reemplazar' : 'Adjuntar PDF'}</span>
           </button>
-          ${line?.manifest_file ? `
-            <a href="${(window as any).PB_URL}/api/files/import_lines/${line.id}/${line.manifest_file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="btn btn-outline btn-sm p-1.5 text-blue-600" title="Ver manifiesto actual">
+          ${manifestFile ? `
+            <a href="${(window as any).PB_URL}/api/files/import_lines/${lineId}/${manifestFile}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="btn btn-outline btn-sm p-1.5 text-blue-600" title="Ver manifiesto actual">
               <i class="fas fa-file-pdf"></i>
             </a>
           ` : ''}
         </div>
       </td>
-      <td class="text-right font-semibold" style="color:#4B5563" id="impl-unit-cop-${idx}">$ 0</td>
-      <td class="text-right font-bold text-blue-700" id="impl-total-cop-${idx}">$ 0</td>
+      <td class="text-right font-semibold" style="color:#4B5563;font-size:13px" id="impl-unit-cop-${idx}">$ 0</td>
+      <td class="text-right font-bold text-blue-700" style="font-size:13px" id="impl-total-cop-${idx}">$ 0</td>
       <td class="text-center">
-        <button type="button" class="btn btn-danger btn-sm p-1.5" onclick="this.closest('tr').remove(); window.impRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('imp-row-${idx}').remove(); window.impRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
       </td>
     `;
     tbody.appendChild(tr);
 
-    // Autocomplete del producto
-    const input = document.getElementById(`impl-prod-search-${idx}`) as HTMLInputElement;
-    const hidden = document.getElementById(`impl-prod-id-${idx}`) as HTMLInputElement;
-    const results = document.getElementById(`impl-prod-results-${idx}`);
-    const priceInput = document.getElementById(`impl-price-${idx}`) as HTMLInputElement;
-    const arancelInput = document.getElementById(`impl-arancel-${idx}`) as HTMLInputElement;
+    window.impRecalcTotals();
+  };
 
-    if (line && line.product_id) {
-      const match = products.find(p => p.id === line.product_id);
-      if (match) input.value = `${match.code} - ${match.name}`;
-    }
+  function initImpGlobalProductSearch() {
+    const input = document.getElementById('imp-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('imp-prod-results-global');
+    if (!input || !dropdown) return;
 
-    const performProdSearch = (val: string) => {
-      const q = val.toLowerCase().trim();
-      const filtered = !q 
-        ? products.slice(0, 30) 
-        : products.filter(p => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 30);
+    let highlighted = -1;
 
+    const renderResults = (filtered: any[]) => {
       if (!filtered.length) {
-        if (results) results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+        dropdown.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400"><i class="fas fa-box-open mr-1"></i>Sin resultados para esta búsqueda.</div>';
         return;
       }
+      dropdown.innerHTML = filtered.map((p: any, i: number) => `
+        <button type="button"
+          id="imp-gsr-item-${i}"
+          data-prod-idx="${i}"
+          class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block imp-gsr-row"
+          style="border-bottom:1px solid #F3F4F6;transition:background .1s"
+          onmouseenter="this.style.background='#F0FBFF'"
+          onmouseleave="this.style.background=''"
+          onclick="window.impGlobalSelectProduct(${i})">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[9px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(p.code || 'S/C')}]</span>
+              <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 text-right">
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+              <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.cost_price || 0)}</span>
+            </div>
+          </div>
+        </button>
+      `).join('');
+      highlighted = -1;
+      (window as any).__impGlobalFilteredProds = filtered;
+    };
 
-      if (results) {
-        results.innerHTML = filtered.map(p => `
-          <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
-                  onclick="window.selectImpLineProduct(${idx}, '${(window as any).esc(p.id)}', '${(window as any).esc(p.code)} - ${(window as any).esc(p.name)}', ${p.cost_price || 0})">
-            <div class="font-bold text-gray-800">${(window as any).esc(p.name)}</div>
-            <div class="text-[10px] text-gray-500">SKU: ${p.code} | C. Compra: ${(window as any).fmt(p.cost_price || 0)}</div>
-          </button>
-        `).join('');
+    const highlightItem = (idx: number, items: NodeListOf<Element>) => {
+      items.forEach((el: any) => { el.style.background = ''; el.style.fontWeight = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+        (items[idx] as any).scrollIntoView({ block: 'nearest' });
       }
     };
 
-    input.addEventListener('focus', () => { performProdSearch(input.value); if (results) results.style.display = 'block'; });
-    input.addEventListener('input', () => { hidden.value = ''; performProdSearch(input.value); if (results) results.style.display = 'block'; });
-    input.addEventListener('blur', () => { setTimeout(() => { if (results) results.style.display = 'none'; }, 200); });
-  };
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q
+        ? products.slice(0, 40)
+        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
 
-  (window as any).selectImpLineProduct = function(idx: number, id: string, label: string, refPrice: number) {
-    const input = document.getElementById(`impl-prod-search-${idx}`) as HTMLInputElement;
-    const hidden = document.getElementById(`impl-prod-id-${idx}`) as HTMLInputElement;
-    const priceInput = document.getElementById(`impl-price-${idx}`) as HTMLInputElement;
+    input.addEventListener('focus', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
 
-    if (input && hidden && priceInput) {
-      input.value = label;
-      hidden.value = id;
-      
-      // Intentar sugerir precio en la divisa correspondiente
-      const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
-      const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
-      if (currency !== 'COP' && refPrice > 0) {
-        priceInput.value = (refPrice / exchangeRate).toFixed(2);
-      } else {
-        priceInput.value = String(refPrice);
-      }
-
-      window.impRecalcTotals();
-    }
-  };
-
-  // CALCULADORA DE PRORRATEO Y LIQUIDACIÓN EN TIEMPO REAL
-  (window as any).impRecalcTotals = function() {
-    const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
-    
-    // Gastos en divisa original
-    const freightCostVal = parseFloat((document.getElementById('imp-freight-cost') as HTMLInputElement)?.value || '0');
-    const insuranceCostVal = parseFloat((document.getElementById('imp-insurance-cost') as HTMLInputElement)?.value || '0');
-
-    // Gastos locales en COP
-    const localPortVal = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
-    const localFreightVal = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
-    const localOtherVal = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
-
-    const totalCIFExpensesCOP = (freightCostVal + insuranceCostVal) * exchangeRate;
-    const totalLocalExpensesCOP = localPortVal + localFreightVal + localOtherVal;
-    const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
-
-    let totalFOBCop = 0;
-    let totalFOBUri = 0;
-    const rows = document.querySelectorAll('#imp-lines-body tr');
-    
-    // 1. Primer barrido para calcular el FOB Total en pesos (COP)
-    const activeLines: any[] = [];
-    rows.forEach(row => {
-      const idx = row.id.split('-').pop();
-      const qty = parseFloat((document.getElementById(`impl-qty-${idx}`) as HTMLInputElement)?.value || '0');
-      const fobPrice = parseFloat((document.getElementById(`impl-price-${idx}`) as HTMLInputElement)?.value || '0');
-      const arancelRate = parseFloat((document.getElementById(`impl-arancel-${idx}`) as HTMLInputElement)?.value || '0');
-      const ivaRate = parseFloat((document.getElementById(`impl-iva-${idx}`) as HTMLInputElement)?.value || '0');
-      const productId = (document.getElementById(`impl-prod-id-${idx}`) as HTMLInputElement)?.value;
-
-      if (productId && qty > 0 && fobPrice >= 0) {
-        const lineFOBCop = qty * fobPrice * exchangeRate;
-        totalFOBCop += lineFOBCop;
-        totalFOBUri += (qty * fobPrice);
-        activeLines.push({ idx, qty, fobPrice, arancelRate, ivaRate, lineFOBCop });
+    input.addEventListener('keydown', (ev: KeyboardEvent) => {
+      const items = dropdown.querySelectorAll('.imp-gsr-row');
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlighted = Math.min(highlighted + 1, items.length - 1); highlightItem(highlighted, items); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
+      else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const selIdx = highlighted >= 0 ? highlighted : 0;
+        window.impGlobalSelectProduct(selIdx);
+      } else if (ev.key === 'Escape') {
+        dropdown.style.display = 'none';
       }
     });
 
-    // Actualizar valor de FOB total en la tabla de etapas
-    const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
-    if (fobTotalInput) {
-      fobTotalInput.value = totalFOBUri.toFixed(2);
-    }
+    input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
+  }
 
-    let arancelTotalCOP = 0;
-    let grandTotalCOP = 0;
-
-    // 2. Segundo barrido para aplicar prorrateo (FOB weight factor) y calcular unit_cost_cop
-    activeLines.forEach(l => {
-      const { idx, qty, arancelRate, lineFOBCop } = l;
-      
-      // Proporción FOB
-      const weightFactor = totalFOBCop > 0 ? (lineFOBCop / totalFOBCop) : 0;
-      const lineProratedCOP = weightFactor * totalExpensesToProrateCOP;
-
-      // Calcular arancel liquidado sobre valor FOB en COP
-      const lineArancelCOP = lineFOBCop * (arancelRate / 100);
-      arancelTotalCOP += lineArancelCOP;
-
-      // Costo nacionalizado total en COP para la línea
-      const lineTotalCOP = lineFOBCop + lineProratedCOP + lineArancelCOP;
-      const unitCostCOP = qty > 0 ? (lineTotalCOP / qty) : 0;
-
-      // Actualizar UI de la línea
-      const unitCostEl = document.getElementById(`impl-unit-cop-${idx}`);
-      const totalCostEl = document.getElementById(`impl-total-cop-${idx}`);
-
-      if (unitCostEl) unitCostEl.textContent = (window as any).fmt(unitCostCOP);
-      if (totalCostEl) totalCostEl.textContent = (window as any).fmt(lineTotalCOP);
-
-      grandTotalCOP += lineTotalCOP;
-    });
-
-    // Actualizar total aduana (arancel + gastos nac) en la tabla de etapas
-    const stageCustomsArancel = document.getElementById('stage-customs-arancel');
-    const stageCustomsTotal = document.getElementById('stage-customs-total');
-    if (stageCustomsArancel) stageCustomsArancel.textContent = (window as any).fmt(arancelTotalCOP);
-    if (stageCustomsTotal) stageCustomsTotal.textContent = (window as any).fmt(arancelTotalCOP + localPortVal);
-
-    // Costo total de importación es FOB + todos los gastos prorrateados + aranceles acumulados
-    const finalTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
-
-    // Actualizar Panel de Totales
-    const resFob = document.getElementById('lbl-res-fob-cop');
-    const resCif = document.getElementById('lbl-res-cif-cop');
-    const resArancel = document.getElementById('lbl-res-arancel-cop');
-    const resLocales = document.getElementById('lbl-res-locales-cop');
-    const resTotal = document.getElementById('lbl-res-total-cop');
-
-    if (resFob) resFob.textContent = (window as any).fmt(totalFOBCop);
-    if (resCif) resCif.textContent = (window as any).fmt(totalCIFExpensesCOP);
-    if (resArancel) resArancel.textContent = (window as any).fmt(arancelTotalCOP);
-    if (resLocales) resLocales.textContent = (window as any).fmt(totalLocalExpensesCOP);
-    if (resTotal) resTotal.textContent = (window as any).fmt(finalTotalCOP);
+  (window as any).impGlobalSelectProduct = function(idx: number) {
+    const filtered: any[] = (window as any).__impGlobalFilteredProds || [];
+    const prod = filtered[idx];
+    if (!prod) return;
+    (window as any).addImpLine(prod, null);
+    const input = document.getElementById('imp-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('imp-prod-results-global');
+    if (input) { input.value = ''; input.focus(); }
+    if (dropdown) dropdown.style.display = 'none';
+    const tableWrap = document.querySelector('#imp-lines-table')?.closest('div[style*="overflow"]') as HTMLElement;
+    if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
   };
 
   // Cargar líneas existentes
   if (existingLines.length) {
-    existingLines.forEach((l: any) => (window as any).addImpLine(l));
-  } else {
-    (window as any).addImpLine();
+    existingLines.forEach((l: any) => {
+      const match = products.find((p: any) => p.id === l.product_id);
+      if (match) {
+        l._name = match.name;
+        l._code = match.code;
+      }
+      (window as any).addImpLine(null, l);
+    });
   }
 
-  document.getElementById('btn-add-imp-line')?.addEventListener('click', () => (window as any).addImpLine());
+  initImpGlobalProductSearch();
   
   // Ejecutar primera calculadora al abrir
   setTimeout(() => (window as any).impUpdateCurrencyLabel(), 100);

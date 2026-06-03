@@ -237,7 +237,17 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
       <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios</span>
-          <button type="button" class="btn btn-outline btn-sm" id="btn-add-ord-line"><i class="fas fa-plus"></i> Agregar línea</button>
+        </div>
+        <!-- Buscador Global de Productos -->
+        <div class="relative p-2 bg-white border-b" style="border-color:#E5E7EB">
+          <i class="fas fa-search" style="position:absolute;left:21px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
+          <input id="ord-prod-search-global" class="form-input"
+                 style="padding-left:38px;font-size:14px;border-color:#DCE6F8"
+                 autocomplete="off"
+                 placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
+          <div id="ord-prod-results-global"
+               style="display:none;position:absolute;left:8px;right:8px;top:calc(100% + 3px);max-height:240px;overflow:auto;background:#fff;border:1.5px solid #DCE6F8;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
+          </div>
         </div>
 
         <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
@@ -245,10 +255,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
                 <th style="min-width:260px;background:#F4F8FF;color:#374151">Producto / Servicio</th>
-                <th class="text-right" style="width:80px;background:#F4F8FF;color:#374151">Cant.</th>
-                <th class="text-right" style="width:130px;background:#F4F8FF;color:#374151">P. Unitario</th>
-                <th class="text-right" style="width:80px;background:#F4F8FF;color:#374151">IVA %</th>
-                <th class="text-right" style="width:135px;background:#F4F8FF;color:#374151">Total línea</th>
+                <th class="text-right" style="width:110px;background:#F4F8FF;color:#374151">Cant.</th>
+                <th class="text-right" style="width:155px;background:#F4F8FF;color:#374151">P. Unitario</th>
+                <th class="text-right" style="width:115px;background:#F4F8FF;color:#374151">IVA %</th>
+                <th class="text-right" style="width:145px;background:#F4F8FF;color:#374151">Total línea</th>
                 <th style="width:58px;background:#F4F8FF;color:#374151">Acción</th>
               </tr>
             </thead>
@@ -344,95 +354,143 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
   initOrdCustomerSearch();
 
   // Líneas del Pedido
-  (window as any).addOrdLine = function(line: any = null) {
+  (window as any).addOrdLine = function(prod: any = null, preloadedLine: any = null) {
     lineCounter++;
     const idx = lineCounter;
     const tbody = document.getElementById('ord-lines-body');
     if (!tbody) return;
 
+    const productId   = prod?.id   || preloadedLine?.product_id || '';
+    const productCode = prod?.code || preloadedLine?._code || '';
+    const productName = prod?.name || preloadedLine?._name || preloadedLine?.description || '(producto)';
+    const initQty     = preloadedLine?.qty        ?? 1;
+    const initPrice   = preloadedLine?.unit_price ?? (prod?.base_price || 0);
+    const initIva     = preloadedLine?.iva_rate   ?? prod?.iva_rate ?? 19;
+
     const tr = document.createElement('tr');
     tr.id = `ord-row-${idx}`;
     tr.innerHTML = `
       <td>
-        <div id="ordl-prod-wrap-${idx}" class="relative">
-          <input id="ordl-prod-search-${idx}" class="form-input w-full" autocomplete="off" placeholder="Buscar producto o servicio...">
-          <input type="hidden" id="ordl-prod-id-${idx}" value="${line?.product_id || ''}">
-          <div id="ordl-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:180px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          </div>
+          <input type="hidden" id="ordl-prod-id-${idx}" value="${(window as any).esc(productId)}">
+          <input type="hidden" id="ordl-prod-search-${idx}" value="${(window as any).esc(productCode ? `${productCode} - ${productName}` : productName)}">
         </div>
         <div id="ordl-incoming-stock-${idx}" class="text-[10px] mt-1 hidden" style="color:#0284C7;font-weight:600"></div>
       </td>
-      <td><input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-semibold" min="0.001" step="0.001" value="${line?.qty || '1'}" oninput="window.ordRecalcLine(${idx})"></td>
-      <td><input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" min="0" step="0.01" value="${line?.unit_price || ''}" oninput="window.ordRecalcLine(${idx})"></td>
-      <td><input type="number" id="ordl-iva-${idx}" class="form-input text-right w-full" min="0" max="100" step="1" value="${line?.iva_rate ?? '19'}" oninput="window.ordRecalcLine(${idx})"></td>
-      <td class="text-right font-extrabold text-blue-700" id="ordl-total-${idx}">$ 0</td>
+      <td><input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${initQty}" oninput="window.ordRecalcLine(${idx})"></td>
+      <td><input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.ordRecalcLine(${idx})"></td>
+      <td>
+        <select id="ordl-iva-${idx}" class="form-input text-right w-full" style="font-size:11px; padding: 4px 18px 4px 4px;" onchange="window.ordRecalcLine(${idx})">
+          <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
+          <option value="5"  ${initIva == 5  ? 'selected' : ''}>5 %</option>
+          <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
+        </select>
+      </td>
+      <td class="text-right font-extrabold text-blue-700" style="font-size:13px" id="ordl-total-${idx}">$ 0</td>
       <td class="text-center">
-        <button type="button" class="btn btn-danger btn-sm p-1.5" onclick="this.closest('tr').remove(); window.ordRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('ord-row-${idx}').remove(); window.ordRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
       </td>
     `;
     tbody.appendChild(tr);
 
-    // Inicializar autocompletar producto para la línea
-    const input = document.getElementById(`ordl-prod-search-${idx}`) as HTMLInputElement;
-    const hidden = document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement;
-    const results = document.getElementById(`ordl-prod-results-${idx}`);
-    const priceInput = document.getElementById(`ordl-price-${idx}`) as HTMLInputElement;
-    const ivaInput = document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement;
-
-    if (line && line.product_id) {
-      const match = products.find(p => p.id === line.product_id);
-      if (match) {
-        input.value = `${match.code} - ${match.name}`;
-      }
-    }
-
-    const performProdSearch = (val: string) => {
-      const q = val.toLowerCase().trim();
-      const filtered = !q 
-        ? products.slice(0, 30) 
-        : products.filter(p => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 30);
-
-      if (!filtered.length) {
-        if (results) results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
-        return;
-      }
-
-      if (results) {
-        results.innerHTML = filtered.map(p => `
-          <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
-                  onclick="window.selectOrdLineProduct(${idx}, '${(window as any).esc(p.id)}', '${(window as any).esc(p.code)} - ${(window as any).esc(p.name)}', ${p.base_price || 0}, ${p.iva_rate ?? 19})">
-            <div class="font-bold text-gray-800">${(window as any).esc(p.name)}</div>
-            <div class="text-[10px] text-gray-500">SKU: ${p.code} | Precio: ${(window as any).fmt(p.base_price || 0)}</div>
-          </button>
-        `).join('');
-      }
-    };
-
-    input.addEventListener('focus', () => { performProdSearch(input.value); if (results) results.style.display = 'block'; });
-    input.addEventListener('input', () => { hidden.value = ''; performProdSearch(input.value); if (results) results.style.display = 'block'; });
-    input.addEventListener('blur', () => { setTimeout(() => { if (results) results.style.display = 'none'; }, 200); });
-
     window.ordRecalcLine(idx);
-    if (line && line.product_id && typeof (window as any).ordCheckIncomingStock === 'function') {
-      (window as any).ordCheckIncomingStock(idx, line.product_id);
+    if (productId && typeof (window as any).ordCheckIncomingStock === 'function') {
+      (window as any).ordCheckIncomingStock(idx, productId);
     }
   };
 
-  (window as any).selectOrdLineProduct = function(idx: number, id: string, label: string, price: number, ivaRate: number) {
-    const input = document.getElementById(`ordl-prod-search-${idx}`) as HTMLInputElement;
-    const hidden = document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement;
-    const priceInput = document.getElementById(`ordl-price-${idx}`) as HTMLInputElement;
-    const ivaInput = document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement;
+  function initOrdGlobalProductSearch() {
+    const input = document.getElementById('ord-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('ord-prod-results-global');
+    if (!input || !dropdown) return;
 
-    if (input && hidden && priceInput && ivaInput) {
-      input.value = label;
-      hidden.value = id;
-      priceInput.value = String(price);
-      ivaInput.value = String(ivaRate);
-      window.ordRecalcLine(idx);
-      if (typeof (window as any).ordCheckIncomingStock === 'function') {
-        (window as any).ordCheckIncomingStock(idx, id);
+    let highlighted = -1;
+
+    const renderResults = (filtered: any[]) => {
+      if (!filtered.length) {
+        dropdown.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400"><i class="fas fa-box-open mr-1"></i>Sin resultados para esta búsqueda.</div>';
+        return;
       }
-    }
+      dropdown.innerHTML = filtered.map((p: any, i: number) => `
+        <button type="button"
+          id="ord-gsr-item-${i}"
+          data-prod-idx="${i}"
+          class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block ord-gsr-row"
+          style="border-bottom:1px solid #F3F4F6;transition:background .1s"
+          onmouseenter="this.style.background='#F0FBFF'"
+          onmouseleave="this.style.background=''"
+          onclick="window.ordGlobalSelectProduct(${i})">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[9px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(p.code || 'S/C')}]</span>
+              <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 text-right">
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+              <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.base_price || 0)}</span>
+            </div>
+          </div>
+        </button>
+      `).join('');
+      highlighted = -1;
+      (window as any).__ordGlobalFilteredProds = filtered;
+    };
+
+    const highlightItem = (idx: number, items: NodeListOf<Element>) => {
+      items.forEach((el: any) => { el.style.background = ''; el.style.fontWeight = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+        (items[idx] as any).scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q
+        ? products.slice(0, 40)
+        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('focus', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('keydown', (ev: KeyboardEvent) => {
+      const items = dropdown.querySelectorAll('.ord-gsr-row');
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlighted = Math.min(highlighted + 1, items.length - 1); highlightItem(highlighted, items); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
+      else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const selIdx = highlighted >= 0 ? highlighted : 0;
+        window.ordGlobalSelectProduct(selIdx);
+      } else if (ev.key === 'Escape') {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
+  }
+
+  (window as any).ordGlobalSelectProduct = function(idx: number) {
+    const filtered: any[] = (window as any).__ordGlobalFilteredProds || [];
+    const prod = filtered[idx];
+    if (!prod) return;
+    (window as any).addOrdLine(prod, null);
+    const input = document.getElementById('ord-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('ord-prod-results-global');
+    if (input) { input.value = ''; input.focus(); }
+    if (dropdown) dropdown.style.display = 'none';
+    const tableWrap = document.querySelector('#ord-lines-table')?.closest('div[style*="overflow"]') as HTMLElement;
+    if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
   };
 
   (window as any).ordCheckIncomingStock = async function(idx: number, productId: string) {
@@ -510,12 +568,17 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
 
   // Cargar líneas iniciales
   if (existingLines.length) {
-    existingLines.forEach(l => (window as any).addOrdLine(l));
-  } else {
-    (window as any).addOrdLine();
+    existingLines.forEach((l: any) => {
+      const match = products.find((p: any) => p.id === l.product_id);
+      if (match) {
+        l._name = match.name;
+        l._code = match.code;
+      }
+      (window as any).addOrdLine(null, l);
+    });
   }
 
-  document.getElementById('btn-add-ord-line')?.addEventListener('click', () => (window as any).addOrdLine());
+  initOrdGlobalProductSearch();
 
   // Listener para guardar
   document.getElementById('btn-save-order')?.addEventListener('click', async () => {

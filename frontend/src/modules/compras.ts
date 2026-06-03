@@ -680,7 +680,17 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
             <span id="po-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
           </label>
           <button type="button" class="btn btn-outline btn-sm" id="btn-new-po-product"><i class="fas fa-box-open"></i> Crear producto</button>
-          <button type="button" class="btn btn-primary btn-sm" id="btn-add-po-line"><i class="fas fa-plus"></i> Agregar línea</button>
+        </div>
+      </div>
+      <!-- Buscador Global de Productos -->
+      <div class="relative p-2 bg-white border-b" style="border-color:#E5E7EB">
+        <i class="fas fa-search" style="position:absolute;left:21px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
+        <input id="po-prod-search-global" class="form-input"
+               style="padding-left:38px;font-size:14px;border-color:#DCE6F8"
+               autocomplete="off"
+               placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
+        <div id="po-prod-results-global"
+             style="display:none;position:absolute;left:8px;right:8px;top:calc(100% + 3px);max-height:240px;overflow:auto;background:#fff;border:1.5px solid #DCE6F8;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
         </div>
       </div>
       <!-- Tabla con encabezado sticky -->
@@ -689,9 +699,9 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
           <thead style="position:sticky;top:0;z-index:10">
             <tr>
               <th style="min-width:220px;background:#F4F8FF">Producto / Servicio</th>
-              <th class="text-right" style="width:75px;background:#F4F8FF">Cant.</th>
-              <th class="text-right" style="width:115px;background:#F4F8FF">P. unitario</th>
-              <th class="text-right" style="width:72px;background:#F4F8FF">IVA %</th>
+              <th class="text-right" style="width:95px;background:#F4F8FF">Cant.</th>
+              <th class="text-right" style="width:145px;background:#F4F8FF">P. unitario</th>
+              <th class="text-right" style="width:105px;background:#F4F8FF">IVA %</th>
               <th class="po-ret-col" style="min-width:190px;background:#F4F8FF">Retención</th>
               <th class="po-ret-col text-right" style="width:115px;background:#F4F8FF">Vlr Ret.</th>
               <th class="text-right" style="width:115px;background:#F4F8FF">Total línea</th>
@@ -1092,90 +1102,162 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
     document.getElementById('po-line-comment-save').onclick = save;
   };
 
-  function addPoLine(line = {}) {
+  (window as any).addPoLine = function(prod: any = null, preloadedLine: any = null) {
     lineCounter++;
     const idx = lineCounter;
     const tbody = document.getElementById('po-lines-body');
     if (!tbody) return;
+
+    const productId = prod?.id || preloadedLine?.product_id || '';
+    const productCode = prod?.code || '';
+    const productName = prod?.name || preloadedLine?._name || '(producto)';
+    const initQty = preloadedLine?.qty ?? 1;
+    const initPrice = preloadedLine?.unit_price ?? prod?.cost_price ?? 0;
+    const initIva = preloadedLine?.iva_rate ?? prod?.iva_rate ?? 0;
+    const initRetRule = preloadedLine?.ret_rule_id ?? '';
+
     const tr = document.createElement('tr');
     tr.id = `pol-row-${idx}`;
-    tr.dataset.comment = String(line.description || '').trim();
+    tr.dataset.comment = String(preloadedLine?.description || '').trim();
     tr.innerHTML = `
       <td>
-        <div id="pol-prod-wrap-${idx}" class="relative">
-          <input id="pol-prod-search-${idx}" class="form-input" style="min-width:200px" autocomplete="off" placeholder="Buscar producto...">
-          <select class="form-input" id="pol-prod-${idx}" style="display:none">
-            <option value="">— Seleccionar —</option>
-            ${productOptions()}
-          </select>
-          <div id="pol-prod-results-${idx}" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:240px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:45"></div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+          </div>
+          <input type="hidden" id="pol-prod-${idx}" value="${(window as any).esc(productId)}">
         </div>
       </td>
-      <td><input id="pol-qty-${idx}" type="number" min="0.0001" step="0.0001" class="form-input text-right" style="min-width:70px" value="${line.qty||'1'}" oninput="poRecalcLine(${idx})"></td>
-      <td><input id="pol-price-${idx}" type="number" min="0" step="0.01" class="form-input text-right" style="min-width:100px" value="${line.unit_price||''}" oninput="poRecalcLine(${idx})"></td>
-      <td><input id="pol-iva-${idx}" type="number" min="0" max="100" step="1" class="form-input text-right" style="min-width:60px" value="${line.iva_rate||'0'}" oninput="poRecalcLine(${idx})"></td>
+      <td><input id="pol-qty-${idx}" type="number" min="0.0001" step="0.0001" class="form-input text-right w-full font-bold" style="font-size:12px" value="${initQty}" oninput="poRecalcLine(${idx})"></td>
+      <td><input id="pol-price-${idx}" type="number" min="0" step="0.01" class="form-input text-right w-full" style="font-size:12px" value="${initPrice || ''}" oninput="poRecalcLine(${idx})"></td>
+      <td><input id="pol-iva-${idx}" type="number" min="0" max="100" step="1" class="form-input text-right w-full" style="font-size:11px; padding-right: 4px;" value="${initIva}" oninput="poRecalcLine(${idx})"></td>
       <td class="po-ret-col">
-        <select id="pol-ret-rule-${idx}" class="form-input" style="min-width:180px" onchange="poRecalcLine(${idx})">
-          ${retRuleOptions()}
+        <select id="pol-ret-rule-${idx}" class="form-input text-xs py-1 w-full" onchange="poRecalcLine(${idx})">
+          ${retRuleOptions(withholdingRules, initRetRule)}
         </select>
       </td>
       <td class="po-ret-col text-right font-semibold text-sm" id="pol-retamt-${idx}" style="color:#C46516">—</td>
       <td class="text-right font-semibold text-sm" id="pol-rowtot-${idx}" style="color:#1A4B8C">—</td>
       <td>
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1 justify-center">
           <button type="button" class="btn btn-outline btn-sm" id="pol-comment-btn-${idx}" onclick="poEditLineComment(${idx})"><i class="fas fa-comment"></i></button>
           <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('pol-row-${idx}').remove(); poRecalcLine(0)"><i class="fas fa-times"></i></button>
         </div>
-      </td>`;
+      </td>
+    `;
     tbody.appendChild(tr);
     paintLineCommentBtn(idx);
 
-    initLookupInput({
-      wrapId: `pol-prod-wrap-${idx}`,
-      inputId: `pol-prod-search-${idx}`,
-      selectId: `pol-prod-${idx}`,
-      resultsId: `pol-prod-results-${idx}`,
-      dataList: productSearchData,
-      onSelected: () => {
-        const sel = document.getElementById(`pol-prod-${idx}`);
-        const opt = sel?.selectedOptions?.[0];
-        if (!opt || !opt.value) return;
-        const prFld  = document.getElementById(`pol-price-${idx}`);
-        const ivaFld = document.getElementById(`pol-iva-${idx}`);
-        if (prFld && !prFld.value) prFld.value = opt.dataset.cost || '';
-        if (ivaFld) ivaFld.value = opt.dataset.iva || '0';
-        poRecalcLine(idx);
-      },
-    });
-
-    if (line.product_id) {
-      const sel = document.getElementById(`pol-prod-${idx}`);
-      if (sel) sel.value = line.product_id;
-      const inp = document.getElementById(`pol-prod-search-${idx}`);
-      const opt = sel?.selectedOptions?.[0];
-      if (inp && opt?.value) inp.value = opt.textContent;
-    }
-    if (line.ret_rule_id) {
-      const rs = document.getElementById(`pol-ret-rule-${idx}`);
-      if (rs) rs.value = line.ret_rule_id;
-        // Apply current retention mode to new row (hide ret cols if in header mode)
-        if (window.__poRetMode === 'header') {
-          document.querySelectorAll(`#pol-row-${idx} .po-ret-col`).forEach(el => { el.style.display = 'none'; });
-        }
+    if (window.__poRetMode === 'header') {
+      document.querySelectorAll(`#pol-row-${idx} .po-ret-col`).forEach((el: any) => { el.style.display = 'none'; });
     }
     recalcTotals();
   }
 
   // Agregar líneas existentes o una vacía
   if (existingLines.length) {
-    for (const l of existingLines) addPoLine(l);
-  } else {
-    addPoLine();
+    existingLines.forEach((l: any) => {
+      const match = products.find(p => p.id === l.product_id);
+      if (match) l._name = match.name;
+      (window as any).addPoLine(null, l);
+    });
   }
 
   initPoSupplierSearch();
-  document.getElementById('btn-add-po-line')?.addEventListener('click', () => addPoLine());
+  initPoGlobalProductSearch();
   document.getElementById('btn-new-po-product')?.addEventListener('click', () => openQuickProductCreateModal());
+
+  function initPoGlobalProductSearch() {
+    const input = document.getElementById('po-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('po-prod-results-global');
+    if (!input || !dropdown) return;
+
+    let highlighted = -1;
+
+    const renderResults = (filtered: any[]) => {
+      if (!filtered.length) {
+        dropdown.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400"><i class="fas fa-box-open mr-1"></i>Sin resultados para esta búsqueda.</div>';
+        return;
+      }
+      dropdown.innerHTML = filtered.map((p: any, i: number) => `
+        <button type="button"
+          id="po-gsr-item-${i}"
+          data-prod-idx="${i}"
+          class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block po-gsr-row"
+          style="border-bottom:1px solid #F3F4F6;transition:background .1s"
+          onmouseenter="this.style.background='#F0FBFF'"
+          onmouseleave="this.style.background=''"
+          onclick="window.poGlobalSelectProduct(${i})">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-[9px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(p.code || 'S/C')}]</span>
+              <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 text-right">
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 0}%</span>
+              <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.cost_price || 0)}</span>
+            </div>
+          </div>
+        </button>
+      `).join('');
+      highlighted = -1;
+      (window as any).__poGlobalFilteredProds = filtered;
+    };
+
+    const highlightItem = (idx: number, items: NodeListOf<Element>) => {
+      items.forEach((el: any) => { el.style.background = ''; el.style.fontWeight = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+        (items[idx] as any).scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q
+        ? products.slice(0, 40)
+        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('focus', () => {
+      const q = input.value.trim().toLowerCase();
+      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
+      renderResults(filtered);
+      dropdown.style.display = 'block';
+    });
+
+    input.addEventListener('keydown', (ev: KeyboardEvent) => {
+      const items = dropdown.querySelectorAll('.po-gsr-row');
+      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlighted = Math.min(highlighted + 1, items.length - 1); highlightItem(highlighted, items); }
+      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
+      else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const selIdx = highlighted >= 0 ? highlighted : 0;
+        window.poGlobalSelectProduct(selIdx);
+      } else if (ev.key === 'Escape') {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
+  }
+
+  (window as any).poGlobalSelectProduct = function(idx: number) {
+    const filtered: any[] = (window as any).__poGlobalFilteredProds || [];
+    const prod = filtered[idx];
+    if (!prod) return;
+    (window as any).addPoLine(prod, null);
+    const input = document.getElementById('po-prod-search-global') as HTMLInputElement;
+    const dropdown = document.getElementById('po-prod-results-global');
+    if (input) { input.value = ''; input.focus(); }
+    if (dropdown) dropdown.style.display = 'none';
+    // Scroll al fondo de la tabla para ver la línea recién añadida
+    const tableWrap = document.querySelector('#po-lines-table')?.closest('div[style*="overflow"]') as HTMLElement;
+    if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
+  };
 
   // Inicializar modo de retención: header (global) por defecto
   window.__poRetMode = 'header';
@@ -1225,7 +1307,7 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       for (let i = 1; i <= lineCounter + 2; i++) {
         const rowEl = document.getElementById(`pol-row-${i}`);
         if (!rowEl) continue;
-        const prodId  = getSelectVal(`pol-prod-${i}`);
+        const prodId  = (document.getElementById(`pol-prod-${i}`) as HTMLInputElement)?.value;
         const desc    = String(rowEl.dataset.comment || '').trim();
         const qty     = parseFloat(getInputVal(`pol-qty-${i}`)   || '0') || 0;
         const price   = parseFloat(getInputVal(`pol-price-${i}`) || '0') || 0;

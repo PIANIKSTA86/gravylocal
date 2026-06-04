@@ -2550,6 +2550,28 @@ const API = {
     await this.logAudit('PAID', 'PhInvoice', invoiceId, `Marcada como pagada ${inv.number}`);
   },
 
+  /** Envia factura o estado de cuenta PH por correo individual */
+  async sendPhInvoiceEmail(invoiceId, type = 'invoice', email = '', subject = '', message = '') {
+    const res = await fetch(`${PB_URL}/api/ph/send-invoice-email`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ invoiceId, type, email, subject, message }),
+    });
+    if (!res.ok) throw await this._err(res);
+    return res.json();
+  },
+
+  /** Envia correos masivos de facturación PH para un período */
+  async sendPhBulkEmails(period, type = 'invoice', subject = '', message = '') {
+    const res = await fetch(`${PB_URL}/api/ph/send-bulk-emails`, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ period, type, subject, message }),
+    });
+    if (!res.ok) throw await this._err(res);
+    return res.json();
+  },
+
   /** Reservas */
   async getPhReservations(opts = {}) {
     const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;

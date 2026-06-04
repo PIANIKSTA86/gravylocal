@@ -174,6 +174,9 @@ async function renderPhFacturacion(c) {
           <button class="btn btn-outline" id="ph-config-btn" title="Configuración Copropiedades" style="color:#7F7CFF;border-color:#7F7CFF">
             <i class="fas fa-cog"></i>
           </button>
+          <button class="btn btn-outline" id="ph-bulk-email-btn" title="Enviar masivo de facturas o estados de cuenta por correo" style="color:#7F7CFF;border-color:#C4B5FD">
+            <i class="fas fa-mail-bulk"></i> Enviar masivo
+          </button>
           <button class="btn btn-primary" id="ph-gen-btn">
             <i class="fas fa-wand-magic-sparkles"></i> Generar facturas del período
           </button>` : ''}
@@ -234,6 +237,7 @@ async function renderPhFacturacion(c) {
 
     // Generar
     document.getElementById('ph-gen-btn')?.addEventListener('click', () => openPhGenerateModal());
+    document.getElementById('ph-bulk-email-btn')?.addEventListener('click', () => openPhBulkEmailModal());
     document.getElementById('ph-post-period-btn')?.addEventListener('click', () => openPhPostPeriodModal(c));
     document.getElementById('ph-unpost-period-btn')?.addEventListener('click', () => openPhUnpostPeriodModal(c));
     document.getElementById('ph-delete-period-btn')?.addEventListener('click', () => openPhDeletePeriodModal(c));
@@ -571,19 +575,28 @@ async function openPhInvoiceDetail(invoiceId) {
           </tbody>
         </table>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`
+      `<div class="flex flex-wrap gap-2">
+        <button class="btn btn-outline" id="ph-inv-detail-print-inv"><i class="fas fa-print mr-1"></i> Imprimir Factura</button>
+        <button class="btn btn-outline" id="ph-inv-detail-print-statement"><i class="fas fa-file-invoice mr-1"></i> Imprimir Estado Cuenta</button>
+        <button class="btn btn-primary" id="ph-inv-detail-send-email"><i class="fas fa-envelope mr-1"></i> Enviar Correo</button>
+        <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+       </div>`
     );
 
-    if (canEditDraftLines) {
-      setTimeout(() => {
+    setTimeout(() => {
+      document.getElementById('ph-inv-detail-print-inv')?.addEventListener('click', () => printPhInvoice(invoiceId, 'invoice'));
+      document.getElementById('ph-inv-detail-print-statement')?.addEventListener('click', () => printPhInvoice(invoiceId, 'statement'));
+      document.getElementById('ph-inv-detail-send-email')?.addEventListener('click', () => openPhInvoiceEmailModal(invoiceId));
+
+      if (canEditDraftLines) {
         document.querySelectorAll('.ph-line-edit').forEach(btn => {
           btn.addEventListener('click', () => openPhEditDraftLineModal(btn.dataset.lineId, btn.dataset.invId));
         });
         document.querySelectorAll('.ph-line-del').forEach(btn => {
           btn.addEventListener('click', () => removePhDraftLineConfirm(btn.dataset.lineId, btn.dataset.invId));
         });
-      }, 30);
-    }
+      }
+    }, 40);
   } catch (err) {
     showToast(err.message || 'Error al cargar la factura.', 'error');
   }
@@ -3318,6 +3331,530 @@ async function _renderPhPresExec(c) {
   } catch (err) { c.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`; }
 }
 
+async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') {
+  try {
+    (window as any).showToast('Generando formato de impresión...', 'info');
+    const [inv, lines] = await Promise.all([
+      (window as any).pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' }),
+      (window as any).API.getPhInvoiceLines(invoiceId),
+    ]);
+    const prop = inv.expand?.property_id;
+    const owner = prop?.expand?.owner_id;
+
+    let outstandingInvoices: any[] = [];
+    if (type === 'statement') {
+      try {
+        const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
+        const res = await (window as any).pb.listAll('ph_invoices', {
+          filter: `property_id="${safePropId}" && id!="${invoiceId}" && status!="paid" && status!="voided" && period < "${inv.period}"`,
+          sort: 'period'
+        });
+        outstandingInvoices = res || [];
+      } catch (err) {
+        console.warn('Error al cargar cartera pendiente:', err);
+      }
+    }
+
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => ''),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_email').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+      (window as any).API.getSetting('company_logo').catch(() => ''),
+    ]);
+
+    // Agrupar saldos por conceptos
+    const conceptsMap: Record<string, { description: string; saldoAnterior: number; cobrosMes: number; saldoActual: number }> = {};
+    
+    // Cargar cobros del mes
+    lines.forEach((l: any) => {
+      const desc = l.description || 'Concepto';
+      conceptsMap[desc] = {
+        description: desc,
+        saldoAnterior: 0,
+        cobrosMes: l.amount || 0,
+        saldoActual: l.amount || 0
+      };
+    });
+
+    // Cargar saldos anteriores
+    for (const oldInv of outstandingInvoices) {
+      try {
+        const oldLines = await (window as any).API.getPhInvoiceLines(oldInv.id);
+        oldLines.forEach((ol: any) => {
+          const desc = ol.description || 'Concepto';
+          if (!conceptsMap[desc]) {
+            conceptsMap[desc] = {
+              description: desc,
+              saldoAnterior: 0,
+              cobrosMes: 0,
+              saldoActual: 0
+            };
+          }
+          conceptsMap[desc].saldoAnterior += ol.amount || 0;
+          conceptsMap[desc].saldoActual += ol.amount || 0;
+        });
+      } catch (_) {}
+    }
+
+    const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
+    const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
+      return;
+    }
+
+    // Helper de números a letras en español
+    function numeroALetras(num: number): string {
+      var tempNum = parseFloat(String(num)).toFixed(2).split('.');
+      var entero = parseInt(tempNum[0], 10);
+      var centavos = tempNum[1];
+      
+      if (entero === 0) return ('Son: Cero PESOS ' + centavos + '/100').toUpperCase();
+      
+      function letras(n: number): string {
+        if (n < 10) {
+          return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
+        }
+        if (n < 20) {
+          return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+        }
+        if (n < 30) {
+          if (n === 20) return 'Veinte';
+          return 'Veinti' + letras(n - 20).toLowerCase();
+        }
+        if (n < 100) {
+          var u = n % 10;
+          var d = Math.floor(n / 10);
+          var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+          return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+        }
+        if (n < 1000) {
+          var d_u = n % 100;
+          var c = Math.floor(n / 100);
+          var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+          if (n === 100) return 'Cien';
+          if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+          return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+        }
+        if (n < 1000000) {
+          var mil = Math.floor(n / 1000);
+          var resto = n % 1000;
+          var t = '';
+          if (mil === 1) t = 'Mil';
+          else t = letras(mil) + ' mil';
+          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+        }
+        if (n < 1000000000) {
+          var millon = Math.floor(n / 1000000);
+          var resto = n % 1000000;
+          var t = '';
+          if (millon === 1) t = 'Un millón';
+          else t = letras(millon) + ' millones';
+          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+        }
+        return '';
+      }
+      
+      var res = letras(entero);
+      res = res.charAt(0).toUpperCase() + res.slice(1);
+      return ('Son: ' + res + ' PESOS ' + centavos + '/100').toUpperCase();
+    }
+
+    function getMonthNameUpper(period: string) {
+      if (!period) return '';
+      const parts = period.split('-');
+      const m = parseInt(parts[1], 10) || 1;
+      const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+      return months[m - 1] || '';
+    }
+
+    function cleanFmt(num: number): string {
+      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    let tableRowsHtml = "";
+    conceptsList.forEach((c) => {
+      const sAnt = c.saldoAnterior > 0 ? cleanFmt(c.saldoAnterior) : "";
+      const cMes = c.cobrosMes > 0 ? cleanFmt(c.cobrosMes) : "";
+      const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
+      tableRowsHtml += `
+        <tr style="height: 22px;">
+          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: left;">${(window as any).esc(c.description)}</td>
+          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right;">${sAnt}</td>
+          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right;">${cMes}</td>
+          <td style="padding: 4px 8px; border-bottom: 1px solid #000; text-align: right; font-weight: bold;">${sAct}</td>
+        </tr>`;
+    });
+
+    const htmlContent = `
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Cuenta de Cobro No. ${inv.number}</title>
+        <style>
+          body { font-family: Arial, sans-serif; color: #000; margin: 20px; font-size: 11px; line-height: 1.35; background: #ffffff; }
+          .container { max-width: 700px; margin: 0 auto; position: relative; }
+          .data-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11px; }
+          .data-table th { background-color: #e0e0e0; border: 1px solid #000; padding: 6px; font-weight: bold; text-align: center; }
+          .data-table td { border: 1px solid #000; padding: 4px 8px; }
+          
+          @media print {
+            body { margin: 10px; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          
+          <!-- Encabezado -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+            <tr>
+              <td style="width: 65%; text-align: center; vertical-align: top; line-height: 1.3; padding-right: 20px;">
+                <div style="font-size: 15px; font-weight: bold; text-transform: uppercase;">${(window as any).esc(compName)}</div>
+                <div style="font-size: 11px; font-weight: bold; margin-top: 2px;">NIT ${(window as any).esc(compNit)}</div>
+                ${compAddress ? `<div style="font-size: 10px;">${(window as any).esc(compAddress)}</div>` : ''}
+                ${compPhone ? `<div style="font-size: 10px;">CELULAR PORTERIA ${(window as any).esc(compPhone)}</div>` : ''}
+                ${compEmail ? `<div style="font-size: 10px;">${(window as any).esc(compEmail)}</div>` : ''}
+                ${compCity ? `<div style="font-size: 10px;">${(window as any).esc(compCity)}</div>` : ''}
+              </td>
+              <td style="width: 35%; vertical-align: top;">
+                <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; padding: 5px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase;">CUENTA DE COBRO No.</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 10px; text-align: center; font-size: 18px; font-weight: bold;">${inv.number}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Ficha de Datos / Metadatos -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+            <tr>
+              <!-- Columna 1: Info del Propietario -->
+              <td style="width: 60%; vertical-align: top; padding-right: 15px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                  <tr>
+                    <td style="width: 18%; font-weight: bold; padding: 4px 0;">Nombre.</td>
+                    <td style="width: 82%; padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.name || 'Copropietario')}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 4px 0;">Direccion.</td>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.address || prop?.name || '')}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 4px 0;">Contacto.</td>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.phone || owner?.celular || '')}</td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 4px 0;">Cod.Int.</td>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #000;">
+                      <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                          <td style="border: none; padding: 0; font-weight: bold;">${(window as any).esc(prop?.code || '')}</td>
+                          <td style="width: 25%; background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase;">NIT / Id.</td>
+                          <td style="width: 35%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(owner?.nit || owner?.document || '')}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="font-weight: bold; padding: 4px 0;">Correo.</td>
+                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.email || owner?.correo || '—')}</td>
+                  </tr>
+                </table>
+              </td>
+              
+              <!-- Columna 2: Matricula / Ref.Banco -->
+              <td style="width: 20%; vertical-align: top; padding-right: 15px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Matricula</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold;">${(window as any).esc(prop?.matricula || '') || '&nbsp;'}</td>
+                  </tr>
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Ref.Banco</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px;">${(window as any).esc(prop?.name || '') || '&nbsp;'}</td>
+                  </tr>
+                </table>
+              </td>
+
+              <!-- Columna 3: Fechas / Mes -->
+              <td style="width: 20%; vertical-align: top;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%;">Fecha Emision</td>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%;">Fecha Vencimiento</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">${(window as any).fmtDate(inv.date)}</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">${(window as any).fmtDate(inv.due_date || inv.date)}</td>
+                  </tr>
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Area Und.Privada</td>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Mes</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold;">${(window as any).esc(prop?.area || '') || '&nbsp;'}</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px;">${getMonthNameUpper(inv.period)}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Tabla de Conceptos con Banner Vertical -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+            <tr>
+              <td style="width: 96%; vertical-align: top;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 45%; text-align: left;">Concepto</th>
+                      <th style="width: 18%; text-align: right;">Saldo Anterior</th>
+                      <th style="width: 18%; text-align: right;">Cobros del MES</th>
+                      <th style="width: 19%; text-align: right;">Saldo Actual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${tableRowsHtml}
+                  </tbody>
+                </table>
+              </td>
+              <td style="width: 4%; vertical-align: middle; text-align: center; padding-left: 8px;">
+                <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 8px; white-space: nowrap; color: #000; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px;">
+                  Factura Impresa por Software GRAVY v2.0 / NIT. 901.442.115-3
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <!-- Totales y Nota de Pago -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+            <tr>
+              <td style="width: 65%; vertical-align: top; padding-right: 15px;">
+                <div style="border: 1px solid #000; padding: 6px 8px; font-weight: bold; background-color: #f8fafc; font-size: 11px; margin-bottom: 8px; text-transform: uppercase;">
+                  ${numeroALetras(totalActual)}
+                </div>
+                <div style="font-size: 10px; line-height: 1.4; font-style: italic; text-align: left; text-transform: uppercase; font-family: Arial, sans-serif; font-weight: bold; color: #000;">
+                  ${inv.notes ? (window as any).esc(inv.notes).replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD UTILIZANDO SU REFERENCIA DE UNIDAD COMO IDENTIFICACIÓN.'}
+                </div>
+              </td>
+              <td style="width: 35%; vertical-align: top;">
+                <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                  <tr>
+                    <td style="background-color: #e0e0e0; border: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase;">Total FACTURA</td>
+                  </tr>
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 10px; font-size: 18px; font-weight: bold;">
+                      <div style="float: left;">$</div>
+                      <div style="float: right;">${cleanFmt(totalActual)}</div>
+                      <div style="clear: both;"></div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>`;
+
+    printWin.document.write(htmlContent);
+    printWin.document.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir: ' + err.message, 'error');
+  }
+}
+
+async function openPhInvoiceEmailModal(invoiceId: string) {
+  try {
+    const inv = await (window as any).pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' });
+    const prop = inv.expand?.property_id;
+    const owner = prop?.expand?.owner_id;
+    const defaultEmail = owner?.email || owner?.correo || '';
+
+    (window as any).openModal(
+      'Enviar Documento por Correo',
+      `<div class="space-y-4">
+        <p class="text-xs text-gray-500">Envía la factura o estado de cuenta al propietario de la unidad <strong>${(window as any).esc(prop?.name || '')}</strong>.</p>
+        <div class="form-group mb-0">
+          <label class="form-label">Correo Destinatario <span class="text-red-500">*</span></label>
+          <input id="ph-email-dest" type="email" class="form-input" value="${(window as any).esc(defaultEmail)}" placeholder="correo@ejemplo.com">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Tipo de Envío</label>
+          <select id="ph-email-type" class="form-input">
+            <option value="invoice">Factura del Período</option>
+            <option value="statement">Estado de Cuenta Completo (Incluye Cartera)</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Asunto Personalizado (Opcional)</label>
+          <input id="ph-email-subject" class="form-input" placeholder="Asunto predeterminado del sistema">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Mensaje Corto (Opcional)</label>
+          <textarea id="ph-email-msg" class="form-input" rows="2" placeholder="Se enviará junto al cobro..."></textarea>
+        </div>
+      </div>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="ph-email-send-btn"><i class="fas fa-paper-plane mr-1"></i> Enviar</button>`
+    );
+
+    setTimeout(() => {
+      document.getElementById('ph-email-send-btn')?.addEventListener('click', async () => {
+        const dest = (document.getElementById('ph-email-dest') as HTMLInputElement)?.value.trim();
+        const type = (document.getElementById('ph-email-type') as HTMLSelectElement)?.value;
+        const subject = (document.getElementById('ph-email-subject') as HTMLInputElement)?.value.trim();
+        const message = (document.getElementById('ph-email-msg') as HTMLTextAreaElement)?.value.trim();
+
+        if (!dest) {
+          (window as any).showToast('El correo destinatario es obligatorio.', 'warning');
+          return;
+        }
+
+        const btn = document.getElementById('ph-email-send-btn') as HTMLButtonElement;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Enviando...';
+
+        try {
+          const res = await (window as any).API.sendPhInvoiceEmail(invoiceId, type, dest, subject, message);
+          (window as any).showToast(res.message || 'Correo enviado exitosamente', 'success');
+          (window as any).closeModal();
+        } catch (err: any) {
+          (window as any).showToast(err.message || 'Error al enviar correo', 'error');
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i> Enviar';
+        }
+      });
+    }, 40);
+
+  } catch (err: any) {
+    (window as any).showToast('Error al cargar datos de contacto: ' + err.message, 'error');
+  }
+}
+
+async function openPhBulkEmailModal() {
+  const period = document.getElementById('ph-period-filter')?.value || (window as any).currentPeriod();
+
+  (window as any).openModal(
+    'Envío Masivo por Correo',
+    `<div class="space-y-4">
+      <p class="text-sm text-gray-600">
+        Esta acción enviará las facturas o estados de cuenta a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(period)}</strong> y cuenten con correo registrado.
+      </p>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-group mb-0">
+          <label class="form-label">Período</label>
+          <input id="ph-bulk-email-period" type="month" class="form-input" value="${(window as any).esc(period)}" disabled>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Tipo de Documento</label>
+          <select id="ph-bulk-email-type" class="form-input">
+            <option value="invoice">Factura del Período</option>
+            <option value="statement">Estado de Cuenta (Con Cartera)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group mb-0">
+        <label class="form-label">Asunto General Personalizado (Opcional)</label>
+        <input id="ph-bulk-email-subject" class="form-input" placeholder="Asunto predeterminado del sistema">
+      </div>
+      
+      <!-- Panel de Registro / Progreso -->
+      <div id="ph-bulk-email-progress-container" class="hidden border rounded-xl p-3 bg-gray-50" style="border-color:#e2e8f0;">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-bold text-gray-500 uppercase">Estado del Envío</span>
+          <span id="ph-bulk-email-progress-counts" class="text-xs font-bold text-blue-600">0 / 0 Procesados</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5 mb-3 overflow-hidden">
+          <div id="ph-bulk-email-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div id="ph-bulk-email-log" class="text-xs font-mono bg-white border p-2 rounded-lg overflow-y-auto max-h-36 space-y-1" style="height: 120px; border-color:#e2e8f0;">
+          <p class="text-gray-400">Listo para iniciar...</p>
+        </div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" id="ph-bulk-email-cancel" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="ph-bulk-email-confirm-btn"><i class="fas fa-mail-bulk mr-1"></i> Iniciar Envío Masivo</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-bulk-email-confirm-btn')?.addEventListener('click', async () => {
+      const type = (document.getElementById('ph-bulk-email-type') as HTMLSelectElement)?.value;
+      const subject = (document.getElementById('ph-bulk-email-subject') as HTMLInputElement)?.value.trim();
+      
+      const confirmBtn = document.getElementById('ph-bulk-email-confirm-btn') as HTMLButtonElement;
+      const cancelBtn = document.getElementById('ph-bulk-email-cancel') as HTMLButtonElement;
+      const progressContainer = document.getElementById('ph-bulk-email-progress-container') as HTMLDivElement;
+      const progressCounts = document.getElementById('ph-bulk-email-progress-counts') as HTMLSpanElement;
+      const progressBar = document.getElementById('ph-bulk-email-progress-bar') as HTMLDivElement;
+      const log = document.getElementById('ph-bulk-email-log') as HTMLDivElement;
+
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      progressContainer.classList.remove('hidden');
+      log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Solicitando envío masivo al servidor...</p>`;
+
+      try {
+        const res = await (window as any).API.sendPhBulkEmails(period, type, subject, '');
+        
+        const total = (res.sent || 0) + (res.skipped || 0) + (res.failed || 0);
+        progressCounts.textContent = `${total} / ${total} Procesados`;
+        progressBar.style.width = '100%';
+
+        let logContent = `<p class="text-green-600 font-bold mb-1">¡Proceso de envío masivo finalizado!</p>`;
+        logContent += `<p class="text-xs font-semibold text-gray-600 mb-2">Resumen: ${res.sent} enviados, ${res.skipped} omitidos, ${res.failed} fallidos.</p>`;
+        
+        if (res.details && res.details.length > 0) {
+          res.details.forEach((det: any) => {
+            if (det.status === 'sent') {
+              logContent += `<p class="text-green-500">[ENV] Unidad ${det.unit} — Enviado a ${det.email}</p>`;
+            } else if (det.status === 'skipped') {
+              logContent += `<p class="text-orange-500">[OMI] Factura ${det.number} ${det.unit ? 'Unidad ' + det.unit : ''} — Omitido: ${det.reason}</p>`;
+            } else {
+              logContent += `<p class="text-red-500">[ERR] Factura ${det.number} — Error: ${det.reason}</p>`;
+            }
+          });
+        }
+        log.innerHTML = logContent;
+        log.scrollTop = log.scrollHeight;
+
+        (window as any).showToast(`Envío masivo completo. ${res.sent} enviados, ${res.skipped} omitidos, ${res.failed} fallidos.`, res.failed > 0 ? 'warning' : 'success');
+        
+        confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Finalizado';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = 'Cerrar';
+
+      } catch (err: any) {
+        log.innerHTML = `<p class="text-red-500 font-bold"><i class="fas fa-exclamation-circle mr-1"></i> Fallo en el proceso: ${err.message}</p>`;
+        (window as any).showToast(err.message || 'Error en envío masivo', 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = '<i class="fas fa-mail-bulk mr-1"></i> Iniciar Envío Masivo';
+        cancelBtn.disabled = false;
+      }
+    });
+  }, 40);
+}
+
 (window as any).renderPhPresupuesto = renderPhPresupuesto;
 (window as any).openPhBudgetModal = openPhBudgetModal;
 
@@ -3339,3 +3876,8 @@ async function _renderPhPresExec(c) {
 (window as any).unpostPhInvoiceConfirm = unpostPhInvoiceConfirm;
 (window as any)._renderPhPage = _renderPhPage;
 (window as any).togglePhUnit = togglePhUnit;
+
+(window as any).printPhInvoice = printPhInvoice;
+(window as any).openPhInvoiceEmailModal = openPhInvoiceEmailModal;
+(window as any).openPhBulkEmailModal = openPhBulkEmailModal;
+

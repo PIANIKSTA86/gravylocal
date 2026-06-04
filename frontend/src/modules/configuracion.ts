@@ -256,6 +256,56 @@ async function renderConfiguracion(c) {
         </div>
       </div>
 
+      <!-- SECCIÓN SMTP -->
+      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-envelope mr-2" style="color:#7F7CFF"></i>Servidor de Correo (SMTP)</h4>
+            <p class="text-sm" style="color:#6B7280">Configura las credenciales de correo de la empresa para el envío de notificaciones y facturación.</p>
+          </div>
+          ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-smtp"><i class="fas fa-floppy-disk mr-1"></i> Guardar configuración SMTP</button>' : ''}
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="form-group md:col-span-2">
+            <label class="inline-flex items-center gap-2 text-sm" style="color:#374151">
+              <input id="smtp-enabled" type="checkbox" ${byKey['smtp_enabled']?.value === '1' ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+              Activar envío de correos por servidor SMTP propio
+            </label>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Servidor SMTP (Host)</label>
+            <input id="smtp-host" class="form-input" value="${esc(byKey['smtp_host']?.value || '')}" placeholder="Ej: smtp.gmail.com" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Puerto</label>
+            <input id="smtp-port" type="number" class="form-input" value="${esc(byKey['smtp_port']?.value || '465')}" placeholder="Ej: 465 o 587" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Usuario SMTP / Correo Remitente</label>
+            <input id="smtp-username" type="email" class="form-input" value="${esc(byKey['smtp_username']?.value || '')}" placeholder="Ej: tu_correo@gmail.com" ${canEdit ? '' : 'readonly'}>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Contraseña SMTP / Clave de Aplicación</label>
+            <input id="smtp-password" type="password" class="form-input" value="${esc(byKey['smtp_password']?.value || '')}" placeholder="Contraseña o clave de aplicación" ${canEdit ? '' : 'readonly'}>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Nombre del Remitente</label>
+            <input id="smtp-sender-name" class="form-input" value="${esc(byKey['smtp_sender_name']?.value || '')}" placeholder="Ej: C.R LOS GERANIOS 2" ${canEdit ? '' : 'readonly'}>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Dirección del Remitente (Opcional)</label>
+            <input id="smtp-sender-address" type="email" class="form-input" value="${esc(byKey['smtp_sender_address']?.value || '')}" placeholder="Ej: remitente@empresa.com" ${canEdit ? '' : 'readonly'}>
+          </div>
+        </div>
+      </div>
+
       <div class="bg-white rounded-2xl border overflow-hidden mt-4" style="border-color:#F0F0F0">
         <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
           <h4 class="font-bold" style="color:#0D2137">Settings detectados</h4>
@@ -362,6 +412,26 @@ async function renderConfiguracion(c) {
         renderConfiguracion(c);
       } catch (err: any) {
         showToast(err.message || 'No se pudo guardar la configuración de la DIAN', 'error');
+      }
+    });
+
+    $('#btn-save-smtp')?.addEventListener('click', async () => {
+      if (!canEdit) return showToast('Sin permisos para actualizar configuración', 'error');
+      try {
+        const payload = [
+          ['smtp_enabled', (document.getElementById('smtp-enabled') as HTMLInputElement)?.checked ? '1' : '0'],
+          ['smtp_host', getInputVal('smtp-host').trim()],
+          ['smtp_port', getInputVal('smtp-port').trim()],
+          ['smtp_username', getInputVal('smtp-username').trim()],
+          ['smtp_password', getInputVal('smtp-password').trim()],
+          ['smtp_sender_name', getInputVal('smtp-sender-name').trim()],
+          ['smtp_sender_address', getInputVal('smtp-sender-address').trim()],
+        ];
+        await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
+        showToast('Configuración SMTP guardada con éxito', 'success');
+        renderConfiguracion(c);
+      } catch (err: any) {
+        showToast(err.message || 'No se pudo guardar la configuración SMTP', 'error');
       }
     });
 

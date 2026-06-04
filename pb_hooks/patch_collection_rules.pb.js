@@ -22,7 +22,7 @@ onBootstrap((e) => {
     "invoice_lines",
     "pos_shifts",
     "transactions",
-    "transaction_lines",
+    "tx_lines",
     "inventory_movements",
     "inventory_stock",
     "third_parties",

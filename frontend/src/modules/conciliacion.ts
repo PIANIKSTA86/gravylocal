@@ -1,72 +1,85 @@
-﻿/**
+/**
  * GRAVY v2.0 ? conciliacion.js
  */
 'use strict';
 
+let _selectedBankId = '';
+let _filterFrom = '';
+let _filterTo = '';
+let _isInitialized = false;
+
 async function renderConciliacion(c) {
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando conciliaci?n...</div>`;
+  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando conciliación...</div>`;
   try {
-    const [bankAccounts, accounts, movements] = await Promise.all([
+    const [bankAccounts, accounts] = await Promise.all([
       pb.listAll('bank_accounts', { sort: 'name', expand: 'account_id' }),
       API.getAccounts(true),
-      pb.listAll('bank_movements', { sort: '-date', expand: 'bank_account_id,tx_line_id' }),
     ]);
-    const currentAccId = bankAccounts[0]?.id || '';
+
+    if (!_isInitialized) {
+      if (bankAccounts.length > 0) {
+        _selectedBankId = bankAccounts[0].id;
+      }
+      _filterFrom = todayStr().slice(0, 8) + '01';
+      _filterTo = todayStr();
+      _isInitialized = true;
+    }
+
+    let movements: any[] = [];
 
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
-          <h3 class="text-lg font-bold" style="color:#0D2137">Conciliaci?n Bancaria</h3>
-          <p class="text-sm" style="color:#6B7280">Control de extractos y conciliaci?n de movimientos.</p>
+          <h3 class="text-lg font-bold" style="color:#0D2137">Conciliación Bancaria</h3>
+          <p class="text-sm" style="color:#6B7280">Control de extractos y conciliación de movimientos.</p>
         </div>
-        ${can('canWrite') ? '<div class="flex gap-2"><button class="btn btn-secondary" id="btn-new-bank"><i class="fas fa-building-columns"></i> Nueva Cuenta Bancaria</button><button class="btn btn-secondary" id="btn-import-ext"><i class="fas fa-file-import"></i> Importar Extracto</button><button class="btn btn-primary" id="btn-new-mov"><i class="fas fa-plus"></i> Nuevo Movimiento</button></div>' : ''}
+        ${can('canWrite') ? '<div class="flex gap-2"><button class="btn btn-secondary" id="btn-manage-banks"><i class="fas fa-building-columns"></i> Cuentas Bancarias</button><button class="btn btn-secondary" id="btn-import-ext"><i class="fas fa-file-import"></i> Importar Extracto</button><button class="btn btn-primary" id="btn-new-mov"><i class="fas fa-plus"></i> Nuevo Movimiento</button></div>' : ''}
       </div>
 
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <select id="bank-filter" class="form-input">
-            <option value="">Todas las cuentas bancarias</option>
-            ${bankAccounts.map(b => `<option value="${esc(b.id)}" ${b.id === currentAccId ? 'selected' : ''}>${esc(b.bank)} - ${esc(b.number)} (${esc(b.name)})</option>`).join('')}
-          </select>
-          <input id="mov-q" class="form-input" placeholder="Buscar por descripci?n o referencia...">
-          <div class="flex items-center gap-2">
-            <label style="font-size:11px;font-weight:700;color:#6B7280;white-space:nowrap">Desde</label>
-            <input id="filter-from" type="date" class="form-input" style="font-size:12px">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+          <div class="md:col-span-3 form-group mb-0">
+            <label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">Cuenta Bancaria</label>
+            <select id="bank-filter" class="form-input w-full">
+              <option value="">Todas las cuentas bancarias</option>
+              ${bankAccounts.map(b => `<option value="${esc(b.id)}" ${b.id === _selectedBankId ? 'selected' : ''}>${esc(b.bank)} - ${esc(b.number)} (${esc(b.name)})</option>`).join('')}
+            </select>
           </div>
-          <div class="flex items-center gap-2">
-            <label style="font-size:11px;font-weight:700;color:#6B7280;white-space:nowrap">Hasta</label>
-            <input id="filter-to" type="date" class="form-input" style="font-size:12px">
+          <div class="md:col-span-2 form-group mb-0">
+            <label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">Desde</label>
+            <input id="filter-from" type="date" class="form-input w-full" style="font-size:12px" value="${esc(_filterFrom)}">
+          </div>
+          <div class="md:col-span-2 form-group mb-0">
+            <label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">Hasta</label>
+            <input id="filter-to" type="date" class="form-input w-full" style="font-size:12px" value="${esc(_filterTo)}">
+          </div>
+          <div class="md:col-span-2 mb-0">
+            <button class="btn btn-primary w-full" id="btn-search-movs" style="height:38px; display:flex; align-items:center; justify-content:center; gap:6px;">
+              <i class="fas fa-search"></i> Buscar
+            </button>
+          </div>
+          <div class="md:col-span-3 form-group mb-0">
+            <label style="font-size:11px;font-weight:700;color:#6B7280;display:block;margin-bottom:4px">Búsqueda rápida</label>
+            <input id="mov-q" class="form-input w-full" placeholder="Buscar en resultados...">
           </div>
         </div>
         ${can('canWrite') ? `
         <div class="flex flex-wrap gap-2 mt-3">
-          <button class="btn btn-secondary" id="btn-suggest-recon"><i class="fas fa-wand-magic-sparkles"></i> Sugerir Conciliaci?n</button>
+          <button class="btn btn-secondary" id="btn-suggest-recon"><i class="fas fa-wand-magic-sparkles"></i> Sugerir Conciliación</button>
           <button class="btn btn-primary" id="btn-apply-suggested" disabled><i class="fas fa-check-double"></i> Aplicar Sugeridas (<span id="suggest-count">0</span>)</button>
           <button class="btn btn-outline" id="btn-recon-selected" disabled><i class="fas fa-list-check"></i> Conciliar Seleccionadas</button>
-          <button class="btn btn-outline" id="btn-clear-movs" style="border-color:#FECACA;color:#DC2626"><i class="fas fa-trash-can"></i> Limpiar Per?odo</button>
+          <button class="btn btn-outline" id="btn-clear-movs" style="border-color:#FECACA;color:#DC2626"><i class="fas fa-trash-can"></i> Limpiar Período</button>
         </div>
-        <p class="text-xs mt-2" style="color:#9CA3AF">Sugerencias por monto + fecha (ventana +/- 3 d?as) usando el auxiliar contable de la cuenta bancaria.</p>
+        <p class="text-xs mt-2" style="color:#9CA3AF">Sugerencias por monto + fecha (ventana +/- 3 días) usando el auxiliar contable de la cuenta bancaria.</p>
         ` : ''}
       </div>
 
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div class="overflow-x-auto" style="max-height: calc(100vh - 290px)">
           <table class="data-table" id="mov-table">
-            <thead><tr>${can('canWrite') ? '<th><input type="checkbox" id="mov-check-all"></th>' : ''}<th>Fecha</th><th>Cuenta Bancaria</th><th>Descripci?n</th><th>D?bito</th><th>Cr?dito</th><th>Referencia</th><th>Conciliado</th>${can('canWrite') ? '<th>Sugerencia</th>' : ''}<th>Acciones</th></tr></thead>
+            <thead><tr>${can('canWrite') ? '<th><input type="checkbox" id="mov-check-all"></th>' : ''}<th>Fecha</th><th>Cuenta Bancaria</th><th>Descripción</th><th>Débito</th><th>Crédito</th><th>Referencia</th><th>Conciliado</th>${can('canWrite') ? '<th>Sugerencia</th>' : ''}<th>Acciones</th></tr></thead>
             <tbody>
-              ${movements.length ? movements.map(m => `
-                <tr data-bank-id="${esc(m.bank_account_id)}" data-mov-id="${esc(m.id)}" data-reconciled="${m.reconciled ? '1' : '0'}" data-date="${esc(m.date)}">
-                  ${can('canWrite') ? `<td>${m.reconciled ? '' : `<input type="checkbox" class="mov-check" value="${esc(m.id)}">`}</td>` : ''}
-                  <td>${esc(m.date)}</td>
-                  <td>${esc(m.expand?.bank_account_id?.bank || '')} - ${esc(m.expand?.bank_account_id?.number || '')}</td>
-                  <td>${esc(m.description || '?')}</td>
-                  <td>${fmt(m.debit || 0)}</td>
-                  <td>${fmt(m.credit || 0)}</td>
-                  <td>${esc(m.ref || '?')}</td>
-                  <td>${m.reconciled ? '<span class="badge badge-green">S?</span>' : '<span class="badge badge-orange">No</span>'}</td>
-                  ${can('canWrite') ? '<td class="mov-suggest"><span class="badge badge-gray">-</span></td>' : ''}
-                  <td>${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="toggleRecon('${esc(m.id)}', ${m.reconciled ? 'false' : 'true'})"><i class="fas fa-check"></i></button>` : ''}</td>
-                </tr>`).join('') : `<tr><td colspan="${can('canWrite') ? '10' : '8'}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos bancarios.</td></tr>`}
+              <tr><td colspan="${can('canWrite') ? '10' : '8'}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos bancarios.</td></tr>
             </tbody>
           </table>
         </div>
@@ -98,6 +111,67 @@ async function renderConciliacion(c) {
       updateSelectionActions();
     };
 
+    const reloadMovements = async () => {
+      _selectedBankId = getSelectVal('bank-filter');
+      _filterFrom = getInputVal('filter-from');
+      _filterTo = getInputVal('filter-to');
+
+      const tbody = $('#mov-table tbody');
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="${can('canWrite') ? '10' : '8'}" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando movimientos...</td></tr>`;
+      }
+
+      try {
+        const filters = [];
+        if (_selectedBankId) {
+          filters.push(`bank_account_id = "${pb.escapeFilterValue(_selectedBankId)}"`);
+        }
+        if (_filterFrom) {
+          filters.push(`date >= "${pb.escapeFilterValue(_filterFrom)}"`);
+        }
+        if (_filterTo) {
+          filters.push(`date <= "${pb.escapeFilterValue(_filterTo)}"`);
+        }
+        const filterStr = filters.join(' && ');
+
+        movements = await pb.listAll('bank_movements', { 
+          sort: '-date', 
+          filter: filterStr,
+          expand: 'bank_account_id,tx_line_id' 
+        });
+
+        if (tbody) {
+          tbody.innerHTML = movements.length ? movements.map(m => `
+            <tr data-bank-id="${esc(m.bank_account_id)}" data-mov-id="${esc(m.id)}" data-reconciled="${m.reconciled ? '1' : '0'}" data-date="${esc(m.date)}">
+              ${can('canWrite') ? `<td>${m.reconciled ? '' : `<input type="checkbox" class="mov-check" value="${esc(m.id)}">`}</td>` : ''}
+              <td>${esc(m.date)}</td>
+              <td>${esc(m.expand?.bank_account_id?.bank || '')} - ${esc(m.expand?.bank_account_id?.number || '')}</td>
+              <td>${esc(m.description || '?')}</td>
+              <td>${fmt(m.debit || 0)}</td>
+              <td>${fmt(m.credit || 0)}</td>
+              <td>${esc(m.ref || '?')}</td>
+              <td>${m.reconciled ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-orange">No</span>'}</td>
+              ${can('canWrite') ? '<td class="mov-suggest"><span class="badge badge-gray">-</span></td>' : ''}
+              <td>${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="toggleRecon('${esc(m.id)}', ${m.reconciled ? 'false' : 'true'})"><i class="fas fa-check"></i></button>` : ''}</td>
+            </tr>`).join('') : `<tr><td colspan="${can('canWrite') ? '10' : '8'}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos bancarios.</td></tr>`;
+        }
+
+        suggestionByMovId.clear();
+        if ($('#suggest-count')) $('#suggest-count').textContent = '0';
+        const applyBtn = $('#btn-apply-suggested');
+        if (applyBtn) applyBtn.disabled = true;
+
+        $$('#mov-table tbody .mov-check').forEach(cb => cb.addEventListener('change', updateSelectionActions));
+        
+        const checkAll = $('#mov-check-all') as HTMLInputElement | null;
+        if (checkAll) checkAll.checked = false;
+
+        apply();
+      } catch (err: any) {
+        showToast(err.message || 'Error al recargar movimientos', 'error');
+      }
+    };
+
     const paintSuggestions = list => {
       suggestionByMovId.clear();
       list.forEach(s => suggestionByMovId.set(s.movementId, s));
@@ -124,7 +198,7 @@ async function renderConciliacion(c) {
     const runSuggestions = async () => {
       try {
         const bankId = getSelectVal('bank-filter');
-        if (!bankId) return showToast('Selecciona una cuenta bancaria para sugerir conciliaci?n', 'warning');
+        if (!bankId) return showToast('Selecciona una cuenta bancaria para sugerir conciliación', 'warning');
         const bank = bankAccounts.find(b => b.id === bankId);
         if (!bank?.account_id) return showToast('La cuenta bancaria no tiene cuenta contable asociada', 'warning');
         const btn = $('#btn-suggest-recon');
@@ -134,15 +208,15 @@ async function renderConciliacion(c) {
         }
         const list = await buildReconSuggestions(bank, movements, 3);
         paintSuggestions(list);
-        if (!list.length) showToast('No se encontraron sugerencias autom?ticas para esa cuenta', 'info');
-        else showToast(`Se generaron ${list.length} sugerencia(s) de conciliaci?n`, 'success');
-      } catch (err) {
+        if (!list.length) showToast('No se encontraron sugerencias automáticas para esa cuenta', 'info');
+        else showToast(`Se generaron ${list.length} sugerencia(s) de conciliación`, 'success');
+      } catch (err: any) {
         showToast(err.message || 'Error generando sugerencias', 'error');
       } finally {
         const btn = $('#btn-suggest-recon');
         if (btn) {
           btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Sugerir Conciliaci?n';
+          btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Sugerir Conciliación';
         }
       }
     };
@@ -186,61 +260,225 @@ async function renderConciliacion(c) {
       renderConciliacion($('#page-content'));
     };
 
-    $('#bank-filter')?.addEventListener('change', apply);
-    $('#filter-from')?.addEventListener('change', apply);
-    $('#filter-to')?.addEventListener('change', apply);
+    $('#btn-search-movs')?.addEventListener('click', reloadMovements);
+    $('#filter-from')?.addEventListener('keydown', e => { if (e.key === 'Enter') reloadMovements(); });
+    $('#filter-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') reloadMovements(); });
+    $('#bank-filter')?.addEventListener('keydown', e => { if (e.key === 'Enter') reloadMovements(); });
     $('#btn-clear-movs')?.addEventListener('click', () => openClearMovementsModal(bankAccounts, movements));
     $('#mov-q')?.addEventListener('input', debounce(apply, 150));
-    $('#btn-new-bank')?.addEventListener('click', () => openBankAccountForm(accounts));
+    $('#btn-manage-banks')?.addEventListener('click', () => openBankAccountsManager(bankAccounts, accounts));
     $('#btn-new-mov')?.addEventListener('click', () => openBankMovementForm(bankAccounts));
     $('#btn-import-ext')?.addEventListener('click', () => openImportModal(bankAccounts));
     $('#btn-suggest-recon')?.addEventListener('click', runSuggestions);
     $('#btn-apply-suggested')?.addEventListener('click', applySuggested);
     $('#btn-recon-selected')?.addEventListener('click', reconcileSelected);
     $('#mov-check-all')?.addEventListener('change', e => {
-      const on = !!e.target.checked;
+      const on = !!(e.target as HTMLInputElement).checked;
       $$('#mov-table tbody tr').forEach(tr => {
         if (tr.style.display === 'none' || tr.dataset.reconciled === '1') return;
-        const cb = tr.querySelector('.mov-check');
+        const cb = tr.querySelector('.mov-check') as HTMLInputElement | null;
         if (cb) cb.checked = on;
       });
       updateSelectionActions();
     });
-    $$('#mov-table tbody .mov-check').forEach(cb => cb.addEventListener('change', updateSelectionActions));
-    apply();
-  } catch (err) {
+    
+    await reloadMovements();
+  } catch (err: any) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
 
-function openBankAccountForm(accounts) {
+function openBankAccountsManager(bankAccountsList, accounts) {
+  let editingBankAccountId = '';
+  let currentList = [...bankAccountsList];
+
+  const renderRowsHtml = (list) => {
+    if (!list.length) {
+      return `<tr><td colspan="6" class="text-center py-6" style="color:#9CA3AF">No hay cuentas bancarias registradas.</td></tr>`;
+    }
+    return list.map(b => `
+      <tr id="ba-m-row-${b.id}">
+        <td><strong>${esc(b.bank)}</strong></td>
+        <td>${esc(b.number)}</td>
+        <td>${esc(b.name)}</td>
+        <td>${esc(b.expand?.account_id?.code || '')} - ${esc(b.expand?.account_id?.name || '')}</td>
+        <td>${b.active ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-red">No</span>'}</td>
+        <td style="text-align:center">
+          <div class="flex justify-center gap-1">
+            <button class="btn btn-outline btn-sm" style="padding:2px 8px" onclick="window._editBankAccountInModal('${esc(b.id)}')">
+              <i class="fas fa-pencil" style="font-size:11px"></i>
+            </button>
+            ${can('canDelete') ? `
+            <button class="btn btn-outline btn-sm" style="padding:2px 8px;color:#EF4444;border-color:#FECACA" onclick="window._deleteBankAccountInModal('${esc(b.id)}')">
+              <i class="fas fa-trash-can" style="font-size:11px"></i>
+            </button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  };
+
+  const buildModalContent = () => {
+    return `
+      <!-- Formulario de Creación/Edición -->
+      <div class="bg-gray-50 rounded-xl p-4 border mb-4" style="border-color:#E5E7EB">
+        <h4 class="text-sm font-bold mb-3" id="ba-m-title" style="color:#0D2137"><i class="fas fa-plus mr-1"></i> Nueva Cuenta Bancaria</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div class="form-group mb-0">
+            <label class="form-label text-xs">Nombre descriptivo <span style="color:#EF4444">*</span></label>
+            <input id="ba-m-name" class="form-input w-full" placeholder="Ej. Ahorros Principal">
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label text-xs">Banco <span style="color:#EF4444">*</span></label>
+            <input id="ba-m-bank" class="form-input w-full" placeholder="Ej. Bancolombia">
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label text-xs">Número de Cuenta <span style="color:#EF4444">*</span></label>
+            <input id="ba-m-number" class="form-input w-full" placeholder="Ej. 123-456789-01">
+          </div>
+          <div class="form-group mb-0">
+            <label class="form-label text-xs">Cuenta contable asociada <span style="color:#EF4444">*</span></label>
+            <select id="ba-m-account" class="form-input w-full">
+              <option value="">-- Seleccionar cuenta --</option>
+              ${accounts.map(a => `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="flex items-center justify-between mt-3">
+          <label class="flex items-center gap-2 cursor-pointer text-xs" style="font-weight:600;color:#374151">
+            <input type="checkbox" id="ba-m-active" checked style="accent-color:#2E6CE6">
+            <span>Cuenta Activa (Disponible para movimientos)</span>
+          </label>
+          <div class="flex gap-2">
+            <button class="btn btn-outline btn-sm" id="btn-ba-m-clear" style="display:none">Cancelar Edición</button>
+            <button class="btn btn-primary btn-sm" id="btn-ba-m-save"><i class="fas fa-save mr-1"></i> Guardar Cuenta</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Listado de Cuentas -->
+      <p style="font-weight:700;font-size:13px;color:#374151;margin-bottom:10px">Cuentas Bancarias Registradas</p>
+      <div style="max-height:240px;overflow-y:auto;border:1px solid #F0F0F0;border-radius:12px">
+        <table class="data-table" style="font-size:12px" id="ba-m-table">
+          <thead>
+            <tr>
+              <th>Banco</th>
+              <th>Número</th>
+              <th>Nombre</th>
+              <th>Cuenta Contable</th>
+              <th>Activa</th>
+              <th style="text-align:center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderRowsHtml(currentList)}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+
   openModal(
-    'Nueva Cuenta Bancaria',
-    `
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="form-group"><label class="form-label">Nombre</label><input id="ba-name" class="form-input"></div>
-      <div class="form-group"><label class="form-label">Banco</label><input id="ba-bank" class="form-input"></div>
-      <div class="form-group"><label class="form-label">N?mero</label><input id="ba-number" class="form-input"></div>
-      <div class="form-group"><label class="form-label">Cuenta contable asociada</label><select id="ba-account" class="form-input">${accounts.map(a => `<option value="${esc(a.id)}">${esc(a.code)} - ${esc(a.name)}</option>`).join('')}</select></div>
-    </div>`,
-    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btn-save-ba">Guardar</button>`
+    '<i class="fas fa-building-columns mr-2"></i>Cuentas Bancarias',
+    `<div id="ba-m-container">${buildModalContent()}</div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+    true
   );
-  $('#btn-save-ba')?.addEventListener('click', async () => {
+
+  const refreshList = async () => {
     try {
-      const payload = {
-        name: getInputVal('ba-name'),
-        bank: getInputVal('ba-bank'),
-        number: getInputVal('ba-number'),
-        account_id: getSelectVal('ba-account'),
-        currency: 'COP',
-        active: true,
-      };
-      if (!payload.name || !payload.bank || !payload.number || !payload.account_id) return showToast('Completa todos los campos', 'warning');
-      const r = await pb.create('bank_accounts', payload);
-      closeModal();
-      showToast('Cuenta bancaria creada', 'success');
+      currentList = await pb.listAll('bank_accounts', { sort: 'name', expand: 'account_id' });
+      const tbody = document.querySelector('#ba-m-table tbody');
+      if (tbody) {
+        tbody.innerHTML = renderRowsHtml(currentList);
+      }
+    } catch (err: any) {
+      showToast('Error al refrescar listado: ' + err.message, 'error');
+    }
+  };
+
+  const resetForm = () => {
+    editingBankAccountId = '';
+    setInputVal('ba-m-name', '');
+    setInputVal('ba-m-bank', '');
+    setInputVal('ba-m-number', '');
+    setSelectVal('ba-m-account', '');
+    const activeCb = document.getElementById('ba-m-active') as HTMLInputElement | null;
+    if (activeCb) activeCb.checked = true;
+
+    const title = document.getElementById('ba-m-title');
+    if (title) title.innerHTML = '<i class="fas fa-plus mr-1"></i> Nueva Cuenta Bancaria';
+
+    const clearBtn = document.getElementById('btn-ba-m-clear');
+    if (clearBtn) clearBtn.style.display = 'none';
+  };
+
+  (window as any)._editBankAccountInModal = (id) => {
+    const item = currentList.find(b => b.id === id);
+    if (!item) return;
+    editingBankAccountId = id;
+
+    setInputVal('ba-m-name', item.name);
+    setInputVal('ba-m-bank', item.bank);
+    setInputVal('ba-m-number', item.number);
+    setSelectVal('ba-m-account', item.account_id);
+    const activeCb = document.getElementById('ba-m-active') as HTMLInputElement | null;
+    if (activeCb) activeCb.checked = !!item.active;
+
+    const title = document.getElementById('ba-m-title');
+    if (title) title.innerHTML = '<i class="fas fa-pencil mr-1"></i> Editar Cuenta Bancaria';
+
+    const clearBtn = document.getElementById('btn-ba-m-clear');
+    if (clearBtn) clearBtn.style.display = '';
+  };
+
+  (window as any)._deleteBankAccountInModal = async (id) => {
+    if (!confirm('¿Estás seguro de eliminar esta cuenta bancaria? Se perderá su asociación en conciliaciones.')) return;
+    try {
+      await pb.delete('bank_accounts', id);
+      showToast('Cuenta bancaria eliminada', 'success');
+      await refreshList();
       renderConciliacion($('#page-content'));
-    } catch (err) { showToast(err.message, 'error'); }
+    } catch (err: any) {
+      showToast(err.message || 'Error al eliminar', 'error');
+    }
+  };
+
+  document.getElementById('btn-ba-m-clear')?.addEventListener('click', resetForm);
+
+  document.getElementById('btn-ba-m-save')?.addEventListener('click', async () => {
+    const payload = {
+      name: getInputVal('ba-m-name'),
+      bank: getInputVal('ba-m-bank'),
+      number: getInputVal('ba-m-number'),
+      account_id: getSelectVal('ba-m-account'),
+      currency: 'COP',
+      active: (document.getElementById('ba-m-active') as HTMLInputElement)?.checked ?? true,
+    };
+
+    if (!payload.name || !payload.bank || !payload.number || !payload.account_id) {
+      return showToast('Completa todos los campos obligatorios', 'warning');
+    }
+
+    const btn = document.getElementById('btn-ba-m-save') as HTMLButtonElement | null;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+
+    try {
+      if (editingBankAccountId) {
+        await pb.update('bank_accounts', editingBankAccountId, payload);
+        showToast('Cuenta bancaria actualizada', 'success');
+      } else {
+        await pb.create('bank_accounts', payload);
+        showToast('Cuenta bancaria creada', 'success');
+      }
+      resetForm();
+      await refreshList();
+      renderConciliacion($('#page-content'));
+    } catch (err: any) {
+      showToast(err.message || 'Error al guardar cuenta bancaria', 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i> Guardar Cuenta'; }
+    }
   });
 }
 
@@ -329,7 +567,7 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 3) {
   const txLines = await pb.listAll('tx_lines', {
     filter: `account_id="${safe}"`,
     expand: 'tx_id',
-    sort: '-created',
+    sort: '-id',
   });
 
   const usedLineIds = new Set(
@@ -391,11 +629,11 @@ function openClearMovementsModal(bankAccounts, movements) {
   const preBid  = getSelectVal('bank-filter') || '';
 
   openModal(
-    '<i class="fas fa-trash-can mr-2" style="color:#DC2626"></i>Limpiar Per?odo',
+    '<i class="fas fa-trash-can mr-2" style="color:#DC2626"></i>Limpiar Período',
     `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 14px;font-size:13px;color:#991B1B;margin-bottom:16px">
        <i class="fas fa-triangle-exclamation mr-1"></i>
-       Esta acci?n <strong>elimina permanentemente</strong> los movimientos del rango seleccionado.
-       Los movimientos ya conciliados se eliminar?n tambi?n y perder?n su v?nculo contable.
+       Esta acción <strong>elimina permanentemente</strong> los movimientos del rango seleccionado.
+       Los movimientos ya conciliados se eliminarán también y perderán su vínculo contable.
      </div>
      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
        <div class="form-group mb-0">
@@ -422,36 +660,49 @@ function openClearMovementsModal(bankAccounts, movements) {
      </button>`
   );
 
-  const updatePreview = () => {
+  const updatePreview = async () => {
     const bid  = getSelectVal('clr-bank');
     const from = getInputVal('clr-from');
     const to   = getInputVal('clr-to');
     if (!from || !to) {
-      $('#clr-preview').innerHTML = '<span style="color:#9CA3AF">Selecciona ambas fechas para ver cu?ntos registros se eliminar?n.</span>';
-      if ($('#btn-clr-confirm')) $('#btn-clr-confirm').disabled = true;
+      $('#clr-preview').innerHTML = '<span style="color:#9CA3AF">Selecciona ambas fechas para ver cuántos registros se eliminarán.</span>';
+      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
       return;
     }
     if (from > to) {
       $('#clr-preview').innerHTML = '<span style="color:#EF4444"><i class="fas fa-circle-exclamation mr-1"></i>La fecha inicial no puede ser mayor que la final.</span>';
-      if ($('#btn-clr-confirm')) $('#btn-clr-confirm').disabled = true;
+      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
       return;
     }
-    const affected = movements.filter(m => {
-      const okB = !bid || m.bank_account_id === bid;
-      return okB && m.date >= from && m.date <= to;
-    });
-    const recon = affected.filter(m => m.reconciled).length;
-    if (!affected.length) {
-      $('#clr-preview').innerHTML = '<span style="color:#6B7280">Ning?n movimiento coincide con ese rango.</span>';
-      if ($('#btn-clr-confirm')) $('#btn-clr-confirm').disabled = true;
-      return;
+
+    try {
+      const filters = [];
+      if (bid) filters.push(`bank_account_id = "${pb.escapeFilterValue(bid)}"`);
+      filters.push(`date >= "${pb.escapeFilterValue(from)}"`);
+      filters.push(`date <= "${pb.escapeFilterValue(to)}"`);
+      
+      const affected = await pb.listAll('bank_movements', { filter: filters.join(' && ') });
+      const recon = affected.filter(m => m.reconciled).length;
+      
+      if (!affected.length) {
+        $('#clr-preview').innerHTML = '<span style="color:#6B7280">Ningún movimiento coincide con ese rango.</span>';
+        const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+        if (btn) btn.disabled = true;
+        return;
+      }
+      
+      $('#clr-preview').innerHTML = `
+        <span style="color:#DC2626;font-weight:700"><i class="fas fa-triangle-exclamation mr-1"></i>
+        Se eliminarán <strong>${affected.length}</strong> movimiento(s)
+        ${recon ? `<span style="color:#92400E"> — de los cuales <strong>${recon}</strong> ya están conciliados</span>` : ''}
+        </span>`;
+      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+      if (btn) btn.disabled = false;
+    } catch (err: any) {
+      $('#clr-preview').innerHTML = `<span style="color:#EF4444">Error al cargar vista previa: ${esc(err.message)}</span>`;
     }
-    $('#clr-preview').innerHTML = `
-      <span style="color:#DC2626;font-weight:700"><i class="fas fa-triangle-exclamation mr-1"></i>
-      Se eliminar?n <strong>${affected.length}</strong> movimiento(s)
-      ${recon ? `<span style="color:#92400E"> — de los cuales <strong>${recon}</strong> ya est?n conciliados</span>` : ''}
-      </span>`;
-    if ($('#btn-clr-confirm')) $('#btn-clr-confirm').disabled = false;
   };
 
   $('#clr-bank')?.addEventListener('change', updatePreview);
@@ -463,22 +714,35 @@ function openClearMovementsModal(bankAccounts, movements) {
     const bid  = getSelectVal('clr-bank');
     const from = getInputVal('clr-from');
     const to   = getInputVal('clr-to');
-    const toDelete = movements.filter(m => {
-      const okB = !bid || m.bank_account_id === bid;
-      return okB && m.date >= from && m.date <= to;
-    });
-    if (!toDelete.length) return;
-    const btn = $('#btn-clr-confirm');
+    
+    const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Eliminando...'; }
-    let ok = 0, fail = 0;
-    for (const m of toDelete) {
-      try { await pb.delete('bank_movements', m.id); ok++; }
-      catch (_) { fail++; }
+    
+    try {
+      const filters = [];
+      if (bid) filters.push(`bank_account_id = "${pb.escapeFilterValue(bid)}"`);
+      filters.push(`date >= "${pb.escapeFilterValue(from)}"`);
+      filters.push(`date <= "${pb.escapeFilterValue(to)}"`);
+      
+      const toDelete = await pb.listAll('bank_movements', { filter: filters.join(' && ') });
+      if (!toDelete.length) {
+        closeModal();
+        return;
+      }
+      
+      let ok = 0, fail = 0;
+      for (const m of toDelete) {
+        try { await pb.delete('bank_movements', m.id); ok++; }
+        catch (_) { fail++; }
+      }
+      closeModal();
+      if (fail) showToast(`Eliminados ${ok}. ${fail} no pudieron borrarse (pueden tener restricciones).`, 'warning');
+      else      showToast(`${ok} movimiento(s) eliminado(s) correctamente`, 'success');
+      renderConciliacion($('#page-content'));
+    } catch (err: any) {
+      showToast('Error al eliminar movimientos: ' + err.message, 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-can mr-1"></i> Eliminar movimientos'; }
     }
-    closeModal();
-    if (fail) showToast(`Eliminados ${ok}. ${fail} no pudieron borrarse (pueden tener restricciones).`, 'warning');
-    else      showToast(`${ok} movimiento(s) eliminado(s) correctamente`, 'success');
-    renderConciliacion($('#page-content'));
   });
 }
 
@@ -1025,7 +1289,7 @@ async function _doImport() {
 (window as any)._renderColMapper = _renderColMapper;
 (window as any)._parseExcelDate = _parseExcelDate;
 (window as any)._parsePdfText = _parsePdfText;
-(window as any).openBankAccountForm = openBankAccountForm;
+(window as any).openBankAccountsManager = openBankAccountsManager;
 (window as any)._autoMapColumns = _autoMapColumns;
 (window as any).openImportModal = openImportModal;
 (window as any)._handleExcelFile = _handleExcelFile;

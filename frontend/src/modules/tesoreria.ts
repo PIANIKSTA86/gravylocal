@@ -1334,23 +1334,80 @@ async function renderTesoDashboard() {
   if (!c) return;
   try {
     const pb = _pb();
-    const [cxcRes, cxpRes] = await Promise.all([
-      pb.listAll('tx_lines', { filter: 'debit > credit' }),
-      pb.listAll('tx_lines', { filter: 'credit > debit' }),
+    const [accounts, txLines] = await Promise.all([
+      (window as any).API.getAccounts(false),
+      pb.listAll('tx_lines', {
+        expand: 'account_id,tx_id',
+        filter: 'tx_id.status="active"',
+      }),
     ]);
-    const saldoCxC = cxcRes.reduce((acc: number, cur: any) => acc + (cur.debit - cur.credit), 0);
-    const saldoCxP = cxpRes.reduce((acc: number, cur: any) => acc + (cur.credit - cur.debit), 0);
+
+    const accountMap = new Map(accounts.map((a: any) => [a.id, a]));
+    const docs = new Map();
+
+    for (const line of txLines) {
+      const tx = line.expand?.tx_id;
+      if (!tx) continue;
+
+      const acc = line.expand?.account_id || accountMap.get(line.account_id);
+      if (!acc || !acc.maneja_cruce) continue;
+
+      const code = acc.code || '';
+      const is13 = code.startsWith('13');
+      const is21_22_23 = code.startsWith('21') || code.startsWith('22') || code.startsWith('23');
+
+      if (!is13 && !is21_22_23) continue;
+
+      const thirdId = line.third_party_id || tx.third_party_id || 'NO_TERCERO';
+      const ref = (line.cross_doc_ref || '').trim() || 'SIN_DOC';
+
+      const key = `${acc.id}|${thirdId}|${ref}`;
+      if (!docs.has(key)) {
+        docs.set(key, {
+          is13,
+          is21_22_23,
+          debit: 0,
+          credit: 0,
+        });
+      }
+      const d = docs.get(key);
+      d.debit += Number(line.debit || 0);
+      d.credit += Number(line.credit || 0);
+    }
+
+    let saldoCxC = 0;
+    let saldoCxP = 0;
+    let cxcCount = 0;
+    let cxpCount = 0;
+    const EPS = 0.0001;
+
+    docs.forEach((d) => {
+      if (d.is13) {
+        const open = d.debit - d.credit;
+        if (open > EPS) {
+          saldoCxC += open;
+          cxcCount++;
+        }
+      } else if (d.is21_22_23) {
+        const open = d.credit - d.debit;
+        if (open > EPS) {
+          saldoCxP += open;
+          cxpCount++;
+        }
+      }
+    });
+
     c.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div class="p-6 bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-2xl shadow-sm">
           <div class="text-sm font-semibold text-green-800 mb-1 flex items-center"><i class="fas fa-hand-holding-dollar mr-2"></i> Total Cuentas por Cobrar</div>
           <div class="text-4xl font-bold text-green-900 my-2">${_fmt(saldoCxC)}</div>
-          <div class="text-sm text-green-700">${cxcRes.length} partidas abiertas a favor</div>
+          <div class="text-sm text-green-700">${cxcCount} documentos de cruce pendientes</div>
         </div>
         <div class="p-6 bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-2xl shadow-sm">
           <div class="text-sm font-semibold text-red-800 mb-1 flex items-center"><i class="fas fa-file-invoice-dollar mr-2"></i> Total Cuentas por Pagar</div>
           <div class="text-4xl font-bold text-red-900 my-2">${_fmt(saldoCxP)}</div>
-          <div class="text-sm text-red-700">${cxpRes.length} obligaciones pendientes</div>
+          <div class="text-sm text-red-700">${cxpCount} obligaciones pendientes</div>
         </div>
       </div>
       <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 text-sm text-blue-900 flex items-start gap-4">

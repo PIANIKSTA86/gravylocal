@@ -3305,10 +3305,66 @@ async function renderWithholdingCertificates() {
 
     try {
       const safeThirdId = pb.escapeFilterValue(thirdId);
-      const lines = await pb.listAll('tx_lines', {
-        filter: `third_party_id="${safeThirdId}" && tx_id.status="active"`,
-        expand: 'account_id,tx_id',
-      });
+      const [lines, purchaseCfgRaw, salesCfgRaw, accounts] = await Promise.all([
+        pb.listAll('tx_lines', {
+          filter: `third_party_id="${safeThirdId}" && tx_id.status="active"`,
+          expand: 'account_id,tx_id',
+        }),
+        API.getSetting('purchase_config_v1').catch(() => null),
+        API.getSetting('sales_settings_v2').catch(() => null),
+        API.getAccounts(true).catch(() => []),
+      ]);
+
+      const purchaseCfg = purchaseCfgRaw ? JSON.parse(purchaseCfgRaw) : null;
+      const salesCfg = salesCfgRaw ? JSON.parse(salesCfgRaw) : null;
+
+      // Map accounts by code for fast lookup
+      const accountMap = new Map();
+      for (const a of accounts) {
+        if (a.code) {
+          accountMap.set(a.code, a);
+        }
+      }
+
+      const purchaseRules = purchaseCfg?.accounting?.withholding_rules || [];
+      const salesRules = salesCfg?.accounting?.withholding_rules || [];
+
+      const resolveRate = (accCode, acc, lineRateRaw) => {
+        const lineRate = Number(lineRateRaw || 0);
+        if (lineRate > 0) return lineRate;
+
+        // Check purchase rules matching account_code
+        const pRule = purchaseRules.find(r => r.account_code === accCode);
+        if (pRule && Number(pRule.rate || 0) > 0) {
+          return Number(pRule.rate);
+        }
+
+        // Check sales rules matching account_code
+        const sRule = salesRules.find(r => r.account_code === accCode);
+        if (sRule && Number(sRule.rate || 0) > 0) {
+          return Number(sRule.rate);
+        }
+
+        // Check account default rate fields
+        if (acc) {
+          if (accCode.startsWith('2365') && Number(acc.ret_rate_reterenta || 0) > 0) {
+            return Number(acc.ret_rate_reterenta);
+          }
+          if (accCode.startsWith('2367') && Number(acc.ret_rate_reteiva || 0) > 0) {
+            return Number(acc.ret_rate_reteiva);
+          }
+          if (accCode.startsWith('2368') && Number(acc.ret_rate_reteica || 0) > 0) {
+            return Number(acc.ret_rate_reteica);
+          }
+        }
+
+        // Fallbacks to Colombian defaults
+        if (accCode.startsWith('2365')) return 3.5;
+        if (accCode.startsWith('2367')) return 15;
+        if (accCode.startsWith('2368')) return 0.414;
+
+        return 0;
+      };
 
       const yearLines = lines.filter(l => l.expand?.tx_id?.date && l.expand.tx_id.date.startsWith(year));
       const withholdingGroups = [];
@@ -3328,8 +3384,14 @@ async function renderWithholdingCertificates() {
         const withheld = Number(l.credit || 0) - Number(l.debit || 0);
         if (withheld <= 0.01) continue;
 
-        const rate = Number(l.ret_rate || 0);
-        const base = Number(l.ret_base || (rate > 0 ? (withheld / (rate / 100)) : withheld));
+        const acc = l.expand?.account_id || accountMap.get(accCode);
+        const rate = resolveRate(accCode, acc, l.ret_rate);
+        
+        let base = Number(l.ret_base || 0);
+        // Recalculate base if it is 0 or if it was saved incorrectly as equal to the withheld amount
+        if (base <= 0.01 || (rate > 0 && Math.abs(base - withheld) < 0.05 && Math.abs(rate - 100) > 0.01)) {
+          base = rate > 0 ? (withheld / (rate / 100)) : withheld;
+        }
 
         withholdingGroups.push({
           accountCode: accCode,

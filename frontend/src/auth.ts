@@ -101,6 +101,20 @@ function applyModuleVisibility(): void {
     const role = pb.currentUser?.role ?? 'viewer';
     navLicencias.style.display = (role === 'admin') ? '' : 'none';
   }
+
+  // Ocultar cabeceras de sección vacías
+  $$('#nav-menu .nav-section').forEach((section: any) => {
+    let next = section.nextElementSibling;
+    let hasVisible = false;
+    while (next && !next.classList.contains('nav-section')) {
+      if (next.classList.contains('nav-item') && next.style.display !== 'none') {
+        hasVisible = true;
+        break;
+      }
+      next = next.nextElementSibling;
+    }
+    section.style.display = hasVisible ? '' : 'none';
+  });
 }
 
 function can(permission) {

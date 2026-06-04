@@ -326,6 +326,7 @@ let activeLineFilter = "";
 let posDiscountPct = 0;
 let posFreightAmt = 0;
 let loadedSalesOrderId: string | null = null;
+let loadedSellerId: string | null = null;
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
@@ -534,6 +535,7 @@ window.loadPOSInterface = async function() {
     posDiscountPct = 0;
     posFreightAmt = 0;
     loadedSalesOrderId = null;
+    loadedSellerId = null;
 
     // Render principal
     mainWrap.innerHTML = `
@@ -1022,6 +1024,7 @@ window.removeCartItem = function(id: string) {
 window.clearPOSCart = function() {
   posCart = [];
   loadedSalesOrderId = null;
+  loadedSellerId = null;
   const banner = document.getElementById('pos-loaded-order-banner');
   if (banner) banner.style.display = 'none';
   window.renderPOSCart();
@@ -1315,7 +1318,7 @@ window.openPOSPaymentModal = async function() {
         <label class="form-label font-bold text-gray-700 mb-1 block">Vendedor Asignado</label>
         <select id="pos-pay-seller" class="form-input w-full">
           <option value="">— Seleccionar Vendedor —</option>
-          ${sellers.map(s => `<option value="${(window as any).esc(s.id)}">${(window as any).esc(s.name)}</option>`).join('')}
+          ${sellers.map(s => `<option value="${(window as any).esc(s.id)}"${loadedSellerId === s.id ? ' selected' : ''}>${(window as any).esc(s.name)}</option>`).join('')}
         </select>
       </div>
 
@@ -1702,6 +1705,7 @@ window.confirmPOSPayment = async function() {
     // Vaciar carrito y refrescar la vista de inmediato
     posCart = [];
     loadedSalesOrderId = null;
+    loadedSellerId = null;
     const banner = document.getElementById('pos-loaded-order-banner');
     if (banner) banner.style.display = 'none';
     window.renderPOSCart();
@@ -2187,6 +2191,7 @@ window.posLoadPendingOrderModal = async function() {
         const orderLines = await (window as any).API.getSalesOrderLines(orderId);
 
         loadedSalesOrderId = order.id;
+        loadedSellerId = order.seller_id || null;
 
         // Set customer
         selectedCustomerId = order.customer_id;
@@ -2253,6 +2258,7 @@ window.posLoadPendingOrderModal = async function() {
 
 window.posUnloadOrder = function() {
   loadedSalesOrderId = null;
+  loadedSellerId = null;
   const banner = document.getElementById('pos-loaded-order-banner');
   if (banner) banner.style.display = 'none';
   posCart = [];

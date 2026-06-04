@@ -181,6 +181,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
     (window as any).API.getWarehouses(true),
     (window as any).API.getProducts({ activeOnly: true }),
   ]);
+  const sellers = customers.filter((c: any) => c.type === 'VENDEDOR');
 
   if (orderId) {
     [ord, existingLines] = await Promise.all([
@@ -196,7 +197,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
   const formHtml = `
     <div class="space-y-6 text-sm" style="color:#374151">
       <!-- Encabezado -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
         <div class="form-group relative col-span-1 md:col-span-2">
           <label class="form-label font-bold">Cliente <span style="color:#EF4444">*</span></label>
           <div id="ord-customer-search-wrap" class="relative flex gap-1 items-center">
@@ -216,6 +217,13 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
           </select>
         </div>
         <div class="form-group">
+          <label class="form-label font-bold">Vendedor</label>
+          <select id="ord-seller" class="form-input">
+            <option value="">— Sin vendedor —</option>
+            ${sellers.map(s => `<option value="${(window as any).esc(s.id)}"${ord?.seller_id === s.id ? ' selected' : ''}>${(window as any).esc(s.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
           <label class="form-label font-bold">Fecha Pedido <span style="color:#EF4444">*</span></label>
           <input id="ord-date" type="date" class="form-input" value="${(window as any).esc(orderDate)}">
         </div>
@@ -227,7 +235,8 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
           <label class="form-label font-bold">Número Pedido</label>
           <input id="ord-number" class="form-input" placeholder="AUTO" readonly value="${(window as any).esc(ord?.number || 'AUTO')}" style="background:#F3F4F6">
         </div>
-        <div class="form-group col-span-1 md:col-span-3">
+        <div></div>
+        <div class="form-group col-span-1 md:col-span-4">
           <label class="form-label font-bold">Observaciones / Notas</label>
           <input id="ord-notes" class="form-input" placeholder="Ej: entrega en oficina principal, cotización válida por 15 días, etc." value="${(window as any).esc(ord?.notes || '')}">
         </div>
@@ -589,6 +598,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
       const notes = (document.getElementById('ord-notes') as HTMLInputElement)?.value.trim();
       const number = (document.getElementById('ord-number') as HTMLInputElement)?.value;
       const warehouseId = (document.getElementById('ord-warehouse') as HTMLSelectElement)?.value || null;
+      const sellerId = (document.getElementById('ord-seller') as HTMLSelectElement)?.value || null;
 
       if (!customerId) throw new Error('Por favor selecciona un cliente.');
       if (!date) throw new Error('Por favor selecciona la fecha de emisión del pedido.');
@@ -636,6 +646,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
         number,
         customer_id: customerId,
         warehouse_id: warehouseId,
+        seller_id: sellerId,
         date,
         due_date: dueDate,
         notes,
@@ -661,7 +672,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
 (window as any).viewSalesOrderDetail = async function(orderId: string) {
   try {
     const [ord, lines] = await Promise.all([
-      (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id,invoice_id,user_id' }),
+      (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id,invoice_id,user_id,seller_id' }),
       (window as any).API.getSalesOrderLines(orderId),
     ]);
 
@@ -681,9 +692,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
           
           <div class="col-span-2"><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Cliente / Adquirente</span><span class="font-semibold text-gray-800">${client ? (window as any).esc(client.name) : '—'} (Doc: ${client ? (window as any).esc(client.doc_number || client.nit) : '—'})</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Bodega</span><span class="font-semibold">${wh ? (window as any).esc(wh.name) : '—'}</span></div>
-          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Registrado por</span><span class="font-semibold">${user ? (window as any).esc(user.name || user.full_name) : '—'}</span></div>
+          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Vendedor</span><span class="font-semibold text-gray-800">${ord.expand?.seller_id ? (window as any).esc(ord.expand.seller_id.name) : '—'}</span></div>
           
-          <div class="col-span-4"><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Observaciones</span><span>${(window as any).esc(ord.notes || 'Sin observaciones.')}</span></div>
+          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Registrado por</span><span class="font-semibold">${user ? (window as any).esc(user.name || user.full_name) : '—'}</span></div>
+          <div class="col-span-3"><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Observaciones</span><span>${(window as any).esc(ord.notes || 'Sin observaciones.')}</span></div>
         </div>
 
         <!-- Tabla de Artículos -->

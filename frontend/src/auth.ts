@@ -53,6 +53,7 @@ function applyModuleVisibility(): void {
     'productos':        'comercial',
     'inventario':       'comercial',
     'pos':              'comercial',
+    'spa':              'comercial',
     'tesoreria':        'comercial',
     'conciliacion':     'comercial',
     'nomina':           'nomina',

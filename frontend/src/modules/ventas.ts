@@ -569,6 +569,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       inv = {
         customer_id: preloadedOrder.customer_id,
         warehouse_id: preloadedOrder.warehouse_id,
+        seller_id: preloadedOrder.seller_id,
         notes: preloadedOrder.notes || `Pedido ${preloadedOrder.number}`,
         date: (window as any).todayStr(),
         payment_method: 'CREDITO',

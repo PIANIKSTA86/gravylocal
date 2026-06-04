@@ -171,6 +171,9 @@ async function renderPhFacturacion(c) {
             <i class="fas fa-trash"></i> Eliminar período
           </button>` : ''}
         ${can('canWrite') ? `
+          <button class="btn btn-outline" id="ph-config-btn" title="Configuración Copropiedades" style="color:#7F7CFF;border-color:#7F7CFF">
+            <i class="fas fa-cog"></i>
+          </button>
           <button class="btn btn-primary" id="ph-gen-btn">
             <i class="fas fa-wand-magic-sparkles"></i> Generar facturas del período
           </button>` : ''}
@@ -234,6 +237,15 @@ async function renderPhFacturacion(c) {
     document.getElementById('ph-post-period-btn')?.addEventListener('click', () => openPhPostPeriodModal(c));
     document.getElementById('ph-unpost-period-btn')?.addEventListener('click', () => openPhUnpostPeriodModal(c));
     document.getElementById('ph-delete-period-btn')?.addEventListener('click', () => openPhDeletePeriodModal(c));
+    document.getElementById('ph-config-btn')?.addEventListener('click', () => {
+      openModal(
+        'Configuración Copropiedades',
+        `<div id="ph-config-modal-body" style="min-height: 450px;"></div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+        true
+      );
+      renderPhConfig(document.getElementById('ph-config-modal-body'));
+    });
 
     attachPhInvActions();
   } catch (err) {
@@ -2918,7 +2930,97 @@ async function openPhIndividualConceptModal(conceptId, container, accountsPreloa
   }, 50);
 }
 
+async function renderPhFacturacionPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-file-invoice-dollar mr-2" style="color:#7F7CFF"></i>Facturación PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Gestión y generación de facturas mensuales por unidad.</p>
+      </div>
+    </div>
+    <div id="ph-facturacion-inner"></div>`;
+  renderPhFacturacion(c.querySelector('#ph-facturacion-inner'));
+}
+
+async function renderPhCarteraPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-wallet mr-2" style="color:#1A4B8C"></i>Cartera PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Control de cartera, saldos por concepto y edades.</p>
+      </div>
+    </div>
+    <div id="ph-cartera-inner"></div>`;
+  renderPhCartera(c.querySelector('#ph-cartera-inner'));
+}
+
+async function renderPhPresupuestoPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-sack-dollar mr-2" style="color:#059669"></i>Presupuesto PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Presupuesto anual y comparación de ejecución.</p>
+      </div>
+    </div>
+    <div id="ph-presupuesto-inner"></div>`;
+  renderPhPresupuesto(c.querySelector('#ph-presupuesto-inner'));
+}
+
+async function renderPhUnidadesPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-building mr-2" style="color:#7F7CFF"></i>Unidades PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Administración de unidades habitacionales y coeficientes.</p>
+      </div>
+    </div>
+    <div id="ph-unidades-inner"></div>`;
+  renderPhUnidades(c.querySelector('#ph-unidades-inner'));
+}
+
+async function renderPhReservasPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-calendar-days mr-2" style="color:#1A4B8C"></i>Reservas PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Reservación de zonas comunes y control de depósitos.</p>
+      </div>
+    </div>
+    <div id="ph-reservas-inner"></div>`;
+  renderPhReservas(c.querySelector('#ph-reservas-inner'));
+}
+
+async function renderPhPqrsPage(c) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-comments mr-2" style="color:#059669"></i>PQRs PH
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Peticiones, Quejas, Reclamos y Sugerencias de copropietarios.</p>
+      </div>
+    </div>
+    <div id="ph-pqrs-inner"></div>`;
+  renderPhPqrs(c.querySelector('#ph-pqrs-inner'));
+}
+
 // --- VITE MIGRATION GLOBALS ---
+(window as any).renderPhFacturacionPage = renderPhFacturacionPage;
+(window as any).renderPhCarteraPage = renderPhCarteraPage;
+(window as any).renderPhPresupuestoPage = renderPhPresupuestoPage;
+(window as any).renderPhUnidadesPage = renderPhUnidadesPage;
+(window as any).renderPhReservasPage = renderPhReservasPage;
+(window as any).renderPhPqrsPage = renderPhPqrsPage;
 (window as any).postPhInvoiceConfirm = postPhInvoiceConfirm;
 (window as any).renderPhIndividualConceptRows = renderPhIndividualConceptRows;
 (window as any).PH_UNIT_TYPES = PH_UNIT_TYPES;

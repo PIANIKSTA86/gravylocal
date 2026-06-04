@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — reportes.js
  */
 'use strict';
@@ -29,6 +29,8 @@ async function renderReportes(c) {
       ${reportCard('ar-bal', 'Saldos Cuentas por Cobrar', 'Pendientes por tercero y cuenta de cartera.')}
       ${reportCard('ap-bal', 'Saldos Cuentas por Pagar', 'Pendientes por tercero y cuenta por pagar.')}
       ${reportCard('aging', 'Cartera por Edades', 'Tramos 0-30-60-90+ para clientes o proveedores.')}
+      ${reportCard('ret-cert', 'Certificados de Retención', 'Generar certificados de retención (ReteFuente, ReteIVA, ReteICA) para proveedores.')}
+      ${reportCard('paz-salvo', 'Certificado de Paz y Salvo', 'Generar certificado de paz y salvo de cartera para clientes.')}
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -39,6 +41,8 @@ async function renderReportes(c) {
   $('#btn-report-ar-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Cobrar', () => renderPortfolioBalances('cxc')));
   $('#btn-report-ap-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Pagar', () => renderPortfolioBalances('cxp')));
   $('#btn-report-aging')?.addEventListener('click', () => launchReportModal('Cartera por Edades', () => renderAgingPortfolio()));
+  $('#btn-report-ret-cert')?.addEventListener('click', () => launchReportModal('Certificados de Retención', () => renderWithholdingCertificates()));
+  $('#btn-report-paz-salvo')?.addEventListener('click', () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()));
 }
 
 function getReportViewHost() {
@@ -3224,3 +3228,553 @@ async function generateAuxiliaryRows() {
 (window as any).renderReportes = renderReportes;
 (window as any).drawPdfFooter = drawPdfFooter;
 (window as any).signatureBlock = signatureBlock;
+
+async function renderWithholdingCertificates() {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  const [thirds, companyCityRaw] = await Promise.all([
+    API.getTerceros({}),
+    API.getSetting('company_city').catch(() => 'Bogotá'),
+  ]);
+  const companyCity = String(companyCityRaw || 'Bogotá').trim();
+
+  // Ordenar terceros alfabéticamente
+  thirds.sort((a, b) => a.name.localeCompare(b.name));
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Certificados de Retención</h4>
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+        <div class="form-group md:col-span-2">
+          <label class="form-label">Tercero (Proveedor)</label>
+          <select id="ret-third" class="form-input text-xs">
+            <option value="">— Seleccione Tercero —</option>
+            ${thirds.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Año Gravable</label>
+          <input id="ret-year" type="number" class="form-input" value="${new Date().getFullYear() - 1}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tipo Retención</label>
+          <select id="ret-type" class="form-input">
+            <option value="todos">Todos</option>
+            <option value="rente">ReteFuente</option>
+            <option value="iva">ReteIVA</option>
+            <option value="ica">ReteICA</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ciudad Exp.</label>
+          <input id="ret-city" class="form-input" value="${esc(companyCity)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha Exp.</label>
+          <input id="ret-date" type="date" class="form-input" value="${todayStr()}">
+        </div>
+      </div>
+      
+      <div class="flex gap-3 mt-3">
+        <button class="btn btn-primary" id="btn-gen-ret-cert"><i class="fas fa-filter"></i> Generar Vista Previa</button>
+        <button class="btn btn-outline" id="btn-pdf-ret-cert" disabled><i class="fas fa-file-pdf"></i> Generar Certificado PDF</button>
+      </div>
+    </div>
+    <div id="ret-cert-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-file-invoice mr-2"></i>Selecciona filtros y pulsa Generar Vista Previa.
+    </div>
+  `;
+
+  let lastGeneratedData = null;
+
+  const generate = async () => {
+    const results = $('#ret-cert-results');
+    if (!results) return;
+
+    const thirdId = getSelectVal('ret-third');
+    const year = getInputVal('ret-year');
+    const retType = getSelectVal('ret-type');
+    const city = getInputVal('ret-city') || 'Bogotá';
+    const expDate = getInputVal('ret-date') || todayStr();
+
+    if (!thirdId) return showToast('Seleccione un tercero.', 'warning');
+    if (!year) return showToast('Ingrese el año gravable.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos contables...</div>';
+
+    try {
+      const safeThirdId = pb.escapeFilterValue(thirdId);
+      const lines = await pb.listAll('tx_lines', {
+        filter: `third_party_id="${safeThirdId}" && tx_id.status="active"`,
+        expand: 'account_id,tx_id',
+      });
+
+      const yearLines = lines.filter(l => l.expand?.tx_id?.date && l.expand.tx_id.date.startsWith(year));
+      const withholdingGroups = [];
+
+      for (const l of yearLines) {
+        const accCode = l.expand?.account_id?.code || '';
+        const accName = l.expand?.account_id?.name || '';
+
+        let type = '';
+        if (accCode.startsWith('2365')) type = 'rente';
+        else if (accCode.startsWith('2367')) type = 'iva';
+        else if (accCode.startsWith('2368')) type = 'ica';
+        else continue;
+
+        if (retType !== 'todos' && retType !== type) continue;
+
+        const withheld = Number(l.credit || 0) - Number(l.debit || 0);
+        if (withheld <= 0.01) continue;
+
+        const rate = Number(l.ret_rate || 0);
+        const base = Number(l.ret_base || (rate > 0 ? (withheld / (rate / 100)) : withheld));
+
+        withholdingGroups.push({
+          accountCode: accCode,
+          accountName: accName,
+          type,
+          rate,
+          base,
+          amount: withheld,
+        });
+      }
+
+      if (withholdingGroups.length === 0) {
+        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No se encontraron retenciones aplicadas a este tercero en el año seleccionado.</div>';
+        lastGeneratedData = null;
+        const pdfBtn = document.getElementById('btn-pdf-ret-cert');
+        if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+        return;
+      }
+
+      const summaryMap = new Map();
+      for (const item of withholdingGroups) {
+        const key = `${item.accountCode}|${item.rate}`;
+        if (!summaryMap.has(key)) {
+          summaryMap.set(key, {
+            accountCode: item.accountCode,
+            accountName: item.accountName,
+            type: item.type,
+            rate: item.rate,
+            base: 0,
+            amount: 0,
+          });
+        }
+        const grp = summaryMap.get(key);
+        grp.base += item.base;
+        grp.amount += item.amount;
+      }
+
+      const summaryList = [...summaryMap.values()].sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+      const totalBase = summaryList.reduce((s, r) => s + r.base, 0);
+      const totalAmount = summaryList.reduce((s, r) => s + r.amount, 0);
+
+      results.innerHTML = `
+        <div class="p-4 border-b flex flex-wrap items-center justify-between gap-3 bg-gray-50 rounded-xl mb-4">
+          <p class="text-sm" style="color:#6B7280">Año Gravable: <strong>${esc(year)}</strong> · Total Base: <strong>${fmt(totalBase)}</strong> · Total Retenido: <strong>${fmt(totalAmount)}</strong></p>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Concepto / Cuenta</th>
+                <th>Tarifa</th>
+                <th class="text-right">Base Gravable</th>
+                <th class="text-right">Valor Retenido</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${summaryList.map(r => `
+                <tr>
+                  <td><span class="font-bold">${esc(r.accountCode)}</span> - ${esc(r.accountName)}</td>
+                  <td>${r.rate > 0 ? `${r.rate}%` : '—'}</td>
+                  <td class="text-right font-semibold">${fmt(r.base)}</td>
+                  <td class="text-right font-semibold text-orange-600">${fmt(r.amount)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold">
+                <td colspan="2">TOTAL RETENCIONES</td>
+                <td class="text-right">${fmt(totalBase)}</td>
+                <td class="text-right text-orange-600">${fmt(totalAmount)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+
+      lastGeneratedData = {
+        third: thirds.find(t => t.id === thirdId),
+        year,
+        type: retType,
+        city,
+        expDate,
+        items: summaryList,
+        totalBase,
+        totalAmount,
+      };
+
+      const pdfBtn = document.getElementById('btn-pdf-ret-cert');
+      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = false;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastGeneratedData = null;
+      const pdfBtn = document.getElementById('btn-pdf-ret-cert');
+      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+    }
+  };
+
+  $('#btn-gen-ret-cert')?.addEventListener('click', generate);
+  $('#btn-pdf-ret-cert')?.addEventListener('click', async () => {
+    if (!lastGeneratedData) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+      const left = 36;
+      const right = doc.internal.pageSize.getWidth() - 36;
+      const width = right - left;
+
+      // 1. Cabecera
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(13, 33, 55);
+      doc.text(headerCtx.companyName.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 50, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`NIT: ${headerCtx.companyNit}`, doc.internal.pageSize.getWidth() / 2, 65, { align: 'center' });
+      doc.text(headerCtx.companyAddress, doc.internal.pageSize.getWidth() / 2, 78, { align: 'center' });
+
+      doc.setFontSize(12);
+      doc.text('CERTIFICADO DE RETENCION EN LA FUENTE', doc.internal.pageSize.getWidth() / 2, 110, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`AÑO GRAVABLE: ${lastGeneratedData.year}`, doc.internal.pageSize.getWidth() / 2, 125, { align: 'center' });
+
+      doc.setDrawColor(200, 200, 200);
+      doc.line(left, 140, right, 140);
+
+      // 2. Información del retenido
+      const t = lastGeneratedData.third;
+      doc.setFont('helvetica', 'bold');
+      doc.text('RETENIDO A:', left, 160);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Nombre / Razón Social: ${t.name}`, left, 175);
+      doc.text(`NIT / Cédula: ${t.doc_number}`, left, 188);
+      doc.text(`Dirección: ${t.address || 'No registrada'}`, left, 201);
+      doc.text(`Ciudad: ${t.city || 'No registrada'}`, left, 214);
+
+      // 3. Tabla
+      const body = lastGeneratedData.items.map(r => [
+        `${r.accountCode} - ${r.accountName}`,
+        r.rate > 0 ? `${r.rate}%` : '—',
+        fmtPdfNum(r.base),
+        fmtPdfNum(r.amount),
+      ]);
+      body.push(['TOTALES', '', fmtPdfNum(lastGeneratedData.totalBase), fmtPdfNum(lastGeneratedData.totalAmount)]);
+
+      doc.autoTable({
+        startY: 235,
+        head: [['Concepto de Retención', 'Tarifa', 'Base Gravable', 'Valor Retenido']],
+        body,
+        theme: 'plain',
+        margin: { top: 235, left, right: 36, bottom: 50 },
+        styles: { font: 'helvetica', fontSize: 8.5, textColor: [55, 55, 55], cellPadding: 4, lineWidth: 0.1, lineColor: [220, 220, 220] },
+        headStyles: { fillColor: [240, 240, 240], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 8.5 },
+        columnStyles: {
+          0: { cellWidth: 260 },
+          1: { cellWidth: 50, halign: 'center' },
+          2: { cellWidth: 110, halign: 'right' },
+          3: { cellWidth: 110, halign: 'right' },
+        },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          const isTotal = data.row.index === body.length - 1;
+          if (isTotal) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [245, 245, 245];
+            data.cell.styles.textColor = [13, 33, 55];
+          }
+        },
+      });
+
+      const finalY = doc.previousAutoTable.finalY + 30;
+
+      // 4. Firmas y pie de página
+      doc.setFontSize(8.5);
+      doc.text(`Ciudad de Expedición: ${lastGeneratedData.city}`, left, finalY);
+      doc.text(`Fecha de Expedición: ${lastGeneratedData.expDate}`, left, finalY + 12);
+      doc.text('Este documento no requiere firma autógrafa para su validez (Art. 10 D.R. 836/91).', left, finalY + 35, { maxWidth: width });
+
+      doc.line(left, finalY + 100, left + 180, finalY + 100);
+      doc.text('Firma Agente Retenedor / Certificador', left, finalY + 112);
+
+      doc.save(`certificado_retencion_${t.doc_number}_${lastGeneratedData.year}.pdf`);
+      showToast('Certificado generado en PDF.', 'success');
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
+}
+
+async function renderPazYSalvoCertificate() {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  const [thirds, companyCityRaw] = await Promise.all([
+    API.getTerceros({}),
+    API.getSetting('company_city').catch(() => 'Bogotá'),
+  ]);
+  const companyCity = String(companyCityRaw || 'Bogotá').trim();
+
+  thirds.sort((a, b) => a.name.localeCompare(b.name));
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137">Certificado de Paz y Salvo de Cartera</h4>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="form-group md:col-span-2">
+          <label class="form-label">Tercero (Cliente / Copropietario)</label>
+          <select id="paz-third" class="form-input text-xs">
+            <option value="">— Seleccione Tercero —</option>
+            ${thirds.map(t => `<option value="${esc(t.id)}">${esc(t.doc_number)} - ${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Corte</label>
+          <input id="paz-cutoff" type="date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ciudad Exp.</label>
+          <input id="paz-city" class="form-input" value="${esc(companyCity)}">
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Observaciones / Concepto (para incluir en el documento)</label>
+        <input id="paz-concept" class="form-input" placeholder="Ej: Para trámites notariales, venta de inmueble, etc.">
+      </div>
+      
+      <div class="flex gap-3">
+        <button class="btn btn-primary" id="btn-gen-paz-salvo"><i class="fas fa-check-double"></i> Verificar Cartera y Generar</button>
+        <button class="btn btn-outline" id="btn-pdf-paz-salvo" disabled><i class="fas fa-file-pdf"></i> Descargar Paz y Salvo PDF</button>
+      </div>
+    </div>
+    <div id="paz-salvo-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-check mr-2"></i>Selecciona filtros y pulsa Verificar Cartera y Generar.
+    </div>
+  `;
+
+  let lastGeneratedData = null;
+
+  const generate = async () => {
+    const results = $('#paz-salvo-results');
+    if (!results) return;
+
+    const thirdId = getSelectVal('paz-third');
+    const cutoffDate = getInputVal('paz-cutoff');
+    const city = getInputVal('paz-city') || 'Bogotá';
+    const concept = getInputVal('paz-concept') || 'Trámites administrativos';
+
+    if (!thirdId) return showToast('Seleccione un tercero.', 'warning');
+    if (!cutoffDate) return showToast('Ingrese la fecha de corte.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Verificando saldos en cartera...</div>';
+
+    try {
+      const docs = await buildOpenPortfolioDocs({ mode: 'cxc', asOfDate: cutoffDate, thirdType: '' });
+      const clientDocs = docs.filter(d => d.third_id === thirdId);
+      const totalOpen = clientDocs.reduce((s, r) => s + Number(r.open || 0), 0);
+      const selectedThird = thirds.find(t => t.id === thirdId);
+
+      if (totalOpen > 0.01) {
+        results.innerHTML = `
+          <div class="p-6 border rounded-2xl text-center max-w-xl mx-auto" style="border-color:#FCA5A5;background:#FEF2F2;color:#DC2626">
+            <i class="fas fa-triangle-exclamation text-3xl mb-3"></i>
+            <h4 class="font-bold text-base mb-2">No se puede generar el Paz y Salvo</h4>
+            <p class="text-sm mb-4" style="color:#374151">El tercero <strong>${esc(selectedThird.name)}</strong> presenta saldos vencidos en cartera a la fecha de corte.</p>
+            <div class="text-left bg-white p-4 rounded-xl border mb-3 overflow-x-auto" style="border-color:#F87171;color:#374151">
+              <p class="font-bold text-xs uppercase mb-2" style="color:#991B1B">Detalle de Cartera Pendiente:</p>
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="border-b" style="border-color:#E5E7EB"><th class="text-left pb-1">Doc. Ref</th><th class="text-left pb-1">Fecha</th><th class="text-right pb-1">Días Venc.</th><th class="text-right pb-1">Saldo Abierto</th></tr>
+                </thead>
+                <tbody>
+                  ${clientDocs.map(d => `
+                    <tr class="border-b" style="border-color:#F3F4F6">
+                      <td class="py-1 font-mono">${esc(d.doc_ref)}</td>
+                      <td class="py-1">${esc(d.doc_date)}</td>
+                      <td class="py-1 text-right">${fmtN(d.expired_days)}</td>
+                      <td class="py-1 text-right font-semibold">${fmt(d.open)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+                <tfoot>
+                  <tr class="font-bold"><td colspan="3" class="pt-2 text-left">TOTAL DEUDA:</td><td class="pt-2 text-right" style="color:#DC2626">${fmt(totalOpen)}</td></tr>
+                </tfoot>
+              </table>
+            </div>
+            <p class="text-xs" style="color:#9CA3AF">El tercero debe registrar el pago de todos sus saldos pendientes para poder expedir un paz y salvo.</p>
+          </div>
+        `;
+        lastGeneratedData = null;
+        const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
+        if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+        return;
+      }
+
+      const issueDate = new Date();
+      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+      const dateText = `${issueDate.getDate()} de ${months[issueDate.getMonth()]} de ${issueDate.getFullYear()}`;
+
+      results.innerHTML = `
+        <div class="p-8 border rounded-2xl max-w-2xl mx-auto bg-white shadow-sm" style="border-color:#E5E7EB;color:#374151;font-family:serif;line-height:1.8">
+          <div class="text-center mb-8 font-sans">
+            <h3 class="font-bold text-lg" style="color:#0D2137">PAZ Y SALVO VERIFICADO</h3>
+            <span class="badge badge-green mt-2 px-3 py-1 font-semibold"><i class="fas fa-check-circle mr-1"></i>Apto para Expedición</span>
+          </div>
+          
+          <p class="text-right mb-6 text-sm font-sans" style="color:#6B7280">${esc(city)}, ${dateText}</p>
+          
+          <div class="text-center font-bold text-base mb-8">
+            CERTIFICADO DE PAZ Y SALVO
+          </div>
+          
+          <p class="mb-4 text-justify">
+            La administración y representación legal de la organización/copropiedad, hace constar que el Sr(a). 
+            <strong>${esc(selectedThird.name)}</strong>, identificado(a) con Nit / Cédula No. 
+            <strong>${esc(selectedThird.doc_number)}</strong>, a la fecha de corte de <strong>${esc(cutoffDate)}</strong>, se encuentra a 
+            <strong>PAZ Y SALVO</strong> por todo concepto de obligaciones financieras y cartera con nuestra entidad.
+          </p>
+          
+          <p class="mb-6 text-justify">
+            Se expide el presente certificado con destino a: <strong>${esc(concept)}</strong>.
+          </p>
+          
+          <div class="mt-12 pt-8 border-t flex justify-around font-sans text-xs" style="border-color:#E5E7EB">
+            <div class="text-center">
+              <div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div>
+              <p class="font-bold">ADMINISTRACIÓN</p>
+              <p style="color:#6B7280">Representante Legal</p>
+            </div>
+            <div class="text-center">
+              <div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div>
+              <p class="font-bold">DEPARTAMENTO CONTABLE</p>
+              <p style="color:#6B7280">Contador Público</p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      lastGeneratedData = {
+        third: selectedThird,
+        cutoffDate,
+        city,
+        concept,
+        dateText,
+      };
+
+      const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
+      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = false;
+    } catch (err) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastGeneratedData = null;
+      const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
+      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+    }
+  };
+
+  $('#btn-gen-paz-salvo')?.addEventListener('click', generate);
+
+  $('#btn-pdf-paz-salvo')?.addEventListener('click', async () => {
+    if (!lastGeneratedData) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+      const left = 54;
+      const right = doc.internal.pageSize.getWidth() - 54;
+      const width = right - left;
+
+      // Header de la empresa
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(13, 33, 55);
+      doc.text(headerCtx.companyName.toUpperCase(), doc.internal.pageSize.getWidth() / 2, 70, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`NIT: ${headerCtx.companyNit}`, doc.internal.pageSize.getWidth() / 2, 85, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(headerCtx.companyAddress, doc.internal.pageSize.getWidth() / 2, 98, { align: 'center' });
+
+      doc.setDrawColor(200, 200, 200);
+      doc.line(left, 115, right, 115);
+
+      // Fecha
+      doc.setTextColor(55, 55, 55);
+      doc.setFontSize(10);
+      doc.text(`${lastGeneratedData.city}, ${lastGeneratedData.dateText}`, right, 140, { align: 'right' });
+
+      // Título
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(13, 33, 55);
+      doc.text('CERTIFICADO DE PAZ Y SALVO', doc.internal.pageSize.getWidth() / 2, 190, { align: 'center' });
+
+      // Cuerpo
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(55, 55, 55);
+
+      const bodyText1 = `La administración y representación legal de la entidad, de conformidad con los registros contables vigentes en el sistema, certifica que el Sr(a). ${lastGeneratedData.third.name}, identificado(a) con Nit / Cédula No. ${lastGeneratedData.third.doc_number}, a la fecha de corte de ${lastGeneratedData.cutoffDate}, se encuentra a PAZ Y SALVO por todo concepto de obligaciones financieras y cartera.`;
+
+      const splitText1 = doc.splitTextToSize(bodyText1, width);
+      doc.text(splitText1, left, 230);
+
+      const bodyText2 = `El presente certificado se expide a solicitud del interesado con destino a: ${lastGeneratedData.concept}.`;
+      const splitText2 = doc.splitTextToSize(bodyText2, width);
+      doc.text(splitText2, left, 310);
+
+      const bodyText3 = `Para constancia de lo anterior, se firma el presente documento en la ciudad de ${lastGeneratedData.city}.`;
+      doc.text(bodyText3, left, 350);
+
+      // Firmas
+      const sigY = 480;
+      doc.line(left, sigY, left + 160, sigY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text('ADMINISTRACIÓN', left, sigY + 15);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text('Representante Legal / Gerente', left, sigY + 27);
+
+      doc.line(right - 160, sigY, right, sigY);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.text('DEPARTAMENTO CONTABLE', right, sigY + 15, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.text('Contador Público', right, sigY + 27, { align: 'right' });
+
+      doc.setFontSize(7.5);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Documento emitido electrónicamente por ${headerCtx.softwareName}`, left, doc.internal.pageSize.getHeight() - 30);
+
+      doc.save(`certificado_paz_y_salvo_${lastGeneratedData.third.doc_number}.pdf`);
+      showToast('Paz y salvo descargado.', 'success');
+    } catch (err) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
+}
+
+(window as any).renderWithholdingCertificates = renderWithholdingCertificates;
+(window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;

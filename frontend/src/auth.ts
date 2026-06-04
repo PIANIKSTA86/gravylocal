@@ -57,7 +57,12 @@ function applyModuleVisibility(): void {
     'tesoreria':        'comercial',
     'conciliacion':     'comercial',
     'nomina':           'nomina',
-    'copropiedades':    'copropiedades',
+    'copro-facturacion': 'copropiedades',
+    'copro-cartera':     'copropiedades',
+    'copro-presupuesto': 'copropiedades',
+    'copro-unidades':    'copropiedades',
+    'copro-reservas':    'copropiedades',
+    'copro-pqrs':        'copropiedades',
   };
 
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');

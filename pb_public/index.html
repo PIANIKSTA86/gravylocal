@@ -311,9 +311,192 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
 .so-lines-tbl tbody td { padding: 5px 6px !important; }
 .so-lines-tbl .form-input { padding: 5px 8px !important; font-size: 13px !important; height: 32px; }
 .so-lines-tbl select.form-input { padding-right: 28px !important; }
+
+/* User Menu & Dropdown */
+.user-menu-container {
+  position: relative;
+}
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--border-soft);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+  font-family: inherit;
+}
+.user-menu-btn:hover {
+  background: #fff;
+  border-color: var(--accent-cyan-strong);
+  box-shadow: 0 4px 12px rgba(100, 225, 255, 0.15);
+}
+.user-menu-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-violet), var(--accent-violet-strong));
+  flex-shrink: 0;
+}
+.user-menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.user-menu-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+.user-dropdown-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 8px;
+  width: 230px;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid var(--border-soft);
+  box-shadow: 0 10px 30px rgba(12, 21, 48, 0.12);
+  padding: 6px 0;
+  z-index: 100;
+  transform-origin: top right;
+  animation: fadeIn 0.2s ease;
+}
+.user-dropdown-menu.show {
+  display: block;
+}
+.user-dropdown-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 4px;
+  text-align: left;
+}
+.user-dropdown-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+.user-dropdown-username {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-dropdown-role {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.user-dropdown-list {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.user-dropdown-item:hover {
+  background: var(--bg-soft);
+  color: var(--accent-violet-strong);
+}
+.user-dropdown-item i {
+  font-size: 14px;
+  color: var(--text-muted);
+  width: 16px;
+  text-align: center;
+}
+.user-dropdown-item:hover i {
+  color: var(--accent-violet-strong);
+}
+.user-dropdown-footer {
+  padding: 4px 0;
+}
+.user-dropdown-logout {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #EF4444;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-family: inherit;
+}
+.user-dropdown-logout:hover {
+  background: #FEF2F2;
+}
+.user-dropdown-logout i {
+  font-size: 14px;
+  color: #EF4444;
+  width: 16px;
+  text-align: center;
+}
+
+/* Collapsible sections styles */
+.nav-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  -webkit-user-select: none;
+     -moz-user-select: none;
+          user-select: none;
+  padding: 8px 16px !important;
+  margin-top: 10px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  letter-spacing: 1.2px !important;
+  text-transform: uppercase !important;
+  border-radius: 8px;
+  transition: all 0.25s ease !important;
+}
+.nav-section:hover {
+  color: var(--accent-cyan) !important;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(100, 225, 255, 0.1);
+}
+.nav-section.active-section {
+  color: var(--accent-cyan) !important;
+  background: rgba(100, 225, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(100, 225, 255, 0.15);
+}
+.nav-section i {
+  transition: transform 0.2s ease;
+  font-size: 10px;
+}
 </style>
-  <script type="module" crossorigin src="/assets/index-Bj9iPa1i.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BOGHI3aJ.css">
+  <script type="module" crossorigin src="/assets/index-DgFNZEP6.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-gA-7UXvI.css">
 </head>
 <body>
 
@@ -401,7 +584,7 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
       <div class="nav-item active" data-page="dashboard" data-label="Dashboard">
         <i class="fas fa-gauge-high"></i><span class="nav-label">Dashboard</span>
       </div>
-      <div class="nav-section">Maestros</div>
+      <div class="nav-section" data-section="maestros"><span>Maestros</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="plan-cuentas" data-label="Plan de Cuentas">
         <i class="fas fa-sitemap"></i><span class="nav-label">Plan de Cuentas</span>
       </div>
@@ -411,11 +594,11 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
       <div class="nav-item" data-page="tipos-tx" data-label="Tipos de Transacción">
         <i class="fas fa-list-check"></i><span class="nav-label">Tipos de Transacción</span>
       </div>
-      <div class="nav-section">Operaciones</div>
+      <div class="nav-section" data-section="operaciones"><span>Operaciones</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="consulta-tx" data-label="Consulta Transacciones" data-module="contabilidad">
         <i class="fas fa-magnifying-glass"></i><span class="nav-label">Consulta Transacciones</span>
       </div>
-      <div class="nav-section">Logística e Inventarios</div>
+      <div class="nav-section" data-section="logistica"><span>Logística e Inventarios</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="productos" data-label="Productos y Servicios" data-module="comercial">
         <i class="fas fa-box-open"></i><span class="nav-label">Productos y Servicios</span>
       </div>
@@ -429,7 +612,7 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
       </div>
 
-      <div class="nav-section">Ventas y Clientes</div>
+      <div class="nav-section" data-section="ventas"><span>Ventas y Clientes</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="pedidos" data-label="Pedidos" data-module="comercial">
         <i class="fas fa-file-signature"></i><span class="nav-label">Pedidos y Cotizaciones</span>
       </div>
@@ -446,7 +629,7 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <i class="fas fa-percent"></i><span class="nav-label">Comisiones Vendedores</span>
       </div>
 
-      <div class="nav-section">Finanzas y Tesorería</div>
+      <div class="nav-section" data-section="finanzas"><span>Finanzas y Tesorería</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="tesoreria" data-label="Tesorería" data-module="comercial">
         <i class="fas fa-landmark"></i><span class="nav-label">Tesorería</span>
       </div>
@@ -454,12 +637,12 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <i class="fas fa-scale-balanced"></i><span class="nav-label">Conciliación Bancaria</span>
       </div>
 
-      <div class="nav-section">Nómina y Talento</div>
+      <div class="nav-section" data-section="nomina"><span>Nómina y Talento</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="nomina" data-label="Nómina" data-module="nomina">
         <i class="fas fa-id-card"></i><span class="nav-label">Nómina</span>
       </div>
 
-      <div class="nav-section">Contabilidad e Impuestos</div>
+      <div class="nav-section" data-section="contabilidad"><span>Contabilidad e Impuestos</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="facturacion-dian" data-label="Facturación DIAN" data-module="contabilidad">
         <i class="fas fa-file-invoice"></i><span class="nav-label">Facturación DIAN</span>
       </div>
@@ -470,28 +653,19 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Información Exógena</span>
       </div>
 
-      <div class="nav-section">Verticales / Otros</div>
+      <div class="nav-section" data-section="verticales"><span>Verticales / Otros</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="copropiedades" data-label="Copropiedades" data-module="copropiedades">
         <i class="fas fa-city"></i><span class="nav-label">Copropiedades</span>
       </div>
-      <div class="nav-section">Reportes y Admin</div>
+      <div class="nav-section" data-section="reportes"><span>Reportes y Admin</span><i class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
       <div class="nav-item" data-page="reportes" data-label="Reportes" data-module="contabilidad">
         <i class="fas fa-chart-pie"></i><span class="nav-label">Reportes</span>
-      </div>
-      <div class="nav-item" data-page="configuracion" data-label="Configuración">
-        <i class="fas fa-sliders"></i><span class="nav-label">Configuración</span>
       </div>
       <div class="nav-item" data-page="resoluciones" data-label="Resoluciones DIAN">
         <i class="fas fa-file-signature"></i><span class="nav-label">Resoluciones DIAN</span>
       </div>
       <div class="nav-item" data-page="utilidades" data-label="Utilidades" data-module="contabilidad">
         <i class="fas fa-toolbox"></i><span class="nav-label">Utilidades</span>
-      </div>
-      <div class="nav-item" data-page="auditoria" id="nav-auditoria" data-label="Auditoría">
-        <i class="fas fa-clipboard-list"></i><span class="nav-label">Auditoría</span>
-      </div>
-      <div class="nav-item" data-page="usuarios" id="nav-usuarios" data-label="Usuarios">
-        <i class="fas fa-user-gear"></i><span class="nav-label">Usuarios</span>
       </div>
       <!-- SuperAdmin: solo visible para superadmin, controlado desde applyModuleVisibility() -->
       <div class="nav-item" data-page="superadmin" id="nav-superadmin" data-label="SuperAdmin" style="display:none">
@@ -502,16 +676,6 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <i class="fas fa-key"></i><span class="nav-label">Licencias</span>
       </div>
     </nav>
-    <div class="p-4 border-t" style="border-color:rgba(255,255,255,.08)">
-      <div class="flex items-center gap-3 sidebar-footer-row">
-        <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style="background:linear-gradient(135deg,#2446B8,#091327)" id="sidebar-avatar">A</div>
-        <div class="flex-1 min-w-0 sidebar-footer-text">
-          <p class="text-white text-sm font-semibold truncate" id="sidebar-username">Usuario</p>
-          <p class="text-xs truncate" style="color:rgba(255,255,255,.4)" id="sidebar-role">Rol</p>
-        </div>
-        <button id="btn-logout" title="Cerrar sesión" style="color:rgba(255,255,255,.4);background:none;border:none;cursor:pointer;font-size:15px"><i class="fas fa-right-from-bracket"></i></button>
-      </div>
-    </div>
   </aside>
 
   <div class="flex-1 flex flex-col min-w-0">
@@ -532,6 +696,43 @@ select.form-input { -webkit-appearance: none; -moz-appearance: none; appearance:
         <div class="flex items-center gap-2 text-xs font-medium" id="conn-indicator">
           <div class="w-2 h-2 rounded-full bg-green-400"></div>
           <span style="color:#6B7280">En línea</span>
+        </div>
+
+        <!-- Menú de Usuario Dropdown -->
+        <div class="user-menu-container" id="user-menu-container">
+          <button id="btn-user-menu" class="user-menu-btn" aria-label="Menú de usuario">
+            <div class="user-menu-avatar" id="navbar-avatar">U</div>
+            <span class="user-menu-name hidden md:inline" id="navbar-username">Usuario</span>
+            <i class="fas fa-chevron-down user-menu-chevron" id="navbar-chevron"></i>
+          </button>
+          
+          <div id="user-dropdown" class="user-dropdown-menu">
+            <div class="user-dropdown-header">
+              <div class="user-dropdown-title">Sesión Iniciada</div>
+              <div class="user-dropdown-username" id="dropdown-username">Usuario</div>
+              <div class="user-dropdown-role" id="dropdown-role">Rol</div>
+            </div>
+            <div class="user-dropdown-list">
+              <a href="#" class="user-dropdown-item dropdown-item" data-page="configuracion">
+                <i class="fas fa-sliders"></i>
+                <span>Configuración</span>
+              </a>
+              <a href="#" class="user-dropdown-item dropdown-item" data-page="usuarios" id="dropdown-nav-usuarios">
+                <i class="fas fa-user-gear"></i>
+                <span>Usuarios</span>
+              </a>
+              <a href="#" class="user-dropdown-item dropdown-item" data-page="auditoria" id="dropdown-nav-auditoria">
+                <i class="fas fa-clipboard-list"></i>
+                <span>Auditoría</span>
+              </a>
+            </div>
+            <div class="user-dropdown-footer">
+              <button id="btn-logout" class="user-dropdown-logout">
+                <i class="fas fa-right-from-bracket"></i>
+                <span>Cerrar sesión</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </header>

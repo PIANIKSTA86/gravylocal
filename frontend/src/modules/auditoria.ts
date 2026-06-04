@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — auditoria.js
  */
 'use strict';
@@ -77,7 +77,7 @@ async function renderAuditoria(c) {
         <div id="audit-results">
           <div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-search mr-2"></i>Aplica filtros y pulsa Buscar</div>
         </div>
-        <div id="audit-pagination" class="flex items-center justify-between px-4 py-3 border-t" style="border-color:#F0F0F0; display:none!important"></div>
+        <div id="audit-pagination" class="flex items-center justify-between px-4 py-3 border-t" style="border-color:#F0F0F0; display:none"></div>
       </div>`;
 
     const doSearch = () => { AUDIT_STATE.page = 1; loadAuditPage(); };

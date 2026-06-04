@@ -184,6 +184,30 @@ function navigate(page) {
   if (requiredModule && typeof hasModule === 'function' && !hasModule(requiredModule)) {
     currentPage = page;
     $$('#nav-menu .nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+    
+    // Auto-expandir la sección del ítem activo y colapsar las demás (comportamiento acordeón)
+    const activeItem = document.querySelector(`#nav-menu .nav-item[data-page="${page}"]`);
+    if (activeItem && !document.getElementById('sidebar')?.classList.contains('collapsed')) {
+      let prev = activeItem.previousElementSibling;
+      while (prev && !prev.classList.contains('nav-section')) {
+        prev = prev.previousElementSibling;
+      }
+      if (prev) {
+        const activeSectionId = (prev as HTMLElement).dataset.section;
+        if (activeSectionId) {
+          document.querySelectorAll('#nav-menu .nav-section').forEach((sec: any) => {
+            const secId = sec.dataset.section;
+            if (secId) {
+              localStorage.setItem(`section-collapsed-${secId}`, secId === activeSectionId ? '0' : '1');
+            }
+          });
+        }
+      }
+    }
+    if (typeof (window as any).applyModuleVisibility === 'function') {
+      (window as any).applyModuleVisibility();
+    }
+
     $('#page-title').textContent = (PAGE_TITLES as any)[page] ?? page;
     $('#sidebar')?.classList.remove('open');
     showLockedModulePage(page, requiredModule);
@@ -204,6 +228,30 @@ function navigate(page) {
 
   // Actualizar sidebar
   $$('#nav-menu .nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
+  
+  // Auto-expandir la sección del ítem activo y colapsar las demás (comportamiento acordeón)
+  const activeItem = document.querySelector(`#nav-menu .nav-item[data-page="${page}"]`);
+  if (activeItem && !document.getElementById('sidebar')?.classList.contains('collapsed')) {
+    let prev = activeItem.previousElementSibling;
+    while (prev && !prev.classList.contains('nav-section')) {
+      prev = prev.previousElementSibling;
+    }
+    if (prev) {
+      const activeSectionId = (prev as HTMLElement).dataset.section;
+      if (activeSectionId) {
+        document.querySelectorAll('#nav-menu .nav-section').forEach((sec: any) => {
+          const secId = sec.dataset.section;
+          if (secId) {
+            localStorage.setItem(`section-collapsed-${secId}`, secId === activeSectionId ? '0' : '1');
+          }
+        });
+      }
+    }
+  }
+  if (typeof (window as any).applyModuleVisibility === 'function') {
+    (window as any).applyModuleVisibility();
+  }
+
   $('#page-title').textContent = PAGE_TITLES[page] ?? page;
   $('#sidebar')?.classList.remove('open');
 

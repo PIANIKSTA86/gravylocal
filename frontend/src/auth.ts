@@ -60,61 +60,125 @@ function applyModuleVisibility(): void {
     'copropiedades':    'copropiedades',
   };
 
+  const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');
+
+  // 1. Determinar visibilidad básica por licencia y rol para cada ítem
   $$('#nav-menu .nav-item').forEach((item: any) => {
     const page     = item.dataset.page as string;
     const required = MODULE_OF_PAGE[page];
 
-    if (!required) {
-      // Módulo siempre visible (core)
-      item.classList.remove('locked');
-      item.removeAttribute('data-locked');
-      return;
+    let hasLic = true;
+    if (required) {
+      hasLic = hasModule(required);
     }
 
-    if (hasModule(required)) {
-      // Módulo activo → mostrar normal
+    let allowed = hasLic;
+    if (page === 'usuarios') allowed = can('canManageUsers');
+    if (page === 'auditoria') allowed = can('canViewAudit');
+    
+    const role = pb.currentUser?.role ?? 'viewer';
+    if (page === 'superadmin') allowed = (role === 'superadmin');
+    if (page === 'licencias') allowed = (role === 'admin');
+
+    if (allowed) {
       item.classList.remove('locked');
       item.removeAttribute('data-locked');
       item.style.display = '';
     } else {
-      // Módulo inactivo → mostrar como bloqueado (oculto completamente)
       item.classList.add('locked');
-      item.setAttribute('data-locked', required);
+      item.setAttribute('data-locked', required || 'role');
       item.style.display = 'none';
     }
   });
 
-  // Control de acceso por rol (conservar lógica existente)
-  if ($('#nav-auditoria')) $('#nav-auditoria').style.display = can('canViewAudit') ? '' : 'none';
-  if ($('#nav-usuarios'))  $('#nav-usuarios').style.display  = can('canManageUsers') ? '' : 'none';
-
-  // Módulo SuperAdmin — solo visible para superadmin
-  const navSuperadmin = $('#nav-superadmin');
-  if (navSuperadmin) {
-    const role = pb.currentUser?.role ?? 'viewer';
-    navSuperadmin.style.display = (role === 'superadmin') ? '' : 'none';
-  }
-
-  // Módulo Licencias — solo visible para admin (el superadmin usa su propio panel)
-  const navLicencias = $('#nav-licencias');
-  if (navLicencias) {
-    const role = pb.currentUser?.role ?? 'viewer';
-    navLicencias.style.display = (role === 'admin') ? '' : 'none';
-  }
-
-  // Ocultar cabeceras de sección vacías
-  $$('#nav-menu .nav-section').forEach((section: any) => {
-    let next = section.nextElementSibling;
-    let hasVisible = false;
-    while (next && !next.classList.contains('nav-section')) {
-      if (next.classList.contains('nav-item') && next.style.display !== 'none') {
-        hasVisible = true;
-        break;
+  // 2. Controlar visibilidad de las secciones (headers) y colapsarlas si corresponde
+  let currentSectionCollapsed = false;
+  $$('#nav-menu > *').forEach((el: any) => {
+    if (el.classList.contains('nav-section')) {
+      // Determinar si la sección tiene al menos un item visible (licenciado y por rol)
+      let next = el.nextElementSibling;
+      let hasVisibleItems = false;
+      while (next && !next.classList.contains('nav-section')) {
+        if (next.classList.contains('nav-item')) {
+          const page = next.dataset.page;
+          const required = MODULE_OF_PAGE[page];
+          const hasLic = required ? hasModule(required) : true;
+          let allowed = hasLic;
+          if (page === 'usuarios') allowed = can('canManageUsers');
+          if (page === 'auditoria') allowed = can('canViewAudit');
+          const role = pb.currentUser?.role ?? 'viewer';
+          if (page === 'superadmin') allowed = (role === 'superadmin');
+          if (page === 'licencias') allowed = (role === 'admin');
+          
+          if (allowed) {
+            hasVisibleItems = true;
+            break;
+          }
+        }
+        next = next.nextElementSibling;
       }
-      next = next.nextElementSibling;
+
+      if (hasVisibleItems) {
+        el.style.display = '';
+        // Si la sección es visible, verificar si está colapsada por el usuario
+        const sectionId = el.dataset.section || el.textContent.trim().toLowerCase().replace(/\s+/g, '-');
+        el.dataset.section = sectionId; // Asegurar dataset.section
+        
+        // Por defecto, colapsada si no hay preferencia en localStorage
+        if (localStorage.getItem(`section-collapsed-${sectionId}`) === null) {
+          localStorage.setItem(`section-collapsed-${sectionId}`, '1');
+        }
+        
+        const collapsed = localStorage.getItem(`section-collapsed-${sectionId}`) === '1';
+        currentSectionCollapsed = collapsed;
+        
+        // Rotar el chevron
+        const chevron = el.querySelector('.fa-chevron-down');
+        if (chevron) {
+          chevron.style.transform = (collapsed && !isSidebarCollapsed) ? 'rotate(-90deg)' : '';
+        }
+
+        // Estilizar sección activa si contiene el ítem activo y el sidebar no está colapsado
+        let isSectionActive = false;
+        let sib = el.nextElementSibling;
+        while (sib && !sib.classList.contains('nav-section')) {
+          if (sib.classList.contains('nav-item') && sib.classList.contains('active')) {
+            isSectionActive = true;
+            break;
+          }
+          sib = sib.nextElementSibling;
+        }
+
+        if (isSectionActive && !isSidebarCollapsed) {
+          el.classList.add('active-section');
+        } else {
+          el.classList.remove('active-section');
+        }
+      } else {
+        el.style.display = 'none';
+        currentSectionCollapsed = false;
+        el.classList.remove('active-section');
+      }
+    } else if (el.classList.contains('nav-item')) {
+      // Si el item ya está oculto por licencia/rol, dejarlo oculto
+      if (el.style.display === 'none') return;
+
+      // Si pertenece a una sección colapsada y el sidebar no está colapsado en desktop, ocultarlo
+      if (currentSectionCollapsed && !isSidebarCollapsed) {
+        el.style.display = 'none';
+      } else {
+        el.style.display = '';
+      }
     }
-    section.style.display = hasVisible ? '' : 'none';
   });
+
+  // 3. Aplicar visibilidad a los elementos del dropdown del navbar
+  if ($('#dropdown-nav-auditoria')) {
+    $('#dropdown-nav-auditoria').style.display = can('canViewAudit') ? '' : 'none';
+  }
+  if ($('#dropdown-nav-usuarios')) {
+    $('#dropdown-nav-usuarios').style.display = can('canManageUsers') ? '' : 'none';
+  }
 }
 
 function can(permission) {
@@ -344,10 +408,11 @@ async function showApp() {
     pb.baseUrl = resolvedUrl;
   }
 
-  // Actualizar sidebar
-  $('#sidebar-username').textContent = user.full_name || user.email;
-  $('#sidebar-role').textContent     = roleLabel(user.role ?? 'viewer');
-  $('#sidebar-avatar').textContent   = (user.full_name || user.email).charAt(0).toUpperCase();
+  // Actualizar navbar dropdown
+  if ($('#navbar-username')) $('#navbar-username').textContent = user.full_name || user.email;
+  if ($('#dropdown-username')) $('#dropdown-username').textContent = user.full_name || user.email;
+  if ($('#dropdown-role')) $('#dropdown-role').textContent     = roleLabel(user.role ?? 'viewer');
+  if ($('#navbar-avatar')) $('#navbar-avatar').textContent   = (user.full_name || user.email).charAt(0).toUpperCase();
 
   // El superadmin del tenant es superadmin del HUB
   if (activeCompany.role === 'admin' && user.email === 'admin@gravy.local') {

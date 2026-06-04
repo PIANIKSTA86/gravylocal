@@ -41,6 +41,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Botón logout ───────────────────────────────────────────
   $('#btn-logout')?.addEventListener('click', doLogout);
 
+  // ── Dropdown del Menú de Usuario ───────────────────────────
+  const btnUserMenu = $('#btn-user-menu');
+  const userDropdown = $('#user-dropdown');
+  const navbarChevron = $('#navbar-chevron');
+
+  btnUserMenu?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isShow = userDropdown?.classList.contains('show');
+    if (isShow) {
+      userDropdown?.classList.remove('show');
+      if (navbarChevron) navbarChevron.style.transform = '';
+    } else {
+      userDropdown?.classList.add('show');
+      if (navbarChevron) navbarChevron.style.transform = 'rotate(180deg)';
+    }
+  });
+
+  // Cerrar dropdown al hacer click fuera
+  document.addEventListener('click', (e) => {
+    if (userDropdown && userDropdown.classList.contains('show')) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#user-menu-container')) {
+        userDropdown.classList.remove('show');
+        if (navbarChevron) navbarChevron.style.transform = '';
+      }
+    }
+  });
+
+  // Navegación desde los items del dropdown de usuario
+  $$('#user-dropdown .dropdown-item').forEach((item: any) => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const page = item.dataset.page;
+      if (page) {
+        navigate(page);
+        userDropdown?.classList.remove('show');
+        if (navbarChevron) navbarChevron.style.transform = '';
+      }
+    });
+  });
+
+  // ── Collapsible Sidebar Sections ───────────────────────────
+  $$('#nav-menu .nav-section').forEach((section: any) => {
+    section.addEventListener('click', () => {
+      // Solo colapsar si el sidebar principal está expandido
+      if ($('#sidebar')?.classList.contains('collapsed')) return;
+      const sectionId = section.dataset.section;
+      if (!sectionId) return;
+      const isCollapsed = localStorage.getItem(`section-collapsed-${sectionId}`) === '1';
+      
+      if (!isCollapsed) {
+        localStorage.setItem(`section-collapsed-${sectionId}`, '1');
+      } else {
+        // Colapsar todas las demás secciones
+        $$('#nav-menu .nav-section').forEach((other: any) => {
+          const otherId = other.dataset.section;
+          if (otherId) {
+            localStorage.setItem(`section-collapsed-${otherId}`, '1');
+          }
+        });
+        localStorage.setItem(`section-collapsed-${sectionId}`, '0');
+      }
+      
+      if (typeof (window as any).applyModuleVisibility === 'function') {
+        (window as any).applyModuleVisibility();
+      }
+    });
+  });
+
   // ── Sidebar navegación ─────────────────────────────────────
   $$('#nav-menu .nav-item').forEach(n =>
     n.addEventListener('click', () => navigate(n.dataset.page))
@@ -60,6 +129,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     _sidebar.classList.toggle('collapsed', collapsed);
     _screenApp.classList.toggle('sidebar-collapsed', collapsed);
     localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+    
+    // Al colapsar/expandir el sidebar principal, reevaluar visibilidades
+    if (typeof (window as any).applyModuleVisibility === 'function') {
+      (window as any).applyModuleVisibility();
+    }
   }
 
   // Restaurar estado guardado sin animación al cargar

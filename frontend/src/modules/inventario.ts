@@ -683,8 +683,8 @@ async function renderKardexTab(c, ctx = {}) {
     c.innerHTML = `
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
         <h4 class="text-sm font-bold mb-3" style="color:#0D2137"><i class="fas fa-filter mr-2" style="color:#1A4B8C"></i>Consultar Kardex de Referencia</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-          <div class="form-group">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <div class="form-group md:col-span-2">
             <label class="form-label font-bold text-xs">Producto / Referencia <span style="color:#EF4444">*</span></label>
             <select id="kd-prod" class="form-input w-full text-xs">
               <option value="">— Seleccione Producto —</option>
@@ -698,8 +698,17 @@ async function renderKardexTab(c, ctx = {}) {
               ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
             </select>
           </div>
-          <div class="flex gap-2">
-            <button class="btn btn-primary flex-1 py-2 text-xs" id="kd-btn-search"><i class="fas fa-magnifying-glass mr-1"></i>Consultar</button>
+          <div class="form-group">
+            <label class="form-label font-bold text-xs">Desde</label>
+            <input id="kd-date-start" type="date" class="form-input w-full text-xs">
+          </div>
+          <div class="form-group">
+            <label class="form-label font-bold text-xs">Hasta</label>
+            <input id="kd-date-end" type="date" class="form-input w-full text-xs">
+          </div>
+          <div class="flex gap-2 md:col-span-5 justify-end mt-2">
+            <button class="btn btn-outline py-2 text-xs" id="kd-btn-clear" title="Limpiar Filtros"><i class="fas fa-eraser mr-1"></i>Limpiar</button>
+            <button class="btn btn-primary py-2 text-xs px-6" id="kd-btn-search"><i class="fas fa-magnifying-glass mr-1"></i>Consultar</button>
             <button class="btn btn-outline py-2" id="kd-btn-excel" disabled title="Exportar a Excel"><i class="fas fa-file-excel text-[#059669]"></i></button>
           </div>
         </div>
@@ -720,6 +729,9 @@ async function renderKardexTab(c, ctx = {}) {
     const searchKardex = async () => {
       const prodId = getSelectVal('kd-prod');
       const whId = getSelectVal('kd-wh');
+      const startDate = getInputVal('kd-date-start');
+      const endDate = getInputVal('kd-date-end');
+
       if (!prodId) return showToast('Selecciona un producto.', 'warning');
       if (!whId) return showToast('Selecciona una bodega.', 'warning');
 
@@ -737,8 +749,78 @@ async function renderKardexTab(c, ctx = {}) {
         currentProductName = prod ? `${prod.code} - ${prod.name}` : 'Producto';
         currentWarehouseName = wh ? wh.name : 'Bodega';
 
+        let runningQty = 0;
+        let runningAvgCost = 0;
+
+        // 1. Calculate historical opening balance (Saldo Inicial) if startDate is set
+        if (startDate) {
+          const historicalLines = await (window as any).pb.listAll('inventory_movement_lines', {
+            filter: `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied" && movement_id.date < "${startDate}"`,
+            expand: 'movement_id,movement_id.warehouse_id,movement_id.dest_warehouse_id'
+          });
+
+          const filteredHist = historicalLines.filter((line: any) => {
+            const mov = line.expand?.movement_id;
+            if (!mov) return false;
+            if (mov.mov_type === 'TRASLADO') {
+              return mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
+            }
+            return mov.warehouse_id === whId;
+          });
+
+          filteredHist.sort((a: any, b: any) => {
+            const movA = a.expand?.movement_id;
+            const movB = b.expand?.movement_id;
+            const dateA = movA?.date || '';
+            const dateB = movB?.date || '';
+            if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+            const timeA = movA?.created || '';
+            const timeB = movB?.created || '';
+            if (timeA !== timeB) return timeA.localeCompare(timeB);
+
+            return (a.line_order || 0) - (b.line_order || 0);
+          });
+
+          for (const line of filteredHist) {
+            const mov = line.expand?.movement_id;
+            let isInput = false;
+            let isOutput = false;
+
+            if (mov.mov_type === 'TRASLADO') {
+              if (mov.dest_warehouse_id === whId) isInput = true;
+              else if (mov.warehouse_id === whId) isOutput = true;
+            } else {
+              isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+              isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+            }
+
+            const qty = line.qty || 0;
+            const cost = line.unit_cost || 0;
+
+            if (isInput) {
+              const prevQty = runningQty;
+              const prevCost = runningAvgCost;
+              runningQty += qty;
+              if (runningQty > 0) {
+                runningAvgCost = ((prevQty * prevCost) + (qty * cost)) / runningQty;
+              } else {
+                runningAvgCost = cost;
+              }
+              runningAvgCost = Math.round(runningAvgCost * 100) / 100;
+            } else if (isOutput) {
+              runningQty -= qty;
+            }
+          }
+        }
+
+        // 2. Fetch movements within date range
+        let rangeFilter = `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied"`;
+        if (startDate) rangeFilter += ` && movement_id.date >= "${startDate}"`;
+        if (endDate) rangeFilter += ` && movement_id.date <= "${endDate}"`;
+
         const lines = await (window as any).pb.listAll('inventory_movement_lines', {
-          filter: `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied"`,
+          filter: rangeFilter,
           expand: 'movement_id,movement_id.warehouse_id,movement_id.dest_warehouse_id,movement_id.third_party_id'
         });
 
@@ -765,10 +847,29 @@ async function renderKardexTab(c, ctx = {}) {
           return (a.line_order || 0) - (b.line_order || 0);
         });
 
-        let runningQty = 0;
-        let runningAvgCost = 0;
+        // 3. Map movements and prepends opening balance
+        currentKardexData = [];
+        if (startDate) {
+          currentKardexData.push({
+            date: startDate,
+            docNumber: 'SALDO INICIAL',
+            movType: '—',
+            notes: `Saldo acumulado antes del ${startDate}`,
+            partner: '—',
+            qtyIn: 0,
+            costIn: 0,
+            totalIn: 0,
+            qtyOut: 0,
+            costOut: 0,
+            totalOut: 0,
+            qtyBal: runningQty,
+            costBal: runningAvgCost,
+            totalBal: runningQty * runningAvgCost,
+            isInitial: true
+          });
+        }
 
-        currentKardexData = filteredLines.map((line: any) => {
+        const mappedLines = filteredLines.map((line: any) => {
           const mov = line.expand?.movement_id;
           const partner = mov.expand?.third_party_id?.name || '—';
           
@@ -835,12 +936,14 @@ async function renderKardexTab(c, ctx = {}) {
           };
         });
 
+        currentKardexData.push(...mappedLines);
+
         if (resultsContainer) {
-          if (currentKardexData.length === 0) {
+          if (currentKardexData.length === 0 || (currentKardexData.length === 1 && currentKardexData[0].isInitial && currentKardexData[0].qtyBal === 0)) {
             resultsContainer.innerHTML = `
               <div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#9CA3AF">
                 <i class="fas fa-circle-exclamation mr-2" style="font-size:24px; color:#C46516"></i>
-                <p class="mt-2 text-sm">No se encontraron movimientos registrados para este producto en la bodega seleccionada.</p>
+                <p class="mt-2 text-sm">No se encontraron movimientos registrados para este producto en la bodega y rango de fechas seleccionados.</p>
               </div>
             `;
           } else {
@@ -877,20 +980,20 @@ async function renderKardexTab(c, ctx = {}) {
                     </thead>
                     <tbody>
                       ${currentKardexData.map(row => `
-                        <tr class="hover:bg-gray-50 border-b" style="border-color:#F3F4F6">
+                        <tr class="hover:bg-gray-50 border-b ${row.isInitial ? 'bg-blue-50/20 font-semibold' : ''}" style="border-color:#F3F4F6">
                           <td class="py-2">${esc(row.date)}</td>
                           <td class="font-mono font-semibold" style="color:#1A4B8C">${esc(row.docNumber)}</td>
                           <td><span class="text-[10px] font-bold uppercase">${esc(row.movType)}</span></td>
                           <td>${esc(row.partner)}</td>
                           <td class="border-r text-gray-500 max-w-xs truncate" style="border-color:#E5E7EB" title="${esc(row.notes)}">${esc(row.notes)}</td>
                           
-                          <td class="text-right font-semibold text-green-700 bg-green-50/30">${row.qtyIn ? fmtN(row.qtyIn) : '—'}</td>
-                          <td class="text-right text-green-700 bg-green-50/30">${row.qtyIn ? fmt(row.costIn) : '—'}</td>
-                          <td class="text-right border-r font-semibold text-green-700 bg-green-50/30" style="border-color:#E5E7EB">${row.qtyIn ? fmt(row.totalIn) : '—'}</td>
+                          <td class="text-right font-semibold text-green-700 bg-green-50/30">${row.isInitial ? '—' : (row.qtyIn ? fmtN(row.qtyIn) : '—')}</td>
+                          <td class="text-right text-green-700 bg-green-50/30">${row.isInitial ? '—' : (row.qtyIn ? fmt(row.costIn) : '—')}</td>
+                          <td class="text-right border-r font-semibold text-green-700 bg-green-50/30" style="border-color:#E5E7EB">${row.isInitial ? '—' : (row.qtyIn ? fmt(row.totalIn) : '—')}</td>
                           
-                          <td class="text-right font-semibold text-red-700 bg-red-50/30">${row.qtyOut ? fmtN(row.qtyOut) : '—'}</td>
-                          <td class="text-right text-red-700 bg-red-50/30">${row.qtyOut ? fmt(row.costOut) : '—'}</td>
-                          <td class="text-right border-r font-semibold text-red-700 bg-red-50/30" style="border-color:#E5E7EB">${row.qtyOut ? fmt(row.totalOut) : '—'}</td>
+                          <td class="text-right font-semibold text-red-700 bg-red-50/30">${row.isInitial ? '—' : (row.qtyOut ? fmtN(row.qtyOut) : '—')}</td>
+                          <td class="text-right text-red-700 bg-red-50/30">${row.isInitial ? '—' : (row.qtyOut ? fmt(row.costOut) : '—')}</td>
+                          <td class="text-right border-r font-semibold text-red-700 bg-red-50/30" style="border-color:#E5E7EB">${row.isInitial ? '—' : (row.qtyOut ? fmt(row.totalOut) : '—')}</td>
                           
                           <td class="text-right font-bold text-blue-800 bg-blue-50/30">${fmtN(row.qtyBal)}</td>
                           <td class="text-right text-blue-800 bg-blue-50/30">${fmt(row.costBal)}</td>
@@ -913,6 +1016,31 @@ async function renderKardexTab(c, ctx = {}) {
       }
     };
 
+    const clearFilters = () => {
+      const prodSel = document.getElementById('kd-prod') as HTMLSelectElement;
+      const whSel = document.getElementById('kd-wh') as HTMLSelectElement;
+      const startFld = document.getElementById('kd-date-start') as HTMLInputElement;
+      const endFld = document.getElementById('kd-date-end') as HTMLInputElement;
+      
+      if (prodSel) prodSel.value = '';
+      if (whSel) whSel.value = '';
+      if (startFld) startFld.value = '';
+      if (endFld) endFld.value = '';
+      
+      currentKardexData = [];
+      const resultsContainer = document.getElementById('kardex-results-container');
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div class="p-8 text-center bg-white rounded-2xl border" style="border-color:#F0F0F0; color:#9CA3AF">
+            <i class="fas fa-table mr-2" style="font-size:24px"></i>
+            <p class="mt-2 text-sm">Selecciona un producto y una bodega para consultar los movimientos del Kardex.</p>
+          </div>
+        `;
+      }
+      const excelBtn = document.getElementById('kd-btn-excel') as HTMLButtonElement;
+      if (excelBtn) excelBtn.disabled = true;
+    };
+
     const exportKardexExcel = () => {
       if (!currentKardexData.length) return;
       const dataToExport = currentKardexData.map(row => ({
@@ -921,12 +1049,12 @@ async function renderKardexTab(c, ctx = {}) {
         'Tipo': row.movType,
         'Tercero': row.partner,
         'Notas': row.notes,
-        'Entradas Cant.': row.qtyIn || 0,
-        'Entradas Costo Unit.': row.costIn || 0,
-        'Entradas Costo Total': row.totalIn || 0,
-        'Salidas Cant.': row.qtyOut || 0,
-        'Salidas Costo Unit.': row.costOut || 0,
-        'Salidas Costo Total': row.totalOut || 0,
+        'Entradas Cant.': row.isInitial ? '—' : (row.qtyIn || 0),
+        'Entradas Costo Unit.': row.isInitial ? '—' : (row.costIn || 0),
+        'Entradas Costo Total': row.isInitial ? '—' : (row.totalIn || 0),
+        'Salidas Cant.': row.isInitial ? '—' : (row.qtyOut || 0),
+        'Salidas Costo Unit.': row.isInitial ? '—' : (row.costOut || 0),
+        'Salidas Costo Total': row.isInitial ? '—' : (row.totalOut || 0),
         'Saldo Cant.': row.qtyBal,
         'Saldo Costo Prom.': row.costBal,
         'Saldo Costo Total': row.totalBal
@@ -956,6 +1084,7 @@ async function renderKardexTab(c, ctx = {}) {
     };
 
     $('#kd-btn-search')?.addEventListener('click', searchKardex);
+    $('#kd-btn-clear')?.addEventListener('click', clearFilters);
     $('#kd-btn-excel')?.addEventListener('click', exportKardexExcel);
   } catch (err: any) {
     c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;

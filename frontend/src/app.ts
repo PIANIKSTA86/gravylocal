@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — app.js
  * Punto de entrada: inicializa la aplicación.
  */
@@ -25,7 +25,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     modalBackdropPointerDown = false;
   });
   $('#modal-overlay')?.addEventListener('click', e => {
-    if (e.target === $('#modal-overlay') && modalBackdropPointerDown) closeModal();
+    if (e.target === $('#modal-overlay') && modalBackdropPointerDown) {
+      if ((window as any).__salesModalOpen) return;
+      closeModal();
+    }
     modalBackdropPointerDown = false;
   });
 

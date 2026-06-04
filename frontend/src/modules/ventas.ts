@@ -37,6 +37,10 @@ function defaultSalesConfig() {
       immediate_posting: false,
       print_format: 'carta_standard',
       document_title: 'Factura de Venta',
+      prices_include_iva: false,
+      allow_price_edit: true,
+      allow_negative_stock: false,
+      default_warehouse_id: '',
     },
     accounting: {
       accounts: {
@@ -97,6 +101,10 @@ function normalizeSalesConfig(cfg: any) {
       immediate_posting: op.immediate_posting === true,
       print_format: String(op.print_format || 'carta_standard'),
       document_title: String(op.document_title || 'Factura de Venta'),
+      prices_include_iva: op.prices_include_iva === true,
+      allow_price_edit: op.allow_price_edit !== false,
+      allow_negative_stock: op.allow_negative_stock === true,
+      default_warehouse_id: String(op.default_warehouse_id || '').trim(),
     },
     accounting: {
       accounts: {
@@ -131,10 +139,15 @@ async function saveSalesConfig(cfg: any) {
 // --- Configuración Comercial de Ventas Modal ---
 async function openSalesSettingsModal(onSaved: any = null) {
   try {
-    const [cfg, accounts] = await Promise.all([
+    const [cfg, accounts, warehouses] = await Promise.all([
       getSalesConfig(),
       (window as any).API.getAccounts(true),
+      (window as any).API.getWarehouses(true).catch(() => []),
     ]);
+
+    const warehouseOptions = (selectedId = '') => {
+      return `<option value="">— Ninguna (Seleccionar al vender) —</option>${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}"${w.id === selectedId ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}`;
+    };
 
     const accountOptions = (selectedCode = '') => {
       const rows = accounts
@@ -158,8 +171,17 @@ async function openSalesSettingsModal(onSaved: any = null) {
             <label class="inline-flex items-center gap-2"><input id="so-cfg-discount" type="checkbox" ${cfg.operational.enable_discounts ? 'checked' : ''}>Habilitar descuentos</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-freight" type="checkbox" ${cfg.operational.enable_freight ? 'checked' : ''}>Habilitar fletes en ventas</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-withholding" type="checkbox" ${cfg.operational.enable_withholdings ? 'checked' : ''}>Habilitar retenciones (a favor)</label>
+            <label class="inline-flex items-center gap-2"><input id="so-cfg-prices-include-iva" type="checkbox" ${cfg.operational.prices_include_iva ? 'checked' : ''}>Precios incluyen IVA (precio tax-in)</label>
+            <label class="inline-flex items-center gap-2"><input id="so-cfg-allow-price-edit" type="checkbox" ${cfg.operational.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
+            <label class="inline-flex items-center gap-2"><input id="so-cfg-allow-negative-stock" type="checkbox" ${cfg.operational.allow_negative_stock ? 'checked' : ''}>Permitir stock negativo</label>
             <label class="inline-flex items-center gap-2 md:col-span-2"><input id="so-cfg-immediate-posting" type="checkbox" ${cfg.operational.immediate_posting ? 'checked' : ''}><strong>Contabilización inmediata al guardar (Evitar Borrador)</strong></label>
             
+            <div class="form-group mb-0">
+              <label class="form-label">Bodega por Defecto</label>
+              <select id="so-cfg-default-warehouse" class="form-input">
+                ${warehouseOptions(cfg.operational.default_warehouse_id)}
+              </select>
+            </div>
             <div class="form-group mb-0">
               <label class="form-label">Plazo por defecto (días)</label>
               <input id="so-cfg-default-due" class="form-input" type="number" min="0" step="1" value="${(window as any).esc(String(cfg.operational.default_due_days || 0))}">
@@ -168,7 +190,7 @@ async function openSalesSettingsModal(onSaved: any = null) {
               <label class="form-label">Título del Documento Impreso</label>
               <input id="so-cfg-doc-title" class="form-input" type="text" placeholder="Ej: Factura de Venta, Remisión" value="${(window as any).esc(String(cfg.operational.document_title || 'Factura de Venta'))}">
             </div>
-            <div class="form-group mb-0 md:col-span-2">
+            <div class="form-group mb-0">
               <label class="form-label">Formato de Impresión (Carta)</label>
               <select id="so-cfg-print-format" class="form-input">
                 <option value="carta_standard"${cfg.operational.print_format === 'carta_standard' ? ' selected' : ''}>Carta Estándar (Tradicional)</option>
@@ -332,6 +354,10 @@ async function openSalesSettingsModal(onSaved: any = null) {
             immediate_posting: getCheckVal('so-cfg-immediate-posting'),
             print_format: getSelectVal('so-cfg-print-format') || 'carta_standard',
             document_title: getInputVal('so-cfg-doc-title') || 'Factura de Venta',
+            prices_include_iva: getCheckVal('so-cfg-prices-include-iva'),
+            allow_price_edit: getCheckVal('so-cfg-allow-price-edit'),
+            allow_negative_stock: getCheckVal('so-cfg-allow-negative-stock'),
+            default_warehouse_id: getSelectVal('so-cfg-default-warehouse') || '',
           },
           accounting: {
             accounts: {
@@ -656,7 +682,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <label class="so-hdr-label">Bodega <span style="font-size:10px;color:#9CA3AF">(despacho)</span></label>
             <select id="so-warehouse" class="form-input so-compact-inp" onchange="window.soRecalcLine(0)">
               <option value="">— Sin bodega —</option>
-              ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && warehouses.length === 1)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
+              ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && (soConfig.operational.default_warehouse_id === w.id || warehouses.length === 1))) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
             </select>
           </div>
           <!-- Vendedor -->
@@ -792,6 +818,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     </button>
   `;
 
+  (window as any).__soConfig = soConfig;
+  (window as any).__salesModalOpen = true;
   (window as any).openModal(invoiceId ? 'Editar Factura de Venta' : 'Nueva Factura de Venta', formHtml, footer, true);
   const mbox = document.getElementById('modal-box');
   if (mbox) { mbox.classList.add('xl'); mbox.classList.remove('wide'); }
@@ -933,9 +961,23 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const productCode = prod?.code || '';
     const productName = prod?.name || preloadedLine?._name || '(producto)';
     const initQty     = preloadedLine?.qty        ?? 1;
-    const initPrice   = preloadedLine?.unit_price ?? (prod?.sales_price || prod?.base_price || 0);
     const initIva     = preloadedLine?.iva_rate   ?? prod?.iva_rate ?? 19;
-    const initDisc    = preloadedLine?.discount_pct ?? 0;
+    const initDisc    = preloadedLine?.discount_pct ?? preloadedLine?.discount_rate ?? 0;
+
+    const soConfig = (window as any).__soConfig || defaultSalesConfig();
+    const isTaxIn = soConfig.operational.prices_include_iva === true;
+    let initPrice = 0;
+    if (preloadedLine) {
+      initPrice = isTaxIn 
+        ? Math.round(preloadedLine.unit_price * (1 + (preloadedLine.iva_rate || 0) / 100) * 100) / 100
+        : preloadedLine.unit_price;
+    } else if (prod) {
+      const prodPrice = prod.sales_price || prod.base_price || 0;
+      const prodIva = prod.iva_rate ?? 19;
+      initPrice = isTaxIn 
+        ? Math.round(prodPrice * (1 + prodIva / 100) * 100) / 100
+        : prodPrice;
+    }
 
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
@@ -950,7 +992,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         </div>
       </td>
       <td><input type="number" id="sol-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:13px" min="0.001" step="0.001" value="${initQty}" oninput="window.soRecalcLine(${idx})"></td>
-      <td><input type="number" id="sol-price-${idx}" class="form-input text-right w-full" style="font-size:13px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.soRecalcLine(${idx})"></td>
+      <td><input type="number" id="sol-price-${idx}" class="form-input text-right w-full" style="font-size:13px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.soRecalcLine(${idx})" ${soConfig.operational.allow_price_edit === false ? 'readonly style="background-color:#F3F4F6"' : ''}></td>
       <td>
         <select id="sol-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" onchange="window.soRecalcLine(${idx})">
           <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
@@ -1047,8 +1089,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
       else if (ev.key === 'Enter') {
         ev.preventDefault();
-        const selIdx = highlighted >= 0 ? highlighted : 0;
-        window.soGlobalSelectProduct(selIdx);
+        if (!input.value.trim()) {
+          return; // No agregar si el campo de búsqueda está vacío
+        }
+        if (highlighted >= 0) {
+          window.soGlobalSelectProduct(highlighted);
+        } else if (items.length > 0) {
+          window.soGlobalSelectProduct(0);
+        }
       } else if (ev.key === 'Escape') {
         dropdown.style.display = 'none';
       }
@@ -1128,6 +1176,9 @@ window.soRecalcLine = function(rowIdx: number) {
   const isPerLine = (window as any).__soRetMode === 'line';
   const tableRows = document.querySelectorAll('#so-lines-body tr');
 
+  const soConfig = (window as any).__soConfig || defaultSalesConfig();
+  const pricesIncludeIva = !!soConfig.operational.prices_include_iva;
+
   tableRows.forEach((row: any) => {
     const idParts = row.id.split('-');
     const idx = idParts[idParts.length - 1];
@@ -1137,10 +1188,22 @@ window.soRecalcLine = function(rowIdx: number) {
     const ivaRate  = parseFloat((document.getElementById(`sol-iva-${idx}`)   as HTMLSelectElement)?.value || '0') || 0;
     const discPct  = parseFloat((document.getElementById(`sol-disc-${idx}`)  as HTMLInputElement)?.value || '0') || 0;
 
-    const lineGross = qty * pr;
-    const lineDisc  = lineGross * (discPct / 100);
-    const lineSub   = lineGross - lineDisc;          // base after discount
-    const lineIva   = lineSub * (ivaRate / 100);
+    let lineGross, lineDisc, lineSub, lineIva;
+    if (pricesIncludeIva) {
+      const lineTotalGross = qty * pr;
+      const lineTotalDisc = lineTotalGross * (discPct / 100);
+      const lineTotalNet = lineTotalGross - lineTotalDisc;
+      
+      lineSub = lineTotalNet / (1 + ivaRate / 100);
+      lineIva = lineTotalNet - lineSub;
+      lineGross = lineTotalGross / (1 + ivaRate / 100);
+      lineDisc = lineGross * (discPct / 100);
+    } else {
+      lineGross = qty * pr;
+      lineDisc  = lineGross * (discPct / 100);
+      lineSub   = lineGross - lineDisc;          // base after discount
+      lineIva   = lineSub * (ivaRate / 100);
+    }
     let lineRet = 0;
 
     if (isPerLine) {
@@ -1252,6 +1315,9 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
     const tableRows = document.querySelectorAll('#so-lines-body tr');
     const lines: any[] = [];
+    let totalDiscount = 0;
+
+    const isTaxIn = !!soConfig.operational.prices_include_iva;
 
     tableRows.forEach((row: any, lineIdx: number) => {
       const idParts = row.id.split('-');
@@ -1261,22 +1327,46 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       const qty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const price = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const ivaRate = parseFloat((document.getElementById(`sol-iva-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+      const discPct = parseFloat((document.getElementById(`sol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const retRuleId = (window as any).__soRetMode === 'line' ? ((document.getElementById(`sol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '') : '';
 
       if (!prodId) throw new Error(`Fila ${lineIdx + 1}: selecciona un producto.`);
       if (qty <= 0) throw new Error(`Fila ${lineIdx + 1}: la cantidad debe ser mayor que cero.`);
 
-      const subtotal = qty * price;
-      const iva_amount = subtotal * (ivaRate / 100);
+      let subtotal, iva_amount, total, storedPrice, lineDiscountAmt;
+      if (isTaxIn) {
+        const lineTotalGross = qty * price;
+        const lineTotalDisc = lineTotalGross * (discPct / 100);
+        const lineTotalNet = lineTotalGross - lineTotalDisc;
+        
+        subtotal = lineTotalNet / (1 + ivaRate / 100);
+        iva_amount = lineTotalNet - subtotal;
+        total = lineTotalNet;
+        storedPrice = price / (1 + ivaRate / 100);
+        lineDiscountAmt = lineTotalDisc / (1 + ivaRate / 100);
+      } else {
+        const lineGross = qty * price;
+        const lineDisc = lineGross * (discPct / 100);
+        
+        subtotal = lineGross - lineDisc;
+        iva_amount = subtotal * (ivaRate / 100);
+        total = subtotal + iva_amount;
+        storedPrice = price;
+        lineDiscountAmt = lineDisc;
+      }
+
+      totalDiscount += lineDiscountAmt;
 
       lines.push({
         product_id: prodId,
         qty,
-        unit_price: price,
+        unit_price: storedPrice,
         iva_rate: ivaRate,
         iva_amount,
         subtotal,
-        total: subtotal + iva_amount,
+        total,
+        discount_rate: discPct,
+        discount_pct: discPct,
         ret_rule_id: retRuleId,
       });
     });
@@ -1366,6 +1456,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       due_date: due || null,
       notes: notes.trim(),
       payment_method: payMethod,
+      discount_amount: totalDiscount,
       subtotal,
       iva_total,
       ret_total: retTotal,
@@ -1718,11 +1809,15 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 const prodName = l.expand?.product_id?.name || l.description || 'Línea de Venta';
                 const prodRef = l.expand?.product_id?.presentacion || '—';
                 const prodUnit = l.expand?.product_id?.unit || 'UND';
+                const discountPct = l.discount_rate || l.discount_pct || 0;
                 return `
                   <tr>
                     <td style="text-align:center; font-family:monospace;">${iteNum}</td>
                     <td style="font-family:monospace;">${(window as any).esc(prodCode)}</td>
-                    <td style="font-weight:600;">${(window as any).esc(prodName)}</td>
+                    <td style="font-weight:600;">
+                      ${(window as any).esc(prodName)}
+                      ${discountPct > 0 ? `<span style="font-size: 9px; color: #dc2626; font-weight: normal; margin-left: 6px;">(Dto. ${discountPct}%)</span>` : ''}
+                    </td>
                     <td>${(window as any).esc(prodRef)}</td>
                     <td style="text-align:center;">${(window as any).esc(prodUnit)}</td>
                     <td style="text-align:right;">${(window as any).fmtN(l.qty)}</td>
@@ -1750,6 +1845,12 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                   <span style="font-weight:bold; color:#475569;">SUB TOTAL:</span>
                   <span style="font-weight:bold; color:#0f172a;">$ ${(window as any).fmtN(inv.subtotal || 0)}</span>
                 </div>
+                ${inv.discount_amount > 0 ? `
+                  <div style="display:flex; justify-content:space-between; margin-bottom:6px; color:#dc2626;">
+                    <span style="font-weight:bold;">DESCUENTOS:</span>
+                    <span style="font-weight:bold;">-$ ${(window as any).fmtN(inv.discount_amount)}</span>
+                  </div>
+                ` : ''}
                 <div style="display:flex; justify-content:space-between; border-top:1.5px solid #000; padding-top:6px; margin-top:4px;">
                   <span style="font-weight:bold; color:#1e3a8a; font-size:11px;">TOTAL NETO:</span>
                   <span style="font-weight:900; color:#1e3a8a; font-size:13px;">$ ${(window as any).fmtN(totalNetoVal)}</span>
@@ -1905,15 +2006,21 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
               </tr>
             </thead>
             <tbody>
-              ${lines.map(l => `
-                <tr>
-                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
-                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
-                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
-                  <td style="text-align:right">${l.iva_rate}%</td>
-                  <td style="text-align:right;font-weight:700;color:#2563eb">${(window as any).fmt(l.total)}</td>
-                </tr>
-              `).join('')}
+              ${lines.map(l => {
+                const discountPct = l.discount_rate || l.discount_pct || 0;
+                return `
+                  <tr>
+                    <td style="font-weight:600">
+                      ${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}
+                      ${discountPct > 0 ? `<span style="font-size: 11px; color: #dc2626; font-weight: normal; margin-left: 8px;">(Dto. ${discountPct}%)</span>` : ''}
+                    </td>
+                    <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                    <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                    <td style="text-align:right">${l.iva_rate}%</td>
+                    <td style="text-align:right;font-weight:700;color:#2563eb">${(window as any).fmt(l.total)}</td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
 
@@ -1928,6 +2035,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
             
             <div class="totals-wrapper">
               <div class="total-row"><span>Subtotal:</span><span>${(window as any).fmt(inv.subtotal || 0)}</span></div>
+              ${inv.discount_amount > 0 ? `<div class="total-row" style="color:#dc2626"><span>Descuentos:</span><span>- ${(window as any).fmt(inv.discount_amount || 0)}</span></div>` : ''}
               <div class="total-row"><span>IVA Calculado:</span><span>${(window as any).fmt(inv.iva_total || 0)}</span></div>
               ${inv.ret_total > 0 ? `<div class="total-row" style="color:#ea580c"><span>Retenciones:</span><span>- ${(window as any).fmt(inv.ret_total || 0)}</span></div>` : ''}
               <div class="total-row grand-total">
@@ -2026,15 +2134,21 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
               </tr>
             </thead>
             <tbody>
-              ${lines.map(l => `
-                <tr>
-                  <td style="font-weight:600">${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}</td>
-                  <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
-                  <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
-                  <td style="text-align:right">${l.iva_rate}%</td>
-                  <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
-                </tr>
-              `).join('')}
+              ${lines.map(l => {
+                const discountPct = l.discount_rate || l.discount_pct || 0;
+                return `
+                  <tr>
+                    <td style="font-weight:600">
+                      ${(window as any).esc(l.expand?.product_id?.name || l.description || 'Línea de Venta')}
+                      ${discountPct > 0 ? `<span style="font-size: 9px; color: #dc2626; font-weight: normal; margin-left: 6px;">(Dto. ${discountPct}%)</span>` : ''}
+                    </td>
+                    <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
+                    <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
+                    <td style="text-align:right">${l.iva_rate}%</td>
+                    <td style="text-align:right;font-weight:bold;color:#1e3a8a">${(window as any).fmt(l.total)}</td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
 
@@ -2044,6 +2158,12 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
               <td>Subtotal:</td>
               <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.subtotal || 0)}</td>
             </tr>
+            ${inv.discount_amount > 0 ? `
+              <tr>
+                <td style="color:#dc2626">Descuentos:</td>
+                <td style="text-align:right;font-weight:600;color:#dc2626">- ${(window as any).fmt(inv.discount_amount || 0)}</td>
+              </tr>
+            ` : ''}
             <tr>
               <td>IVA Calculado:</td>
               <td style="text-align:right;font-weight:600">${(window as any).fmt(inv.iva_total || 0)}</td>
@@ -2228,7 +2348,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 <div style="font-size:11px; font-weight:bold; color:#000;">$ ${(window as any).fmtN(inv.subtotal || 0)}</div>
                 
                 <div style="font-weight:bold; color:#333; margin-top:10px; margin-bottom:2px; text-transform:uppercase;">DESCUENTOS</div>
-                <div style="font-size:11px; font-weight:bold; color:#000;">$ ${inv.discount_total ? (window as any).fmtN(inv.discount_total) : '-'}</div>
+                <div style="font-size:11px; font-weight:bold; color:#000;">$ ${inv.discount_amount ? (window as any).fmtN(inv.discount_amount) : '-'}</div>
               </td>
               
               <!-- Desglose de Tarifas IVA -->

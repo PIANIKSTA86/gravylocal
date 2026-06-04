@@ -148,7 +148,9 @@ onBootstrap((e) => {
           { name: "iva_rate", type: "number", required: false, min: 0 },
           { name: "iva_amount", type: "number", required: false, min: 0 },
           { name: "subtotal", type: "number", required: false, min: 0 },
-          { name: "total", type: "number", required: false, min: 0 }
+          { name: "total", type: "number", required: false, min: 0 },
+          { name: "discount_rate", type: "number", required: false, min: 0 },
+          { name: "discount_pct", type: "number", required: false, min: 0 }
         ]
       });
       $app.save(invoiceLines);
@@ -218,6 +220,30 @@ onBootstrap((e) => {
     }
   } catch (err) {
     console.log("[GRAVY-VENTAS] Error al extender campos en invoices: " + err);
+  }
+
+  // ── Migración: campos de descuento en invoice_lines ──
+  try {
+    const lineCol = $app.findCollectionByNameOrId("invoice_lines");
+    let changed = false;
+
+    const existingFields = new Set(lineCol.fields.fieldNames());
+    if (!existingFields.has("discount_rate")) {
+      lineCol.fields.add(new NumberField({ name: "discount_rate", required: false, min: 0 }));
+      changed = true;
+      console.log("[GRAVY-VENTAS] Campo discount_rate agregado a invoice_lines.");
+    }
+    if (!existingFields.has("discount_pct")) {
+      lineCol.fields.add(new NumberField({ name: "discount_pct", required: false, min: 0 }));
+      changed = true;
+      console.log("[GRAVY-VENTAS] Campo discount_pct agregado a invoice_lines.");
+    }
+
+    if (changed) {
+      $app.save(lineCol);
+    }
+  } catch (err) {
+    console.log("[GRAVY-VENTAS] Error al extender campos en invoice_lines: " + err);
   }
 
   // Asegurar índice único en invoices de forma segura

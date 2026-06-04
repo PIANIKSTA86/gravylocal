@@ -1221,7 +1221,10 @@ const API = {
     const discountAmt = Number(header.discount_amount || 0);
     const freightAmt = Number(header.freight_amount || 0);
     const retTot = Number(header.ret_total || 0);
-    const total = subtotal - discountAmt + ivaTot + freightAmt;
+    const isPOS = !!header.pos_shift_id;
+    const total = isPOS 
+      ? (subtotal - discountAmt + ivaTot + freightAmt)
+      : (subtotal + ivaTot + freightAmt);
     const payableTotal = total - retTot;
 
 
@@ -1265,14 +1268,24 @@ const API = {
     // Cargar productos para expandir
     const products = await this.getProducts({ activeOnly: false });
 
-    // Cargar configuración de POS para validar stock negativo
+    // Cargar configuraciones de POS y Ventas para validar stock negativo
     let posConfig = { operational: { allow_negative_stock: false } };
     try {
       const rawCfg = await this.getSetting('pos_settings_v1');
       if (rawCfg) posConfig = JSON.parse(rawCfg);
     } catch (_) { }
+
+    let salesConfig = { operational: { allow_negative_stock: false } };
+    try {
+      const rawCfg = await this.getSetting('sales_settings_v2');
+      if (rawCfg) salesConfig = JSON.parse(rawCfg);
+    } catch (_) { }
+
     const isPOS = !!inv.pos_shift_id;
-    const allowNegative = isPOS && !!posConfig?.operational?.allow_negative_stock;
+    const allowNegative = isPOS 
+      ? !!posConfig?.operational?.allow_negative_stock 
+      : !!salesConfig?.operational?.allow_negative_stock;
+    const immediatePosting = isPOS || !!salesConfig?.operational?.immediate_posting;
 
     // ── Validar stock en tiempo real y preparar COGS ───────────────────
     const movLines = [];
@@ -1349,9 +1362,13 @@ const API = {
 
     const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '' }) => {
       const acc = await getAccById(accountId);
+      let finalThirdPartyId = thirdPartyId;
+      if (acc.requires_third_party && !finalThirdPartyId) {
+        finalThirdPartyId = inv.customer_id || null;
+      }
       const line = {
         account_id: acc.id,
-        third_party_id: thirdPartyId,
+        third_party_id: finalThirdPartyId,
         debit,
         credit,
         description,
@@ -1383,6 +1400,17 @@ const API = {
       }
 
       if (method === 'CREDITO') {
+        try {
+          const rawSalesCfg = await this.getSetting('sales_settings_v2');
+          if (rawSalesCfg) {
+            const sc = JSON.parse(rawSalesCfg);
+            const code = sc?.accounting?.accounts?.receivable_code;
+            if (code) {
+              const acc = await findAccByCode(code);
+              if (acc) return acc.id;
+            }
+          }
+        } catch (_) { }
         const acc = await findAccByCode('130505');
         return acc.id;
       } else if (method === 'TRANSFERENCIA') {
@@ -1583,8 +1611,10 @@ const API = {
       }
 
       const subtotal = Number(line.subtotal || 0);
-      if (subtotal > 0) {
-        incomeGroups[incomeAccId] = (incomeGroups[incomeAccId] || 0) + subtotal;
+      const lineDiscount = (Number(line.qty || 0) * Number(line.unit_price || 0)) - subtotal;
+      const grossLineSub = subtotal + Math.max(0, lineDiscount);
+      if (grossLineSub > 0) {
+        incomeGroups[incomeAccId] = (incomeGroups[incomeAccId] || 0) + grossLineSub;
       }
 
       const ivaAmount = Number(line.iva_amount || 0);
@@ -1624,7 +1654,7 @@ const API = {
       if (amount > 0) {
         txLines.push(await buildTxLine({
           accountId: ivaAccId,
-          thirdPartyId: null,
+          thirdPartyId: inv.customer_id,
           debit: 0,
           credit: amount,
           description: `IVA Generado ${rate}% venta ${inv.number}`,
@@ -1792,7 +1822,7 @@ const API = {
         third_party_id: inv.customer_id,
         payment_days: 0,
         cross_enabled: false,
-        status: 'draft',
+        status: immediatePosting ? 'active' : 'draft',
       }, txLines);
 
       // ── Movimiento de Inventario de Salida ─────────────────────────────

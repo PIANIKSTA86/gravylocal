@@ -67,6 +67,7 @@ function closeModal() {
   $('#modal-overlay').classList.remove('show');
   $('#modal-body').innerHTML = '';
   $('#modal-footer').innerHTML = '';
+  (window as any).__salesModalOpen = false;
 }
 
 // ── Mini-overlay de comentario de línea (no reemplaza el modal padre) ────────

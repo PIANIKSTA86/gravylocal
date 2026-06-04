@@ -377,7 +377,37 @@ async function renderConfiguracion(c) {
           await API.setSetting('company_logo', uploadedLogoBase64);
         }
 
-        $('#topbar-company').textContent = getInputVal('cfg-company_name').trim();
+        const newName = getInputVal('cfg-company_name').trim();
+        const newNit = getInputVal('cfg-company_nit').trim();
+
+        // 1. Actualizar topbar en pantalla
+        $('#topbar-company').textContent = newName;
+
+        // 2. Actualizar localStorage de sesión activa
+        const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+        if (activeCompany) {
+          activeCompany.company_name = newName;
+          localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
+        }
+
+        // 3. Sincronizar cambios de datos de empresa al HUB
+        const hubUrl = (window as any).HUB_URL || `${window.location.protocol}//${window.location.hostname}:8089`;
+        if (activeCompany && activeCompany.company_id) {
+          try {
+            await fetch(`${hubUrl}/api/hub/sync-tenant-company`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                company_id: activeCompany.company_id,
+                name: newName,
+                nit: newNit
+              })
+            });
+          } catch (hubErr) {
+            console.warn('[GRAVY] Error al sincronizar el nombre de empresa con el HUB:', hubErr);
+          }
+        }
+
         showToast('Configuración actualizada correctamente', 'success');
         renderConfiguracion(c);
       } catch (err) {

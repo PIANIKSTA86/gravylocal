@@ -488,4 +488,5 @@ function startConnCheck() {
 (window as any).ENABLED_MODULES = ENABLED_MODULES;
 (window as any).hasModule = hasModule;
 (window as any).applyModuleVisibility = applyModuleVisibility;
+(window as any).HUB_URL = HUB_URL;
 

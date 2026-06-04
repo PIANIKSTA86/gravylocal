@@ -308,3 +308,34 @@ routerAdd("POST", "/api/hub/sync-tenant-user", (e) => {
     e.json(500, { message: "Error interno del HUB: " + String(err) });
   }
 });
+
+// Endpoint para sincronizar datos de la empresa desde el tenant
+routerAdd("POST", "/api/hub/sync-tenant-company", (e) => {
+  let body = {};
+  try { body = e.requestInfo().body || {}; } catch (_) {}
+  if (!body.company_id) {
+    try { body = $apis.requestInfo(e).body || {}; } catch (_) {}
+  }
+
+  const companyId = String(body.company_id || "").trim();
+  const name = String(body.name || "").trim();
+  const nit = String(body.nit || "").trim();
+
+  if (!companyId) {
+    e.json(400, { message: "El ID de la empresa es requerido" });
+    return;
+  }
+
+  try {
+    const company = $app.findRecordById("companies", companyId);
+    if (name) company.set("name", name);
+    if (nit) company.set("nit", nit);
+    $app.save(company);
+    console.log("[GRAVY HUB] Razón social y NIT actualizados en el HUB para la empresa: " + companyId);
+    e.json(200, { success: true, message: "Empresa sincronizada correctamente con el HUB" });
+  } catch (err) {
+    console.error("[GRAVY HUB] Error en sync-tenant-company:", err);
+    e.json(500, { message: "Error interno del HUB: " + String(err) });
+  }
+});
+

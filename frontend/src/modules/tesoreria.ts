@@ -78,6 +78,12 @@ function _initTesoTerceroAutocomplete(
     if (!wrap.contains(ev.target as Node)) results.style.display = 'none';
   };
   setTimeout(() => document.addEventListener('click', outsideHandler), 0);
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-teso-id]',
+  });
 }
 
 let _tesoAllProperties: any[] = [];
@@ -135,6 +141,12 @@ function _initTesoPropertyAutocomplete(
     if (!wrap.contains(ev.target as Node)) results.style.display = 'none';
   };
   setTimeout(() => document.addEventListener('click', outsideHandler), 0);
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-teso-id]',
+  });
 }
 
 (window as any)._changeTesoOrigen = async (origen: 'comercial' | 'ph') => {

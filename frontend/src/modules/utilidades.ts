@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 — utilidades.js
  * Módulo de Utilidades: herramientas de administración y mantenimiento.
  */
@@ -2438,7 +2438,72 @@ function openModal(title, bodyHtml, actionsOrFooter = [], wide = false) {
   overlay?.classList.add('show');
 }
 
+function initKeyboardAutocomplete({
+  input,
+  results,
+  itemSelector,
+  onSelect
+}) {
+  if (!input || !results) return;
+
+  let highlightedIndex = -1;
+
+  const getItems = () => Array.from(results.querySelectorAll(itemSelector));
+
+  const highlightItem = (index) => {
+    const items = getItems();
+    items.forEach((el) => {
+      el.style.background = '';
+      el.classList.remove('highlighted');
+    });
+    if (index >= 0 && index < items.length) {
+      const el = items[index];
+      el.style.background = '#EEF4FF';
+      el.classList.add('highlighted');
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  };
+
+  const handleKeyDown = (ev) => {
+    if (results.style.display === 'none') return;
+    const items = getItems();
+    if (!items.length) return;
+
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+      highlightItem(highlightedIndex);
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      highlightedIndex = Math.max(highlightedIndex - 1, 0);
+      highlightItem(highlightedIndex);
+    } else if (ev.key === 'Enter') {
+      const activeItems = getItems();
+      const targetIndex = highlightedIndex >= 0 ? highlightedIndex : 0;
+      const target = activeItems[targetIndex];
+      if (target) {
+        ev.preventDefault();
+        if (typeof onSelect === 'function') {
+          onSelect(target);
+        } else {
+          target.click();
+        }
+        results.style.display = 'none';
+        highlightedIndex = -1;
+      }
+    } else if (ev.key === 'Escape') {
+      results.style.display = 'none';
+      highlightedIndex = -1;
+    }
+  };
+
+  input.addEventListener('keydown', handleKeyDown);
+  input.addEventListener('input', () => { highlightedIndex = -1; });
+  input.addEventListener('focus', () => { highlightedIndex = -1; });
+}
+
 // --- VITE MIGRATION GLOBALS ---
+(window as any).initKeyboardAutocomplete = initKeyboardAutocomplete;
 (window as any)._loadLastBackupInfo = _loadLastBackupInfo;
 (window as any).renderUtilidades = renderUtilidades;
 (window as any)._executeMassTxImport = _executeMassTxImport;

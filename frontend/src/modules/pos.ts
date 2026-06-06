@@ -584,9 +584,11 @@ window.loadPOSInterface = async function() {
             <div>
               <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
               <div class="flex gap-1 items-center">
-                <select id="pos-cart-customer" class="form-input flex-1 text-xs" onchange="window.posOnCustomerChange()" style="background:#fff;color:#0D2137">
-                  ${posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('')}
-                </select>
+                <div id="pos-cart-customer-wrap" class="relative flex-1">
+                  <input id="pos-cart-customer-search" class="form-input text-xs w-full" style="background:#fff;color:#0D2137;height:34px" autocomplete="off" placeholder="Escribe NIT o nombre...">
+                  <input id="pos-cart-customer" type="hidden" value="${selectedCustomerId}">
+                  <div id="pos-cart-customer-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
+                </div>
                 <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window.posQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
                   <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
                 </button>
@@ -652,6 +654,64 @@ window.loadPOSInterface = async function() {
         </div>
       </div>
     `;
+
+    const initPosCustomerSearch = () => {
+      const wrap = document.getElementById('pos-cart-customer-wrap');
+      const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+      const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+      const results = document.getElementById('pos-cart-customer-results');
+      if (!wrap || !input || !hidden || !results) return;
+
+      const findById = (id: string) => posCustomers.find(c => c.id === id) || null;
+
+      const sync = () => {
+        const customer = findById(hidden.value);
+        input.value = customer ? `${customer.doc_number || customer.nit || ''} - ${customer.name}` : '';
+      };
+      sync();
+
+      const performSearch = (val: string) => {
+        const query = val.toLowerCase().trim();
+        const filtered = !query
+          ? posCustomers.slice(0, 30)
+          : posCustomers.filter(c => `${c.name} ${c.doc_number} ${c.nit}`.toLowerCase().includes(query)).slice(0, 30);
+
+        if (!filtered.length) {
+          results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+          return;
+        }
+
+        results.innerHTML = filtered.map(c => `
+          <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
+                  onclick="window.selectPosCustomer('${(window as any).esc(c.id)}', '${(window as any).esc(c.doc_number || c.nit || '')} - ${(window as any).esc(c.name)}')">
+            <div class="font-bold text-gray-800">${(window as any).esc(c.name)}</div>
+            <div class="text-[10px] text-gray-500">Doc: ${c.doc_number || c.nit || 'S/N'}</div>
+          </button>
+        `).join('');
+      };
+
+      input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
+      input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
+      input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
+
+      (window as any).initKeyboardAutocomplete({
+        input,
+        results,
+        itemSelector: 'button',
+      });
+    };
+
+    (window as any).selectPosCustomer = function(id: string, text: string) {
+      const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+      const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+      if (hidden && input) {
+        hidden.value = id;
+        input.value = text;
+        selectedCustomerId = id;
+      }
+    };
+
+    initPosCustomerSearch();
 
     await window.loadPosProductsWithStock();
 
@@ -2121,9 +2181,12 @@ window.posQuickAddCustomer = function() {
         const thirds = await (window as any).API.getTerceros({ type: 'CLIENTE' });
         posCustomers = thirds;
         selectedCustomerId = createdRecord.id;
-        const select = document.getElementById('pos-cart-customer') as HTMLSelectElement;
-        if (select) {
-          select.innerHTML = posCustomers.map(c => `<option value="${c.id}"${selectedCustomerId === c.id ? ' selected' : ''}>${c.name}</option>`).join('');
+        const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+        const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+        if (hidden && input) {
+          hidden.value = createdRecord.id;
+          const docNum = createdRecord.doc_number || createdRecord.nit || '';
+          input.value = docNum ? `${docNum} - ${createdRecord.name}` : createdRecord.name;
         }
         (window as any).showToast('Cliente creado y seleccionado en la venta.', 'success');
       } catch (err: any) {
@@ -2193,10 +2256,14 @@ window.posLoadPendingOrderModal = async function() {
         loadedSalesOrderId = order.id;
         loadedSellerId = order.seller_id || null;
 
-        // Set customer
         selectedCustomerId = order.customer_id;
-        const custSelect = document.getElementById('pos-cart-customer') as HTMLSelectElement;
-        if (custSelect) custSelect.value = selectedCustomerId;
+        const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+        const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+        if (hidden && input) {
+          hidden.value = selectedCustomerId;
+          const match = posCustomers.find(c => c.id === selectedCustomerId);
+          input.value = match ? `${match.doc_number || match.nit || ''} - ${match.name}` : '';
+        }
 
         // Set warehouse if specified
         if (order.warehouse_id) {

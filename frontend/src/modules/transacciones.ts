@@ -118,6 +118,12 @@ function initThirdSearchInput({ state, hiddenId, inputId, resultsId, onSelected 
     if (!wrap.contains(ev.target)) hide();
   };
   setTimeout(() => document.addEventListener('click', input._thirdOutsideHandler), 0);
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-third-id]',
+  });
 }
 
 function initLineThirdSearchInput({ state, hidden, input, results, onSelected }) {
@@ -166,6 +172,12 @@ function initLineThirdSearchInput({ state, hidden, input, results, onSelected })
     results.style.display = 'none';
     if (typeof onSelected === 'function') onSelected(id);
   };
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-third-id]',
+  });
 }
 
 function bindTxLineThirdSearches(mode = 'new') {
@@ -190,6 +202,97 @@ function bindTxLineThirdSearches(mode = 'new') {
     });
   });
 }
+
+function renderAccountSearchResults(state, query = '') {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const list = Array.isArray(state?.accounts) ? state.accounts : [];
+  return list
+    .filter(a => {
+      const isPostable = state.postableAccountIds.has(a.id);
+      if (!isPostable) return false;
+      if (!terms.length) return true;
+      const hay = `${a.code || ''} ${a.name || ''}`.toLowerCase();
+      return terms.every(term => hay.includes(term));
+    })
+    .slice(0, 30);
+}
+
+function initLineAccountSearchInput({ state, hidden, input, results, onSelected }) {
+  if (!hidden || !input || !results) return;
+
+  const paint = (query = '') => {
+    const found = renderAccountSearchResults(state, query);
+    if (!found.length) {
+      results.innerHTML = '<div class="px-3 py-2 text-xs" style="color:#9CA3AF">Sin resultados</div>';
+      return;
+    }
+    results.innerHTML = found.map(a => `
+      <button type="button" data-account-id="${esc(a.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+        <div style="font-weight:600">${esc(a.code || '')}</div>
+        <div style="font-size:12px;color:#6B7280">${esc(a.name || '')}</div>
+      </button>
+    `).join('');
+  };
+
+  const syncInputFromHidden = () => {
+    const acct = state.accountMap.get(hidden.value);
+    input.value = acct ? `${acct.code} - ${acct.name}` : '';
+  };
+
+  syncInputFromHidden();
+  input.onfocus = () => {
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.oninput = () => {
+    hidden.value = '';
+    if (typeof onSelected === 'function') onSelected('');
+    paint(input.value);
+    results.style.display = 'block';
+  };
+  input.onblur = () => setTimeout(() => { results.style.display = 'none'; }, 120);
+  results.onmousedown = (ev) => ev.preventDefault();
+  results.onclick = (ev) => {
+    const btn = ev.target.closest('[data-account-id]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-account-id') || '';
+    hidden.value = id;
+    const acct = state.accountMap.get(id);
+    input.value = acct ? `${acct.code} - ${acct.name}` : '';
+    results.style.display = 'none';
+    if (typeof onSelected === 'function') onSelected(id);
+  };
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-account-id]',
+  });
+}
+
+function bindTxLineAccountSearches(mode = 'new') {
+  const isEdit = mode === 'edit';
+  const state = isEdit ? TX_EDIT_STATE : TX_STATE;
+  if (!state?.lines?.length) return;
+
+  state.lines.forEach((_, i) => {
+    const base = isEdit ? `edit-tx-line-account-${i}` : `tx-line-account-${i}`;
+    const hidden = document.getElementById(base) as HTMLInputElement;
+    const input = document.getElementById(`${base}-search`) as HTMLInputElement;
+    const results = document.getElementById(`${base}-results`);
+    initLineAccountSearchInput({
+      state,
+      hidden,
+      input,
+      results,
+      onSelected: (id) => {
+        if (isEdit) updateEditTxLine(i, 'account_id', id);
+        else updateTxLine(i, 'account_id', id);
+      }
+    });
+  });
+}
+
 
 async function openNuevaTxModal() {
   if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
@@ -494,13 +597,18 @@ function renderTxLines(repaint = true) {
       const creditVal   = Number(line.credit || 0);
       return `
       <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
-        <select class="form-input" style="font-size:13px" onchange="updateTxLine(${i}, 'account_id', this.value)">
-          <option value="">Seleccione cuenta...</option>
-          ${TX_STATE.accounts.map(a => {
-            const postable = TX_STATE.postableAccountIds.has(a.id);
-            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(a.code)} - ${esc(a.name)}${postable ? '' : ' [MAYOR]'}</option>`;
-          }).join('')}
-        </select>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Cuenta contable</span>
+            <span class="text-xs" style="color:#B91C1C">Obligatorio</span>
+          </div>
+          <div id="tx-line-account-${i}-wrap" class="relative">
+            <input id="tx-line-account-${i}-search" class="form-input" style="font-size:13px" autocomplete="off" placeholder="Buscar cuenta...">
+            <input id="tx-line-account-${i}" type="hidden" value="${esc(line.account_id || '')}">
+            <div id="tx-line-account-${i}-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
+          </div>
+        </div>
 
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
@@ -552,6 +660,7 @@ function renderTxLines(repaint = true) {
     }).join('');
     $('#tx-lines').innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
     bindTxLineThirdSearches('new');
+    bindTxLineAccountSearches('new');
   }
 
   const totals = TX_STATE.lines.reduce((acc, l) => {
@@ -1770,13 +1879,19 @@ function renderEditTxLines(repaint = true) {
       const creditVal  = Number(line.credit || 0);
       return `
       <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
-        <select class="form-input" style="font-size:13px" onchange="updateEditTxLine(${i}, 'account_id', this.value)">
-          <option value="">Seleccione cuenta...</option>
-          ${TX_EDIT_STATE.accounts.map(a => {
-            const postable = TX_EDIT_STATE.postableAccountIds.has(a.id);
-            return `<option value="${esc(a.id)}" ${line.account_id === a.id ? 'selected' : ''} ${postable ? '' : 'disabled'}>${esc(a.code)} - ${esc(a.name)}${postable ? '' : ' [MAYOR]'}</option>`;
-          }).join('')}
-        </select>
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#334155;white-space:nowrap">Cuenta contable</span>
+            <span class="text-xs" style="color:#B91C1C">Obligatorio</span>
+          </div>
+          <div id="edit-tx-line-account-${i}-wrap" class="relative">
+            <input id="edit-tx-line-account-${i}-search" class="form-input" style="font-size:13px" autocomplete="off" placeholder="Buscar cuenta...">
+            <input id="edit-tx-line-account-${i}" type="hidden" value="${esc(line.account_id || '')}">
+            <div id="edit-tx-line-account-${i}-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
+          </div>
+        </div>
+
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-user-tag" style="color:#334155;font-size:11px"></i>
@@ -1826,6 +1941,7 @@ function renderEditTxLines(repaint = true) {
     const el = document.getElementById('edit-tx-lines');
     if (el) el.innerHTML = html || '<p style="color:#9CA3AF">Agrega al menos una línea.</p>';
     bindTxLineThirdSearches('edit');
+    bindTxLineAccountSearches('edit');
   }
 
   const totals = TX_EDIT_STATE.lines.reduce((acc, l) => {
@@ -2212,6 +2328,7 @@ async function renderTransacciones(c) {
 (window as any).TX_STATE = TX_STATE;
 (window as any).addTxLine = addTxLine;
 (window as any).bindTxLineThirdSearches = bindTxLineThirdSearches;
+(window as any).bindTxLineAccountSearches = bindTxLineAccountSearches;
 (window as any).retRateLabel = retRateLabel;
 (window as any).removeTxLine = removeTxLine;
 (window as any).openNuevaTxModal = openNuevaTxModal;

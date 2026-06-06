@@ -805,6 +805,12 @@ async function openPurchaseForm(invoiceId = null, onDone = null) {
       if (!wrap.contains(ev.target)) results.style.display = 'none';
     };
     setTimeout(() => document.addEventListener('click', input._poOutsideHandler), 0);
+
+    (window as any).initKeyboardAutocomplete({
+      input,
+      results,
+      itemSelector: '[data-po-third-id]',
+    });
   }
 
   function refreshPoProductSelects() {

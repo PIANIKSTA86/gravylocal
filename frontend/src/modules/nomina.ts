@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ContaCO v2.0 — nomina.js
  */
 'use strict';
@@ -216,6 +216,12 @@ function initNominaThirdSearchInput({ terceros, hiddenId, inputId, resultsId, on
     results.style.display = 'none';
     if (typeof onSelected === 'function') onSelected(id);
   };
+
+  (window as any).initKeyboardAutocomplete({
+    input,
+    results,
+    itemSelector: '[data-third-id]',
+  });
 }
 
 function defaultNominaConfig() {
@@ -1565,7 +1571,7 @@ async function renderNomina(c) {
            <h3 class="text-lg font-bold" style="color:#0D2137">Nómina</h3>
            <p class="text-sm" style="color:#6B7280">Liquidación de períodos, prestaciones y aportes parafiscales.</p>
         </div>
-        ${can('canWrite') ? `<div class="flex gap-2">${requireRole('admin') ? '<button class="btn btn-outline" id="btn-nomina-empleado" title="Parámetros por empleado"><i class="fas fa-user-gear"></i> Empleado</button><button class="btn btn-outline" id="btn-nomina-config" title="Configurar contabilización"><i class="fas fa-gear"></i></button>' : ''}<button class="btn btn-secondary" id="btn-new-period"><i class="fas fa-calendar-plus"></i> Nuevo Período</button><button class="btn btn-primary" id="btn-new-payline"><i class="fas fa-plus"></i> Nueva Liquidación</button></div>` : ''}
+        ${can('canWrite') ? `<div class="flex gap-2">${requireRole('admin', 'superadmin', 'contador') ? '<button class="btn btn-outline" id="btn-nomina-empleado" title="Parámetros por empleado"><i class="fas fa-user-gear"></i> Empleado</button><button class="btn btn-outline" id="btn-nomina-config" title="Configurar contabilización"><i class="fas fa-gear"></i></button>' : ''}<button class="btn btn-secondary" id="btn-new-period"><i class="fas fa-calendar-plus"></i> Nuevo Período</button><button class="btn btn-primary" id="btn-new-payline"><i class="fas fa-plus"></i> Nueva Liquidación</button></div>` : ''}
       </div>
 
       ${loadErrors.length ? `

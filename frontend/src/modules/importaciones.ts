@@ -630,6 +630,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
     input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
     input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
+
+    (window as any).initKeyboardAutocomplete({
+      input,
+      results,
+      itemSelector: 'button',
+    });
   }
 
   (window as any).selectImpSupplier = function(id: string, text: string) {

@@ -599,6 +599,12 @@ async function openPetForm(petId: string | null = null, onDone: any = null) {
   search.addEventListener('input', () => { ownerIdHidden.value = ''; performSearch(search.value); results.style.display = 'block'; });
   search.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
 
+  (window as any).initKeyboardAutocomplete({
+    input: search,
+    results,
+    itemSelector: 'button',
+  });
+
   (window as any).selectPetOwner = function(id: string, text: string) {
     if (ownerIdHidden && search) {
       ownerIdHidden.value = id;

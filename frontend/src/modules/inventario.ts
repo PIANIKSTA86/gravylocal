@@ -1243,6 +1243,22 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
           <i class="fas fa-boxes-packing"></i> Iniciar Toma Física
         </button>
       </div>
+
+      <!-- BOTÓN DE REVALORIZACIÓN DE COSTOS -->
+      <div class="mt-4 bg-purple-50 border border-purple-200 rounded-xl p-5 shadow-inner flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex gap-3">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center bg-purple-600 text-white flex-shrink-0">
+            <i class="fas fa-calculator text-xl"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-purple-900">Recálculo y Revalorización de Costos</h4>
+            <p class="text-xs text-purple-700 mt-1">Recalcula el costo promedio ponderado de los productos y genera ajustes contables retroactivos para corregir desfases de costo en el período.</p>
+          </div>
+        </div>
+        <button class="btn btn-primary bg-purple-600 hover:bg-purple-700 border-none px-6 py-2.5 flex items-center gap-2 shadow text-white" onclick="window._openRevalorizacionModal()">
+          <i class="fas fa-calculator"></i> Iniciar Recálculo
+        </button>
+      </div>
     `;
   } catch (err: any) {
     c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
@@ -2018,9 +2034,526 @@ function _printHTMLReport(title: string, htmlContent: string) {
   w.document.close();
 }
 
+async function _openRevalorizacionModal() {
+  try {
+    const warehouses = await API.getWarehouses(true);
+    
+    // Rango predeterminado: desde el 1 del mes actual hasta hoy
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const today = now.toISOString().slice(0, 10);
+
+    const bodyHtml = `
+      <div class="space-y-4" style="font-family:'Segoe UI',sans-serif">
+        <div class="bg-purple-50 border border-purple-100 rounded-xl p-4 text-xs text-purple-800 flex items-start gap-2.5 mb-2">
+          <i class="fas fa-circle-info mt-0.5 text-purple-500 text-sm"></i>
+          <div>
+            <span class="font-bold">¿Cómo funciona?</span> Esta herramienta recorre el historial completo de movimientos de inventario de forma estrictamente cronológica. Identifica compras o entradas que resolvieron saldos negativos (ventas antes de compras) y calcula la diferencia entre el costo real y el provisional para generar los ajustes contables de revalorización correspondientes.
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha Inicio <span class="text-red-500">*</span></label>
+            <input id="reval-start-date" type="date" class="form-input text-xs w-full" value="${firstDay}">
+          </div>
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha Fin <span class="text-red-500">*</span></label>
+            <input id="reval-end-date" type="date" class="form-input text-xs w-full" value="${today}">
+          </div>
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega <span class="text-red-500">*</span></label>
+            <select id="reval-wh" class="form-input text-xs w-full">
+              <option value="">— Todas las Bodegas —</option>
+              ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="flex justify-start">
+          <button class="btn btn-primary bg-purple-600 hover:bg-purple-700 border-none text-white px-5 py-2.5 flex items-center gap-2 shadow-sm rounded-lg text-xs" id="btn-reval-analyze" onclick="window._analyzeRevaluation()">
+            <i class="fas fa-magnifying-glass"></i> Analizar Diferencias
+          </button>
+        </div>
+
+        <!-- Resultados -->
+        <div id="reval-results" class="border border-gray-200 rounded-xl overflow-hidden shadow-inner max-h-[280px] overflow-y-auto bg-gray-50">
+          <div class="text-center py-12 text-gray-400">
+            <i class="fas fa-calculator text-3xl mb-2 text-purple-200"></i>
+            <p class="text-xs">Define el rango de fechas y haz clic en <strong>Analizar Diferencias</strong>.</p>
+          </div>
+        </div>
+
+        <!-- Resumen de Ajuste -->
+        <div id="reval-summary-box" class="bg-gray-100 border border-gray-200 rounded-xl p-3 flex justify-between items-center text-xs hidden">
+          <div>
+            <span class="text-gray-500">Ajustes seleccionados:</span>
+            <span class="font-bold text-purple-800 ml-1" id="reval-selected-count">0</span>
+          </div>
+          <div class="flex gap-4">
+            <div>
+              <span class="text-gray-500">Total Débito Costos (+):</span>
+              <span class="font-bold text-green-600 ml-1" id="reval-total-debit">$ 0.00</span>
+            </div>
+            <div>
+              <span class="text-gray-500">Total Crédito Costos (-):</span>
+              <span class="font-bold text-red-600 ml-1" id="reval-total-credit">$ 0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footerHtml = `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary bg-purple-600 hover:bg-purple-700 border-none text-white" id="btn-reval-apply" disabled onclick="window._applyRevaluation()">
+        <i class="fas fa-calculator mr-2"></i>Aplicar Ajustes
+      </button>
+    `;
+
+    openModal('Recálculo y Revalorización de Costos', bodyHtml, footerHtml, true);
+  } catch (err: any) {
+    showToast(`Error al cargar el modal: ${err.message}`, 'error');
+  }
+}
+
+async function _analyzeRevaluation() {
+  const startDate = getInputVal('reval-start-date');
+  const endDate = getInputVal('reval-end-date');
+  const whId = getSelectVal('reval-wh');
+
+  if (!startDate || !endDate) {
+    return showToast('Por favor, selecciona las fechas de inicio y fin.', 'warning');
+  }
+
+  const btn = document.getElementById('btn-reval-analyze') as HTMLButtonElement;
+  const resultsDiv = document.getElementById('reval-results');
+  const summaryBox = document.getElementById('reval-summary-box');
+  if (!resultsDiv) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analizando...';
+  }
+  resultsDiv.innerHTML = `<div class="text-center py-12 text-gray-500"><i class="fas fa-spinner fa-spin mr-2 text-2xl text-purple-600"></i><p class="text-xs mt-2">Simulando flujo cronológico de inventarios...</p></div>`;
+  if (summaryBox) summaryBox.classList.add('hidden');
+
+  try {
+    const pb = _pb();
+
+    // 1. Cargar productos de tipo BIEN y bodegas
+    const [products, warehouses] = await Promise.all([
+      pb.listAll('products', { filter: 'active=true' }),
+      API.getWarehouses(false)
+    ]);
+    const bienProducts = products.filter((p: any) => p.type === 'BIEN');
+    const prodMap = new Map(bienProducts.map((p: any) => [p.id, p]));
+    const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+
+    // 2. Traer todas las líneas de movimientos aplicados.
+    const lines = await pb.listAll('inventory_movement_lines', {
+      filter: 'movement_id.status = "applied"',
+      expand: 'movement_id'
+    });
+
+    // 3. Ordenar las líneas cronológicamente por fecha, fecha de creación y orden de línea
+    lines.sort((a: any, b: any) => {
+      const dateA = a.expand?.movement_id?.date || '';
+      const dateB = b.expand?.movement_id?.date || '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      const createdA = a.expand?.movement_id?.created || '';
+      const createdB = b.expand?.movement_id?.created || '';
+      if (createdA !== createdB) return createdA.localeCompare(createdB);
+
+      return (a.line_order || 0) - (b.line_order || 0);
+    });
+
+    // 4. Inicializar estado de stock por producto y bodega
+    const stockState: { [prodId: string]: { [whId: string]: { qty: number, avg_cost: number } } } = {};
+
+    const getStock = (pId: string, wId: string) => {
+      if (!stockState[pId]) stockState[pId] = {};
+      if (!stockState[pId][wId]) {
+        stockState[pId][wId] = { qty: 0, avg_cost: 0 };
+      }
+      return stockState[pId][wId];
+    };
+
+    const simulatedAdjustments: any[] = [];
+
+    // 5. Simular cronológicamente
+    for (const line of lines) {
+      const mov = line.expand?.movement_id;
+      if (!mov) continue;
+
+      const prodId = line.product_id;
+      if (!prodMap.has(prodId)) continue;
+
+      const type = mov.mov_type;
+      const qty = Number(line.qty || 0);
+      const unitCost = Number(line.unit_cost || 0);
+      const date = mov.date || '';
+
+      const isWithinDateRange = date >= startDate && date <= endDate;
+      const isTargetWarehouse = !whId || mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
+
+      if (type === 'ENTRADA' || type === 'AJUSTE_POSITIVO') {
+        const st = getStock(prodId, mov.warehouse_id);
+        const priorQty = st.qty;
+        const priorAvgCost = st.avg_cost;
+
+        st.qty = priorQty + qty;
+
+        if (priorQty < 0) {
+          // Resolución de stock negativo!
+          const resolvedQty = Math.min(qty, Math.abs(priorQty));
+          const costDiff = unitCost - priorAvgCost;
+          const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+            simulatedAdjustments.push({
+              prodId,
+              whId: mov.warehouse_id,
+              date,
+              adjustmentVal,
+              resolvedQty,
+              costDiff,
+              priorAvgCost,
+              newCost: unitCost,
+              movementNumber: mov.number,
+              movementId: mov.id
+            });
+          }
+          st.avg_cost = unitCost;
+        } else {
+          if (st.qty > 0) {
+            st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * unitCost)) / st.qty) * 100) / 100;
+          } else {
+            st.avg_cost = unitCost;
+          }
+        }
+      } else if (type === 'SALIDA' || type === 'AJUSTE_NEGATIVO') {
+        const st = getStock(prodId, mov.warehouse_id);
+        st.qty = st.qty - qty;
+      } else if (type === 'TRASLADO') {
+        // Origen
+        const stSrc = getStock(prodId, mov.warehouse_id);
+        const transferCost = stSrc.avg_cost;
+        stSrc.qty = stSrc.qty - qty;
+
+        // Destino
+        const stDst = getStock(prodId, mov.dest_warehouse_id);
+        const priorQtyDst = stDst.qty;
+        const priorAvgCostDst = stDst.avg_cost;
+
+        stDst.qty = priorQtyDst + qty;
+
+        if (priorQtyDst < 0) {
+          const resolvedQty = Math.min(qty, Math.abs(priorQtyDst));
+          const costDiff = transferCost - priorAvgCostDst;
+          const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+            simulatedAdjustments.push({
+              prodId,
+              whId: mov.dest_warehouse_id,
+              date,
+              adjustmentVal,
+              resolvedQty,
+              costDiff,
+              priorAvgCost: priorAvgCostDst,
+              newCost: transferCost,
+              movementNumber: mov.number,
+              movementId: mov.id
+            });
+          }
+          stDst.avg_cost = transferCost;
+        } else {
+          if (stDst.qty > 0) {
+            stDst.avg_cost = Math.round((((priorQtyDst * priorAvgCostDst) + (qty * transferCost)) / stDst.qty) * 100) / 100;
+          } else {
+            stDst.avg_cost = transferCost;
+          }
+        }
+      }
+    }
+
+    // 6. Agrupar ajustes por producto y bodega
+    const grouped: { [key: string]: any } = {};
+    for (const adj of simulatedAdjustments) {
+      const key = `${adj.prodId}_${adj.whId}`;
+      if (!grouped[key]) {
+        const prod = prodMap.get(adj.prodId);
+        grouped[key] = {
+          prodId: adj.prodId,
+          code: prod?.code || '',
+          name: prod?.name || '',
+          whId: adj.whId,
+          whName: whMap.get(adj.whId) || '',
+          totalAdjustment: 0,
+          details: [],
+          hasAccounts: !!(prod?.inventory_account_id && prod?.cost_account_id)
+        };
+      }
+      grouped[key].totalAdjustment += adj.adjustmentVal;
+      grouped[key].details.push(adj);
+    }
+
+    const groupedList = Object.values(grouped);
+    (window as any)._simulatedRevalAdjustments = groupedList;
+
+    if (!groupedList.length) {
+      resultsDiv.innerHTML = `
+        <div class="text-center py-12 text-gray-500">
+          <i class="fas fa-check-circle text-3xl mb-2 text-green-500"></i>
+          <p class="text-xs">No se encontraron desfases de costos ni resoluciones de stock negativo en el rango seleccionado.</p>
+        </div>
+      `;
+      const applyBtn = document.getElementById('btn-reval-apply') as HTMLButtonElement;
+      if (applyBtn) applyBtn.disabled = true;
+      return;
+    }
+
+    if (summaryBox) summaryBox.classList.remove('hidden');
+
+    const rowsHtml = groupedList.map((item: any, idx) => {
+      const adjVal = Math.round(item.totalAdjustment * 100) / 100;
+      const isPositive = adjVal > 0;
+
+      const statusHtml = item.hasAccounts
+        ? `<span class="badge badge-green text-[10px]">Listo</span>`
+        : `<span class="badge badge-red text-[10px]" title="Configura cuenta de inventario y costo en catálogo de productos"><i class="fas fa-circle-exclamation mr-1"></i>Sin Cuentas</span>`;
+
+      const checkboxDisabled = !item.hasAccounts ? 'disabled' : '';
+      const checkboxChecked = item.hasAccounts ? 'checked' : '';
+
+      return `
+        <tr class="hover:bg-gray-50 border-b border-gray-100">
+          <td class="p-2 text-center">
+            <input type="checkbox" class="reval-select-row w-4 h-4 text-purple-600 rounded" data-index="${idx}" ${checkboxDisabled} ${checkboxChecked} onchange="window._recalcRevalTotals()">
+          </td>
+          <td class="p-2 font-mono text-xs text-purple-900 font-semibold">${esc(item.code)}</td>
+          <td class="p-2 text-sm">${esc(item.name)}</td>
+          <td class="p-2 text-xs text-gray-500">${esc(item.whName)}</td>
+          <td class="p-2 text-center text-xs text-gray-500 font-semibold">${item.details.length}</td>
+          <td class="p-2 text-right font-bold text-xs ${isPositive ? 'text-green-600' : 'text-red-600'}">
+            $ ${fmtN(adjVal)}
+          </td>
+          <td class="p-2 text-center">${statusHtml}</td>
+        </tr>
+      `;
+    }).join('');
+
+    resultsDiv.innerHTML = `
+      <table class="w-full text-xs data-table">
+        <thead class="bg-purple-50 sticky top-0 z-10 border-b border-purple-200">
+          <tr>
+            <th class="p-2 text-center" style="width: 40px">
+              <input type="checkbox" id="reval-select-all" class="w-4 h-4 text-purple-600 rounded" checked onchange="window._revalToggleAll(this.checked)">
+            </th>
+            <th class="p-2 text-left">Código</th>
+            <th class="p-2 text-left">Producto</th>
+            <th class="p-2 text-left">Bodega</th>
+            <th class="p-2 text-center">Resoluciones</th>
+            <th class="p-2 text-right">Ajuste Neto</th>
+            <th class="p-2 text-center">Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    `;
+
+    window._recalcRevalTotals();
+
+  } catch (err: any) {
+    resultsDiv.innerHTML = `<div class="p-6 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-magnifying-glass"></i> Analizar Diferencias';
+    }
+  }
+}
+
+async function _applyRevaluation() {
+  const groupedList = (window as any)._simulatedRevalAdjustments || [];
+  const checkboxes = document.querySelectorAll('.reval-select-row') as NodeListOf<HTMLInputElement>;
+  
+  const selectedItems: any[] = [];
+  checkboxes.forEach(cb => {
+    if (cb.checked) {
+      const idx = parseInt(cb.dataset.index || '0', 10);
+      const item = groupedList[idx];
+      if (item) selectedItems.push(item);
+    }
+  });
+
+  if (!selectedItems.length) {
+    return showToast('Por favor, selecciona al menos un producto para ajustar.', 'warning');
+  }
+
+  const btn = document.getElementById('btn-reval-apply') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Aplicando revalorización...';
+  }
+
+  try {
+    const pb = _pb();
+
+    // 1. Obtener productos para leer cuentas contables configuradas
+    const products = await pb.listAll('products', { filter: 'active=true' });
+    const prodMap = new Map(products.map((p: any) => [p.id, p]));
+
+    // 2. Buscar/Crear tipo de transacción contable AJ (Ajuste de Inventario)
+    let ajType = await pb.listAll('transaction_types', { filter: 'code="AJ"' });
+    if (!ajType.length) {
+      ajType = [await pb.create('transaction_types', {
+        code: 'AJ',
+        prefix: 'AJ',
+        name: 'Ajuste de Inventario',
+        description: 'Ajustes por revalorización de costos',
+        consecutive: 0,
+        active: true
+      })];
+    }
+    const txTypeId = ajType[0].id;
+
+    // 3. Construir líneas de la transacción contable consolidada
+    const txLines: any[] = [];
+    const today = new Date().toISOString().slice(0, 10);
+    const rand = String(Date.now()).slice(-4);
+    const txNumber = `AJ-REV-${today.replaceAll('-', '')}-${rand}`;
+
+    for (const item of selectedItems) {
+      const prod = prodMap.get(item.prodId) as any;
+      if (!prod) continue;
+
+      const inventoryAccId = prod.inventory_account_id;
+      const costAccId = prod.cost_account_id;
+
+      if (!inventoryAccId || !costAccId) {
+        throw new Error(`El producto "${prod.code} — ${prod.name}" no tiene cuentas configuradas.`);
+      }
+
+      const totalVal = Math.round(item.totalAdjustment * 100) / 100;
+      if (Math.abs(totalVal) <= 0.009) continue;
+
+      if (totalVal > 0) {
+        // Ajuste positivo: Débito a la Cuenta de Costo y Crédito a la Cuenta de Inventario
+        txLines.push({
+          account_id: costAccId,
+          debit: totalVal,
+          credit: 0,
+          description: `Ajuste Costo Ventas revalorización ${prod.code}`,
+          line_order: txLines.length + 1
+        });
+        txLines.push({
+          account_id: inventoryAccId,
+          debit: 0,
+          credit: totalVal,
+          description: `Ajuste Inventario revalorización ${prod.code}`,
+          line_order: txLines.length + 1
+        });
+      } else {
+        // Ajuste negativo: Crédito a la Cuenta de Costo y Débito a la Cuenta de Inventario
+        const absVal = Math.abs(totalVal);
+        txLines.push({
+          account_id: costAccId,
+          debit: 0,
+          credit: absVal,
+          description: `Ajuste Costo Ventas revalorización ${prod.code}`,
+          line_order: txLines.length + 1
+        });
+        txLines.push({
+          account_id: inventoryAccId,
+          debit: absVal,
+          credit: 0,
+          description: `Ajuste Inventario revalorización ${prod.code}`,
+          line_order: txLines.length + 1
+        });
+      }
+    }
+
+    if (!txLines.length) {
+      throw new Error('El valor neto de los ajustes seleccionados es de $0. No se requiere registro contable.');
+    }
+
+    // 4. Registrar la transacción contable consolidada
+    await API.createTransaction({
+      tx_type_id: txTypeId,
+      number: txNumber,
+      date: today,
+      description: `Revalorización manual de costos de inventario`,
+      status: 'active',
+      payment_days: 0,
+      cross_enabled: false
+    }, txLines);
+
+    showToast(`Revalorización aplicada con éxito. Transacción ${txNumber} registrada.`, 'success');
+    closeModal();
+    renderInventario(document.getElementById('page-content')!);
+  } catch (err: any) {
+    showToast(`Error al aplicar revalorización: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fas fa-calculator mr-2"></i>Aplicar Ajustes`;
+    }
+  }
+}
+
+(window as any)._revalToggleAll = (checked: boolean) => {
+  const checkboxes = document.querySelectorAll('.reval-select-row:not(:disabled)') as NodeListOf<HTMLInputElement>;
+  checkboxes.forEach(cb => cb.checked = checked);
+  (window as any)._recalcRevalTotals();
+};
+
+(window as any)._recalcRevalTotals = () => {
+  const groupedList = (window as any)._simulatedRevalAdjustments || [];
+  const checkboxes = document.querySelectorAll('.reval-select-row') as NodeListOf<HTMLInputElement>;
+  
+  let debitSum = 0;
+  let creditSum = 0;
+  let selectedCount = 0;
+
+  checkboxes.forEach(cb => {
+    if (cb.checked) {
+      const idx = parseInt(cb.dataset.index || '0', 10);
+      const item = groupedList[idx];
+      if (item) {
+        selectedCount++;
+        const val = Math.round(item.totalAdjustment * 100) / 100;
+        if (val > 0) debitSum += val;
+        else creditSum += Math.abs(val);
+      }
+    }
+  });
+
+  const selectedCountEl = document.getElementById('reval-selected-count');
+  const totalDebitEl = document.getElementById('reval-total-debit');
+  const totalCreditEl = document.getElementById('reval-total-credit');
+
+  if (selectedCountEl) selectedCountEl.innerText = String(selectedCount);
+  if (totalDebitEl) totalDebitEl.innerText = `$ ${fmtN(debitSum)}`;
+  if (totalCreditEl) totalCreditEl.innerText = `$ ${fmtN(creditSum)}`;
+
+  const applyBtn = document.getElementById('btn-reval-apply') as HTMLButtonElement;
+  if (applyBtn) {
+    applyBtn.disabled = selectedCount === 0;
+    applyBtn.innerHTML = `<i class="fas fa-calculator mr-2"></i>Aplicar Ajustes (${selectedCount})`;
+  }
+};
+
 (window as any)._updateTomaFisicaSystemStock = _updateTomaFisicaSystemStock;
 (window as any)._openTomaFisicaModal = _openTomaFisicaModal;
 (window as any)._saveTomaFisica = _saveTomaFisica;
 (window as any)._printReport = _printReport;
 (window as any)._exportReport = _exportReport;
 (window as any)._printHTMLReport = _printHTMLReport;
+(window as any)._openRevalorizacionModal = _openRevalorizacionModal;
+(window as any)._analyzeRevaluation = _analyzeRevaluation;
+(window as any)._applyRevaluation = _applyRevaluation;

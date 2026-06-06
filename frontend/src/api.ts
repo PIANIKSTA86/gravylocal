@@ -549,10 +549,79 @@ const API = {
         const currentQty = Number(rec.qty_on_hand ?? 0);
         const currentCost = Number(rec.avg_cost ?? 0);
         const totalNewQty = currentQty + deltaQty;
-        if (totalNewQty > 0) {
-          avgCost = Math.round((((currentQty * currentCost) + (deltaQty * newAvgCost)) / totalNewQty) * 100) / 100;
-        } else {
+
+        if (currentQty < 0) {
+          // Opción B: Stock negativo resuelto por compra/entrada positiva
+          const resolvedQty = Math.min(deltaQty, Math.abs(currentQty));
+          const costDiff = newAvgCost - currentCost;
+          const totalAdjustment = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+          // El costo promedio de las unidades restantes es el costo de compra
           avgCost = newAvgCost;
+
+          if (Math.abs(totalAdjustment) > 0.009) {
+            // Registrar ajuste contable retroactivo (Costo de Ventas vs Inventario)
+            try {
+              // Obtener producto para ver si tiene cuentas configuradas
+              (async () => {
+                const prod = await pb.get('products', productId);
+                const inventoryAcc = prod.inventory_account_id;
+                const costAcc = prod.cost_account_id;
+
+                if (inventoryAcc && costAcc) {
+                  let ajType = await pb.listAll('transaction_types', { filter: 'code="AJ"' });
+                  if (!ajType.length) {
+                    ajType = [await pb.create('transaction_types', {
+                      code: 'AJ',
+                      prefix: 'AJ',
+                      name: 'Ajuste de Inventario',
+                      description: 'Ajustes de costeo por stock negativo',
+                      consecutive: 0,
+                      active: true
+                    })];
+                  }
+                  const txTypeId = ajType[0].id;
+                  const rand = String(Date.now()).slice(-4);
+                  const txNumber = `AJ-${today.replaceAll('-', '')}-${rand}`;
+
+                  const lines = [
+                    {
+                      account_id: costAcc,
+                      debit: totalAdjustment > 0 ? totalAdjustment : 0,
+                      credit: totalAdjustment < 0 ? Math.abs(totalAdjustment) : 0,
+                      description: `Ajuste Costo de Ventas retroactivo por negativo resuelto - Prod ${prod.code}`,
+                      line_order: 1
+                    },
+                    {
+                      account_id: inventoryAcc,
+                      debit: totalAdjustment < 0 ? Math.abs(totalAdjustment) : 0,
+                      credit: totalAdjustment > 0 ? totalAdjustment : 0,
+                      description: `Ajuste Inventario retroactivo por negativo resuelto - Prod ${prod.code}`,
+                      line_order: 2
+                    }
+                  ];
+
+                  await this.createTransaction({
+                    tx_type_id: txTypeId,
+                    number: txNumber,
+                    date: today,
+                    description: `Ajuste automático de costeo por stock negativo resuelto - Prod ${prod.name}`,
+                    status: 'active',
+                    payment_days: 0,
+                    cross_enabled: false
+                  }, lines);
+                }
+              })();
+            } catch (err: any) {
+              console.error('[GRAVY] Error al generar el ajuste contable retroactivo:', err);
+            }
+          }
+        } else {
+          if (totalNewQty > 0) {
+            avgCost = Math.round((((currentQty * currentCost) + (deltaQty * newAvgCost)) / totalNewQty) * 100) / 100;
+          } else {
+            avgCost = newAvgCost;
+          }
         }
         finalAvgCostForProductUpdate = avgCost;
       }

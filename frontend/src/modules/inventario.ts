@@ -5,6 +5,8 @@
  */
 'use strict';
 
+const _pb = (): any => (window as any).pb;
+
 // ── Constantes ────────────────────────────────────────────────────────────────
 const INV_MOV_TYPES = [
   { value: 'ENTRADA',         label: 'Entrada',          icon: 'fa-arrow-down',  color: '#059669' },
@@ -41,13 +43,14 @@ function _renderInvPage(c, activeTab, ctx = {}) {
     { id: 'movimientos',label: 'Movimientos',    icon: 'fa-arrows-rotate'  },
     { id: 'kardex',     label: 'Kardex',         icon: 'fa-table'          },
     { id: 'bodegas',    label: 'Bodegas',        icon: 'fa-warehouse'      },
+    { id: 'reportes',   label: 'Reportes',       icon: 'fa-file-invoice'   },
   ];
 
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">Gestión de Inventarios</h3>
-        <p class="text-sm" style="color:#6B7280">Stock actual, movimientos (entradas/salidas/traslados) y bodegas.</p>
+        <p class="text-sm" style="color:#6B7280">Stock actual, movimientos, bodegas y reportes.</p>
       </div>
     </div>
     <div class="flex gap-1 mb-5 border-b" style="border-color:#E5E7EB">
@@ -66,6 +69,7 @@ function _renderInvPage(c, activeTab, ctx = {}) {
     if (tabId === 'movimientos') renderMovimientosTab(tabContent, ctx);
     if (tabId === 'kardex')      renderKardexTab(tabContent, ctx);
     if (tabId === 'bodegas')     renderBodegasTab(tabContent, ctx);
+    if (tabId === 'reportes')    renderReportesTab(tabContent, ctx);
   }
 
   c.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
@@ -1110,3 +1114,913 @@ async function renderKardexTab(c, ctx = {}) {
 (window as any)._renderInvPage = _renderInvPage;
 (window as any).INV_MOV_TYPES = INV_MOV_TYPES;
 (window as any).renderKardexTab = renderKardexTab;
+
+// ── Nuevas funciones de reportes contables e inventario físico ──
+
+async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
+  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos de reportes...</div>`;
+  try {
+    const [products, warehouses] = await Promise.all([
+      API.getProducts({ activeOnly: false }),
+      ctx.warehouses ? Promise.resolve(ctx.warehouses) : API.getWarehouses(false)
+    ]);
+    ctx.products = products;
+    ctx.warehouses = warehouses;
+
+    c.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Tarjeta 1: Reporte General de Inventarios -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600">
+              <i class="fas fa-clipboard-list text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Reporte General de Inventarios</h4>
+              <p class="text-xs text-gray-400">Toda la información consolidada de los productos</p>
+            </div>
+          </div>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Costo a Reportar</label>
+              <select id="rep-gen-cost" class="form-input text-xs w-full">
+                <option value="promedio">Costo Promedio Actual (Kardex)</option>
+                <option value="ultimo">Último Costo del Producto</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+              <select id="rep-gen-wh" class="form-input text-xs w-full">
+                <option value="">Todas las bodegas (Consolidado)</option>
+                ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('general')"><i class="fas fa-print mr-1"></i>Imprimir</button>
+            <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('general')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
+          </div>
+        </div>
+
+        <!-- Tarjeta 2: Existencias por Bodega (Comparativo) -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-green-50 text-green-600">
+              <i class="fas fa-columns text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Comparativo de Existencias</h4>
+              <p class="text-xs text-gray-400">Existencias cruzadas por producto entre bodegas</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mb-6">Genera una matriz comparativa cruzada con las existencias de todos los productos en cada una de las bodegas creadas.</p>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('comparativo')"><i class="fas fa-print mr-1"></i>Imprimir</button>
+            <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('comparativo')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
+          </div>
+        </div>
+
+        <!-- Tarjeta 3: Listado para Conteo Físico -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-orange-50 text-orange-600">
+              <i class="fas fa-list-check text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Listado para Conteo Físico</h4>
+              <p class="text-xs text-gray-400">Planilla para inventario físico en campo</p>
+            </div>
+          </div>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega <span class="text-red-500">*</span></label>
+              <select id="rep-conteo-wh" class="form-input text-xs w-full">
+                ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="rep-conteo-show-stock" class="w-4 h-4 text-blue-600 rounded">
+              <label for="rep-conteo-show-stock" class="text-xs text-gray-600">Mostrar stock del sistema (no ciego)</label>
+            </div>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('conteo')"><i class="fas fa-print mr-1"></i>Imprimir</button>
+            <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('conteo')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
+          </div>
+        </div>
+
+        <!-- Tarjeta 4: Lista de Precios -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600">
+              <i class="fas fa-tags text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Lista de Precios</h4>
+              <p class="text-xs text-gray-400">Consulta y exportación de precios vigentes</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mb-6">Muestra la lista de precios de venta (Precio Base, Precio Venta 2, Precio Venta 3) de todos los productos y servicios.</p>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('precios')"><i class="fas fa-print mr-1"></i>Imprimir</button>
+            <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('precios')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- BOTÓN DE TOMA FÍSICA -->
+      <div class="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-5 shadow-inner flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex gap-3">
+          <div class="w-12 h-12 rounded-2xl flex items-center justify-center bg-blue-600 text-white flex-shrink-0">
+            <i class="fas fa-boxes-packing text-xl"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-blue-900">Toma de Inventario Físico (Ajuste Contable)</h4>
+            <p class="text-xs text-blue-700 mt-1">Cierra el inventario previo de las referencias contadas en la bodega elegida y genera un ajuste contable automático balanceado.</p>
+          </div>
+        </div>
+        <button class="btn btn-primary px-6 py-2.5 flex items-center gap-2 shadow" onclick="window._openTomaFisicaModal()">
+          <i class="fas fa-boxes-packing"></i> Iniciar Toma Física
+        </button>
+      </div>
+    `;
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
+  }
+}
+
+async function _updateTomaFisicaSystemStock(whId: string) {
+  const tableBody = document.getElementById('toma-products-body');
+  if (!tableBody) return;
+  if (!whId) {
+    tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400"><i class="fas fa-warehouse text-2xl mb-2"></i><p>Selecciona una bodega para listar las existencias.</p></td></tr>`;
+    return;
+  }
+  tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando existencias...</td></tr>`;
+  try {
+    const stock = await API.getInventoryStock({ warehouseId: whId });
+    const stockByProd = new Map(stock.map((s: any) => [s.product_id, s]));
+    const products = (window as any)._tomaProducts || [];
+    if (!products.length) {
+      tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400">No hay productos tipo BIEN registrados.</td></tr>`;
+      return;
+    }
+    
+    tableBody.innerHTML = products.map((p: any) => {
+      const st = stockByProd.get(p.id) || { qty_on_hand: 0, avg_cost: Number(p.cost_price || 0) };
+      const systemStock = Number(st.qty_on_hand || 0);
+      return `
+        <tr class="toma-prod-row hover:bg-gray-50 border-b border-gray-100" data-code="${esc(p.code)}" data-name="${esc(p.name)}">
+          <td class="p-2 font-mono text-xs text-blue-800 font-semibold">${esc(p.code)}</td>
+          <td class="p-2 text-sm">${esc(p.name)}</td>
+          <td class="p-2 text-xs text-gray-500">${esc(p.unit || '—')}</td>
+          <td class="p-2 text-right font-semibold text-gray-700" id="toma-sys-${p.id}">${fmtN(systemStock)}</td>
+          <td class="p-2 text-right">
+            <input type="number" min="0" step="0.0001" 
+              class="form-input text-right w-24 py-1 text-xs toma-phys-input" 
+              id="toma-phys-${p.id}" 
+              data-prodid="${p.id}" 
+              data-sys="${systemStock}" 
+              data-avgcost="${st.avg_cost || p.cost_price || 0}" 
+              data-lastcost="${p.cost_price || 0}"
+              placeholder="Sin contar">
+          </td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err: any) {
+    tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-red-500">Error: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+async function _openTomaFisicaModal() {
+  const pb = _pb();
+  const [products, warehouses, accounts] = await Promise.all([
+    API.getProducts({ activeOnly: true }),
+    API.getWarehouses(true),
+    API.getAccounts(false)
+  ]);
+  
+  const bienProducts = products.filter((p: any) => p.type === 'BIEN');
+  (window as any)._tomaProducts = bienProducts;
+
+  const detailAccounts = accounts
+    .filter((a: any) => a.level >= 3 && a.active)
+    .sort((a: any, b: any) => (a.code || '').localeCompare(b.code || ''));
+
+  const bodyHtml = `
+    <div class="space-y-4" style="font-family:'Segoe UI',sans-serif">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="form-group">
+          <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega a Ajustar <span class="text-red-500">*</span></label>
+          <select id="toma-wh" class="form-input text-xs w-full" onchange="window._updateTomaFisicaSystemStock(this.value)">
+            <option value="">— Seleccionar —</option>
+            ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha de Ajuste <span class="text-red-500">*</span></label>
+          <input id="toma-date" type="date" class="form-input text-xs w-full" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Costo a Utilizar <span class="text-red-500">*</span></label>
+          <select id="toma-cost-type" class="form-input text-xs w-full">
+            <option value="promedio">Costo Promedio Actual</option>
+            <option value="ultimo">Último Costo del Producto</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Cuenta Contrapartida <span class="text-red-500">*</span></label>
+          <select id="toma-acc" class="form-input text-xs w-full">
+            <option value="">— Seleccionar Cuenta —</option>
+            ${detailAccounts.map(a => `<option value="${esc(a.id)}">${esc(a.code)} — ${esc(a.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <!-- Buscador -->
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-search text-xs"></i></div>
+        <input id="toma-search" class="form-input pl-8 py-1.5 text-xs w-full" placeholder="Filtrar por código o nombre..." oninput="window._filterTomaFisicaTable(this.value)">
+      </div>
+
+      <!-- Tabla de Productos -->
+      <div class="border border-gray-200 rounded-xl overflow-hidden shadow-inner max-h-[300px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-gray-50 sticky top-0 z-10 border-b border-gray-200">
+            <tr>
+              <th class="p-2 text-left">Código</th>
+              <th class="p-2 text-left">Producto</th>
+              <th class="p-2 text-left">Unidad</th>
+              <th class="p-2 text-right">Stock Sistema</th>
+              <th class="p-2 text-right" style="width: 130px">Cant. Física</th>
+            </tr>
+          </thead>
+          <tbody id="toma-products-body">
+            <tr>
+              <td colspan="5" class="text-center py-10 text-gray-400">
+                <i class="fas fa-warehouse text-2xl mb-2"></i>
+                <p>Selecciona una bodega para listar las existencias.</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-[10px] text-gray-400 italic">* Nota: Los productos con cantidad física vacía ("Sin contar") no sufrirán ningún cambio ni ajuste.</p>
+    </div>
+  `;
+
+  const footerHtml = `
+    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-toma-save" onclick="window._saveTomaFisica()">
+      <i class="fas fa-floppy-disk mr-2"></i>Aplicar Ajuste Físico
+    </button>
+  `;
+
+  openModal('Toma de Inventario Físico y Ajuste Contable', bodyHtml, footerHtml, true);
+}
+
+// Filtro de tabla toma física
+(window as any)._filterTomaFisicaTable = (q: string) => {
+  const query = q.toLowerCase().trim();
+  const rows = document.querySelectorAll('.toma-prod-row');
+  rows.forEach((row: any) => {
+    const code = row.dataset.code?.toLowerCase() || '';
+    const name = row.dataset.name?.toLowerCase() || '';
+    if (!query || code.includes(query) || name.includes(query)) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+};
+
+async function _saveTomaFisica() {
+  const whId = getSelectVal('toma-wh');
+  const date = getInputVal('toma-date');
+  const costType = getSelectVal('toma-cost-type');
+  const accContraId = getSelectVal('toma-acc');
+
+  if (!whId) return showToast('Selecciona la bodega a ajustar.', 'warning');
+  if (!date) return showToast('La fecha es obligatoria.', 'warning');
+  if (!accContraId) return showToast('Selecciona la cuenta contable de contrapartida.', 'warning');
+
+  const btn = document.getElementById('btn-toma-save') as HTMLButtonElement;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando ajuste...'; }
+
+  try {
+    const pb = _pb();
+    
+    // 1. Recopilar cantidades físicas ingresadas
+    const inputs = document.querySelectorAll('.toma-phys-input');
+    const adjustments = [];
+
+    for (const input of inputs as any) {
+      const val = input.value.trim();
+      if (val === '') continue; // ignore uncounted items
+
+      const physicalQty = parseFloat(val);
+      if (isNaN(physicalQty) || physicalQty < 0) {
+        throw new Error('Las cantidades contadas deben ser números mayores o iguales a 0.');
+      }
+
+      const prodId = input.dataset.prodid;
+      const systemQty = parseFloat(input.dataset.sys || '0');
+      const avgCost = parseFloat(input.dataset.avgcost || '0');
+      const lastCost = parseFloat(input.dataset.lastcost || '0');
+      
+      const qtyDiff = physicalQty - systemQty;
+      if (Math.abs(qtyDiff) > 0.0001) {
+        const cost = costType === 'promedio' ? avgCost : lastCost;
+        adjustments.push({
+          productId: prodId,
+          qtyDiff,
+          cost,
+          systemQty,
+          physicalQty
+        });
+      }
+    }
+
+    if (!adjustments.length) {
+      showToast('No se detectaron diferencias entre el conteo físico y el stock del sistema.', 'info');
+      closeModal();
+      return;
+    }
+
+    // 2. Cargar todos los productos ajustados para obtener sus cuentas de inventario
+    const products = (window as any)._tomaProducts || [];
+    const prodMap = new Map(products.map((p: any) => [p.id, p]));
+
+    // 3. Crear o buscar tipo de transacción AJ (Ajuste de Inventario)
+    let ajType = await pb.listAll('transaction_types', { filter: 'code="AJ"' });
+    if (!ajType.length) {
+      ajType = [await pb.create('transaction_types', {
+        code: 'AJ',
+        prefix: 'AJ',
+        name: 'Ajuste de Inventario',
+        description: 'Ajustes por toma física de inventario',
+        consecutive: 0,
+        active: true
+      })];
+    }
+    const txTypeId = ajType[0].id;
+
+    // 4. Construir las líneas de transacción contable (Debito y Credito balanceados)
+    const txLines = [];
+    const today = date || new Date().toISOString().slice(0, 10);
+    const rand = String(Date.now()).slice(-4);
+    const txNumber = `AJ-${today.replaceAll('-', '')}-${rand}`;
+
+    for (const adj of adjustments) {
+      const prod = prodMap.get(adj.productId);
+      const inventoryAccId = prod?.inventory_account_id;
+      if (!inventoryAccId) {
+        throw new Error(`El producto "${prod?.code} — ${prod?.name}" no tiene configurada una cuenta de inventario.`);
+      }
+
+      const totalValue = Math.round(Math.abs(adj.qtyDiff) * adj.cost * 100) / 100;
+      if (totalValue <= 0) continue;
+
+      if (adj.qtyDiff > 0) {
+        // Sobrante (AJUSTE_POSITIVO):
+        // Debito a la Cuenta de Inventario
+        txLines.push({
+          account_id: inventoryAccId,
+          debit: totalValue,
+          credit: 0,
+          description: `Sobrante toma física ${prod.code} (${fmtN(adj.qtyDiff)} und)`,
+          line_order: txLines.length + 1
+        });
+        // Credito a la Cuenta de Contrapartida
+        txLines.push({
+          account_id: accContraId,
+          debit: 0,
+          credit: totalValue,
+          description: `Ajuste sobrante ${prod.code} en bodega`,
+          line_order: txLines.length + 1
+        });
+      } else {
+        // Faltante (AJUSTE_NEGATIVO):
+        // Credito a la Cuenta de Inventario
+        txLines.push({
+          account_id: inventoryAccId,
+          debit: 0,
+          credit: totalValue,
+          description: `Faltante toma física ${prod.code} (${fmtN(Math.abs(adj.qtyDiff))} und)`,
+          line_order: txLines.length + 1
+        });
+        // Debito a la Cuenta de Contrapartida
+        txLines.push({
+          account_id: accContraId,
+          debit: totalValue,
+          credit: 0,
+          description: `Ajuste faltante ${prod.code} en bodega`,
+          line_order: txLines.length + 1
+        });
+      }
+    }
+
+    if (!txLines.length) {
+      throw new Error('El valor total de los ajustes es de $0. No se requiere registro contable.');
+    }
+
+    // 5. Registrar la transacción contable general en estado draft
+    const tx = await API.createTransaction({
+      tx_type_id: txTypeId,
+      number: txNumber,
+      date,
+      description: `Ajuste por Toma Física de Inventario en Bodega`,
+      status: 'draft',
+      payment_days: 0,
+      cross_enabled: false
+    }, txLines);
+
+    // 6. Crear los movimientos de inventario asociados
+    const positiveAdjs = adjustments.filter(a => a.qtyDiff > 0);
+    const negativeAdjs = adjustments.filter(a => a.qtyDiff < 0);
+
+    // 6a. Movimiento positivo
+    if (positiveAdjs.length) {
+      const mov = await pb.create('inventory_movements', {
+        number: `AJP-${today.replaceAll('-', '')}-${rand}`,
+        mov_type: 'AJUSTE_POSITIVO',
+        date,
+        warehouse_id: whId,
+        notes: `Ajuste sobrantes toma física - Ref Tx ${txNumber}`,
+        status: 'draft',
+        tx_id: tx.id
+      });
+      for (let i = 0; i < positiveAdjs.length; i++) {
+        const a = positiveAdjs[i];
+        await pb.create('inventory_movement_lines', {
+          movement_id: mov.id,
+          product_id: a.productId,
+          qty: a.qtyDiff,
+          unit_cost: a.cost,
+          notes: `Sobrante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)}`,
+          line_order: i + 1
+        });
+      }
+      await API.applyInventoryMovement(mov.id);
+    }
+
+    // 6b. Movimiento negativo
+    if (negativeAdjs.length) {
+      const mov = await pb.create('inventory_movements', {
+        number: `AJN-${today.replaceAll('-', '')}-${rand}`,
+        mov_type: 'AJUSTE_NEGATIVO',
+        date,
+        warehouse_id: whId,
+        notes: `Ajuste faltantes toma física - Ref Tx ${txNumber}`,
+        status: 'draft',
+        tx_id: tx.id
+      });
+      for (let i = 0; i < negativeAdjs.length; i++) {
+        const a = negativeAdjs[i];
+        await pb.create('inventory_movement_lines', {
+          movement_id: mov.id,
+          product_id: a.productId,
+          qty: Math.abs(a.qtyDiff),
+          unit_cost: a.cost,
+          notes: `Faltante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)}`,
+          line_order: i + 1
+        });
+      }
+      await API.applyInventoryMovement(mov.id);
+    }
+
+    // 7. Aprobar la transacción contable una vez aplicados los movimientos
+    await pb.update('transactions', tx.id, { status: 'active' });
+
+    showToast('Ajuste contable e inventario aplicados con éxito.', 'success');
+    closeModal();
+    renderInventario(document.getElementById('page-content')!);
+  } catch (err: any) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk mr-2"></i>Aplicar Ajuste Físico'; }
+  }
+}
+
+// --- REPORT IMPRESSION AND EXPORT UTILITIES ---
+
+(window as any)._printReport = async (type: string) => {
+  try {
+    const pb = _pb();
+    const [products, stock, warehouses] = await Promise.all([
+      pb.listAll('products', { filter: 'active=true', sort: 'code' }),
+      API.getInventoryStock(),
+      API.getWarehouses(false)
+    ]);
+
+    const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+    
+    if (type === 'general') {
+      const whId = getSelectVal('rep-gen-wh');
+      const costType = getSelectVal('rep-gen-cost');
+      
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) {
+          stockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+        }
+        const entry = stockByProd.get(pid);
+        entry.qty += Number(s.qty_on_hand || 0);
+        if (Number(s.avg_cost || 0) > 0) {
+          entry.costSum += Number(s.avg_cost);
+          entry.costCount++;
+        }
+      }
+
+      const whTitle = whId ? `Bodega: ${whMap.get(whId) || ''}` : 'Consolidado General';
+      const costTitle = costType === 'promedio' ? 'Costo Promedio Kardex' : 'Último Costo del Producto';
+      
+      let html = `
+        <h3>Filtros - ${whTitle} | Costo: ${costTitle}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Categoría</th>
+              <th>Unidad</th>
+              <th class="text-right">Stock</th>
+              <th class="text-right">Costo Unit.</th>
+              <th class="text-right">Valor Estimado</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      let totalStock = 0;
+      let totalVal = 0;
+
+      for (const p of products) {
+        const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+        let cost = 0;
+        if (costType === 'promedio') {
+          cost = st.costCount > 0 ? (st.costSum / st.costCount) : Number(p.cost_price || 0);
+        } else {
+          cost = Number(p.cost_price || 0);
+        }
+        const val = st.qty * cost;
+        totalStock += st.qty;
+        totalVal += val;
+
+        html += `
+          <tr>
+            <td style="font-family:monospace">${esc(p.code)}</td>
+            <td>${esc(p.name)}</td>
+            <td>${esc(p.categoria || '—')}</td>
+            <td>${esc(p.unit || '—')}</td>
+            <td class="text-right">${fmtN(st.qty)}</td>
+            <td class="text-right">${fmt(cost)}</td>
+            <td class="text-right">${fmt(val)}</td>
+          </tr>
+        `;
+      }
+
+      html += `
+          </tbody>
+          <tfoot>
+            <tr style="font-weight:bold;background:#f9f9f9">
+              <td colspan="4">TOTALES</td>
+              <td class="text-right">${fmtN(totalStock)}</td>
+              <td></td>
+              <td class="text-right">${fmt(totalVal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+
+      _printHTMLReport('Reporte General de Inventarios', html);
+
+    } else if (type === 'comparativo') {
+      const activeWarehouses = warehouses.filter((w: any) => w.active);
+      const stockMap = new Map();
+      for (const s of stock) {
+        stockMap.set(`${s.product_id}_${s.warehouse_id}`, Number(s.qty_on_hand || 0));
+      }
+
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Unidad</th>
+              ${activeWarehouses.map(w => `<th class="text-right">${esc(w.name)}</th>`).join('')}
+              <th class="text-right">Total Existencia</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const p of products.filter((p: any) => p.type === 'BIEN')) {
+        let totalQty = 0;
+        const whCells = activeWarehouses.map(w => {
+          const qty = stockMap.get(`${p.id}_${w.id}`) || 0;
+          totalQty += qty;
+          return `<td class="text-right">${qty > 0 ? fmtN(qty) : '—'}</td>`;
+        }).join('');
+
+        html += `
+          <tr>
+            <td style="font-family:monospace">${esc(p.code)}</td>
+            <td>${esc(p.name)}</td>
+            <td>${esc(p.unit || '—')}</td>
+            ${whCells}
+            <td class="text-right" style="font-weight:bold">${fmtN(totalQty)}</td>
+          </tr>
+        `;
+      }
+
+      html += `</tbody></table>`;
+      _printHTMLReport('Reporte Comparativo de Existencias por Bodega', html);
+
+    } else if (type === 'conteo') {
+      const whId = getSelectVal('rep-conteo-wh');
+      const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
+
+      const filteredStock = stock.filter((s: any) => s.warehouse_id === whId);
+      const stockMap = new Map(filteredStock.map((s: any) => [s.product_id, s.qty_on_hand]));
+
+      let html = `
+        <h3>Bodega: ${whMap.get(whId) || ''}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Unidad</th>
+              ${showStock ? '<th class="text-right">Stock Sistema</th>' : ''}
+              <th style="width:180px">Conteo Físico (Lápiz)</th>
+              <th style="width:200px">Observación</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const p of products.filter((p: any) => p.type === 'BIEN')) {
+        const sys = stockMap.get(p.id) || 0;
+        html += `
+          <tr>
+            <td style="font-family:monospace">${esc(p.code)}</td>
+            <td>${esc(p.name)}</td>
+            <td>${esc(p.unit || '—')}</td>
+            ${showStock ? `<td class="text-right">${fmtN(sys)}</td>` : ''}
+            <td style="border-bottom: 1px solid #000; height: 30px;"></td>
+            <td style="border-bottom: 1px solid #000;"></td>
+          </tr>
+        `;
+      }
+
+      html += `
+          </tbody>
+        </table>
+        <div style="margin-top: 60px; display:flex; justify-content:space-around">
+          <div style="border-top:1px solid #000; width: 220px; text-align:center; padding-top: 5px; font-size:11px">Firma Responsable Conteo</div>
+          <div style="border-top:1px solid #000; width: 220px; text-align:center; padding-top: 5px; font-size:11px">Firma Revisor / Auditor</div>
+        </div>
+      `;
+
+      _printHTMLReport('Listado para Conteo de Inventario Físico', html);
+
+    } else if (type === 'precios') {
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto / Servicio</th>
+              <th>Categoría</th>
+              <th>Unidad</th>
+              <th class="text-right">Precio Base (1)</th>
+              <th class="text-right">Precio 2</th>
+              <th class="text-right">Precio 3</th>
+              <th class="text-right">IVA</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const p of products) {
+        html += `
+          <tr>
+            <td style="font-family:monospace">${esc(p.code)}</td>
+            <td>${esc(p.name)}</td>
+            <td>${esc(p.categoria || '—')}</td>
+            <td>${esc(p.unit || '—')}</td>
+            <td class="text-right">${fmt(p.base_price || 0)}</td>
+            <td class="text-right">${p.precio_venta_2 ? fmt(p.precio_venta_2) : '—'}</td>
+            <td class="text-right">${p.precio_venta_3 ? fmt(p.precio_venta_3) : '—'}</td>
+            <td class="text-right">${p.iva_rate ? p.iva_rate + '%' : 'Exento'}</td>
+          </tr>
+        `;
+      }
+
+      html += `</tbody></table>`;
+      _printHTMLReport('Lista de Precios Vigente', html);
+    }
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+};
+
+(window as any)._exportReport = async (type: string) => {
+  try {
+    const pb = _pb();
+    const [products, stock, warehouses] = await Promise.all([
+      pb.listAll('products', { filter: 'active=true', sort: 'code' }),
+      API.getInventoryStock(),
+      API.getWarehouses(false)
+    ]);
+
+    const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+
+    if (type === 'general') {
+      const whId = getSelectVal('rep-gen-wh');
+      const costType = getSelectVal('rep-gen-cost');
+      
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) {
+          stockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+        }
+        const entry = stockByProd.get(pid);
+        entry.qty += Number(s.qty_on_hand || 0);
+        if (Number(s.avg_cost || 0) > 0) {
+          entry.costSum += Number(s.avg_cost);
+          entry.costCount++;
+        }
+      }
+
+      const exportRows = products.map(p => {
+        const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+        let cost = 0;
+        if (costType === 'promedio') {
+          cost = st.costCount > 0 ? (st.costSum / st.costCount) : Number(p.cost_price || 0);
+        } else {
+          cost = Number(p.cost_price || 0);
+        }
+        return {
+          codigo: p.code,
+          nombre: p.name,
+          categoria: p.categoria || '—',
+          unidad: p.unit || '—',
+          existencia: st.qty,
+          costo_unitario: cost,
+          valor_estimado: st.qty * cost
+        };
+      });
+
+      const headers = [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nombre', label: 'Producto' },
+        { key: 'categoria', label: 'Categoría' },
+        { key: 'unidad', label: 'Unidad' },
+        { key: 'existencia', label: 'Existencia' },
+        { key: 'costo_unitario', label: 'Costo Unitario' },
+        { key: 'valor_estimado', label: 'Valor Estimado' }
+      ];
+
+      (window as any).exportToExcel(exportRows, headers, `Reporte_Inventario_${whId ? whMap.get(whId) : 'Consolidado'}`);
+      showToast('Reporte exportado a Excel.', 'success');
+
+    } else if (type === 'comparativo') {
+      const activeWarehouses = warehouses.filter((w: any) => w.active);
+      const stockMap = new Map();
+      for (const s of stock) {
+        stockMap.set(`${s.product_id}_${s.warehouse_id}`, Number(s.qty_on_hand || 0));
+      }
+
+      const exportRows = products.filter((p: any) => p.type === 'BIEN').map(p => {
+        const r: any = {
+          codigo: p.code,
+          nombre: p.name,
+          unidad: p.unit || '—',
+        };
+        let total = 0;
+        activeWarehouses.forEach(w => {
+          const qty = stockMap.get(`${p.id}_${w.id}`) || 0;
+          r[w.id] = qty;
+          total += qty;
+        });
+        r.total = total;
+        return r;
+      });
+
+      const headers = [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nombre', label: 'Producto' },
+        { key: 'unidad', label: 'Unidad' },
+        ...activeWarehouses.map(w => ({ key: w.id, label: w.name })),
+        { key: 'total', label: 'Total Existencia' }
+      ];
+
+      (window as any).exportToExcel(exportRows, headers, 'Comparativo_Existencias_Bodegas');
+      showToast('Comparativo exportado a Excel.', 'success');
+
+    } else if (type === 'conteo') {
+      const whId = getSelectVal('rep-conteo-wh');
+      const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
+
+      const filteredStock = stock.filter((s: any) => s.warehouse_id === whId);
+      const stockMap = new Map(filteredStock.map((s: any) => [s.product_id, s.qty_on_hand]));
+
+      const exportRows = products.filter((p: any) => p.type === 'BIEN').map(p => {
+        const sys = stockMap.get(p.id) || 0;
+        const r: any = {
+          codigo: p.code,
+          nombre: p.name,
+          unidad: p.unit || '—',
+        };
+        if (showStock) {
+          r.stock_sistema = sys;
+        }
+        r.conteo_fisico = '';
+        r.observacion = '';
+        return r;
+      });
+
+      const headers = [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nombre', label: 'Producto' },
+        { key: 'unidad', label: 'Unidad' }
+      ];
+      if (showStock) {
+        headers.push({ key: 'stock_sistema', label: 'Stock Sistema' });
+      }
+      headers.push({ key: 'conteo_fisico', label: 'Conteo Físico' });
+      headers.push({ key: 'observacion', label: 'Observación' });
+
+      (window as any).exportToExcel(exportRows, headers, `Planilla_Conteo_${whMap.get(whId)}`);
+      showToast('Planilla de conteo exportada.', 'success');
+
+    } else if (type === 'precios') {
+      const exportRows = products.map(p => ({
+        codigo: p.code,
+        nombre: p.name,
+        categoria: p.categoria || '—',
+        unidad: p.unit || '—',
+        precio_base: p.base_price || 0,
+        precio_2: p.precio_venta_2 || 0,
+        precio_3: p.precio_venta_3 || 0,
+        tarifa_iva: p.iva_rate ? p.iva_rate + '%' : 'Exento'
+      }));
+
+      const headers = [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nombre', label: 'Producto' },
+        { key: 'categoria', label: 'Categoría' },
+        { key: 'unidad', label: 'Unidad' },
+        { key: 'precio_base', label: 'Precio Base (1)' },
+        { key: 'precio_2', label: 'Precio 2' },
+        { key: 'precio_3', label: 'Precio 3' },
+        { key: 'tarifa_iva', label: 'IVA' }
+      ];
+
+      (window as any).exportToExcel(exportRows, headers, 'Lista_Precios_Inventario');
+      showToast('Lista de precios exportada a Excel.', 'success');
+    }
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+};
+
+function _printHTMLReport(title: string, htmlContent: string) {
+  const w = window.open('', '_blank', 'width=950,height=750');
+  if (!w) return;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+    <style>
+      body { font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; font-size: 11.5px; color: #333; }
+      table { border-collapse: collapse; width: 100%; margin-top: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+      th, td { border: 1px solid #e2e8f0; padding: 7px 9px; text-align: left; }
+      th { background-color: #f7fafc; color: #2d3748; font-weight: bold; }
+      tfoot tr td { background-color: #edf2f7; color: #2d3748; }
+      .text-right { text-align: right; }
+      .no-print { display: inline-block; padding: 8px 18px; background: #1a4b8c; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-bottom: 20px; transition: background 0.2s; }
+      .no-print:hover { background: #12335f; }
+      h2 { color: #0d2137; font-size: 20px; margin-bottom: 4px; }
+      p { margin: 2px 0; color: #718096; }
+      @media print { .no-print { display: none; } body { padding: 0; } }
+    </style>
+    </head><body>
+    <h2>${title}</h2>
+    <p>Generado el: ${new Date().toLocaleString('es-CO')}</p>
+    <button class="no-print" onclick="window.print()"><i class="fas fa-print"></i> Imprimir Reporte</button>
+    ${htmlContent}
+    </body></html>`);
+  w.document.close();
+}
+
+(window as any)._updateTomaFisicaSystemStock = _updateTomaFisicaSystemStock;
+(window as any)._openTomaFisicaModal = _openTomaFisicaModal;
+(window as any)._saveTomaFisica = _saveTomaFisica;
+(window as any)._printReport = _printReport;
+(window as any)._exportReport = _exportReport;
+(window as any)._printHTMLReport = _printHTMLReport;

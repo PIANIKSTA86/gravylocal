@@ -31,6 +31,8 @@ async function renderReportes(c) {
       ${reportCard('aging', 'Cartera por Edades', 'Tramos 0-30-60-90+ para clientes o proveedores.')}
       ${reportCard('ret-cert', 'Certificados de Retención', 'Generar certificados de retención (ReteFuente, ReteIVA, ReteICA) para proveedores.')}
       ${reportCard('paz-salvo', 'Certificado de Paz y Salvo', 'Generar certificado de paz y salvo de cartera para clientes.')}
+      ${reportCard('iva', 'Reporte de IVA', 'Consulta IVA generado vs descontable con cuentas configurables.')}
+      ${reportCard('retenciones', 'Reporte de Retenciones', 'Consulta retenciones practicadas y a favor por cuenta.')}
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -43,6 +45,8 @@ async function renderReportes(c) {
   $('#btn-report-aging')?.addEventListener('click', () => launchReportModal('Cartera por Edades', () => renderAgingPortfolio()));
   $('#btn-report-ret-cert')?.addEventListener('click', () => launchReportModal('Certificados de Retención', () => renderWithholdingCertificates()));
   $('#btn-report-paz-salvo')?.addEventListener('click', () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()));
+  $('#btn-report-iva')?.addEventListener('click', () => launchReportModal('Reporte de IVA', () => renderIvaReport()));
+  $('#btn-report-retenciones')?.addEventListener('click', () => launchReportModal('Reporte de Retenciones', () => renderRetencionesReport()));
 }
 
 function getReportViewHost() {
@@ -1033,7 +1037,10 @@ async function renderTrialBalance() {
 
         if (includeThird) {
           const thirdId = String(tx.third_party_id || 'NO_TERCERO');
-          const thirdName = tx.expand?.third_party_id?.name || 'Sin tercero';
+          const tp = tx.expand?.third_party_id;
+          const thirdName = tp 
+            ? (tp.doc_number ? `${tp.name} (NIT: ${tp.doc_number})` : tp.name)
+            : 'Sin tercero';
           if (!acc.third.has(thirdId)) {
             acc.third.set(thirdId, { id: thirdId, name: thirdName, prev: 0, debit: 0, credit: 0, current: 0 });
           }
@@ -3840,3 +3847,928 @@ async function renderPazYSalvoCertificate() {
 
 (window as any).renderWithholdingCertificates = renderWithholdingCertificates;
 (window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;
+
+function matchesPrefix(code: string, prefixes: string[]) {
+  if (!code) return false;
+  return prefixes.some(p => code.startsWith(p));
+}
+
+async function renderIvaReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Reporte de IVA...</div>';
+
+  try {
+    const [genAccountsStr, descAccountsStr] = await Promise.all([
+      API.getSetting('report_iva_generado').catch(() => '233501'),
+      API.getSetting('report_iva_descontable').catch(() => '233502'),
+    ]);
+
+    const defaultGenStr = genAccountsStr || '233501';
+    const defaultDescStr = descAccountsStr || '233502';
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = today.substring(0, 8) + '01';
+
+    view.innerHTML = `
+      <div class="p-5 border-b space-y-4" style="border-color:#F3F4F6">
+        <h4 class="font-bold text-lg text-gray-800" style="color:#0D2137"><i class="fas fa-file-invoice-dollar mr-2 text-green-600"></i>Reporte de IVA (Impuesto a las Ventas)</h4>
+        
+        <!-- Configuración de cuentas -->
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700"><i class="fas fa-gears mr-1"></i>Configuración de Cuentas Contables</span>
+            <span class="text-[10px] text-gray-400">Separa los códigos por comas (ej. 2408, 233501)</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="form-group">
+              <label class="block font-bold text-gray-500 mb-1">Cuentas IVA Generado (Ventas/Pasivo)</label>
+              <input id="iva-acc-gen" class="form-input text-xs w-full" value="${esc(defaultGenStr)}" placeholder="Ej: 240801, 233501">
+            </div>
+            <div class="form-group">
+              <label class="block font-bold text-gray-500 mb-1">Cuentas IVA Descontable (Compras/Activo)</label>
+              <input id="iva-acc-desc" class="form-input text-xs w-full" value="${esc(defaultDescStr)}" placeholder="Ej: 240802, 233502">
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button class="btn btn-secondary btn-xs py-1" id="btn-save-iva-config"><i class="fas fa-floppy-disk mr-1"></i>Guardar Cuentas</button>
+          </div>
+        </div>
+
+        <!-- Filtros de lapso de fechas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Desde</label>
+            <input type="date" id="iva-date-from" class="form-input mt-1 w-full text-xs" value="${firstDayOfMonth}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Hasta</label>
+            <input type="date" id="iva-date-to" class="form-input mt-1 w-full text-xs" value="${today}" />
+          </div>
+          <div class="flex items-end gap-2">
+            <button class="btn btn-primary flex-1 text-xs py-2" id="btn-gen-iva"><i class="fas fa-play mr-1"></i>Generar</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-exp-iva" disabled><i class="fas fa-file-excel mr-1"></i>Excel</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-pdf-iva" disabled><i class="fas fa-file-pdf mr-1"></i>PDF</button>
+          </div>
+        </div>
+      </div>
+      <div id="iva-results" class="p-5 text-sm text-center text-gray-400">Configura las fechas y haz clic en Generar.</div>`;
+
+    $('#btn-save-iva-config')?.addEventListener('click', async () => {
+      const genVal = getInputVal('iva-acc-gen').trim();
+      const descVal = getInputVal('iva-acc-desc').trim();
+      try {
+        await Promise.all([
+          API.setSetting('report_iva_generado', genVal),
+          API.setSetting('report_iva_descontable', descVal),
+        ]);
+        showToast('Configuración de cuentas de IVA guardada.', 'success');
+      } catch (err: any) {
+        showToast(`Error al guardar configuración: ${err.message}`, 'error');
+      }
+    });
+
+    $('#btn-gen-iva')?.addEventListener('click', generateIvaReportRows);
+    $('#btn-exp-iva')?.addEventListener('click', exportIvaToExcel);
+    $('#btn-pdf-iva')?.addEventListener('click', exportIvaToPdf);
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+async function generateIvaReportRows() {
+  const fromDate = getInputVal('iva-date-from');
+  const toDate = getInputVal('iva-date-to');
+  if (!fromDate || !toDate) {
+    return showToast('Por favor selecciona las fechas Desde y Hasta.', 'warning');
+  }
+
+  const results = $('#iva-results');
+  if (!results) return;
+  results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Reporte de IVA...</div>';
+
+  try {
+    const genPrefixes = getInputVal('iva-acc-gen').split(',').map(s => s.trim()).filter(Boolean);
+    const descPrefixes = getInputVal('iva-acc-desc').split(',').map(s => s.trim()).filter(Boolean);
+
+    const { transactions, txLines } = await ensureLedgerData();
+    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+
+    const genLines = [];
+    const descLines = [];
+
+    for (const l of txLines) {
+      const tx = txById[l.tx_id];
+      if (!tx || tx.status !== 'active' || !tx.date) continue;
+      if (tx.date < fromDate || tx.date > toDate) continue;
+
+      const code = l.expand?.account_id?.code || '';
+      if (matchesPrefix(code, genPrefixes)) {
+        genLines.push({ line: l, tx });
+      } else if (matchesPrefix(code, descPrefixes)) {
+        descLines.push({ line: l, tx });
+      }
+    }
+
+    const sumGenDebit = genLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
+    const sumGenCredit = genLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const netGen = sumGenCredit - sumGenDebit;
+
+    const sumDescDebit = descLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
+    const sumDescCredit = descLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const netDesc = sumDescDebit - sumDescCredit;
+
+    const netSuggested = netGen - netDesc;
+
+    let suggestedClass = '';
+    let suggestedIcon = '';
+    let suggestedText = '';
+    if (netSuggested > 0) {
+      suggestedClass = 'bg-red-50 border-red-200 text-red-700';
+      suggestedIcon = 'fa-circle-exclamation';
+      suggestedText = `Sugerencia de Pago (A Pagar): ${fmt(netSuggested)}`;
+    } else if (netSuggested < 0) {
+      suggestedClass = 'bg-green-50 border-green-200 text-green-700';
+      suggestedIcon = 'fa-circle-check';
+      suggestedText = `Saldo a Favor: ${fmt(Math.abs(netSuggested))}`;
+    } else {
+      suggestedClass = 'bg-gray-50 border-gray-200 text-gray-700';
+      suggestedIcon = 'fa-circle-info';
+      suggestedText = 'Impuesto Neto Balanceado: $0';
+    }
+
+    results.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-left">
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Total IVA Generado</p>
+          <p class="text-2xl font-bold mt-1 text-gray-800">${fmt(netGen)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Créditos: ${fmt(sumGenCredit)} · Débitos: ${fmt(sumGenDebit)}</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Total IVA Descontable</p>
+          <p class="text-2xl font-bold mt-1 text-gray-800">${fmt(netDesc)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Débitos: ${fmt(sumDescDebit)} · Créditos: ${fmt(sumDescCredit)}</p>
+        </div>
+        <div class="rounded-2xl border p-4 shadow-sm flex flex-col justify-between ${suggestedClass}" style="border-width:1px">
+          <div>
+            <p class="text-xs font-bold uppercase opacity-80">Sugerencia de Liquidación</p>
+            <p class="text-2xl font-bold mt-1">${netSuggested >= 0 ? fmt(netSuggested) : fmt(Math.abs(netSuggested))}</p>
+          </div>
+          <p class="text-xs font-semibold mt-1 flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+        </div>
+      </div>
+
+      <div class="space-y-6 text-left">
+        <!-- IVA Generado Details -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <h5 class="font-bold text-gray-700"><i class="fas fa-arrow-up text-red-500 mr-1"></i>Detalle de IVA Generado (Pasivo)</h5>
+            <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">${genLines.length} registros</span>
+          </div>
+          <div class="overflow-x-auto max-h-[300px]">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Documento</th>
+                  <th>Tercero</th>
+                  <th>Cuenta</th>
+                  <th class="text-right">Débito</th>
+                  <th class="text-right">Crédito</th>
+                  <th class="text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${genLines.length ? genLines.map(l => {
+                  const rowNet = Number(l.line.credit || 0) - Number(l.line.debit || 0);
+                  return `
+                    <tr>
+                      <td>${esc(l.tx.date)}</td>
+                      <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
+                      <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
+                      <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
+                      <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
+                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                    </tr>`;
+                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos de IVA Generado en este período.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- IVA Descontable Details -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <h5 class="font-bold text-gray-700"><i class="fas fa-arrow-down text-green-500 mr-1"></i>Detalle de IVA Descontable (Activo)</h5>
+            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">${descLines.length} registros</span>
+          </div>
+          <div class="overflow-x-auto max-h-[300px]">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Documento</th>
+                  <th>Tercero</th>
+                  <th>Cuenta</th>
+                  <th class="text-right">Débito</th>
+                  <th class="text-right">Crédito</th>
+                  <th class="text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${descLines.length ? descLines.map(l => {
+                  const rowNet = Number(l.line.debit || 0) - Number(l.line.credit || 0);
+                  return `
+                    <tr>
+                      <td>${esc(l.tx.date)}</td>
+                      <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
+                      <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
+                      <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
+                      <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
+                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                    </tr>`;
+                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos de IVA Descontable en este período.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    (window as any)._ivaReportData = {
+      fromDate,
+      toDate,
+      genPrefixes,
+      descPrefixes,
+      genLines,
+      descLines,
+      netGen,
+      netDesc,
+      netSuggested
+    };
+
+    const expBtn = $('#btn-exp-iva') as HTMLButtonElement | null;
+    const pdfBtn = $('#btn-pdf-iva') as HTMLButtonElement | null;
+    if (expBtn) expBtn.disabled = false;
+    if (pdfBtn) pdfBtn.disabled = false;
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+function exportIvaToExcel() {
+  const data = (window as any)._ivaReportData;
+  if (!data) return;
+
+  const rows = [];
+  data.genLines.forEach(l => {
+    rows.push({
+      tipo: 'Generado',
+      fecha: l.tx.date,
+      documento: l.tx.number,
+      tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      cuenta: `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+      debito: Number(l.line.debit || 0),
+      credito: Number(l.line.credit || 0),
+      neto: Number(l.line.credit || 0) - Number(l.line.debit || 0)
+    });
+  });
+
+  data.descLines.forEach(l => {
+    rows.push({
+      tipo: 'Descontable',
+      fecha: l.tx.date,
+      documento: l.tx.number,
+      tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      cuenta: `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+      debito: Number(l.line.debit || 0),
+      credito: Number(l.line.credit || 0),
+      neto: Number(l.line.debit || 0) - Number(l.line.credit || 0)
+    });
+  });
+
+  exportToExcel(rows, [
+    { key: 'tipo', label: 'Tipo de IVA' },
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'documento', label: 'Documento' },
+    { key: 'tercero', label: 'Tercero' },
+    { key: 'cuenta', label: 'Cuenta Contable' },
+    { key: 'debito', label: 'Debito' },
+    { key: 'credito', label: 'Credito' },
+    { key: 'neto', label: 'Neto Reportado' }
+  ], `reporte_iva_${data.fromDate}_a_${data.toDate}`);
+}
+
+async function exportIvaToPdf() {
+  const data = (window as any)._ivaReportData;
+  if (!data) return;
+
+  try {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+    const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const headerCtx = await getPdfHeaderContext();
+    const header = drawPdfHeader(doc, headerCtx, {
+      title: 'Reporte de IVA (Impuesto sobre las Ventas)',
+      subtitles: [
+        `Periodo: ${data.fromDate} a ${data.toDate}`,
+        `IVA Generado (Credito Neto): ${fmtPdfNum(data.netGen)}`,
+        `IVA Descontable (Debito Neto): ${fmtPdfNum(data.netDesc)}`,
+        `Sugerencia de Liquidacion: ${data.netSuggested >= 0 ? 'A Pagar' : 'Saldo a Favor'} ${fmtPdfNum(Math.abs(data.netSuggested))}`
+      ],
+    });
+
+    const body = [];
+    body.push([{ content: 'IVA GENERADO (VENTAS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (data.genLines.length) {
+      data.genLines.forEach(l => {
+        body.push([
+          l.tx.date,
+          l.tx.number,
+          `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.line.debit),
+          fmtPdfNum(l.line.credit)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No hay movimientos de IVA Generado.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+    }
+    body.push([
+      { content: 'Subtotal Generado', styles: { fontStyle: 'bold' } }, '', '', '',
+      { content: fmtPdfNum(data.genLines.reduce((s, c) => s + Number(c.line.debit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: fmtPdfNum(data.genLines.reduce((s, c) => s + Number(c.line.credit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } }
+    ]);
+
+    body.push([{ content: 'IVA DESCONTABLE (COMPRAS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (data.descLines.length) {
+      data.descLines.forEach(l => {
+        body.push([
+          l.tx.date,
+          l.tx.number,
+          `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.line.debit),
+          fmtPdfNum(l.line.credit)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No hay movimientos de IVA Descontable.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+    }
+    body.push([
+      { content: 'Subtotal Descontable', styles: { fontStyle: 'bold' } }, '', '', '',
+      { content: fmtPdfNum(data.descLines.reduce((s, c) => s + Number(c.line.debit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
+      { content: fmtPdfNum(data.descLines.reduce((s, c) => s + Number(c.line.credit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } }
+    ]);
+
+    doc.autoTable({
+      startY: header.startY,
+      head: [['Fecha', 'Documento', 'Tercero', 'Cuenta', 'Debito', 'Credito']],
+      body,
+      theme: 'plain',
+      margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+      styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+      headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+      columnStyles: {
+        0: { cellWidth: 48 },
+        1: { cellWidth: 58 },
+        2: { cellWidth: 150 },
+        3: { cellWidth: 150 },
+        4: { cellWidth: 56, halign: 'right' },
+        5: { cellWidth: 56, halign: 'right' },
+      },
+      didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+    });
+
+    doc.save(`reporte_iva_${data.fromDate}_a_${data.toDate}.pdf`);
+  } catch (err: any) {
+    showToast(`Error al generar PDF: ${err.message}`, 'error');
+  }
+}
+
+async function renderRetencionesReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Reporte de Retenciones...</div>';
+
+  try {
+    const [pracAccountsStr, favorAccountsStr] = await Promise.all([
+      API.getSetting('report_ret_practicadas').catch(() => '2330'),
+      API.getSetting('report_ret_favor').catch(() => '1355'),
+    ]);
+
+    const defaultPracStr = pracAccountsStr || '2330';
+    const defaultFavorStr = favorAccountsStr || '1355';
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = today.substring(0, 8) + '01';
+
+    view.innerHTML = `
+      <div class="p-5 border-b space-y-4" style="border-color:#F3F4F6">
+        <h4 class="font-bold text-lg text-gray-800" style="color:#0D2137"><i class="fas fa-percent mr-2 text-indigo-600"></i>Reporte de Retenciones en la Fuente</h4>
+        
+        <!-- Configuración de cuentas -->
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700"><i class="fas fa-gears mr-1"></i>Configuración de Cuentas Contables</span>
+            <span class="text-[10px] text-gray-400">Separa los códigos por comas</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="form-group">
+              <label class="block font-bold text-gray-500 mb-1">Retenciones Practicadas (A Terceros / Pasivo)</label>
+              <input id="ret-acc-prac" class="form-input text-xs w-full" value="${esc(defaultPracStr)}" placeholder="Ej: 2330, 2365">
+            </div>
+            <div class="form-group">
+              <label class="block font-bold text-gray-500 mb-1">Retenciones a Favor (Anticipos / Activo)</label>
+              <input id="ret-acc-favor" class="form-input text-xs w-full" value="${esc(defaultFavorStr)}" placeholder="Ej: 135515, 1355">
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button class="btn btn-secondary btn-xs py-1" id="btn-save-ret-config"><i class="fas fa-floppy-disk mr-1"></i>Guardar Cuentas</button>
+          </div>
+        </div>
+
+        <!-- Filtros de lapso de fechas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Desde</label>
+            <input type="date" id="ret-date-from" class="form-input mt-1 w-full text-xs" value="${firstDayOfMonth}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Hasta</label>
+            <input type="date" id="ret-date-to" class="form-input mt-1 w-full text-xs" value="${today}" />
+          </div>
+          <div class="flex items-end gap-2">
+            <button class="btn btn-primary flex-1 text-xs py-2" id="btn-gen-ret"><i class="fas fa-play mr-1"></i>Generar</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-exp-ret" disabled><i class="fas fa-file-excel mr-1"></i>Excel</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-pdf-ret" disabled><i class="fas fa-file-pdf mr-1"></i>PDF</button>
+          </div>
+        </div>
+      </div>
+      <div id="ret-results" class="p-5 text-sm text-center text-gray-400">Configura las fechas y haz clic en Generar.</div>`;
+
+    $('#btn-save-ret-config')?.addEventListener('click', async () => {
+      const pracVal = getInputVal('ret-acc-prac').trim();
+      const favorVal = getInputVal('ret-acc-favor').trim();
+      try {
+        await Promise.all([
+          API.setSetting('report_ret_practicadas', pracVal),
+          API.setSetting('report_ret_favor', favorVal),
+        ]);
+        showToast('Configuración de cuentas de Retenciones guardada.', 'success');
+      } catch (err: any) {
+        showToast(`Error al guardar configuración: ${err.message}`, 'error');
+      }
+    });
+
+    $('#btn-gen-ret')?.addEventListener('click', generateRetReportRows);
+    $('#btn-exp-ret')?.addEventListener('click', exportRetToExcel);
+    $('#btn-pdf-ret')?.addEventListener('click', exportRetToPdf);
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+async function generateRetReportRows() {
+  const fromDate = getInputVal('ret-date-from');
+  const toDate = getInputVal('ret-date-to');
+  if (!fromDate || !toDate) {
+    return showToast('Por favor selecciona las fechas Desde y Hasta.', 'warning');
+  }
+
+  const results = $('#ret-results');
+  if (!results) return;
+  results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Reporte de Retenciones...</div>';
+
+  try {
+    const pracPrefixes = getInputVal('ret-acc-prac').split(',').map(s => s.trim()).filter(Boolean);
+    const favorPrefixes = getInputVal('ret-acc-favor').split(',').map(s => s.trim()).filter(Boolean);
+
+    const { transactions, txLines } = await ensureLedgerData();
+    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+
+    const pracLines = [];
+    const favorLines = [];
+
+    for (const l of txLines) {
+      const tx = txById[l.tx_id];
+      if (!tx || tx.status !== 'active' || !tx.date) continue;
+      if (tx.date < fromDate || tx.date > toDate) continue;
+
+      const code = l.expand?.account_id?.code || '';
+      if (matchesPrefix(code, pracPrefixes)) {
+        pracLines.push({ line: l, tx });
+      } else if (matchesPrefix(code, favorPrefixes)) {
+        favorLines.push({ line: l, tx });
+      }
+    }
+
+    const sumPracDebit = pracLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
+    const sumPracCredit = pracLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const netPrac = sumPracCredit - sumPracDebit;
+
+    const sumFavorDebit = favorLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
+    const sumFavorCredit = favorLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const netFavor = sumFavorDebit - sumFavorCredit;
+
+    const netSuggested = netPrac - netFavor;
+
+    // Desglose por cuenta
+    const accountSummary = new Map();
+    const addGrouped = (l, type, polarity) => {
+      const accCode = l.line.expand?.account_id?.code || '';
+      const accName = l.line.expand?.account_id?.name || '';
+      const key = `${accCode} - ${accName}`;
+      if (!accountSummary.has(key)) {
+        accountSummary.set(key, { code: accCode, name: accName, debit: 0, credit: 0, type, polarity });
+      }
+      const item = accountSummary.get(key);
+      item.debit += Number(l.line.debit || 0);
+      item.credit += Number(l.line.credit || 0);
+    };
+
+    pracLines.forEach(l => addGrouped(l, 'Practicada', 1));
+    favorLines.forEach(l => addGrouped(l, 'A Favor', -1));
+
+    const summaryRows = [...accountSummary.entries()].map(([key, item]) => {
+      const net = item.polarity === 1 ? (item.credit - item.debit) : (item.debit - item.credit);
+      return {
+        key,
+        code: item.code,
+        name: item.name,
+        type: item.type,
+        debit: item.debit,
+        credit: item.credit,
+        net
+      };
+    }).sort((a, b) => a.code.localeCompare(b.code));
+
+    let suggestedClass = '';
+    let suggestedIcon = '';
+    let suggestedText = '';
+    if (netSuggested > 0) {
+      suggestedClass = 'bg-red-50 border-red-200 text-red-700';
+      suggestedIcon = 'fa-circle-exclamation';
+      suggestedText = `Sugerencia de Pago (A Pagar): ${fmt(netSuggested)}`;
+    } else if (netSuggested < 0) {
+      suggestedClass = 'bg-green-50 border-green-200 text-green-700';
+      suggestedIcon = 'fa-circle-check';
+      suggestedText = `Saldo a Favor (Anticipo): ${fmt(Math.abs(netSuggested))}`;
+    } else {
+      suggestedClass = 'bg-gray-50 border-gray-200 text-gray-700';
+      suggestedIcon = 'fa-circle-info';
+      suggestedText = 'Retenciones Netas Balanceadas: $0';
+    }
+
+    results.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-left">
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Retenciones Practicadas (A Terceros)</p>
+          <p class="text-2xl font-bold mt-1 text-gray-800">${fmt(netPrac)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Créditos: ${fmt(sumPracCredit)} · Débitos: ${fmt(sumPracDebit)}</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Retenciones a Favor (Anticipos)</p>
+          <p class="text-2xl font-bold mt-1 text-gray-800">${fmt(netFavor)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Débitos: ${fmt(sumFavorDebit)} · Créditos: ${fmt(sumFavorCredit)}</p>
+        </div>
+        <div class="rounded-2xl border p-4 shadow-sm flex flex-col justify-between ${suggestedClass}" style="border-width:1px">
+          <div>
+            <p class="text-xs font-bold uppercase opacity-80">Sugerencia de Liquidación</p>
+            <p class="text-2xl font-bold mt-1">${netSuggested >= 0 ? fmt(netSuggested) : fmt(Math.abs(netSuggested))}</p>
+          </div>
+          <p class="text-xs font-semibold mt-1 flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+        </div>
+      </div>
+
+      <div class="space-y-6 text-left">
+        <!-- Resumen por Cuenta -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <h5 class="font-bold text-gray-700"><i class="fas fa-folder-tree text-blue-600 mr-1"></i>Desglose Resumido por Cuenta</h5>
+            <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">${summaryRows.length} cuentas</span>
+          </div>
+          <div class="overflow-x-auto max-h-[300px]">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nombre Cuenta</th>
+                  <th>Tipo</th>
+                  <th class="text-right">Total Débito</th>
+                  <th class="text-right">Total Crédito</th>
+                  <th class="text-right">Neto Reportado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${summaryRows.length ? summaryRows.map(r => `
+                  <tr>
+                    <td><span class="font-mono text-xs font-semibold text-blue-900">${esc(r.code)}</span></td>
+                    <td>${esc(r.name)}</td>
+                    <td><span class="badge ${r.type === 'Practicada' ? 'badge-orange' : 'badge-green'}">${esc(r.type)}</span></td>
+                    <td class="text-right">${r.debit ? fmt(r.debit) : '—'}</td>
+                    <td class="text-right">${r.credit ? fmt(r.credit) : '—'}</td>
+                    <td class="text-right font-semibold">${fmt(r.net)}</td>
+                  </tr>`).join('') : '<tr><td colspan="6" class="text-center py-6 text-gray-400">No hay movimientos de Retenciones en este período.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Detalle de Transacciones Practicadas -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <h5 class="font-bold text-gray-700"><i class="fas fa-arrow-up text-red-500 mr-1"></i>Detalle de Retenciones Practicadas (Pasivo)</h5>
+            <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">${pracLines.length} registros</span>
+          </div>
+          <div class="overflow-x-auto max-h-[300px]">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Documento</th>
+                  <th>Tercero</th>
+                  <th>Cuenta</th>
+                  <th class="text-right">Débito</th>
+                  <th class="text-right">Crédito</th>
+                  <th class="text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pracLines.length ? pracLines.map(l => {
+                  const rowNet = Number(l.line.credit || 0) - Number(l.line.debit || 0);
+                  return `
+                    <tr>
+                      <td>${esc(l.tx.date)}</td>
+                      <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
+                      <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
+                      <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
+                      <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
+                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                    </tr>`;
+                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Detalle de Transacciones a Favor -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
+            <h5 class="font-bold text-gray-700"><i class="fas fa-arrow-down text-green-500 mr-1"></i>Detalle de Retenciones a Favor (Anticipos)</h5>
+            <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">${favorLines.length} registros</span>
+          </div>
+          <div class="overflow-x-auto max-h-[300px]">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Documento</th>
+                  <th>Tercero</th>
+                  <th>Cuenta</th>
+                  <th class="text-right">Débito</th>
+                  <th class="text-right">Crédito</th>
+                  <th class="text-right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${favorLines.length ? favorLines.map(l => {
+                  const rowNet = Number(l.line.debit || 0) - Number(l.line.credit || 0);
+                  return `
+                    <tr>
+                      <td>${esc(l.tx.date)}</td>
+                      <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
+                      <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
+                      <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
+                      <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
+                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                    </tr>`;
+                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    (window as any)._retReportData = {
+      fromDate,
+      toDate,
+      pracPrefixes,
+      favorPrefixes,
+      pracLines,
+      favorLines,
+      summaryRows,
+      netPrac,
+      netFavor,
+      netSuggested
+    };
+
+    const expBtn = $('#btn-exp-ret') as HTMLButtonElement | null;
+    const pdfBtn = $('#btn-pdf-ret') as HTMLButtonElement | null;
+    if (expBtn) expBtn.disabled = false;
+    if (pdfBtn) pdfBtn.disabled = false;
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+function exportRetToExcel() {
+  const data = (window as any)._retReportData;
+  if (!data) return;
+
+  const rows = [];
+  
+  rows.push({
+    seccion: 'RESUMEN POR CUENTA',
+    codigo: '',
+    cuenta: '',
+    tipo: '',
+    tercero: '',
+    debito: 0,
+    credito: 0,
+    neto: 0
+  });
+
+  data.summaryRows.forEach(r => {
+    rows.push({
+      seccion: 'Resumen por Cuenta',
+      codigo: r.code,
+      cuenta: r.name,
+      tipo: r.type,
+      tercero: '',
+      debito: r.debit,
+      credito: r.credit,
+      neto: r.net
+    });
+  });
+
+  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', debito: 0, credito: 0, neto: 0 });
+
+  rows.push({
+    seccion: 'DETALLE RETENCIONES PRACTICADAS',
+    codigo: '',
+    cuenta: '',
+    tipo: '',
+    tercero: '',
+    debito: 0,
+    credito: 0,
+    neto: 0
+  });
+
+  data.pracLines.forEach(l => {
+    rows.push({
+      seccion: 'Detalle Practicadas',
+      codigo: l.line.expand?.account_id?.code,
+      cuenta: l.line.expand?.account_id?.name,
+      tipo: l.tx.date,
+      tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      debito: Number(l.line.debit || 0),
+      credito: Number(l.line.credit || 0),
+      neto: Number(l.line.credit || 0) - Number(l.line.debit || 0)
+    });
+  });
+
+  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', debito: 0, credito: 0, neto: 0 });
+
+  rows.push({
+    seccion: 'DETALLE RETENCIONES A FAVOR',
+    codigo: '',
+    cuenta: '',
+    tipo: '',
+    tercero: '',
+    debito: 0,
+    credito: 0,
+    neto: 0
+  });
+
+  data.favorLines.forEach(l => {
+    rows.push({
+      seccion: 'Detalle a Favor',
+      codigo: l.line.expand?.account_id?.code,
+      cuenta: l.line.expand?.account_id?.name,
+      tipo: l.tx.date,
+      tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      debito: Number(l.line.debit || 0),
+      credito: Number(l.line.credit || 0),
+      neto: Number(l.line.debit || 0) - Number(l.line.credit || 0)
+    });
+  });
+
+  exportToExcel(rows, [
+    { key: 'seccion', label: 'Seccion / Detalle' },
+    { key: 'codigo', label: 'Codigo Cuenta' },
+    { key: 'cuenta', label: 'Nombre Cuenta' },
+    { key: 'tipo', label: 'Tipo / Fecha' },
+    { key: 'tercero', label: 'Tercero' },
+    { key: 'debito', label: 'Debito' },
+    { key: 'credito', label: 'Credito' },
+    { key: 'neto', label: 'Neto Reportado' }
+  ], `reporte_retenciones_${data.fromDate}_a_${data.toDate}`);
+}
+
+async function exportRetToPdf() {
+  const data = (window as any)._retReportData;
+  if (!data) return;
+
+  try {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+    const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const headerCtx = await getPdfHeaderContext();
+    const header = drawPdfHeader(doc, headerCtx, {
+      title: 'Reporte de Retenciones en la Fuente',
+      subtitles: [
+        `Periodo: ${data.fromDate} a ${data.toDate}`,
+        `Retenciones Practicadas (Credito Neto): ${fmtPdfNum(data.netPrac)}`,
+        `Retenciones a Favor (Debito Neto): ${fmtPdfNum(data.netFavor)}`,
+        `Sugerencia de Liquidacion: ${data.netSuggested >= 0 ? 'A Pagar' : 'Saldo a Favor'} ${fmtPdfNum(Math.abs(data.netSuggested))}`
+      ],
+    });
+
+    const body = [];
+    body.push([{ content: 'DESGLOSE RESUMIDO POR CUENTA', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [230, 235, 245], textColor: [13, 33, 55] } }]);
+    if (data.summaryRows.length) {
+      data.summaryRows.forEach(r => {
+        body.push([
+          r.code,
+          r.name,
+          r.type,
+          '',
+          fmtPdfNum(r.debit),
+          fmtPdfNum(r.credit)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No hay movimientos de Retenciones en este período.', colSpan: 6 }]);
+    }
+
+    body.push([{ content: 'DETALLE RETENCIONES PRACTICADAS (PASIVO)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (data.pracLines.length) {
+      data.pracLines.forEach(l => {
+        body.push([
+          l.tx.date,
+          l.tx.number,
+          `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.line.debit),
+          fmtPdfNum(l.line.credit)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No hay detalles de Retenciones Practicadas.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+    }
+
+    body.push([{ content: 'DETALLE RETENCIONES A FAVOR (ANTICIPOS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (data.favorLines.length) {
+      data.favorLines.forEach(l => {
+        body.push([
+          l.tx.date,
+          l.tx.number,
+          `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.line.debit),
+          fmtPdfNum(l.line.credit)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No hay detalles de Retenciones a Favor.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+    }
+
+    doc.autoTable({
+      startY: header.startY,
+      head: [['Fecha / Código', 'Documento / Nombre Cuenta', 'Tercero / Tipo', 'Cuenta / Info', 'Débito', 'Crédito']],
+      body,
+      theme: 'plain',
+      margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+      styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+      headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+      columnStyles: {
+        0: { cellWidth: 60 },
+        1: { cellWidth: 150 },
+        2: { cellWidth: 100 },
+        3: { cellWidth: 120 },
+        4: { cellWidth: 46, halign: 'right' },
+        5: { cellWidth: 46, halign: 'right' },
+      },
+      didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+    });
+
+    doc.save(`reporte_retenciones_${data.fromDate}_a_${data.toDate}.pdf`);
+  } catch (err: any) {
+    showToast(`Error al generar PDF: ${err.message}`, 'error');
+  }
+}
+
+(window as any).renderWithholdingCertificates = renderWithholdingCertificates;
+(window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;
+(window as any).renderIvaReport = renderIvaReport;
+(window as any).renderRetencionesReport = renderRetencionesReport;
+(window as any).generateIvaReportRows = generateIvaReportRows;
+(window as any).generateRetReportRows = generateRetReportRows;
+(window as any).exportIvaToExcel = exportIvaToExcel;
+(window as any).exportIvaToPdf = exportIvaToPdf;
+(window as any).exportRetToExcel = exportRetToExcel;
+(window as any).exportRetToPdf = exportRetToPdf;

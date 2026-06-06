@@ -812,7 +812,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
 
     const txRecord = await pb.create('transactions', {
       tx_type_id:    typeRes[0].id,
-      number:        txNum,
+      number:        'AUTO',
       date:          fecha,
       third_party_id: _tesoCurrentThirdParty.id,
       description:   observaciones || `${isRecaudo ? 'Recaudo' : 'Pago'} vía Módulo Tesorería${referencia ? ' Ref: ' + referencia : ''}`,
@@ -823,6 +823,8 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
 
     // Esperar al hook y obtener líneas contables para el recibo completo
     await new Promise(r => setTimeout(r, 800));
+    let txRecordFull = txRecord;
+    try { txRecordFull = await pb.get('transactions', txRecord.id); } catch(_) {}
     let txLines: any[] = [];
     try { txLines = await pb.listAll('tx_lines', { filter: `tx_id="${txRecord.id}"`, expand: 'account_id' }); } catch(_) {}
 
@@ -831,7 +833,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     // ── Recibo Imprimible (Opción 2) ──────────────────────────────────────
     _showReciboPrint({
       tipo:        isRecaudo ? 'RECIBO DE CAJA' : 'COMPROBANTE DE EGRESO',
-      numero:      txNum,
+      numero:      txRecordFull.number || txNum,
       fecha,
       tercero:     terceroNombre,
       monto:       montoFinal,
@@ -895,6 +897,27 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
     elaboradoPor = m.representante_legal_name || m.legal_representative_name || '';
   } catch(_) {}
   const tObj    = data.terceroObj || {};
+  let totalPendiente = 0;
+  try {
+    if (tObj.id) {
+      const lines = await pb.listAll('tx_lines', {
+        filter: `third_party_id="${tObj.id}" && tx_id.status="active"`,
+        expand: 'account_id'
+      });
+      for (const l of lines) {
+        const acc = l.expand?.account_id;
+        if (!acc || !acc.maneja_cruce) continue;
+        const code = acc.code || '';
+        if (isRC && code.startsWith('13')) {
+          totalPendiente += (l.debit || 0) - (l.credit || 0);
+        } else if (!isRC && (code.startsWith('21') || code.startsWith('22') || code.startsWith('23'))) {
+          totalPendiente += (l.credit || 0) - (l.debit || 0);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error al calcular saldo de cartera en impresión:", err);
+  }
   const tNombre = tObj.name || data.tercero || '';
   const tDoc    = tObj.doc_number || '';
   const tEmail  = tObj.email || '';
@@ -986,10 +1009,17 @@ async function _buildReciboHTML(data: any, lineasContables: any[] = []) {
     </tr>
   </table>
 
-  <div style="background:${acBg};border:1.5px solid ${acLight};border-radius:10px;padding:12px 16px;margin-bottom:12px">
-    <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:${acColor}">VALOR ${isRC?'RECIBIDO':'PAGADO'}</div>
-    <div style="font-size:28px;font-weight:900;color:${acColor}">${_fmt(data.monto||0)}</div>
-    <div style="font-size:10px;color:#374151;margin-top:2px;font-style:italic">${enLetras}</div>
+  <div style="background:${acBg};border:1.5px solid ${acLight};border-radius:10px;padding:12px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:${acColor}">VALOR ${isRC?'RECIBIDO':'PAGADO'}</div>
+      <div style="font-size:28px;font-weight:900;color:${acColor}">${_fmt(data.monto||0)}</div>
+      <div style="font-size:10px;color:#374151;margin-top:2px;font-style:italic">${enLetras}</div>
+    </div>
+    <div style="text-align:right;border-left:1px dashed ${acLight};padding-left:20px;min-width:160px">
+      <div style="font-size:9px;text-transform:uppercase;font-weight:700;color:#6B7280">SALDO PENDIENTE CARTERA</div>
+      <div style="font-size:18px;font-weight:800;color:#374151;margin-top:4px">${totalPendiente <= 0.01 ? '$0' : _fmt(totalPendiente)}</div>
+      <div style="font-size:9px;color:#9CA3AF;margin-top:2px;font-style:italic">Cx${isRC?'C':'P'} neto posterior</div>
+    </div>
   </div>
 
   <div style="margin-bottom:12px">
@@ -1062,6 +1092,30 @@ async function _showReciboPrint(data: any) {
   const acBg    = isRC ? '#F0FDF4' : '#FFF1F2';
   if (_tesoCurrentThirdParty) data.terceroObj = _tesoCurrentThirdParty;
 
+  let totalPendiente = 0;
+  const tObj = data.terceroObj || {};
+  try {
+    if (tObj.id) {
+      const pb = _pb();
+      const lines = await pb.listAll('tx_lines', {
+        filter: `third_party_id="${tObj.id}" && tx_id.status="active"`,
+        expand: 'account_id'
+      });
+      for (const l of lines) {
+        const acc = l.expand?.account_id;
+        if (!acc || !acc.maneja_cruce) continue;
+        const code = acc.code || '';
+        if (isRC && code.startsWith('13')) {
+          totalPendiente += (l.debit || 0) - (l.credit || 0);
+        } else if (!isRC && (code.startsWith('21') || code.startsWith('22') || code.startsWith('23'))) {
+          totalPendiente += (l.credit || 0) - (l.debit || 0);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error al calcular saldo en preview:", err);
+  }
+
   // Generar recibo carta completo con líneas contables del hook
   const html = await _buildReciboHTML(data, data.lineas || []);
 
@@ -1074,6 +1128,10 @@ async function _showReciboPrint(data: any) {
           <p style="color:#6B7280;font-size:12px;margin:3px 0 0">No. <strong>${_esc(data.numero)}</strong> &bull; <strong>${_fmt(data.monto)}</strong></p>
           <p style="color:#6B7280;font-size:11px;font-style:italic;margin:2px 0 0">${_numLetras(data.monto)}</p>
         </div>
+      </div>
+      <div style="background:#F3F4F6;padding:10px 14px;border-radius:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600;color:#4B5563;font-size:12px">Saldo pendiente en cartera:</span>
+        <span style="font-weight:700;color:#111827;font-size:13px;text-align:right;flex:1">${totalPendiente <= 0.01 ? '$0' : _fmt(totalPendiente)}</span>
       </div>
       <p style="font-size:11px;color:#9CA3AF;text-align:center;margin:0">
         El recibo incluye datos de empresa, tercero, asiento contable completo y firmas.

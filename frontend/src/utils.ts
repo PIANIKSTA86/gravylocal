@@ -217,11 +217,12 @@ const CROSS_DOC_TYPES = [
 const CROSS_PURPOSES = ['Causar','Recaudar','Reportar Cartera'];
 
 const ROLES = {
-  admin:    { label: 'Administrador',  badge: 'badge-orange' },
-  contador: { label: 'Contador',       badge: 'badge-blue'   },
-  auxiliar: { label: 'Auxiliar',       badge: 'badge-green'  },
-  auditor:  { label: 'Auditor',        badge: 'badge-gray'   },
-  viewer:   { label: 'Visualizador',   badge: 'badge-gray'   },
+  admin:    { label: 'Administrador',  badge: 'badge-orange'  },
+  contador: { label: 'Contador',       badge: 'badge-blue'    },
+  auxiliar: { label: 'Auxiliar',       badge: 'badge-green'   },
+  cajero:   { label: 'Cajero POS',     badge: 'badge-purple'  },
+  auditor:  { label: 'Auditor',        badge: 'badge-gray'    },
+  viewer:   { label: 'Visualizador',   badge: 'badge-gray'    },
 };
 
 function roleLabel(role) { return ROLES[role]?.label ?? role; }

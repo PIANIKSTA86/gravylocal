@@ -33,6 +33,7 @@ async function renderReportes(c) {
       ${reportCard('paz-salvo', 'Certificado de Paz y Salvo', 'Generar certificado de paz y salvo de cartera para clientes.')}
       ${reportCard('iva', 'Reporte de IVA', 'Consulta IVA generado vs descontable con cuentas configurables.')}
       ${reportCard('retenciones', 'Reporte de Retenciones', 'Consulta retenciones practicadas y a favor por cuenta.')}
+      ${reportCard('ventas-emision', 'Reporte de Ventas por Emisión', 'Consulta ventas detalladas agrupadas por POS, Factura Estándar o Pedidos.')}
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -47,6 +48,7 @@ async function renderReportes(c) {
   $('#btn-report-paz-salvo')?.addEventListener('click', () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()));
   $('#btn-report-iva')?.addEventListener('click', () => launchReportModal('Reporte de IVA', () => renderIvaReport()));
   $('#btn-report-retenciones')?.addEventListener('click', () => launchReportModal('Reporte de Retenciones', () => renderRetencionesReport()));
+  $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
 }
 
 function getReportViewHost() {
@@ -4762,6 +4764,297 @@ async function exportRetToPdf() {
   }
 }
 
+async function renderSalesEmissionReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  const today = todayStr();
+  const firstDay = today.slice(0, 8) + '01';
+
+  host.innerHTML = `
+    <div class="space-y-4 text-xs">
+      <!-- Filtros -->
+      <div class="bg-gray-50 rounded-2xl border p-4 flex flex-wrap gap-4 items-end" style="border-color:#E2E8F0">
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-xs">Fecha Desde</label>
+          <input type="date" id="rse-from" class="form-input text-xs" style="max-width:140px;background:#fff;color:#0D2137" value="${firstDay}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-xs">Fecha Hasta</label>
+          <input type="date" id="rse-to" class="form-input text-xs" style="max-width:140px;background:#fff;color:#0D2137" value="${today}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-bold text-xs">Tipo de Emisión</label>
+          <select id="rse-type" class="form-input text-xs" style="min-width:180px;background:#fff;color:#0D2137;height:34px">
+            <option value="ALL">Todos los Tipos</option>
+            <option value="POS">Tiquetes POS</option>
+            <option value="STAND">Facturas Estándar / Electrónicas</option>
+            <option value="PED">Pedidos de Venta (Órdenes)</option>
+          </select>
+        </div>
+        <button class="btn btn-primary text-xs" id="btn-rse-load" style="height:34px">
+          <i class="fas fa-arrows-rotate mr-1"></i> Consultar
+        </button>
+        <button class="btn btn-outline text-xs text-green-700 font-bold" id="btn-rse-excel" style="height:34px;border-color:#166534;background:#fff" disabled>
+          <i class="far fa-file-excel mr-1"></i> Excel
+        </button>
+        <button class="btn btn-outline text-xs text-red-700 font-bold" id="btn-rse-pdf" style="height:34px;border-color:#991B1B;background:#fff" disabled>
+          <i class="far fa-file-pdf mr-1"></i> PDF
+        </button>
+      </div>
+
+      <!-- Resumen / Kpis -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4" id="rse-kpis" style="display:none">
+        <div class="bg-white rounded-xl border p-3 text-center" style="border-color:#E2E8F0">
+          <span class="text-[10px] text-gray-500 uppercase font-bold block">Tiquetes POS</span>
+          <span class="text-base font-extrabold text-gray-800" id="rse-kpi-pos">$ 0</span>
+        </div>
+        <div class="bg-white rounded-xl border p-3 text-center" style="border-color:#E2E8F0">
+          <span class="text-[10px] text-gray-500 uppercase font-bold block">Facturas Estándar</span>
+          <span class="text-base font-extrabold text-gray-800" id="rse-kpi-stand">$ 0</span>
+        </div>
+        <div class="bg-white rounded-xl border p-3 text-center" style="border-color:#E2E8F0">
+          <span class="text-[10px] text-gray-500 uppercase font-bold block">Pedidos de Venta</span>
+          <span class="text-base font-extrabold text-gray-800" id="rse-kpi-ped">$ 0</span>
+        </div>
+        <div class="bg-white rounded-xl border p-3 text-center" style="border-color:#E2E8F0; background:#F0F7FF">
+          <span class="text-[10px] text-blue-700 uppercase font-bold block">Total General</span>
+          <span class="text-base font-extrabold text-blue-900" id="rse-kpi-total">$ 0</span>
+        </div>
+      </div>
+
+      <!-- Resultados -->
+      <div class="border rounded-2xl overflow-hidden bg-white shadow-sm" style="border-color:#F0F0F0">
+        <div id="rse-results-table" class="overflow-x-auto min-h-[150px]">
+          <div class="py-10 text-center text-gray-400">Introduce los filtros y haz clic en Consultar.</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let currentReportData: any[] = [];
+
+  const loadData = async () => {
+    const fromVal = (document.getElementById('rse-from') as HTMLInputElement).value;
+    const toVal = (document.getElementById('rse-to') as HTMLInputElement).value;
+    const typeVal = (document.getElementById('rse-type') as HTMLSelectElement).value;
+
+    if (!fromVal || !toVal) {
+      showToast('Selecciona un rango de fechas válido.', 'warning');
+      return;
+    }
+
+    const tableContainer = document.getElementById('rse-results-table') as HTMLElement;
+    tableContainer.innerHTML = '<div class="py-12 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>';
+
+    try {
+      const [invoices, orders] = await Promise.all([
+        pb.listAll('invoices', {
+          filter: `date >= "${fromVal} 00:00:00" && date <= "${toVal} 23:59:59"`,
+          expand: 'customer_id,warehouse_id',
+          sort: '-date'
+        }),
+        pb.listAll('sales_orders', {
+          filter: `date >= "${fromVal}" && date <= "${toVal}"`,
+          expand: 'customer_id,warehouse_id',
+          sort: '-date'
+        })
+      ]);
+
+      const unified: any[] = [];
+      let totalPos = 0;
+      let totalStand = 0;
+      let totalPed = 0;
+
+      invoices.forEach((inv: any) => {
+        const total = inv.payable_total ?? inv.total ?? 0;
+        const isPOS = !!inv.pos_shift_id;
+        
+        if (isPOS) {
+          totalPos += total;
+        } else {
+          totalStand += total;
+        }
+
+        unified.push({
+          id: inv.id,
+          date: inv.date.slice(0, 10),
+          typeCode: isPOS ? 'POS' : 'STAND',
+          typeName: isPOS ? 'Tiquete POS' : 'Factura Estándar',
+          number: inv.number,
+          customerName: inv.expand?.customer_id?.name || 'Consumidor Final',
+          customerDoc: inv.expand?.customer_id?.doc_number || inv.expand?.customer_id?.nit || '—',
+          warehouseName: inv.expand?.warehouse_id?.name || '—',
+          subtotal: inv.subtotal || 0,
+          iva: inv.iva_total || 0,
+          total: total,
+          status: inv.status === 'posted' ? 'Contabilizado' : (inv.status === 'draft' ? 'Borrador' : 'Anulado')
+        });
+      });
+
+      orders.forEach((ord: any) => {
+        const total = ord.total ?? 0;
+        totalPed += total;
+
+        unified.push({
+          id: ord.id,
+          date: ord.date.slice(0, 10),
+          typeCode: 'PED',
+          typeName: 'Pedido de Venta',
+          number: ord.number,
+          customerName: ord.expand?.customer_id?.name || 'Cliente',
+          customerDoc: ord.expand?.customer_id?.doc_number || ord.expand?.customer_id?.nit || '—',
+          warehouseName: ord.expand?.warehouse_id?.name || '—',
+          subtotal: ord.subtotal || total,
+          iva: ord.iva_total || 0,
+          total: total,
+          status: ord.status === 'paid' ? 'Facturado' : (ord.status === 'pending' ? 'Pendiente' : (ord.status === 'cancelled' ? 'Cancelado' : ord.status))
+        });
+      });
+
+      let filtered = unified;
+      if (typeVal !== 'ALL') {
+        filtered = unified.filter(u => u.typeCode === typeVal);
+      }
+
+      currentReportData = filtered;
+
+      document.getElementById('rse-kpis')!.style.display = 'grid';
+      document.getElementById('rse-kpi-pos')!.textContent = fmt(totalPos);
+      document.getElementById('rse-kpi-stand')!.textContent = fmt(totalStand);
+      document.getElementById('rse-kpi-ped')!.textContent = fmt(totalPed);
+      document.getElementById('rse-kpi-total')!.textContent = fmt(totalPos + totalStand + totalPed);
+
+      (document.getElementById('btn-rse-excel') as HTMLButtonElement).disabled = filtered.length === 0;
+      (document.getElementById('btn-rse-pdf') as HTMLButtonElement).disabled = filtered.length === 0;
+
+      if (filtered.length === 0) {
+        tableContainer.innerHTML = '<div class="py-12 text-center text-gray-500 font-bold">No se encontraron ventas para este rango de fechas.</div>';
+        return;
+      }
+
+      tableContainer.innerHTML = `
+        <table class="data-table w-full text-xs">
+          <thead>
+            <tr style="background:#F4F8FF font-weight:bold">
+              <th class="text-left py-2 px-3">Fecha</th>
+              <th class="text-left py-2 px-3">Tipo de Emisión</th>
+              <th class="text-left py-2 px-3">Número</th>
+              <th class="text-left py-2 px-3">Cliente</th>
+              <th class="text-left py-2 px-3">Bodega</th>
+              <th class="text-right py-2 px-3">Subtotal</th>
+              <th class="text-right py-2 px-3">IVA</th>
+              <th class="text-right py-2 px-3">Total</th>
+              <th class="text-center py-2 px-3">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(f => `
+              <tr class="border-b hover:bg-gray-50" style="border-color:#F0F0F0">
+                <td class="py-2.5 px-3 font-semibold text-gray-700">${f.date}</td>
+                <td class="py-2.5 px-3">
+                  <span class="badge ${f.typeCode === 'POS' ? 'badge-blue' : (f.typeCode === 'STAND' ? 'badge-orange' : 'badge-green')}">
+                    ${f.typeName}
+                  </span>
+                </td>
+                <td class="py-2.5 px-3 font-bold">${esc(f.number)}</td>
+                <td class="py-2.5 px-3">${esc(f.customerName)} <span class="text-[10px] text-gray-400">(${esc(f.customerDoc)})</span></td>
+                <td class="py-2.5 px-3 text-gray-600">${esc(f.warehouseName)}</td>
+                <td class="py-2.5 px-3 text-right font-semibold">${fmt(f.subtotal)}</td>
+                <td class="py-2.5 px-3 text-right text-gray-500">${fmt(f.iva)}</td>
+                <td class="py-2.5 px-3 text-right font-bold text-blue-800">${fmt(f.total)}</td>
+                <td class="py-2.5 px-3 text-center">
+                  <span class="badge py-0.5" style="font-size:9px; background:${f.status === 'Contabilizado' || f.status === 'Facturado' ? '#EEFBF7' : '#FFF5F5'}; color:${f.status === 'Contabilizado' || f.status === 'Facturado' ? '#065F46' : '#9B1C1C'}">
+                    ${f.status}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err: any) {
+      showToast('Error cargando reporte: ' + err.message, 'error');
+      tableContainer.innerHTML = `<div class="py-12 text-center text-red-500 font-bold">Error: ${esc(err.message)}</div>`;
+    }
+  };
+
+  document.getElementById('btn-rse-load')?.addEventListener('click', loadData);
+
+  document.getElementById('btn-rse-excel')?.addEventListener('click', () => {
+    if (!currentReportData.length) return;
+    const headers = [
+      { label: 'Fecha', key: 'date' },
+      { label: 'Tipo de Emisión', key: 'typeName' },
+      { label: 'Número', key: 'number' },
+      { label: 'Cliente', key: 'customerName' },
+      { label: 'Documento Cliente', key: 'customerDoc' },
+      { label: 'Bodega', key: 'warehouseName' },
+      { label: 'Subtotal', key: 'subtotal' },
+      { label: 'IVA', key: 'iva' },
+      { label: 'Total', key: 'total' },
+      { label: 'Estado', key: 'status' }
+    ];
+    exportToExcel(currentReportData, headers, 'Reporte_Ventas_Emisiones');
+  });
+
+  document.getElementById('btn-rse-pdf')?.addEventListener('click', async () => {
+    if (!currentReportData.length) return;
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+
+    try {
+      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const headerCtx = await getPdfHeaderContext();
+      const fromVal = (document.getElementById('rse-from') as HTMLInputElement).value;
+      const toVal = (document.getElementById('rse-to') as HTMLInputElement).value;
+
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Reporte de Ventas por Tipo de Emisión',
+        subtitles: [`Desde: ${fromVal} — Hasta: ${toVal}`]
+      });
+
+      const body = currentReportData.map(f => [
+        f.date,
+        f.typeName,
+        f.number,
+        `${f.customerName} (${f.customerDoc})`,
+        f.warehouseName,
+        fmtPdfNum(f.subtotal),
+        fmtPdfNum(f.iva),
+        fmtPdfNum(f.total),
+        f.status
+      ]);
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [['Fecha', 'Tipo', 'Número', 'Cliente', 'Bodega', 'Subtotal', 'IVA', 'Total', 'Estado']],
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 60 },
+          2: { cellWidth: 45 },
+          3: { cellWidth: 140 },
+          4: { cellWidth: 60 },
+          5: { cellWidth: 50, halign: 'right' },
+          6: { cellWidth: 40, halign: 'right' },
+          7: { cellWidth: 55, halign: 'right' },
+          8: { cellWidth: 50, halign: 'center' },
+        },
+        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`reporte_ventas_emisiones_${fromVal}_a_${toVal}.pdf`);
+    } catch (err: any) {
+      showToast('Error generando PDF: ' + err.message, 'error');
+    }
+  });
+}
+
 (window as any).renderWithholdingCertificates = renderWithholdingCertificates;
 (window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;
 (window as any).renderIvaReport = renderIvaReport;
@@ -4772,3 +5065,4 @@ async function exportRetToPdf() {
 (window as any).exportIvaToPdf = exportIvaToPdf;
 (window as any).exportRetToExcel = exportRetToExcel;
 (window as any).exportRetToPdf = exportRetToPdf;
+(window as any).renderSalesEmissionReport = renderSalesEmissionReport;

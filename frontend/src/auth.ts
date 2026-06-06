@@ -11,6 +11,7 @@ const PERMISSIONS = {
   admin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true  },
   contador: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true  },
   auxiliar: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false },
+  cajero:   { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false },
   auditor:  { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true,  canApprove: false },
   viewer:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false },
 };
@@ -68,9 +69,29 @@ function applyModuleVisibility(): void {
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');
 
   // 1. Determinar visibilidad básica por licencia y rol para cada ítem
+  const role = pb.currentUser?.role ?? 'viewer';
+  const isCajero = role === 'cajero';
+  // Páginas permitidas para el cajero (solo POS y Dashboard)
+  const CAJERO_PAGES = new Set(['pos', 'dashboard']);
+
   $$('#nav-menu .nav-item').forEach((item: any) => {
     const page     = item.dataset.page as string;
     const required = MODULE_OF_PAGE[page];
+
+    // Cajero: acceso restringido solo a su conjunto de páginas
+    if (isCajero) {
+      const allowed = CAJERO_PAGES.has(page);
+      if (allowed) {
+        item.classList.remove('locked');
+        item.removeAttribute('data-locked');
+        item.style.display = '';
+      } else {
+        item.classList.add('locked');
+        item.setAttribute('data-locked', 'role');
+        item.style.display = 'none';
+      }
+      return;
+    }
 
     let hasLic = true;
     if (required) {
@@ -81,7 +102,6 @@ function applyModuleVisibility(): void {
     if (page === 'usuarios') allowed = can('canManageUsers');
     if (page === 'auditoria') allowed = can('canViewAudit');
     
-    const role = pb.currentUser?.role ?? 'viewer';
     if (page === 'superadmin') allowed = (role === 'superadmin');
     if (page === 'licencias') allowed = (role === 'admin');
 
@@ -106,12 +126,17 @@ function applyModuleVisibility(): void {
       while (next && !next.classList.contains('nav-section')) {
         if (next.classList.contains('nav-item')) {
           const page = next.dataset.page;
+          // Para cajero: solo sus páginas permitidas
+          if (isCajero) {
+            if (CAJERO_PAGES.has(page)) { hasVisibleItems = true; break; }
+            next = next.nextElementSibling;
+            continue;
+          }
           const required = MODULE_OF_PAGE[page];
           const hasLic = required ? hasModule(required) : true;
           let allowed = hasLic;
           if (page === 'usuarios') allowed = can('canManageUsers');
           if (page === 'auditoria') allowed = can('canViewAudit');
-          const role = pb.currentUser?.role ?? 'viewer';
           if (page === 'superadmin') allowed = (role === 'superadmin');
           if (page === 'licencias') allowed = (role === 'admin');
           

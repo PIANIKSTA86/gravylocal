@@ -477,6 +477,105 @@ window.renderShiftOpeningForm = function(registers: any[] = []) {
       </div>
     </div>
   `;
+
+  // Botón historial de turnos (solo para roles con visión administrativa)
+  const _histRole = (window as any).pb.currentUser?.role ?? 'viewer';
+  const _canSeeHist = ['superadmin', 'admin', 'contador', 'auxiliar', 'auditor'].includes(_histRole);
+  if (_canSeeHist) {
+    const _histBtn = document.createElement('button');
+    _histBtn.type = 'button';
+    _histBtn.className = 'btn btn-outline w-full text-xs';
+    _histBtn.style.cssText = 'border-color:#CBD5E1;color:#64748B;margin-top:8px';
+    _histBtn.innerHTML = '<i class="fas fa-history mr-1"></i> Ver Historial de Turnos Anteriores';
+    _histBtn.onclick = () => (window as any).showPOSShiftHistory();
+    const _spaceDiv = container.querySelector('.space-y-4');
+    if (_spaceDiv) _spaceDiv.appendChild(_histBtn);
+  }
+};
+
+// Modal de historial de turnos cerrados con botones de reimpresión
+window.showPOSShiftHistory = async function() {
+  (window as any).openModal('Historial de Turnos de Caja',
+    '<div class="py-8 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial...</div>',
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    false
+  );
+
+  try {
+    const shifts = await (window as any).pb.listAll('pos_shifts', {
+      filter: 'status="closed"',
+      sort: '-closed_at',
+      expand: 'user_id,pos_register_id'
+    });
+
+    const modalBody = document.querySelector('.modal-body') as HTMLElement;
+    if (!modalBody) return;
+
+    if (!shifts.length) {
+      modalBody.innerHTML = '<div class="py-10 text-center text-gray-400 font-semibold"><i class="fas fa-inbox text-3xl mb-3 block"></i>No hay turnos cerrados registrados aún.</div>';
+      return;
+    }
+
+    const rows = shifts.map((s: any) => {
+      const cajero   = (window as any).esc(s.expand?.user_id?.name || s.expand?.user_id?.email || '—');
+      const terminal = (window as any).esc(s.expand?.pos_register_id?.name || '—');
+      const termKey  = (window as any).esc(s.expand?.pos_register_id?.terminal_key || '');
+      const aperturaDate = s.opened_at ? s.opened_at.slice(0, 16).replace('T', ' ') : '—';
+      const cierreDate   = s.closed_at  ? s.closed_at.slice(0, 16).replace('T', ' ')  : '—';
+      const cashExp  = (window as any).fmt(s.cash_expected ?? 0);
+      const cashReal = (window as any).fmt(s.cash_actual   ?? 0);
+      const diff     = (s.cash_actual ?? 0) - (s.cash_expected ?? 0);
+      const diffAbs  = Math.abs(diff);
+      const diffCell = diffAbs < 0.01
+        ? '<span class="badge badge-green" style="font-size:9px">Cuadrada</span>'
+        : (diff > 0
+          ? `<span class="badge badge-orange" style="font-size:9px">Sob: ${(window as any).fmt(diff)}</span>`
+          : `<span class="badge" style="font-size:9px;background:#FEF2F2;color:#DC2626">Falt: ${(window as any).fmt(diff)}</span>`);
+
+      return `
+        <tr class="border-b hover:bg-gray-50" style="border-color:#F0F0F0">
+          <td class="py-2 px-3 text-xs text-gray-600">${aperturaDate}</td>
+          <td class="py-2 px-3 text-xs text-gray-600">${cierreDate}</td>
+          <td class="py-2 px-3 text-xs font-semibold">${cajero}</td>
+          <td class="py-2 px-3 text-xs">${terminal}${termKey ? ` <span class="text-gray-400">(${termKey})</span>` : ''}</td>
+          <td class="py-2 px-3 text-xs text-right">${cashExp}</td>
+          <td class="py-2 px-3 text-xs text-right">${cashReal}</td>
+          <td class="py-2 px-3 text-xs text-center">${diffCell}</td>
+          <td class="py-2 px-3">
+            <div class="flex gap-1 justify-center">
+              <button title="Tirilla de Arqueo" class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:10px;border-color:#64748B;color:#334155" onclick="window.printArqueoTicket('${s.id}')">
+                <i class="fas fa-print mr-1"></i>Arqueo
+              </button>
+              <button title="Informe Diario DIAN" class="btn btn-primary btn-sm" style="padding:3px 8px;font-size:10px" onclick="window.printInformeDiarioTicket('${s.id}')">
+                <i class="fas fa-file-invoice mr-1"></i>Informe
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+
+    modalBody.innerHTML = `
+      <div class="overflow-x-auto" style="max-height:70vh">
+        <table class="data-table w-full text-xs">
+          <thead>
+            <tr style="background:#F4F8FF">
+              <th class="text-left py-2 px-3">Apertura</th>
+              <th class="text-left py-2 px-3">Cierre</th>
+              <th class="text-left py-2 px-3">Cajero</th>
+              <th class="text-left py-2 px-3">Terminal</th>
+              <th class="text-right py-2 px-3">Esperado</th>
+              <th class="text-right py-2 px-3">Real</th>
+              <th class="text-center py-2 px-3">Cuadre</th>
+              <th class="text-center py-2 px-3">Reimprimir</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  } catch (err: any) {
+    (window as any).showToast('Error al cargar historial: ' + err.message, 'error');
+  }
 };
 
 // Abre el turno de caja
@@ -494,6 +593,25 @@ window.openPOSShift = async function() {
   if (registerField && !registerId) {
     (window as any).showToast('Por favor selecciona la caja registradora para este turno.', 'warning');
     return;
+  }
+
+  // — Validación anti-doble turno: verificar si esta caja ya está tomada —
+  if (registerId) {
+    try {
+      const existing = await (window as any).pb.list('pos_shifts', {
+        filter: `pos_register_id="${registerId}" && status="open"`,
+        perPage: 1,
+        expand: 'user_id'
+      });
+      if (existing.items.length) {
+        const blocker = existing.items[0].expand?.user_id?.name || existing.items[0].expand?.user_id?.email || 'otro usuario';
+        const openedAt = existing.items[0].opened_at?.slice(0, 16).replace('T', ' ') || '—';
+        (window as any).showToast(`❌ Esta caja ya está abierta por: ${blocker} (desde ${openedAt}). Pídele que cierre su turno primero.`, 'error');
+        return;
+      }
+    } catch (_) {
+      // Si falla la verificación, continuar con precaución
+    }
   }
 
   try {
@@ -1349,19 +1467,387 @@ window.closePOSShift = async function() {
     });
 
     const diff = counted - expected;
-    if (Math.abs(diff) > 0.01) {
-      const msg = diff > 0 ? `Sobrante de caja: ${(window as any).fmt(diff)}` : `Faltante de caja: ${(window as any).fmt(diff)}`;
-      (window as any).showToast(`Arqueo cerrado con descuadre. ${msg}`, 'warning', 5000);
-    } else {
-      (window as any).showToast('Arqueo cerrado perfectamente sin descuadres', 'success');
-    }
+    const closedShiftId = activeShift.id;
 
-    (window as any).closeModal();
-    activeShift = null;
-    window.renderShiftOpeningForm();
+    // Mostrar modal con resumen de cierre y opciones de impresión
+    const diffText = Math.abs(diff) < 0.01 
+      ? '<span class="text-green-600 font-bold">Caja Cuadrada</span>' 
+      : (diff > 0 
+          ? `<span class="text-orange-600 font-bold">Sobrante: ${(window as any).fmt(diff)}</span>` 
+          : `<span class="text-red-600 font-bold">Faltante: ${(window as any).fmt(diff)}</span>`);
+
+    const successHtml = `
+      <div class="space-y-4 text-center text-sm" style="color:#374151">
+        <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xl mx-auto mb-2">
+          <i class="fas fa-check-double"></i>
+        </div>
+        <h4 class="font-extrabold text-base text-gray-900">¡Turno de Caja Cerrado con Éxito!</h4>
+        <p class="text-xs text-gray-500">Se han guardado todos los datos contables y de arqueo del turno.</p>
+        
+        <div class="bg-gray-50 p-3.5 rounded-xl border max-w-sm mx-auto text-left space-y-1.5" style="border-color:#E2E8F0">
+          <div class="flex justify-between"><span>Efectivo Esperado:</span><span class="font-bold">${(window as any).fmt(expected)}</span></div>
+          <div class="flex justify-between"><span>Efectivo Contado:</span><span class="font-bold">${(window as any).fmt(counted)}</span></div>
+          <div class="flex justify-between border-t pt-1.5 mt-1.5"><span>Diferencia:</span><span>${diffText}</span></div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2 max-w-xs mx-auto pt-3">
+          <button class="btn btn-secondary justify-center text-xs py-2" onclick="window.printArqueoTicket('${closedShiftId}')">
+            <i class="fas fa-print mr-2"></i> Imprimir Tirilla de Arqueo
+          </button>
+          <button class="btn btn-primary justify-center text-xs py-2" onclick="window.printInformeDiarioTicket('${closedShiftId}')">
+            <i class="fas fa-file-invoice mr-2"></i> Imprimir Informe Diario POS
+          </button>
+        </div>
+      </div>
+    `;
+
+    const successFooter = `
+      <button class="btn btn-outline justify-center w-full text-xs" id="btn-finish-closing-wizard">Finalizar y Salir</button>
+    `;
+
+    (window as any).openModal(`Cierre Contable Certificado`, successHtml, successFooter, false);
+
+    setTimeout(() => {
+      document.getElementById('btn-finish-closing-wizard')?.addEventListener('click', () => {
+        (window as any).closeModal();
+        activeShift = null;
+        window.renderShiftOpeningForm();
+      });
+    }, 50);
+
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al cerrar caja', 'error');
     if (btn) { btn.disabled = false; btn.textContent = 'CERTIFICAR Y CERRAR TURNO'; }
+  }
+};
+
+window.printArqueoTicket = async function(shiftId: string) {
+  try {
+    const shift = await (window as any).pb.get('pos_shifts', shiftId, { expand: 'user_id,pos_register_id' });
+    const invoices = await (window as any).pb.listAll('invoices', {
+      filter: `pos_shift_id="${shiftId}" && status="posted"`
+    });
+
+    const [compName, compNit, compAddress, compPhone] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+    ]);
+
+    let efecSales = 0;
+    let transSales = 0;
+    let credSales = 0;
+    let otherSales = 0;
+
+    invoices.forEach((inv: any) => {
+      const total = inv.payable_total ?? inv.total ?? 0;
+      const pm = inv.payment_method;
+      if (pm === 'EFECTIVO') {
+        efecSales += total;
+      } else if (pm === 'TRANSFERENCIA') {
+        transSales += total;
+      } else if (pm === 'CREDITO') {
+        credSales += total;
+      } else if (pm === 'MIXTO' && inv.payment_split) {
+        try {
+          const split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : inv.payment_split;
+          efecSales += split.EFECTIVO || 0;
+          transSales += split.TRANSFERENCIA || 0;
+          credSales += split.CREDITO || 0;
+        } catch (_) {
+          otherSales += total;
+        }
+      } else {
+        otherSales += total;
+      }
+    });
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor permite ventanas emergentes.', 'warning');
+      return;
+    }
+
+    const expected = shift.cash_initial + efecSales;
+    const diff = shift.cash_actual - expected;
+    const diffText = Math.abs(diff) < 0.01 
+      ? 'CUADRADO' 
+      : (diff > 0 ? `SOBRANTE: ${(window as any).fmt(diff)}` : `FALTANTE: ${(window as any).fmt(diff)}`);
+
+    let html = `
+      <html>
+      <head>
+        <title>Arqueo POS - ${shift.id}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { font-family: monospace; font-size: 11px; margin: 5mm; color:#000; width: 70mm; line-height: 1.3; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .flex-between { display: flex; justify-content: space-between; }
+          .hr { border-top: 1px dashed #000; margin: 5px 0; }
+          .dbl-hr { border-top: 1.5px double #000; margin: 5px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size:13px">${(window as any).esc(compName)}</div>
+        <div class="center">NIT: ${(window as any).esc(compNit)}</div>
+        ${compAddress ? `<div class="center">${(window as any).esc(compAddress)}</div>` : ''}
+        ${compPhone ? `<div class="center">Teléfono: ${(window as any).esc(compPhone)}</div>` : ''}
+        <div class="dbl-hr"></div>
+        <div class="center bold" style="font-size:12px">ARQUEO Y CUADRE DE CAJA</div>
+        <div class="dbl-hr"></div>
+        <div><strong>Turno ID:</strong> ${shift.id}</div>
+        <div><strong>Cajero:</strong> ${(window as any).esc(shift.expand?.user_id?.name || '—')}</div>
+        <div><strong>Terminal:</strong> ${(window as any).esc(shift.expand?.pos_register_id?.name || '—')} (${(window as any).esc(shift.expand?.pos_register_id?.terminal_key || '—')})</div>
+        <div><strong>Apertura:</strong> ${shift.opened_at}</div>
+        <div><strong>Cierre:</strong> ${shift.closed_at || (window as any).nowStr()}</div>
+        <div class="dbl-hr"></div>
+        <div class="center bold">RESUMEN DE EFECTIVO</div>
+        <div class="hr"></div>
+        <div class="flex-between"><span>Base Apertura:</span><span>${(window as any).fmt(shift.cash_initial)}</span></div>
+        <div class="flex-between"><span>Ventas Efectivo:</span><span>${(window as any).fmt(efecSales)}</span></div>
+        <div class="hr"></div>
+        <div class="flex-between bold"><span>Efectivo Esperado:</span><span>${(window as any).fmt(expected)}</span></div>
+        <div class="flex-between bold"><span>Efectivo Real Contado:</span><span>${(window as any).fmt(shift.cash_actual)}</span></div>
+        <div class="hr"></div>
+        <div class="flex-between bold"><span>Diferencia:</span><span>${diffText}</span></div>
+        <div class="dbl-hr"></div>
+        <div class="center bold">OTROS MEDIOS DE PAGO</div>
+        <div class="hr"></div>
+        <div class="flex-between"><span>Transferencias:</span><span>${(window as any).fmt(transSales)}</span></div>
+        <div class="flex-between"><span>Ventas a Crédito:</span><span>${(window as any).fmt(credSales)}</span></div>
+        ${otherSales > 0 ? `<div class="flex-between"><span>Otros Métodos:</span><span>${(window as any).fmt(otherSales)}</span></div>` : ''}
+        <div class="dbl-hr"></div>
+        <div><strong>Observaciones:</strong></div>
+        <div style="font-style:italic">${(window as any).esc(shift.notes || 'Ninguna')}</div>
+        <div class="dbl-hr" style="margin-top:25px"></div>
+        <br>
+        <div class="center">_______________________________</div>
+        <div class="center">Firma Cajero</div>
+        <br><br>
+        <div class="center">_______________________________</div>
+        <div class="center">Firma Auditor/Admin</div>
+        <script>
+          window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
+        </script>
+      </body>
+      </html>
+    `;
+    printWin.document.write(html);
+    printWin.document.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir arqueo: ' + err.message, 'error');
+  }
+};
+
+window.printInformeDiarioTicket = async function(shiftId: string) {
+  try {
+    const shift = await (window as any).pb.get('pos_shifts', shiftId, { expand: 'user_id,pos_register_id' });
+    const invoices = await (window as any).pb.listAll('invoices', {
+      filter: `pos_shift_id="${shiftId}" && status="posted"`,
+      sort: 'number'
+    });
+
+    const [compName, compNit, compAddress, compPhone, compCity] = await Promise.all([
+      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_address').catch(() => ''),
+      (window as any).API.getSetting('company_phone').catch(() => ''),
+      (window as any).API.getSetting('company_city').catch(() => ''),
+    ]);
+
+    const invoiceIds = invoices.map((inv: any) => inv.id);
+    const lines: any[] = [];
+    if (invoiceIds.length > 0) {
+      for (let i = 0; i < invoiceIds.length; i += 30) {
+        const chunk = invoiceIds.slice(i, i + 30);
+        const filter = chunk.map(id => `invoice_id="${id}"`).join(' || ');
+        const chunkLines = await (window as any).pb.listAll('invoice_lines', {
+          filter,
+          expand: 'product_id'
+        });
+        lines.push(...chunkLines);
+      }
+    }
+
+    const departments: { [name: string]: { exento: number, gravado: { [rate: number]: { base: number, iva: number } } } } = {};
+    
+    lines.forEach((l: any) => {
+      const catName = l.expand?.product_id?.categoria?.trim() || 'General';
+      const rate = Number(l.iva_rate || 0);
+      const sub = Number(l.subtotal || 0);
+      const iva = Number(l.iva_amount || 0);
+
+      if (!departments[catName]) {
+        departments[catName] = { exento: 0, gravado: {} };
+      }
+
+      if (rate === 0) {
+        departments[catName].exento += sub;
+      } else {
+        if (!departments[catName].gravado[rate]) {
+          departments[catName].gravado[rate] = { base: 0, iva: 0 };
+        }
+        departments[catName].gravado[rate].base += sub;
+        departments[catName].gravado[rate].iva += iva;
+      }
+    });
+
+    const taxSummary: { [rate: number]: { base: number, iva: number } } = {};
+    lines.forEach((l: any) => {
+      const rate = Number(l.iva_rate || 0);
+      const sub = Number(l.subtotal || 0);
+      const iva = Number(l.iva_amount || 0);
+      if (!taxSummary[rate]) {
+        taxSummary[rate] = { base: 0, iva: 0 };
+      }
+      taxSummary[rate].base += sub;
+      taxSummary[rate].iva += iva;
+    });
+
+    let payCashVal = 0, payCashCount = 0;
+    let payCardVal = 0, payCardCount = 0;
+    let payCreditVal = 0, payCreditCount = 0;
+    let payVoucherVal = 0, payVoucherCount = 0;
+    let payOtherVal = 0, payOtherCount = 0;
+
+    invoices.forEach((inv: any) => {
+      const total = inv.payable_total ?? inv.total ?? 0;
+      const pm = inv.payment_method;
+
+      if (pm === 'EFECTIVO') {
+        payCashVal += total;
+        payCashCount++;
+      } else if (pm === 'TRANSFERENCIA') {
+        payOtherVal += total;
+        payOtherCount++;
+      } else if (pm === 'CREDITO') {
+        payCreditVal += total;
+        payCreditCount++;
+      } else if (pm === 'MIXTO' && inv.payment_split) {
+        try {
+          const split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : inv.payment_split;
+          if (split.EFECTIVO > 0) { payCashVal += split.EFECTIVO; }
+          if (split.TRANSFERENCIA > 0) { payOtherVal += split.TRANSFERENCIA; }
+          if (split.CREDITO > 0) { payCreditVal += split.CREDITO; }
+          payOtherCount++;
+        } catch (_) {
+          payOtherVal += total;
+          payOtherCount++;
+        }
+      } else {
+        payOtherVal += total;
+        payOtherCount++;
+      }
+    });
+
+    const initTrans = invoices.length > 0 ? invoices[0].number : 'N/A';
+    const endTrans = invoices.length > 0 ? invoices[invoices.length - 1].number : 'N/A';
+    const grandTotal = invoices.reduce((sum, inv) => sum + (inv.payable_total ?? inv.total ?? 0), 0);
+
+    const printWin = window.open('', '_blank');
+    if (!printWin) {
+      (window as any).showToast('Por favor permite ventanas emergentes.', 'warning');
+      return;
+    }
+
+    let deptHtml = '';
+    for (const deptName of Object.keys(departments).sort()) {
+      const d = departments[deptName];
+      deptHtml += `<div class="bold" style="margin-top:4px">- DEPT: ${deptName}</div>`;
+      if (d.exento > 0) {
+        deptHtml += `<div class="flex-between" style="padding-left:8px"><span>* Exento:</span><span>${(window as any).fmt(d.exento)}</span></div>`;
+      }
+      for (const rate of Object.keys(d.gravado).map(Number).sort((a,b)=>a-b)) {
+        const g = d.gravado[rate];
+        deptHtml += `
+          <div class="flex-between" style="padding-left:8px">
+            <span>* Gravado ${rate}%:</span>
+            <span>Base: ${(window as any).fmt(g.base)} | IVA: ${(window as any).fmt(g.iva)}</span>
+          </div>
+        `;
+      }
+    }
+
+    let taxSummaryHtml = '';
+    for (const rate of Object.keys(taxSummary).map(Number).sort((a,b)=>a-b)) {
+      const t = taxSummary[rate];
+      taxSummaryHtml += `
+        <div class="flex-between">
+          <span>TARIFA ${rate}%:</span>
+          <span>Base: ${(window as any).fmt(t.base)} | IVA: ${(window as any).fmt(t.iva)}</span>
+        </div>
+      `;
+    }
+
+    let html = `
+      <html>
+      <head>
+        <title>Informe Diario POS - ${shift.id}</title>
+        <style>
+          @page { size: 80mm auto; margin: 0; }
+          body { font-family: monospace; font-size: 11px; margin: 5mm; color:#000; width: 70mm; line-height: 1.3; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .flex-between { display: flex; justify-content: space-between; }
+          .hr { border-top: 1px dashed #000; margin: 5px 0; }
+          .dbl-hr { border-top: 1.5px double #000; margin: 5px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size:13px">${(window as any).esc(compName)}</div>
+        <div class="center">NIT: ${(window as any).esc(compNit)}</div>
+        ${compAddress ? `<div class="center">${(window as any).esc(compAddress)}</div>` : ''}
+        ${compCity ? `<div class="center">Ciudad: ${(window as any).esc(compCity)}</div>` : ''}
+        <div class="dbl-hr"></div>
+        <div class="center bold" style="font-size:11px">COMPROBANTE INFORME DIARIO DE VENTAS</div>
+        <div class="center" style="font-size:9px">(Resolución 000055 de 2016 - DIAN)</div>
+        <div class="dbl-hr"></div>
+        <div><strong>Fecha Informe:</strong> ${shift.closed_at ? shift.closed_at.slice(0, 10) : new Date().toLocaleDateString()}</div>
+        <div><strong>Cajero / Servidor:</strong> ${(window as any).esc(shift.expand?.user_id?.name || '—')}</div>
+        <div><strong>Máquina POS:</strong> ${(window as any).esc(shift.expand?.pos_register_id?.name || '—')} (${(window as any).esc(shift.expand?.pos_register_id?.terminal_key || '—')})</div>
+        <div><strong>Ubicación:</strong> ${(window as any).esc(compAddress || 'Establecimiento Principal')}</div>
+        <div class="dbl-hr"></div>
+        <div class="center bold">RANGO DE OPERACIONES</div>
+        <div class="hr"></div>
+        <div class="flex-between"><span>Transacción Inicial:</span><span>${initTrans}</span></div>
+        <div class="flex-between"><span>Transacción Final:</span><span>${endTrans}</span></div>
+        <div class="flex-between"><span>Total Transacciones:</span><span>${invoices.length}</span></div>
+        <div class="dbl-hr"></div>
+        <div class="center bold">AGRUPACIÓN POR DEPARTAMENTOS</div>
+        <div class="hr"></div>
+        ${deptHtml || '<div class="center">Sin ventas registradas</div>'}
+        <div class="dbl-hr"></div>
+        <div class="center bold">DESGLOSE DE IVA POR TARIFA</div>
+        <div class="hr"></div>
+        ${taxSummaryHtml || '<div class="center">Sin IVA registrado</div>'}
+        <div class="dbl-hr"></div>
+        <div class="center bold">TOTALIZACIÓN MEDIOS DE PAGO</div>
+        <div class="hr"></div>
+        <div class="flex-between"><span>Efectivo:</span><span>(${payCashCount}) ${(window as any).fmt(payCashVal)}</span></div>
+        <div class="flex-between"><span>Tarjetas (D/C):</span><span>(${payCardCount}) ${(window as any).fmt(payCardVal)}</span></div>
+        <div class="flex-between"><span>Ventas a Crédito:</span><span>(${payCreditCount}) ${(window as any).fmt(payCreditVal)}</span></div>
+        <div class="flex-between"><span>Vales/Bonos:</span><span>(${payVoucherCount}) ${(window as any).fmt(payVoucherVal)}</span></div>
+        <div class="flex-between"><span>Otros (Transf/Mixto):</span><span>(${payOtherCount}) ${(window as any).fmt(payOtherVal)}</span></div>
+        <div class="hr"></div>
+        <div class="flex-between bold" style="font-size:12px"><span>TOTAL REGISTRADO:</span><span>${(window as any).fmt(grandTotal)}</span></div>
+        <div class="dbl-hr" style="margin-top:20px"></div>
+        <div class="center" style="font-size:8px;color:#555">
+          Inventario de Máquinas POS:<br>
+          Serial: ${(window as any).esc(shift.expand?.pos_register_id?.id || 'S/N')} | Terminal: ${(window as any).esc(shift.expand?.pos_register_id?.terminal_key || 'POS-1')}<br>
+          Ubicación: ${(window as any).esc(compAddress || 'Sede Principal')}
+        </div>
+        <script>
+          window.onload = function() { window.print(); setTimeout(function(){ window.close(); }, 500); }
+        </script>
+      </body>
+      </html>
+    `;
+    printWin.document.write(html);
+    printWin.document.close();
+  } catch (err: any) {
+    (window as any).showToast('Error al imprimir informe diario: ' + err.message, 'error');
   }
 };
 

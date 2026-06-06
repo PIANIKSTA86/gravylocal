@@ -328,6 +328,34 @@ let posFreightAmt = 0;
 let loadedSalesOrderId: string | null = null;
 let loadedSellerId: string | null = null;
 
+function getPOSHeldCarts(): any[] {
+  try {
+    const raw = localStorage.getItem('pos_held_carts');
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function savePOSHeldCarts(carts: any[]) {
+  try {
+    localStorage.setItem('pos_held_carts', JSON.stringify(carts));
+  } catch (err) {
+    console.error('Error saving held carts:', err);
+  }
+}
+
+function updatePOSHeldBadge() {
+  const badge = document.getElementById('pos-held-count-badge');
+  if (badge) {
+    badge.textContent = String(getPOSHeldCarts().length);
+  }
+}
+
+(window as any).getPOSHeldCarts = getPOSHeldCarts;
+(window as any).savePOSHeldCarts = savePOSHeldCarts;
+(window as any).updatePOSHeldBadge = updatePOSHeldBadge;
+
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
   // Exponer función global para el botón de configuración
@@ -567,15 +595,22 @@ window.loadPOSInterface = async function() {
               <span class="font-bold block text-sm" style="color:#0D2137"><i class="fas fa-cart-shopping text-blue-500 mr-1"></i> Carrito de Ventas</span>
               <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#EA580C" onclick="window.posHoldCart()" title="Congelar venta actual">
+                <i class="fas fa-snowflake mr-1"></i>Congelar
+              </button>
+              <button class="btn btn-outline btn-sm text-emerald-600 flex items-center gap-1" style="border-color:#059669" onclick="window.posShowHeldCartsModal()" title="Ventas en espera (Congeladas)">
+                <i class="fas fa-pause"></i>Espera
+                <span id="pos-held-count-badge" class="px-1.5 py-0.2 text-[9px] bg-emerald-600 text-white rounded-full font-extrabold">${getPOSHeldCarts().length}</span>
+              </button>
               <button class="btn btn-outline btn-sm" onclick="window.posLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#7F7CFF; color:#7F7CFF">
-                <i class="fas fa-file-import mr-1"></i> Cargar Pedido
+                <i class="fas fa-file-import mr-1"></i>Pedido
               </button>
               ${['administrador','contador','superadmin'].includes((window as any).pb.currentUser?.role) ? `
               <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
                 <i class="fas fa-cog"></i>
               </button>` : ''}
-              <button class="btn btn-outline btn-sm text-red-500 hover:text-red-400" onclick="window.clearPOSCart()"><i class="fas fa-trash-can"></i> Vaciar</button>
+              <button class="btn btn-outline btn-sm text-red-500 hover:text-red-400" onclick="window.clearPOSCart()" title="Vaciar carrito"><i class="fas fa-trash-can"></i></button>
             </div>
           </div>
 
@@ -2331,6 +2366,266 @@ window.posUnloadOrder = function() {
   posCart = [];
   window.renderPOSCart();
   (window as any).showToast('Pedido desvinculado del carrito', 'info');
+};
+
+window.posHoldCart = function() {
+  if (!posCart.length) {
+    (window as any).showToast('El carrito está vacío. No hay nada que congelar.', 'warning');
+    return;
+  }
+
+  const customerInput = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+  const currentCustomerName = customerInput ? customerInput.value.trim() : 'Consumidor Final';
+
+  const bodyHtml = `
+    <div class="space-y-4 text-sm" style="color:#374151">
+      <p class="text-gray-600">Esto guardará temporalmente los productos de esta venta en la lista "En Espera" para que puedas realizar otra transacción de inmediato.</p>
+      <div class="form-group">
+        <label class="form-label font-bold text-xs mb-1 block">Identificador / Referencia de la venta <span class="text-red-500">*</span></label>
+        <input type="text" id="pos-hold-ref" class="form-input w-full" value="${(window as any).esc(currentCustomerName)}" placeholder="Ej: Mesa 3, Señor de azul, etc.">
+      </div>
+    </div>
+  `;
+
+  const footerHtml = `
+    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-confirm-hold"><i class="fas fa-snowflake mr-1"></i>Congelar Venta</button>
+  `;
+
+  (window as any).openModal('Congelar Venta (Poner en Espera)', bodyHtml, footerHtml, false);
+
+  setTimeout(() => {
+    const confirmBtn = document.getElementById('btn-confirm-hold');
+    const refInput = document.getElementById('pos-hold-ref') as HTMLInputElement;
+    if (refInput) {
+      refInput.focus();
+      refInput.select();
+      
+      refInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') {
+          confirmBtn?.click();
+        }
+      });
+    }
+
+    confirmBtn?.addEventListener('click', () => {
+      const refLabel = refInput ? refInput.value.trim() : currentCustomerName;
+      if (!refLabel) {
+        (window as any).showToast('Por favor, ingresa un identificador o referencia.', 'warning');
+        return;
+      }
+
+      const discountInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+      const freightInput = document.getElementById('pos-cart-freight-input') as HTMLInputElement;
+
+      const heldCart = {
+        id: 'hc_' + Date.now(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date().toLocaleDateString(),
+        label: refLabel,
+        customerId: selectedCustomerId,
+        customerSearchText: currentCustomerName,
+        warehouseId: selectedWarehouseId,
+        cart: JSON.parse(JSON.stringify(posCart)),
+        discountPct: discountInput ? parseFloat(discountInput.value) || 0 : posDiscountPct,
+        freightAmt: freightInput ? parseFloat(freightInput.value) || 0 : posFreightAmt,
+        loadedSalesOrderId,
+        loadedSellerId
+      };
+
+      const carts = (window as any).getPOSHeldCarts();
+      carts.push(heldCart);
+      (window as any).savePOSHeldCarts(carts);
+
+      posCart = [];
+      loadedSalesOrderId = null;
+      loadedSellerId = null;
+      posDiscountPct = 0;
+      posFreightAmt = 0;
+
+      const banner = document.getElementById('pos-loaded-order-banner');
+      if (banner) banner.style.display = 'none';
+
+      const defaultId = posConfig?.special?.default_customer_id;
+      const consumer = defaultId 
+        ? posCustomers.find((c: any) => c.id === defaultId) 
+        : posCustomers.find((c: any) => c.doc_number === '222222222' || c.nit === '222222222' || c.name.toLowerCase().includes('consumidor'));
+      selectedCustomerId = consumer ? consumer.id : (posCustomers[0]?.id || "");
+
+      const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+      const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+      if (hidden && input) {
+        hidden.value = selectedCustomerId;
+        input.value = consumer ? `${consumer.doc_number || consumer.nit || ''} - ${consumer.name}` : '';
+      }
+
+      if (discountInput) discountInput.value = '0';
+      if (freightInput) freightInput.value = '0';
+
+      (window as any).closeModal();
+
+      window.renderPOSCart();
+      (window as any).posUpdateDiscountFreight();
+      (window as any).updatePOSHeldBadge();
+
+      (window as any).showToast('Venta congelada con éxito.', 'success');
+    });
+  }, 50);
+};
+
+window.posShowHeldCartsModal = function() {
+  const carts = (window as any).getPOSHeldCarts();
+  
+  if (!carts.length) {
+    (window as any).openModal(
+      'Ventas en Espera',
+      `
+      <div class="py-12 text-center text-gray-500">
+        <i class="fas fa-snowflake text-4xl mb-3 text-gray-300"></i>
+        <p class="font-bold text-sm">No tienes ventas congeladas en espera.</p>
+        <p class="text-xs mt-1">Cuando tengas una venta activa y necesites atender a otro cliente, haz clic en el botón "Congelar".</p>
+      </div>
+      `,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      false
+    );
+    return;
+  }
+
+  const calculateCartTotal = (items: any[], discountPct: number, freightAmt: number) => {
+    let subtotal = 0;
+    let ivaTotal = 0;
+    items.forEach(it => {
+      const price = it.sales_price || 0;
+      const qty = it.qty || 1;
+      const lineSub = price * qty;
+      const lineIva = lineSub * ((it.iva_rate || 0) / 100);
+      subtotal += lineSub;
+      ivaTotal += lineIva;
+    });
+    const discountAmt = subtotal * (discountPct / 100);
+    return subtotal + ivaTotal - discountAmt + freightAmt;
+  };
+
+  const bodyHtml = `
+    <div class="space-y-3 text-sm" style="color:#374151">
+      <p class="text-xs text-gray-500">Selecciona una venta para reanudarla en el carrito, o elimínala si ya no la necesitas.</p>
+      <div class="border rounded-xl overflow-hidden max-h-[350px] overflow-y-auto">
+        <table class="data-table w-full text-xs">
+          <thead>
+            <tr style="background:#F3F4F6">
+              <th class="text-left py-2 px-3">Referencia / Identificador</th>
+              <th class="text-left py-2 px-3">Hora</th>
+              <th class="text-center py-2 px-3">Artículos</th>
+              <th class="text-right py-2 px-3">Total</th>
+              <th class="text-center py-2 px-3">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${carts.map((c: any) => {
+              const totalVal = calculateCartTotal(c.cart, c.discountPct, c.freightAmt);
+              const itemsCount = c.cart.reduce((acc: number, it: any) => acc + (it.qty || 1), 0);
+              return `
+                <tr class="border-b" style="border-color:#F3F4F6">
+                  <td class="py-2.5 px-3 font-bold text-gray-800">${(window as any).esc(c.label)}</td>
+                  <td class="py-2.5 px-3 text-xs text-gray-500">${(window as any).esc(c.timestamp)}</td>
+                  <td class="py-2.5 px-3 text-center font-semibold text-gray-600">${itemsCount}</td>
+                  <td class="py-2.5 px-3 text-right font-bold text-blue-700">${(window as any).fmt(totalVal)}</td>
+                  <td class="py-2.5 px-3 text-center">
+                    <div class="flex justify-center gap-1.5">
+                      <button class="btn btn-primary btn-xs py-1 px-2.5" onclick="window.posResumeHeldCart('${c.id}')" title="Reanudar venta"><i class="fas fa-play mr-1"></i>Reanudar</button>
+                      <button class="btn btn-outline btn-xs text-red-500 hover:text-red-400 py-1 px-2" style="border-color:#FCA5A5" onclick="window.posDeleteHeldCart('${c.id}')" title="Eliminar"><i class="fas fa-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const footerHtml = `
+    <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+  `;
+
+  (window as any).openModal('Ventas en Espera (Congeladas)', bodyHtml, footerHtml, true);
+};
+
+window.posResumeHeldCart = function(id: string) {
+  if (posCart.length > 0) {
+    (window as any).showToast('El carrito actual tiene productos. Congela o vacía la venta actual antes de reanudar.', 'warning');
+    return;
+  }
+
+  const carts = (window as any).getPOSHeldCarts();
+  const matchIdx = carts.findIndex((c: any) => c.id === id);
+  if (matchIdx === -1) return;
+
+  const target = carts[matchIdx];
+
+  posCart = target.cart;
+  selectedCustomerId = target.customerId;
+  selectedWarehouseId = target.warehouseId;
+  posDiscountPct = target.discountPct;
+  posFreightAmt = target.freightAmt;
+  loadedSalesOrderId = target.loadedSalesOrderId;
+  loadedSellerId = target.loadedSellerId;
+
+  const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+  const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+  if (hidden && input) {
+    hidden.value = selectedCustomerId;
+    input.value = target.customerSearchText || '';
+  }
+
+  const discountInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+  const freightInput = document.getElementById('pos-cart-freight-input') as HTMLInputElement;
+  if (discountInput) discountInput.value = String(posDiscountPct);
+  if (freightInput) freightInput.value = String(posFreightAmt);
+
+  const whSelect = document.getElementById('pos-cart-warehouse') as HTMLSelectElement;
+  if (whSelect) whSelect.value = selectedWarehouseId;
+
+  const banner = document.getElementById('pos-loaded-order-banner');
+  if (banner) {
+    if (loadedSalesOrderId) {
+      banner.style.display = 'flex';
+      const orderNumSpan = document.getElementById('pos-loaded-order-num');
+      if (orderNumSpan) orderNumSpan.textContent = 'Pedido cargado';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  carts.splice(matchIdx, 1);
+  (window as any).savePOSHeldCarts(carts);
+
+  (window as any).closeModal();
+
+  window.renderPOSCart();
+  (window as any).posUpdateDiscountFreight();
+  (window as any).updatePOSHeldBadge();
+
+  (window as any).showToast('Venta reanudada con éxito.', 'success');
+};
+
+window.posDeleteHeldCart = function(id: string) {
+  (window as any).confirmDialog(
+    'Eliminar venta en espera',
+    '¿Estás seguro de que deseas eliminar esta venta congelada permanentemente?',
+    () => {
+      const carts = (window as any).getPOSHeldCarts();
+      const filtered = carts.filter((c: any) => c.id !== id);
+      (window as any).savePOSHeldCarts(filtered);
+      
+      (window as any).updatePOSHeldBadge();
+      (window as any).posShowHeldCartsModal();
+      
+      (window as any).showToast('Venta en espera eliminada.', 'info');
+    }
+  );
 };
 
 // --- Atajos de Teclado y Flujo Optimizado (Keyboard-First) ---

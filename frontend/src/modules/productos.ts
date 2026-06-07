@@ -530,13 +530,17 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       <!-- Fila 2B -->
       <div class="form-group">
         <label class="form-label">Categoría</label>
-        <input id="pf-categoria" class="form-input" list="dl-categorias" value="${esc(row?.categoria || '')}" placeholder="Aseo, Alimentos, Repuestos...">
-        <datalist id="dl-categorias">${(catalog.categories||[]).map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+        <select id="pf-categoria" class="form-input">
+          <option value="">— Sin Categoría —</option>
+          ${(catalog.categories||[]).map(c=>`<option value="${esc(c)}" ${row?.categoria === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group">
         <label class="form-label">Línea</label>
-        <input id="pf-linea" class="form-input" list="dl-lineas" value="${esc(row?.linea || '')}" placeholder="Hogar, Industrial, Premium...">
-        <datalist id="dl-lineas">${(catalog.lines||[]).map(l=>`<option value="${esc(l)}">`).join('')}</datalist>
+        <select id="pf-linea" class="form-input">
+          <option value="">— Sin Línea —</option>
+          ${(catalog.lines||[]).map(l=>`<option value="${esc(l)}" ${row?.linea === l ? 'selected' : ''}>${esc(l)}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group flex items-end">
         ${can('canWrite') ? '<button type="button" class="btn btn-outline btn-sm w-full" id="btn-catalog-form"><i class="fas fa-tags"></i> Gestionar Cat./Líneas</button>' : '<span></span>'}
@@ -802,8 +806,8 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         type:                 getSelectVal('pf-type'),
         unit:                 getSelectVal('pf-unit'),
         presentacion:         getInputVal('pf-presentacion').trim(),
-        categoria:            getInputVal('pf-categoria').trim(),
-        linea:                getInputVal('pf-linea').trim(),
+        categoria:            getSelectVal('pf-categoria'),
+        linea:                getSelectVal('pf-linea'),
         iva_rate:             Number(getSelectVal('pf-iva') || 0),
         base_price:           parseFloat(getInputVal('pf-base-price') || '0') || 0,
         precio_venta_2:       toNullableNumber(getInputVal('pf-sale-price-2')),
@@ -873,10 +877,19 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
   $('#btn-catalog-form')?.addEventListener('click', () => {
     openCatalogManagerModal(catalog, (updated) => {
       Object.assign(catalog, updated);
-      const dlCat  = document.getElementById('dl-categorias');
-      const dlLine = document.getElementById('dl-lineas');
-      if (dlCat)  dlCat.innerHTML  = catalog.categories.map(c => `<option value="${esc(c)}">`).join('');
-      if (dlLine) dlLine.innerHTML = catalog.lines.map(l => `<option value="${esc(l)}">`).join('');
+      const selCat = document.getElementById('pf-categoria') as HTMLSelectElement;
+      const selLine = document.getElementById('pf-linea') as HTMLSelectElement;
+      
+      if (selCat) {
+        const val = selCat.value;
+        selCat.innerHTML = `<option value="">— Sin Categoría —</option>` + catalog.categories.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        selCat.value = val;
+      }
+      if (selLine) {
+        const val = selLine.value;
+        selLine.innerHTML = `<option value="">— Sin Línea —</option>` + catalog.lines.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
+        selLine.value = val;
+      }
     });
   });
 }

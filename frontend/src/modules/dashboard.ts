@@ -8,7 +8,8 @@ import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
 let monthlyChart: any = null;
-let expensesChart: any = null;
+let agingChart: any = null;
+let inventoryChart: any = null;
 
 async function renderDashboard(c) {
   // Renderizar esqueleto de carga (skeleton loaders)
@@ -27,14 +28,14 @@ async function renderDashboard(c) {
 
   try {
     const pb = (window as any).pb;
-    const [accounts, kpis, lines, txRes] = await Promise.all([
+    const [accounts, kpis, lines, stockRows] = await Promise.all([
       API.getAccounts(false),
       API.getDashboardKpis(),
       pb.listAll('tx_lines', {
         expand: 'tx_id',
         filter: 'tx_id.status="active"',
       }),
-      API.getTransactions({ page: 1, perPage: 8 }),
+      pb.listAll('inventory_stock', { expand: 'product_id' }),
     ]);
 
     // Generar dinámicamente los últimos 6 meses finalizando en el mes actual
@@ -74,6 +75,27 @@ async function renderDashboard(c) {
     let prevMonthIngresos = 0;
     let currentMonthGastos = 0;
     let prevMonthGastos = 0;
+
+    // --- NUEVO: Cartera e Inventario ---
+    const invByCategory: Record<string, number> = {};
+    for (const st of stockRows) {
+      const qty = Number(st.qty_on_hand) || 0;
+      if (qty !== 0) {
+        let cat = st.expand?.product_id?.categoria?.trim();
+        if (!cat) cat = 'Sin Categoría';
+        
+        let cost = Number(st.avg_cost);
+        if (!cost || cost <= 0) {
+          cost = Number(st.expand?.product_id?.cost_price) || 0;
+        }
+        
+        const val = qty * cost;
+        invByCategory[cat] = (invByCategory[cat] || 0) + val;
+      }
+    }
+
+    const openInvoices = new Map();
+    let carteraPorVencer = 0, cartera0_30 = 0, cartera31_60 = 0, cartera61_90 = 0, carteraMayor90 = 0;
 
     // Mapeo rápido de cuentas por ID para obtener su código
     const accountMap = new Map();
@@ -138,6 +160,45 @@ async function renderDashboard(c) {
         } else if (cls === '5' || cls === '6' || cls === '7') {
           prevMonthGastos += (debit - credit);
         }
+      }
+
+      // PyG Anual removido
+
+      // --- NUEVO: Cartera por Edades ---
+      if (ac.maneja_cruce && ac.nature === 'debit') {
+        const ref = (line.cross_doc_ref || '').trim();
+        if (ref) {
+          const tx = line.expand?.tx_id;
+          if (tx) {
+            const key = `${line.third_party_id || tx.third_party_id || 'NO_TERCERO'}|${ref}`;
+            if (!openInvoices.has(key)) {
+              openInvoices.set(key, { open: 0, doc_date: tx.date, payment_days: Number(tx.payment_days || 0) });
+            }
+            const doc = openInvoices.get(key);
+            doc.open += (debit - credit);
+            if (String(tx.date) < String(doc.doc_date)) {
+              doc.doc_date = tx.date;
+              doc.payment_days = Number(tx.payment_days || 0);
+            }
+          }
+        }
+      }
+    }
+
+    // --- NUEVO: Calcular Buckets Cartera ---
+    const asOfDate = new Date();
+    asOfDate.setHours(0, 0, 0, 0);
+    for (const doc of openInvoices.values()) {
+      if (doc.open > 0.0001) {
+        const from = new Date(`${doc.doc_date}T00:00:00`);
+        const due = new Date(from.getTime() + (doc.payment_days * 86400000));
+        const expiredDays = Math.floor((asOfDate.getTime() - due.getTime()) / 86400000);
+
+        if (expiredDays < 0) carteraPorVencer += doc.open;
+        else if (expiredDays <= 30) cartera0_30 += doc.open;
+        else if (expiredDays <= 60) cartera31_60 += doc.open;
+        else if (expiredDays <= 90) cartera61_90 += doc.open;
+        else carteraMayor90 += doc.open;
       }
     }
 
@@ -223,12 +284,18 @@ async function renderDashboard(c) {
       <div class="lg:col-span-2 bg-white rounded-2xl border border-[#F0F0F0] p-5 shadow-sm anim-slide-up flex flex-col justify-between" style="border-color:#F0F0F0; animation-delay:.25s; min-height: 380px;">
         <div class="flex items-center justify-between mb-4">
           <div>
-            <h3 class="font-bold text-sm text-[#0D2137]">Evolución Mensual de Finanzas</h3>
-            <p class="text-xs text-gray-400">Ingresos vs. Gastos (Últimos 6 meses)</p>
+            <h3 class="font-bold text-sm text-[#0D2137]">Evolución Financiera</h3>
+            <p class="text-xs text-gray-400">Ingresos vs. Gastos</p>
           </div>
-          <div class="flex gap-4 text-xs font-semibold">
-            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background: #33C7FF"></span> Ingresos</span>
-            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background: #7F7CFF"></span> Gastos</span>
+          <div class="flex gap-4 items-center text-xs font-semibold">
+            <select id="finance-filter" class="form-select py-1 px-2 border-gray-200 rounded" style="font-size: 11px;">
+              <option value="6months">Últimos 6 meses</option>
+              <option value="thisMonth">Este mes (Diario)</option>
+            </select>
+            <div class="flex gap-3">
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background: #33C7FF"></span> Ingresos</span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background: #7F7CFF"></span> Gastos</span>
+            </div>
           </div>
         </div>
         <div class="relative flex-1" style="height: 280px;">
@@ -236,39 +303,30 @@ async function renderDashboard(c) {
         </div>
       </div>
 
-      <!-- Gráfico de Dona: Distribución de Gastos -->
+      <!-- Gráfico de Dona: Cartera por Edades -->
       <div class="bg-white rounded-2xl border border-[#F0F0F0] p-5 shadow-sm anim-slide-up flex flex-col justify-between" style="border-color:#F0F0F0; animation-delay:.3s; min-height: 380px;">
         <div>
-          <h3 class="font-bold text-sm text-[#0D2137]">Estructura de Gastos</h3>
-          <p class="text-xs text-gray-400">Distribución por categoría (Mes actual)</p>
+          <h3 class="font-bold text-sm text-[#0D2137]">Cartera por Edades</h3>
+          <p class="text-xs text-gray-400">Cuentas por cobrar a la fecha actual</p>
         </div>
         <div class="relative flex-1 flex items-center justify-center py-4" style="height: 280px; max-height: 280px;">
-          <canvas id="chart-expenses-breakdown"></canvas>
+          <canvas id="chart-aging-breakdown"></canvas>
         </div>
       </div>
     </div>
 
     <!-- Fila de Tabla de Transacciones y Acciones Rápidas -->
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
-      <!-- Últimas Transacciones -->
-      <div class="xl:col-span-2 bg-white rounded-2xl border overflow-hidden anim-slide-up" style="border-color:#F0F0F0; animation-delay:.35s">
-        <div class="flex items-center justify-between p-5 pb-3">
-          <h3 class="font-bold text-sm" style="color:#0D2137">Últimas Transacciones</h3>
-          <button class="btn btn-outline btn-sm" onclick="navigate('consulta-tx')"><i class="fas fa-arrow-right"></i> Ver todas</button>
+      <!-- Gráfico de Inventario -->
+      <div class="xl:col-span-2 bg-white rounded-2xl border p-5 shadow-sm anim-slide-up flex flex-col justify-between" style="border-color:#F0F0F0; animation-delay:.35s; min-height: 380px;">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-bold text-sm text-[#0D2137]">Inventario Valorizado</h3>
+            <p class="text-xs text-gray-400">Distribución por categoría (Valor Total)</p>
+          </div>
         </div>
-        <div class="overflow-x-auto">
-          <table class="data-table">
-            <thead><tr><th>Tipo / N.°</th><th>Fecha</th><th>Descripción</th><th>Tercero</th></tr></thead>
-            <tbody>${txRes.items.length ? txRes.items.map(t => `
-              <tr class="cursor-pointer" onclick="viewTransaction('${esc(t.id)}')">
-                <td><span class="font-semibold" style="color:#E87D1E">${esc(t.expand?.tx_type_id?.prefix ?? '')}-${esc(t.number)}</span></td>
-                <td>${esc(t.date)}</td>
-                <td class="max-w-xs truncate">${esc(t.description ?? '—')}</td>
-                <td>${esc(t.expand?.third_party_id?.name ?? '—')}</td>
-              </tr>`).join('') :
-              '<tr><td colspan="4" class="text-center py-8" style="color:#9CA3AF">No hay transacciones registradas</td></tr>'}
-            </tbody>
-          </table>
+        <div class="relative flex-1" style="height: 280px;">
+          <canvas id="chart-inventory-categories"></canvas>
         </div>
       </div>
 
@@ -292,13 +350,66 @@ async function renderDashboard(c) {
     </div>`;
 
     // --- Inicialización de Gráficos ---
-    if (monthlyChart) monthlyChart.destroy();
-    if (expensesChart) expensesChart.destroy();
+    if (agingChart) agingChart.destroy();
+    if (inventoryChart) inventoryChart.destroy();
 
-    // 1. Instanciar Gráfico de Evolución Mensual
-    const monthlyCtx = (document.getElementById('chart-monthly-evolution') as HTMLCanvasElement)?.getContext('2d');
-    if (monthlyCtx) {
-      // Gradiantes de fondo para las líneas
+    const renderFinanceChart = (filterVal: string) => {
+      const monthlyCtx = (document.getElementById('chart-monthly-evolution') as HTMLCanvasElement)?.getContext('2d');
+      if (!monthlyCtx) return;
+
+      if (monthlyChart) monthlyChart.destroy();
+
+      let labels: string[] = [];
+      let revData: number[] = [];
+      let expData: number[] = [];
+
+      if (filterVal === 'thisMonth') {
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        
+        for (let i = 1; i <= daysInMonth; i++) {
+          labels.push(`${i} ${monthNames[currentMonth]}`);
+        }
+        revData = new Array(daysInMonth).fill(0);
+        expData = new Array(daysInMonth).fill(0);
+        
+        const yyyymm = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+
+        for (const line of lines) {
+          const ac = accountMap.get(line.account_id);
+          if (!ac) continue;
+          const cls = ac.code.charAt(0);
+          const dateStr = line.expand?.tx_id?.date || ''; 
+          if (!dateStr || !dateStr.startsWith(yyyymm)) continue;
+          
+          const dayIdx = parseInt(dateStr.slice(8, 10), 10) - 1;
+          if (dayIdx >= 0 && dayIdx < daysInMonth) {
+            if (cls === '4') revData[dayIdx] += ((line.credit ?? 0) - (line.debit ?? 0));
+            else if (cls === '5' || cls === '6' || cls === '7') expData[dayIdx] += ((line.debit ?? 0) - (line.credit ?? 0));
+          }
+        }
+      } else { // 6months
+        labels = [...monthsLabels];
+        revData = new Array(6).fill(0);
+        expData = new Array(6).fill(0);
+        
+        for (const line of lines) {
+          const ac = accountMap.get(line.account_id);
+          if (!ac) continue;
+          const cls = ac.code.charAt(0);
+          const dateStr = line.expand?.tx_id?.date || '';
+          if (!dateStr) continue;
+          
+          const yyyymm = dateStr.slice(0, 7);
+          const idx = months.indexOf(yyyymm);
+          if (idx !== -1) {
+            if (cls === '4') revData[idx] += ((line.credit ?? 0) - (line.debit ?? 0));
+            else if (cls === '5' || cls === '6' || cls === '7') expData[idx] += ((line.debit ?? 0) - (line.credit ?? 0));
+          }
+        }
+      }
+
       const revenueGradient = monthlyCtx.createLinearGradient(0, 0, 0, 250);
       revenueGradient.addColorStop(0, 'rgba(51, 199, 255, 0.22)');
       revenueGradient.addColorStop(1, 'rgba(51, 199, 255, 0.00)');
@@ -310,11 +421,11 @@ async function renderDashboard(c) {
       monthlyChart = new Chart(monthlyCtx, {
         type: 'line',
         data: {
-          labels: monthsLabels,
+          labels: labels,
           datasets: [
             {
               label: 'Ingresos',
-              data: monthlyRevenues,
+              data: revData,
               borderColor: '#33C7FF',
               backgroundColor: revenueGradient,
               fill: true,
@@ -328,7 +439,7 @@ async function renderDashboard(c) {
             },
             {
               label: 'Gastos y Costos',
-              data: monthlyExpenses,
+              data: expData,
               borderColor: '#7F7CFF',
               backgroundColor: expenseGradient,
               fill: true,
@@ -346,9 +457,7 @@ async function renderDashboard(c) {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: {
-              display: false,
-            },
+            legend: { display: false },
             tooltip: {
               mode: 'index',
               intersect: false,
@@ -360,11 +469,11 @@ async function renderDashboard(c) {
               titleFont: { family: 'Plus Jakarta Sans', weight: 'bold' },
               bodyFont: { family: 'Plus Jakarta Sans' },
               callbacks: {
-                label: function (context) {
+                label: function (context: any) {
                   let label = context.dataset.label || '';
                   if (label) label += ': ';
                   if (context.parsed.y !== null) {
-                    label += fmt(context.parsed.y);
+                    label += (window as any).fmt(context.parsed.y);
                   }
                   return label;
                 }
@@ -373,71 +482,62 @@ async function renderDashboard(c) {
           },
           scales: {
             x: {
-              grid: {
-                display: false,
-              },
-              ticks: {
-                color: '#61708F',
-                font: {
-                  family: 'Plus Jakarta Sans',
-                  size: 10,
-                }
-              }
+              grid: { display: false },
+              ticks: { color: '#61708F', font: { family: 'Plus Jakarta Sans', size: 10 } }
             },
             y: {
-              grid: {
-                color: 'rgba(220, 230, 248, 0.5)',
-              },
+              grid: { color: 'rgba(220, 230, 248, 0.5)' },
               ticks: {
                 color: '#61708F',
-                font: {
-                  family: 'Plus Jakarta Sans',
-                  size: 10,
-                },
+                font: { family: 'Plus Jakarta Sans', size: 10 },
                 callback: function(value) {
                   const valNum = Number(value);
-                  if (Math.abs(valNum) >= 1000000) {
-                    return '$' + (valNum / 1000000).toFixed(1) + 'M';
-                  }
-                  return '$' + fmtN(valNum);
+                  if (Math.abs(valNum) >= 1000000) return '$' + (valNum / 1000000).toFixed(1) + 'M';
+                  return '$' + (window as any).fmtN(valNum);
                 }
               }
             }
           }
         }
       });
-    }
+    };
 
-    // 2. Instanciar Gráfico de Dona de Gastos
-    const categoryLabels = Object.keys(expensesByCategory);
-    const categoryValues = Object.values(expensesByCategory);
+    renderFinanceChart('6months');
+    document.getElementById('finance-filter')?.addEventListener('change', (e: any) => {
+      renderFinanceChart(e.target.value);
+    });
 
-    const nonZeroCategories: string[] = [];
-    const nonZeroValues: number[] = [];
-    for (let i = 0; i < categoryLabels.length; i++) {
-      if (categoryValues[i] > 0) {
-        nonZeroCategories.push(categoryLabels[i]);
-        nonZeroValues.push(categoryValues[i]);
+    // 2. Instanciar Gráfico de Dona de Cartera por Edades
+    const agingLabels = ['Por Vencer', '0-30 días', '31-60 días', '61-90 días', 'Más de 90 días'];
+    const agingValues = [carteraPorVencer, cartera0_30, cartera31_60, cartera61_90, carteraMayor90];
+    const nonZeroAgingLabels: string[] = [];
+    const nonZeroAgingValues: number[] = [];
+    const agingPalette = ['#059669', '#D97706', '#EA580C', '#DC2626', '#991B1B'];
+    const nonZeroPalette: string[] = [];
+
+    for (let i = 0; i < agingValues.length; i++) {
+      if (agingValues[i] > 0.0001) {
+        nonZeroAgingLabels.push(agingLabels[i]);
+        nonZeroAgingValues.push(agingValues[i]);
+        nonZeroPalette.push(agingPalette[i]);
       }
     }
 
-    // Si no hay gastos registrados, mostrar gráfico vacío explicativo
-    if (nonZeroValues.length === 0) {
-      nonZeroCategories.push('Sin Gastos');
-      nonZeroValues.push(1);
+    if (nonZeroAgingValues.length === 0) {
+      nonZeroAgingLabels.push('Sin Cartera');
+      nonZeroAgingValues.push(1);
+      nonZeroPalette.push('#E5E7EB');
     }
 
-    const expensesCtx = (document.getElementById('chart-expenses-breakdown') as HTMLCanvasElement)?.getContext('2d');
-    if (expensesCtx) {
-      const palette = ['#7F7CFF', '#33C7FF', '#059669', '#F59E0B', '#EC4899', '#EF4444', '#9CA3AF'];
-
-      expensesChart = new Chart(expensesCtx, {
+    const agingCtx = (document.getElementById('chart-aging-breakdown') as HTMLCanvasElement)?.getContext('2d');
+    if (agingCtx) {
+      agingChart = new Chart(agingCtx, {
         type: 'doughnut',
         data: {
-          labels: nonZeroCategories,
+          labels: nonZeroAgingLabels,
           datasets: [{
-            data: nonZeroValues,
-            backgroundColor: nonZeroCategories[0] === 'Sin Gastos' ? ['#E5E7EB'] : palette.slice(0, nonZeroValues.length),
+            data: nonZeroAgingValues,
+            backgroundColor: nonZeroPalette,
             borderWidth: 2,
             borderColor: '#ffffff',
             hoverOffset: 8,
@@ -453,10 +553,7 @@ async function renderDashboard(c) {
                 boxWidth: 8,
                 padding: 10,
                 color: '#4B5563',
-                font: {
-                  family: 'Plus Jakarta Sans',
-                  size: 10,
-                }
+                font: { family: 'Plus Jakarta Sans', size: 10 }
               }
             },
             tooltip: {
@@ -469,12 +566,10 @@ async function renderDashboard(c) {
               bodyFont: { family: 'Plus Jakarta Sans' },
               callbacks: {
                 label: function (context) {
-                  if (nonZeroCategories[0] === 'Sin Gastos') {
-                    return 'Sin gastos registrados en el mes';
-                  }
+                  if (nonZeroAgingLabels[0] === 'Sin Cartera') return 'Sin cartera pendiente';
                   const label = context.label || '';
                   const val = context.parsed || 0;
-                  const total = nonZeroValues.reduce((a, b) => a + b, 0);
+                  const total = nonZeroAgingValues.reduce((a, b) => a + b, 0);
                   const pct = ((val / total) * 100).toFixed(1);
                   return ` ${label}: ${fmt(val)} (${pct}%)`;
                 }
@@ -484,6 +579,76 @@ async function renderDashboard(c) {
           cutout: '68%',
         }
       });
+    }
+
+    // 3. Instanciar Gráfico de Inventario
+    const invCtx = (document.getElementById('chart-inventory-categories') as HTMLCanvasElement)?.getContext('2d');
+    if (invCtx) {
+      const invLabels = Object.keys(invByCategory).sort((a, b) => invByCategory[b] - invByCategory[a]);
+      const invValues = invLabels.map(l => invByCategory[l]);
+      
+      const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16'];
+      const bgColors = invLabels.map((_, i) => palette[i % palette.length]);
+
+      if (invLabels.length > 0) {
+        inventoryChart = new Chart(invCtx, {
+          type: 'bar',
+          data: {
+            labels: invLabels,
+            datasets: [{
+              label: 'Valor Total',
+              data: invValues,
+              backgroundColor: bgColors,
+              borderRadius: 4,
+              barPercentage: 0.5,
+              categoryPercentage: 0.8
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: 'rgba(5, 8, 20, 0.9)',
+                titleColor: '#ffffff',
+                bodyColor: '#e2e8f0',
+                borderColor: 'rgba(255, 255, 255, 0.12)',
+                borderWidth: 1,
+                callbacks: {
+                  label: function(context) {
+                    return `Valor: ${fmt(context.parsed.y)}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { color: '#61708F', font: { family: 'Plus Jakarta Sans', size: 10 } }
+              },
+              y: {
+                grid: { color: 'rgba(220, 230, 248, 0.5)' },
+                ticks: {
+                  color: '#61708F',
+                  font: { family: 'Plus Jakarta Sans', size: 10 },
+                  callback: function(value) {
+                    const valNum = Number(value);
+                    if (Math.abs(valNum) >= 1000000) return '$' + (valNum / 1000000).toFixed(1) + 'M';
+                    return '$' + fmtN(valNum);
+                  }
+                }
+              }
+            }
+          }
+        });
+      } else {
+        inventoryChart = new Chart(invCtx, {
+          type: 'bar',
+          data: { labels: ['Sin Inventario'], datasets: [{ data: [0] }] },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }
     }
 
   } catch (err: any) {

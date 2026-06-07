@@ -103,8 +103,8 @@ function saveLineComment() {
   if (state && state.lines[lineIdx] !== undefined) {
     state.lines[lineIdx].description = val;
     closeLineComment();
-    if (ctx === 'edit' && typeof renderEditTxLines === 'function') renderEditTxLines(true); // Ítem 8: forzar repintado visual
-    else if (typeof renderTxLines === 'function') renderTxLines(true);
+    if (ctx === 'edit' && typeof (window as any).renderEditTxLines === 'function') (window as any).renderEditTxLines(true);
+    else if (typeof (window as any).renderTxLines === 'function') (window as any).renderTxLines(true);
   } else {
     closeLineComment();
   }

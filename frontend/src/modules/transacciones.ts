@@ -612,7 +612,7 @@ function updateTxLine(i, field, value) {
     } else {
       TX_STATE.lines[i].ret_rate = '';
     }
-    renderTxLines(true);
+    renderTxLines(value !== ''); // No repintar si el valor es vacío (el usuario está escribiendo)
   } else if (field === 'ret_base' || field === 'ret_rate') {
     // Update calculated display in-place — no full repaint needed
     const base = Number(TX_STATE.lines[i].ret_base || 0);
@@ -1897,7 +1897,7 @@ function updateEditTxLine(i, field, value) {
     } else {
       TX_EDIT_STATE.lines[i].ret_rate = '';
     }
-    renderEditTxLines(true);
+    renderEditTxLines(value !== ''); // No repintar si el valor es vacío (el usuario está escribiendo)
   } else if (field === 'ret_base' || field === 'ret_rate') {
     const base = Number(TX_EDIT_STATE.lines[i].ret_base || 0);
     const rate = Number(TX_EDIT_STATE.lines[i].ret_rate  || 0);

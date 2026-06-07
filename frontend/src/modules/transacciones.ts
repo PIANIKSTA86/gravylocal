@@ -198,6 +198,12 @@ function bindTxLineThirdSearches(mode = 'new') {
       onSelected: (id) => {
         if (isEdit) updateEditTxLine(i, 'third_party_id', id);
         else updateTxLine(i, 'third_party_id', id);
+        if (id) {
+          setTimeout(() => {
+            const debitInput = document.getElementById(isEdit ? `edit-tx-line-debit-${i}` : `tx-line-debit-${i}`);
+            debitInput?.focus();
+          }, 30);
+        }
       }
     });
   });
@@ -243,12 +249,21 @@ function initLineAccountSearchInput({ state, hidden, input, results, onSelected 
   input.onfocus = () => {
     paint(input.value);
     results.style.display = 'block';
+    input.select();
   };
   input.oninput = () => {
-    hidden.value = '';
+    if (hidden.value) {
+      hidden.value = '';
+      input.value = input.value.slice(-1); // Evitar que siga el texto autocompletado
+    }
     if (typeof onSelected === 'function') onSelected('');
     paint(input.value);
     results.style.display = 'block';
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Escape') {
+      results.style.display = 'none';
+    }
   };
   input.onblur = () => setTimeout(() => { results.style.display = 'none'; }, 120);
   results.onmousedown = (ev) => ev.preventDefault();
@@ -288,6 +303,12 @@ function bindTxLineAccountSearches(mode = 'new') {
       onSelected: (id) => {
         if (isEdit) updateEditTxLine(i, 'account_id', id);
         else updateTxLine(i, 'account_id', id);
+        if (id) {
+          setTimeout(() => {
+            const nextInputId = isEdit ? `edit-tx-line-third-${i}-search` : `tx-line-third-${i}-search`;
+            document.getElementById(nextInputId)?.focus();
+          }, 30);
+        }
       }
     });
   });
@@ -296,7 +317,8 @@ function bindTxLineAccountSearches(mode = 'new') {
 
 async function openNuevaTxModal() {
   if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
-  openModal('Nueva Transacción', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
+  (window as any).__txModalOpen = true;
+  openModal('Nueva Transacci\u00f3n', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
   try {
     const [accounts, txTypes, terceros] = await Promise.all([
       API.getAccounts(true),
@@ -326,6 +348,9 @@ async function openNuevaTxModal() {
             <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
               <i class="fas fa-file-invoice-dollar"></i> Cartera
             </button>
+            <button class="btn btn-outline btn-sm" id="btn-new-third-from-tx" title="Crear nuevo tercero" style="white-space:nowrap;border-color:#16A34A;color:#16A34A">
+              <i class="fas fa-user-plus"></i>
+            </button>
           </div>
         </div>
         <div class="form-group md:col-span-3"><label class="form-label">Descripci\u00f3n</label><input id="tx-desc" class="form-input" placeholder="Descripci\u00f3n del comprobante"></div>
@@ -341,7 +366,7 @@ async function openNuevaTxModal() {
       </div>`;
 
     const footer = `
-      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-outline" id="btn-close-tx-modal" onclick="_closeTxModal()">Cancelar</button>
       <button class="btn btn-outline" onclick="saveTransaction(false)" style="border-color:#D97706;color:#D97706"><i class="fas fa-file-pen"></i> Guardar Borrador</button>
       ${can('canApprove') ? `<button class="btn btn-primary" onclick="saveTransaction(true)"><i class="fas fa-check-circle"></i> Guardar y Aprobar</button>` : ''}`;
 
@@ -354,8 +379,9 @@ async function openNuevaTxModal() {
       addTxLine();
     }, 0);
   } catch (err) {
+    (window as any).__txModalOpen = false;
     openModal('Error al cargar', `<p class="p-4 text-sm" style="color:#EF4444">${esc(err.message)}</p>`,
-      '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>', false);
+      '<button class="btn btn-outline" onclick="_closeTxModal()">Cerrar</button>', false);
   }
 }
 
@@ -364,8 +390,61 @@ function bindNewTxModalEvents() {
   const addLineBtn = $('#btn-add-line');
   const thirdEl = $('#tx-third');
   const carteraBtn = $('#btn-cartera');
+  const btnNewThird = $('#btn-new-third-from-tx');
   if (typeEl) typeEl.onchange = refreshConsecutive;
-  if (addLineBtn) addLineBtn.onclick = () => addTxLine();
+  if (btnNewThird) {
+    btnNewThird.onclick = () => {
+      // Guardar estado visual del modal
+      const prevTitle  = $('#modal-title')?.innerHTML || '';
+      const prevBody   = $('#modal-body')?.innerHTML  || '';
+      const prevFooter = $('#modal-footer')?.innerHTML || '';
+      const isWide     = $('#modal-box')?.classList.contains('wide') || false;
+
+      // Valores del form para restaurarlos
+      const fType    = ($('#tx-type') as HTMLSelectElement)?.value || '';
+      const fNum     = ($('#tx-number') as HTMLInputElement)?.value || '';
+      const fDate    = ($('#tx-date') as HTMLInputElement)?.value || '';
+      const fDesc    = ($('#tx-desc') as HTMLInputElement)?.value || '';
+      const fPay     = ($('#tx-payment-days') as HTMLInputElement)?.value || '0';
+
+      const restoreTxModal = (newThird = null) => {
+        openModal(prevTitle, prevBody, prevFooter, isWide);
+        setTimeout(() => {
+          const nType = $('#tx-type') as HTMLSelectElement;
+          const nNum  = $('#tx-number') as HTMLInputElement;
+          const nDate = $('#tx-date') as HTMLInputElement;
+          const nThird = $('#tx-third') as HTMLInputElement;
+          const nThirdLabel = $('#tx-third-search') as HTMLInputElement;
+          const nDesc = $('#tx-desc') as HTMLInputElement;
+          const nPay  = $('#tx-payment-days') as HTMLInputElement;
+
+          if (nType) nType.value = fType;
+          if (nNum)  nNum.value = fNum;
+          if (nDate) nDate.value = fDate;
+          if (nDesc) nDesc.value = fDesc;
+          if (nPay)  nPay.value = fPay;
+          
+          if (nThird && newThird) {
+            nThird.value = newThird.id;
+            if (nThirdLabel) nThirdLabel.value = `${newThird.doc_number||''} - ${newThird.name||''}`;
+            const cBtn = $('#btn-cartera') as HTMLButtonElement;
+            if (cBtn) cBtn.disabled = false;
+          }
+          bindNewTxModalEvents();
+          (window as any).__txModalOpen = true;
+          renderTxLines(true); // Restaurar líneas contables en el dom visual
+        }, 30);
+      };
+
+      (window as any).openTerceroForm(null, async (newThird: any) => {
+        TX_STATE.terceros = await API.getTerceros({});
+        restoreTxModal(newThird);
+      }, () => {
+        restoreTxModal(null);
+      });
+    };
+  }
+  
   initThirdSearchInput({
     state: TX_STATE,
     hiddenId: 'tx-third',
@@ -378,10 +457,21 @@ function bindNewTxModalEvents() {
         const third = TX_STATE.terceros?.find(t => t.id === thirdId);
         payDaysInput.value = Number(third?.payment_days || 0);
       }
+      if (thirdId) $('#tx-desc')?.focus();
     }
   });
   if (thirdEl && carteraBtn) carteraBtn.disabled = !thirdEl.value;
   if (carteraBtn) carteraBtn.onclick = () => showCarteraModal(getSelectVal('tx-third'));
+
+  $('#tx-type')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-date')?.focus(); }});
+  $('#tx-date')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-third-search')?.focus(); }});
+  $('#tx-desc')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-payment-days')?.focus(); }});
+  $('#tx-payment-days')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-line-account-0-search')?.focus(); }});
+}
+
+function _closeTxModal() {
+  (window as any).__txModalOpen = false;
+  closeModal();
 }
 
 async function renderNuevaTx(c) {
@@ -634,8 +724,8 @@ function renderTxLines(repaint = true) {
           </div>
         </div>
 
-        <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
-        <input id="tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onkeydown="if(event.key==='Enter' || event.key==='Tab'){event.preventDefault(); document.getElementById('tx-line-credit-${i}')?.focus();}" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onkeydown="if(event.key==='Enter' || event.key==='Tab'){event.preventDefault(); document.getElementById('tx-line-account-${i+1}-search')?.focus();}" onblur="autoAppendTxLineFrom(${i})">
 
         <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
         <button class="btn btn-danger btn-sm" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
@@ -1035,7 +1125,7 @@ async function saveTransaction(approve = false) {
       third_party_id: l.third_party_id || thirdId || null,
       debit: Number(l.debit || 0),
       credit: Number(l.credit || 0),
-      description: l.description || txDesc,
+      description: l.description || '', // Ítem 8: No hacer fallback a txDesc. Si está vacío, es vacío.
       line_order: i + 1,
       cross_doc_ref: l.cross_doc_ref || '',
     })));
@@ -1629,6 +1719,7 @@ let TX_EDIT_STATE = {
 async function editTx(id) {
   if (!can('canWrite')) return showToast('No tienes permisos para modificar transacciones', 'error');
 
+  (window as any).__txModalOpen = true;  // Ítem 5: bloquear cierre
   openModal('<i class="fas fa-spinner fa-spin mr-2"></i>Verificando transacción...',
     '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
 
@@ -2008,11 +2099,11 @@ async function saveEditTx(txId) {
       third_party_id: l.third_party_id || thirdId || null,
       debit: Number(l.debit || 0),
       credit: Number(l.credit || 0),
-      description: l.description || txDesc,
+      description: l.description || '', // Ítem 8: sin fallback
       line_order: idx + 1,
       cross_doc_ref: l.cross_doc_ref || '',
     })));
-    closeModal();
+    _closeTxModal();
     showToast('Transacción modificada exitosamente', 'success');
     loadConsultaTxPage();
   } catch (err) {
@@ -2134,9 +2225,11 @@ async function printTxNotaContable(id) {
 <head>
   <meta charset="UTF-8">
   <title>Nota Contable ${esc(tx.number || '')}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #111; background: #fff; padding: 18mm 15mm 15mm 15mm; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #111; background: #fff; padding: 18mm 15mm 15mm 15mm; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #0D2137; padding-bottom: 8px; margin-bottom: 10px; }
     .company-block { flex: 1; }
     .company-name { font-size: 13pt; font-weight: bold; color: #0D2137; }

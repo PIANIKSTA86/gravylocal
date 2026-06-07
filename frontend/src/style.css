@@ -136,7 +136,7 @@
   .form-input:focus { outline: none; border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(100,225,255,.14); }
   .form-input::placeholder { color: #9CA3AF; }
   .form-input:read-only { background: #F8F9FB; cursor: default; }
-  select.form-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236B7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+  select.form-input { appearance: none; background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23000000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; background-size: 16px 16px; padding-right: 36px; cursor: pointer; }
 
   /* Modal */
   .modal-overlay { position: fixed; inset: 0; background: rgba(5,8,20,.56); backdrop-filter: blur(8px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 8px; }

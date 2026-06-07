@@ -68,6 +68,7 @@ function closeModal() {
   $('#modal-body').innerHTML = '';
   $('#modal-footer').innerHTML = '';
   (window as any).__salesModalOpen = false;
+  (window as any).__txModalOpen = false; // Ítem 5: limpiar bandera de modal de transacción
 }
 
 // ── Mini-overlay de comentario de línea (no reemplaza el modal padre) ────────
@@ -102,8 +103,8 @@ function saveLineComment() {
   if (state && state.lines[lineIdx] !== undefined) {
     state.lines[lineIdx].description = val;
     closeLineComment();
-    if (ctx === 'edit' && typeof renderEditTxLines === 'function') renderEditTxLines(false);
-    else if (typeof renderTxLines === 'function') renderTxLines(false);
+    if (ctx === 'edit' && typeof renderEditTxLines === 'function') renderEditTxLines(true); // Ítem 8: forzar repintado visual
+    else if (typeof renderTxLines === 'function') renderTxLines(true);
   } else {
     closeLineComment();
   }

@@ -182,7 +182,7 @@ function terceroFormHtml(row) {
       <div class="form-group">
         <label class="form-label">Número de Documento <span style="color:#EF4444">*</span></label>
         <input id="tpf-doc-number" class="form-input" value="${esc(row?.doc_number||'')}"
-          placeholder="Ej: 900123456" inputmode="numeric">
+          placeholder="Ej: 900123456" inputmode="numeric" pattern="[0-9]+" autocomplete="off">
       </div>
       <div class="form-group" id="tpf-dv-wrap" style="${row?.doc_type==='NIT'?'':'display:none'}">
         <label class="form-label">Dígito de Verificación (DV)
@@ -250,8 +250,13 @@ function terceroFormHtml(row) {
         </div>
         <div class="form-group">
           <label class="form-label">Asesor Comercial</label>
-          <input id="tpf-advisor" class="form-input" value="${esc(row?.advisor||'')}"
-            placeholder="Vendedor asignado">
+          <div id="tpf-advisor-wrap" class="relative">
+            <input id="tpf-advisor-search" class="form-input" autocomplete="off"
+              placeholder="Buscar vendedor por nombre o documento..."
+              value="${esc(row?.advisor_name || row?.advisor || '')}">
+            <input id="tpf-advisor" type="hidden" value="${esc(row?.advisor||'')}">
+            <div id="tpf-advisor-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Teléfono 1</label>
@@ -441,15 +446,17 @@ function _tpfUpdateCountry() {
   const isColombia  = countryCode === 'CO';
   const sec = $('#tpf-section-colombia');
   if (sec) sec.style.display = isColombia ? '' : 'none';
-  // Limpiar cascada si cambia a no-Colombia
-  if (!isColombia) {
-    setInputVal('tpf-dept-code',  '');
-    setInputVal('tpf-department', '');
-    const cityEl = $('#tpf-city-select');
-    if (cityEl) { cityEl.innerHTML = '<option value="">—</option>'; }
-    setInputVal('tpf-city-code', '');
-    setInputVal('tpf-city', '');
+  // Siempre limpiar la cascada al cambiar de país (incluye volver a Colombia)
+  const deptEl = $('#tpf-dept-select');
+  if (deptEl) deptEl.value = '';
+  setInputVal('tpf-dept-code',  '');
+  setInputVal('tpf-department', '');
+  const cityEl = $('#tpf-city-select');
+  if (cityEl) {
+    cityEl.innerHTML = '<option value="">— seleccione departamento primero —</option>';
   }
+  setInputVal('tpf-city-code', '');
+  setInputVal('tpf-city', '');
 }
 
 function _tpfUpdateDept() {
@@ -479,7 +486,21 @@ function _tpfBindEvents() {
   $$('input[name="tpf-person-type-r"]').forEach(r =>
     r.addEventListener('change', _tpfUpdatePersonType));
   $('#tpf-doc-type')?.addEventListener('change', _tpfUpdateDV);
-  $('#tpf-doc-number')?.addEventListener('input', _tpfUpdateDV);
+
+  // Ítem 2: Solo permitir dígitos en número de documento
+  const docNumEl = $('#tpf-doc-number');
+  if (docNumEl) {
+    docNumEl.addEventListener('input', () => {
+      const pos = (docNumEl as HTMLInputElement).selectionStart || 0;
+      const clean = (docNumEl as HTMLInputElement).value.replace(/[^0-9]/g, '');
+      if ((docNumEl as HTMLInputElement).value !== clean) {
+        (docNumEl as HTMLInputElement).value = clean;
+        (docNumEl as HTMLInputElement).setSelectionRange(pos - 1, pos - 1);
+      }
+      _tpfUpdateDV();
+    });
+  }
+
   $('#tpf-country')?.addEventListener('change', _tpfUpdateCountry);
   $('#tpf-dept-select')?.addEventListener('change', _tpfUpdateDept);
 
@@ -495,6 +516,77 @@ function _tpfBindEvents() {
     });
   });
   $('#tpf-city-select')?.addEventListener('change', _tpfUpdateCity);
+
+  // Ítem 1: Inicializar buscador de asesor comercial (vendedores)
+  _tpfBindAdvisorSearch();
+}
+
+function _tpfBindAdvisorSearch() {
+  const wrap    = $('#tpf-advisor-wrap');
+  const hidden  = $('#tpf-advisor') as HTMLInputElement;
+  const input   = $('#tpf-advisor-search') as HTMLInputElement;
+  const results = $('#tpf-advisor-results');
+  if (!wrap || !hidden || !input || !results) return;
+
+  // Obtener vendedores cacheados o cargarlos
+  const getVendedores = async () => {
+    if ((window as any)._tpfVendedoresCache) return (window as any)._tpfVendedoresCache;
+    try {
+      const list = await pb.listAll('third_parties', {
+        filter: 'type="VENDEDOR" && active=true',
+        sort: 'name',
+        fields: 'id,name,doc_number',
+      });
+      (window as any)._tpfVendedoresCache = list;
+      return list;
+    } catch (_) { return []; }
+  };
+
+  const paint = (list: any[], query: string) => {
+    const q = query.toLowerCase().trim();
+    const filtered = q
+      ? list.filter(v => `${v.doc_number||''} ${v.name||''}`.toLowerCase().includes(q)).slice(0, 20)
+      : list.slice(0, 20);
+    if (!filtered.length) {
+      results.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:#9CA3AF">Sin vendedores encontrados</div>';
+      return;
+    }
+    results.innerHTML = filtered.map(v => `
+      <button type="button" data-vid="${esc(v.id)}" class="w-full text-left px-3 py-2 text-sm"
+        style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">
+        <div style="font-weight:600">${esc(v.doc_number||'SIN DOC')}</div>
+        <div style="font-size:12px;color:#6B7280">${esc(v.name||'')}</div>
+      </button>`).join('');
+  };
+
+  const show = async () => {
+    const list = await getVendedores();
+    paint(list, input.value);
+    results.style.display = 'block';
+    input.select();
+  };
+  const hide = () => { results.style.display = 'none'; };
+
+  input.onfocus = () => show();
+  input.oninput = async () => {
+    hidden.value = '';
+    const list = await getVendedores();
+    paint(list, input.value);
+    results.style.display = 'block';
+  };
+  input.onblur = () => setTimeout(hide, 150);
+
+  results.addEventListener('mousedown', e => e.preventDefault());
+  results.addEventListener('click', async e => {
+    const btn = (e.target as HTMLElement).closest('[data-vid]') as HTMLElement;
+    if (!btn) return;
+    const vid = btn.getAttribute('data-vid') || '';
+    const list = await getVendedores();
+    const v = list.find((x: any) => x.id === vid);
+    hidden.value = vid;
+    input.value  = v ? `${v.doc_number||''} - ${v.name||''}` : '';
+    hide();
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -516,6 +608,10 @@ function terceroPayload() {
   const country    = getSelectVal('tpf-country') || 'CO';
   const isColombia = country === 'CO';
 
+  // Ítem 1: Leer id del asesor comercial desde el input oculto
+  const advisorId   = ($('#tpf-advisor') as HTMLInputElement)?.value || '';
+  const advisorName = ($('#tpf-advisor-search') as HTMLInputElement)?.value || '';
+
   return {
     person_type:     pt,
     type:            getSelectVal('tpf-type'),
@@ -528,7 +624,8 @@ function terceroPayload() {
     commercial_name: comName,
     name,
     contact_name:    getInputVal('tpf-contact-name'),
-    advisor:         getInputVal('tpf-advisor'),
+    advisor:         advisorId,          // id del vendedor seleccionado
+    advisor_name:    advisorName,        // nombre para display rápido
     phone:           getInputVal('tpf-phone'),
     phone2:          getInputVal('tpf-phone2'),
     email:           getInputVal('tpf-email'),
@@ -555,6 +652,11 @@ function _tpfValidate(p) {
     _tpfSwitchTab(0);
     showToast('Tipo y número de documento son obligatorios', 'warning'); return false;
   }
+  // Ítem 2: Validar que el número de documento solo tenga dígitos
+  if (!/^[0-9]+$/.test(p.doc_number)) {
+    _tpfSwitchTab(0);
+    showToast('El número de documento solo admite dígitos, sin espacios ni símbolos', 'warning'); return false;
+  }
   const isNatural = p.person_type === 'NATURAL';
   if (isNatural && (!p.first_name || !p.last_name)) {
     _tpfSwitchTab(1);
@@ -578,16 +680,20 @@ function _tpfValidate(p) {
 /* ═══════════════════════════════════════════════════════════
    ABRIR FORMULARIO
 ═══════════════════════════════════════════════════════════ */
-function openTerceroForm(row = null, onSaveSuccess = null) {
+function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
   if (!can('canWrite')) return showToast('No tienes permisos para gestionar terceros', 'error');
   openModal(
     row ? 'Editar Tercero' : 'Nuevo Tercero',
     terceroFormHtml(row),
-    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    `<button class="btn btn-outline" id="btn-cancel-tp">Cancelar</button>
      <button class="btn btn-primary" id="btn-save-tp"><i class="fas fa-floppy-disk"></i> Guardar</button>`,
     true
   );
   setTimeout(() => {
+    $('#btn-cancel-tp')?.addEventListener('click', () => {
+      closeModal();
+      if (onCancel) onCancel();
+    });
     _tpfBindEvents();
     _tpfUpdateDV();
     _tpfUpdatePersonType();

@@ -1,7 +1,42 @@
-﻿/**
+/**
  * GRAVY v2.0 — plan-cuentas.js
  */
 'use strict';
+
+/* ─────────────────────────────────────────────────────────────────
+ * resolveAccountMeta
+ * Calcula Nivel, Código Padre y account_type_id a partir del código
+ * ingresado, usando la estructura del PUC colombiano.
+ *
+ * Longitudes válidas: 1 (Clase), 2 (Grupo), 4 (Cuenta),
+ *                     6 (Subcuenta), 8 (Auxiliar), 10 (Sub-aux.)
+ * ─────────────────────────────────────────────────────────────────*/
+function resolveAccountMeta(code: string, allAccounts: any[], accTypes: any[]) {
+  const len = code.length;
+  const LEVEL_MAP: Record<number, number> = { 1: 1, 2: 2, 4: 3, 6: 4, 8: 5, 10: 6 };
+  const level = LEVEL_MAP[len] ?? null;
+
+  // Código padre: un nivel arriba según el PUC
+  let parentCode = '';
+  if (len === 2) parentCode = code.slice(0, 1);
+  else if (len > 2) parentCode = code.slice(0, len - 2);
+
+  // Tipo de cuenta: heredado desde la cuenta de Nivel 1 (primer dígito)
+  const rootCode = code[0] ?? '';
+  const rootAccount = allAccounts.find(a => a.code === rootCode);
+  const accountTypeId = rootAccount?.account_type_id ?? '';
+
+  // Descripción legible del tipo para el panel informativo
+  const typeObj = accTypes.find(t => t.id === accountTypeId);
+  const typeLabel = typeObj ? `${typeObj.code} - ${typeObj.name}` : (accountTypeId ? '(cargando...)' : '—');
+
+  return { level, parentCode, accountTypeId, typeLabel };
+}
+
+/* Valida si la longitud del código es una longitud PUC válida */
+function isValidPucLength(len: number) {
+  return [1, 2, 4, 6, 8, 10].includes(len);
+}
 
 async function renderPlanCuentas(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando plan de cuentas...</div>`;
@@ -14,13 +49,39 @@ async function renderPlanCuentas(c) {
     const rows = accounts.map(a => {
       const t = a.expand?.account_type_id;
       const badge = a.active ? '<span class="badge badge-green">Activa</span>' : '<span class="badge badge-gray">Inactiva</span>';
+
+      // Columna Req. Tercero
+      const reqTercero = a.requires_third_party
+        ? '<span class="badge badge-orange">Sí</span>'
+        : '<span style="color:#9CA3AF;font-size:13px">No</span>';
+
+      // Columna Cruce (CxP/CxC)
+      const cruce = a.maneja_cruce
+        ? '<span class="badge badge-blue">Sí</span>'
+        : '<span style="color:#9CA3AF;font-size:13px">No</span>';
+
+      // Columna Retenciones
+      let retLabel = '<span style="color:#9CA3AF;font-size:13px">No</span>';
+      if (a.maneja_retenciones) {
+        const tipos = (a.tipos_retencion || '').split(',').filter(Boolean);
+        const labels: Record<string, string> = {
+          reterenta: 'Renta',
+          reteiva:   'IVA',
+          reteica:   'ICA',
+        };
+        retLabel = tipos.length
+          ? tipos.map(t => `<span class="badge badge-orange" style="margin-right:2px">${labels[t] ?? t}</span>`).join('')
+          : '<span class="badge badge-orange">Sí</span>';
+      }
+
       return `
-      <tr data-code="${esc(a.code)}" data-name="${esc(a.name.toLowerCase())}">
+      <tr data-code="${esc(a.code)}" data-name="${esc(a.name.toLowerCase())}" data-type-id="${esc(a.account_type_id)}">
         <td><span class="font-semibold" style="color:#1A4B8C">${esc(a.code)}</span></td>
         <td>${esc(a.name)}</td>
         <td>${esc(t?.name ?? '?')}</td>
-        <td>${esc(a.parent_code || '?')}</td>
-        <td>${a.requires_third_party ? '<span class="badge badge-orange">Sí</span>' : 'No'}</td>
+        <td>${reqTercero}</td>
+        <td>${cruce}</td>
+        <td>${retLabel}</td>
         <td>${badge}</td>
         <td>
           <div class="flex gap-2">
@@ -63,10 +124,10 @@ async function renderPlanCuentas(c) {
           <table class="data-table" id="accounts-table">
             <thead>
               <tr>
-                 <th>Código</th><th>Nombre</th><th>Tipo</th><th>Código Padre</th><th>Req. Tercero</th><th>Estado</th><th>Acciones</th>
+                 <th>Código</th><th>Nombre</th><th>Tipo</th><th>Req. Tercero</th><th>Cruce</th><th>Retenciones</th><th>Estado</th><th>Acciones</th>
               </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay cuentas registradas.</td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="8" class="text-center py-10" style="color:#9CA3AF">No hay cuentas registradas.</td></tr>'}</tbody>
           </table>
         </div>
       </div>`;
@@ -76,46 +137,81 @@ async function renderPlanCuentas(c) {
       const type = getSelectVal('acct-type');
       const status = getSelectVal('acct-status');
       $$('#accounts-table tbody tr').forEach(tr => {
-        const rowCode = tr.children[0]?.textContent?.toLowerCase() || '';
-        const rowName = tr.children[1]?.textContent?.toLowerCase() || '';
-        const rowType = tr.children[2]?.textContent || '';
-        const isActive = (tr.children[5]?.textContent || '').includes('Activa');
-        const okQ = !q || rowCode.includes(q) || rowName.includes(q);
-        const okType = !type || rowType.includes($(`#acct-type option[value="${type}"]`)?.textContent?.split(' - ')[0] || '');
+        const rowCode   = tr.children[0]?.textContent?.toLowerCase() || '';
+        const rowName   = tr.children[1]?.textContent?.toLowerCase() || '';
+        const rowTypeId = (tr as HTMLElement).dataset.typeId || '';
+        // Estado está en columna índice 6 (0-based)
+        const isActive  = (tr.children[6]?.textContent || '').includes('Activa');
+        const okQ      = !q    || rowCode.includes(q) || rowName.includes(q);
+        const okType   = !type || rowTypeId === type;
         const okStatus = !status || (status === 'active' ? isActive : !isActive);
-        tr.style.display = okQ && okType && okStatus ? '' : 'none';
+        (tr as HTMLElement).style.display = okQ && okType && okStatus ? '' : 'none';
       });
     };
 
     $('#acct-q')?.addEventListener('input', debounce(doFilter, 200));
     $('#acct-type')?.addEventListener('change', doFilter);
     $('#acct-status')?.addEventListener('change', doFilter);
-    $('#btn-new-account')?.addEventListener('click', () => openAccountForm(accTypes));
+    $('#btn-new-account')?.addEventListener('click', () => openAccountForm(accounts, accTypes));
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
 
-async function openAccountForm(accTypes, row = null) {
+/* ─────────────────────────────────────────────────────────────────
+ * openAccountForm
+ * Modal simplificado: sin Tipo, Nivel ni Código Padre manuales.
+ * Esos campos se calculan automáticamente desde el código ingresado.
+ * ─────────────────────────────────────────────────────────────────*/
+async function openAccountForm(allAccounts: any[] | null, accTypes: any[] | null, row: any = null) {
   if (!can('canWrite')) return showToast('No tienes permisos para crear/editar cuentas', 'error');
-  if (!accTypes) accTypes = await pb.listAll('account_types', { sort: 'code' });
+  if (!accTypes)    accTypes    = await pb.listAll('account_types', { sort: 'code' });
+  if (!allAccounts) allAccounts = await API.getAccounts(false);
+
+  // Metadatos iniciales (si estamos editando una cuenta existente)
+  const initMeta = row
+    ? resolveAccountMeta(row.code || '', allAccounts, accTypes)
+    : { level: null, parentCode: '', typeLabel: '—' };
+
+  const metaPanelHtml = (meta: ReturnType<typeof resolveAccountMeta>, code: string) => {
+    if (!code) return `<p class="text-xs" style="color:#9CA3AF">Escribe un código para ver los metadatos calculados.</p>`;
+    if (!isValidPucLength(code.length)) {
+      return `<p class="text-xs" style="color:#D97706"><i class="fas fa-triangle-exclamation mr-1"></i>Longitud de código no estándar (PUC: 1, 2, 4, 6, 8 o 10 dígitos).</p>`;
+    }
+    return `
+      <div class="flex flex-wrap gap-3">
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#EEF4FF;color:#2446B8;font-size:12px;font-weight:700">
+          <i class="fas fa-layer-group" style="font-size:10px"></i> Nivel ${meta.level ?? '?'}
+        </span>
+        ${meta.parentCode ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#F0FFF4;color:#059669;font-size:12px;font-weight:700">
+          <i class="fas fa-sitemap" style="font-size:10px"></i> Padre: ${esc(meta.parentCode)}
+        </span>` : `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#F3F4F6;color:#6B7280;font-size:12px;font-weight:700">
+          <i class="fas fa-sitemap" style="font-size:10px"></i> Cuenta raíz (sin padre)
+        </span>`}
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#FFF7ED;color:#C2410C;font-size:12px;font-weight:700">
+          <i class="fas fa-tag" style="font-size:10px"></i> ${esc(meta.typeLabel)}
+        </span>
+      </div>`;
+  };
+
   openModal(
     row ? 'Editar Cuenta' : 'Nueva Cuenta',
     `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="form-group"><label class="form-label">Código</label><input id="ac-code" class="form-input" value="${esc(row?.code || '')}"></div>
-      <div class="form-group"><label class="form-label">Nombre</label><input id="ac-name" class="form-input" value="${esc(row?.name || '')}"></div>
-      <div class="form-group"><label class="form-label">Tipo de Cuenta</label>
-        <select id="ac-type" class="form-input">${accTypes.map(t => `<option value="${esc(t.id)}" ${row?.account_type_id === t.id ? 'selected' : ''}>${esc(t.code)} - ${esc(t.name)}</option>`).join('')}</select>
+      <div class="form-group">
+        <label class="form-label">Código</label>
+        <input id="ac-code" class="form-input" placeholder="Ej: 11200505" value="${esc(row?.code || '')}">
+        <div id="ac-meta-panel" style="margin-top:10px;padding:10px 14px;border-radius:10px;background:#F8F9FB;border:1px solid #E5E7EB;min-height:42px">
+          ${metaPanelHtml(initMeta, row?.code || '')}
+        </div>
       </div>
+      <div class="form-group"><label class="form-label">Nombre</label><input id="ac-name" class="form-input" value="${esc(row?.name || '')}"></div>
       <div class="form-group"><label class="form-label">Naturaleza</label>
         <select id="ac-nature" class="form-input">
            <option value="debit" ${row?.nature === 'debit' ? 'selected' : ''}>Débito</option>
            <option value="credit" ${row?.nature === 'credit' ? 'selected' : ''}>Crédito</option>
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Nivel</label><input id="ac-level" type="number" min="1" max="6" class="form-input" value="${esc(row?.level ?? 1)}"></div>
-      <div class="form-group"><label class="form-label">Código Padre</label><input id="ac-parent" class="form-input" value="${esc(row?.parent_code || '')}"></div>
       <div class="form-group"><label class="form-label">¿Requiere Tercero?</label><select id="ac-third" class="form-input"><option value="0" ${row?.requires_third_party ? '' : 'selected'}>No</option><option value="1" ${row?.requires_third_party ? 'selected' : ''}>Sí</option></select></div>
       <div class="form-group"><label class="form-label">Estado</label><select id="ac-active" class="form-input"><option value="1" ${row?.active !== false ? 'selected' : ''}>Activa</option><option value="0" ${row?.active === false ? 'selected' : ''}>Inactiva</option></select></div>
     </div>
@@ -165,6 +261,18 @@ async function openAccountForm(accTypes, row = null) {
      <button class="btn btn-primary" id="btn-save-account"><i class="fas fa-floppy-disk"></i> Guardar</button>`,
   );
 
+  // Actualizar el panel de metadatos en tiempo real al escribir el código
+  const codeInput = document.getElementById('ac-code') as HTMLInputElement | null;
+  const metaPanel = document.getElementById('ac-meta-panel');
+  if (codeInput && metaPanel) {
+    codeInput.addEventListener('input', () => {
+      const code = codeInput.value.trim();
+      if (!/^\d*$/.test(code)) return; // solo numérico
+      const meta = resolveAccountMeta(code, allAccounts, accTypes);
+      metaPanel.innerHTML = metaPanelHtml(meta, code);
+    });
+  }
+
   window.toggleRetTypes = () => {
     const checked = document.getElementById('ac-ret')?.checked;
     const wrap = document.getElementById('ret-types-wrap');
@@ -193,7 +301,7 @@ async function openAccountForm(accTypes, row = null) {
 
   $('#btn-save-account')?.addEventListener('click', async () => {
     const handlesRet = !!document.getElementById('ac-ret')?.checked;
-    const tiposArr = [];
+    const tiposArr: string[] = [];
     if (handlesRet) {
       if (document.getElementById('ac-reterenta')?.checked) tiposArr.push('reterenta');
       if (document.getElementById('ac-reteiva')?.checked)   tiposArr.push('reteiva');
@@ -204,13 +312,51 @@ async function openAccountForm(accTypes, row = null) {
     const rateIva   = parseFloat(getInputVal('ac-rate-reteiva'));
     const rateIca   = parseFloat(getInputVal('ac-rate-reteica'));
 
+    const code = getInputVal('ac-code').trim();
+
+    // Validaciones básicas
+    if (!code || !getInputVal('ac-name')) {
+      return showToast('Completa al menos el código y el nombre', 'warning');
+    }
+    if (!/^\d+$/.test(code)) {
+      return showToast('El código de cuenta debe ser numérico', 'warning');
+    }
+    if (!isValidPucLength(code.length)) {
+      return showToast('La longitud del código no corresponde a una estructura PUC válida (1, 2, 4, 6, 8 o 10 dígitos)', 'warning');
+    }
+
+    // Calcular metadatos automáticamente
+    const meta = resolveAccountMeta(code, allAccounts, accTypes);
+
+    if (!meta.accountTypeId) {
+      return showToast('No se pudo determinar el tipo de cuenta. Asegúrate de que exista la cuenta raíz (1 dígito) en el plan de cuentas.', 'warning');
+    }
+    if (meta.level === null) {
+      return showToast('La longitud del código no es válida para el PUC colombiano', 'warning');
+    }
+
+    if (handlesRet && !tiposArr.length) {
+      return showToast('Selecciona al menos un tipo de retención', 'warning');
+    }
+    if (handlesRet) {
+      if (tiposArr.includes('reterenta') && rateRenta <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reterenta', 'warning');
+      }
+      if (tiposArr.includes('reteiva') && rateIva <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reteiva', 'warning');
+      }
+      if (tiposArr.includes('reteica') && rateIca <= 0) {
+        return showToast('Ingresa un porcentaje válido para Reteica', 'warning');
+      }
+    }
+
     const payload = {
-      code: getInputVal('ac-code'),
+      code,
       name: getInputVal('ac-name'),
-      account_type_id: getSelectVal('ac-type'),
+      account_type_id: meta.accountTypeId,
       nature: getSelectVal('ac-nature'),
-      level: Number(getInputVal('ac-level') || 1),
-      parent_code: getInputVal('ac-parent'),
+      level: meta.level,
+      parent_code: meta.parentCode,
       requires_third_party: getSelectVal('ac-third') === '1',
       active: getSelectVal('ac-active') === '1',
       maneja_cruce: !!document.getElementById('ac-cruce')?.checked,
@@ -220,41 +366,13 @@ async function openAccountForm(accTypes, row = null) {
       ret_rate_reteiva: Number.isFinite(rateIva) ? rateIva : 0,
       ret_rate_reteica: Number.isFinite(rateIca) ? rateIca : 0,
     };
-    if (!payload.code || !payload.name || !payload.account_type_id) {
-      return showToast('Completa código, nombre y tipo de cuenta', 'warning');
-    }
-    if (!/^\d+$/.test(payload.code)) {
-      return showToast('El código de cuenta debe ser numérico', 'warning');
-    }
-    if (payload.parent_code && !/^\d+$/.test(payload.parent_code)) {
-      return showToast('El código padre debe ser numérico', 'warning');
-    }
-    if (payload.parent_code && payload.parent_code === payload.code) {
-      return showToast('Una cuenta no puede ser su propia cuenta padre', 'warning');
-    }
-    if (handlesRet && !tiposArr.length) {
-      return showToast('Selecciona al menos un tipo de retención', 'warning');
-    }
-    if (handlesRet) {
-      if (tiposArr.includes('reterenta') && payload.ret_rate_reterenta <= 0) {
-        return showToast('Ingresa un porcentaje válido para Reterenta', 'warning');
-      }
-      if (tiposArr.includes('reteiva') && payload.ret_rate_reteiva <= 0) {
-        return showToast('Ingresa un porcentaje válido para Reteiva', 'warning');
-      }
-      if (tiposArr.includes('reteica') && payload.ret_rate_reteica <= 0) {
-        return showToast('Ingresa un porcentaje válido para Reteica', 'warning');
-      }
-    }
 
     try {
-      // Validaciones de jerarquía
-      if (payload.parent_code) {
-        const parent = await pb.list('accounts', { filter: `code="${payload.parent_code}"`, perPage: 1 });
-         if (!parent.items.length) return showToast('El código padre no existe', 'error');
-        const parentAcc = parent.items[0];
-        if (Number(parentAcc.level || 1) >= Number(payload.level || 1)) {
-          return showToast('El nivel de la cuenta hija debe ser mayor al nivel de la cuenta padre', 'warning');
+      // Validar que el código padre exista (si no es cuenta raíz)
+      if (meta.parentCode) {
+        const parent = await pb.list('accounts', { filter: `code="${meta.parentCode}"`, perPage: 1 });
+        if (!parent.items.length) {
+          return showToast(`El código padre calculado (${meta.parentCode}) no existe en el plan de cuentas. Crea primero la cuenta padre.`, 'error');
         }
       }
 
@@ -276,11 +394,12 @@ async function openAccountForm(accTypes, row = null) {
 
 async function editAccount(id) {
   try {
-    const [row, accTypes] = await Promise.all([
+    const [row, accTypes, allAccounts] = await Promise.all([
       pb.get('accounts', id),
       pb.listAll('account_types', { sort: 'code' }),
+      API.getAccounts(false),
     ]);
-    openAccountForm(accTypes, row);
+    openAccountForm(allAccounts, accTypes, row);
   } catch (err) {
     showToast(err.message, 'error');
   }

@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('#modal-overlay')?.addEventListener('click', e => {
     if (e.target === $('#modal-overlay') && modalBackdropPointerDown) {
       if ((window as any).__salesModalOpen) return;
+      if ((window as any).__txModalOpen) return; // Ítem 5: no cerrar modal de transacción
       closeModal();
     }
     modalBackdropPointerDown = false;

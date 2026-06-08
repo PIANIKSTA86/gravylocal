@@ -474,6 +474,118 @@ function _closeTxModal() {
   closeModal();
 }
 
+(window as any).openAjusteModal = async function openAjusteModal(originalTxId, tipoAjuste = 'NC') {
+  if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
+  (window as any).__txModalOpen = true;
+  openModal('Generar Ajuste / Nota', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos originales...</div>', '', true);
+
+  try {
+    const [originalTx, originalLines, accounts, txTypes, terceros] = await Promise.all([
+      pb.get('transactions', originalTxId, { expand: 'tx_type_id' }),
+      API.getTxLines(originalTxId),
+      API.getAccounts(true),
+      API.getTxTypes(),
+      API.getTerceros({})
+    ]);
+
+    const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
+    const postableAccountIds = new Set(accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id));
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+
+    const targetType = txTypes.find(t => t.code === tipoAjuste);
+    if (!targetType) throw new Error(`No se encontró un tipo de transacción con código ${tipoAjuste} en tu configuración.`);
+
+    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: true };
+    
+    // Invertir saldos por defecto si es Nota Crédito (para revertir la cuenta por cobrar/ingreso)
+    const isInvert = (tipoAjuste === 'NC');
+    
+    TX_STATE.lines = originalLines.map(l => ({
+      account_id: l.account_id,
+      third_party_id: l.third_party_id || originalTx.third_party_id || '',
+      debit: isInvert ? Number(l.credit || 0) : Number(l.debit || 0),
+      credit: isInvert ? Number(l.debit || 0) : Number(l.credit || 0),
+      description: l.description || '',
+      cross_doc_ref: originalTx.number || originalTx.id, // Se cruza con el documento original
+      ret_base: '',
+      ret_rate: ''
+    }));
+
+    const conceptSelector = `
+      <div class="form-group md:col-span-4" style="background:#FEF2F2; padding:12px; border-radius:8px; border:1px solid #FECACA">
+        <label class="form-label" style="color:#991B1B"><i class="fas fa-asterisk"></i> Concepto de Corrección DIAN</label>
+        <select id="tx-dian-concept" class="form-input" style="border-color:#FCA5A5">
+          <option value="">-- Selecciona el motivo de ajuste --</option>
+          <option value="1">1 - Devolución de parte de los bienes</option>
+          <option value="2">2 - Anulación de factura electrónica</option>
+          <option value="3">3 - Rebaja total aplicada</option>
+          <option value="4">4 - Descuento total aplicado</option>
+          <option value="5">5 - Rescisión: nulidad por falta de requisitos</option>
+          <option value="6">6 - Otros (Especificar en descripción)</option>
+        </select>
+      </div>
+    `;
+
+    const body = `
+      <div class="p-3 mb-4 rounded bg-blue-50 text-blue-800 text-sm border border-blue-200 flex items-center">
+        <i class="fas fa-info-circle mr-2 text-lg"></i> 
+        <div>Generando Ajuste (<strong>${tipoAjuste}</strong>) clonado a partir del documento <strong>${originalTx.number || originalTx.id}</strong>.</div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border-b" style="border-color:#F3F4F6">
+        <div class="form-group"><label class="form-label">Tipo / Serie</label>
+          <select id="tx-type" class="form-input" disabled><option value="${targetType.id}">${targetType.prefix} - ${targetType.name}</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Consecutivo</label><input id="tx-number" class="form-input" readonly placeholder="Auto"></div>
+        <div class="form-group"><label class="form-label">Fecha</label><input id="tx-date" type="date" class="form-input" value="${todayStr()}"></div>
+        <div class="form-group">
+          <label class="form-label">Tercero</label>
+          <div class="flex gap-2">
+            <div id="tx-third-search-wrap" class="relative" style="flex:1">
+              <input id="tx-third-search" class="form-input" autocomplete="off" placeholder="Buscar tercero...">
+              <input id="tx-third" type="hidden" value="${originalTx.third_party_id || ''}">
+              <div id="tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group md:col-span-4"><label class="form-label">Descripción</label><input id="tx-desc" class="form-input" value="Ajuste a documento ${originalTx.number}"></div>
+        ${conceptSelector}
+      </div>
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h4 class="font-bold text-sm" style="color:#0D2137">Líneas contables</h4>
+          <button class="btn btn-outline btn-sm" id="btn-add-line"><i class="fas fa-plus"></i> Agregar línea</button>
+        </div>
+        <div id="tx-lines"></div>
+        <div id="tx-balance" class="balance-indicator balance-err mt-3"><i class="fas fa-triangle-exclamation"></i> Descuadrada</div>
+      </div>`;
+
+    const footer = `
+      <button class="btn btn-outline" id="btn-close-tx-modal" onclick="_closeTxModal()">Cancelar</button>
+      <button class="btn btn-outline" onclick="saveTransaction(false)" style="border-color:#D97706;color:#D97706"><i class="fas fa-file-pen"></i> Guardar Borrador</button>
+      ${can('canApprove') ? `<button class="btn btn-primary" onclick="saveTransaction(true)"><i class="fas fa-check-circle"></i> Guardar y Aprobar</button>` : ''}`;
+
+    openModal('Generar Ajuste / Nota', body, footer, true);
+
+    setTimeout(async () => {
+      bindNewTxModalEvents();
+      // Set consecutive for the target type
+      setInputVal('tx-number', `${targetType.prefix}-${String((targetType.consecutive ?? 0) + 1).padStart(8, '0')}`);
+      
+      renderTxLines(true);
+      
+      const hidden = document.getElementById('tx-third') as HTMLInputElement;
+      if (hidden && hidden.value) {
+        const t = terceros.find(x => x.id === hidden.value);
+        if (t) (document.getElementById('tx-third-search') as HTMLInputElement).value = `${t.doc_number || ''} - ${t.name || ''}`.trim();
+      }
+    }, 0);
+
+  } catch (err) {
+    (window as any).__txModalOpen = false;
+    openModal('Error al cargar', `<p class="p-4 text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="_closeTxModal()">Cerrar</button>', false);
+  }
+}
+
 async function renderNuevaTx(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando datos...</div>`;
   try {
@@ -1074,9 +1186,18 @@ async function saveTransaction(approve = false) {
   try {
     const txTypeId = getSelectVal('tx-type');
     const txDate = getInputVal('tx-date');
-    const txDesc = getInputVal('tx-desc');
+    let txDesc = getInputVal('tx-desc');
     const thirdId = getSelectVal('tx-third');
     const validLines = TX_STATE.lines.filter(l => l.account_id && (Number(l.debit) > 0 || Number(l.credit) > 0));
+
+    // Validar concepto DIAN si estamos en modo Ajuste
+    const conceptEl = $('#tx-dian-concept') as HTMLSelectElement;
+    if (conceptEl && !conceptEl.value) {
+      return showToast('Por favor, selecciona un Concepto de Corrección DIAN válido', 'warning');
+    }
+    if (conceptEl && conceptEl.value) {
+      txDesc = `[Ajuste DIAN: ${conceptEl.value}] ${txDesc}`;
+    }
 
     if (!txTypeId || !txDate) return showToast('Completa tipo y fecha', 'warning');
     if (!txDesc) return showToast('La descripción es obligatoria', 'warning');

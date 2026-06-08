@@ -1331,6 +1331,11 @@ const API = {
     if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
     if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
+    const txTypeCode = String(inv.expand?.tx_type_id?.code || '').toUpperCase();
+    const txTypeName = String(inv.expand?.tx_type_id?.name || '').toUpperCase();
+    const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÉDITO') || txTypeName.includes('CREDITO');
+    const docLabel = isCreditNote ? 'Nota Crédito' : (inv.pos_shift_id ? 'Venta POS' : 'Venta');
+
     const lines = await this.getInvoiceLines(invoiceId);
     if (!lines.length) throw new Error('La factura no tiene líneas.');
 
@@ -1384,7 +1389,7 @@ const API = {
               product_id: comp.component_id,
               qty: compQty,
               unit_cost: avgCost,
-              notes: line.description || `Componente Combo: ${prod.name} (Venta ${inv.number})`,
+              notes: line.description || `Componente Combo: ${prod.name} (${docLabel} ${inv.number})`,
             });
           }
         } else {
@@ -1393,7 +1398,7 @@ const API = {
           }
           const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
           const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
-          if (!allowNegative && qtyOnHand + 0.0001 < line.qty) {
+          if (!isCreditNote && !allowNegative && qtyOnHand + 0.0001 < line.qty) {
             throw new Error(`Existencias insuficientes para el producto "${prod.name}" en la bodega seleccionada. Solicitado: ${fmtN(line.qty)}, Disponible: ${fmtN(qtyOnHand)}.`);
           }
           const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
@@ -1401,7 +1406,7 @@ const API = {
             product_id: line.product_id,
             qty: line.qty,
             unit_cost: avgCost,
-            notes: line.description || `Venta ${inv.number}`,
+            notes: line.description || `${docLabel} ${inv.number}`,
           });
         }
       }
@@ -1581,7 +1586,7 @@ const API = {
             thirdPartyId: inv.customer_id,
             debit: amount,
             credit: 0,
-            description: `Venta ${inv.number} Pago mixto - ${method}`,
+            description: `${docLabel} ${inv.number} Pago mixto - ${method}`,
             crossDocRef: inv.number,
           }));
         }
@@ -1593,7 +1598,7 @@ const API = {
         thirdPartyId: inv.customer_id,
         debit: inv.payable_total,
         credit: 0,
-        description: `Venta ${inv.number} ${inv.payment_method}`,
+        description: `${docLabel} ${inv.number} ${inv.payment_method}`,
         crossDocRef: inv.number,
       }));
     }
@@ -1844,6 +1849,15 @@ const API = {
       }
     }
 
+    // Invertir naturaleza contable si es Nota Crédito
+    if (isCreditNote) {
+      for (const ln of txLines) {
+        const temp = ln.debit;
+        ln.debit = ln.credit;
+        ln.credit = temp;
+      }
+    }
+
     // ── Crear Transacción Contable ─────────────────────────────────────
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     if (!effectiveTxTypeId) {
@@ -1887,26 +1901,28 @@ const API = {
         tx_type_id: effectiveTxTypeId,
         number: txNumber,
         date: inv.date,
-        description: `Factura Venta ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
+        description: `${docLabel} ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
         third_party_id: inv.customer_id,
         payment_days: 0,
         cross_enabled: false,
         status: immediatePosting ? 'active' : 'draft',
       }, txLines);
 
-      // ── Movimiento de Inventario de Salida ─────────────────────────────
+      // ── Movimiento de Inventario ─────────────────────────────
       let invMovId = null;
       if (movLines.length && inv.warehouse_id) {
         const today = inv.date || new Date().toISOString().slice(0, 10);
         const rand = String(Date.now()).slice(-4);
-        const movNumber = `SAL-${today.replaceAll('-', '')}-${rand}`;
+        const movType = isCreditNote ? 'ENTRADA' : 'SALIDA';
+        const movPrefix = isCreditNote ? 'ENT' : 'SAL';
+        const movNumber = `${movPrefix}-${today.replaceAll('-', '')}-${rand}`;
         movCreated = await pb.create('inventory_movements', {
           number: movNumber,
-          mov_type: 'SALIDA',
+          mov_type: movType,
           date: inv.date,
           warehouse_id: inv.warehouse_id,
           third_party_id: inv.customer_id,
-          notes: `Venta ${inv.number}`,
+          notes: `${docLabel} ${inv.number}`,
           status: 'draft',
           tx_id: txCreated.id,
         });

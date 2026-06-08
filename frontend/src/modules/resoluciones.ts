@@ -30,6 +30,8 @@ interface PosRegister {
 
 const DOC_TYPES = [
   { value: 'FV',  label: 'Factura Electrónica de Venta (FV)' },
+  { value: 'NC',  label: 'Nota Crédito Electrónica (NC)' },
+  { value: 'ND',  label: 'Nota Débito Electrónica (ND)' },
   { value: 'POS', label: 'Documento Equivalente POS (POS)' },
   { value: 'DS',  label: 'Documento Soporte (DS)' },
   { value: 'NE',  label: 'Nómina Electrónica (NE)' }

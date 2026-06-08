@@ -10,9 +10,31 @@ onRecordCreateRequest((e) => {
 
   let docType = "FV"; // Por defecto Factura de Venta
   const posShiftId = record.getString("pos_shift_id");
-  if (posShiftId) {
+  const txTypeId = record.getString("tx_type_id");
+
+  if (txTypeId) {
+    try {
+      const txType = $app.findRecordById("transaction_types", txTypeId);
+      const code = (txType.getString("code") || "").toUpperCase().trim();
+      const prefix = (txType.getString("prefix") || "").toUpperCase().trim();
+      const name = (txType.getString("name") || "").toUpperCase();
+      
+      if (code === "NC" || prefix === "NC" || name.includes("CRÉDITO") || name.includes("CREDITO")) {
+        docType = "NC";
+      } else if (code === "ND" || prefix === "ND" || name.includes("DÉBITO") || name.includes("DEBITO")) {
+        docType = "ND";
+      }
+    } catch (err) {
+      console.log("[GRAVY-HOOK] Error looking up txType:", err);
+    }
+  }
+
+  // Si no se detectó como Nota y tiene turno POS, entonces es POS
+  if (docType === "FV" && posShiftId) {
     docType = "POS";
   }
+
+  console.log("[GRAVY-HOOK] Creating invoice. Final docType:", docType);
 
   // Determinar filtro inicial de resolución activa
   let filter = "active = true && document_type = '" + docType + "'";
@@ -99,7 +121,11 @@ onRecordCreateRequest((e) => {
     if (count === 0) {
       const today = new Date().toISOString().slice(0, 10).replaceAll("-", "");
       const rand = String(Date.now()).slice(-4);
-      record.set("number", (docType === "POS" ? "POS" : "FV") + "-" + today + "-" + rand);
+      let fbPrefix = "FV";
+      if (docType === "POS") fbPrefix = "POS";
+      if (docType === "NC") fbPrefix = "NC";
+      if (docType === "ND") fbPrefix = "ND";
+      record.set("number", fbPrefix + "-" + today + "-" + rand);
     } else {
       throw new Error("Error de Numeración DIAN: " + err.message);
     }

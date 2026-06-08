@@ -510,6 +510,7 @@ function renderSoRow(inv: any) {
             <button class="btn btn-danger btn-sm" title="Eliminar Borrador" onclick="window.deleteSalesInvoiceDraft('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-trash"></i></button>
           ` : ''}
           ${inv.status === 'posted' ? `
+            <button class="btn btn-outline btn-sm" title="Generar Ajuste / Nota DIAN" style="border-color:#8B5CF6;color:#8B5CF6" onclick="window.openSalesNotePreModal('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-file-invoice-dollar"></i></button>
             <button class="btn btn-danger btn-sm" title="Anular Factura" onclick="window.voidSalesInvoiceDirect('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-ban"></i></button>
             ${inv.tx_id ? `<button class="btn btn-outline btn-sm text-purple-600" style="border-color:#7C3AED;color:#7C3AED" title="Ver comprobante" onclick="window.seeSalesTxDetail('${(window as any).esc(inv.tx_id)}')"><i class="fas fa-book-open"></i></button>` : ''}
           ` : ''}
@@ -543,8 +544,76 @@ function filterSoTable() {
   });
 }
 
+(window as any).openSalesNotePreModal = async (invoiceId: string, invoiceNum: string) => {
+  let inv: any;
+  try {
+    inv = await (window as any).pb.get('invoices', invoiceId);
+  } catch (err) {
+    return (window as any).showToast('No se pudo cargar la factura', 'error');
+  }
+
+  if (!inv.tx_id) {
+    return (window as any).showToast('La factura no está contabilizada. Genera el comprobante primero.', 'warning');
+  }
+
+  const html = `
+    <div class="space-y-4 text-sm" style="color:#374151">
+      <div class="p-3 rounded bg-purple-50 text-purple-800 text-sm border border-purple-200">
+        <i class="fas fa-info-circle mr-1"></i> Generar ajuste / nota para la factura <strong>${(window as any).esc(invoiceNum)}</strong>.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de Documento</label>
+        <select id="pre-note-type" class="form-input" onchange="window.updatePreNoteResolutions(this.value)">
+          <option value="NC">Nota Crédito (Devolución / Rebaja)</option>
+          <option value="ND">Nota Débito (Ajuste al alza)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Prefijo / Resolución DIAN</label>
+        <select id="pre-note-resolution" class="form-input">
+          <option value="">Cargando resoluciones...</option>
+        </select>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="window.closeModal()">Cancelar</button>
+    <button class="btn btn-primary" onclick="window.continueToNoteForm('${(window as any).esc(inv.tx_id)}')">Continuar <i class="fas fa-arrow-right ml-1"></i></button>
+  `;
+
+  (window as any).openModal('Asistente de Ajustes (Notas)', html, footer, false);
+
+  (window as any).updatePreNoteResolutions = async (type: string) => {
+    const sel = document.getElementById('pre-note-resolution') as HTMLSelectElement;
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Cargando...</option>';
+    try {
+      const resolutions = await (window as any).pb.listAll('dian_resolutions', { filter: `active=true && document_type="${type}"` }).catch(() => []);
+      if (resolutions.length) {
+        sel.innerHTML = resolutions.map((r: any) => `<option value="${r.id}">${r.prefix || ''} - ${r.resolution_number ? 'Res. ' + r.resolution_number : 'Interna'}</option>`).join('');
+      } else {
+        sel.innerHTML = '<option value="">Generación Automática (Según prefijo del tipo contable)</option>';
+      }
+    } catch {
+      sel.innerHTML = '<option value="">Generación Automática</option>';
+    }
+  };
+
+  (window as any).updatePreNoteResolutions('NC');
+
+  (window as any).continueToNoteForm = async (txId: string) => {
+    const type = (document.getElementById('pre-note-type') as HTMLSelectElement)?.value || 'NC';
+    const resId = (document.getElementById('pre-note-resolution') as HTMLSelectElement)?.value || '';
+    (window as any).closeModal();
+
+    // Ahora pasamos la orden de clonar la factura a nivel comercial (productos) en lugar de transaccional
+    window.openSalesForm(null, () => _loadVentasPage(document.getElementById('content-area') as HTMLElement), null, { originalInvoiceId: invoiceId, type, resolutionId: resId, originalInvoiceNum: invoiceNum });
+  };
+};
+
 // --- Formulario Reactivo de Creación / Edición ---
-async function openSalesForm(invoiceId: string | null = null, onDone: any = null, preloadedOrderId: string | null = null) {
+async function openSalesForm(invoiceId: string | null = null, onDone: any = null, preloadedOrderId: string | null = null, noteConfig: any = null) {
   let inv: any = null, existingLines: any[] = [];
   
   const [soConfig, customers, warehouses, products, txTypes] = await Promise.all([
@@ -554,6 +623,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     (window as any).API.getProducts({ activeOnly: true }),
     (window as any).pb.listAll('transaction_types', { filter: 'active=true', sort: 'name' }),
   ]);
+
+  (window as any).__soTxTypesCache = txTypes;
 
   const sellers = customers.filter((c: any) => c.type === 'VENDEDOR');
 
@@ -588,16 +659,66 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       console.error("Error precargando pedido:", err);
       (window as any).showToast("Error al precargar datos del pedido: " + err.message, "error");
     }
+  } else if (noteConfig) {
+    try {
+      const originalInvoice = await (window as any).pb.get('invoices', noteConfig.originalInvoiceId);
+      const lines = await (window as any).API.getInvoiceLines(noteConfig.originalInvoiceId);
+      
+      inv = {
+        customer_id: originalInvoice.customer_id,
+        warehouse_id: originalInvoice.warehouse_id,
+        seller_id: originalInvoice.seller_id,
+        notes: `Ajuste a documento ${noteConfig.originalInvoiceNum}`,
+        date: (window as any).todayStr(),
+        payment_method: originalInvoice.payment_method,
+        tx_type_id: txTypes.find((t: any) => t.code === noteConfig.type)?.id || '',
+        dian_resolution_id: noteConfig.resolutionId || null,
+        cross_doc_ref: noteConfig.originalInvoiceNum
+      };
+      
+      // Cargamos exactamente las líneas originales. El usuario bajará cantidades según corresponda la devolución.
+      existingLines = lines.map((l: any) => ({
+        product_id: l.product_id,
+        qty: l.qty,
+        unit_price: l.unit_price,
+        iva_rate: l.iva_rate,
+        iva_amount: l.iva_amount,
+        subtotal: l.subtotal,
+        total: l.total
+      }));
+    } catch (err: any) {
+      console.error("Error precargando nota:", err);
+      (window as any).showToast("Error al precargar la factura base: " + err.message, "error");
+    }
   }
 
   let lineCounter = 0;
   const billDate = inv?.date || (window as any).todayStr();
   const defaultDueDate = inv?.due_date || (window as any).addDaysToDateStr(billDate, soConfig.operational.default_due_days || 0);
 
-  // Filtrar tipos de transacción de tipo Ventas (ej: FV, POS)
-  const salesTypes = txTypes.filter((t: any) => t.prefix === 'FV' || t.code === 'FV' || t.name.toLowerCase().includes('venta'));
-  const txTypeOptions = (salesTypes.length ? salesTypes : txTypes)
-    .map((t: any) => `<option value="${(window as any).esc(t.id)}"${(inv?.tx_type_id === t.id || (!inv && t.prefix === 'FV')) ? ' selected' : ''}>${(window as any).esc(t.prefix)} — ${(window as any).esc(t.name)}</option>`)
+  let allowedTxTypes = txTypes.filter((t: any) => t.prefix === 'FV' || t.code === 'FV' || t.name.toLowerCase().includes('venta'));
+  if (noteConfig) {
+    const searchType = String(noteConfig.type || '').trim().toUpperCase();
+    let noteTypeObj = txTypes.find((t: any) => 
+      String(t.code || '').trim().toUpperCase() === searchType || 
+      String(t.prefix || '').trim().toUpperCase() === searchType
+    );
+    if (!noteTypeObj) {
+      const fallbackName = searchType === 'NC' ? 'crédito' : 'débito';
+      noteTypeObj = txTypes.find((t: any) => String(t.name || '').toLowerCase().includes(fallbackName));
+    }
+    
+    if (noteTypeObj) {
+      allowedTxTypes = [noteTypeObj];
+      if (!inv) inv = {};
+      inv.tx_type_id = noteTypeObj.id; // Force selected
+    } else {
+      (window as any).showToast(`Advertencia: No se encontró un tipo de comprobante para ${noteConfig.type} en la base de datos.`, 'warning');
+    }
+  }
+
+  const txTypeOptions = (allowedTxTypes.length ? allowedTxTypes : txTypes)
+    .map((t: any) => `<option value="${(window as any).esc(t.id)}"${(inv?.tx_type_id === t.id || (!inv && !noteConfig && t.prefix === 'FV')) ? ' selected' : ''}>${(window as any).esc(t.prefix)} — ${(window as any).esc(t.name)}</option>`)
     .join('');
 
   const withholdingRules = (soConfig?.accounting?.withholding_rules || [])
@@ -629,6 +750,22 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     <div class="space-y-4 text-sm" style="color:#374151">
 
       <!-- ══ HEADER COMPACTO ══ -->
+      ${noteConfig ? `
+      <div class="rounded-xl p-3 mb-2 flex items-center gap-3" style="background:#FEF2F2;border:1px solid #FECACA">
+        <i class="fas fa-file-invoice-dollar text-2xl" style="color:#991B1B"></i>
+        <div class="flex-1">
+          <label class="so-hdr-label" style="color:#991B1B">Concepto de Corrección DIAN para ${noteConfig.type} <span style="color:#EF4444">*</span></label>
+          <select id="so-dian-concept" class="form-input so-compact-inp w-full" style="border-color:#FCA5A5; max-width:400px">
+            <option value="">-- Selecciona el motivo de ajuste --</option>
+            <option value="1">1 - Devolución de parte de los bienes</option>
+            <option value="2">2 - Anulación de factura electrónica</option>
+            <option value="3">3 - Rebaja total aplicada</option>
+            <option value="4">4 - Descuento total aplicado</option>
+            <option value="5">5 - Rescisión: nulidad por falta de requisitos</option>
+            <option value="6">6 - Otros (Especificar en descripción)</option>
+          </select>
+        </div>
+      </div>` : ''}
       <div class="rounded-xl p-3" style="background:#F9FAFB;border:1px solid #E5E7EB">
         <!-- Fila 1: Cliente (con botones) + Comprobante + Fecha + Vence -->
         <div class="grid gap-2 mb-2" style="grid-template-columns:1fr 180px 140px 140px">
@@ -651,8 +788,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           <!-- Comprobante -->
           <div>
             <label class="so-hdr-label">Comprobante <span style="color:#EF4444">*</span></label>
-            <select id="so-tx-type" class="form-input so-compact-inp">
-              <option value="">— Seleccionar —</option>
+            <select id="so-tx-type" class="form-input so-compact-inp"${noteConfig ? ' disabled style="background-color:#F3F4F6"' : ''}>
+              ${noteConfig ? '' : '<option value="">— Seleccionar —</option>'}
               ${txTypeOptions}
             </select>
           </div>
@@ -1312,7 +1449,15 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value;
     const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value;
     const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || null;
-    const notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+    let notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+
+    const dianConcept = document.getElementById('so-dian-concept') as HTMLSelectElement;
+    if (dianConcept && !dianConcept.value) {
+      throw new Error('Debes seleccionar el concepto de corrección DIAN.');
+    }
+    if (dianConcept && dianConcept.value) {
+      notes = `[Ajuste DIAN: ${dianConcept.value}] ` + notes;
+    }
 
     if (!customerId) throw new Error('Debes seleccionar un cliente.');
     if (!date) throw new Error('La fecha de emisión es obligatoria.');
@@ -1420,7 +1565,16 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     if (!number) {
       const todayStr = date.replaceAll('-', '');
       const rand = String(Date.now()).slice(-4);
-      number = `FV-${todayStr}-${rand}`;
+      
+      // Intentar obtener el prefijo del tipo de comprobante seleccionado
+      let draftPrefix = 'FV';
+      if (txTypeId && (window as any).__soTxTypesCache) {
+        const tObj = (window as any).__soTxTypesCache.find((t: any) => t.id === txTypeId);
+        if (tObj && tObj.prefix) {
+          draftPrefix = tObj.prefix;
+        }
+      }
+      number = `${draftPrefix}-${todayStr}-${rand}`;
     }
 
     const salesOrderId = (document.getElementById('so-sales-order-id') as HTMLInputElement)?.value || null;
@@ -1473,6 +1627,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       ret_rule_ica_id: retRuleIca,
       tx_type_id: txTypeId,
       sales_order_id: salesOrderId || null,
+      cross_doc_ref: inv?.cross_doc_ref || null,
       status: 'draft',
     };
 
@@ -1492,7 +1647,11 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         (window as any).showToast('Factura comercial borrador actualizada', 'success');
       }
     } else {
-      const newInv = await (window as any).API.createInvoice(header, lines);
+      const payload = { ...header };
+      if (inv?.dian_resolution_id) {
+        (payload as any).dian_resolution_id = inv.dian_resolution_id;
+      }
+      const newInv = await (window as any).API.createInvoice(payload, lines);
       
       if (soConfig.operational.immediate_posting) {
         await (window as any).API.postInvoice(newInv.id);

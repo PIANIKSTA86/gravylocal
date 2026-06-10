@@ -3150,13 +3150,32 @@ const API = {
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
 
-    // Fetch all movements for the accounts in the budget for that year
-    const accountIds = lines.map(l => l.account_id);
-    if (!accountIds.length) return lines.map(l => ({ ...l, executed: 0, monthly_executed: new Array(12).fill(0) }));
+    // Fetch all accounts in the database to map child sub-accounts
+    const allAccounts = await this.getAccounts(false).catch(() => []);
+
+    // Create a mapping of each budget line to its matching sub-account IDs
+    const lineSubAccountMap = new Map();
+    const allSubAccountIds = new Set();
+
+    lines.forEach(l => {
+      const code = l.expand?.account_id?.code;
+      let matchIds = [l.account_id];
+      if (code) {
+        const matched = allAccounts.filter(a => a.code && a.code.startsWith(code));
+        if (matched.length > 0) {
+          matchIds = matched.map(a => a.id);
+        }
+      }
+      lineSubAccountMap.set(l.id, matchIds);
+      matchIds.forEach(id => allSubAccountIds.add(id));
+    });
+
+    const uniqueAccountIds = Array.from(allSubAccountIds);
+    if (!uniqueAccountIds.length) return lines.map(l => ({ ...l, executed: 0, monthly_executed: new Array(12).fill(0) }));
 
     const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
     // Note: PocketBase filter doesn't support easy "IN" for arrays in strings without joining
-    const accountFilter = accountIds.map(id => `account_id="${id}"`).join(' || ');
+    const accountFilter = uniqueAccountIds.map(id => `account_id="${id}"`).join(' || ');
     const fullFilter = `(${accountFilter}) && ${filter}`;
 
     const txLines = await pb.listAll('tx_lines', { filter: fullFilter, expand: 'tx_id' });
@@ -3166,6 +3185,7 @@ const API = {
       const dStr = tl.expand?.tx_id?.date;
       if (!dStr) continue;
       const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
+      if (month < 0 || month >= 12) continue;
       if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
 
       // Simple logic: if account starts with 4 (Income), Credit - Debit. 
@@ -3177,7 +3197,18 @@ const API = {
     }
 
     return lines.map(l => {
-      const execArr = executionMap[l.account_id] || new Array(12).fill(0);
+      const matchedIds = lineSubAccountMap.get(l.id) || [l.account_id];
+      const execArr = new Array(12).fill(0);
+      
+      for (const accId of matchedIds) {
+        const accVals = executionMap[accId];
+        if (accVals) {
+          for (let m = 0; m < 12; m++) {
+            execArr[m] += accVals[m];
+          }
+        }
+      }
+      
       const totalExec = execArr.reduce((a, b) => a + b, 0);
       return {
         ...l,

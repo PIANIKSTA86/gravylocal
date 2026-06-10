@@ -3101,9 +3101,14 @@ async function _renderPhPresList(c) {
     c.innerHTML = `
       <div class="flex justify-between items-center mb-4">
         <h4 class="font-bold">Presupuestos Anuales</h4>
-        <button class="btn btn-primary" onclick="openPhBudgetModal()">
-          <i class="fas fa-plus mr-1"></i>Nuevo Presupuesto
-        </button>
+        <div class="flex gap-2">
+          <button class="btn btn-outline" onclick="if (typeof window.launchReportModal === 'function' && typeof window.renderDetailedBudgetExecutionReport === 'function') { window.launchReportModal('Ejecución Presupuestal Detallada', () => window.renderDetailedBudgetExecutionReport()); } else { window.showToast('Módulo de Reportes no cargado aún.', 'warning'); }">
+            <i class="fas fa-chart-line mr-1 text-emerald-600"></i>Ejecución Detallada
+          </button>
+          <button class="btn btn-primary" onclick="openPhBudgetModal()">
+            <i class="fas fa-plus mr-1"></i>Nuevo Presupuesto
+          </button>
+        </div>
       </div>
       <div class="bg-white rounded-2xl border overflow-hidden">
         <table class="data-table">
@@ -3121,8 +3126,9 @@ async function _renderPhPresList(c) {
                 <td><span class="badge ${b.status === 'approved' ? 'badge-green' : 'badge-orange'}">${esc(b.status)}</span></td>
                 <td>
                   <div class="flex gap-1">
-                    <button class="btn btn-outline btn-sm" onclick="openPhBudgetModal('${b.id}')"><i class="fas fa-pen"></i></button>
-                    <button class="btn btn-outline btn-sm" onclick="printPhBudget('${b.id}')"><i class="fas fa-print"></i></button>
+                    <button class="btn btn-outline btn-sm" onclick="openPhBudgetModal('${b.id}')" title="Editar"><i class="fas fa-pen"></i></button>
+                    <button class="btn btn-outline btn-sm" onclick="printPhBudget('${b.id}')" title="Imprimir"><i class="fas fa-print"></i></button>
+                    <button class="btn btn-outline btn-sm text-emerald-600 border-emerald-300" onclick="if (typeof window.launchReportModal === 'function' && typeof window.renderDetailedBudgetExecutionReport === 'function') { window.launchReportModal('Ejecución Presupuestal Detallada', () => window.renderDetailedBudgetExecutionReport('${b.id}', '${b.year}')); } else { window.showToast('Módulo de Reportes no cargado aún.', 'warning'); }" title="Ejecución Detallada"><i class="fas fa-chart-line"></i></button>
                   </div>
                 </td>
               </tr>

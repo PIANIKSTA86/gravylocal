@@ -36,6 +36,7 @@ async function renderReportes(c) {
       ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
       ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
       ${reportCard('ventas-emision', 'Reporte de Ventas por Emisión', 'Consulta ventas detalladas agrupadas por POS, Factura Estándar o Pedidos.')}
+      ${reportCard('budget-execution', 'Ejecución Presupuestal Detallada', 'Seguimiento mensual detallado y transacciones de la ejecución presupuestal.')}
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -53,6 +54,7 @@ async function renderReportes(c) {
   $('#btn-report-cash-flow')?.addEventListener('click', () => launchReportModal('Reporte de Flujo de Caja', () => renderCashFlowReport()));
   $('#btn-report-financial-analysis')?.addEventListener('click', () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()));
   $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
+  $('#btn-report-budget-execution')?.addEventListener('click', () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()));
 }
 
 function getReportViewHost() {
@@ -6047,6 +6049,472 @@ async function generateFinancialAnalysisData() {
   }
 }
 
+async function renderDetailedBudgetExecutionReport(targetBudgetId = '', targetYear = '') {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Reporte de Ejecución...</div>';
+
+  try {
+    const budgets = await API.getPhBudgets().catch(() => []);
+    const currentYear = new Date().getFullYear();
+
+    view.innerHTML = `
+      <div class="p-5 border-b space-y-4" style="border-color:#F3F4F6">
+        <h4 class="font-bold text-lg text-gray-800" style="color:#0D2137"><i class="fas fa-table-list mr-2 text-emerald-600"></i>Reporte Detallado de Ejecución Presupuestal</h4>
+        <p class="text-xs text-gray-500">Realice un seguimiento mes a mes y consulte el desglose detallado de las transacciones de ejecución.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Presupuesto</label>
+            <select id="pbd-budget-id" class="form-input mt-1 w-full text-xs" style="height:34px">
+              ${budgets.map(b => `<option value="${b.id}" data-year="${b.year}" ${b.id === targetBudgetId ? 'selected' : ''}>${b.year} - ${esc(b.name)}</option>`).join('')}
+              ${budgets.length === 0 ? '<option value="">— No hay presupuestos —</option>' : ''}
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Año del Reporte</label>
+            <input type="number" id="pbd-year" class="form-input mt-1 w-full text-xs" style="height:34px" value="${targetYear || currentYear}" />
+          </div>
+          <div class="md:col-span-2 flex items-end gap-2">
+            <button class="btn btn-primary flex-1 text-xs py-2" id="btn-gen-pbd" style="height:34px"><i class="fas fa-play mr-1"></i>Generar</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-exp-pbd" style="height:34px" disabled><i class="fas fa-file-excel mr-1"></i>Excel</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-pdf-pbd" style="height:34px" disabled><i class="fas fa-file-pdf mr-1"></i>PDF</button>
+          </div>
+        </div>
+      </div>
+      <div id="pbd-results" class="p-5 text-sm text-center text-gray-400">Configura los parámetros y haz clic en Generar.</div>
+      <div id="pbd-drilldown-container" class="p-5 border-t hidden" style="border-color:#F3F4F6">
+        <h5 class="font-bold text-gray-800 mb-3" id="pbd-drilldown-title"><i class="fas fa-magnifying-glass-chart mr-2 text-indigo-600"></i>Detalle de Transacciones</h5>
+        <div class="overflow-x-auto bg-white rounded-2xl border" style="border-color:#E5E7EB">
+          <table class="data-table text-xs" id="pbd-drilldown-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Comprobante</th>
+                <th>Tercero</th>
+                <th>Cuenta Auxiliar</th>
+                <th>Descripción</th>
+                <th class="text-right">Débito</th>
+                <th class="text-right">Crédito</th>
+                <th class="text-right">Neto</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="pbd-drilldown-body">
+              <tr>
+                <td colspan="9" class="text-center py-6 text-gray-400">Haz clic en alguna celda mensual o total en la tabla de arriba para ver las transacciones.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+
+    // Listeners
+    $('#btn-gen-pbd')?.addEventListener('click', () => generateDetailedBudgetExecutionData());
+    $('#btn-exp-pbd')?.addEventListener('click', () => exportDetailedBudgetToExcel());
+    $('#btn-pdf-pbd')?.addEventListener('click', () => exportDetailedBudgetToPdf());
+
+    // Update year automatically when selecting budget
+    $('#pbd-budget-id')?.addEventListener('change', (e) => {
+      const select = e.target as HTMLSelectElement;
+      const opt = select.options[select.selectedIndex];
+      const year = opt.dataset.year;
+      if (year) {
+        const yearInput = $('#pbd-year') as HTMLInputElement | null;
+        if (yearInput) yearInput.value = year;
+      }
+    });
+
+    // Auto-generate if preloaded targets are set
+    if (targetBudgetId && targetYear) {
+      setTimeout(() => generateDetailedBudgetExecutionData(targetBudgetId, targetYear), 100);
+    }
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+async function generateDetailedBudgetExecutionData(forcedBudgetId = '', forcedYear = '') {
+  const budgetId = forcedBudgetId || getSelectVal('pbd-budget-id');
+  const year = forcedYear || getInputVal('pbd-year');
+  if (!budgetId || !year) {
+    return showToast('Por favor selecciona un presupuesto y año válido.', 'warning');
+  }
+
+  const results = $('#pbd-results');
+  if (!results) return;
+  results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando ejecución presupuestal...</div>';
+  
+  const drilldownContainer = $('#pbd-drilldown-container');
+  if (drilldownContainer) drilldownContainer.classList.add('hidden');
+
+  try {
+    const select = $('#pbd-budget-id') as HTMLSelectElement | null;
+    const budgetName = select?.options[select.selectedIndex]?.text || `Presupuesto ${year}`;
+
+    const { budgetLines, txLines } = await API.getBudgetExecutionDetail(budgetId, year);
+
+    // Save report data globally for exports
+    (window as any)._detailedBudgetReportData = {
+      budgetLines,
+      txLines,
+      budgetName,
+      budgetYear: year
+    };
+
+    renderDetailedBudgetMatrix(budgetLines, txLines);
+
+    // Enable export buttons
+    const expBtn = $('#btn-exp-pbd') as HTMLButtonElement | null;
+    const pdfBtn = $('#btn-pdf-pbd') as HTMLButtonElement | null;
+    if (expBtn) expBtn.disabled = false;
+    if (pdfBtn) pdfBtn.disabled = false;
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+function renderDetailedBudgetMatrix(budgetLines, txLines) {
+  const results = $('#pbd-results');
+  if (!results) return;
+
+  if (budgetLines.length === 0) {
+    results.innerHTML = '<div class="p-8 text-center text-gray-500">Este presupuesto no tiene rubros configurados.</div>';
+    return;
+  }
+
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+  // Table headers
+  let tableHtml = `
+    <div class="overflow-x-auto bg-white rounded-2xl border" style="border-color:#E5E7EB">
+      <table class="data-table text-[11px]">
+        <thead>
+          <tr>
+            <th class="sticky-left" style="background:#F9FAFB">Rubro / Cuenta</th>
+            <th class="text-right">Presupuesto</th>
+            ${months.map(m => `<th class="text-right">${m}</th>`).join('')}
+            <th class="text-right">Total Ejec.</th>
+            <th class="text-right">Diferencia</th>
+            <th class="text-right">% Ejec.</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+  let totalBudget = 0;
+  let totalExecuted = 0;
+  const monthlyTotals = new Array(12).fill(0);
+
+  budgetLines.forEach((l, lIdx) => {
+    const diff = l.annual_amount - Math.abs(l.executed);
+    const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
+    const color = perc > 100 ? 'text-red-600' : (perc > 90 ? 'text-amber-600' : 'text-green-600');
+    
+    totalBudget += l.annual_amount;
+    totalExecuted += Math.abs(l.executed);
+
+    const code = l.expand?.account_id?.code || '';
+    const name = l.expand?.account_id?.name || '';
+
+    tableHtml += `
+      <tr class="hover:bg-gray-50 transition-colors">
+        <td class="sticky-left font-semibold" style="background:#FFF">${code} - ${esc(name)}</td>
+        <td class="text-right font-semibold text-gray-700">${fmt(l.annual_amount)}</td>
+        ${l.monthly_executed.map((val, mIdx) => {
+          monthlyTotals[mIdx] += Math.abs(val);
+          const valAbs = Math.abs(val);
+          const hasValue = valAbs > 0.01;
+          return `
+            <td class="text-right ${hasValue ? 'font-medium text-blue-600 cursor-pointer hover:underline' : 'text-gray-300'}" 
+                onclick="${hasValue ? `window.showDetailedBudgetDrilldown('${l.id}', ${mIdx})` : ''}">
+              ${hasValue ? fmt(valAbs) : '$0'}
+            </td>`;
+        }).join('')}
+        <td class="text-right font-bold text-gray-800 cursor-pointer hover:underline" onclick="window.showDetailedBudgetDrilldown('${l.id}', -1)">
+          ${fmt(Math.abs(l.executed))}
+        </td>
+        <td class="text-right font-semibold ${diff < 0 ? 'text-red-600' : 'text-gray-500'}">${fmt(diff)}</td>
+        <td class="text-right font-bold ${color}">${perc.toFixed(0)}%</td>
+      </tr>`;
+  });
+
+  const totalDiff = totalBudget - totalExecuted;
+  const totalPerc = totalBudget > 0 ? (totalExecuted / totalBudget * 100) : 0;
+
+  // Add summary row
+  tableHtml += `
+    <tr class="bg-gray-50 font-bold border-t text-[11px]" style="border-color:#D1D5DB">
+      <td class="sticky-left" style="background:#F9FAFB">TOTALES</td>
+      <td class="text-right">${fmt(totalBudget)}</td>
+      ${monthlyTotals.map(sum => `<td class="text-right">${fmt(sum)}</td>`).join('')}
+      <td class="text-right">${fmt(totalExecuted)}</td>
+      <td class="text-right ${totalDiff < 0 ? 'text-red-600' : ''}">${fmt(totalDiff)}</td>
+      <td class="text-right ${totalPerc > 100 ? 'text-red-600' : 'text-green-600'}">${totalPerc.toFixed(0)}%</td>
+    </tr>`;
+
+  tableHtml += `
+        </tbody>
+      </table>
+    </div>`;
+
+  results.innerHTML = tableHtml;
+}
+
+function showDetailedBudgetDrilldown(lineId, monthIdx) {
+  const data = (window as any)._detailedBudgetReportData;
+  if (!data) return;
+
+  const drilldownContainer = $('#pbd-drilldown-container');
+  const drilldownTitle = $('#pbd-drilldown-title');
+  const drilldownBody = $('#pbd-drilldown-body');
+
+  if (!drilldownContainer || !drilldownTitle || !drilldownBody) return;
+
+  const budgetLine = data.budgetLines.find(l => l.id === lineId);
+  if (!budgetLine) return;
+
+  const code = budgetLine.expand?.account_id?.code || '';
+  const name = budgetLine.expand?.account_id?.name || '';
+  
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const monthName = monthIdx >= 0 ? months[monthIdx] : 'Todo el año';
+
+  drilldownTitle.innerHTML = `<i class="fas fa-magnifying-glass-chart mr-2 text-indigo-600"></i>Detalle de Transacciones: <span class="text-blue-900 font-bold">${code}</span> (${monthName})`;
+
+  const parentCode = budgetLine.expand?.account_id?.code;
+  if (!parentCode) return;
+
+  let filteredTxLines = data.txLines.filter(tl => {
+    const accCode = tl.expand?.account_id?.code || '';
+    return accCode.startsWith(parentCode);
+  });
+
+  if (monthIdx >= 0) {
+    filteredTxLines = filteredTxLines.filter(tl => {
+      const dStr = tl.expand?.tx_id?.date;
+      if (!dStr) return false;
+      const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
+      return month === monthIdx;
+    });
+  }
+
+  // Sort by date descending
+  filteredTxLines.sort((a, b) => String(b.expand?.tx_id?.date || '').localeCompare(String(a.expand?.tx_id?.date || '')));
+
+  if (filteredTxLines.length === 0) {
+    drilldownBody.innerHTML = `
+      <tr>
+        <td colspan="9" class="text-center py-6 text-gray-400">No se encontraron transacciones para este rubro en ${monthName}.</td>
+      </tr>`;
+  } else {
+    let tbodyHtml = '';
+    filteredTxLines.forEach(tl => {
+      const date = tl.expand?.tx_id?.date || '';
+      const num = tl.expand?.tx_id?.number || '';
+      const txId = tl.expand?.tx_id?.id || '';
+      const third = tl.expand?.third_party_id?.name || 'Sin tercero';
+      const acc = `${tl.expand?.account_id?.code || ''} - ${tl.expand?.account_id?.name || ''}`;
+      const desc = tl.description || '';
+      const debit = tl.debit || 0;
+      const credit = tl.credit || 0;
+      const net = debit - credit;
+
+      tbodyHtml += `
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td>${date}</td>
+          <td class="font-semibold text-gray-700">${num}</td>
+          <td>${esc(third)}</td>
+          <td><span class="font-semibold">${tl.expand?.account_id?.code || ''}</span></td>
+          <td>${esc(desc)}</td>
+          <td class="text-right text-gray-600">${fmt(debit)}</td>
+          <td class="text-right text-gray-600">${fmt(credit)}</td>
+          <td class="text-right font-semibold ${net < 0 ? 'text-red-600' : 'text-gray-700'}">${fmt(net)}</td>
+          <td>
+            <button class="btn btn-outline btn-xs" onclick="window.seeTxDetail('${txId}')" title="Ver asiento contable">
+              <i class="fas fa-eye text-indigo-600"></i>
+            </button>
+          </td>
+        </tr>`;
+    });
+    drilldownBody.innerHTML = tbodyHtml;
+  }
+
+  drilldownContainer.classList.remove('hidden');
+  
+  // Scroll down to the drilldown table smoothly
+  drilldownContainer.scrollIntoView({ behavior: 'smooth' });
+}
+
+function exportDetailedBudgetToExcel() {
+  const data = (window as any)._detailedBudgetReportData;
+  if (!data) return;
+
+  const wsMatrixData = [
+    ['Ejecución Presupuestal Detallada - ' + data.budgetName + ' (' + data.budgetYear + ')'],
+    [],
+    ['Cuenta', 'Presupuesto Anual', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Total Ejecutado', 'Diferencia', '% Ejecución']
+  ];
+  
+  data.budgetLines.forEach(l => {
+    const diff = l.annual_amount - Math.abs(l.executed);
+    const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
+    const code = l.expand?.account_id?.code || '';
+    const name = l.expand?.account_id?.name || '';
+    const row = [
+      `${code} - ${name}`,
+      l.annual_amount,
+      ...l.monthly_executed.map(m => Math.abs(m)),
+      Math.abs(l.executed),
+      diff,
+      perc / 100
+    ];
+    wsMatrixData.push(row);
+  });
+  
+  const wsMatrix = (window as any).XLSX.utils.aoa_to_sheet(wsMatrixData);
+  
+  // Sheet 2: Transactions
+  const wsTxData = [
+    ['Detalle de Transacciones de Ejecución Presupuestal - ' + data.budgetName],
+    [],
+    ['Fecha', 'Comprobante', 'Tercero', 'Cuenta Contable', 'Descripción', 'Débito', 'Crédito', 'Neto']
+  ];
+  
+  data.txLines.forEach(tl => {
+    const dStr = tl.expand?.tx_id?.date || '';
+    const num = tl.expand?.tx_id?.number || '';
+    const third = tl.expand?.third_party_id?.name || 'Sin tercero';
+    const acc = `${tl.expand?.account_id?.code || ''} - ${tl.expand?.account_id?.name || ''}`;
+    const desc = tl.description || '';
+    const net = (tl.debit || 0) - (tl.credit || 0);
+    wsTxData.push([dStr, num, third, acc, desc, tl.debit || 0, tl.credit || 0, net]);
+  });
+  
+  const wsTx = (window as any).XLSX.utils.aoa_to_sheet(wsTxData);
+  
+  const wb = (window as any).XLSX.utils.book_new();
+  (window as any).XLSX.utils.book_append_sheet(wb, wsMatrix, 'Resumen Mensual');
+  (window as any).XLSX.utils.book_append_sheet(wb, wsTx, 'Detalle de Transacciones');
+  
+  (window as any).XLSX.writeFile(wb, `Ejecucion_Presupuestal_Detallada_${data.budgetYear}_${todayStr()}.xlsx`);
+}
+
+async function exportDetailedBudgetToPdf() {
+  const data = (window as any)._detailedBudgetReportData;
+  if (!data) return;
+
+  try {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+    const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    const headerCtx = await getPdfHeaderContext();
+    const header = drawPdfHeader(doc, headerCtx, {
+      title: 'Reporte de Ejecución Presupuestal Detallada',
+      subtitles: [
+        `Presupuesto: ${data.budgetName} (${data.budgetYear})`,
+        `Ejecutado Total: ${fmtPdfNum(data.budgetLines.reduce((s, l) => s + Math.abs(l.executed || 0), 0))}`
+      ]
+    });
+
+    const columns = [
+      { header: 'Cuenta', dataKey: 'account' },
+      { header: 'Pres. Anual', dataKey: 'budget' },
+      { header: 'Ene', dataKey: 'm1' },
+      { header: 'Feb', dataKey: 'm2' },
+      { header: 'Mar', dataKey: 'm3' },
+      { header: 'Abr', dataKey: 'm4' },
+      { header: 'May', dataKey: 'm5' },
+      { header: 'Jun', dataKey: 'm6' },
+      { header: 'Jul', dataKey: 'm7' },
+      { header: 'Ago', dataKey: 'm8' },
+      { header: 'Sep', dataKey: 'm9' },
+      { header: 'Oct', dataKey: 'm10' },
+      { header: 'Nov', dataKey: 'm11' },
+      { header: 'Dic', dataKey: 'm12' },
+      { header: 'Total Ejec.', dataKey: 'total' },
+      { header: 'Diferencia', dataKey: 'diff' },
+      { header: '% Ejec.', dataKey: 'perc' }
+    ];
+
+    const bodyData = data.budgetLines.map(l => {
+      const diff = l.annual_amount - Math.abs(l.executed);
+      const perc = l.annual_amount > 0 ? (Math.abs(l.executed) / l.annual_amount * 100) : 0;
+      const code = l.expand?.account_id?.code || '';
+      const name = l.expand?.account_id?.name || '';
+      
+      return {
+        account: `${code} - ${name}`,
+        budget: fmtPdfNum(l.annual_amount),
+        m1: fmtPdfNum(Math.abs(l.monthly_executed[0])),
+        m2: fmtPdfNum(Math.abs(l.monthly_executed[1])),
+        m3: fmtPdfNum(Math.abs(l.monthly_executed[2])),
+        m4: fmtPdfNum(Math.abs(l.monthly_executed[3])),
+        m5: fmtPdfNum(Math.abs(l.monthly_executed[4])),
+        m6: fmtPdfNum(Math.abs(l.monthly_executed[5])),
+        m7: fmtPdfNum(Math.abs(l.monthly_executed[6])),
+        m8: fmtPdfNum(Math.abs(l.monthly_executed[7])),
+        m9: fmtPdfNum(Math.abs(l.monthly_executed[8])),
+        m10: fmtPdfNum(Math.abs(l.monthly_executed[9])),
+        m11: fmtPdfNum(Math.abs(l.monthly_executed[10])),
+        m12: fmtPdfNum(Math.abs(l.monthly_executed[11])),
+        total: fmtPdfNum(Math.abs(l.executed)),
+        diff: fmtPdfNum(diff),
+        perc: `${perc.toFixed(0)}%`
+      };
+    });
+
+    // Add total row
+    const totalBudget = data.budgetLines.reduce((s, l) => s + l.annual_amount, 0);
+    const totalExecuted = data.budgetLines.reduce((s, l) => s + Math.abs(l.executed), 0);
+    const totalDiff = totalBudget - totalExecuted;
+    const totalPerc = totalBudget > 0 ? (totalExecuted / totalBudget * 100) : 0;
+
+    const monthlyTotals = new Array(12).fill(0);
+    data.budgetLines.forEach(l => {
+      for (let i = 0; i < 12; i++) {
+        monthlyTotals[i] += Math.abs(l.monthly_executed[i]);
+      }
+    });
+
+    bodyData.push({
+      account: 'TOTALES',
+      budget: fmtPdfNum(totalBudget),
+      m1: fmtPdfNum(monthlyTotals[0]),
+      m2: fmtPdfNum(monthlyTotals[1]),
+      m3: fmtPdfNum(monthlyTotals[2]),
+      m4: fmtPdfNum(monthlyTotals[3]),
+      m5: fmtPdfNum(monthlyTotals[4]),
+      m6: fmtPdfNum(monthlyTotals[5]),
+      m7: fmtPdfNum(monthlyTotals[6]),
+      m8: fmtPdfNum(monthlyTotals[7]),
+      m9: fmtPdfNum(monthlyTotals[8]),
+      m10: fmtPdfNum(monthlyTotals[9]),
+      m11: fmtPdfNum(monthlyTotals[10]),
+      m12: fmtPdfNum(monthlyTotals[11]),
+      total: fmtPdfNum(totalExecuted),
+      diff: fmtPdfNum(totalDiff),
+      perc: `${totalPerc.toFixed(0)}%`
+    });
+
+    (doc as any).autoTable({
+      startY: header.startY,
+      margin: { left: header.marginLeft, right: doc.internal.pageSize.getWidth() - header.marginRight },
+      columns: columns,
+      body: bodyData,
+      theme: 'grid',
+      styles: { fontSize: 6.5, cellPadding: 2 },
+      headStyles: { fillColor: [13, 33, 55], textColor: 255, fontStyle: 'bold' },
+      didDrawPage: (dt) => {
+        drawPdfFooter(doc, dt.pageNumber);
+      }
+    });
+
+    doc.save(`Ejecucion_Presupuestal_Detallada_${data.budgetYear}_${todayStr()}.pdf`);
+  } catch (err: any) {
+    showToast('Error al exportar PDF: ' + err.message, 'error');
+  }
+}
+
 (window as any).renderWithholdingCertificates = renderWithholdingCertificates;
 (window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;
 (window as any).renderIvaReport = renderIvaReport;
@@ -6064,3 +6532,9 @@ async function generateFinancialAnalysisData() {
 (window as any).exportCashFlowToPdf = exportCashFlowToPdf;
 (window as any).renderFinancialAnalysisReport = renderFinancialAnalysisReport;
 (window as any).generateFinancialAnalysisData = generateFinancialAnalysisData;
+(window as any).renderDetailedBudgetExecutionReport = renderDetailedBudgetExecutionReport;
+(window as any).generateDetailedBudgetExecutionData = generateDetailedBudgetExecutionData;
+(window as any).showDetailedBudgetDrilldown = showDetailedBudgetDrilldown;
+(window as any).exportDetailedBudgetToExcel = exportDetailedBudgetToExcel;
+(window as any).exportDetailedBudgetToPdf = exportDetailedBudgetToPdf;
+(window as any).launchReportModal = launchReportModal;

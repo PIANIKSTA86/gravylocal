@@ -3218,6 +3218,83 @@ const API = {
     });
   },
 
+  async getBudgetExecutionDetail(budgetId, year) {
+    const lines = await this.getPhBudgetLines(budgetId);
+    const startDate = `${year}-01-01`;
+    const endDate = `${year}-12-31`;
+
+    // Fetch all accounts in the database to map child sub-accounts
+    const allAccounts = await this.getAccounts(false).catch(() => []);
+
+    // Create a mapping of each budget line to its matching sub-account IDs
+    const lineSubAccountMap = new Map();
+    const allSubAccountIds = new Set();
+
+    lines.forEach(l => {
+      const code = l.expand?.account_id?.code;
+      let matchIds = [l.account_id];
+      if (code) {
+        const matched = allAccounts.filter(a => a.code && a.code.startsWith(code));
+        if (matched.length > 0) {
+          matchIds = matched.map(a => a.id);
+        }
+      }
+      lineSubAccountMap.set(l.id, matchIds);
+      matchIds.forEach(id => allSubAccountIds.add(id));
+    });
+
+    const uniqueAccountIds = Array.from(allSubAccountIds);
+    if (!uniqueAccountIds.length) {
+      return {
+        budgetLines: lines.map(l => ({ ...l, executed: 0, monthly_executed: new Array(12).fill(0) })),
+        txLines: []
+      };
+    }
+
+    const filter = `tx_id.date >= "${startDate}" && tx_id.date <= "${endDate}" && tx_id.status="active"`;
+    const accountFilter = uniqueAccountIds.map(id => `account_id="${id}"`).join(' || ');
+    const fullFilter = `(${accountFilter}) && ${filter}`;
+
+    // Load tx_lines with expand of tx_id, account_id, and third_party_id
+    const txLines = await pb.listAll('tx_lines', { 
+      filter: fullFilter, 
+      expand: 'tx_id,account_id,third_party_id' 
+    });
+
+    const executionMap = {}; // accountId -> [jan, feb, ... dec]
+    for (const tl of txLines) {
+      const dStr = tl.expand?.tx_id?.date;
+      if (!dStr) continue;
+      const month = new Date(dStr + 'T00:00:00Z').getUTCMonth();
+      if (month < 0 || month >= 12) continue;
+      if (!executionMap[tl.account_id]) executionMap[tl.account_id] = new Array(12).fill(0);
+      executionMap[tl.account_id][month] += (tl.debit || 0) - (tl.credit || 0);
+    }
+
+    const budgetLines = lines.map(l => {
+      const matchedIds = lineSubAccountMap.get(l.id) || [l.account_id];
+      const execArr = new Array(12).fill(0);
+      
+      for (const accId of matchedIds) {
+        const accVals = executionMap[accId];
+        if (accVals) {
+          for (let m = 0; m < 12; m++) {
+            execArr[m] += accVals[m];
+          }
+        }
+      }
+      
+      const totalExec = execArr.reduce((a, b) => a + b, 0);
+      return {
+        ...l,
+        executed: totalExec,
+        monthly_executed: execArr
+      };
+    });
+
+    return { budgetLines, txLines };
+  },
+
   // -- Información Exógena (DIAN) ----------------------------
   async getExogenaConcepts(format = '1001') {
     return pb.listAll('exogena_concepts', { filter: `format_type="${format}"`, sort: 'code' });

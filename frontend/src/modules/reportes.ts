@@ -33,6 +33,8 @@ async function renderReportes(c) {
       ${reportCard('paz-salvo', 'Certificado de Paz y Salvo', 'Generar certificado de paz y salvo de cartera para clientes.')}
       ${reportCard('iva', 'Reporte de IVA', 'Consulta IVA generado vs descontable con cuentas configurables.')}
       ${reportCard('retenciones', 'Reporte de Retenciones', 'Consulta retenciones practicadas y a favor por cuenta.')}
+      ${reportCard('cash-flow', 'Flujo de Caja', 'Detalle de ingresos y egresos de efectivo (Método Directo).')}
+      ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
       ${reportCard('ventas-emision', 'Reporte de Ventas por Emisión', 'Consulta ventas detalladas agrupadas por POS, Factura Estándar o Pedidos.')}
     </div>`;
 
@@ -48,6 +50,8 @@ async function renderReportes(c) {
   $('#btn-report-paz-salvo')?.addEventListener('click', () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()));
   $('#btn-report-iva')?.addEventListener('click', () => launchReportModal('Reporte de IVA', () => renderIvaReport()));
   $('#btn-report-retenciones')?.addEventListener('click', () => launchReportModal('Reporte de Retenciones', () => renderRetencionesReport()));
+  $('#btn-report-cash-flow')?.addEventListener('click', () => launchReportModal('Reporte de Flujo de Caja', () => renderCashFlowReport()));
+  $('#btn-report-financial-analysis')?.addEventListener('click', () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()));
   $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
 }
 
@@ -3958,6 +3962,24 @@ async function generateIvaReportRows() {
     const genLines = [];
     const descLines = [];
 
+    const resolveIvaRateAndBase = (line, rowNet) => {
+      let rate = Number(line.ret_rate || 0);
+      if (rate <= 0) {
+        const acc = line.expand?.account_id;
+        if (acc && Number(acc.ret_rate_reteiva || 0) > 0) {
+          rate = Number(acc.ret_rate_reteiva);
+        } else {
+          rate = 19;
+        }
+      }
+      let base = Number(line.ret_base || 0);
+      const amount = Math.abs(rowNet);
+      if (base <= 0.01 || Math.abs(base - amount) < 0.05) {
+        base = rate > 0 ? (amount / (rate / 100)) : amount;
+      }
+      return { rate, base };
+    };
+
     for (const l of txLines) {
       const tx = txById[l.tx_id];
       if (!tx || tx.status !== 'active' || !tx.date) continue;
@@ -3965,18 +3987,24 @@ async function generateIvaReportRows() {
 
       const code = l.expand?.account_id?.code || '';
       if (matchesPrefix(code, genPrefixes)) {
-        genLines.push({ line: l, tx });
+        const rowNet = Number(l.credit || 0) - Number(l.debit || 0);
+        const { rate, base } = resolveIvaRateAndBase(l, rowNet);
+        genLines.push({ line: l, tx, rate, base, net: rowNet });
       } else if (matchesPrefix(code, descPrefixes)) {
-        descLines.push({ line: l, tx });
+        const rowNet = Number(l.debit || 0) - Number(l.credit || 0);
+        const { rate, base } = resolveIvaRateAndBase(l, rowNet);
+        descLines.push({ line: l, tx, rate, base, net: rowNet });
       }
     }
 
     const sumGenDebit = genLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
     const sumGenCredit = genLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const sumGenBase = genLines.reduce((acc, curr) => acc + curr.base, 0);
     const netGen = sumGenCredit - sumGenDebit;
 
     const sumDescDebit = descLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
     const sumDescCredit = descLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const sumDescBase = descLines.reduce((acc, curr) => acc + curr.base, 0);
     const netDesc = sumDescDebit - sumDescCredit;
 
     const netSuggested = netGen - netDesc;
@@ -4034,6 +4062,8 @@ async function generateIvaReportRows() {
                   <th>Documento</th>
                   <th>Tercero</th>
                   <th>Cuenta</th>
+                  <th class="text-right">Base Gravable</th>
+                  <th class="text-right">Tarifa</th>
                   <th class="text-right">Débito</th>
                   <th class="text-right">Crédito</th>
                   <th class="text-right">Neto</th>
@@ -4041,19 +4071,30 @@ async function generateIvaReportRows() {
               </thead>
               <tbody>
                 ${genLines.length ? genLines.map(l => {
-                  const rowNet = Number(l.line.credit || 0) - Number(l.line.debit || 0);
                   return `
                     <tr>
                       <td>${esc(l.tx.date)}</td>
                       <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
                       <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
                       <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right font-semibold text-gray-700">${fmt(l.base)}</td>
+                      <td class="text-right">${l.rate > 0 ? `${l.rate}%` : '—'}</td>
                       <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
                       <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
-                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                      <td class="text-right font-semibold">${fmt(l.net)}</td>
                     </tr>`;
-                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos de IVA Generado en este período.</td></tr>'}
+                }).join('') : '<tr><td colspan="9" class="text-center py-6 text-gray-400">No hay movimientos de IVA Generado en este período.</td></tr>'}
               </tbody>
+              <tfoot>
+                <tr class="font-bold bg-gray-50">
+                  <td colspan="4">Total IVA Generado</td>
+                  <td class="text-right">${fmt(sumGenBase)}</td>
+                  <td></td>
+                  <td class="text-right">${fmt(sumGenDebit)}</td>
+                  <td class="text-right">${fmt(sumGenCredit)}</td>
+                  <td class="text-right text-red-600">${fmt(netGen)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -4072,6 +4113,8 @@ async function generateIvaReportRows() {
                   <th>Documento</th>
                   <th>Tercero</th>
                   <th>Cuenta</th>
+                  <th class="text-right">Base Gravable</th>
+                  <th class="text-right">Tarifa</th>
                   <th class="text-right">Débito</th>
                   <th class="text-right">Crédito</th>
                   <th class="text-right">Neto</th>
@@ -4079,19 +4122,30 @@ async function generateIvaReportRows() {
               </thead>
               <tbody>
                 ${descLines.length ? descLines.map(l => {
-                  const rowNet = Number(l.line.debit || 0) - Number(l.line.credit || 0);
                   return `
                     <tr>
                       <td>${esc(l.tx.date)}</td>
                       <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
                       <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
                       <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right font-semibold text-gray-700">${fmt(l.base)}</td>
+                      <td class="text-right">${l.rate > 0 ? `${l.rate}%` : '—'}</td>
                       <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
                       <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
-                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                      <td class="text-right font-semibold">${fmt(l.net)}</td>
                     </tr>`;
-                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos de IVA Descontable en este período.</td></tr>'}
+                }).join('') : '<tr><td colspan="9" class="text-center py-6 text-gray-400">No hay movimientos de IVA Descontable en este período.</td></tr>'}
               </tbody>
+              <tfoot>
+                <tr class="font-bold bg-gray-50">
+                  <td colspan="4">Total IVA Descontable</td>
+                  <td class="text-right">${fmt(sumDescBase)}</td>
+                  <td></td>
+                  <td class="text-right">${fmt(sumDescDebit)}</td>
+                  <td class="text-right">${fmt(sumDescCredit)}</td>
+                  <td class="text-right text-green-600">${fmt(netDesc)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -4107,7 +4161,9 @@ async function generateIvaReportRows() {
       descLines,
       netGen,
       netDesc,
-      netSuggested
+      netSuggested,
+      sumGenBase,
+      sumDescBase
     };
 
     const expBtn = $('#btn-exp-iva') as HTMLButtonElement | null;
@@ -4131,9 +4187,11 @@ function exportIvaToExcel() {
       documento: l.tx.number,
       tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
       cuenta: `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+      base_gravable: l.base,
+      tarifa: l.rate > 0 ? `${l.rate}%` : '—',
       debito: Number(l.line.debit || 0),
       credito: Number(l.line.credit || 0),
-      neto: Number(l.line.credit || 0) - Number(l.line.debit || 0)
+      neto: l.net
     });
   });
 
@@ -4144,9 +4202,11 @@ function exportIvaToExcel() {
       documento: l.tx.number,
       tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
       cuenta: `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+      base_gravable: l.base,
+      tarifa: l.rate > 0 ? `${l.rate}%` : '—',
       debito: Number(l.line.debit || 0),
       credito: Number(l.line.credit || 0),
-      neto: Number(l.line.debit || 0) - Number(l.line.credit || 0)
+      neto: l.net
     });
   });
 
@@ -4156,6 +4216,8 @@ function exportIvaToExcel() {
     { key: 'documento', label: 'Documento' },
     { key: 'tercero', label: 'Tercero' },
     { key: 'cuenta', label: 'Cuenta Contable' },
+    { key: 'base_gravable', label: 'Base Gravable' },
+    { key: 'tarifa', label: 'Tarifa' },
     { key: 'debito', label: 'Debito' },
     { key: 'credito', label: 'Credito' },
     { key: 'neto', label: 'Neto Reportado' }
@@ -4182,7 +4244,7 @@ async function exportIvaToPdf() {
     });
 
     const body = [];
-    body.push([{ content: 'IVA GENERADO (VENTAS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    body.push([{ content: 'IVA GENERADO (VENTAS)', colSpan: 8, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
     if (data.genLines.length) {
       data.genLines.forEach(l => {
         body.push([
@@ -4190,20 +4252,24 @@ async function exportIvaToPdf() {
           l.tx.number,
           `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
           `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.base),
+          l.rate > 0 ? `${l.rate}%` : '—',
           fmtPdfNum(l.line.debit),
           fmtPdfNum(l.line.credit)
         ]);
       });
     } else {
-      body.push([{ content: 'No hay movimientos de IVA Generado.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+      body.push([{ content: 'No hay movimientos de IVA Generado.', colSpan: 8, styles: { textColor: [120, 120, 120] } }]);
     }
     body.push([
       { content: 'Subtotal Generado', styles: { fontStyle: 'bold' } }, '', '', '',
+      { content: fmtPdfNum(data.sumGenBase), styles: { fontStyle: 'bold', halign: 'right' } },
+      '',
       { content: fmtPdfNum(data.genLines.reduce((s, c) => s + Number(c.line.debit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
       { content: fmtPdfNum(data.genLines.reduce((s, c) => s + Number(c.line.credit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } }
     ]);
 
-    body.push([{ content: 'IVA DESCONTABLE (COMPRAS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    body.push([{ content: 'IVA DESCONTABLE (COMPRAS)', colSpan: 8, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
     if (data.descLines.length) {
       data.descLines.forEach(l => {
         body.push([
@@ -4211,34 +4277,40 @@ async function exportIvaToPdf() {
           l.tx.number,
           `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
           `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          fmtPdfNum(l.base),
+          l.rate > 0 ? `${l.rate}%` : '—',
           fmtPdfNum(l.line.debit),
           fmtPdfNum(l.line.credit)
         ]);
       });
     } else {
-      body.push([{ content: 'No hay movimientos de IVA Descontable.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+      body.push([{ content: 'No hay movimientos de IVA Descontable.', colSpan: 8, styles: { textColor: [120, 120, 120] } }]);
     }
     body.push([
       { content: 'Subtotal Descontable', styles: { fontStyle: 'bold' } }, '', '', '',
+      { content: fmtPdfNum(data.sumDescBase), styles: { fontStyle: 'bold', halign: 'right' } },
+      '',
       { content: fmtPdfNum(data.descLines.reduce((s, c) => s + Number(c.line.debit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
       { content: fmtPdfNum(data.descLines.reduce((s, c) => s + Number(c.line.credit || 0), 0)), styles: { fontStyle: 'bold', halign: 'right' } }
     ]);
 
     doc.autoTable({
       startY: header.startY,
-      head: [['Fecha', 'Documento', 'Tercero', 'Cuenta', 'Debito', 'Credito']],
+      head: [['Fecha', 'Documento', 'Tercero', 'Cuenta', 'Base Gravable', 'Tarifa', 'Debito', 'Credito']],
       body,
       theme: 'plain',
       margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
       styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
       headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
       columnStyles: {
-        0: { cellWidth: 48 },
-        1: { cellWidth: 58 },
-        2: { cellWidth: 150 },
-        3: { cellWidth: 150 },
-        4: { cellWidth: 56, halign: 'right' },
-        5: { cellWidth: 56, halign: 'right' },
+        0: { cellWidth: 48 }, // Fecha
+        1: { cellWidth: 52 }, // Documento
+        2: { cellWidth: 120 }, // Tercero
+        3: { cellWidth: 120 }, // Cuenta
+        4: { cellWidth: 72, halign: 'right' }, // Base
+        5: { cellWidth: 36, halign: 'center' }, // Tarifa
+        6: { cellWidth: 58, halign: 'right' }, // Debito
+        7: { cellWidth: 58, halign: 'right' }, // Credito
       },
       didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
     });
@@ -4352,6 +4424,37 @@ async function generateRetReportRows() {
     const pracLines = [];
     const favorLines = [];
 
+    const resolveRetRateAndBase = (line, rowNet) => {
+      let rate = Number(line.ret_rate || 0);
+      const acc = line.expand?.account_id;
+      const code = acc?.code || '';
+      if (rate <= 0) {
+        if (acc) {
+          if (code.startsWith('2365') && Number(acc.ret_rate_reterenta || 0) > 0) {
+            rate = Number(acc.ret_rate_reterenta);
+          } else if (code.startsWith('2367') && Number(acc.ret_rate_reteiva || 0) > 0) {
+            rate = Number(acc.ret_rate_reteiva);
+          } else if (code.startsWith('2368') && Number(acc.ret_rate_reteica || 0) > 0) {
+            rate = Number(acc.ret_rate_reteica);
+          } else if (code.startsWith('1355') && Number(acc.ret_rate_reterenta || 0) > 0) {
+            rate = Number(acc.ret_rate_reterenta);
+          }
+        }
+        if (rate <= 0) {
+          if (code.startsWith('2365') || code.startsWith('1355')) rate = 3.5;
+          else if (code.startsWith('2367')) rate = 15;
+          else if (code.startsWith('2368')) rate = 0.414;
+          else rate = 0;
+        }
+      }
+      let base = Number(line.ret_base || 0);
+      const amount = Math.abs(rowNet);
+      if (base <= 0.01 || Math.abs(base - amount) < 0.05) {
+        base = rate > 0 ? (amount / (rate / 100)) : amount;
+      }
+      return { rate, base };
+    };
+
     for (const l of txLines) {
       const tx = txById[l.tx_id];
       if (!tx || tx.status !== 'active' || !tx.date) continue;
@@ -4359,18 +4462,24 @@ async function generateRetReportRows() {
 
       const code = l.expand?.account_id?.code || '';
       if (matchesPrefix(code, pracPrefixes)) {
-        pracLines.push({ line: l, tx });
+        const rowNet = Number(l.credit || 0) - Number(l.debit || 0);
+        const { rate, base } = resolveRetRateAndBase(l, rowNet);
+        pracLines.push({ line: l, tx, rate, base, net: rowNet });
       } else if (matchesPrefix(code, favorPrefixes)) {
-        favorLines.push({ line: l, tx });
+        const rowNet = Number(l.debit || 0) - Number(l.credit || 0);
+        const { rate, base } = resolveRetRateAndBase(l, rowNet);
+        favorLines.push({ line: l, tx, rate, base, net: rowNet });
       }
     }
 
     const sumPracDebit = pracLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
     const sumPracCredit = pracLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const sumPracBase = pracLines.reduce((acc, curr) => acc + curr.base, 0);
     const netPrac = sumPracCredit - sumPracDebit;
 
     const sumFavorDebit = favorLines.reduce((acc, curr) => acc + Number(curr.line.debit || 0), 0);
     const sumFavorCredit = favorLines.reduce((acc, curr) => acc + Number(curr.line.credit || 0), 0);
+    const sumFavorBase = favorLines.reduce((acc, curr) => acc + curr.base, 0);
     const netFavor = sumFavorDebit - sumFavorCredit;
 
     const netSuggested = netPrac - netFavor;
@@ -4382,11 +4491,12 @@ async function generateRetReportRows() {
       const accName = l.line.expand?.account_id?.name || '';
       const key = `${accCode} - ${accName}`;
       if (!accountSummary.has(key)) {
-        accountSummary.set(key, { code: accCode, name: accName, debit: 0, credit: 0, type, polarity });
+        accountSummary.set(key, { code: accCode, name: accName, debit: 0, credit: 0, base: 0, type, polarity });
       }
       const item = accountSummary.get(key);
       item.debit += Number(l.line.debit || 0);
       item.credit += Number(l.line.credit || 0);
+      item.base += Number(l.base || 0);
     };
 
     pracLines.forEach(l => addGrouped(l, 'Practicada', 1));
@@ -4401,6 +4511,7 @@ async function generateRetReportRows() {
         type: item.type,
         debit: item.debit,
         credit: item.credit,
+        base: item.base,
         net
       };
     }).sort((a, b) => a.code.localeCompare(b.code));
@@ -4457,6 +4568,7 @@ async function generateRetReportRows() {
                   <th>Código</th>
                   <th>Nombre Cuenta</th>
                   <th>Tipo</th>
+                  <th class="text-right">Base Gravable</th>
                   <th class="text-right">Total Débito</th>
                   <th class="text-right">Total Crédito</th>
                   <th class="text-right">Neto Reportado</th>
@@ -4468,10 +4580,11 @@ async function generateRetReportRows() {
                     <td><span class="font-mono text-xs font-semibold text-blue-900">${esc(r.code)}</span></td>
                     <td>${esc(r.name)}</td>
                     <td><span class="badge ${r.type === 'Practicada' ? 'badge-orange' : 'badge-green'}">${esc(r.type)}</span></td>
+                    <td class="text-right font-semibold text-gray-700">${fmt(r.base)}</td>
                     <td class="text-right">${r.debit ? fmt(r.debit) : '—'}</td>
                     <td class="text-right">${r.credit ? fmt(r.credit) : '—'}</td>
                     <td class="text-right font-semibold">${fmt(r.net)}</td>
-                  </tr>`).join('') : '<tr><td colspan="6" class="text-center py-6 text-gray-400">No hay movimientos de Retenciones en este período.</td></tr>'}
+                  </tr>`).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos de Retenciones en este período.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -4491,6 +4604,8 @@ async function generateRetReportRows() {
                   <th>Documento</th>
                   <th>Tercero</th>
                   <th>Cuenta</th>
+                  <th class="text-right">Base Gravable</th>
+                  <th class="text-right">Tarifa</th>
                   <th class="text-right">Débito</th>
                   <th class="text-right">Crédito</th>
                   <th class="text-right">Neto</th>
@@ -4498,19 +4613,30 @@ async function generateRetReportRows() {
               </thead>
               <tbody>
                 ${pracLines.length ? pracLines.map(l => {
-                  const rowNet = Number(l.line.credit || 0) - Number(l.line.debit || 0);
                   return `
                     <tr>
                       <td>${esc(l.tx.date)}</td>
                       <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
                       <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
                       <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right font-semibold text-gray-700">${fmt(l.base)}</td>
+                      <td class="text-right">${l.rate > 0 ? `${l.rate}%` : '—'}</td>
                       <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
                       <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
-                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                      <td class="text-right font-semibold">${fmt(l.net)}</td>
                     </tr>`;
-                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
+                }).join('') : '<tr><td colspan="9" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
               </tbody>
+              <tfoot>
+                <tr class="font-bold bg-gray-50">
+                  <td colspan="4">Total Practicadas</td>
+                  <td class="text-right">${fmt(sumPracBase)}</td>
+                  <td></td>
+                  <td class="text-right">${fmt(sumPracDebit)}</td>
+                  <td class="text-right">${fmt(sumPracCredit)}</td>
+                  <td class="text-right text-red-600">${fmt(netPrac)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -4529,6 +4655,8 @@ async function generateRetReportRows() {
                   <th>Documento</th>
                   <th>Tercero</th>
                   <th>Cuenta</th>
+                  <th class="text-right">Base Gravable</th>
+                  <th class="text-right">Tarifa</th>
                   <th class="text-right">Débito</th>
                   <th class="text-right">Crédito</th>
                   <th class="text-right">Neto</th>
@@ -4536,19 +4664,30 @@ async function generateRetReportRows() {
               </thead>
               <tbody>
                 ${favorLines.length ? favorLines.map(l => {
-                  const rowNet = Number(l.line.debit || 0) - Number(l.line.credit || 0);
                   return `
                     <tr>
                       <td>${esc(l.tx.date)}</td>
                       <td><span class="font-mono text-xs text-blue-900">${esc(l.tx.number)}</span></td>
                       <td>${esc(l.tx.expand?.third_party_id?.name || 'Sin tercero')} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}</td>
                       <td><span class="font-mono text-xs text-gray-500">${esc(l.line.expand?.account_id?.code)}</span> - ${esc(l.line.expand?.account_id?.name)}</td>
+                      <td class="text-right font-semibold text-gray-700">${fmt(l.base)}</td>
+                      <td class="text-right">${l.rate > 0 ? `${l.rate}%` : '—'}</td>
                       <td class="text-right">${l.line.debit ? fmt(l.line.debit) : '—'}</td>
                       <td class="text-right">${l.line.credit ? fmt(l.line.credit) : '—'}</td>
-                      <td class="text-right font-semibold">${fmt(rowNet)}</td>
+                      <td class="text-right font-semibold">${fmt(l.net)}</td>
                     </tr>`;
-                }).join('') : '<tr><td colspan="7" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
+                }).join('') : '<tr><td colspan="9" class="text-center py-6 text-gray-400">No hay movimientos en este período.</td></tr>'}
               </tbody>
+              <tfoot>
+                <tr class="font-bold bg-gray-50">
+                  <td colspan="4">Total a Favor</td>
+                  <td class="text-right">${fmt(sumFavorBase)}</td>
+                  <td></td>
+                  <td class="text-right">${fmt(sumFavorDebit)}</td>
+                  <td class="text-right">${fmt(sumFavorCredit)}</td>
+                  <td class="text-right text-green-600">${fmt(netFavor)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </div>
@@ -4565,7 +4704,9 @@ async function generateRetReportRows() {
       summaryRows,
       netPrac,
       netFavor,
-      netSuggested
+      netSuggested,
+      sumPracBase,
+      sumFavorBase
     };
 
     const expBtn = $('#btn-exp-ret') as HTMLButtonElement | null;
@@ -4589,6 +4730,7 @@ function exportRetToExcel() {
     cuenta: '',
     tipo: '',
     tercero: '',
+    base_gravable: 0,
     debito: 0,
     credito: 0,
     neto: 0
@@ -4601,13 +4743,14 @@ function exportRetToExcel() {
       cuenta: r.name,
       tipo: r.type,
       tercero: '',
+      base_gravable: r.base,
       debito: r.debit,
       credito: r.credit,
       neto: r.net
     });
   });
 
-  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', debito: 0, credito: 0, neto: 0 });
+  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', base_gravable: 0, debito: 0, credito: 0, neto: 0 });
 
   rows.push({
     seccion: 'DETALLE RETENCIONES PRACTICADAS',
@@ -4615,6 +4758,8 @@ function exportRetToExcel() {
     cuenta: '',
     tipo: '',
     tercero: '',
+    base_gravable: 0,
+    tarifa: '',
     debito: 0,
     credito: 0,
     neto: 0
@@ -4627,13 +4772,15 @@ function exportRetToExcel() {
       cuenta: l.line.expand?.account_id?.name,
       tipo: l.tx.date,
       tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      base_gravable: l.base,
+      tarifa: l.rate > 0 ? `${l.rate}%` : '—',
       debito: Number(l.line.debit || 0),
       credito: Number(l.line.credit || 0),
-      neto: Number(l.line.credit || 0) - Number(l.line.debit || 0)
+      neto: l.net
     });
   });
 
-  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', debito: 0, credito: 0, neto: 0 });
+  rows.push({ seccion: '', codigo: '', cuenta: '', tipo: '', tercero: '', base_gravable: 0, debito: 0, credito: 0, neto: 0 });
 
   rows.push({
     seccion: 'DETALLE RETENCIONES A FAVOR',
@@ -4641,6 +4788,8 @@ function exportRetToExcel() {
     cuenta: '',
     tipo: '',
     tercero: '',
+    base_gravable: 0,
+    tarifa: '',
     debito: 0,
     credito: 0,
     neto: 0
@@ -4653,9 +4802,11 @@ function exportRetToExcel() {
       cuenta: l.line.expand?.account_id?.name,
       tipo: l.tx.date,
       tercero: `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
+      base_gravable: l.base,
+      tarifa: l.rate > 0 ? `${l.rate}%` : '—',
       debito: Number(l.line.debit || 0),
       credito: Number(l.line.credit || 0),
-      neto: Number(l.line.debit || 0) - Number(l.line.credit || 0)
+      neto: l.net
     });
   });
 
@@ -4665,6 +4816,8 @@ function exportRetToExcel() {
     { key: 'cuenta', label: 'Nombre Cuenta' },
     { key: 'tipo', label: 'Tipo / Fecha' },
     { key: 'tercero', label: 'Tercero' },
+    { key: 'base_gravable', label: 'Base Gravable' },
+    { key: 'tarifa', label: 'Tarifa' },
     { key: 'debito', label: 'Debito' },
     { key: 'credito', label: 'Credito' },
     { key: 'neto', label: 'Neto Reportado' }
@@ -4691,7 +4844,7 @@ async function exportRetToPdf() {
     });
 
     const body = [];
-    body.push([{ content: 'DESGLOSE RESUMIDO POR CUENTA', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [230, 235, 245], textColor: [13, 33, 55] } }]);
+    body.push([{ content: 'DESGLOSE RESUMIDO POR CUENTA', colSpan: 7, styles: { fontStyle: 'bold', fillColor: [230, 235, 245], textColor: [13, 33, 55] } }]);
     if (data.summaryRows.length) {
       data.summaryRows.forEach(r => {
         body.push([
@@ -4699,61 +4852,65 @@ async function exportRetToPdf() {
           r.name,
           r.type,
           '',
+          fmtPdfNum(r.base),
           fmtPdfNum(r.debit),
           fmtPdfNum(r.credit)
         ]);
       });
     } else {
-      body.push([{ content: 'No hay movimientos de Retenciones en este período.', colSpan: 6 }]);
+      body.push([{ content: 'No hay movimientos de Retenciones en este período.', colSpan: 7 }]);
     }
 
-    body.push([{ content: 'DETALLE RETENCIONES PRACTICADAS (PASIVO)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    body.push([{ content: 'DETALLE RETENCIONES PRACTICADAS (PASIVO)', colSpan: 7, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
     if (data.pracLines.length) {
       data.pracLines.forEach(l => {
         body.push([
           l.tx.date,
           l.tx.number,
           `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
-          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          `${l.line.expand?.account_id?.code} - ${l.rate > 0 ? `${l.rate}%` : '—'}`,
+          fmtPdfNum(l.base),
           fmtPdfNum(l.line.debit),
           fmtPdfNum(l.line.credit)
         ]);
       });
     } else {
-      body.push([{ content: 'No hay detalles de Retenciones Practicadas.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+      body.push([{ content: 'No hay detalles de Retenciones Practicadas.', colSpan: 7, styles: { textColor: [120, 120, 120] } }]);
     }
 
-    body.push([{ content: 'DETALLE RETENCIONES A FAVOR (ANTICIPOS)', colSpan: 6, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    body.push([{ content: 'DETALLE RETENCIONES A FAVOR (ANTICIPOS)', colSpan: 7, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
     if (data.favorLines.length) {
       data.favorLines.forEach(l => {
         body.push([
           l.tx.date,
           l.tx.number,
           `${l.tx.expand?.third_party_id?.name || 'Sin tercero'} ${l.tx.expand?.third_party_id?.doc_number ? `(${l.tx.expand.third_party_id.doc_number})` : ''}`,
-          `${l.line.expand?.account_id?.code} - ${l.line.expand?.account_id?.name}`,
+          `${l.line.expand?.account_id?.code} - ${l.rate > 0 ? `${l.rate}%` : '—'}`,
+          fmtPdfNum(l.base),
           fmtPdfNum(l.line.debit),
           fmtPdfNum(l.line.credit)
         ]);
       });
     } else {
-      body.push([{ content: 'No hay detalles de Retenciones a Favor.', colSpan: 6, styles: { textColor: [120, 120, 120] } }]);
+      body.push([{ content: 'No hay detalles de Retenciones a Favor.', colSpan: 7, styles: { textColor: [120, 120, 120] } }]);
     }
 
     doc.autoTable({
       startY: header.startY,
-      head: [['Fecha / Código', 'Documento / Nombre Cuenta', 'Tercero / Tipo', 'Cuenta / Info', 'Débito', 'Crédito']],
+      head: [['Fecha / Código', 'Documento / Nombre Cuenta', 'Tercero / Tipo', 'Cuenta / Info / Tarifa', 'Base Gravable', 'Débito', 'Crédito']],
       body,
       theme: 'plain',
       margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
       styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
       headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
       columnStyles: {
-        0: { cellWidth: 60 },
-        1: { cellWidth: 150 },
-        2: { cellWidth: 100 },
-        3: { cellWidth: 120 },
-        4: { cellWidth: 46, halign: 'right' },
-        5: { cellWidth: 46, halign: 'right' },
+        0: { cellWidth: 50 }, // Fecha / Código
+        1: { cellWidth: 120 }, // Documento / Nombre Cuenta
+        2: { cellWidth: 120 }, // Tercero / Tipo
+        3: { cellWidth: 104 }, // Cuenta / Info / Tarifa
+        4: { cellWidth: 68, halign: 'right' }, // Base Gravable
+        5: { cellWidth: 51, halign: 'right' }, // Débito
+        6: { cellWidth: 51, halign: 'right' }, // Crédito
       },
       didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
     });
@@ -5055,6 +5212,841 @@ async function renderSalesEmissionReport() {
   });
 }
 
+async function renderCashFlowReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Reporte de Flujo de Caja...</div>';
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const firstDayOfMonth = today.substring(0, 8) + '01';
+
+    view.innerHTML = `
+      <div class="p-5 border-b space-y-4" style="border-color:#F3F4F6">
+        <h4 class="font-bold text-lg text-gray-800" style="color:#0D2137"><i class="fas fa-money-bill-transfer mr-2 text-emerald-600"></i>Reporte de Flujo de Caja (Método Directo)</h4>
+        <p class="text-xs text-gray-500">Analiza las entradas y salidas reales de dinero mediante las cuentas del Disponible (Grupo 11).</p>
+        
+        <!-- Filtros de lapso de fechas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Desde</label>
+            <input type="date" id="cf-date-from" class="form-input mt-1 w-full text-xs" value="${firstDayOfMonth}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold text-gray-500">Fecha Hasta</label>
+            <input type="date" id="cf-date-to" class="form-input mt-1 w-full text-xs" value="${today}" />
+          </div>
+          <div class="flex items-end gap-2">
+            <button class="btn btn-primary flex-1 text-xs py-2" id="btn-gen-cf"><i class="fas fa-play mr-1"></i>Generar</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-exp-cf" disabled><i class="fas fa-file-excel mr-1"></i>Excel</button>
+            <button class="btn btn-outline text-xs py-2" id="btn-pdf-cf" disabled><i class="fas fa-file-pdf mr-1"></i>PDF</button>
+          </div>
+        </div>
+      </div>
+      <div id="cf-results" class="p-5 text-sm text-center text-gray-400">Configura las fechas y haz clic en Generar.</div>`;
+
+    $('#btn-gen-cf')?.addEventListener('click', generateCashFlowReportRows);
+    $('#btn-exp-cf')?.addEventListener('click', exportCashFlowToExcel);
+    $('#btn-pdf-cf')?.addEventListener('click', exportCashFlowToPdf);
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+function classifyCashFlow(accCode) {
+  if (!accCode) return { category: 'Operación', subcategory: 'Otros Egresos' };
+  const first = accCode.charAt(0);
+  const group2 = accCode.substring(0, 2);
+  const group4 = accCode.substring(0, 4);
+
+  // Cash inflow classifications (Revenue, Receivables)
+  if (first === '4') {
+    return { category: 'Operación', subcategory: 'Ventas de Contado' };
+  }
+  if (group2 === '13') {
+    return { category: 'Operación', subcategory: 'Recaudo de Clientes / Cartera' };
+  }
+  
+  // Cash outflow classifications (Suppliers, Expenses, Payroll, Taxes)
+  if (group2 === '22' || group2 === '23') {
+    return { category: 'Operación', subcategory: 'Pago a Proveedores y Acreedores' };
+  }
+  if (group2 === '25' || group4 === '5105' || group4 === '5205') {
+    return { category: 'Operación', subcategory: 'Nómina y Beneficios a Empleados' };
+  }
+  if (group2 === '24') {
+    return { category: 'Operación', subcategory: 'Pago de Impuestos y Tasas' };
+  }
+  if (first === '5' || first === '6') {
+    return { category: 'Operación', subcategory: 'Gastos y Costos Directos' };
+  }
+
+  // Investment (Assets class 15, 12, etc.)
+  if (group2 === '15') {
+    return { category: 'Inversión', subcategory: 'Adquisición de Activos Fijos' };
+  }
+  if (['12', '14', '16', '17', '18', '19'].includes(group2)) {
+    return { category: 'Inversión', subcategory: 'Inversiones y Otros Activos' };
+  }
+
+  // Financing (Liabilities class 21, Equity class 3)
+  if (group2 === '21') {
+    return { category: 'Financiación', subcategory: 'Obligaciones Financieras (Créditos)' };
+  }
+  if (first === '3') {
+    return { category: 'Financiación', subcategory: 'Aportes de Capital / Dividendos' };
+  }
+
+  return { category: 'Operación', subcategory: 'Otros Movimientos Operativos' };
+}
+
+async function generateCashFlowReportRows() {
+  const fromDate = getInputVal('cf-date-from');
+  const toDate = getInputVal('cf-date-to');
+  if (!fromDate || !toDate) {
+    return showToast('Por favor selecciona las fechas Desde y Hasta.', 'warning');
+  }
+
+  const results = $('#cf-results');
+  if (!results) return;
+  results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando Flujo de Caja...</div>';
+
+  try {
+    const { transactions, txLines } = await ensureLedgerData();
+    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+    const { accounts } = await ensureAccountsSaldos();
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+
+    // 1. Calculate Initial Balance of group 11 accounts
+    let initialBalance = 0;
+    for (const l of txLines) {
+      const tx = txById[l.tx_id];
+      if (!tx || tx.status !== 'active' || !tx.date) continue;
+      if (tx.date >= fromDate) continue; // Only before start date
+      
+      const acc = l.expand?.account_id || accountMap.get(l.account_id);
+      const code = acc?.code || '';
+      if (code.startsWith('11')) {
+        initialBalance += (Number(l.debit || 0) - Number(l.credit || 0));
+      }
+    }
+
+    // 2. Classify transactions during the period
+    const transactionsInPeriod = transactions.filter(t => t.date >= fromDate && t.date <= toDate && t.status === 'active');
+    const txIdSet = new Set(transactionsInPeriod.map(t => t.id));
+
+    // Group lines by transaction
+    const txLinesMap = new Map();
+    for (const l of txLines) {
+      if (txIdSet.has(l.tx_id)) {
+        if (!txLinesMap.has(l.tx_id)) {
+          txLinesMap.set(l.tx_id, []);
+        }
+        txLinesMap.get(l.tx_id).push(l);
+      }
+    }
+
+    const flowItems = []; // list of flows: { type: 'Ingreso' | 'Egreso', amount, category, subcategory, accountCode, accountName, txDate, txNumber, description }
+    
+    txLinesMap.forEach((lines, txId) => {
+      const tx = txById[txId];
+      
+      // Separate cash and non-cash lines
+      const cashLines = [];
+      const nonCashLines = [];
+      
+      for (const l of lines) {
+        const acc = l.expand?.account_id || accountMap.get(l.account_id);
+        const code = acc?.code || '';
+        if (code.startsWith('11')) {
+          cashLines.push({ line: l, code });
+        } else {
+          nonCashLines.push({ line: l, code, name: acc?.name || '' });
+        }
+      }
+
+      if (cashLines.length === 0) return; // No cash flow
+
+      // Net change in cash for this transaction
+      const totalCashDebit = cashLines.reduce((s, cl) => s + Number(cl.line.debit || 0), 0);
+      const totalCashCredit = cashLines.reduce((s, cl) => s + Number(cl.line.credit || 0), 0);
+      const netCashChange = totalCashDebit - totalCashCredit;
+
+      if (Math.abs(netCashChange) < 0.01) {
+        // Internal transfer (net 0 cash impact)
+        return; 
+      }
+
+      const isFlowIn = netCashChange > 0;
+      const flowAmount = Math.abs(netCashChange);
+
+      // Find main counterpart
+      let mainCounterpart = null;
+      if (nonCashLines.length > 0) {
+        // Find non-cash line with highest absolute value
+        nonCashLines.sort((a, b) => {
+          const valA = Math.max(Number(a.line.debit || 0), Number(a.line.credit || 0));
+          const valB = Math.max(Number(b.line.debit || 0), Number(b.line.credit || 0));
+          return valB - valA;
+        });
+        mainCounterpart = nonCashLines[0];
+      }
+
+      const counterpartCode = mainCounterpart ? mainCounterpart.code : '';
+      const counterpartName = mainCounterpart ? mainCounterpart.name : 'Transferencia / Ajuste';
+      
+      const classification = classifyCashFlow(counterpartCode);
+      
+      flowItems.push({
+        type: isFlowIn ? 'Ingreso' : 'Egreso',
+        amount: flowAmount,
+        category: classification.category,
+        subcategory: classification.subcategory,
+        accountCode: counterpartCode || '11',
+        accountName: counterpartName,
+        txDate: tx.date,
+        txNumber: tx.number,
+        description: tx.description || 'Movimiento de disponible'
+      });
+    });
+
+    // Compute totals
+    const totalInflows = flowItems.filter(f => f.type === 'Ingreso').reduce((s, f) => s + f.amount, 0);
+    const totalOutflows = flowItems.filter(f => f.type === 'Egreso').reduce((s, f) => s + f.amount, 0);
+    const netFlow = totalInflows - totalOutflows;
+    const finalBalance = initialBalance + netFlow;
+
+    // Group flows by Category and Subcategory for display
+    const groupedFlows = {
+      Ingresos: new Map(), // category -> Map(subcategory -> sum)
+      Egresos: new Map()   // category -> Map(subcategory -> sum)
+    };
+
+    flowItems.forEach(item => {
+      const mapType = item.type === 'Ingreso' ? groupedFlows.Ingresos : groupedFlows.Egresos;
+      if (!mapType.has(item.category)) {
+        mapType.set(item.category, new Map());
+      }
+      const subMap = mapType.get(item.category);
+      subMap.set(item.subcategory, (subMap.get(item.subcategory) || 0) + item.amount);
+    });
+
+    const renderGroupedSection = (groupedMap) => {
+      let html = '';
+      groupedMap.forEach((subMap, category) => {
+        const catTotal = [...subMap.values()].reduce((s, v) => s + v, 0);
+        html += `
+          <tr class="bg-gray-50 font-bold" style="color:#0D2137">
+            <td colspan="2"><i class="fas fa-folder-open text-blue-600 mr-2"></i>Actividades de ${esc(category)}</td>
+            <td class="text-right font-extrabold">${fmt(catTotal)}</td>
+          </tr>
+        `;
+        subMap.forEach((amount, subcategory) => {
+          html += `
+            <tr class="hover:bg-gray-50">
+              <td class="pl-6 text-gray-500">—</td>
+              <td>${esc(subcategory)}</td>
+              <td class="text-right font-semibold text-gray-700">${fmt(amount)}</td>
+            </tr>
+          `;
+        });
+      });
+      return html;
+    };
+
+    const inflowsHtml = renderGroupedSection(groupedFlows.Ingresos);
+    const outflowsHtml = renderGroupedSection(groupedFlows.Egresos);
+
+    results.innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6 text-left">
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Saldo Inicial</p>
+          <p class="text-xl font-bold mt-1 text-gray-800">${fmt(initialBalance)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Cuentas Disponible (11)</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase text-emerald-600">Total Ingresos</p>
+          <p class="text-xl font-bold mt-1 text-emerald-700">+ ${fmt(totalInflows)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Entradas reales</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase text-rose-600">Total Egresos</p>
+          <p class="text-xl font-bold mt-1 text-rose-700">- ${fmt(totalOutflows)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Salidas reales</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <p class="text-xs font-bold text-gray-400 uppercase">Flujo Neto</p>
+          <p class="text-xl font-bold mt-1 ${netFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${netFlow >= 0 ? '+' : ''}${fmt(netFlow)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Variación neta del período</p>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm bg-blue-50/50" style="border-color:#BFDBFE">
+          <p class="text-xs font-bold text-gray-500 uppercase">Saldo Final</p>
+          <p class="text-xl font-bold mt-1 text-blue-900">${fmt(finalBalance)}</p>
+          <p class="text-[10px] text-gray-500 mt-1">Corte a la fecha fin</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+        <!-- Ingresos table -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-emerald-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#A7F3D0">
+            <h5 class="font-bold text-emerald-800"><i class="fas fa-circle-arrow-down mr-2 text-emerald-600"></i>Ingresos / Entradas de Efectivo</h5>
+            <span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">${fmt(totalInflows)}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%"></th>
+                  <th>Concepto / Subcategoría</th>
+                  <th class="text-right">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${inflowsHtml || '<tr><td colspan="3" class="text-center py-6 text-gray-400">No se registraron ingresos de efectivo.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Egresos table -->
+        <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#E5E7EB">
+          <div class="bg-rose-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#FECDD3">
+            <h5 class="font-bold text-rose-800"><i class="fas fa-circle-arrow-up mr-2 text-rose-600"></i>Egresos / Salidas de Efectivo</h5>
+            <span class="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-medium">${fmt(totalOutflows)}</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 5%"></th>
+                  <th>Concepto / Subcategoría</th>
+                  <th class="text-right">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${outflowsHtml || '<tr><td colspan="3" class="text-center py-6 text-gray-400">No se registraron egresos de efectivo.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    (window as any)._cfReportData = {
+      fromDate,
+      toDate,
+      initialBalance,
+      totalInflows,
+      totalOutflows,
+      netFlow,
+      finalBalance,
+      flowItems
+    };
+
+    const expBtn = $('#btn-exp-cf') as HTMLButtonElement | null;
+    const pdfBtn = $('#btn-pdf-cf') as HTMLButtonElement | null;
+    if (expBtn) expBtn.disabled = false;
+    if (pdfBtn) pdfBtn.disabled = false;
+
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+function exportCashFlowToExcel() {
+  const data = (window as any)._cfReportData;
+  if (!data) return;
+
+  const rows = [];
+  rows.push({ seccion: 'VARIACIÓN DE EFECTIVO', categoria: '', subcategoria: '', concepto: '', monto: '' });
+  rows.push({ seccion: 'Saldo Inicial', categoria: '', subcategoria: '', concepto: '', monto: data.initialBalance });
+  rows.push({ seccion: 'Total Ingresos', categoria: '', subcategoria: '', concepto: '', monto: data.totalInflows });
+  rows.push({ seccion: 'Total Egresos', categoria: '', subcategoria: '', concepto: '', monto: data.totalOutflows });
+  rows.push({ seccion: 'Flujo Neto', categoria: '', subcategoria: '', concepto: '', monto: data.netFlow });
+  rows.push({ seccion: 'Saldo Final', categoria: '', subcategoria: '', concepto: '', monto: data.finalBalance });
+  rows.push({ seccion: '', categoria: '', subcategoria: '', concepto: '', monto: '' });
+
+  rows.push({ seccion: 'DETALLE DE FLUJOS', categoria: 'Categoría', subcategoria: 'Subcategoría', concepto: 'Tercero / Cuenta Contable / Info', monto: 'Monto' });
+  data.flowItems.forEach(f => {
+    rows.push({
+      seccion: f.type,
+      categoria: f.category,
+      subcategoria: f.subcategory,
+      concepto: `${f.txDate} [${f.txNumber}] ${f.accountCode} ${f.accountName} - ${f.description}`,
+      monto: f.amount
+    });
+  });
+
+  exportToExcel(rows, [
+    { key: 'seccion', label: 'Flujo / Sección' },
+    { key: 'categoria', label: 'Categoría' },
+    { key: 'subcategoria', label: 'Subcategoría' },
+    { key: 'concepto', label: 'Detalle de Comprobante Contable' },
+    { key: 'monto', label: 'Monto' }
+  ], `flujo_caja_${data.fromDate}_a_${data.toDate}`);
+}
+
+async function exportCashFlowToPdf() {
+  const data = (window as any)._cfReportData;
+  if (!data) return;
+
+  try {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+    const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const headerCtx = await getPdfHeaderContext();
+    const header = drawPdfHeader(doc, headerCtx, {
+      title: 'Reporte de Flujo de Caja (Método Directo)',
+      subtitles: [
+        `Periodo: ${data.fromDate} a ${data.toDate}`,
+        `Saldo Inicial: ${fmtPdfNum(data.initialBalance)}  |  Saldo Final: ${fmtPdfNum(data.finalBalance)}`,
+        `Ingresos: +${fmtPdfNum(data.totalInflows)}  |  Egresos: -${fmtPdfNum(data.totalOutflows)}`,
+        `Flujo Neto del Periodo: ${data.netFlow >= 0 ? '+' : ''}${fmtPdfNum(data.netFlow)}`
+      ],
+    });
+
+    const body = [];
+    body.push([{ content: 'RESUMEN DEL PERÍODO', colSpan: 5, styles: { fontStyle: 'bold', fillColor: [230, 235, 245], textColor: [13, 33, 55] } }]);
+    body.push(['(+) Ingresos de Efectivo', '', '', '', fmtPdfNum(data.totalInflows)]);
+    body.push(['(-) Egresos de Efectivo', '', '', '', `-${fmtPdfNum(data.totalOutflows)}`]);
+    body.push(['(=) Flujo Neto del Período', '', '', '', fmtPdfNum(data.netFlow)]);
+
+    // Group flow items by type
+    const inflows = data.flowItems.filter(f => f.type === 'Ingreso');
+    const outflows = data.flowItems.filter(f => f.type === 'Egreso');
+
+    body.push([{ content: 'INGRESOS DE EFECTIVO', colSpan: 5, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (inflows.length) {
+      inflows.forEach(f => {
+        body.push([
+          f.txDate,
+          f.txNumber,
+          f.subcategory,
+          `${f.accountCode} - ${f.accountName}`,
+          fmtPdfNum(f.amount)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No se registraron ingresos.', colSpan: 5, styles: { textColor: [120, 120, 120] } }]);
+    }
+
+    body.push([{ content: 'EGRESOS DE EFECTIVO', colSpan: 5, styles: { fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [13, 33, 55] } }]);
+    if (outflows.length) {
+      outflows.forEach(f => {
+        body.push([
+          f.txDate,
+          f.txNumber,
+          f.subcategory,
+          `${f.accountCode} - ${f.accountName}`,
+          fmtPdfNum(f.amount)
+        ]);
+      });
+    } else {
+      body.push([{ content: 'No se registraron egresos.', colSpan: 5, styles: { textColor: [120, 120, 120] } }]);
+    }
+
+    doc.autoTable({
+      startY: header.startY,
+      head: [['Fecha', 'Documento', 'Subcategoría', 'Contrapartida / Cuenta', 'Monto']],
+      body,
+      theme: 'plain',
+      margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+      styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
+      headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 130 },
+        3: { cellWidth: 244 },
+        4: { cellWidth: 80, halign: 'right' },
+      },
+      didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
+    });
+
+    doc.save(`flujo_caja_directo_${data.fromDate}_a_${data.toDate}.pdf`);
+  } catch (err: any) {
+    showToast(`Error al generar PDF: ${err.message}`, 'error');
+  }
+}
+
+async function renderFinancialAnalysisReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Análisis Financiero...</div>';
+
+  try {
+    const budgets = await API.getPhBudgets().catch(() => []);
+    const currentYear = new Date().getFullYear();
+
+    view.innerHTML = `
+      <div class="p-5 border-b space-y-4" style="border-color:#F3F4F6">
+        <h4 class="font-bold text-lg text-gray-800" style="color:#0D2137"><i class="fas fa-chart-line mr-2 text-indigo-600"></i>Análisis Financiero Integrado</h4>
+        <p class="text-xs text-gray-500 font-medium">Relaciona la Cartera por cobrar, el Flujo de Caja real y la Ejecución Presupuestal anual con representaciones estadísticas.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div>
+            <label class="form-label font-bold text-xs text-gray-500">Presupuesto Referencia (PH)</label>
+            <select id="fa-budget-id" class="form-input text-xs mt-1 w-full" style="height:34px">
+              ${budgets.map(b => `<option value="${b.id}" data-year="${b.year}">${b.year} - ${esc(b.name)}</option>`).join('')}
+              ${budgets.length === 0 ? '<option value="">— No hay presupuestos configurados —</option>' : ''}
+            </select>
+          </div>
+          <div>
+            <label class="form-label font-bold text-xs text-gray-500">Año del Análisis</label>
+            <input type="number" id="fa-year" class="form-input text-xs mt-1 w-full" style="height:34px" value="${currentYear}">
+          </div>
+          <button class="btn btn-primary text-xs w-full py-2" id="btn-gen-fa" style="height:34px"><i class="fas fa-arrows-rotate mr-1"></i>Calcular Análisis</button>
+        </div>
+      </div>
+      <div id="fa-results" class="p-5 text-sm text-center text-gray-400">Selecciona los parámetros y haz clic en Calcular Análisis.</div>
+    `;
+
+    $('#btn-gen-fa')?.addEventListener('click', generateFinancialAnalysisData);
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+async function generateFinancialAnalysisData() {
+  const budgetId = getSelectVal('fa-budget-id');
+  const year = getInputVal('fa-year');
+  if (!budgetId || !year) {
+    return showToast('Por favor selecciona un presupuesto y año válido.', 'warning');
+  }
+
+  const results = $('#fa-results');
+  if (!results) return;
+  results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Análisis Financiero...</div>';
+
+  try {
+    // 1. Fetch Budget Execution, Ledger Data, and Portfolio (CXC)
+    const [budgetExec, { transactions, txLines }, cxcDocs] = await Promise.all([
+      API.getBudgetExecution(budgetId, year).catch(() => []),
+      ensureLedgerData(),
+      buildOpenPortfolioDocs({ mode: 'cxc', asOfDate: `${year}-12-31` }).catch(() => [])
+    ]);
+
+    const { accounts } = await ensureAccountsSaldos();
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+    const txById = Object.fromEntries(transactions.map(t => [t.id, t]));
+
+    // 2. Compute Annual Cash Flow & Monthly Breakdown
+    let totalInflows = 0;
+    let totalOutflows = 0;
+    const monthlyCF = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, inflow: 0, outflow: 0 }));
+
+    // Group lines by transaction to perform correct cash-netting
+    const txIdSet = new Set(transactions.filter(t => t.date.startsWith(year) && t.status === 'active').map(t => t.id));
+    const txLinesMap = new Map();
+    for (const l of txLines) {
+      if (txIdSet.has(l.tx_id)) {
+        if (!txLinesMap.has(l.tx_id)) {
+          txLinesMap.set(l.tx_id, []);
+        }
+        txLinesMap.get(l.tx_id).push(l);
+      }
+    }
+
+    txLinesMap.forEach((lines, txId) => {
+      const tx = txById[txId];
+      const txMonth = Number(tx.date.substring(5, 7)) - 1; // 0 - 11
+
+      const cashLines = [];
+      for (const l of lines) {
+        const acc = l.expand?.account_id || accountMap.get(l.account_id);
+        if (acc?.code?.startsWith('11')) {
+          cashLines.push(l);
+        }
+      }
+
+      if (cashLines.length === 0) return;
+
+      const totalCashDebit = cashLines.reduce((s, cl) => s + Number(cl.debit || 0), 0);
+      const totalCashCredit = cashLines.reduce((s, cl) => s + Number(cl.credit || 0), 0);
+      const netCashChange = totalCashDebit - totalCashCredit;
+
+      if (Math.abs(netCashChange) < 0.01) return; // ignore transfers
+
+      if (netCashChange > 0) {
+        totalInflows += netCashChange;
+        if (txMonth >= 0 && txMonth < 12) {
+          monthlyCF[txMonth].inflow += netCashChange;
+        }
+      } else {
+        const amt = Math.abs(netCashChange);
+        totalOutflows += amt;
+        if (txMonth >= 0 && txMonth < 12) {
+          monthlyCF[txMonth].outflow += amt;
+        }
+      }
+    });
+
+    const netCashFlow = totalInflows - totalOutflows;
+
+    // 3. Compute Portfolio Aging
+    let totalCxc = 0;
+    const ageBuckets = { por_vencer: 0, b0_30: 0, b31_60: 0, b61_90: 0, b90p: 0 };
+    cxcDocs.forEach(d => {
+      totalCxc += d.open;
+      if (ageBuckets.hasOwnProperty(d.bucket)) {
+        ageBuckets[d.bucket] += d.open;
+      }
+    });
+
+    // 4. Compute Budget Execution Totals
+    const totalBudget = budgetExec.reduce((s, l) => s + l.annual_amount, 0);
+    const totalExecuted = budgetExec.reduce((s, l) => s + Math.abs(l.executed || 0), 0);
+    const budgetPerc = totalBudget > 0 ? (totalExecuted / totalBudget * 100) : 0;
+
+    // Sort budget execution to find top spent categories
+    const budgetSpentSorted = [...budgetExec]
+      .sort((a, b) => Math.abs(b.executed || 0) - Math.abs(a.executed || 0))
+      .slice(0, 4);
+
+    // 5. Generate SVG Graphic for Monthly Cash Flow
+    // SVG Dimensions: width 100% (max 600), height 200. Padding: Left 50, Right 20, Top 20, Bottom 35
+    const svgW = 600;
+    const svgH = 220;
+    const padL = 60;
+    const padR = 20;
+    const padT = 20;
+    const padB = 40;
+    const chartW = svgW - padL - padR;
+    const chartH = svgH - padT - padB;
+
+    const maxMonthlyVal = Math.max(...monthlyCF.map(m => Math.max(m.inflow, m.outflow)), 10000);
+    
+    // Draw gridlines
+    let gridHtml = '';
+    for (let i = 0; i <= 4; i++) {
+      const yPos = padT + (chartH * i / 4);
+      const val = maxMonthlyVal * (4 - i) / 4;
+      gridHtml += `
+        <line x1="${padL}" y1="${yPos}" x2="${svgW - padR}" y2="${yPos}" stroke="#E5E7EB" stroke-width="1" stroke-dasharray="3,3" />
+        <text x="${padL - 8}" y="${yPos + 3}" fill="#9CA3AF" font-size="9" text-anchor="end">${fmt(val)}</text>
+      `;
+    }
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const barSpacing = chartW / 12;
+    const barW = barSpacing * 0.35;
+    
+    let barsHtml = '';
+    monthlyCF.forEach((m, idx) => {
+      const xCenter = padL + (idx * barSpacing) + (barSpacing / 2);
+      
+      const xIn = xCenter - barW - 1;
+      const hIn = (m.inflow / maxMonthlyVal) * chartH;
+      const yIn = padT + chartH - hIn;
+      
+      const xOut = xCenter + 1;
+      const hOut = (m.outflow / maxMonthlyVal) * chartH;
+      const yOut = padT + chartH - hOut;
+
+      // Inflow bar (Green)
+      barsHtml += `
+        <rect x="${xIn}" y="${yIn}" width="${barW}" height="${Math.max(hIn, 2)}" fill="#10B981" rx="2" class="transition-all hover:opacity-85" title="Ingresos: ${fmt(m.inflow)}" />
+      `;
+      // Outflow bar (Red)
+      barsHtml += `
+        <rect x="${xOut}" y="${yOut}" width="${barW}" height="${Math.max(hOut, 2)}" fill="#EF4444" rx="2" class="transition-all hover:opacity-85" title="Egresos: ${fmt(m.outflow)}" />
+      `;
+
+      // Label
+      barsHtml += `
+        <text x="${xCenter}" y="${svgH - padB + 16}" fill="#4B5563" font-size="10" font-weight="600" text-anchor="middle">${monthNames[idx]}</text>
+      `;
+    });
+
+    const flowChartSvg = `
+      <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="100%">
+        ${gridHtml}
+        ${barsHtml}
+        <!-- Base Line -->
+        <line x1="${padL}" y1="${padT + chartH}" x2="${svgW - padR}" y2="${padT + chartH}" stroke="#9CA3AF" stroke-width="1" />
+      </svg>
+    `;
+
+    // 6. Generate Portfolio Aging Stacked Bar
+    const agePercs = {
+      por_vencer: totalCxc > 0 ? (ageBuckets.por_vencer / totalCxc * 100) : 0,
+      b0_30: totalCxc > 0 ? (ageBuckets.b0_30 / totalCxc * 100) : 0,
+      b31_60: totalCxc > 0 ? (ageBuckets.b31_60 / totalCxc * 100) : 0,
+      b61_90: totalCxc > 0 ? (ageBuckets.b61_90 / totalCxc * 100) : 0,
+      b90p: totalCxc > 0 ? (ageBuckets.b90p / totalCxc * 100) : 0
+    };
+
+    // 7. Auditor Conclusions
+    let auditorChecks = [];
+    if (netCashFlow < 0) {
+      auditorChecks.push({
+        type: 'danger',
+        title: 'Flujo de Caja Anual Negativo',
+        desc: `Las salidas de dinero superan las entradas en **${fmt(Math.abs(netCashFlow))}**. Esto representa una descapitalización o dependencia de reservas acumuladas.`
+      });
+    } else {
+      auditorChecks.push({
+        type: 'success',
+        title: 'Superávit de Caja del Período',
+        desc: `El flujo neto del año es positivo en **${fmt(netCashFlow)}**, indicando una buena salud de caja.`
+      });
+    }
+
+    const collectionRatio = totalInflows > 0 ? (totalCxc / totalInflows * 100) : 0;
+    if (collectionRatio > 25) {
+      auditorChecks.push({
+        type: 'warning',
+        title: 'Cartera Acumulada Alta',
+        desc: `La cartera pendiente representa el **${collectionRatio.toFixed(1)}%** del total de ingresos del disponible del año. Se sugiere intensificar gestión de recaudo.`
+      });
+    }
+
+    const olderThan90Ratio = totalCxc > 0 ? (ageBuckets.b90p / totalCxc * 100) : 0;
+    if (olderThan90Ratio > 15) {
+      auditorChecks.push({
+        type: 'danger',
+        title: 'Cartera Vencida Crítica (>90 Días)',
+        desc: `El **${olderThan90Ratio.toFixed(1)}%** de la cartera pendiente (**${fmt(ageBuckets.b90p)}**) tiene más de 90 días de mora. Requiere provisión o cobro coactivo immediato.`
+      });
+    }
+
+    if (totalExecuted > totalBudget) {
+      auditorChecks.push({
+        type: 'warning',
+        title: 'Sobreejecución Presupuestal General',
+        desc: `Los gastos reales acumulados superan el presupuesto anual configurado en un **${(totalExecuted / totalBudget * 100 - 100).toFixed(1)}%**.`
+      });
+    }
+
+    // Check individual overspent accounts
+    budgetExec.forEach(l => {
+      const over = Math.abs(l.executed || 0) - l.annual_amount;
+      if (over > 0 && l.annual_amount > 0) {
+        auditorChecks.push({
+          type: 'warning',
+          title: `Rubro Sobreejecutado: ${l.expand?.account_id?.code}`,
+          desc: `La cuenta **${l.expand?.account_id?.name}** presenta una desviación presupuestal de **+${fmt(over)}** (${(Math.abs(l.executed)/l.annual_amount*100).toFixed(0)}% de ejecución).`
+        });
+      }
+    });
+
+    results.innerHTML = `
+      <!-- KPI Widgets Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6 text-left">
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <span class="text-xs font-bold text-gray-400 uppercase">Flujo Neto Anual</span>
+          <p class="text-2xl font-black mt-1 ${netCashFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${netCashFlow >= 0 ? '+' : ''}${fmt(netCashFlow)}</p>
+          <span class="text-[10px] text-gray-500">Ingresos: ${fmt(totalInflows)} · Egresos: ${fmt(totalOutflows)}</span>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <span class="text-xs font-bold text-gray-400 uppercase">Cartera Total</span>
+          <p class="text-2xl font-black mt-1 text-blue-900">${fmt(totalCxc)}</p>
+          <span class="text-[10px] text-gray-500">Saldo por cobrar copropietarios</span>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm" style="border-color:#E5E7EB">
+          <span class="text-xs font-bold text-gray-400 uppercase">Ejecución Presupuestal</span>
+          <p class="text-2xl font-black mt-1 text-gray-800">${budgetPerc.toFixed(1)}%</p>
+          <span class="text-[10px] text-gray-500">Gastado: ${fmt(totalExecuted)} de ${fmt(totalBudget)}</span>
+        </div>
+        <div class="bg-white rounded-2xl border p-4 shadow-sm bg-gradient-to-br from-indigo-50 to-indigo-100/50" style="border-color:#C7D2FE">
+          <span class="text-xs font-bold text-indigo-700 uppercase">Rendimiento Liquidez</span>
+          <p class="text-2xl font-black mt-1 text-indigo-950">${netCashFlow > 0 && totalCxc > 0 ? (netCashFlow / totalCxc).toFixed(2) : '0.00'}</p>
+          <span class="text-[10px] text-indigo-600">Índice Flujo vs Deuda por Cobrar</span>
+        </div>
+      </div>
+
+      <!-- Main Visualizations Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 text-left">
+        <!-- Monthly cash flow chart -->
+        <div class="bg-white rounded-2xl border p-5 lg:col-span-2 shadow-sm" style="border-color:#E5E7EB">
+          <div class="flex items-center justify-between mb-4">
+            <h5 class="font-bold text-gray-800"><i class="fas fa-chart-bar mr-2 text-emerald-600"></i>Ingresos (verde) vs Egresos (rojo) Mensuales</h5>
+            <span class="text-[10px] text-gray-400 font-bold uppercase">Variación del Disponible</span>
+          </div>
+          <div class="w-full flex items-center justify-center p-2">
+            ${flowChartSvg}
+          </div>
+        </div>
+
+        <!-- Aging Cartera bar -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm flex flex-col justify-between" style="border-color:#E5E7EB">
+          <div>
+            <h5 class="font-bold text-gray-800 mb-2"><i class="fas fa-hourglass-half mr-2 text-blue-700"></i>Maduración de Cartera PH</h5>
+            <p class="text-[10px] text-gray-400 font-bold uppercase mb-4">Estructura por Edades</p>
+            
+            <div class="flex rounded-full overflow-hidden h-6 w-full mb-5 bg-gray-100">
+              ${agePercs.por_vencer > 0 ? `<div class="bg-emerald-500 h-full transition-all" style="width: ${agePercs.por_vencer}%" title="Por Vencer"></div>` : ''}
+              ${agePercs.b0_30 > 0 ? `<div class="bg-amber-400 h-full transition-all" style="width: ${agePercs.b0_30}%" title="0-30 días"></div>` : ''}
+              ${agePercs.b31_60 > 0 ? `<div class="bg-orange-500 h-full transition-all" style="width: ${agePercs.b31_60}%" title="31-60 días"></div>` : ''}
+              ${agePercs.b61_90 > 0 ? `<div class="bg-red-500 h-full transition-all" style="width: ${agePercs.b61_90}%" title="61-90 días"></div>` : ''}
+              ${agePercs.b90p > 0 ? `<div class="bg-rose-700 h-full transition-all" style="width: ${agePercs.b90p}%" title=">90 días"></div>` : ''}
+            </div>
+            
+            <div class="space-y-2 text-xs">
+              <div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div><span>Por Vencer:</span></div><span class="font-bold">${fmt(ageBuckets.por_vencer)} (${agePercs.por_vencer.toFixed(1)}%)</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-amber-400"></div><span>0 - 30 días:</span></div><span class="font-bold">${fmt(ageBuckets.b0_30)} (${agePercs.b0_30.toFixed(1)}%)</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-orange-500"></div><span>31 - 60 días:</span></div><span class="font-bold">${fmt(ageBuckets.b31_60)} (${agePercs.b31_60.toFixed(1)}%)</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-red-50"></div><span>61 - 90 días:</span></div><span class="font-bold">${fmt(ageBuckets.b61_90)} (${agePercs.b61_90.toFixed(1)}%)</span></div>
+              <div class="flex items-center justify-between"><div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-rose-700"></div><span class="font-bold text-rose-800">Más de 90 días:</span></div><span class="font-bold text-rose-800">${fmt(ageBuckets.b90p)} (${agePercs.b90p.toFixed(1)}%)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Execution progress and Auditor Panel -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+        <!-- Budget Execution indicators -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm" style="border-color:#E5E7EB">
+          <h5 class="font-bold text-gray-800 mb-3"><i class="fas fa-sack-dollar mr-2 text-indigo-700"></i>Ejecución Presupuestal de Rubros Principales</h5>
+          <div class="space-y-4 mt-2">
+            ${budgetSpentSorted.map(item => {
+              const spent = Math.abs(item.executed || 0);
+              const limit = item.annual_amount;
+              const ratio = limit > 0 ? (spent / limit * 100) : 0;
+              const barColor = ratio > 100 ? 'bg-red-500' : (ratio > 90 ? 'bg-amber-500' : 'bg-emerald-500');
+              return `
+                <div>
+                  <div class="flex items-center justify-between text-xs mb-1">
+                    <span class="font-bold text-gray-700">${item.expand?.account_id?.code} - ${esc(item.expand?.account_id?.name)}</span>
+                    <span class="font-bold text-gray-500">${fmt(spent)} de ${fmt(limit)} (${ratio.toFixed(0)}%)</span>
+                  </div>
+                  <div class="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                    <div class="${barColor} h-full" style="width: ${Math.min(ratio, 100)}%"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+            ${budgetSpentSorted.length === 0 ? '<p class="text-xs text-gray-400 py-4 text-center">No hay datos de presupuesto ejecutados.</p>' : ''}
+          </div>
+        </div>
+
+        <!-- Auditor panel details -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm" style="border-color:#E5E7EB">
+          <h5 class="font-bold text-gray-800 mb-3"><i class="fas fa-clipboard-check mr-2 text-indigo-700"></i>Panel de Conclusiones de Auditoría</h5>
+          <div class="space-y-3 max-h-[260px] overflow-y-auto">
+            ${auditorChecks.map(c => `
+              <div class="p-3 rounded-xl border flex gap-3 text-xs ${c.type === 'danger' ? 'bg-rose-50 border-rose-200 text-rose-800' : (c.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800')}">
+                <div class="mt-0.5">
+                  <i class="fas ${c.type === 'danger' ? 'fa-circle-xmark text-rose-600' : (c.type === 'warning' ? 'fa-circle-exclamation text-amber-600' : 'fa-circle-check text-emerald-600')} text-base"></i>
+                </div>
+                <div>
+                  <h6 class="font-bold uppercase tracking-wide">${c.title}</h6>
+                  <p class="mt-1 leading-relaxed">${c.desc}</p>
+                </div>
+              </div>
+            `).join('')}
+            ${auditorChecks.length === 0 ? '<p class="text-xs text-gray-400 py-6 text-center">No se encontraron alarmas contables en este análisis.</p>' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
 (window as any).renderWithholdingCertificates = renderWithholdingCertificates;
 (window as any).renderPazYSalvoCertificate = renderPazYSalvoCertificate;
 (window as any).renderIvaReport = renderIvaReport;
@@ -5066,3 +6058,9 @@ async function renderSalesEmissionReport() {
 (window as any).exportRetToExcel = exportRetToExcel;
 (window as any).exportRetToPdf = exportRetToPdf;
 (window as any).renderSalesEmissionReport = renderSalesEmissionReport;
+(window as any).renderCashFlowReport = renderCashFlowReport;
+(window as any).generateCashFlowReportRows = generateCashFlowReportRows;
+(window as any).exportCashFlowToExcel = exportCashFlowToExcel;
+(window as any).exportCashFlowToPdf = exportCashFlowToPdf;
+(window as any).renderFinancialAnalysisReport = renderFinancialAnalysisReport;
+(window as any).generateFinancialAnalysisData = generateFinancialAnalysisData;

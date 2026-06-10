@@ -34,6 +34,7 @@ const DOC_TYPES = [
   { value: 'ND',  label: 'Nota Débito Electrónica (ND)' },
   { value: 'POS', label: 'Documento Equivalente POS (POS)' },
   { value: 'DS',  label: 'Documento Soporte (DS)' },
+  { value: 'NDS', label: 'Nota Ajuste Documento Soporte (NDS)' },
   { value: 'NE',  label: 'Nómina Electrónica (NE)' }
 ];
 

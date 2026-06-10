@@ -810,6 +810,10 @@ const API = {
     const lines = await this.getPurchaseInvoiceLines(invoiceId);
     if (!lines.length) throw new Error('La factura no tiene líneas.');
 
+    const txTypeCode = inv.expand?.tx_type_id?.code;
+    const isCreditNote = txTypeCode === 'NDS' || txTypeCode === 'NC';
+    const docLabel = isCreditNote ? 'Nota de Ajuste (Compra)' : 'Compra';
+
     // Configuracion contable de compras (settings.key = purchase_config_v1)
     let purchaseCfg = {};
     try {
@@ -1022,6 +1026,14 @@ const API = {
       crossDocRef: inv.supplier_ref || '',
     }));
 
+    if (isCreditNote) {
+      for (const ln of txLines) {
+        const temp = ln.debit;
+        ln.debit = ln.credit;
+        ln.credit = temp;
+      }
+    }
+
     // ── Crear transacción contable ───────────────────────────────────────
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     let effectiveTxNumber = String(inv.tx_number || '').trim();
@@ -1061,7 +1073,7 @@ const API = {
       tx_type_id: effectiveTxTypeId,
       number: effectiveTxNumber,
       date: inv.date,
-      description: `Compra ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
+      description: `${docLabel} ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
       third_party_id: inv.supplier_id,
       payment_days: 0,
       cross_enabled: false,
@@ -1073,14 +1085,16 @@ const API = {
     if (bienLines.length && inv.warehouse_id) {
       const today = inv.date || new Date().toISOString().slice(0, 10);
       const rand = String(Date.now()).slice(-4);
-      const movNumber = `ENT-${today.replaceAll('-', '')}-${rand}`;
+      const movType = isCreditNote ? 'SALIDA' : 'ENTRADA';
+      const movPrefix = isCreditNote ? 'SAL' : 'ENT';
+      const movNumber = `${movPrefix}-${today.replaceAll('-', '')}-${rand}`;
       const mov = await pb.create('inventory_movements', {
         number: movNumber,
-        mov_type: 'ENTRADA',
+        mov_type: movType,
         date: inv.date,
         warehouse_id: inv.warehouse_id,
         third_party_id: inv.supplier_id,
-        notes: `Compra ${inv.number}`,
+        notes: `${docLabel} ${inv.number}`,
         status: 'draft',
         tx_id: tx.id,
       });

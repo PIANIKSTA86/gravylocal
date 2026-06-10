@@ -31,6 +31,8 @@ onBootstrap((e) => {
     "accounts",
     "purchase_orders",
     "purchase_lines",
+    "purchase_invoices",
+    "purchase_invoice_lines",
     "transaction_types",
   ];
 

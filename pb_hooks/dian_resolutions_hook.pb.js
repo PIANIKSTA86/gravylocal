@@ -5,36 +5,94 @@
  * de consecutivos de facturación bajo resoluciones oficiales de la DIAN.
  */
 
-onRecordCreateRequest((e) => {
+const resolutionHandler = (e) => {
   const record = e.record;
+  const collectionName = record.collection().name;
 
   let docType = "FV"; // Por defecto Factura de Venta
   const posShiftId = record.getString("pos_shift_id");
   const txTypeId = record.getString("tx_type_id");
 
-  if (txTypeId) {
-    try {
-      const txType = $app.findRecordById("transaction_types", txTypeId);
-      const code = (txType.getString("code") || "").toUpperCase().trim();
-      const prefix = (txType.getString("prefix") || "").toUpperCase().trim();
-      const name = (txType.getString("name") || "").toUpperCase();
-      
-      if (code === "NC" || prefix === "NC" || name.includes("CRÉDITO") || name.includes("CREDITO")) {
-        docType = "NC";
-      } else if (code === "ND" || prefix === "ND" || name.includes("DÉBITO") || name.includes("DEBITO")) {
-        docType = "ND";
+  if (collectionName === "purchase_invoices") {
+    let isDS = false;
+    let txTypeRecord = null;
+    if (txTypeId) {
+      try {
+        txTypeRecord = $app.findRecordById("transaction_types", txTypeId);
+        const code = (txTypeRecord.getString("code") || "").toUpperCase().trim();
+        if (code === "DS") { isDS = true; docType = "DS"; }
+        if (code === "NDS") { isDS = true; docType = "NDS"; }
+      } catch (err) {}
+    }
+    // Si no es Documento Soporte ni su Nota de Ajuste, usamos el consecutivo interno de transaction_types
+    if (!isDS) {
+      if (txTypeRecord) {
+        try {
+          let txNumber = "";
+          $app.runInTransaction((txApp) => {
+            const txType = txApp.findRecordById("transaction_types", txTypeId);
+            const prefix = String(txType.getString("prefix") || txType.getString("code") || "FC").trim().toUpperCase() || "FC";
+            let consecutiveRaw = Number(txType.get("consecutive") || 0);
+
+            while (true) {
+              consecutiveRaw++;
+              txNumber = `${prefix}-${String(consecutiveRaw).padStart(8, "0")}`;
+              let found = false;
+              try {
+                $app.findFirstRecordByFilter("purchase_invoices", "number='" + txNumber + "'");
+                found = true;
+              } catch (e) {}
+
+              if (!found) {
+                try {
+                  $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'");
+                  found = true;
+                } catch (e) {}
+              }
+
+              if (!found) {
+                txType.set("consecutive", consecutiveRaw);
+                txApp.save(txType);
+                break;
+              }
+            }
+          });
+          if (txNumber) {
+            record.set("number", txNumber);
+            console.log("[GRAVY-HOOK] Asignado consecutivo interno para compra: " + txNumber);
+          }
+        } catch(e) {
+          console.log("[GRAVY-HOOK] Error generando consecutivo interno para compra", e);
+        }
       }
-    } catch (err) {
-      console.log("[GRAVY-HOOK] Error looking up txType:", err);
+      e.next();
+      return;
+    }
+  } else {
+    // Lógica original para invoices
+    if (txTypeId) {
+      try {
+        const txType = $app.findRecordById("transaction_types", txTypeId);
+        const code = (txType.getString("code") || "").toUpperCase().trim();
+        const prefix = (txType.getString("prefix") || "").toUpperCase().trim();
+        const name = (txType.getString("name") || "").toUpperCase();
+        
+        if (code === "NC" || prefix === "NC" || name.includes("CRÉDITO") || name.includes("CREDITO")) {
+          docType = "NC";
+        } else if (code === "ND" || prefix === "ND" || name.includes("DÉBITO") || name.includes("DEBITO")) {
+          docType = "ND";
+        }
+      } catch (err) {
+        console.log("[GRAVY-HOOK] Error looking up txType:", err);
+      }
+    }
+    // Si no se detectó como Nota y tiene turno POS, entonces es POS
+    if (docType === "FV" && posShiftId) {
+      docType = "POS";
     }
   }
 
-  // Si no se detectó como Nota y tiene turno POS, entonces es POS
-  if (docType === "FV" && posShiftId) {
-    docType = "POS";
-  }
-
-  console.log("[GRAVY-HOOK] Creating invoice. Final docType:", docType);
+  console.log("[GRAVY-HOOK] Creating " + collectionName + ". Final docType:", docType);
 
   // Determinar filtro inicial de resolución activa
   let filter = "active = true && document_type = '" + docType + "'";
@@ -77,7 +135,7 @@ onRecordCreateRequest((e) => {
     }
 
     if (!resolution) {
-      throw new Error("No se encontró ninguna resolución activa de tipo " + docType + ".");
+      throw new BadRequestError("No se encontró ninguna resolución activa de tipo " + docType + ".");
     }
 
     const nextNumber = resolution.getInt("current_number") + 1;
@@ -89,13 +147,13 @@ onRecordCreateRequest((e) => {
       const expDate = new Date(expirationStr.slice(0, 10) + "T23:59:59");
       const today = new Date();
       if (today > expDate) {
-        throw new Error("La resolución DIAN para " + docType + " ha expirado el " + expirationStr.slice(0, 10) + ".");
+        throw new BadRequestError("La resolución DIAN para " + docType + " ha expirado el " + expirationStr.slice(0, 10) + ".");
       }
     }
 
     // Validar límites del rango
     if (nextNumber > maxNumber) {
-      throw new Error("Rango de consecutivos agotado para la resolución DIAN de " + docType + " (Máx autorizado: " + maxNumber + ").");
+      throw new BadRequestError("Rango de consecutivos agotado para la resolución DIAN de " + docType + " (Máx autorizado: " + maxNumber + ").");
     }
 
     // Generar y asignar el número definitivo
@@ -125,11 +183,16 @@ onRecordCreateRequest((e) => {
       if (docType === "POS") fbPrefix = "POS";
       if (docType === "NC") fbPrefix = "NC";
       if (docType === "ND") fbPrefix = "ND";
+      if (docType === "DS") fbPrefix = "DS";
+      if (docType === "NDS") fbPrefix = "NDS";
       record.set("number", fbPrefix + "-" + today + "-" + rand);
     } else {
-      throw new Error("Error de Numeración DIAN: " + err.message);
+      throw new BadRequestError("Error de Numeración DIAN: " + err.message);
     }
   }
 
   e.next();
-}, "invoices");
+};
+
+onRecordCreateRequest(resolutionHandler, "invoices");
+onRecordCreateRequest(resolutionHandler, "purchase_invoices");

@@ -276,38 +276,138 @@ async function renderUtilidades(container) {
              CARGA MASIVA DE PRODUCTOS
           ══════════════════════════════════════════════════════════ */
           function _downloadMassProductsTemplate() {
-            const header = [
-              'codigo','nombre','tipo','unidad','presentacion','categoria','linea','iva','precio_base','precio_venta_2','precio_venta_3','costo','activo','unspsc','ean','peso','cajas_en_pallet','und_empaque','peso_x_und_empaque','descripcion'
-            ].join(',');
+            const headers = [
+              { key: 'codigo', label: 'codigo (REQUERIDO)' },
+              { key: 'nombre', label: 'nombre (REQUERIDO)' },
+              { key: 'tipo', label: 'tipo (REQUERIDO: BIEN o SERVICIO)' },
+              { key: 'unidad', label: 'unidad (REQUERIDO: UND, KG, SVC, etc.)' },
+              { key: 'presentacion', label: 'presentacion (opcional)' },
+              { key: 'categoria', label: 'categoria (opcional)' },
+              { key: 'linea', label: 'linea (opcional)' },
+              { key: 'iva', label: 'iva (opcional: 0, 5, 19)' },
+              { key: 'precio_base', label: 'precio_base (opcional)' },
+              { key: 'precio_venta_2', label: 'precio_venta_2 (opcional)' },
+              { key: 'precio_venta_3', label: 'precio_venta_3 (opcional)' },
+              { key: 'costo', label: 'costo (opcional)' },
+              { key: 'activo', label: 'activo (opcional: Si/No)' },
+              { key: 'unspsc', label: 'unspsc (opcional)' },
+              { key: 'ean', label: 'ean (opcional)' },
+              { key: 'peso', label: 'peso (opcional)' },
+              { key: 'cajas_en_pallet', label: 'cajas_en_pallet (opcional)' },
+              { key: 'und_empaque', label: 'und_empaque (opcional)' },
+              { key: 'peso_x_und_empaque', label: 'peso_x_und_empaque (opcional)' },
+              { key: 'descripcion', label: 'descripcion (opcional)' },
+              { key: 'posicion_arancelaria', label: 'posicion_arancelaria (opcional)' },
+              { key: 'arancel_rate_default', label: 'arancel_rate_default (opcional)' },
+              { key: 'pais_origen', label: 'pais_origen (opcional)' },
+              { key: 'marca', label: 'marca (opcional)' },
+              { key: 'modelo', label: 'modelo (opcional)' },
+              { key: 'visto_bueno_required', label: 'visto_bueno_required (opcional: Si/No)' },
+              { key: 'visto_bueno_entidad', label: 'visto_bueno_entidad (opcional)' },
+              { key: 'registro_sanitario', label: 'registro_sanitario (opcional)' },
+              { key: 'peso_neto', label: 'peso_neto (opcional)' },
+              { key: 'peso_bruto', label: 'peso_bruto (opcional)' }
+            ];
+
             const rows = [
-              'P-001,Producto demo,BIEN,UND,Caja x 12,Aseo,Hogar,19,12000,0,0,8000,Si,44121618,7702010123456,1.2,10,12,0.1,Producto de ejemplo',
-              'S-002,Servicio demo,SERVICIO,SVC,,Servicios,Consultoría,0,50000,0,0,0,Si,,,,,,,Servicio de ejemplo'
-            ].join('\n');
-            const blob = new Blob([header + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = 'plantilla_productos.csv'; a.click();
-            URL.revokeObjectURL(url);
+              {
+                codigo: 'P-001',
+                nombre: 'Producto demo',
+                tipo: 'BIEN',
+                unidad: 'UND',
+                presentacion: 'Caja x 12',
+                categoria: 'Aseo',
+                linea: 'Hogar',
+                iva: 19,
+                precio_base: 12000,
+                precio_venta_2: 0,
+                precio_venta_3: 0,
+                costo: 8000,
+                activo: 'Si',
+                unspsc: '44121618',
+                ean: '7702010123456',
+                peso: 1.2,
+                cajas_en_pallet: 10,
+                und_empaque: 12,
+                peso_x_und_empaque: 0.1,
+                descripcion: 'Producto de ejemplo',
+                posicion_arancelaria: '1501100000',
+                arancel_rate_default: 10,
+                pais_origen: 'China',
+                marca: 'MarcaDemo',
+                modelo: 'ModeloDemo',
+                visto_bueno_required: 'No',
+                visto_bueno_entidad: '',
+                registro_sanitario: 'INVIMA-123',
+                peso_neto: 1.0,
+                peso_bruto: 1.2
+              },
+              {
+                codigo: 'S-002',
+                nombre: 'Servicio demo',
+                tipo: 'SERVICIO',
+                unidad: 'SVC',
+                presentacion: '',
+                categoria: 'Servicios',
+                linea: 'Consultoría',
+                iva: 0,
+                precio_base: 50000,
+                precio_venta_2: 0,
+                precio_venta_3: 0,
+                costo: 0,
+                activo: 'Si',
+                unspsc: '',
+                ean: '',
+                peso: '',
+                cajas_en_pallet: '',
+                und_empaque: '',
+                peso_x_und_empaque: '',
+                descripcion: 'Servicio de ejemplo',
+                posicion_arancelaria: '',
+                arancel_rate_default: '',
+                pais_origen: '',
+                marca: '',
+                modelo: '',
+                visto_bueno_required: 'No',
+                visto_bueno_entidad: '',
+                registro_sanitario: '',
+                peso_neto: '',
+                peso_bruto: ''
+              }
+            ];
+
+            (window as any).exportToExcel(rows, headers, 'plantilla_productos');
           }
 
           async function _openMassProductsImportModal() {
             if (!can('canWrite')) return showToast('No tienes permisos para importar productos', 'error');
-            if (window._massProductsImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+            if ((window as any)._massProductsImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+
+            const reqCols = ['codigo', 'nombre', 'tipo', 'unidad'];
+            const optColsBase = ['presentacion', 'categoria', 'linea', 'iva', 'precio_base', 'precio_venta_2', 'precio_venta_3', 'costo', 'activo', 'unspsc', 'ean', 'descripcion'];
+            const optColsImport = ['peso', 'cajas_en_pallet', 'und_empaque', 'peso_x_und_empaque', 'peso_neto', 'peso_bruto', 'posicion_arancelaria', 'arancel_rate_default', 'pais_origen', 'marca', 'modelo', 'visto_bueno_required', 'visto_bueno_entidad', 'registro_sanitario'];
 
             openModal(
               '<i class="fas fa-boxes-stacked mr-2" style="color:#CA8A04"></i>Carga masiva de productos',
               `<div class="mb-2">
                 <p class="text-sm mb-3" style="color:#374151">
-                  Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con los productos a registrar o actualizar.<br>
+                  Carga un archivo <strong>Excel (.xlsx/.xls)</strong> o <strong>CSV</strong> con los productos a registrar o actualizar.<br>
                   Si el <strong>código</strong> ya existe, el producto será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
                 </p>
-                <div class="rounded-xl p-3 mb-3" style="background:#FEF9C3;border:1px solid #FDE68A">
-                  <p class="text-xs font-semibold mb-1" style="color:#CA8A04;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
-                  <div class="flex flex-wrap gap-2 mb-2">
-                    ${['codigo','nombre','tipo','unidad'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#FEF3C7;color:#CA8A04">${c}</code>`).join('')}
-                    ${['presentacion','categoria','linea','iva','precio_base','precio_venta_2','precio_venta_3','costo','activo','unspsc','ean','peso','cajas_en_pallet','und_empaque','peso_x_und_empaque','descripcion'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+                <div class="rounded-xl p-3 mb-3 text-xs" style="background:#FEF9C3;border:1px solid #FDE68A">
+                  <p class="font-semibold mb-1" style="color:#CA8A04;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
+                  <div class="flex flex-wrap gap-1.5 mb-2">
+                    ${reqCols.map(c => `<code class="px-2 py-0.5 rounded" style="background:#FEF3C7;color:#CA8A04">${c}</code>`).join('')}
                   </div>
-                  <p class="text-xs" style="color:#CA8A04">
+                  <p class="font-semibold mb-1" style="color:#4B5563;text-transform:uppercase;letter-spacing:.05em">Columnas opcionales (básicas y precios)</p>
+                  <div class="flex flex-wrap gap-1.5 mb-2">
+                    ${optColsBase.map(c => `<code class="px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c}</code>`).join('')}
+                  </div>
+                  <p class="font-semibold mb-1" style="color:#1E3A8A;text-transform:uppercase;letter-spacing:.05em">Columnas opcionales (logística e importaciones)</p>
+                  <div class="flex flex-wrap gap-1.5 mb-2">
+                    ${optColsImport.map(c => `<code class="px-2 py-0.5 rounded" style="background:#E0F2FE;color:#0369A1">${c}</code>`).join('')}
+                  </div>
+                  <p class="text-[10.5px] mt-2" style="color:#CA8A04">
                     <strong>tipo</strong>: BIEN o SERVICIO. <strong>unidad</strong>: UND, KG, SVC, etc. <strong>iva</strong>: 0, 5, 19.
                   </p>
                 </div>
@@ -429,6 +529,10 @@ async function renderUtilidades(container) {
               const iva = Number(get('iva','iva_rate'));
               const activeRaw = get('activo','active','estado').toLowerCase();
               const active = !/^(no|0|false|inactivo|inactiva)$/i.test(activeRaw);
+              
+              const vbReqRaw = get('visto_bueno_required','visto_bueno_req','visto_bueno').toLowerCase();
+              const visto_bueno_required = /^(si|sí|yes|1|true)$/i.test(vbReqRaw);
+
               // Validaciones mínimas
               if (!code) return { ok: false, rowNo, error: `Fila ${rowNo}: falta código` };
               if (!name) return { ok: false, rowNo, error: `Fila ${rowNo}: falta nombre` };
@@ -457,6 +561,16 @@ async function renderUtilidades(container) {
                 und_empaque: toNullableNumber(get('und_empaque')),
                 peso_x_und_empaque: toNullableNumber(get('peso_x_und_empaque')),
                 description: get('descripcion'),
+                posicion_arancelaria: get('posicion_arancelaria','posicion_arancelaria_default'),
+                arancel_rate_default: toNullableNumber(get('arancel_rate_default','arancel_rate')),
+                pais_origen: get('pais_origen'),
+                marca: get('marca'),
+                modelo: get('modelo'),
+                visto_bueno_required,
+                visto_bueno_entidad: get('visto_bueno_entidad'),
+                registro_sanitario: get('registro_sanitario'),
+                peso_neto: toNullableNumber(get('peso_neto')),
+                peso_bruto: toNullableNumber(get('peso_bruto')),
               };
               const exists = byCode.has(code);
               return {
@@ -514,10 +628,10 @@ async function renderUtilidades(container) {
           }
 
           async function _executeMassProductsImport(rows) {
-            if (window._massProductsImportInProgress) return;
+            if ((window as any)._massProductsImportInProgress) return;
             const valids = (rows || []).filter(r => r.ok && r.payload);
             if (!valids.length) return showToast('No hay filas válidas para importar', 'warning');
-            window._massProductsImportInProgress = true;
+            (window as any)._massProductsImportInProgress = true;
             const runBtn      = $('#btn-mass-products-run');
             const progressWrap = $('#mass-products-progress-wrap');
             const progressBar  = $('#mass-products-progress-bar');
@@ -557,7 +671,7 @@ async function renderUtilidades(container) {
               _loadSysInfo();
               closeModal();
             } finally {
-              window._massProductsImportInProgress = false;
+              (window as any)._massProductsImportInProgress = false;
               if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga'; }
             }
           }
@@ -1034,6 +1148,7 @@ async function _openMassTxImportModal() {
 
 function _massTxNormHeader(key) {
   return String(key || '')
+    .replace(/\s*\(.*?\)/g, '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

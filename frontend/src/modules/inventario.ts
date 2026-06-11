@@ -1127,6 +1127,10 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
     ctx.products = products;
     ctx.warehouses = warehouses;
 
+    // Obtener categorías y líneas únicas
+    const categorias = [...new Set(products.map((p: any) => p.categoria).filter(Boolean))].sort() as string[];
+    const lineas     = [...new Set(products.map((p: any) => p.linea).filter(Boolean))].sort() as string[];
+
     c.innerHTML = `
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <!-- Tarjeta 1: Reporte General de Inventarios -->
@@ -1153,6 +1157,20 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
               <select id="rep-gen-wh" class="form-input text-xs w-full">
                 <option value="">Todas las bodegas (Consolidado)</option>
                 ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Categoría (Opcional)</label>
+              <select id="rep-gen-cat" class="form-input text-xs w-full">
+                <option value="">Todas las categorías</option>
+                ${categorias.map(cat => `<option value="${esc(cat)}">${esc(cat)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Línea (Opcional)</label>
+              <select id="rep-gen-line" class="form-input text-xs w-full">
+                <option value="">Todas las líneas</option>
+                ${lineas.map(lin => `<option value="${esc(lin)}">${esc(lin)}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -1635,6 +1653,8 @@ async function _saveTomaFisica() {
     if (type === 'general') {
       const whId = getSelectVal('rep-gen-wh');
       const costType = getSelectVal('rep-gen-cost');
+      const catVal = getSelectVal('rep-gen-cat');
+      const lineVal = getSelectVal('rep-gen-line');
       
       const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
       const stockByProd = new Map();
@@ -1651,17 +1671,26 @@ async function _saveTomaFisica() {
         }
       }
 
+      let filteredProducts = products;
+      if (catVal) filteredProducts = filteredProducts.filter((p: any) => p.categoria === catVal);
+      if (lineVal) filteredProducts = filteredProducts.filter((p: any) => p.linea === lineVal);
+
       const whTitle = whId ? `Bodega: ${whMap.get(whId) || ''}` : 'Consolidado General';
       const costTitle = costType === 'promedio' ? 'Costo Promedio Kardex' : 'Último Costo del Producto';
       
+      let filterText = `Filtros - ${whTitle} | Costo: ${costTitle}`;
+      if (catVal) filterText += ` | Categoría: ${catVal}`;
+      if (lineVal) filterText += ` | Línea: ${lineVal}`;
+
       let html = `
-        <h3>Filtros - ${whTitle} | Costo: ${costTitle}</h3>
+        <h3>${filterText}</h3>
         <table>
           <thead>
             <tr>
               <th>Código</th>
               <th>Producto</th>
               <th>Categoría</th>
+              <th>Línea</th>
               <th>Unidad</th>
               <th class="text-right">Stock</th>
               <th class="text-right">Costo Unit.</th>
@@ -1673,7 +1702,7 @@ async function _saveTomaFisica() {
       let totalStock = 0;
       let totalVal = 0;
 
-      for (const p of products) {
+      for (const p of filteredProducts) {
         const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
         let cost = 0;
         if (costType === 'promedio') {
@@ -1690,6 +1719,7 @@ async function _saveTomaFisica() {
             <td style="font-family:monospace">${esc(p.code)}</td>
             <td>${esc(p.name)}</td>
             <td>${esc(p.categoria || '—')}</td>
+            <td>${esc(p.linea || '—')}</td>
             <td>${esc(p.unit || '—')}</td>
             <td class="text-right">${fmtN(st.qty)}</td>
             <td class="text-right">${fmt(cost)}</td>
@@ -1702,7 +1732,7 @@ async function _saveTomaFisica() {
           </tbody>
           <tfoot>
             <tr style="font-weight:bold;background:#f9f9f9">
-              <td colspan="4">TOTALES</td>
+              <td colspan="5">TOTALES</td>
               <td class="text-right">${fmtN(totalStock)}</td>
               <td></td>
               <td class="text-right">${fmt(totalVal)}</td>
@@ -1859,6 +1889,8 @@ async function _saveTomaFisica() {
     if (type === 'general') {
       const whId = getSelectVal('rep-gen-wh');
       const costType = getSelectVal('rep-gen-cost');
+      const catVal = getSelectVal('rep-gen-cat');
+      const lineVal = getSelectVal('rep-gen-line');
       
       const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
       const stockByProd = new Map();
@@ -1875,7 +1907,18 @@ async function _saveTomaFisica() {
         }
       }
 
-      const exportRows = products.map(p => {
+      // Re-consultamos con expansiones contables para exportar
+      const productsDetailed = await pb.listAll('products', {
+        filter: 'active=true',
+        sort: 'code',
+        expand: 'income_account_id,cost_account_id,inventory_account_id'
+      });
+
+      let filteredProducts = productsDetailed;
+      if (catVal) filteredProducts = filteredProducts.filter((p: any) => p.categoria === catVal);
+      if (lineVal) filteredProducts = filteredProducts.filter((p: any) => p.linea === lineVal);
+
+      const exportRows = filteredProducts.map(p => {
         const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
         let cost = 0;
         if (costType === 'promedio') {
@@ -1883,28 +1926,90 @@ async function _saveTomaFisica() {
         } else {
           cost = Number(p.cost_price || 0);
         }
+
+        const ia = p.expand?.income_account_id;
+        const ca = p.expand?.cost_account_id;
+        const inv = p.expand?.inventory_account_id;
+
         return {
           codigo: p.code,
           nombre: p.name,
+          tipo: p.type || '—',
           categoria: p.categoria || '—',
+          linea: p.linea || '—',
           unidad: p.unit || '—',
+          presentacion: p.presentacion || '—',
+          iva_rate: p.iva_rate != null ? `${p.iva_rate}%` : '—',
+          base_price: p.base_price || 0,
+          precio_venta_2: p.precio_venta_2 || 0,
+          precio_venta_3: p.precio_venta_3 || 0,
+          cost_price_ficha: p.cost_price || 0,
           existencia: st.qty,
           costo_unitario: cost,
-          valor_estimado: st.qty * cost
+          valor_estimado: st.qty * cost,
+          posicion_arancelaria: p.posicion_arancelaria || '—',
+          arancel_rate: p.arancel_rate_default != null ? `${p.arancel_rate_default}%` : '—',
+          pais_origen: p.pais_origen || '—',
+          marca: p.marca || '—',
+          modelo: p.modelo || '—',
+          visto_bueno_req: p.visto_bueno_required ? 'Sí' : 'No',
+          visto_bueno_ent: p.visto_bueno_entidad || '—',
+          registro_sanitario: p.registro_sanitario || '—',
+          peso_neto: p.peso_neto || 0,
+          peso_bruto: p.peso_bruto || 0,
+          peso_general: p.peso || 0,
+          cajas_pallet: p.cajas_en_pallet || 0,
+          und_empaque: p.und_empaque || 0,
+          peso_und_empaque: p.peso_x_und_empaque || 0,
+          ean_code: p.ean_code || '—',
+          unspsc_code: p.unspsc_code || '—',
+          description: p.description || '—',
+          cuenta_ingresos: ia ? `${ia.code} — ${ia.name}` : '—',
+          cuenta_costos: ca ? `${ca.code} — ${ca.name}` : '—',
+          cuenta_inventario: inv ? `${inv.code} — ${inv.name}` : '—',
         };
       });
 
       const headers = [
         { key: 'codigo', label: 'Código' },
         { key: 'nombre', label: 'Producto' },
+        { key: 'tipo', label: 'Tipo' },
         { key: 'categoria', label: 'Categoría' },
-        { key: 'unidad', label: 'Unidad' },
+        { key: 'linea', label: 'Línea' },
+        { key: 'unidad', label: 'Unidad de Medida' },
+        { key: 'presentacion', label: 'Presentación' },
+        { key: 'iva_rate', label: 'Tarifa IVA' },
+        { key: 'base_price', label: 'Precio Base Venta' },
+        { key: 'precio_venta_2', label: 'Precio Venta 2' },
+        { key: 'precio_venta_3', label: 'Precio Venta 3' },
+        { key: 'cost_price_ficha', label: 'Costo de Ficha' },
         { key: 'existencia', label: 'Existencia' },
-        { key: 'costo_unitario', label: 'Costo Unitario' },
-        { key: 'valor_estimado', label: 'Valor Estimado' }
+        { key: 'costo_unitario', label: 'Costo Unitario Reportado' },
+        { key: 'valor_estimado', label: 'Valorización Inventario' },
+        { key: 'posicion_arancelaria', label: 'Posición Arancelaria' },
+        { key: 'arancel_rate', label: 'Arancel %' },
+        { key: 'pais_origen', label: 'País de Origen' },
+        { key: 'marca', label: 'Marca' },
+        { key: 'modelo', label: 'Modelo' },
+        { key: 'visto_bueno_req', label: '¿Requiere Visto Bueno?' },
+        { key: 'visto_bueno_ent', label: 'Entidad Visto Bueno' },
+        { key: 'registro_sanitario', label: 'Registro Sanitario / Venta' },
+        { key: 'peso_neto', label: 'Peso Neto (Kg)' },
+        { key: 'peso_bruto', label: 'Peso Bruto (Kg)' },
+        { key: 'peso_general', label: 'Peso General (Kg)' },
+        { key: 'cajas_pallet', label: 'Cajas en Pallet' },
+        { key: 'und_empaque', label: 'Unidades por Empaque' },
+        { key: 'peso_und_empaque', label: 'Peso x Unidad Empaque' },
+        { key: 'ean_code', label: 'Código EAN/Barras' },
+        { key: 'unspsc_code', label: 'Código UNSPSC (DIAN)' },
+        { key: 'description', label: 'Descripción' },
+        { key: 'cuenta_ingresos', label: 'Cuenta de Ingresos' },
+        { key: 'cuenta_costos', label: 'Cuenta de Costos/Gastos' },
+        { key: 'cuenta_inventario', label: 'Cuenta de Inventario' },
       ];
 
-      (window as any).exportToExcel(exportRows, headers, `Reporte_Inventario_${whId ? whMap.get(whId) : 'Consolidado'}`);
+      const whTitlePart = whId ? whMap.get(whId) : 'Consolidado';
+      (window as any).exportToExcel(exportRows, headers, `Reporte_Inventario_${whTitlePart}`);
       showToast('Reporte exportado a Excel.', 'success');
 
     } else if (type === 'comparativo') {

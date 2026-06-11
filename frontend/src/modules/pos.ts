@@ -80,6 +80,450 @@ function playPOSBeep() {
   } catch (_) {}
 }
 
+const POS_PROMOTIONS_KEY = 'pos_promotions_v2';
+
+async function getPOSPromotions() {
+  try {
+    const raw = await (window as any).API.getSetting(POS_PROMOTIONS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+async function savePOSPromotions(promos: any[]) {
+  await (window as any).API.setSetting(POS_PROMOTIONS_KEY, JSON.stringify(promos));
+  await (window as any).API.logAudit('CONFIG', 'POSPromotions', null, 'Promociones de POS actualizadas');
+}
+
+async function openPOSPromotionsModal() {
+  if (!posProducts || posProducts.length === 0) {
+    try {
+      posProducts = await (window as any).API.getProducts({ activeOnly: true });
+    } catch (err) {
+      console.warn("Error loading products for promotions modal:", err);
+    }
+  }
+  const promos = await getPOSPromotions();
+  
+  const getPromoTypeBadge = (type: string) => {
+    switch(type) {
+      case 'bogo': return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#EBF5FF;color:#1E3A8A"><i class="fas fa-layer-group mr-1"></i>Paga X Lleva Y</span>';
+      case 'percent_product': return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#ECFDF5;color:#065F46"><i class="fas fa-percent mr-1"></i>Descuento Producto</span>';
+      case 'percent_category': return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#F5F3FF;color:#5B21B6"><i class="fas fa-folder mr-1"></i>Descuento Categoría</span>';
+      case 'flat_product': return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:#FFF8F0;color:#9A3412"><i class="fas fa-tag mr-1"></i>Precio Oferta</span>';
+      default: return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800">${type}</span>`;
+    }
+  };
+
+  const getPromoTargetLabel = (promo: any) => {
+    if (promo.type === 'percent_category') {
+      return `Categoría: <strong>${(window as any).esc(promo.category || '—')}</strong>`;
+    }
+    const prod = posProducts.find(p => p.id === promo.product_id);
+    const prodName = prod ? prod.name : 'Producto no encontrado';
+    const prodCode = prod ? `[${prod.code}] ` : '';
+    return `<strong>${prodCode}${(window as any).esc(prodName)}</strong>`;
+  };
+
+  const getPromoValueLabel = (promo: any) => {
+    if (promo.type === 'bogo') {
+      return `Compra ${promo.buy_qty} lleva ${promo.get_qty} (con ${promo.discount_pct}% desc)`;
+    } else if (promo.type === 'flat_product') {
+      return `Descuento: <strong>${(window as any).fmt(promo.discount_flat || 0)}</strong>`;
+    } else {
+      return `Descuento: <strong>${promo.discount_pct}%</strong>`;
+    }
+  };
+
+  let rows = '';
+  if (!promos.length) {
+    rows = `
+      <tr>
+        <td colspan="6" class="text-center py-10 text-gray-400">
+          <i class="fas fa-tags text-3xl mb-2 block text-gray-300"></i>
+          No hay promociones u ofertas configuradas aún.
+        </td>
+      </tr>
+    `;
+  } else {
+    rows = promos.map((p: any, idx: number) => `
+      <tr class="border-b" style="border-color:#E5E7EB">
+        <td class="py-3 px-4 font-bold text-gray-800">${(window as any).esc(p.name)}</td>
+        <td class="py-3 px-4">${getPromoTypeBadge(p.type)}</td>
+        <td class="py-3 px-4 text-xs text-gray-600">${getPromoTargetLabel(p)}</td>
+        <td class="py-3 px-4 text-xs text-gray-700">${getPromoValueLabel(p)}</td>
+        <td class="py-3 px-4 text-center">
+          <button class="btn ${p.active ? 'btn-success bg-emerald-500 hover:bg-emerald-600 text-white' : 'btn-secondary bg-gray-200 text-gray-700'} btn-xs px-2.5 py-1 font-bold border-none cursor-pointer rounded-lg" onclick="window.togglePromoActiveState(${idx})">
+            ${p.active ? 'Activo' : 'Inactivo'}
+          </button>
+        </td>
+        <td class="py-3 px-4 text-center">
+          <div class="flex gap-1 justify-center">
+            <button class="btn btn-outline btn-xs px-2 py-1 text-blue-600 hover:bg-blue-50 border-blue-200 cursor-pointer rounded-lg" onclick="window.openPromotionFormModal(${idx})" title="Editar"><i class="fas fa-edit"></i></button>
+            <button class="btn btn-outline btn-xs px-2 py-1 text-red-600 hover:bg-red-50 border-red-200 cursor-pointer rounded-lg" onclick="window.deletePOSPromotion(${idx})" title="Eliminar"><i class="fas fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const modalBody = `
+    <div class="space-y-4 text-sm" style="color:#374151">
+      <div class="flex justify-between items-center">
+        <p class="text-xs text-gray-500">Configura promociones automáticas de volumen, descuentos por categoría o precios de oferta por tiempo limitado.</p>
+        <button class="btn btn-primary btn-sm flex items-center gap-1.5 font-bold cursor-pointer rounded-lg" onclick="window.openPromotionFormModal(null)"><i class="fas fa-plus"></i> Crear Promoción</button>
+      </div>
+
+      <div class="border rounded-2xl overflow-hidden" style="border-color:#E5E7EB">
+        <div class="overflow-x-auto" style="max-height:400px">
+          <table class="w-full text-xs text-left" style="background:#fff">
+            <thead>
+              <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;color:#374151" class="font-extrabold uppercase text-[10px]">
+                <th class="py-3 px-4">Nombre</th>
+                <th class="py-3 px-4">Tipo</th>
+                <th class="py-3 px-4">Aplica A</th>
+                <th class="py-3 px-4">Beneficio</th>
+                <th class="py-3 px-4 text-center">Estado</th>
+                <th class="py-3 px-4 text-center">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const footer = `<button class="btn btn-outline cursor-pointer rounded-lg" onclick="closeModal()">Cerrar</button>`;
+  (window as any).openModal('Administración de Promociones y Ofertas', modalBody, footer, true);
+}
+
+async function openPromotionFormModal(promoIdx: number | null = null) {
+  if (!posProducts || posProducts.length === 0) {
+    try {
+      posProducts = await (window as any).API.getProducts({ activeOnly: true });
+    } catch (err) {
+      console.warn("Error loading products for promotion form:", err);
+    }
+  }
+  const promos = await getPOSPromotions();
+  const isEdit = promoIdx !== null;
+  const promo = isEdit ? promos[promoIdx!] : {
+    name: '',
+    type: 'bogo',
+    product_id: '',
+    category: '',
+    buy_qty: 2,
+    get_qty: 1,
+    discount_pct: 100,
+    discount_flat: 0,
+    active: true
+  };
+
+  const categories = [...new Set(posProducts.map(p => p.categoria?.trim()).filter(Boolean))].sort();
+
+  const bodyHtml = `
+    <div class="space-y-4" style="color:#374151">
+      <div class="form-group">
+        <label class="form-label font-bold block mb-1">Nombre de la Promoción <span class="text-red-500">*</span></label>
+        <input type="text" id="promo-name-inp" class="form-input w-full" value="${(window as any).esc(promo.name)}" placeholder="Ej: 2x1 en Cervezas, 15% Descuento Bebidas...">
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-group">
+          <label class="form-label font-bold block mb-1">Tipo de Promoción <span class="text-red-500">*</span></label>
+          <select id="promo-type-inp" class="form-input w-full" onchange="window.onPromoTypeChange()">
+            <option value="bogo" ${promo.type === 'bogo' ? 'selected' : ''}>Paga X Lleva Y (BOGO / Volumen)</option>
+            <option value="percent_product" ${promo.type === 'percent_product' ? 'selected' : ''}>Descuento Porcentual por Producto</option>
+            <option value="percent_category" ${promo.type === 'percent_category' ? 'selected' : ''}>Descuento Porcentual por Categoría</option>
+            <option value="flat_product" ${promo.type === 'flat_product' ? 'selected' : ''}>Descuento de Valor Fijo por Producto (Oferta)</option>
+          </select>
+        </div>
+
+        <div class="form-group flex items-end">
+          <label class="inline-flex items-center gap-2 cursor-pointer font-bold mt-3">
+            <input type="checkbox" id="promo-active-inp" class="rounded text-[#7F7CFF] focus:ring-[#7F7CFF]" ${promo.active ? 'checked' : ''}>
+            <span>Promoción Activa</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Configuración Condicional: Categoría -->
+      <div id="promo-category-group" class="form-group" style="display:none">
+        <label class="form-label font-bold block mb-1">Seleccionar Categoría <span class="text-red-500">*</span></label>
+        <select id="promo-category-inp" class="form-input w-full">
+          <option value="">— Seleccionar Categoría —</option>
+          ${categories.map(cat => `<option value="${(window as any).esc(cat)}"${promo.category === cat ? ' selected' : ''}>${(window as any).esc(cat)}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- Configuración Condicional: Producto Buscable -->
+      <div id="promo-product-group" class="form-group" style="display:none">
+        <label class="form-label font-bold block mb-1">Seleccionar Producto <span class="text-red-500">*</span></label>
+        <div id="promo-prod-select-wrap" class="relative">
+          <input id="promo-prod-search" class="form-input w-full text-xs" autocomplete="off" placeholder="Escribe el nombre o código del producto...">
+          <input id="promo-prod-id" type="hidden" value="${(window as any).esc(promo.product_id || '')}">
+          <div id="promo-prod-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:150px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+        </div>
+      </div>
+
+      <!-- Configuración Condicional: BOGO/Volumen -->
+      <div id="promo-bogo-group" class="grid grid-cols-3 gap-4" style="display:none">
+        <div class="form-group">
+          <label class="form-label font-bold block mb-1">Compra Mínima (X)</label>
+          <input type="number" id="promo-buy-qty-inp" class="form-input w-full font-bold text-center" min="1" value="${promo.buy_qty || 2}">
+          <span class="text-[9px] text-gray-400 block mt-1">Unidades pagadas</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold block mb-1">Lleva Con Desc. (Y)</label>
+          <input type="number" id="promo-get-qty-inp" class="form-input w-full font-bold text-center" min="1" value="${promo.get_qty || 1}">
+          <span class="text-[9px] text-gray-400 block mt-1">Unidades descontadas</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold block mb-1">Descuento (%)</label>
+          <input type="number" id="promo-bogo-pct-inp" class="form-input w-full font-bold text-center" min="1" max="100" value="${promo.discount_pct || 100}">
+          <span class="text-[9px] text-gray-400 block mt-1">Ej: 100% para gratis</span>
+        </div>
+      </div>
+
+      <!-- Configuración Condicional: Descuento Porcentual -->
+      <div id="promo-percent-group" class="form-group" style="display:none">
+        <label class="form-label font-bold block mb-1">Porcentaje de Descuento (%) <span class="text-red-500">*</span></label>
+        <input type="number" id="promo-pct-inp" class="form-input w-full font-bold" min="1" max="100" value="${promo.discount_pct || 10}">
+      </div>
+
+      <!-- Configuración Condicional: Descuento de Valor Fijo (Oferta) -->
+      <div id="promo-flat-group" class="form-group" style="display:none">
+        <label class="form-label font-bold block mb-1">Valor del Descuento ($ COP) <span class="text-red-500">*</span></label>
+        <input type="number" id="promo-flat-inp" class="form-input w-full font-bold" min="50" step="50" value="${promo.discount_flat || 1000}">
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline cursor-pointer rounded-lg" onclick="window.openPOSPromotionsModal()">Volver</button>
+    <button class="btn btn-primary cursor-pointer rounded-lg" id="btn-save-promo" onclick="window.savePOSPromotionData(${promoIdx})"><i class="fas fa-save mr-1.5"></i>Guardar Promoción</button>
+  `;
+
+  (window as any).openModal(isEdit ? 'Editar Promoción' : 'Nueva Promoción', bodyHtml, footer, false);
+
+  (window as any).onPromoTypeChange = () => {
+    const type = (document.getElementById('promo-type-inp') as HTMLSelectElement)?.value;
+    const catGroup = document.getElementById('promo-category-group') as HTMLElement;
+    const prodGroup = document.getElementById('promo-product-group') as HTMLElement;
+    const bogoGroup = document.getElementById('promo-bogo-group') as HTMLElement;
+    const pctGroup = document.getElementById('promo-percent-group') as HTMLElement;
+    const flatGroup = document.getElementById('promo-flat-group') as HTMLElement;
+
+    if (!type) return;
+
+    if (catGroup) catGroup.style.display = type === 'percent_category' ? 'block' : 'none';
+    if (prodGroup) prodGroup.style.display = (type === 'percent_product' || type === 'flat_product' || type === 'bogo') ? 'block' : 'none';
+    if (bogoGroup) bogoGroup.style.display = type === 'bogo' ? 'grid' : 'none';
+    if (pctGroup) pctGroup.style.display = (type === 'percent_product' || type === 'percent_category') ? 'block' : 'none';
+    if (flatGroup) flatGroup.style.display = type === 'flat_product' ? 'block' : 'none';
+  };
+
+  const initPromoProductSearch = () => {
+    const search = document.getElementById('promo-prod-search') as HTMLInputElement;
+    const hidden = document.getElementById('promo-prod-id') as HTMLInputElement;
+    const results = document.getElementById('promo-prod-results') as HTMLElement;
+
+    console.log("initPromoProductSearch initialized", {
+      searchExists: !!search,
+      hiddenExists: !!hidden,
+      resultsExists: !!results,
+      productsCount: posProducts.length
+    });
+
+    if (!search || !hidden || !results) return;
+
+    if (promo.product_id) {
+      const match = posProducts.find(p => p.id === promo.product_id);
+      search.value = match ? `${match.code} - ${match.name}` : '';
+    }
+
+    const performSearch = (val: string) => {
+      console.log("performSearch called", { val });
+      const query = val.toLowerCase().trim();
+      const filtered = !query
+        ? posProducts.slice(0, 30)
+        : posProducts.filter(p => `${p.name} ${p.code}`.toLowerCase().includes(query)).slice(0, 30);
+
+      console.log("performSearch filtered", { query, count: filtered.length, results: filtered.map(p => p.name) });
+
+      if (!filtered.length) {
+        results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+        return;
+      }
+
+      results.innerHTML = filtered.map(p => `
+        <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
+                data-id="${p.id}"
+                data-text="${(window as any).esc(p.code)} - ${(window as any).esc(p.name)}"
+                onmousedown="event.preventDefault()"
+                onclick="window.selectPromoProduct(this)">
+          <div class="font-bold text-gray-800">${(window as any).esc(p.name)}</div>
+          <div class="text-[10px] text-gray-500">Código: ${p.code} | Tarifa IVA: ${p.iva_rate}%</div>
+        </button>
+      `).join('');
+    };
+
+    search.addEventListener('focus', () => {
+      console.log("Search input focused");
+      performSearch(search.value);
+      results.style.display = 'block';
+    });
+    search.addEventListener('input', () => {
+      console.log("Search input typing", { value: search.value });
+      hidden.value = '';
+      performSearch(search.value);
+      results.style.display = 'block';
+    });
+    search.addEventListener('blur', () => {
+      console.log("Search input blurred");
+      setTimeout(() => { results.style.display = 'none'; }, 200);
+    });
+
+    (window as any).selectPromoProduct = (btn: HTMLElement) => {
+      const id = btn.getAttribute('data-id') || '';
+      const text = btn.getAttribute('data-text') || '';
+      console.log("selectPromoProduct selected", { id, text });
+      hidden.value = id;
+      search.value = text;
+      results.style.display = 'none';
+    };
+
+    (window as any).initKeyboardAutocomplete({
+      input: search,
+      results,
+      itemSelector: 'button',
+    });
+  };
+
+  initPromoProductSearch();
+  (window as any).onPromoTypeChange();
+}
+window.openPromotionFormModal = openPromotionFormModal;
+
+window.savePOSPromotionData = async function(promoIdx: number | null) {
+  const name = (document.getElementById('promo-name-inp') as HTMLInputElement)?.value.trim();
+  const type = (document.getElementById('promo-type-inp') as HTMLSelectElement)?.value;
+  const active = (document.getElementById('promo-active-inp') as HTMLInputElement)?.checked;
+
+  if (!name) {
+    (window as any).showToast('Por favor, ingresa un nombre para la promoción.', 'warning');
+    return;
+  }
+
+  const pData: any = { name, type, active };
+
+  if (type === 'percent_category') {
+    const category = (document.getElementById('promo-category-inp') as HTMLSelectElement)?.value;
+    if (!category) {
+      (window as any).showToast('Por favor, selecciona una categoría.', 'warning');
+      return;
+    }
+    pData.category = category;
+    pData.discount_pct = parseFloat((document.getElementById('promo-pct-inp') as HTMLInputElement)?.value) || 0;
+    if (pData.discount_pct <= 0 || pData.discount_pct > 100) {
+      (window as any).showToast('El porcentaje de descuento debe estar entre 1 y 100.', 'warning');
+      return;
+    }
+  } else {
+    const productId = (document.getElementById('promo-prod-id') as HTMLInputElement)?.value;
+    if (!productId) {
+      (window as any).showToast('Por favor, selecciona un producto válido de la lista.', 'warning');
+      return;
+    }
+    pData.product_id = productId;
+
+    if (type === 'bogo') {
+      pData.buy_qty = parseInt((document.getElementById('promo-buy-qty-inp') as HTMLInputElement)?.value) || 0;
+      pData.get_qty = parseInt((document.getElementById('promo-get-qty-inp') as HTMLInputElement)?.value) || 0;
+      pData.discount_pct = parseFloat((document.getElementById('promo-bogo-pct-inp') as HTMLInputElement)?.value) || 0;
+
+      if (pData.buy_qty <= 0 || pData.get_qty <= 0) {
+        (window as any).showToast('Las cantidades de compra y regalo deben ser mayores a 0.', 'warning');
+        return;
+      }
+      if (pData.discount_pct <= 0 || pData.discount_pct > 100) {
+        (window as any).showToast('El porcentaje de descuento debe estar entre 1 y 100.', 'warning');
+        return;
+      }
+    } else if (type === 'percent_product') {
+      pData.discount_pct = parseFloat((document.getElementById('promo-pct-inp') as HTMLInputElement)?.value) || 0;
+      if (pData.discount_pct <= 0 || pData.discount_pct > 100) {
+        (window as any).showToast('El porcentaje de descuento debe estar entre 1 y 100.', 'warning');
+        return;
+      }
+    } else if (type === 'flat_product') {
+      pData.discount_flat = parseFloat((document.getElementById('promo-flat-inp') as HTMLInputElement)?.value) || 0;
+      if (pData.discount_flat <= 0) {
+        (window as any).showToast('El valor de descuento debe ser mayor a 0.', 'warning');
+        return;
+      }
+    }
+  }
+
+  try {
+    const promos = await getPOSPromotions();
+    if (promoIdx !== null && promoIdx !== undefined) {
+      promos[promoIdx] = pData;
+    } else {
+      promos.push(pData);
+    }
+    await savePOSPromotions(promos);
+    posPromotions = promos;
+    (window as any).showToast('Promoción guardada con éxito.', 'success');
+    
+    await openPOSPromotionsModal();
+    window.renderPOSCart();
+  } catch (err: any) {
+    (window as any).showToast('Error al guardar: ' + err.message, 'error');
+  }
+};
+
+window.togglePromoActiveState = async function(idx: number) {
+  try {
+    const promos = await getPOSPromotions();
+    if (promos[idx]) {
+      promos[idx].active = !promos[idx].active;
+      await savePOSPromotions(promos);
+      posPromotions = promos;
+      (window as any).showToast(promos[idx].active ? 'Promoción activada' : 'Promoción desactivada', 'info');
+      await openPOSPromotionsModal();
+      window.renderPOSCart();
+    }
+  } catch (err: any) {
+    (window as any).showToast('Error al actualizar: ' + err.message, 'error');
+  }
+};
+
+window.deletePOSPromotion = function(idx: number) {
+  (window as any).confirmDialog(
+    'Eliminar Promoción',
+    '¿Estás seguro de que deseas eliminar esta promoción de forma permanente?',
+    async () => {
+      try {
+        const promos = await getPOSPromotions();
+        promos.splice(idx, 1);
+        await savePOSPromotions(promos);
+        posPromotions = promos;
+        (window as any).showToast('Promoción eliminada con éxito.', 'info');
+        await openPOSPromotionsModal();
+        window.renderPOSCart();
+      } catch (err: any) {
+        (window as any).showToast('Error al eliminar: ' + err.message, 'error');
+      }
+    }
+  );
+};
+
 async function getPOSConfig() {
   try {
     const raw = await (window as any).API.getSetting(POS_CONFIG_KEY);
@@ -311,6 +755,10 @@ interface PosCartItem {
   iva_rate: number;
   qty: number;
   type: string;
+  manual_discount_pct?: number;
+  discount_pct?: number;
+  discount_amount?: number;
+  promo_name?: string;
 }
 
 let activeShift: any = null;
@@ -321,6 +769,7 @@ let posCart: PosCartItem[] = [];
 let selectedCustomerId = "";
 let selectedWarehouseId = "";
 let posConfig: any = null;
+let posPromotions: any[] = [];
 let activeCategoryFilter = "";
 let activeLineFilter = "";
 let posDiscountPct = 0;
@@ -358,8 +807,9 @@ function updatePOSHeldBadge() {
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
-  // Exponer función global para el botón de configuración
+  // Exponer función global para el botón de configuración y promociones
   window.openPOSSettingsModal = openPOSSettingsModal;
+  window.openPOSPromotionsModal = openPOSPromotionsModal;
 
   const userRole = (window as any).pb.currentUser?.role ?? '';
   const canSeeCfg = ['administrador', 'contador', 'superadmin'].includes(userRole);
@@ -367,8 +817,11 @@ export async function renderPOS(container: HTMLElement) {
   container.innerHTML = `
     <div class="rounded-xl border p-6 space-y-6 min-h-[600px] flex flex-col justify-between" style="border-color:#E5E7EB;background:#FCFCFD">
       ${canSeeCfg ? `
-      <div class="flex justify-end mb-2">
-        <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal()" style="color:#7F7CFF;border-color:#7F7CFF">
+      <div class="flex justify-end gap-2 mb-2">
+        <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Promociones y Ofertas" onclick="window.openPOSPromotionsModal()" style="color:#10B981;border-color:#10B981">
+          <i class="fas fa-tags mr-1"></i> Promociones
+        </button>
+        <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal()" style="color:#7F7CFF;border-color:#7F7CFF">
           <i class="fas fa-cog mr-1"></i> Config. POS
         </button>
       </div>` : ''}
@@ -647,6 +1100,7 @@ window.loadPOSInterface = async function() {
   try {
     // Cargar configuración de POS
     posConfig = await getPOSConfig();
+    posPromotions = await getPOSPromotions();
     activeCategoryFilter = "";
     activeLineFilter = "";
 
@@ -725,7 +1179,10 @@ window.loadPOSInterface = async function() {
                 <i class="fas fa-file-import mr-1"></i>Pedido
               </button>
               ${['administrador','contador','superadmin'].includes((window as any).pb.currentUser?.role) ? `
-              <button class="btn btn-outline btn-sm" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
+              <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Promociones y Ofertas" onclick="window.openPOSPromotionsModal()" style="color:#10B981;border-color:#10B981">
+                <i class="fas fa-tags"></i>
+              </button>
+              <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
                 <i class="fas fa-cog"></i>
               </button>` : ''}
               <button class="btn btn-outline btn-sm text-red-500 hover:text-red-400" onclick="window.clearPOSCart()" title="Vaciar carrito"><i class="fas fa-trash-can"></i></button>
@@ -787,7 +1244,8 @@ window.loadPOSInterface = async function() {
             <div class="space-y-1 text-xs">
               <div class="flex justify-between" style="color:#6B7280"><span>Subtotal:</span> <span id="pos-cart-sub" class="font-bold" style="color:#374151">$ 0</span></div>
               <div class="flex justify-between" style="color:#6B7280"><span>IVA Calculado:</span> <span id="pos-cart-iva" class="font-bold" style="color:#374151">$ 0</span></div>
-              ${posConfig.operational.enable_discounts ? `<div class="flex justify-between text-red-500" id="pos-cart-discount-row" style="display:none"><span>Descuento:</span> <span id="pos-cart-discount-val" class="font-bold">-$ 0</span></div>` : ''}
+              <div class="flex justify-between text-emerald-600 font-bold" id="pos-cart-promo-savings-row" style="display:none"><span>Ahorro en Promos:</span> <span id="pos-cart-promo-savings-val">-$ 0</span></div>
+              ${posConfig.operational.enable_discounts ? `<div class="flex justify-between text-red-500" id="pos-cart-discount-row" style="display:none"><span>Descuento Gral:</span> <span id="pos-cart-discount-val" class="font-bold">-$ 0</span></div>` : ''}
               ${posConfig.operational.enable_freight ? `<div class="flex justify-between text-emerald-600" id="pos-cart-freight-row" style="display:none"><span>Flete:</span> <span id="pos-cart-freight-val" class="font-bold">+$ 0</span></div>` : ''}
               <div class="flex justify-between text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137">
                 <span>TOTAL A PAGAR:</span> <span id="pos-cart-total" class="text-blue-500 text-lg">$ 0</span>
@@ -1243,6 +1701,97 @@ window.clearPOSCart = function() {
   window.renderPOSCart();
 };
 
+function applyAutomaticPromotions() {
+  posCart.forEach(item => {
+    // Si tiene descuento manual de cajero, se respeta y no se aplican promociones automáticas
+    if (item.manual_discount_pct !== undefined && item.manual_discount_pct > 0) {
+      item.discount_pct = item.manual_discount_pct;
+      item.discount_amount = Math.round(item.sales_price * (item.discount_pct / 100) * 100) / 100;
+      item.promo_name = "Desc. Manual";
+      return;
+    }
+
+    item.discount_pct = 0;
+    item.discount_amount = 0;
+    item.promo_name = "";
+
+    if (!posPromotions || !posPromotions.length) return;
+
+    let bestDiscountAmt = 0;
+    let bestPromoName = "";
+    let bestPromoPct = 0;
+
+    posPromotions.forEach(promo => {
+      if (!promo.active) return;
+
+      // 1. Paga X Lleva Y (BOGO / Volumen)
+      if (promo.type === 'bogo' && item.id === promo.product_id) {
+        const groupSize = promo.buy_qty + promo.get_qty;
+        if (item.qty >= groupSize) {
+          const numGroups = Math.floor(item.qty / groupSize);
+          const discountedQty = numGroups * promo.get_qty;
+          const totalDiscount = discountedQty * item.sales_price * (promo.discount_pct / 100);
+          const discountPerUnit = totalDiscount / item.qty;
+          if (discountPerUnit > bestDiscountAmt) {
+            bestDiscountAmt = discountPerUnit;
+            bestPromoName = promo.name;
+            bestPromoPct = Math.round((totalDiscount / (item.qty * item.sales_price)) * 100);
+          }
+        }
+      }
+      // 2. Descuento porcentual por producto
+      else if (promo.type === 'percent_product' && item.id === promo.product_id) {
+        const discountPerUnit = item.sales_price * (promo.discount_pct / 100);
+        if (discountPerUnit > bestDiscountAmt) {
+          bestDiscountAmt = discountPerUnit;
+          bestPromoName = promo.name;
+          bestPromoPct = promo.discount_pct;
+        }
+      }
+      // 3. Descuento porcentual por categoría
+      else if (promo.type === 'percent_category') {
+        const prod = posProducts.find(p => p.id === item.id);
+        if (prod && prod.categoria?.trim() === promo.category?.trim()) {
+          const discountPerUnit = item.sales_price * (promo.discount_pct / 100);
+          if (discountPerUnit > bestDiscountAmt) {
+            bestDiscountAmt = discountPerUnit;
+            bestPromoName = promo.name;
+            bestPromoPct = promo.discount_pct;
+          }
+        }
+      }
+      // 4. Descuento de valor fijo por producto (Oferta)
+      else if (promo.type === 'flat_product' && item.id === promo.product_id) {
+        const discountPerUnit = Number(promo.discount_flat || 0);
+        if (discountPerUnit > bestDiscountAmt) {
+          bestDiscountAmt = discountPerUnit;
+          bestPromoName = promo.name;
+          bestPromoPct = Math.round((discountPerUnit / item.sales_price) * 100);
+        }
+      }
+    });
+
+    if (bestDiscountAmt > 0) {
+      item.discount_amount = Math.round(bestDiscountAmt * 100) / 100;
+      item.discount_pct = bestPromoPct;
+      item.promo_name = bestPromoName;
+    }
+  });
+}
+
+window.updateCartItemDiscount = function(id: string, val: string) {
+  const pct = parseFloat(val);
+  if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+    (window as any).showToast('Porcentaje de descuento no válido (0 a 100)', 'warning');
+    return;
+  }
+  const item = posCart.find(x => x.id === id);
+  if (item) {
+    item.manual_discount_pct = pct;
+    window.renderPOSCart();
+  }
+};
+
 window.renderPOSCart = function() {
   const body = document.getElementById('pos-cart-body');
   if (!body) return;
@@ -1265,6 +1814,8 @@ window.renderPOSCart = function() {
     if (discRow) discRow.style.display = 'none';
     const freightRow = document.getElementById('pos-cart-freight-row');
     if (freightRow) freightRow.style.display = 'none';
+    const promoRow = document.getElementById('pos-cart-promo-savings-row');
+    if (promoRow) promoRow.style.display = 'none';
 
     const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
     if (discInput) discInput.value = '0';
@@ -1276,12 +1827,22 @@ window.renderPOSCart = function() {
     return;
   }
 
+  // Aplicar promociones antes de renders y totales
+  applyAutomaticPromotions();
+
   let subtotal = 0;
   let ivaTotal = 0;
+  let totalLineSavings = 0;
   const includesIva = !!posConfig?.special?.prices_include_iva;
 
   body.innerHTML = posCart.map(item => {
-    const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+    const discountAmt = item.discount_amount || 0;
+    const netUnitPrice = item.sales_price - discountAmt;
+    if (discountAmt > 0) {
+      totalLineSavings += discountAmt * item.qty;
+    }
+
+    const tax = calcItemTax(netUnitPrice, item.iva_rate, posConfig);
     const itemSub = item.qty * tax.base;
     const itemIva = item.qty * tax.ivaAmount;
     const itemTotal = item.qty * tax.total;
@@ -1289,13 +1850,31 @@ window.renderPOSCart = function() {
     ivaTotal += itemIva;
 
     const isPriceEditable = posConfig?.special?.price_source === 'free' || posConfig?.special?.allow_price_edit;
-    const priceDisplay = isPriceEditable
-      ? `<input type="number" min="0" step="50" class="form-input py-0.5 px-1 text-xs w-24 font-bold inline-block text-right" value="${item.sales_price}" onchange="window.updateCartItemPrice('${item.id}', this.value)" style="background:#fff;color:#0D2137;border:1px solid #DCE6F8;height:24px">`
-      : `<strong>${(window as any).fmt(item.sales_price)}</strong>`;
+    
+    let priceDisplay = '';
+    if (isPriceEditable) {
+      priceDisplay = `<input type="number" min="0" step="50" class="form-input py-0.5 px-1 text-xs w-20 font-bold inline-block text-right" value="${item.sales_price}" onchange="window.updateCartItemPrice('${item.id}', this.value)" style="background:#fff;color:#0D2137;border:1px solid #DCE6F8;height:24px">`;
+    } else {
+      priceDisplay = `<strong>${(window as any).fmt(item.sales_price)}</strong>`;
+    }
+    if (discountAmt > 0) {
+      priceDisplay = `<span class="text-gray-400 line-through mr-1">${(window as any).fmt(item.sales_price)}</span>` + priceDisplay + ` <span class="text-[10px] text-emerald-600 font-bold">(${(window as any).fmt(netUnitPrice)} net)</span>`;
+    }
 
     const ivaLabel = includesIva
       ? `<span class="text-orange-500 font-bold">(IVA incl. ${item.iva_rate}%)</span>`
       : `<span>| IVA: ${item.iva_rate}%</span>`;
+
+    const manualDiscInput = posConfig.operational.enable_discounts
+      ? `<div class="flex items-center gap-1 mt-1 text-[10px]">
+           <span class="text-gray-500">Desc %:</span>
+           <input type="number" min="0" max="100" class="form-input text-center font-bold text-gray-700" value="${item.manual_discount_pct ?? 0}" onchange="window.updateCartItemDiscount('${item.id}', this.value)" style="background:#fff;color:#0D2137;border:1px solid #DCE6F8;height:20px;width:38px;padding:2px 0;font-size:9px">
+         </div>`
+      : '';
+
+    const promoBadge = (item.promo_name && item.promo_name !== 'Desc. Manual')
+      ? `<span class="badge text-[9px] mt-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-md flex items-center gap-1 max-w-max font-bold"><i class="fas fa-tag"></i> ${item.promo_name} (-${(window as any).fmt(discountAmt * item.qty)})</span>`
+      : '';
 
     return `
       <div class="rounded-xl p-3 border flex justify-between items-center gap-3 bg-white/[0.01]" style="border-color:rgba(255,255,255,0.05)">
@@ -1303,14 +1882,16 @@ window.renderPOSCart = function() {
           <h5 class="font-bold text-xs text-black line-clamp-1">${(window as any).esc(item.name)}</h5>
           <div class="text-[10px] text-gray-400 mt-1 flex items-center gap-1.5 flex-wrap">
             <span>Precio:</span> ${priceDisplay} ${ivaLabel}
+            ${manualDiscInput}
+            ${promoBadge}
             <span class="ml-auto font-bold text-gray-600">${(window as any).fmt(itemTotal)}</span>
           </div>
         </div>
         <div class="flex items-center gap-2">
           <div class="flex items-center gap-1 border rounded-lg p-0.5" style="border-color:rgba(255,255,255,0.1);background:rgba(255,255,255,0.02)">
-            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', -1)"><i class="fas fa-minus text-[10px]"></i></button>
+            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent cursor-pointer" onclick="window.updateCartQty('${item.id}', -1)"><i class="fas fa-minus text-[10px]"></i></button>
             <span class="text-xs text-black font-bold px-1.5">${(window as any).fmtN(item.qty)}</span>
-            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent" onclick="window.updateCartQty('${item.id}', 1)"><i class="fas fa-plus text-[10px]"></i></button>
+            <button type="button" class="w-6 h-6 rounded flex items-center justify-center text-black hover:bg-black/[0.05] border-none bg-transparent cursor-pointer" onclick="window.updateCartQty('${item.id}', 1)"><i class="fas fa-plus text-[10px]"></i></button>
           </div>
           <button type="button" class="text-gray-500 hover:text-red-400 p-1 border-none bg-transparent cursor-pointer" onclick="window.removeCartItem('${item.id}')"><i class="fas fa-times text-sm"></i></button>
         </div>
@@ -1337,6 +1918,18 @@ window.renderPOSCart = function() {
       discLbl.textContent = `-${(window as any).fmt(discountAmount)}`;
     } else {
       discRow.style.display = 'none';
+    }
+  }
+
+  // Ahorro en Promociones / Descuentos de línea
+  const promoRow = document.getElementById('pos-cart-promo-savings-row');
+  const promoLbl = document.getElementById('pos-cart-promo-savings-val');
+  if (promoRow && promoLbl) {
+    if (totalLineSavings > 0) {
+      promoRow.style.display = 'flex';
+      promoLbl.textContent = `-${(window as any).fmt(totalLineSavings)}`;
+    } else {
+      promoRow.style.display = 'none';
     }
   }
 
@@ -2203,23 +2796,34 @@ window.confirmPOSPayment = async function() {
     const invoiceNumber = "AUTO";
 
     const lines = posCart.map(item => {
-      const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+      const discountAmt = item.discount_amount || 0;
+      const netUnitPrice = item.sales_price - discountAmt;
+      
+      const originalTax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+      const tax = calcItemTax(netUnitPrice, item.iva_rate, posConfig);
+      
       const lineBase = item.qty * tax.base;
       const lineIva  = item.qty * tax.ivaAmount;
+      const discountRateExclIva = originalTax.base - tax.base;
+
       return {
         product_id: item.id,
         qty: item.qty,
-        unit_price: tax.base,          // precio unitario SIN IVA (base contable)
+        unit_price: originalTax.base,          // precio unitario SIN IVA original
         iva_rate: item.iva_rate,
         iva_amount: lineIva,
         subtotal: lineBase,
         total: lineBase + lineIva,
+        discount_pct: item.discount_pct || 0,
+        discount_rate: Math.round(discountRateExclIva * 100) / 100
       };
     });
 
     let subtotal = 0;
     posCart.forEach(item => {
-      const tax = calcItemTax(item.sales_price, item.iva_rate, posConfig);
+      const discountAmt = item.discount_amount || 0;
+      const netUnitPrice = item.sales_price - discountAmt;
+      const tax = calcItemTax(netUnitPrice, item.iva_rate, posConfig);
       subtotal += item.qty * tax.base;
     });
     const discountAmount = Math.round(subtotal * (posDiscountPct / 100) * 100) / 100;
@@ -2345,6 +2949,43 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
     const resolutionName = inv.expand?.tx_id?.expand?.tx_type_id?.name || 'DOCUMENTO EQUIVALENTE DE VENTA';
     const resolutionDesc = inv.expand?.tx_id?.expand?.tx_type_id?.description || '';
 
+    let prefix = '';
+    if (inv.number && inv.number.includes('-')) {
+      prefix = inv.number.split('-')[0].trim().toUpperCase();
+    }
+    
+    let resolutionInfoHtml = '';
+    try {
+      let filter = `document_type="POS"`;
+      if (prefix) {
+        filter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+      }
+      const resList = await (window as any).pb.listAll('dian_resolutions', { filter });
+      let resolution = null;
+      if (resList.length) {
+        const parts = inv.number.split('-');
+        const invNum = parseInt(parts[parts.length - 1], 10) || 0;
+        resolution = resList.find((r: any) => invNum >= r.number_from && invNum <= r.number_to);
+        if (!resolution) {
+          resolution = resList.find((r: any) => r.active) || resList[0];
+        }
+      }
+      if (resolution) {
+        const rDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : '—';
+        const eDate = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : '—';
+        const rPrefix = resolution.prefix ? resolution.prefix + ' ' : '';
+        resolutionInfoHtml = `
+          <div class="text-center" style="font-size:8px;color:#555;margin-top:4px;line-height:1.2">
+            Autorización Facturación POS No. ${resolution.resolution_number}<br>
+            Fecha Res: ${rDate} | Vigencia hasta: ${eDate}<br>
+            Rango: ${rPrefix}${resolution.number_from} al ${rPrefix}${resolution.number_to}
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.warn("Error resolviendo resolución DIAN para ticket:", err);
+    }
+
     const taxGroups: { [rate: number]: { base: number, tax: number } } = {};
     for (const l of lines) {
       const rate = Number(l.iva_rate || 0);
@@ -2354,6 +2995,20 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
       taxGroups[rate].base += Number(l.subtotal || 0);
       taxGroups[rate].tax += Number(l.iva_amount || 0);
     }
+
+    const includesIva = !!posConfig?.special?.prices_include_iva;
+    let totalLineDiscounts = 0;
+    for (const l of lines) {
+      const lineDisc = (Number(l.qty || 0) * Number(l.unit_price || 0)) - Number(l.subtotal || 0);
+      if (lineDisc > 0) {
+        if (includesIva) {
+          totalLineDiscounts += lineDisc * (1 + (l.iva_rate || 0) / 100);
+        } else {
+          totalLineDiscounts += lineDisc;
+        }
+      }
+    }
+    totalLineDiscounts = Math.round(totalLineDiscounts * 100) / 100;
 
     let taxBreakdownHtml = `
       <div>--------------------------------</div>
@@ -2421,19 +3076,23 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
           <div>================================</div>
           <div style="font-weight:bold;display:flex;justify-content:between"><span>DETALLE</span><span style="float:right">TOTAL</span></div>
           <div>--------------------------------</div>
-          ${lines.map((l: any) => `
-            <div style="margin-bottom:4px">
-              <div style="font-weight:bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
-              <div style="color:#555;font-size:9px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
-              <div style="display:flex;justify-content:between">
-                <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(l.unit_price)}</span>
-                <span style="float:right">${(window as any).fmt(l.total)}</span>
+          ${lines.map((l: any) => {
+            const unitOrigPrice = includesIva ? Math.round(l.unit_price * (1 + (l.iva_rate || 0) / 100) * 100) / 100 : l.unit_price;
+            return `
+              <div style="margin-bottom:4px">
+                <div style="font-weight:bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
+                <div style="color:#555;font-size:9px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
+                <div style="display:flex;justify-content:between">
+                  <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(unitOrigPrice)}${l.discount_pct > 0 ? ` (Desc. ${l.discount_pct}%)` : ''}</span>
+                  <span style="float:right">${(window as any).fmt(l.total)}</span>
+                </div>
               </div>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
           <div>--------------------------------</div>
           <div style="display:flex;justify-content:between"><span>Subtotal:</span><span style="float:right">${(window as any).fmt(inv.subtotal || 0)}</span></div>
-          ${inv.discount_amount > 0 ? `<div style="display:flex;justify-content:between;color:#dc2626"><span>Descuento:</span><span style="float:right">-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
+          ${totalLineDiscounts > 0 ? `<div style="display:flex;justify-content:between;color:#10b981"><span>Ahorro Promos:</span><span style="float:right">-${(window as any).fmt(totalLineDiscounts)}</span></div>` : ''}
+          ${inv.discount_amount > 0 ? `<div style="display:flex;justify-content:between;color:#dc2626"><span>Descuento Gral:</span><span style="float:right">-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
           ${inv.freight_amount > 0 ? `<div style="display:flex;justify-content:between;color:#059669"><span>Flete:</span><span style="float:right">+${(window as any).fmt(inv.freight_amount)}</span></div>` : ''}
           <div style="display:flex;justify-content:between"><span>IVA:</span><span style="float:right">${(window as any).fmt(inv.iva_total || 0)}</span></div>
           <div style="display:flex;justify-content:between;font-weight:bold;font-size:12px"><span>TOTAL:</span><span style="float:right">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</span></div>
@@ -2448,6 +3107,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
           <div>================================</div>
           <div class="text-center" style="font-weight:bold;font-size:9px">${resolutionName}</div>
           ${resolutionDesc ? `<div class="text-center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
+          ${resolutionInfoHtml}
           <div class="text-center" style="font-size:8px;color:#555;margin-top:6px">
             Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
           </div>
@@ -2556,6 +3216,43 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
     const resolutionName = inv.expand?.tx_id?.expand?.tx_type_id?.name || 'DOCUMENTO EQUIVALENTE DE VENTA';
     const resolutionDesc = inv.expand?.tx_id?.expand?.tx_type_id?.description || '';
 
+    let prefix = '';
+    if (inv.number && inv.number.includes('-')) {
+      prefix = inv.number.split('-')[0].trim().toUpperCase();
+    }
+    
+    let resolutionInfoHtml = '';
+    try {
+      let filter = `document_type="POS"`;
+      if (prefix) {
+        filter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+      }
+      const resList = await (window as any).pb.listAll('dian_resolutions', { filter });
+      let resolution = null;
+      if (resList.length) {
+        const parts = inv.number.split('-');
+        const invNum = parseInt(parts[parts.length - 1], 10) || 0;
+        resolution = resList.find((r: any) => invNum >= r.number_from && invNum <= r.number_to);
+        if (!resolution) {
+          resolution = resList.find((r: any) => r.active) || resList[0];
+        }
+      }
+      if (resolution) {
+        const rDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : '—';
+        const eDate = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : '—';
+        const rPrefix = resolution.prefix ? resolution.prefix + ' ' : '';
+        resolutionInfoHtml = `
+          <div class="center" style="font-size:8px;color:#555;margin-top:4px;line-height:1.2">
+            Autorización Facturación POS No. ${resolution.resolution_number}<br>
+            Fecha Res: ${rDate} | Vigencia hasta: ${eDate}<br>
+            Rango: ${rPrefix}${resolution.number_from} al ${rPrefix}${resolution.number_to}
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.warn("Error resolviendo resolución DIAN para ticket impreso:", err);
+    }
+
     const taxGroups: { [rate: number]: { base: number, tax: number } } = {};
     for (const l of lines) {
       const rate = Number(l.iva_rate || 0);
@@ -2565,6 +3262,20 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
       taxGroups[rate].base += Number(l.subtotal || 0);
       taxGroups[rate].tax += Number(l.iva_amount || 0);
     }
+
+    const includesIva = !!posConfig?.special?.prices_include_iva;
+    let totalLineDiscounts = 0;
+    for (const l of lines) {
+      const lineDisc = (Number(l.qty || 0) * Number(l.unit_price || 0)) - Number(l.subtotal || 0);
+      if (lineDisc > 0) {
+        if (includesIva) {
+          totalLineDiscounts += lineDisc * (1 + (l.iva_rate || 0) / 100);
+        } else {
+          totalLineDiscounts += lineDisc;
+        }
+      }
+    }
+    totalLineDiscounts = Math.round(totalLineDiscounts * 100) / 100;
 
     let taxBreakdownHtml = `
       <div class="hr"></div>
@@ -2649,19 +3360,23 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         <div class="dbl-hr"></div>
         <div class="flex-between bold"><span>DETALLE</span><span>TOTAL</span></div>
         <div class="hr"></div>
-        ${lines.map((l: any) => `
-          <div style="margin-bottom:3px">
-            <div class="bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
-            <div style="color:#555;font-size:10px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
-            <div class="flex-between">
-              <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(l.unit_price)}</span>
-              <span>${(window as any).fmt(l.total)}</span>
+        ${lines.map((l: any) => {
+          const unitOrigPrice = includesIva ? Math.round(l.unit_price * (1 + (l.iva_rate || 0) / 100) * 100) / 100 : l.unit_price;
+          return `
+            <div style="margin-bottom:3px">
+              <div class="bold">${(window as any).esc(l.expand?.product_id?.name || l.description)}</div>
+              <div style="color:#555;font-size:10px">Cód: ${(window as any).esc(l.expand?.product_id?.code || '—')} | IVA: ${l.iva_rate ?? 0}%</div>
+              <div class="flex-between">
+                <span>${(window as any).fmtN(l.qty)} ${(window as any).esc(l.expand?.product_id?.unit || 'Und')} x ${(window as any).fmt(unitOrigPrice)}${l.discount_pct > 0 ? ` (Desc. ${l.discount_pct}%)` : ''}</span>
+                <span>${(window as any).fmt(l.total)}</span>
+              </div>
             </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
         <div class="hr"></div>
         <div class="flex-between"><span>Subtotal:</span><span>${(window as any).fmt(inv.subtotal || 0)}</span></div>
-        ${inv.discount_amount > 0 ? `<div class="flex-between" style="color:#dc2626"><span>Descuento:</span><span>-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
+        ${totalLineDiscounts > 0 ? `<div class="flex-between" style="color:#10b981"><span>Ahorro Promos:</span><span>-${(window as any).fmt(totalLineDiscounts)}</span></div>` : ''}
+        ${inv.discount_amount > 0 ? `<div class="flex-between" style="color:#dc2626"><span>Descuento Gral:</span><span>-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
         ${inv.freight_amount > 0 ? `<div class="flex-between" style="color:#059669"><span>Flete:</span><span>+${(window as any).fmt(inv.freight_amount)}</span></div>` : ''}
         <div class="flex-between"><span>IVA:</span><span>${(window as any).fmt(inv.iva_total || 0)}</span></div>
         <div class="flex-between total-row"><span>TOTAL:</span><span>${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</span></div>
@@ -2676,6 +3391,7 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         <div class="dbl-hr"></div>
         <div class="center bold" style="font-size:9px">${resolutionName}</div>
         ${resolutionDesc ? `<div class="center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
+        ${resolutionInfoHtml}
         <div class="center" style="font-size:8px;color:#555;margin-top:6px">
           Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
         </div>

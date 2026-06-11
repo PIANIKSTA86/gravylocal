@@ -1687,6 +1687,7 @@ const API = {
     // ── Registro de Ingresos e IVA Consolidados ──────────────────────────
     const incomeGroups: { [accId: string]: number } = {};
     const ivaGroups: { [key: string]: { ivaAccId: string, rate: number, amount: number } } = {};
+    let totalLineDiscount = 0;
 
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
@@ -1700,6 +1701,9 @@ const API = {
 
       const subtotal = Number(line.subtotal || 0);
       const lineDiscount = (Number(line.qty || 0) * Number(line.unit_price || 0)) - subtotal;
+      if (lineDiscount > 0) {
+        totalLineDiscount += lineDiscount;
+      }
       const grossLineSub = subtotal + Math.max(0, lineDiscount);
       if (grossLineSub > 0) {
         incomeGroups[incomeAccId] = (incomeGroups[incomeAccId] || 0) + grossLineSub;
@@ -1719,6 +1723,19 @@ const API = {
         }
         ivaGroups[groupKey].amount += ivaAmount;
       }
+    }
+
+    // ── Debito de Descuento en Líneas (si existe totalLineDiscount) ─────────
+    if (totalLineDiscount > 0) {
+      const discountAccId = await resolveDiscountAccount();
+      txLines.push(await buildTxLine({
+        accountId: discountAccId,
+        thirdPartyId: inv.customer_id,
+        debit: totalLineDiscount,
+        credit: 0,
+        description: `Descuentos en líneas venta ${inv.number}`,
+        crossDocRef: inv.number,
+      }));
     }
 
     // 1. Agregar créditos consolidados de ingresos

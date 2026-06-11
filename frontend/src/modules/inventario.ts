@@ -124,14 +124,17 @@ async function renderStockTab(c, ctx = {}) {
                 <th>Producto</th>
                 <th>Código</th>
                 <th>Bodega</th>
+                <th class="text-right">Mínimo</th>
+                <th class="text-right">Máximo</th>
                 <th class="text-right">Stock</th>
                 <th class="text-right">Costo prom.</th>
                 <th class="text-right">Valor total</th>
+                <th>Estado Alerta</th>
                 <th>Últ. movimiento</th>
               </tr>
             </thead>
             <tbody id="stock-tbody">
-              ${stock.length ? renderStockRows(stock) : `<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado.</td></tr>`}
+              ${stock.length ? renderStockRows(stock) : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -153,14 +156,37 @@ function renderStockRows(stock) {
     const qty  = s.qty_on_hand ?? 0;
     const cost = s.avg_cost ?? 0;
     const val  = qty * cost;
-    const zero = qty <= 0;
+
+    const stockMin = prod?.stock_min !== null && prod?.stock_min !== undefined ? Number(prod.stock_min) : null;
+    const stockMax = prod?.stock_max !== null && prod?.stock_max !== undefined ? Number(prod.stock_max) : null;
+
+    const minVal = stockMin !== null ? fmtN(stockMin) : '—';
+    const maxVal = stockMax !== null ? fmtN(stockMax) : '—';
+
+    let alertState = '<span class="badge badge-green">OK</span>';
+    let qtyClass = 'font-semibold text-green-700';
+
+    if (qty <= 0) {
+      alertState = '<span class="badge badge-red">Agotado</span>';
+      qtyClass = 'font-semibold text-red-500';
+    } else if (stockMin !== null && qty < stockMin) {
+      alertState = '<span class="badge badge-orange">Bajo Mínimo</span>';
+      qtyClass = 'font-semibold text-orange-600';
+    } else if (stockMax !== null && qty > stockMax) {
+      alertState = '<span class="badge badge-blue" style="background:#EFF6FF; color:#1E40AF; border-color:#DBEAFE">Sobre Máximo</span>';
+      qtyClass = 'font-semibold text-blue-600';
+    }
+
     return `<tr data-whid="${esc(s.warehouse_id)}" data-qty="${qty}">
       <td class="font-medium">${prod ? esc(prod.name) : '<span style="color:#9CA3AF">—</span>'}</td>
       <td><span class="font-mono text-xs" style="color:#1A4B8C">${prod ? esc(prod.code) : '—'}</span></td>
       <td>${wh ? esc(wh.name) : '—'}</td>
-      <td class="text-right font-semibold ${zero ? 'text-red-500' : ''}">${fmtN(qty)}</td>
+      <td class="text-right">${minVal}</td>
+      <td class="text-right">${maxVal}</td>
+      <td class="text-right ${qtyClass}">${fmtN(qty)}</td>
       <td class="text-right">${cost ? fmt(cost) : '—'}</td>
       <td class="text-right">${val ? fmt(val) : '—'}</td>
+      <td>${alertState}</td>
       <td class="text-sm" style="color:#6B7280">${esc(s.last_mov_date || '—')}</td>
     </tr>`;
   }).join('');
@@ -1244,6 +1270,57 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
             <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('precios')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
           </div>
         </div>
+
+        <!-- Tarjeta 5: Alertas de Stock Mínimo y Máximo (Reposición) -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-orange-50 text-orange-600">
+              <i class="fas fa-triangle-exclamation text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Alertas de Stock Mínimo y Máximo</h4>
+              <p class="text-xs text-gray-400">Control de reposición y sobreabastecimiento</p>
+            </div>
+          </div>
+          <div class="space-y-3 mb-4">
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+              <select id="rep-alert-wh" class="form-input text-xs w-full">
+                <option value="">Todas las bodegas (Consolidado)</option>
+                ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Filtrar Alerta</label>
+              <select id="rep-alert-type" class="form-input text-xs w-full">
+                <option value="">Todos los desvíos (Bajo mínimo y Sobre máximo)</option>
+                <option value="bajo_min">Solo bajo mínimo (Reposición requerida)</option>
+                <option value="sobre_max">Solo sobre máximo (Sobreabastecido)</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('alertas')"><i class="fas fa-print mr-1"></i>Imprimir</button>
+            <button class="btn btn-primary py-2 text-xs" onclick="window._exportReport('alertas')"><i class="fas fa-file-excel mr-1"></i>Exportar</button>
+          </div>
+        </div>
+
+        <!-- Tarjeta 6: Análisis de Rotación de Inventarios -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm hover:shadow-md transition-all duration-200" style="border-color:#E5E7EB">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600">
+              <i class="fas fa-arrows-spin text-lg"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-gray-800">Análisis de Rotación de Inventarios</h4>
+              <p class="text-xs text-gray-400">Indicadores de rotación y días de inventario</p>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mb-6">Calcula la velocidad con la que se mueven las existencias. Evalúa la rotación y los días de permanencia por producto.</p>
+          <div class="flex gap-2 justify-end">
+            <button class="btn btn-primary py-2 text-xs w-full md:w-auto" onclick="window._openRotacionModal()"><i class="fas fa-chart-line mr-1"></i>Iniciar Análisis de Rotación</button>
+          </div>
+        </div>
       </div>
       
       <!-- BOTÓN DE TOMA FÍSICA -->
@@ -1869,6 +1946,152 @@ async function _saveTomaFisica() {
 
       html += `</tbody></table>`;
       _printHTMLReport('Lista de Precios Vigente', html);
+
+    } else if (type === 'alertas') {
+      const whId = getSelectVal('rep-alert-wh');
+      const alertType = getSelectVal('rep-alert-type'); // bajo_min, sobre_max or empty
+      
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) {
+          stockByProd.set(pid, 0);
+        }
+        stockByProd.set(pid, stockByProd.get(pid) + Number(s.qty_on_hand || 0));
+      }
+
+      const whTitle = whId ? `Bodega: ${whMap.get(whId) || ''}` : 'Consolidado General (Todas las Bodegas)';
+      let filterText = `Alertas de Stock - ${whTitle}`;
+      if (alertType === 'bajo_min') filterText += ' (Solo Bajo Mínimo)';
+      else if (alertType === 'sobre_max') filterText += ' (Solo Sobre Máximo)';
+
+      let html = `
+        <h3>${filterText}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Producto</th>
+              <th>Unidad</th>
+              <th class="text-right">Mínimo</th>
+              <th class="text-right">Máximo</th>
+              <th class="text-right">Stock Actual</th>
+              <th class="text-right">Desviación</th>
+              <th>Estado Alerta</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      let alertCount = 0;
+
+      for (const p of products.filter((p: any) => p.type === 'BIEN')) {
+        const qty = stockByProd.get(p.id) || 0;
+        const stockMin = p.stock_min !== null && p.stock_min !== undefined ? Number(p.stock_min) : null;
+        const stockMax = p.stock_max !== null && p.stock_max !== undefined ? Number(p.stock_max) : null;
+
+        let isAlert = false;
+        let diffText = '—';
+        let alertLabel = '';
+        let rowStyle = '';
+
+        if (qty <= 0) {
+          isAlert = true;
+          alertLabel = 'Agotado';
+          const reqMin = stockMin !== null ? stockMin : 0;
+          diffText = reqMin > 0 ? `Déficit: -${fmtN(reqMin)}` : '—';
+          rowStyle = 'color:#DC2626; font-weight:bold; background-color:#FEF2F2;';
+        } else if (stockMin !== null && qty < stockMin) {
+          isAlert = true;
+          alertLabel = 'Bajo Mínimo';
+          diffText = `Déficit: -${fmtN(stockMin - qty)}`;
+          rowStyle = 'color:#C46516; background-color:#FFFBEB;';
+        } else if (stockMax !== null && qty > stockMax) {
+          isAlert = true;
+          alertLabel = 'Sobre Máximo';
+          diffText = `Exceso: +${fmtN(qty - stockMax)}`;
+          rowStyle = 'color:#1E40AF; background-color:#EFF6FF;';
+        }
+
+        // Aplicar filtro de tipo de alerta
+        if (isAlert) {
+          if (alertType === 'bajo_min' && alertLabel === 'Sobre Máximo') continue;
+          if (alertType === 'sobre_max' && (alertLabel === 'Bajo Mínimo' || alertLabel === 'Agotado')) continue;
+
+          alertCount++;
+          html += `
+            <tr style="${rowStyle}">
+              <td style="font-family:monospace">${esc(p.code)}</td>
+              <td>${esc(p.name)}</td>
+              <td>${esc(p.unit || '—')}</td>
+              <td class="text-right">${stockMin !== null ? fmtN(stockMin) : '—'}</td>
+              <td class="text-right">${stockMax !== null ? fmtN(stockMax) : '—'}</td>
+              <td class="text-right">${fmtN(qty)}</td>
+              <td class="text-right">${diffText}</td>
+              <td>${alertLabel}</td>
+            </tr>
+          `;
+        }
+      }
+
+      if (alertCount === 0) {
+        html += `<tr><td colspan="8" class="text-center" style="padding: 20px; color:#6B7280">No hay desvíos de stock que reportar bajo los criterios seleccionados.</td></tr>`;
+      }
+
+      html += `</tbody></table>`;
+      _printHTMLReport('Reporte de Alertas de Stock Mínimo y Máximo', html);
+
+    } else if (type === 'rotacion') {
+      const data = (window as any)._lastTurnoverAnalysisData || [];
+      if (!data.length) {
+        return showToast('No hay datos de análisis para imprimir. Realice el cálculo primero.', 'warning');
+      }
+
+      let html = `
+        <h3>Filtro Bodega: ${(window as any)._lastTurnoverWhName || 'Todas'} | Período: ${(window as any)._lastTurnoverPeriod || '—'}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Producto</th>
+              <th class="text-right">S. Inicial</th>
+              <th class="text-right">Entradas</th>
+              <th class="text-right">Salidas (Cant. COGS)</th>
+              <th class="text-right">S. Final</th>
+              <th class="text-right">Costo Prom</th>
+              <th class="text-right">Valor COGS</th>
+              <th class="text-right">Stock Prom</th>
+              <th class="text-right">Valor Stock Prom</th>
+              <th class="text-right">Rotación (Veces)</th>
+              <th class="text-right">Días Inv. (DSI)</th>
+              <th>Recomendación</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      for (const r of data) {
+        html += `
+          <tr>
+            <td style="font-family:monospace">${esc(r.sku)}</td>
+            <td>${esc(r.name)}</td>
+            <td class="text-right">${fmtN(r.qtyInitial)}</td>
+            <td class="text-right">${fmtN(r.qtyIn)}</td>
+            <td class="text-right">${fmtN(r.qtyOut)}</td>
+            <td class="text-right">${fmtN(r.qtyFinal)}</td>
+            <td class="text-right">${fmt(r.cost)}</td>
+            <td class="text-right">${fmt(r.valOut)}</td>
+            <td class="text-right">${fmtN(r.qtyAvg)}</td>
+            <td class="text-right">${fmt(r.valAvg)}</td>
+            <td class="text-right">${r.turnoverStr}</td>
+            <td class="text-right">${r.dsiStr}</td>
+            <td>${esc(r.suggestion)}</td>
+          </tr>
+        `;
+      }
+
+      html += `</tbody></table>`;
+      _printHTMLReport('Análisis de Rotación de Inventarios', html);
     }
   } catch (err: any) {
     showToast(err.message, 'error');
@@ -2107,6 +2330,124 @@ async function _saveTomaFisica() {
 
       (window as any).exportToExcel(exportRows, headers, 'Lista_Precios_Inventario');
       showToast('Lista de precios exportada a Excel.', 'success');
+
+    } else if (type === 'alertas') {
+      const whId = getSelectVal('rep-alert-wh');
+      const alertType = getSelectVal('rep-alert-type'); // bajo_min, sobre_max or empty
+      
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) {
+          stockByProd.set(pid, 0);
+        }
+        stockByProd.set(pid, stockByProd.get(pid) + Number(s.qty_on_hand || 0));
+      }
+
+      const exportRows = [];
+
+      for (const p of products.filter((p: any) => p.type === 'BIEN')) {
+        const qty = stockByProd.get(p.id) || 0;
+        const stockMin = p.stock_min !== null && p.stock_min !== undefined ? Number(p.stock_min) : null;
+        const stockMax = p.stock_max !== null && p.stock_max !== undefined ? Number(p.stock_max) : null;
+
+        let isAlert = false;
+        let diff = 0;
+        let diffType = '—';
+        let alertLabel = '';
+
+        if (qty <= 0) {
+          isAlert = true;
+          alertLabel = 'Agotado';
+          const reqMin = stockMin !== null ? stockMin : 0;
+          diff = -reqMin;
+          diffType = reqMin > 0 ? `Déficit: -${reqMin}` : '—';
+        } else if (stockMin !== null && qty < stockMin) {
+          isAlert = true;
+          alertLabel = 'Bajo Mínimo';
+          diff = qty - stockMin;
+          diffType = `Déficit: -${stockMin - qty}`;
+        } else if (stockMax !== null && qty > stockMax) {
+          isAlert = true;
+          alertLabel = 'Sobre Máximo';
+          diff = qty - stockMax;
+          diffType = `Exceso: +${qty - stockMax}`;
+        }
+
+        if (isAlert) {
+          if (alertType === 'bajo_min' && alertLabel === 'Sobre Máximo') continue;
+          if (alertType === 'sobre_max' && (alertLabel === 'Bajo Mínimo' || alertLabel === 'Agotado')) continue;
+
+          exportRows.push({
+            codigo: p.code,
+            nombre: p.name,
+            unidad: p.unit || '—',
+            stock_minimo: stockMin !== null ? stockMin : '—',
+            stock_maximo: stockMax !== null ? stockMax : '—',
+            stock_actual: qty,
+            desviacion_num: diff,
+            desviacion_txt: diffType,
+            estado_alerta: alertLabel
+          });
+        }
+      }
+
+      const headers = [
+        { key: 'codigo', label: 'Código' },
+        { key: 'nombre', label: 'Producto' },
+        { key: 'unidad', label: 'Unidad' },
+        { key: 'stock_minimo', label: 'Stock Mínimo' },
+        { key: 'stock_maximo', label: 'Stock Máximo' },
+        { key: 'stock_actual', label: 'Stock Actual' },
+        { key: 'desviacion_txt', label: 'Desviación' },
+        { key: 'estado_alerta', label: 'Estado Alerta' }
+      ];
+
+      const whTitlePart = whId ? whMap.get(whId) : 'Consolidado';
+      (window as any).exportToExcel(exportRows, headers, `Alertas_Stock_${whTitlePart}`);
+      showToast('Alertas exportadas a Excel.', 'success');
+
+    } else if (type === 'rotacion') {
+      const data = (window as any)._lastTurnoverAnalysisData || [];
+      if (!data.length) {
+        return showToast('No hay datos de análisis para exportar. Realice el cálculo primero.', 'warning');
+      }
+
+      const exportRows = data.map((r: any) => ({
+        sku: r.sku,
+        producto: r.name,
+        stock_inicial: r.qtyInitial,
+        entradas: r.qtyIn,
+        salidas_cogs_qty: r.qtyOut,
+        stock_final: r.qtyFinal,
+        costo_promedio: r.cost,
+        valor_cogs: r.valOut,
+        stock_promedio: r.qtyAvg,
+        valor_stock_promedio: r.valAvg,
+        indice_rotacion_veces: r.turnoverRate,
+        dias_permanencia_dsi: r.dsi,
+        recomendacion: r.suggestion
+      }));
+
+      const headers = [
+        { key: 'sku', label: 'SKU' },
+        { key: 'producto', label: 'Producto' },
+        { key: 'stock_inicial', label: 'Stock Inicial' },
+        { key: 'entradas', label: 'Entradas' },
+        { key: 'salidas_cogs_qty', label: 'Salidas (Cant. COGS)' },
+        { key: 'stock_final', label: 'Stock Final' },
+        { key: 'costo_promedio', label: 'Costo Promedio' },
+        { key: 'valor_cogs', label: 'Valor COGS (Consumo)' },
+        { key: 'stock_promedio', label: 'Stock Promedio' },
+        { key: 'valor_stock_promedio', label: 'Valor Stock Promedio' },
+        { key: 'indice_rotacion_veces', label: 'Índice Rotación (Veces)' },
+        { key: 'dias_permanencia_dsi', label: 'Días Permanencia (DSI)' },
+        { key: 'recomendacion', label: 'Recomendación' }
+      ];
+
+      (window as any).exportToExcel(exportRows, headers, 'Analisis_Rotacion_Inventario');
+      showToast('Análisis de rotación exportado a Excel.', 'success');
     }
   } catch (err: any) {
     showToast(err.message, 'error');
@@ -2653,6 +2994,322 @@ async function _applyRevaluation() {
   }
 };
 
+async function _openRotacionModal() {
+  try {
+    const warehouses = await API.getWarehouses(true);
+    
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    const today = now.toISOString().slice(0, 10);
+
+    const bodyHtml = `
+      <div class="space-y-4" style="font-family:'Segoe UI',sans-serif">
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 flex items-start gap-2.5 mb-2">
+          <i class="fas fa-circle-info mt-0.5 text-blue-500 text-sm"></i>
+          <div>
+            <span class="font-bold">Análisis de Rotación de Inventarios (Veces y DSI)</span><br>
+            El índice de rotación mide cuántas veces se venden o consumen las existencias de un producto en un período. 
+            Los días de inventario (DSI) indican el número promedio de días que tarda el stock en agotarse.
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha Inicio <span class="text-red-500">*</span></label>
+            <input id="rot-start-date" type="date" class="form-input text-xs w-full" value="${firstDay}">
+          </div>
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha Fin <span class="text-red-500">*</span></label>
+            <input id="rot-end-date" type="date" class="form-input text-xs w-full" value="${today}">
+          </div>
+          <div class="form-group">
+            <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+            <select id="rot-wh" class="form-input text-xs w-full">
+              <option value="">— Todas las Bodegas (Consolidado) —</option>
+              ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="flex justify-start">
+          <button class="btn btn-primary px-5 py-2.5 flex items-center gap-2 shadow-sm rounded-lg text-xs" id="btn-rot-analyze" onclick="window._runRotacionAnalysis()">
+            <i class="fas fa-arrows-spin"></i> Ejecutar Análisis
+          </button>
+        </div>
+
+        <!-- Resultados -->
+        <div id="rot-results" class="border border-gray-200 rounded-xl overflow-hidden shadow-inner max-h-[300px] overflow-y-auto bg-gray-50">
+          <div class="text-center py-12 text-gray-400">
+            <i class="fas fa-chart-line text-3xl mb-2 text-blue-200"></i>
+            <p class="text-xs">Define el rango de fechas y haz clic en <strong>Ejecutar Análisis</strong>.</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footerHtml = `
+      <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+      <button class="btn btn-outline border-blue-600 text-blue-600" id="btn-rot-print" disabled onclick="window._printReport('rotacion')">
+        <i class="fas fa-print mr-2"></i>Imprimir
+      </button>
+      <button class="btn btn-primary" id="btn-rot-excel" disabled onclick="window._exportReport('rotacion')">
+        <i class="fas fa-file-excel mr-2"></i>Exportar Excel
+      </button>
+    `;
+
+    openModal('Análisis de Rotación de Inventario', bodyHtml, footerHtml, true);
+  } catch (err: any) {
+    showToast(`Error al abrir modal de rotación: ${err.message}`, 'error');
+  }
+}
+
+async function _runRotacionAnalysis() {
+  const startDate = getInputVal('rot-start-date');
+  const endDate = getInputVal('rot-end-date');
+  const whId = getSelectVal('rot-wh');
+
+  if (!startDate || !endDate) {
+    return showToast('Por favor, selecciona las fechas de inicio y fin.', 'warning');
+  }
+
+  const btn = document.getElementById('btn-rot-analyze') as HTMLButtonElement;
+  const resultsDiv = document.getElementById('rot-results');
+  const printBtn = document.getElementById('btn-rot-print') as HTMLButtonElement;
+  const excelBtn = document.getElementById('btn-rot-excel') as HTMLButtonElement;
+  
+  if (!resultsDiv) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Analizando...';
+  }
+  resultsDiv.innerHTML = `<div class="text-center py-12 text-gray-500"><i class="fas fa-spinner fa-spin mr-2 text-2xl text-blue-600"></i><p class="text-xs mt-2">Calculando índices de rotación...</p></div>`;
+
+  try {
+    const pb = _pb();
+
+    // 1. Cargar productos tipo BIEN y bodegas
+    const [products, stock, warehouses] = await Promise.all([
+      pb.listAll('products', { filter: 'active=true && type="BIEN"' }),
+      API.getInventoryStock(),
+      API.getWarehouses(false)
+    ]);
+    const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+
+    // 2. Filtrar stock actual
+    const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+    const currentStockByProd = new Map();
+    for (const s of filteredStock) {
+      const pid = s.product_id;
+      if (!currentStockByProd.has(pid)) {
+        currentStockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+      }
+      const entry = currentStockByProd.get(pid);
+      entry.qty += Number(s.qty_on_hand || 0);
+      if (Number(s.avg_cost || 0) > 0) {
+        entry.costSum += Number(s.avg_cost);
+        entry.costCount++;
+      }
+    }
+
+    // 3. Traer todas las líneas de movimientos aplicados desde startDate hasta hoy
+    const lines = await pb.listAll('inventory_movement_lines', {
+      filter: `movement_id.status = "applied" && movement_id.date >= "${startDate}"`,
+      expand: 'movement_id'
+    });
+
+    // 4. Calcular entradas y salidas
+    // Estructuras para acumular cantidades y costos
+    const prodFlow = new Map(); // prodId -> { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 }
+    
+    for (const line of lines) {
+      const mov = line.expand?.movement_id;
+      if (!mov) continue;
+
+      const pid = line.product_id;
+      if (!prodFlow.has(pid)) {
+        prodFlow.set(pid, { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 });
+      }
+
+      const flow = prodFlow.get(pid);
+      const qty = Number(line.qty || 0);
+      const unitCost = Number(line.unit_cost || line.expand?.product_id?.cost_price || 0);
+      const date = mov.date || '';
+
+      const isPostPeriod = date > endDate;
+
+      let isInput = false;
+      let isOutput = false;
+
+      if (whId) {
+        // Para una bodega específica
+        if (mov.mov_type === 'TRASLADO') {
+          if (mov.dest_warehouse_id === whId) isInput = true;
+          else if (mov.warehouse_id === whId) isOutput = true;
+        } else {
+          if (mov.warehouse_id === whId) {
+            isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+            isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+          }
+        }
+      } else {
+        // Consolidado
+        if (mov.mov_type !== 'TRASLADO') {
+          isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+          isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+        }
+      }
+
+      if (isInput) {
+        if (isPostPeriod) flow.postIn += qty;
+        else flow.periodIn += qty;
+      } else if (isOutput) {
+        if (isPostPeriod) flow.postOut += qty;
+        else {
+          flow.periodOut += qty;
+          flow.outCostSum += (qty * unitCost);
+        }
+      }
+    }
+
+    // 5. Calcular indicadores para cada producto
+    const analysisData = [];
+    const daysInPeriod = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    for (const p of products) {
+      const flow = prodFlow.get(p.id) || { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 };
+      const curStock = currentStockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+      
+      let cost = 0;
+      if (curStock.costCount > 0) {
+        cost = curStock.costSum / curStock.costCount;
+      } else {
+        cost = Number(p.cost_price || 0);
+      }
+      cost = Math.round(cost * 100) / 100;
+
+      // Reconstruir existencias históricas
+      const qtyFinal = curStock.qty - flow.postIn + flow.postOut;
+      const qtyInitial = qtyFinal - flow.periodIn + flow.periodOut;
+
+      const qtyAvg = Math.max(0, (qtyInitial + qtyFinal) / 2);
+      const valAvg = Math.round((qtyAvg * cost) * 100) / 100;
+
+      const qtyOut = flow.periodOut;
+      const valOut = flow.outCostSum > 0 ? Math.round(flow.outCostSum * 100) / 100 : Math.round((qtyOut * cost) * 100) / 100;
+
+      let turnoverRate = 0;
+      let turnoverStr = '0.00';
+      let dsi = 0;
+      let dsiStr = '—';
+      let suggestion = '';
+
+      if (valAvg > 0) {
+        turnoverRate = valOut / valAvg;
+        turnoverStr = fmtN(turnoverRate);
+        if (turnoverRate > 0) {
+          dsi = daysInPeriod / turnoverRate;
+          dsiStr = `${fmtN(dsi)} días`;
+        }
+      } else if (valOut > 0) {
+        turnoverRate = 99.9;
+        turnoverStr = 'Alta';
+        dsi = 0;
+        dsiStr = '0 días';
+      }
+
+      // Recomendación
+      if (qtyOut === 0) {
+        suggestion = 'Sin movimiento (Inventario estancado)';
+      } else if (dsi <= 30) {
+        suggestion = 'Alta rotación: Monitorear stock para evitar rotura';
+      } else if (dsi > 30 && dsi <= 90) {
+        suggestion = 'Rotación saludable';
+      } else if (dsi > 90 && dsi <= 180) {
+        suggestion = 'Rotación lenta: Reducir compras';
+      } else {
+        suggestion = 'Exceso de stock: Liquidar excedentes';
+      }
+
+      // Alertas por límites
+      if (qtyFinal < (p.stock_min ?? 0)) {
+        suggestion += ' | ¡Bajo mínimo!';
+      } else if (p.stock_max !== null && qtyFinal > p.stock_max) {
+        suggestion += ' | Exceso sobre máx';
+      }
+
+      analysisData.push({
+        id: p.id,
+        sku: p.code,
+        name: p.name,
+        qtyInitial,
+        qtyIn: flow.periodIn,
+        qtyOut,
+        qtyFinal,
+        cost,
+        valOut,
+        qtyAvg,
+        valAvg,
+        turnoverRate,
+        turnoverStr,
+        dsi,
+        dsiStr,
+        suggestion
+      });
+    }
+
+    analysisData.sort((a, b) => b.turnoverRate - a.turnoverRate);
+
+    (window as any)._lastTurnoverAnalysisData = analysisData;
+    (window as any)._lastTurnoverWhName = whId ? whMap.get(whId) : 'Todas las Bodegas';
+    (window as any)._lastTurnoverPeriod = `Desde ${startDate} hasta ${endDate} (${daysInPeriod} días)`;
+
+    resultsDiv.innerHTML = `
+      <table class="w-full text-xs data-table">
+        <thead class="bg-blue-50 sticky top-0 z-10 border-b border-blue-200">
+          <tr>
+            <th class="p-2 text-left">Código</th>
+            <th class="p-2 text-left">Producto</th>
+            <th class="p-2 text-right">Cant. Inicial</th>
+            <th class="p-2 text-right">Consumo Qty</th>
+            <th class="text-right p-2">Valor COGS</th>
+            <th class="text-right p-2">Stock Prom.</th>
+            <th class="text-right p-2">Rotación (Veces)</th>
+            <th class="text-right p-2">Permanencia (DSI)</th>
+            <th class="p-2 text-left">Sugerencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${analysisData.map(r => `
+            <tr class="hover:bg-gray-50 border-b border-gray-100">
+              <td class="p-2 font-mono text-xs text-blue-800 font-semibold">${esc(r.sku)}</td>
+              <td class="p-2 text-xs font-medium">${esc(r.name)}</td>
+              <td class="p-2 text-right text-gray-500">${fmtN(r.qtyInitial)}</td>
+              <td class="p-2 text-right font-semibold text-gray-700">${fmtN(r.qtyOut)}</td>
+              <td class="p-2 text-right">${fmt(r.valOut)}</td>
+              <td class="p-2 text-right text-gray-500">${fmtN(r.qtyAvg)}</td>
+              <td class="p-2 text-right font-bold text-blue-700">${r.turnoverStr}</td>
+              <td class="p-2 text-right font-bold text-purple-700">${r.dsiStr}</td>
+              <td class="p-2 text-xs text-gray-600 max-w-xs truncate" title="${esc(r.suggestion)}">${esc(r.suggestion)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    if (printBtn) printBtn.disabled = false;
+    if (excelBtn) excelBtn.disabled = false;
+
+  } catch (err: any) {
+    resultsDiv.innerHTML = `<div class="p-6 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-arrows-spin"></i> Ejecutar Análisis';
+    }
+  }
+}
+
 (window as any)._updateTomaFisicaSystemStock = _updateTomaFisicaSystemStock;
 (window as any)._openTomaFisicaModal = _openTomaFisicaModal;
 (window as any)._saveTomaFisica = _saveTomaFisica;
@@ -2662,3 +3319,5 @@ async function _applyRevaluation() {
 (window as any)._openRevalorizacionModal = _openRevalorizacionModal;
 (window as any)._analyzeRevaluation = _analyzeRevaluation;
 (window as any)._applyRevaluation = _applyRevaluation;
+(window as any)._openRotacionModal = _openRotacionModal;
+(window as any)._runRotacionAnalysis = _runRotacionAnalysis;

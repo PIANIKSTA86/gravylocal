@@ -593,6 +593,8 @@ async function viewProductDetail(id) {
         <div><span class="form-label">Estado</span><p>${p.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</p></div>
         <div><span class="form-label">Cód. UNSPSC (DIAN)</span><p class="font-mono">${esc(p.unspsc_code || '—')}</p></div>
         <div><span class="form-label">Cód. EAN/barras</span><p class="font-mono">${esc(p.ean_code || '—')}</p></div>
+        <div><span class="form-label">Stock Mínimo (Alerta)</span><p class="font-semibold text-orange-700">${p.stock_min !== null && p.stock_min !== undefined ? fmtN(p.stock_min) : '—'}</p></div>
+        <div><span class="form-label">Stock Máximo (Alerta)</span><p class="font-semibold text-blue-700">${p.stock_max !== null && p.stock_max !== undefined ? fmtN(p.stock_max) : '—'}</p></div>
         ${p.description ? `<div class="col-span-2 md:col-span-3"><span class="form-label">Descripción</span><p>${esc(p.description)}</p></div>` : ''}
         <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
           <span class="form-label">Cuentas contables</span>
@@ -746,6 +748,14 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
           <option value="true"  ${(row?.active !== false) ? 'selected' : ''}>Sí</option>
           <option value="false" ${row?.active === false    ? 'selected' : ''}>No</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Stock Mínimo (Alerta)</label>
+        <input id="pf-stock-min" type="number" min="0" step="0.0001" class="form-input text-right font-semibold text-orange-700" value="${row?.stock_min ?? ''}" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Stock Máximo (Alerta)</label>
+        <input id="pf-stock-max" type="number" min="0" step="0.0001" class="form-input text-right font-semibold text-blue-700" value="${row?.stock_max ?? ''}" placeholder="0">
       </div>
 
       <div class="form-group md:col-span-3">
@@ -985,6 +995,8 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         precio_venta_3:       toNullableNumber(getInputVal('pf-sale-price-3')),
         cost_price:           parseFloat(getInputVal('pf-cost-price') || '0') || 0,
         active:               getSelectVal('pf-active') === 'true',
+        stock_min:            toNullableNumber(getInputVal('pf-stock-min')),
+        stock_max:            toNullableNumber(getInputVal('pf-stock-max')),
         unspsc_code:          getInputVal('pf-unspsc').trim(),
         ean_code:             getInputVal('pf-ean').trim(),
         peso:                 specialConditions.peso,

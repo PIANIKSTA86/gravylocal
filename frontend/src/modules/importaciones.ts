@@ -312,8 +312,85 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         </div>
       </div>
 
-      <!-- 3. Detalle de Artículos y Manifiestos -->
+      <!-- 3. Cumplimiento Aduanero (DIAN / VUCE) -->
+      <div class="p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
+        <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-scale-balanced mr-1 text-blue-700"></i> Cumplimiento Aduanero (DIAN / VUCE)</h4>
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="form-group">
+            <label class="form-label font-bold">Nro. Registro/Licencia VUCE</label>
+            <input id="imp-vuce-registro" class="form-input" placeholder="Ej: 2026-VUCE-..." value="${(window as any).esc(imp?.vuce_registro_num || '')}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Modalidad de Importación</label>
+            <select id="imp-modalidad-importacion" class="form-input">
+              <option value="">— Seleccionar —</option>
+              <option value="ORDINARIA" ${imp?.modalidad_importacion === 'ORDINARIA' ? 'selected' : ''}>Ordinaria</option>
+              <option value="FRANQUICIA" ${imp?.modalidad_importacion === 'FRANQUICIA' ? 'selected' : ''}>Franquicia</option>
+              <option value="TEMPORAL_REEXP" ${imp?.modalidad_importacion === 'TEMPORAL_REEXP' ? 'selected' : ''}>Temporal Reexportación</option>
+              <option value="TEMPORAL_PERF" ${imp?.modalidad_importacion === 'TEMPORAL_PERF' ? 'selected' : ''}>Temporal Perfeccionamiento</option>
+              <option value="ENSAMBLE" ${imp?.modalidad_importacion === 'ENSAMBLE' ? 'selected' : ''}>Ensamble</option>
+              <option value="URGENTES" ${imp?.modalidad_importacion === 'URGENTES' ? 'selected' : ''}>Envíos Urgentes</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Canal de Inspección</label>
+            <select id="imp-canal-inspeccion" class="form-input">
+              <option value="">— Seleccionar —</option>
+              <option value="AUTOMATICO" ${imp?.canal_inspeccion === 'AUTOMATICO' ? 'selected' : ''}>🟢 Automático</option>
+              <option value="DOCUMENTAL" ${imp?.canal_inspeccion === 'DOCUMENTAL' ? 'selected' : ''}>🟡 Documental</option>
+              <option value="FISICO" ${imp?.canal_inspeccion === 'FISICO' ? 'selected' : ''}>🔴 Físico</option>
+              <option value="NO_INTRUSIVO" ${imp?.canal_inspeccion === 'NO_INTRUSIVO' ? 'selected' : ''}>🔵 No Intrusivo</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Método de Prorrateo</label>
+            <select id="imp-proration-method" class="form-input font-semibold" style="color:#1E40AF" onchange="window.impRecalcTotals()">
+              <option value="FOB_VALUE" ${imp?.proration_method === 'FOB_VALUE' ? 'selected' : (imp?.proration_method ? '' : 'selected')}>Prorrateo por Valor FOB</option>
+              <option value="GROSS_WEIGHT" ${imp?.proration_method === 'GROSS_WEIGHT' ? 'selected' : ''}>Prorrateo por Peso Bruto (Kg)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-3">
+          <div class="form-group">
+            <label class="form-label font-bold">Nro. Formulario 500 (DIAN)</label>
+            <input id="imp-dian-declaracion" class="form-input font-mono" placeholder="Ej: 500260..." value="${(window as any).esc(imp?.dian_declaracion_num || '')}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Fecha de Aceptación</label>
+            <input type="date" id="imp-dian-declaracion-date" class="form-input" value="${(window as any).esc(imp?.dian_declaracion_date || '')}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Fecha de Levante</label>
+            <input type="date" id="imp-dian-levante-date" class="form-input" value="${(window as any).esc(imp?.dian_levante_date || '')}">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">TRM Oficial DIAN ($)</label>
+            <input type="number" id="imp-dian-trm" class="form-input" min="1" step="0.01" placeholder="Ej: 4015.20" value="${imp?.dian_trm || ''}">
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Detalle de Artículos y Manifiestos -->
       <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
+        <!-- Alertas de Vistos Buenos -->
+        <div id="imp-vb-alerts-wrap" class="px-4 py-2 border-b hidden" style="background:#FFF5F5;border-color:#FEE2E2">
+          <div class="flex items-start gap-2 text-red-800 text-xs">
+            <i class="fas fa-triangle-exclamation mt-0.5"></i>
+            <div>
+              <p class="font-bold">⚠️ Vistos Buenos Requeridos (VUCE / DIAN):</p>
+              <ul class="list-disc pl-4 mt-0.5 space-y-0.5 font-medium" id="imp-vb-alerts-list">
+              </ul>
+            </div>
+          </div>
+        </div>
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes-packing mr-1 text-blue-700"></i> Mercancía de Importación</span>
         </div>
@@ -715,23 +792,45 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       }
     }
 
-    const initArancel = preloadedLine?.arancel_rate ?? prod?.arancel_rate ?? 10;
+    const initArancel = preloadedLine?.arancel_rate ?? prod?.arancel_rate_default ?? prod?.arancel_rate ?? 10;
     const initIva = preloadedLine?.iva_rate ?? prod?.iva_rate ?? 19;
     const manifestNum = preloadedLine?.manifest_number || '';
     const manifestFile = preloadedLine?.manifest_file || '';
     const lineId = preloadedLine?.id || '';
 
+    const baseNetWeight = prod?.peso_neto ?? 0;
+    const baseGrossWeight = prod?.peso_bruto ?? 0;
+
     const tr = document.createElement('tr');
     tr.id = `imp-row-${idx}`;
     tr.setAttribute('data-lineid', lineId);
+    tr.setAttribute('data-base-peso-neto', String(baseNetWeight));
+    tr.setAttribute('data-base-peso-bruto', String(baseGrossWeight));
+    
     tr.innerHTML = `
       <td>
         <div class="flex flex-col">
-          <div class="flex items-center gap-1">
+          <div class="flex items-center gap-1 flex-wrap">
             <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
-            <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" style="max-width:180px" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            ${prod?.visto_bueno_required ? `
+              <span class="badge badge-red text-[9px] py-0.5 px-1.5 ml-1 animate-pulse" style="font-size:9px" title="Requiere Visto Bueno ante ${prod.visto_bueno_entidad} - Registro: ${prod.registro_sanitario || 'Sin Registro'}">⚠️ V.B. ${prod.visto_bueno_entidad}</span>
+            ` : ''}
           </div>
           <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
+          
+          <!-- Detalles aduaneros y pesos -->
+          <div class="flex flex-col gap-1 mt-1 pl-1 text-[10px] text-gray-500 border-l-2 border-blue-200">
+            <div class="flex flex-wrap gap-2 items-center">
+              <span><strong>Arancel:</strong> <input type="text" id="impl-pos-arancel-${idx}" class="form-input py-0.5 px-1 font-mono text-[9px]" style="width:75px;height:18px;font-size:9px" placeholder="Arancel" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria || '')}"></span>
+              <span><strong>Orig:</strong> <input type="text" id="impl-pais-origen-${idx}" class="form-input py-0.5 px-1 text-[9px]" style="width:40px;height:18px;font-size:9px" placeholder="País" value="${(window as any).esc(preloadedLine?.pais_origen || prod?.pais_origen || '')}"></span>
+              <span><strong>Cert:</strong> <input type="text" id="impl-cert-origen-${idx}" class="form-input py-0.5 px-1 text-[9px]" style="width:55px;height:18px;font-size:9px" placeholder="Cert. Origen" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}"></span>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center mt-0.5">
+              <span><strong>P. Neto (Kg):</strong> <input type="number" id="impl-peso-neto-${idx}" class="form-input py-0.5 px-1 text-[9px] text-right" style="width:50px;height:18px;font-size:9px" step="0.01" value="${preloadedLine?.peso_neto_total ?? (prod?.peso_neto ? (prod.peso_neto * initQty).toFixed(2) : '0.00')}" onchange="this.dataset.overridden='true'; window.impRecalcTotals()" oninput="window.impRecalcTotals()"></span>
+              <span><strong>P. Bruto (Kg):</strong> <input type="number" id="impl-peso-bruto-${idx}" class="form-input py-0.5 px-1 text-[9px] text-right font-semibold" style="width:50px;height:18px;font-size:9px" step="0.01" value="${preloadedLine?.peso_bruto_total ?? (prod?.peso_bruto ? (prod.peso_bruto * initQty).toFixed(2) : '0.00')}" onchange="this.dataset.overridden='true'; window.impRecalcTotals()" oninput="window.impRecalcTotals()"></span>
+            </div>
+          </div>
         </div>
       </td>
       <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals()"></td>
@@ -761,6 +860,127 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     tbody.appendChild(tr);
 
     window.impRecalcTotals();
+  };
+
+  (window as any).impRecalcTotals = function() {
+    const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+    const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
+    const freightCost = parseFloat((document.getElementById('imp-freight-cost') as HTMLInputElement)?.value || '0');
+    const insuranceCost = parseFloat((document.getElementById('imp-insurance-cost') as HTMLInputElement)?.value || '0');
+    const gastosNacionalizacion = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
+    const transporteNacional = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
+    const otrosGastos = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
+    const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
+
+    const totalCIFExpensesCOP = (freightCost + insuranceCost) * exchangeRate;
+    const totalLocalExpensesCOP = gastosNacionalizacion + transporteNacional + otrosGastos;
+    const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
+
+    let totalFOB = 0;
+    let totalWeight = 0;
+    
+    // First pass: update weights if not overridden, and calculate totals
+    const rows = document.querySelectorAll('#imp-lines-body tr');
+    rows.forEach((tr: any) => {
+      const idx = tr.id.split('-').pop();
+      const qty = parseFloat((document.getElementById(`impl-qty-${idx}`) as HTMLInputElement)?.value || '0');
+      const price = parseFloat((document.getElementById(`impl-price-${idx}`) as HTMLInputElement)?.value || '0');
+      
+      // Update weights dynamically if not overridden
+      const baseNet = parseFloat(tr.getAttribute('data-base-peso-neto') || '0');
+      const baseGross = parseFloat(tr.getAttribute('data-base-peso-bruto') || '0');
+      const netInput = document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement;
+      const grossInput = document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement;
+      
+      if (netInput && baseNet > 0 && netInput.dataset.overridden !== 'true') {
+        netInput.value = (baseNet * qty).toFixed(2);
+      }
+      if (grossInput && baseGross > 0 && grossInput.dataset.overridden !== 'true') {
+        grossInput.value = (baseGross * qty).toFixed(2);
+      }
+
+      const pesoBrutoLine = parseFloat(grossInput?.value || '0');
+      totalFOB += (qty * price);
+      totalWeight += pesoBrutoLine;
+    });
+
+    const totalFOBCop = totalFOB * exchangeRate;
+    let arancelTotalCOP = 0;
+
+    // Second pass: distribute costs and update line totals
+    rows.forEach((tr: any) => {
+      const idx = tr.id.split('-').pop();
+      const qty = parseFloat((document.getElementById(`impl-qty-${idx}`) as HTMLInputElement)?.value || '0');
+      const price = parseFloat((document.getElementById(`impl-price-${idx}`) as HTMLInputElement)?.value || '0');
+      const arancelRate = parseFloat((document.getElementById(`impl-arancel-${idx}`) as HTMLInputElement)?.value || '0');
+      const grossInput = document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement;
+      const pesoBrutoLine = parseFloat(grossInput?.value || '0');
+
+      const lineFOBCop = qty * price * exchangeRate;
+      
+      let factor = 0;
+      if (prorationMethod === 'GROSS_WEIGHT' && totalWeight > 0) {
+        factor = pesoBrutoLine / totalWeight;
+      } else if (totalFOBCop > 0) {
+        factor = lineFOBCop / totalFOBCop;
+      }
+
+      const proratedCost = factor * totalExpensesToProrateCOP;
+      const arancelAmount = lineFOBCop * (arancelRate / 100);
+      const lineTotalCOP = lineFOBCop + proratedCost + arancelAmount;
+      const unitCostCOP = qty > 0 ? (lineTotalCOP / qty) : 0;
+
+      arancelTotalCOP += arancelAmount;
+
+      // Update line labels
+      const unitLabel = document.getElementById(`impl-unit-cop-${idx}`);
+      const totalLabel = document.getElementById(`impl-total-cop-${idx}`);
+      if (unitLabel) unitLabel.textContent = (window as any).fmt(unitCostCOP);
+      if (totalLabel) totalLabel.textContent = (window as any).fmt(lineTotalCOP);
+    });
+
+    // Update global inputs/labels
+    const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
+    if (fobTotalInput) fobTotalInput.value = totalFOB.toFixed(2);
+
+    const lblResFob = document.getElementById('lbl-res-fob-cop');
+    const lblResCif = document.getElementById('lbl-res-cif-cop');
+    const lblResArancel = document.getElementById('lbl-res-arancel-cop');
+    const lblResLocales = document.getElementById('lbl-res-locales-cop');
+    const lblResTotal = document.getElementById('lbl-res-total-cop');
+    const customsArancel = document.getElementById('stage-customs-arancel');
+
+    if (lblResFob) lblResFob.textContent = (window as any).fmt(totalFOBCop);
+    if (lblResCif) lblResCif.textContent = (window as any).fmt(totalCIFExpensesCOP);
+    if (lblResArancel) lblResArancel.textContent = (window as any).fmt(arancelTotalCOP);
+    if (lblResLocales) lblResLocales.textContent = (window as any).fmt(totalLocalExpensesCOP);
+    if (lblResTotal) lblResTotal.textContent = (window as any).fmt(totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP);
+    if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
+
+    // Update Seen entities Vustos Buenos warnings box
+    const vbAlertsList = document.getElementById('imp-vb-alerts-list');
+    const vbAlertsWrap = document.getElementById('imp-vb-alerts-wrap');
+    if (vbAlertsList && vbAlertsWrap) {
+      const activeVbs: string[] = [];
+      rows.forEach((tr: any) => {
+        const rowId = tr.id.split('-').pop();
+        const prodName = tr.querySelector('.truncate')?.textContent || 'Producto';
+        
+        // Find if this product has seen visto bueno by looking at the badge
+        const badge = tr.querySelector('.badge-red');
+        if (badge) {
+          const title = badge.getAttribute('title') || `Requiere visto bueno`;
+          activeVbs.push(`<strong>${prodName}</strong>: ${title}`);
+        }
+      });
+      
+      if (activeVbs.length > 0) {
+        vbAlertsList.innerHTML = activeVbs.map(item => `<li>${item}</li>`).join('');
+        vbAlertsWrap.classList.remove('hidden');
+      } else {
+        vbAlertsWrap.classList.add('hidden');
+      }
+    }
   };
 
   function initImpGlobalProductSearch() {
@@ -861,7 +1081,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         l._name = match.name;
         l._code = match.code;
       }
-      (window as any).addImpLine(null, l);
+      (window as any).addImpLine(match || null, l);
     });
   }
 
@@ -1089,6 +1309,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const localCarrierInvoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim() || null;
       const localOtherInvoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim() || null;
 
+      // Nuevos campos cumplimiento y prorrateo
+      const vuceRegistroNum = (document.getElementById('imp-vuce-registro') as HTMLInputElement)?.value.trim() || null;
+      const modalidadImportacion = (document.getElementById('imp-modalidad-importacion') as HTMLSelectElement)?.value || null;
+      const canalInspeccion = (document.getElementById('imp-canal-inspeccion') as HTMLSelectElement)?.value || null;
+      const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
+      const dianDeclaracionNum = (document.getElementById('imp-dian-declaracion') as HTMLInputElement)?.value.trim() || null;
+      const dianDeclaracionDate = (document.getElementById('imp-dian-declaracion-date') as HTMLInputElement)?.value || null;
+      const dianLevanteDate = (document.getElementById('imp-dian-levante-date') as HTMLInputElement)?.value || null;
+      const dianTrm = parseFloat((document.getElementById('imp-dian-trm') as HTMLInputElement)?.value) || null;
+
       if (!supplierId) throw new Error('Por favor selecciona un proveedor internacional.');
       if (exchangeRate <= 0) throw new Error('La tasa de cambio debe ser un número positivo.');
 
@@ -1111,6 +1341,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const arancelRate = parseFloat((document.getElementById(`impl-arancel-${idx}`) as HTMLInputElement)?.value || '0');
         const ivaRate = parseFloat((document.getElementById(`impl-iva-${idx}`) as HTMLInputElement)?.value || '0');
         const manifestNumber = (document.getElementById(`impl-manifest-num-${idx}`) as HTMLInputElement)?.value.trim() || null;
+        const paisOrigen = (document.getElementById(`impl-pais-origen-${idx}`) as HTMLInputElement)?.value.trim() || null;
+        const certOrigen = (document.getElementById(`impl-cert-origen-${idx}`) as HTMLInputElement)?.value.trim() || null;
+        const posArancelaria = (document.getElementById(`impl-pos-arancel-${idx}`) as HTMLInputElement)?.value.trim() || null;
+        const pesoNeto = parseFloat((document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement)?.value || '0');
+        const pesoBruto = parseFloat((document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement)?.value || '0');
 
         if (!productId) {
           throw new Error(`Por favor selecciona un producto válido en la línea ${i + 1}.`);
@@ -1133,6 +1368,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           arancel_rate: arancelRate,
           iva_rate: ivaRate,
           manifest_number: manifestNumber,
+          pais_origen: paisOrigen,
+          certificado_origen_num: certOrigen,
+          posicion_arancelaria: posArancelaria,
+          peso_neto_total: pesoNeto,
+          peso_bruto_total: pesoBruto,
           lineFOBCop,
         });
       });
@@ -1141,9 +1381,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
       // Finalizar cálculos para guardado
       const totalFOBCop = totalFOB * exchangeRate;
+      const totalWeight = lines.reduce((s, l) => s + (l.peso_bruto_total || 0), 0);
+
       lines.forEach(l => {
-        const weightFactor = totalFOBCop > 0 ? (l.lineFOBCop / totalFOBCop) : 0;
-        l.prorated_cost = weightFactor * totalExpensesToProrateCOP;
+        let factor = 0;
+        if (prorationMethod === 'GROSS_WEIGHT' && totalWeight > 0) {
+          factor = (l.peso_bruto_total || 0) / totalWeight;
+        } else if (totalFOBCop > 0) {
+          factor = l.lineFOBCop / totalFOBCop;
+        }
+
+        l.prorated_cost = factor * totalExpensesToProrateCOP;
         l.arancel_amount = l.lineFOBCop * (l.arancel_rate / 100);
         l.iva_amount = l.lineFOBCop * (l.iva_rate / 100);
         
@@ -1191,6 +1439,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         customs_invoice_num: customsInvoiceNum,
         local_carrier_invoice_num: localCarrierInvoiceNum,
         local_other_invoice_num: localOtherInvoiceNum,
+
+        // Nuevos campos DIAN/VUCE y prorrateo
+        vuce_registro_num: vuceRegistroNum,
+        modalidad_importacion: modalidadImportacion,
+        canal_inspeccion: canalInspeccion,
+        proration_method: prorationMethod,
+        dian_declaracion_num: dianDeclaracionNum,
+        dian_declaracion_date: dianDeclaracionDate,
+        dian_levante_date: dianLevanteDate,
+        dian_trm: dianTrm,
       };
 
       if (importId) {
@@ -1266,8 +1524,8 @@ async function viewImportDetail(importId: string) {
           </div>
         </div>
 
-        <!-- Bloque Logístico y Contabilidad -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Bloque Logístico, Aduanero y Contabilidad -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div class="p-4 rounded-xl border col-span-1" style="background:#fff;border-color:#E5E7EB">
             <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-truck mr-1 text-blue-700"></i> Datos Logísticos</h4>
             <div class="space-y-1.5 text-xs">
@@ -1283,6 +1541,19 @@ async function viewImportDetail(importId: string) {
                   </a>
                 ` : '<span class="text-gray-400">Sin archivo adjunto</span>'}
               </div>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-xl border col-span-1" style="background:#fff;border-color:#E5E7EB">
+            <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-scale-balanced mr-1 text-blue-700"></i> Aduanas y VUCE</h4>
+            <div class="space-y-1.5 text-xs">
+              <div class="flex justify-between"><span>VUCE Licencia:</span> <span class="font-mono font-semibold">${(window as any).esc(imp.vuce_registro_num || '—')}</span></div>
+              <div class="flex justify-between"><span>Modalidad:</span> <span class="font-semibold">${(window as any).esc(imp.modalidad_importacion || '—')}</span></div>
+              <div class="flex justify-between"><span>Canal:</span> <span class="font-semibold">${imp.canal_inspeccion ? (imp.canal_inspeccion === 'AUTOMATICO' ? '🟢 Automático' : imp.canal_inspeccion === 'DOCUMENTAL' ? '🟡 Documental' : imp.canal_inspeccion === 'FISICO' ? '🔴 Físico' : '🔵 No Intrusivo') : '—'}</span></div>
+              <div class="flex justify-between"><span>Declaración Nro:</span> <span class="font-mono font-semibold">${(window as any).esc(imp.dian_declaracion_num || '—')}</span></div>
+              <div class="flex justify-between"><span>Levante Fecha:</span> <span class="font-semibold text-green-700">${(window as any).esc(imp.dian_levante_date || '—')}</span></div>
+              <div class="flex justify-between"><span>TRM DIAN:</span> <span class="font-semibold">${imp.dian_trm ? (window as any).fmt(imp.dian_trm).replace('COP', '') + ' COP' : '—'}</span></div>
+              <div class="flex justify-between"><span>Prorrateo:</span> <span class="font-semibold text-blue-700">${imp.proration_method === 'GROSS_WEIGHT' ? 'Peso Bruto' : 'Valor FOB'}</span></div>
             </div>
           </div>
 
@@ -1346,7 +1617,15 @@ async function viewImportDetail(importId: string) {
 
                   return `
                     <tr>
-                      <td class="font-medium">${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}</td>
+                      <td class="font-medium">
+                        ${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}
+                        <div class="text-[10px] text-gray-500 mt-0.5">
+                          <span>Origen: ${(window as any).esc(l.pais_origen || '—')}</span> | 
+                          <span>Cert: ${(window as any).esc(l.certificado_origen_num || '—')}</span> | 
+                          <span>Pos: ${(window as any).esc(l.posicion_arancelaria || '—')}</span> | 
+                          <span>P.Bruto: ${(l.peso_bruto_total || 0).toFixed(2)} Kg</span>
+                        </div>
+                      </td>
                       <td class="text-right font-semibold">${(window as any).fmtN(l.qty)}</td>
                       <td class="text-right">${(window as any).fmt(l.fob_price).replace('COP', '')}</td>
                       <td class="text-right text-gray-500">${l.arancel_rate}%</td>
@@ -1718,7 +1997,15 @@ async function viewImportTraceability(importId: string) {
       const totalFobCop = l.qty * l.fob_price * imp.exchange_rate;
       return `
         <tr style="border-bottom:1px solid #E5E7EB">
-          <td class="p-2 font-medium">${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}</td>
+          <td class="p-2 font-medium">
+            ${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}
+            <div class="text-[10px] text-gray-400 mt-0.5">
+              <span>Orig: ${(window as any).esc(l.pais_origen || '—')}</span> | 
+              <span>Cert: ${(window as any).esc(l.certificado_origen_num || '—')}</span> | 
+              <span>Pos: ${(window as any).esc(l.posicion_arancelaria || '—')}</span> | 
+              <span>P.Bruto: ${(l.peso_bruto_total || 0).toFixed(2)} Kg</span>
+            </div>
+          </td>
           <td class="p-2 text-right">${(window as any).fmtN(l.qty)}</td>
           <td class="p-2 text-right">${(window as any).fmt(l.fob_price).replace('COP', '')}</td>
           <td class="p-2 text-right">${(window as any).fmt(totalFobCop)}</td>
@@ -1923,7 +2210,15 @@ async function buildTraceabilityPrintHTML(data: any) {
     const totalFobCop = l.qty * l.fob_price * imp.exchange_rate;
     return `
       <tr style="border-bottom:1px solid #E5E7EB">
-        <td style="padding:6px;font-size:11px">${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}</td>
+        <td style="padding:6px;font-size:11px">
+          ${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}
+          <div style="font-size:9px;color:#6B7280;margin-top:2px">
+            <span>Orig: ${(window as any).esc(l.pais_origen || '—')}</span> | 
+            <span>Cert: ${(window as any).esc(l.certificado_origen_num || '—')}</span> | 
+            <span>Pos: ${(window as any).esc(l.posicion_arancelaria || '—')}</span> | 
+            <span>P.Bruto: ${(l.peso_bruto_total || 0).toFixed(2)} Kg</span>
+          </div>
+        </td>
         <td style="padding:6px;text-align:right;font-size:11px">${(window as any).fmtN(l.qty)}</td>
         <td style="padding:6px;text-align:right;font-size:11px">${(window as any).fmt(l.fob_price).replace('COP', '')}</td>
         <td style="padding:6px;text-align:right;font-size:11px">${(window as any).fmt(totalFobCop)}</td>

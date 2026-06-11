@@ -282,6 +282,165 @@ onBootstrap((e) => {
     console.log("[GRAVY-IMPORTACIONES] Error al extender imports: " + err);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // 4. EXTENDER productos con campos de cumplimiento aduanero
+  // ──────────────────────────────────────────────────────────
+  try {
+    const prodCol = $app.findCollectionByNameOrId("products");
+    const prodFields = new Set(prodCol.fields.fieldNames());
+    let needsSaveProd = false;
+
+    if (!prodFields.has("posicion_arancelaria")) {
+      prodCol.fields.add(new TextField({ name: "posicion_arancelaria", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("arancel_rate_default")) {
+      prodCol.fields.add(new NumberField({ name: "arancel_rate_default", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("pais_origen")) {
+      prodCol.fields.add(new TextField({ name: "pais_origen", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("marca")) {
+      prodCol.fields.add(new TextField({ name: "marca", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("modelo")) {
+      prodCol.fields.add(new TextField({ name: "modelo", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("visto_bueno_required")) {
+      prodCol.fields.add(new BoolField({ name: "visto_bueno_required", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("visto_bueno_entidad")) {
+      prodCol.fields.add(new SelectField({
+        name: "visto_bueno_entidad",
+        required: false,
+        values: ["ICA", "INVIMA", "SIC", "INDUMIL", "AUNAP", "MINCIT", "OTRO"]
+      }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("registro_sanitario")) {
+      prodCol.fields.add(new TextField({ name: "registro_sanitario", required: false }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("peso_neto")) {
+      prodCol.fields.add(new NumberField({ name: "peso_neto", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("peso_bruto")) {
+      prodCol.fields.add(new NumberField({ name: "peso_bruto", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
+
+    if (needsSaveProd) {
+      $app.save(prodCol);
+      console.log("[GRAVY-IMPORTACIONES] Campos aduaneros agregados a la colección products.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORTACIONES] Error al extender products: " + err);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 5. EXTENDER imports con campos DIAN/VUCE y prorrateo
+  // ──────────────────────────────────────────────────────────
+  try {
+    const impCol = $app.findCollectionByNameOrId("imports");
+    const impFields = new Set(impCol.fields.fieldNames());
+    let needsSaveImp2 = false;
+
+    if (!impFields.has("vuce_registro_num")) {
+      impCol.fields.add(new TextField({ name: "vuce_registro_num", required: false }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("dian_declaracion_num")) {
+      impCol.fields.add(new TextField({ name: "dian_declaracion_num", required: false }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("dian_declaracion_date")) {
+      impCol.fields.add(new TextField({ name: "dian_declaracion_date", required: false }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("dian_levante_date")) {
+      impCol.fields.add(new TextField({ name: "dian_levante_date", required: false }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("dian_trm")) {
+      impCol.fields.add(new NumberField({ name: "dian_trm", required: false, min: 0 }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("modalidad_importacion")) {
+      impCol.fields.add(new SelectField({
+        name: "modalidad_importacion",
+        required: false,
+        values: ["ORDINARIA", "FRANQUICIA", "TEMPORAL_REEXP", "TEMPORAL_PERF", "ENSAMBLE", "URGENTES"]
+      }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("canal_inspeccion")) {
+      impCol.fields.add(new SelectField({
+        name: "canal_inspeccion",
+        required: false,
+        values: ["AUTOMATICO", "DOCUMENTAL", "FISICO", "NO_INTRUSIVO"]
+      }));
+      needsSaveImp2 = true;
+    }
+    if (!impFields.has("proration_method")) {
+      impCol.fields.add(new SelectField({
+        name: "proration_method",
+        required: false,
+        values: ["FOB_VALUE", "GROSS_WEIGHT"]
+      }));
+      needsSaveImp2 = true;
+    }
+
+    if (needsSaveImp2) {
+      $app.save(impCol);
+      console.log("[GRAVY-IMPORTACIONES] Campos de aduanas DIAN/VUCE y prorrateo agregados a imports.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORTACIONES] Error al extender imports (aduanas): " + err);
+  }
+
+  // ──────────────────────────────────────────────────────────
+  // 6. EXTENDER import_lines con campos por línea
+  // ──────────────────────────────────────────────────────────
+  try {
+    const lineCol = $app.findCollectionByNameOrId("import_lines");
+    const lineFields = new Set(lineCol.fields.fieldNames());
+    let needsSaveLine = false;
+
+    if (!lineFields.has("pais_origen")) {
+      lineCol.fields.add(new TextField({ name: "pais_origen", required: false }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("certificado_origen_num")) {
+      lineCol.fields.add(new TextField({ name: "certificado_origen_num", required: false }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("posicion_arancelaria")) {
+      lineCol.fields.add(new TextField({ name: "posicion_arancelaria", required: false }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("peso_neto_total")) {
+      lineCol.fields.add(new NumberField({ name: "peso_neto_total", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("peso_bruto_total")) {
+      lineCol.fields.add(new NumberField({ name: "peso_bruto_total", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
+
+    if (needsSaveLine) {
+      $app.save(lineCol);
+      console.log("[GRAVY-IMPORTACIONES] Campos aduaneros y de peso agregados a import_lines.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORTACIONES] Error al extender import_lines: " + err);
+  }
+
   // Asegurar índices
   try {
     $app.nonconcurrentDB()

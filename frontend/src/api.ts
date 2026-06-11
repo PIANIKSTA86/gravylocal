@@ -3568,6 +3568,21 @@ const API = {
       if (l.manifest_number) {
         lineData.append('manifest_number', l.manifest_number);
       }
+      if (l.pais_origen) {
+        lineData.append('pais_origen', l.pais_origen);
+      }
+      if (l.certificado_origen_num) {
+        lineData.append('certificado_origen_num', l.certificado_origen_num);
+      }
+      if (l.posicion_arancelaria) {
+        lineData.append('posicion_arancelaria', l.posicion_arancelaria);
+      }
+      if (l.peso_neto_total !== undefined && l.peso_neto_total !== null) {
+        lineData.append('peso_neto_total', String(l.peso_neto_total));
+      }
+      if (l.peso_bruto_total !== undefined && l.peso_bruto_total !== null) {
+        lineData.append('peso_bruto_total', String(l.peso_bruto_total));
+      }
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);
       }
@@ -3616,6 +3631,11 @@ const API = {
       lineData.append('unit_cost_cop', String(l.unit_cost_cop || 0));
       lineData.append('total_cop', String(l.total_cop || 0));
       lineData.append('manifest_number', l.manifest_number || '');
+      lineData.append('pais_origen', l.pais_origen || '');
+      lineData.append('certificado_origen_num', l.certificado_origen_num || '');
+      lineData.append('posicion_arancelaria', l.posicion_arancelaria || '');
+      lineData.append('peso_neto_total', String(l.peso_neto_total || 0));
+      lineData.append('peso_bruto_total', String(l.peso_bruto_total || 0));
 
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);

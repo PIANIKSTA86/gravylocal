@@ -31,10 +31,13 @@ function toNullableNumber(raw) {
 
 function specialConditionsSummary(sc) {
   const items = [];
+  if (sc.posicion_arancelaria) items.push(`P.Arancelaria: ${sc.posicion_arancelaria}`);
+  if (sc.arancel_rate_default !== null && sc.arancel_rate_default !== undefined) items.push(`Arancel: ${sc.arancel_rate_default}%`);
+  if (sc.pais_origen) items.push(`Origen: ${sc.pais_origen}`);
+  if (sc.visto_bueno_required) items.push(`V.B. [${sc.visto_bueno_entidad || 'S/E'}]`);
   if (sc.peso !== null) items.push(`Peso: ${fmtN(sc.peso)}`);
-  if (sc.cajas_en_pallet !== null) items.push(`Cajas/Pallet: ${fmtN(sc.cajas_en_pallet)}`);
-  if (sc.und_empaque !== null) items.push(`UndEmpaque: ${fmtN(sc.und_empaque)}`);
-  if (sc.peso_x_und_empaque !== null) items.push(`Peso x UndEmpaque: ${fmtN(sc.peso_x_und_empaque)}`);
+  if (sc.peso_neto !== null) items.push(`Neto: ${fmtN(sc.peso_neto)}`);
+  if (sc.peso_bruto !== null) items.push(`Bruto: ${fmtN(sc.peso_bruto)}`);
   return items.length ? items.join(' | ') : 'Sin condiciones especiales registradas';
 }
 
@@ -43,35 +46,100 @@ function openSpecialConditionsModal(current, onApply) {
   const prev = document.getElementById(overlayId);
   if (prev) prev.remove();
 
+  const ENTIDADES = ["ICA", "INVIMA", "SIC", "INDUMIL", "AUNAP", "MINCIT", "OTRO"];
+
   const overlay = document.createElement('div');
   overlay.id = overlayId;
   overlay.className = 'modal-overlay show';
   overlay.style.zIndex = '200';
   overlay.innerHTML = `
-    <div class="modal-box" style="max-width:640px">
+    <div class="modal-box" style="max-width:720px">
       <div class="flex items-center justify-between mb-4">
-        <h4 class="text-base font-semibold" style="color:#0D2137">Condiciones especiales</h4>
+        <h4 class="text-base font-semibold" style="color:#0D2137"><i class="fas fa-sliders mr-2 text-blue-700"></i>Condiciones especiales e Importación</h4>
         <button class="btn btn-outline btn-sm" id="sc-close-btn"><i class="fas fa-xmark"></i></button>
       </div>
-      <p class="text-sm mb-4" style="color:#6B7280">Campos opcionales para importacion y logistica.</p>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div class="form-group">
-          <label class="form-label">Peso</label>
-          <input id="sc-peso" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.peso ?? ''}" placeholder="0">
+      <p class="text-sm mb-4" style="color:#6B7280">Ingresa la información técnica y aduanera para los procesos de logística e importación (DIAN / VUCE).</p>
+      
+      <!-- Tabs Selector -->
+      <div class="flex gap-2 border-b mb-4" style="border-color:#F0F0F0">
+        <button type="button" class="tab-btn active" id="sc-tab-btn-logistica">
+          <i class="fas fa-boxes-stacked mr-1"></i> Logística de Carga
+        </button>
+        <button type="button" class="tab-btn" id="sc-tab-btn-aduanas">
+          <i class="fas fa-scale-balanced mr-1"></i> Clasificación y VUCE
+        </button>
+      </div>
+
+      <div class="max-h-[50vh] overflow-y-auto pr-1">
+        <!-- Pestaña 1: Logística de Carga -->
+        <div id="sc-panel-logistica" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="form-group">
+            <label class="form-label text-xs">Peso (General)</label>
+            <input id="sc-peso" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.peso ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Cajas en Pallet</label>
+            <input id="sc-cajas-en-pallet" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.cajas_en_pallet ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Unidades por Empaque</label>
+            <input id="sc-und-empaque" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.und_empaque ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Peso x Unidad Empaque</label>
+            <input id="sc-peso-x-und-empaque" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.peso_x_und_empaque ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Peso Neto (Kg) <small style="color:#9CA3AF">(sin empaque)</small></label>
+            <input id="sc-peso-neto" type="number" min="0" step="0.0001" class="form-input text-right font-semibold" value="${current.peso_neto ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Peso Bruto (Kg) <small style="color:#9CA3AF">(con empaque/pallet)</small></label>
+            <input id="sc-peso-bruto" type="number" min="0" step="0.0001" class="form-input text-right font-semibold" value="${current.peso_bruto ?? ''}" placeholder="0">
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Caja en Pallet</label>
-          <input id="sc-cajas-en-pallet" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.cajas_en_pallet ?? ''}" placeholder="0">
-        </div>
-        <div class="form-group">
-          <label class="form-label">UndEmpaque</label>
-          <input id="sc-und-empaque" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.und_empaque ?? ''}" placeholder="0">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Peso x UndEmpaque</label>
-          <input id="sc-peso-x-und-empaque" type="number" min="0" step="0.0001" class="form-input text-right" value="${current.peso_x_und_empaque ?? ''}" placeholder="0">
+
+        <!-- Pestaña 2: Clasificación y VUCE -->
+        <div id="sc-panel-aduanas" class="grid grid-cols-1 md:grid-cols-2 gap-3 hidden">
+          <div class="form-group">
+            <label class="form-label text-xs">Posición Arancelaria <small style="color:#9CA3AF">(10 dígitos)</small></label>
+            <input id="sc-posicion-arancelaria" type="text" maxlength="10" class="form-input font-mono font-semibold" value="${current.posicion_arancelaria ?? ''}" placeholder="Ej: 1501100000">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Arancel Base (%)</label>
+            <input id="sc-arancel-rate-default" type="number" min="0" max="100" step="0.1" class="form-input text-right font-semibold text-blue-700" value="${current.arancel_rate_default ?? ''}" placeholder="10">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">País de Origen</label>
+            <input id="sc-pais-origen" type="text" class="form-input font-semibold" value="${current.pais_origen ?? ''}" placeholder="Ej: China, Estados Unidos">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Marca / Modelo</label>
+            <div class="flex gap-2">
+              <input id="sc-marca" class="form-input text-xs font-semibold" placeholder="Marca" value="${current.marca ?? ''}">
+              <input id="sc-modelo" class="form-input text-xs font-semibold" placeholder="Modelo" value="${current.modelo ?? ''}">
+            </div>
+          </div>
+          <div class="col-span-2 form-group flex items-center gap-2 mt-2">
+            <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-xs text-gray-800">
+              <input type="checkbox" id="sc-visto-bueno-required" class="rounded text-[#E87D1E] focus:ring-[#E87D1E]" ${current.visto_bueno_required ? 'checked' : ''}>
+              <span>¿Requiere Visto Bueno / Permiso Previo?</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Entidad de Visto Bueno</label>
+            <select id="sc-visto-bueno-entidad" class="form-input">
+              <option value="">— Ninguna —</option>
+              ${ENTIDADES.map(ent => `<option value="${ent}" ${current.visto_bueno_entidad === ent ? 'selected' : ''}>${ent}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group col-span-2">
+            <label class="form-label text-xs">Registro Sanitario / Nro. Registro de Venta</label>
+            <input id="sc-registro-sanitario" type="text" class="form-input font-mono font-semibold" value="${current.registro_sanitario ?? ''}" placeholder="Ej: Registro INVIMA Nro, Registro ICA...">
+          </div>
         </div>
       </div>
+      
       <div class="flex justify-end gap-2 mt-5">
         <button class="btn btn-outline" id="sc-cancel-btn">Cancelar</button>
         <button class="btn btn-primary" id="sc-apply-btn"><i class="fas fa-check"></i> Aplicar</button>
@@ -81,17 +149,71 @@ function openSpecialConditionsModal(current, onApply) {
   const close = () => overlay.remove();
   document.body.appendChild(overlay);
 
+  // Eventos de Pestañas (Tabs)
+  const btnLogistica = overlay.querySelector('#sc-tab-btn-logistica');
+  const btnAduanas = overlay.querySelector('#sc-tab-btn-aduanas');
+  const panelLogistica = overlay.querySelector('#sc-panel-logistica');
+  const panelAduanas = overlay.querySelector('#sc-panel-aduanas');
+
+  const switchTab = (tab: 'logistica' | 'aduanas') => {
+    if (tab === 'logistica') {
+      btnLogistica?.classList.add('active');
+      btnAduanas?.classList.remove('active');
+      panelLogistica?.classList.remove('hidden');
+      panelAduanas?.classList.add('hidden');
+    } else {
+      btnLogistica?.classList.remove('active');
+      btnAduanas?.classList.add('active');
+      panelLogistica?.classList.add('hidden');
+      panelAduanas?.classList.remove('hidden');
+    }
+  };
+
+  btnLogistica?.addEventListener('click', () => switchTab('logistica'));
+  btnAduanas?.addEventListener('click', () => switchTab('aduanas'));
+
+  // Manejo contextual de Vistos Buenos
+  const checkVb = overlay.querySelector('#sc-visto-bueno-required') as HTMLInputElement;
+  const selectEntidad = overlay.querySelector('#sc-visto-bueno-entidad') as HTMLSelectElement;
+  const inputRegistro = overlay.querySelector('#sc-registro-sanitario') as HTMLInputElement;
+
+  const toggleVbFields = () => {
+    const isChecked = checkVb?.checked || false;
+    if (selectEntidad) {
+      selectEntidad.disabled = !isChecked;
+      if (!isChecked) selectEntidad.value = '';
+    }
+    if (inputRegistro) {
+      inputRegistro.disabled = !isChecked;
+      if (!isChecked) inputRegistro.value = '';
+    }
+  };
+
+  checkVb?.addEventListener('change', toggleVbFields);
+  toggleVbFields(); // Sincronización inicial al abrir
+
   overlay.querySelector('#sc-close-btn')?.addEventListener('click', close);
   overlay.querySelector('#sc-cancel-btn')?.addEventListener('click', close);
   overlay.addEventListener('click', (ev) => {
     if (ev.target === overlay) close();
   });
   overlay.querySelector('#sc-apply-btn')?.addEventListener('click', () => {
+    const isVbReq = (document.getElementById('sc-visto-bueno-required') as HTMLInputElement)?.checked || false;
     onApply({
       peso: toNullableNumber(getInputVal('sc-peso')),
       cajas_en_pallet: toNullableNumber(getInputVal('sc-cajas-en-pallet')),
       und_empaque: toNullableNumber(getInputVal('sc-und-empaque')),
       peso_x_und_empaque: toNullableNumber(getInputVal('sc-peso-x-und-empaque')),
+      peso_neto: toNullableNumber(getInputVal('sc-peso-neto')),
+      peso_bruto: toNullableNumber(getInputVal('sc-peso-bruto')),
+      posicion_arancelaria: getInputVal('sc-posicion-arancelaria').trim(),
+      arancel_rate_default: toNullableNumber(getInputVal('sc-arancel-rate-default')),
+      pais_origen: getInputVal('sc-pais-origen').trim(),
+      marca: getInputVal('sc-marca').trim(),
+      modelo: getInputVal('sc-modelo').trim(),
+      visto_bueno_required: isVbReq,
+      visto_bueno_entidad: getSelectVal('sc-visto-bueno-entidad') || '',
+      registro_sanitario: getInputVal('sc-registro-sanitario').trim(),
     });
     close();
   });
@@ -127,11 +249,15 @@ function openCatalogManagerModal(catalog, onSave) {
   };
 
   function buildList(items, ltype) {
-    if (!items.length) return `<p class="text-xs italic py-2" style="color:#9CA3AF">Sin elementos. Agrega el primero.</p>`;
+    if (!items.length) {
+      return `<p class="text-xs italic py-4 text-center text-gray-400"><i class="fas fa-folder-open mr-1"></i> Sin elementos. Agrega el primero.</p>`;
+    }
     return items.map((item, i) => `
-      <div class="flex items-center justify-between gap-2 py-1 border-b" style="border-color:#F5F5F5">
-        <span class="text-sm">${esc(item)}</span>
-        <button type="button" class="btn btn-danger btn-sm cm-del" data-idx="${i}" data-ltype="${ltype}"><i class="fas fa-times"></i></button>
+      <div class="flex items-center justify-between gap-2 py-1.5 px-2.5 hover:bg-white rounded-lg transition-colors border-b border-gray-100/50" style="border-color:#F5F5F5">
+        <span class="text-sm font-medium text-gray-800">${esc(item)}</span>
+        <button type="button" class="cm-del text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded-md transition-colors flex items-center justify-center border-none bg-transparent cursor-pointer" data-idx="${i}" data-ltype="${ltype}" title="Eliminar" style="width:26px; height:26px;">
+          <i class="fas fa-trash text-xs"></i>
+        </button>
       </div>`).join('');
   }
 
@@ -147,16 +273,30 @@ function openCatalogManagerModal(catalog, onSave) {
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <p class="form-label mb-2">Categorías de producto</p>
-          <div id="cm-cat-list" class="min-h-12 mb-3">${buildList(draft.categories, 'categories')}</div>
+          <p class="form-label mb-2 flex items-center justify-between">
+            <span>Categorías de producto</span>
+            <span class="badge badge-blue text-xs font-semibold" id="cm-cat-badge">0</span>
+          </p>
+          <div class="bg-gray-50 border rounded-xl p-2 mb-3" style="border-color:#E5E7EB">
+            <div id="cm-cat-list" class="overflow-y-auto pr-1" style="max-height: 220px; min-height: 48px;">
+              ${buildList(draft.categories, 'categories')}
+            </div>
+          </div>
           <div class="flex gap-2">
             <input id="cm-new-cat" class="form-input flex-1" placeholder="Nueva categoría..." maxlength="80">
             <button type="button" class="btn btn-outline btn-sm" id="cm-add-cat-btn"><i class="fas fa-plus"></i></button>
           </div>
         </div>
         <div>
-          <p class="form-label mb-2">Líneas de producto</p>
-          <div id="cm-line-list" class="min-h-12 mb-3">${buildList(draft.lines, 'lines')}</div>
+          <p class="form-label mb-2 flex items-center justify-between">
+            <span>Líneas de producto</span>
+            <span class="badge badge-blue text-xs font-semibold" id="cm-line-badge">0</span>
+          </p>
+          <div class="bg-gray-50 border rounded-xl p-2 mb-3" style="border-color:#E5E7EB">
+            <div id="cm-line-list" class="overflow-y-auto pr-1" style="max-height: 220px; min-height: 48px;">
+              ${buildList(draft.lines, 'lines')}
+            </div>
+          </div>
           <div class="flex gap-2">
             <input id="cm-new-line" class="form-input flex-1" placeholder="Nueva línea..." maxlength="80">
             <button type="button" class="btn btn-outline btn-sm" id="cm-add-line-btn"><i class="fas fa-plus"></i></button>
@@ -175,24 +315,35 @@ function openCatalogManagerModal(catalog, onSave) {
   function repaint() {
     overlay.querySelector('#cm-cat-list').innerHTML  = buildList(draft.categories, 'categories');
     overlay.querySelector('#cm-line-list').innerHTML = buildList(draft.lines, 'lines');
+    
+    // Update badge counts
+    const catBadge = overlay.querySelector('#cm-cat-badge');
+    const lineBadge = overlay.querySelector('#cm-line-badge');
+    if (catBadge) catBadge.textContent = String(draft.categories.length);
+    if (lineBadge) lineBadge.textContent = String(draft.lines.length);
+
     bindDel();
   }
   function bindDel() {
     overlay.querySelectorAll('.cm-del').forEach(btn => {
       btn.addEventListener('click', () => {
-        draft[btn.dataset.ltype].splice(Number(btn.dataset.idx), 1);
+        const hbtn = btn as HTMLElement;
+        const ltype = hbtn.dataset.ltype as 'categories' | 'lines';
+        const idx = Number(hbtn.dataset.idx);
+        draft[ltype].splice(idx, 1);
         repaint();
       });
     });
   }
-  bindDel();
+  
+  repaint(); // Initial call to setup badges and attach event listeners
 
   overlay.querySelector('#cm-close-btn')?.addEventListener('click', close);
   overlay.querySelector('#cm-cancel-btn')?.addEventListener('click', close);
   overlay.addEventListener('click', ev => { if (ev.target === overlay) close(); });
 
   const addCat = () => {
-    const inp = overlay.querySelector('#cm-new-cat');
+    const inp = overlay.querySelector('#cm-new-cat') as HTMLInputElement;
     const val = (inp?.value || '').trim();
     if (!val) return;
     if (draft.categories.includes(val)) { showToast('Ya existe esa categoría', 'warning'); return; }
@@ -204,7 +355,7 @@ function openCatalogManagerModal(catalog, onSave) {
   overlay.querySelector('#cm-new-cat')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCat(); } });
 
   const addLine = () => {
-    const inp = overlay.querySelector('#cm-new-line');
+    const inp = overlay.querySelector('#cm-new-line') as HTMLInputElement;
     const val = (inp?.value || '').trim();
     if (!val) return;
     if (draft.lines.includes(val)) { showToast('Ya existe esa línea', 'warning'); return; }
@@ -216,7 +367,7 @@ function openCatalogManagerModal(catalog, onSave) {
   overlay.querySelector('#cm-new-line')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addLine(); } });
 
   overlay.querySelector('#cm-save-btn')?.addEventListener('click', async () => {
-    const btn = overlay.querySelector('#cm-save-btn');
+    const btn = overlay.querySelector('#cm-save-btn') as HTMLButtonElement;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
     try {
       await saveProductCatalog(draft);
@@ -455,12 +606,22 @@ async function viewProductDetail(id) {
           </div>
         </div>
         <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
-          <span class="form-label">Condiciones especiales</span>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-            <div><p class="text-xs text-gray-500 mb-1">Peso</p><p class="font-mono text-xs">${p.peso != null ? esc(String(p.peso)) : '—'}</p></div>
+          <span class="form-label">Condiciones especiales e Importación</span>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+            <div><p class="text-xs text-gray-500 mb-1">Peso (General)</p><p class="font-mono text-xs">${p.peso != null ? esc(String(p.peso)) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Peso Neto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_neto != null ? esc(String(p.peso_neto)) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Peso Bruto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_bruto != null ? esc(String(p.peso_bruto)) : '—'}</p></div>
             <div><p class="text-xs text-gray-500 mb-1">Caja en Pallet</p><p class="font-mono text-xs">${p.cajas_en_pallet != null ? esc(String(p.cajas_en_pallet)) : '—'}</p></div>
+            
             <div><p class="text-xs text-gray-500 mb-1">UndEmpaque</p><p class="font-mono text-xs">${p.und_empaque != null ? esc(String(p.und_empaque)) : '—'}</p></div>
             <div><p class="text-xs text-gray-500 mb-1">Peso x UndEmpaque</p><p class="font-mono text-xs">${p.peso_x_und_empaque != null ? esc(String(p.peso_x_und_empaque)) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Posición Arancelaria</p><p class="font-mono text-xs font-semibold text-blue-800">${p.posicion_arancelaria ? esc(p.posicion_arancelaria) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Arancel Base (%)</p><p class="font-mono text-xs font-semibold text-blue-800">${p.arancel_rate_default != null ? esc(String(p.arancel_rate_default)) + '%' : '—'}</p></div>
+            
+            <div><p class="text-xs text-gray-500 mb-1">País de Origen</p><p class="text-xs font-semibold">${p.pais_origen ? esc(p.pais_origen) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Marca / Modelo</p><p class="text-xs">${p.marca || p.modelo ? esc(`${p.marca || '—'} / ${p.modelo || '—'}`) : '—'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Visto Bueno (VUCE)</p><p class="text-xs font-semibold">${p.visto_bueno_required ? `<span class="badge badge-orange">Requiere [${p.visto_bueno_entidad || 'S/E'}]</span>` : 'No requiere'}</p></div>
+            <div><p class="text-xs text-gray-500 mb-1">Registro Sanitario / Venta</p><p class="text-xs font-mono">${p.registro_sanitario ? esc(p.registro_sanitario) : '—'}</p></div>
           </div>
         </div>
       </div>`,
@@ -494,6 +655,16 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     cajas_en_pallet: row?.cajas_en_pallet ?? null,
     und_empaque: row?.und_empaque ?? null,
     peso_x_und_empaque: row?.peso_x_und_empaque ?? null,
+    peso_neto: row?.peso_neto ?? null,
+    peso_bruto: row?.peso_bruto ?? null,
+    posicion_arancelaria: row?.posicion_arancelaria ?? '',
+    arancel_rate_default: row?.arancel_rate_default ?? null,
+    pais_origen: row?.pais_origen ?? '',
+    marca: row?.marca ?? '',
+    modelo: row?.modelo ?? '',
+    visto_bueno_required: row?.visto_bueno_required ?? false,
+    visto_bueno_entidad: row?.visto_bueno_entidad ?? '',
+    registro_sanitario: row?.registro_sanitario ?? '',
   };
 
   openModal(
@@ -820,6 +991,16 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         cajas_en_pallet:      specialConditions.cajas_en_pallet,
         und_empaque:          specialConditions.und_empaque,
         peso_x_und_empaque:   specialConditions.peso_x_und_empaque,
+        peso_neto:            specialConditions.peso_neto,
+        peso_bruto:           specialConditions.peso_bruto,
+        posicion_arancelaria: specialConditions.posicion_arancelaria || null,
+        arancel_rate_default: specialConditions.arancel_rate_default,
+        pais_origen:          specialConditions.pais_origen || null,
+        marca:                specialConditions.marca || null,
+        modelo:               specialConditions.modelo || null,
+        visto_bueno_required: specialConditions.visto_bueno_required,
+        visto_bueno_entidad:  specialConditions.visto_bueno_entidad || null,
+        registro_sanitario:   specialConditions.registro_sanitario || null,
         income_account_id:    getSelectVal('pf-income-acct')    || null,
         cost_account_id:      getSelectVal('pf-cost-acct')      || null,
         inventory_account_id: getSelectVal('pf-inv-acct')       || null,

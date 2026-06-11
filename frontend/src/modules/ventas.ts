@@ -2763,6 +2763,9 @@ window.viewSalesInvoiceDetail = async function(id: string) {
       ` : ''}
       ${inv.status === 'posted' ? `
         <button class="btn btn-secondary" onclick="window.emitInvoiceToDian('${inv.tx_id}', '${inv.number}')"><i class="fas fa-paper-plane mr-1"></i> Emitir a DIAN</button>
+        ${(window as any).can('canWrite') ? `
+          <button class="btn btn-outline" style="border-color:#10B981;color:#10B981" onclick="window.openChangePaymentMethodModal('${inv.id}', '${inv.number}')"><i class="fas fa-credit-card mr-1"></i> Cambiar Pago</button>
+        ` : ''}
         <button class="btn btn-danger" onclick="closeModal(); window.voidSalesInvoiceDirect('${inv.id}', '${inv.number}')"><i class="fas fa-ban"></i> Anular Factura</button>
       ` : ''}
     `;
@@ -2873,6 +2876,199 @@ window.seeSalesTxDetail = function(txId: string) {
   } else {
     (window as any).showToast('Modulo de transacciones contables no disponible', 'warning');
   }
+};
+
+(window as any).openChangePaymentMethodModal = async function(id: string, number: string) {
+  let inv: any;
+  try {
+    inv = await (window as any).pb.get('invoices', id);
+  } catch (err) {
+    return (window as any).showToast('No se pudo cargar la factura', 'error');
+  }
+
+  // Verificar si ya fue emitida a la DIAN
+  let einv = null;
+  if (inv.tx_id) {
+    try {
+      einv = await (window as any).pb.list('einvoice_docs', {
+        filter: `tx_id="${(window as any).pb.escapeFilterValue(inv.tx_id)}" && (status="enviada" || status="aceptada")`,
+        perPage: 1
+      });
+    } catch (_) {}
+  }
+  const isDianSent = einv && einv.items.length > 0;
+
+  const total = inv.payable_total ?? inv.total ?? 0;
+
+  let split = { EFECTIVO: 0, TRANSFERENCIA: 0, CREDITO: 0 };
+  if (inv.payment_method === 'MIXTO' && inv.payment_split) {
+    try {
+      split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : inv.payment_split;
+    } catch (_) {}
+  }
+
+  const dianWarningHtml = isDianSent ? `
+    <div class="p-3 rounded bg-amber-50 text-amber-800 text-xs border border-amber-200 mb-4">
+      <i class="fas fa-exclamation-triangle mr-1"></i> <strong>Advertencia Fiscal:</strong> Esta factura ya fue emitida y aceptada por la DIAN. Cambiar la forma de pago corregirá el recaudo interno, los cierres de caja y el asiento contable local, pero el XML oficial de la DIAN mantendrá la forma de pago original.
+    </div>
+  ` : '';
+
+  const html = `
+    <div class="space-y-4 text-sm" style="color:#374151">
+      ${dianWarningHtml}
+      <div class="p-3 rounded bg-blue-50 text-blue-800 border border-blue-200 text-xs">
+        Corregir el medio de pago para la factura <strong>${(window as any).esc(number)}</strong>. Total de la venta: <strong>${(window as any).fmt(total)}</strong>.
+      </div>
+
+      <div class="form-group">
+        <label class="form-label font-bold">Nueva Forma de Pago</label>
+        <select id="change-pay-method" class="form-input w-full" onchange="window.toggleChangePayMethodSecs(this.value)">
+          <option value="EFECTIVO" ${inv.payment_method === 'EFECTIVO' ? 'selected' : ''}>Efectivo</option>
+          <option value="TRANSFERENCIA" ${inv.payment_method === 'TRANSFERENCIA' ? 'selected' : ''}>Transferencia</option>
+          <option value="CREDITO" ${inv.payment_method === 'CREDITO' ? 'selected' : ''}>Crédito</option>
+          <option value="MIXTO" ${inv.payment_method === 'MIXTO' ? 'selected' : ''}>Mixto</option>
+        </select>
+      </div>
+
+      <!-- Sección Pago Mixto -->
+      <div id="change-pay-mixed-sec" class="space-y-3 border-t pt-3" style="border-color:#E5E7EB; display:${inv.payment_method === 'MIXTO' ? 'block' : 'none'}">
+        <p class="text-xs text-gray-500 font-bold mb-2">Distribuye el total exacto (${(window as any).fmt(total)}):</p>
+        <div class="space-y-2">
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-emerald-600">Efectivo</div>
+            <div class="col-span-8">
+              <input type="number" id="change-mixed-efectivo" class="form-input w-full text-right text-xs py-1" min="0" value="${split.EFECTIVO || 0}" oninput="window.changeMixedCalc()">
+            </div>
+          </div>
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-blue-600">Transferencia</div>
+            <div class="col-span-8">
+              <input type="number" id="change-mixed-transferencia" class="form-input w-full text-right text-xs py-1" min="0" value="${split.TRANSFERENCIA || 0}" oninput="window.changeMixedCalc()">
+            </div>
+          </div>
+          <div class="grid grid-cols-12 gap-3 items-center">
+            <div class="col-span-4 font-bold text-orange-600">Crédito</div>
+            <div class="col-span-8">
+              <input type="number" id="change-mixed-credito" class="form-input w-full text-right text-xs py-1" min="0" value="${split.CREDITO || 0}" oninput="window.changeMixedCalc()">
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-between items-center text-xs font-bold pt-2 border-t" style="border-color:#E5E7EB">
+          <span>Total asignado:</span>
+          <span id="change-mixed-assigned-val" class="text-emerald-600 font-extrabold">$ 0</span>
+        </div>
+        <div class="flex justify-between items-center text-xs font-bold text-red-500" id="change-mixed-status-row" style="display:none">
+          <span>Diferencia:</span>
+          <span id="change-mixed-status-val" class="font-extrabold">$ 0</span>
+        </div>
+      </div>
+
+      <div class="form-group border-t pt-3" style="border-color:#E5E7EB">
+        <label class="form-label font-bold text-gray-700">Motivo de la corrección <span style="color:#EF4444">*</span></label>
+        <textarea id="change-pay-reason" class="form-input w-full" rows="3" placeholder="Escribe el motivo por el cual corriges la forma de pago (mínimo 8 caracteres)..."></textarea>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="window.closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="change-pay-confirm-btn" onclick="window.confirmChangePaymentMethod('${id}', ${total})"><i class="fas fa-circle-check mr-1"></i> CORREGIR PAGO</button>
+  `;
+
+  (window as any).openModal(`Corregir Forma de Pago`, html, footer, false);
+
+  (window as any).toggleChangePayMethodSecs = function(val: string) {
+    const mixedSec = document.getElementById('change-pay-mixed-sec');
+    if (mixedSec) mixedSec.style.display = val === 'MIXTO' ? 'block' : 'none';
+    (window as any).changeMixedCalc();
+  };
+
+  (window as any).changeMixedCalc = function() {
+    const method = (document.getElementById('change-pay-method') as HTMLSelectElement)?.value || 'EFECTIVO';
+    const confirmBtn = document.getElementById('change-pay-confirm-btn') as HTMLButtonElement;
+    if (method !== 'MIXTO') {
+      if (confirmBtn) confirmBtn.disabled = false;
+      return;
+    }
+
+    const efec = parseFloat((document.getElementById('change-mixed-efectivo') as HTMLInputElement)?.value || '0') || 0;
+    const trans = parseFloat((document.getElementById('change-mixed-transferencia') as HTMLInputElement)?.value || '0') || 0;
+    const cred = parseFloat((document.getElementById('change-mixed-credito') as HTMLInputElement)?.value || '0') || 0;
+
+    const assigned = efec + trans + cred;
+    const diff = total - assigned;
+
+    const assignedLbl = document.getElementById('change-mixed-assigned-val');
+    const statusRow = document.getElementById('change-mixed-status-row');
+    const statusVal = document.getElementById('change-mixed-status-val');
+
+    if (assignedLbl) assignedLbl.textContent = (window as any).fmt(assigned);
+
+    if (Math.abs(diff) < 0.01) {
+      if (assignedLbl) assignedLbl.className = "text-emerald-600 font-extrabold";
+      if (statusRow) statusRow.style.display = 'none';
+      if (confirmBtn) confirmBtn.disabled = false;
+    } else {
+      if (assignedLbl) assignedLbl.className = "text-red-500 font-extrabold";
+      if (statusRow) {
+        statusRow.style.display = 'flex';
+        statusRow.firstElementChild!.textContent = diff > 0 ? 'Falta asignar:' : 'Excedente:';
+        if (statusVal) {
+          statusVal.textContent = (window as any).fmt(Math.abs(diff));
+        }
+      }
+      if (confirmBtn) confirmBtn.disabled = true;
+    }
+  };
+
+  (window as any).confirmChangePaymentMethod = async function(invoiceId: string, invoiceTotal: number) {
+    const confirmBtn = document.getElementById('change-pay-confirm-btn') as HTMLButtonElement;
+    const method = (document.getElementById('change-pay-method') as HTMLSelectElement)?.value || 'EFECTIVO';
+    const reason = (document.getElementById('change-pay-reason') as HTMLTextAreaElement)?.value.trim() || '';
+
+    if (reason.length < 8) {
+      (window as any).showToast('Ingresa un motivo descriptivo de al menos 8 caracteres', 'warning');
+      return;
+    }
+
+    let newSplit = null;
+    if (method === 'MIXTO') {
+      const efec = parseFloat((document.getElementById('change-mixed-efectivo') as HTMLInputElement)?.value || '0') || 0;
+      const trans = parseFloat((document.getElementById('change-mixed-transferencia') as HTMLInputElement)?.value || '0') || 0;
+      const cred = parseFloat((document.getElementById('change-mixed-credito') as HTMLInputElement)?.value || '0') || 0;
+      if (Math.abs(invoiceTotal - (efec + trans + cred)) > 0.01) {
+        (window as any).showToast('La asignación de valores no coincide con el total.', 'warning');
+        return;
+      }
+      newSplit = { EFECTIVO: efec, TRANSFERENCIA: trans, CREDITO: cred };
+    }
+
+    try {
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Procesando cambio...';
+      }
+      
+      await (window as any).API.changeInvoicePaymentMethod(invoiceId, method, newSplit, reason);
+      (window as any).showToast('Forma de pago corregida exitosamente.', 'success');
+      (window as any).closeModal();
+      
+      // Recargar el detalle y refrescar página de ventas
+      const pageContent = document.getElementById('page-content');
+      if (pageContent) {
+        (window as any).renderVentas(pageContent);
+      }
+    } catch (err: any) {
+      (window as any).showToast(err.message || 'Error al cambiar la forma de pago', 'error');
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'CORREGIR PAGO';
+      }
+    }
+  };
+
+  // Ejecución inicial de cálculo mixto si aplica
+  (window as any).changeMixedCalc();
 };
 
 // --- KPI Helper ---

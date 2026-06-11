@@ -2075,6 +2075,186 @@ const API = {
     await this.logAudit('VOID', 'Invoice', invoiceId, `Anulada factura ${inv.number} | Motivo: ${safeReason}`);
   },
 
+  /** Cambia el método de pago de una factura contabilizada y actualiza el asiento contable */
+  async changeInvoicePaymentMethod(invoiceId, newMethod, newSplit = null, reason = '') {
+    const safeReason = String(reason || '').trim();
+    if (!safeReason) throw new Error('Debes indicar el motivo del cambio de forma de pago.');
+    if (safeReason.length < 8) throw new Error('El motivo debe ser más descriptivo (mínimo 8 caracteres).');
+
+    const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,tx_type_id' });
+    if (inv.status !== 'posted') {
+      throw new Error('Solo se puede cambiar la forma de pago en facturas contabilizadas.');
+    }
+
+    if (typeof isPeriodClosed === 'function') {
+      const closed = await isPeriodClosed(inv.date);
+      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede modificar la forma de pago.`);
+    }
+
+    const oldMethod = inv.payment_method;
+    const oldSplit = typeof inv.payment_split === 'string' ? inv.payment_split : JSON.stringify(inv.payment_split || {});
+
+    // Preparar configuraciones de POS y ventas para resolver cuentas contables
+    const isPOS = !!inv.pos_shift_id;
+    let posConfig = { operational: { allow_negative_stock: false } };
+    try {
+      const rawCfg = await this.getSetting('pos_settings_v1');
+      if (rawCfg) posConfig = JSON.parse(rawCfg);
+    } catch (_) { }
+
+    const findAccByCode = async (code) => {
+      const key = String(code || '').trim();
+      if (!key) throw new Error('Se requiere un código de cuenta válido.');
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada en el plan de cuentas.`);
+      return res.items[0];
+    };
+
+    const resolvePaymentAccount = async (method) => {
+      if (isPOS && posConfig?.accounting?.accounts) {
+        const accs = posConfig.accounting.accounts;
+        let code = "";
+        if (method === 'EFECTIVO') code = accs.payment_accounts?.efectivo_code || accs.cash_code;
+        else if (method === 'TRANSFERENCIA') code = accs.payment_accounts?.transferencia_code;
+        else if (method === 'CREDITO') code = accs.payment_accounts?.credito_code;
+
+        if (code) {
+          try {
+            const acc = await findAccByCode(code);
+            if (acc) return acc.id;
+          } catch (_) { }
+        }
+      }
+
+      if (method === 'CREDITO') {
+        try {
+          const rawSalesCfg = await this.getSetting('sales_settings_v2');
+          if (rawSalesCfg) {
+            const sc = JSON.parse(rawSalesCfg);
+            const code = sc?.accounting?.accounts?.receivable_code;
+            if (code) {
+              const acc = await findAccByCode(code);
+              if (acc) return acc.id;
+            }
+          }
+        } catch (_) { }
+        const acc = await findAccByCode('130505');
+        return acc.id;
+      } else if (method === 'TRANSFERENCIA') {
+        let bankAccId = "";
+        try {
+          const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+          if (tesoSettings.items.length) bankAccId = tesoSettings.items[0].default_bank_account_id;
+        } catch (_) { }
+        if (bankAccId) return bankAccId;
+        const acc = await findAccByCode('111005');
+        return acc.id;
+      } else { // EFECTIVO o cualquier otro
+        let cashAccId = "";
+        try {
+          const tesoSettings = await pb.list('treasury_settings', { perPage: 1 });
+          if (tesoSettings.items.length) cashAccId = tesoSettings.items[0].default_cash_account_id;
+        } catch (_) { }
+        if (cashAccId) return cashAccId;
+        const acc = await findAccByCode('110505');
+        return acc.id;
+      }
+    };
+
+    // Actualizar la factura
+    const parsedSplit = newMethod === 'MIXTO' ? (typeof newSplit === 'string' ? newSplit : JSON.stringify(newSplit)) : null;
+    await pb.update('invoices', invoiceId, {
+      payment_method: newMethod,
+      payment_split: parsedSplit
+    });
+
+    // Si tiene transacción contable asociada, actualizar las líneas de pago
+    if (inv.tx_id) {
+      const tx = await pb.get('transactions', inv.tx_id);
+      const lines = await pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}"` });
+
+      // Identificar líneas de pago existentes
+      const numUpper = inv.number.toUpperCase();
+      const paymentLines = lines.filter(l => {
+        const d = (l.description || '').toUpperCase();
+        return d.includes(numUpper) && (
+          d.includes('EFECTIVO') ||
+          d.includes('TRANSFERENCIA') ||
+          d.includes('CREDITO') ||
+          d.includes('CRÉDITO') ||
+          d.includes('MIXTO') ||
+          d.includes('PAGO MIXTO')
+        );
+      });
+
+      if (paymentLines.length > 0) {
+        // Eliminar las líneas de pago viejas
+        for (const pl of paymentLines) {
+          await pb.delete('tx_lines', pl.id);
+        }
+
+        // Determinar si es nota de crédito
+        const txTypeCode = String(inv.expand?.tx_type_id?.code || '').toUpperCase();
+        const txTypeName = String(inv.expand?.tx_type_id?.name || '').toUpperCase();
+        const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÉDITO') || txTypeName.includes('CREDITO');
+        const docLabel = isCreditNote ? 'Nota Crédito' : (isPOS ? 'Venta POS' : 'Venta');
+
+        // Determinar un line_order base
+        let maxOrder = lines.reduce((max, l) => l.line_order > max ? l.line_order : max, 0);
+        let nextLineOrder = maxOrder + 1;
+
+        // Crear las nuevas líneas de pago
+        if (newMethod === 'MIXTO') {
+          const splitObj = typeof newSplit === 'string' ? JSON.parse(newSplit) : (newSplit || {});
+          for (const method of Object.keys(splitObj)) {
+            const amount = Number(splitObj[method] || 0);
+            if (amount > 0) {
+              const paymentAccId = await resolvePaymentAccount(method);
+              const acc = await pb.get('accounts', paymentAccId);
+              const line = {
+                tx_id: inv.tx_id,
+                account_id: paymentAccId,
+                third_party_id: inv.customer_id,
+                debit: isCreditNote ? 0 : amount,
+                credit: isCreditNote ? amount : 0,
+                description: `${docLabel} ${inv.number} Pago mixto - ${method}`,
+                line_order: nextLineOrder++,
+              };
+              if (acc.maneja_cruce) {
+                line.cross_doc_ref = inv.number;
+              }
+              await pb.create('tx_lines', line);
+            }
+          }
+        } else {
+          const paymentAccId = await resolvePaymentAccount(newMethod);
+          const acc = await pb.get('accounts', paymentAccId);
+          const line = {
+            tx_id: inv.tx_id,
+            account_id: paymentAccId,
+            third_party_id: inv.customer_id,
+            debit: isCreditNote ? 0 : inv.payable_total,
+            credit: isCreditNote ? inv.payable_total : 0,
+            description: `${docLabel} ${inv.number} ${newMethod}`,
+            line_order: nextLineOrder++,
+          };
+          if (acc.maneja_cruce) {
+            line.cross_doc_ref = inv.number;
+          }
+          await pb.create('tx_lines', line);
+        }
+      }
+    }
+
+    // Registrar en auditoría
+    await this.logAudit('CHANGE_PAYMENT_METHOD', 'Invoice', invoiceId, 
+      `Forma de pago corregida: ${oldMethod} -> ${newMethod}. Motivo: ${safeReason}`
+    );
+
+    return { success: true };
+  },
+
   // ── Copropiedades (F8) ────────────────────────────────────
 
   /** Lista todas las unidades habitacionales */

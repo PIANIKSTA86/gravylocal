@@ -98,6 +98,7 @@ async function renderFacturacionDIAN(c) {
                       <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewDianDetail('${esc(d.id)}')"><i class="fas fa-eye"></i></button>
                       ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Editar" onclick="editDianDoc('${esc(d.id)}')"><i class="fas fa-pen"></i></button>` : ''}
                       ${can('canWrite') && (s === 'pendiente' || s === 'rechazada') ? `<button class="btn btn-secondary btn-sm" title="Enviar a DIAN" onclick="window.emitDianDocFromList('${esc(d.id)}','${esc(d.tx_id)}')"><i class="fas fa-paper-plane mr-1"></i> Enviar</button>` : ''}
+                      ${can('canWrite') && s === 'enviada' && d.ftech_transaction_id ? `<button class="btn btn-sm btn-info text-white bg-blue-500 hover:bg-blue-600" title="Consultar Estado Facturatech" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id)}')"><i class="fas fa-arrows-rotate mr-1"></i> Consultar</button>` : ''}
                     </div>
                   </td>
                 </tr>`;
@@ -190,6 +191,30 @@ function generateMockCufe(txId, dateStr) {
     return `CUFE${Date.now()}${txId}`.slice(0, 64);
   }
 }
+
+window.checkFtechStatus = async function(id, txId) {
+  if (!txId) {
+    showToast('No hay una transacción vinculada a este documento.', 'warning');
+    return;
+  }
+  try {
+    showToast('Consultando estado en Facturatech...', 'info');
+    const res = await pb.send('/api/dian/check-status', {
+      method: 'POST',
+      body: JSON.stringify({ txId: txId }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (res && res.success) {
+      showToast(`Estado actualizado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+      renderFacturacionDIAN($('#page-content'));
+    } else {
+      showToast(`Error al consultar: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
+    }
+  } catch (err: any) {
+    showToast(err.message || 'Error en comunicación con Facturatech', 'error');
+  }
+};
 
 window.emitDianDocFromList = async function(id, txId) {
   if (!txId) {
@@ -301,6 +326,7 @@ async function editDianDoc(id) {
 
 
 // --- VITE MIGRATION GLOBALS ---
+(window as any).checkFtechStatus = window.checkFtechStatus;
 (window as any).emitDianDocFromList = window.emitDianDocFromList;
 (window as any).filterDianByStatus = filterDianByStatus;
 (window as any).generateMockCufe = generateMockCufe;

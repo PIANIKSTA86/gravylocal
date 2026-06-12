@@ -517,7 +517,260 @@ app.post('/api/dian/sign-and-send', async (req, res) => {
   }
 });
 
+
+// --- FACTURATECH SOAP INTEGRATION ---
+
+app.post('/api/facturatech/upload-and-send', async (req, res) => {
+  try {
+    const {
+      xmlContent,
+      ftechUsername,
+      ftechPassword,
+      ftechEnvironment,
+      documentType,
+      documentNumber,
+      prefix,
+      folio
+    } = req.body;
+
+    if (!xmlContent || !ftechUsername) {
+      return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, ftechUsername).' });
+    }
+
+    // 1. Simulation Mode if password is empty or starting with "mock"
+    if (!ftechPassword || ftechPassword.toLowerCase().startsWith('mock')) {
+      console.log(`[GRAVY FTECH] Operando en MODO SIMULADO para ${documentType} ${documentNumber}`);
+      
+      const mockTxId = `FTECH_MOCK_TX_${Date.now()}`;
+      return res.json({
+        success: true,
+        simulated: true,
+        transaccionID: mockTxId,
+        status: 'enviada',
+        message: 'Documento subido con éxito (Modo Simulado Activo)',
+        xmlContent: xmlContent
+      });
+    }
+
+    // 2. Real Mode: Encrypt password with SHA256 (lowercase hex)
+    const hashedPassword = crypto.createHash('sha256').update(ftechPassword).digest('hex');
+    const xmlBase64 = Buffer.from(xmlContent, 'utf8').toString('base64');
+
+    // 3. Construct SOAP RPC encoded Envelope
+    const soapEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:http://wsbaseftech.test/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadInvoiceFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <xmlBase64 xsi:type="xsd:string">${xmlBase64}</xmlBase64>
+      </urn:FtechAction.uploadInvoiceFile>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const endpointUrl = ftechEnvironment === '1'
+      ? 'https://ws.facturatech.co/v2/pro/index.php'
+      : 'https://ws.facturatech.co/21/index.php';
+
+    const soapAction = 'urn:http://wsbaseftech.test/#FtechAction.uploadInvoiceFile';
+
+    console.log(`[GRAVY FTECH] Subiendo factura a Facturatech (${endpointUrl})...`);
+    const response = await postSoapRequest(endpointUrl, soapAction, soapEnvelope);
+
+    if (response.statusCode !== 200) {
+      console.error('[GRAVY FTECH] Error SOAP HTTP Status:', response.statusCode, response.data);
+      return res.status(500).json({
+        success: false,
+        message: 'Error de comunicación con Facturatech: ' + response.statusCode,
+        error: response.data
+      });
+    }
+
+    const xmlRes = response.data;
+    const code = extractSoapTag(xmlRes, 'code');
+    const success = extractSoapTag(xmlRes, 'success').toLowerCase() === 'true';
+    const transaccionID = extractSoapTag(xmlRes, 'transaccionID') || extractSoapTag(xmlRes, 'transId');
+    const message = extractSoapTag(xmlRes, 'message') || extractSoapTag(xmlRes, 'error');
+
+    console.log(`[GRAVY FTECH] Respuesta Facturatech: success=${success}, code=${code}, transId=${transaccionID}`);
+
+    if (code === '200' || code === '201' || success) {
+      res.json({
+        success: true,
+        transaccionID,
+        status: 'enviada',
+        message: message || 'Enviado y en procesamiento.'
+      });
+    } else {
+      res.json({
+        success: false,
+        error: message || `Código de error de Facturatech: ${code}`
+      });
+    }
+
+  } catch (err) {
+    console.error('[GRAVY FTECH] Excepción al subir factura:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/facturatech/check-status', async (req, res) => {
+  try {
+    const {
+      transId,
+      ftechUsername,
+      ftechPassword,
+      ftechEnvironment,
+      prefix,
+      folio
+    } = req.body;
+
+    if (!transId || !ftechUsername) {
+      return res.status(400).json({ error: 'Faltan parámetros requeridos (transId, ftechUsername).' });
+    }
+
+    // 1. Simulation Mode check
+    if (!ftechPassword || ftechPassword.toLowerCase().startsWith('mock')) {
+      console.log(`[GRAVY FTECH] Consulta de estado SIMULADA para transId: ${transId}`);
+      
+      const mockCufe = 'FTECHMOCKCUFE' + crypto.createHash('sha256').update(prefix + folio).digest('hex').substring(0, 52).toUpperCase();
+      const mockSignedXml = `<Invoice><Note>MOCK SIGNED XML VIA FACTURATECH</Note><CUFE>${mockCufe}</CUFE></Invoice>`;
+      
+      return res.json({
+        success: true,
+        simulated: true,
+        status: 'aceptada',
+        cufe: mockCufe,
+        xmlContent: mockSignedXml,
+        message: 'Procesado correctamente por la DIAN (Modo Simulado Activo)'
+      });
+    }
+
+    const hashedPassword = crypto.createHash('sha256').update(ftechPassword).digest('hex');
+    const endpointUrl = ftechEnvironment === '1'
+      ? 'https://ws.facturatech.co/v2/pro/index.php'
+      : 'https://ws.facturatech.co/21/index.php';
+
+    // 2. Query status: documentStatusFile
+    const statusEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:http://wsbaseftech.test/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatusFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <transaccionID xsi:type="xsd:string">${transId}</transaccionID>
+      </urn:FtechAction.documentStatusFile>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+    const statusAction = 'urn:http://wsbaseftech.test/#FtechAction.documentStatusFile';
+    console.log(`[GRAVY FTECH] Consultando estado de transId ${transId}...`);
+    const statusResponse = await postSoapRequest(endpointUrl, statusAction, statusEnvelope);
+
+    if (statusResponse.statusCode !== 200) {
+      return res.status(500).json({
+        success: false,
+        message: 'Error al consultar estado HTTP: ' + statusResponse.statusCode,
+        error: statusResponse.data
+      });
+    }
+
+    const statusXml = statusResponse.data;
+    const statusCode = extractSoapTag(statusXml, 'code');
+    const statusVal = extractSoapTag(statusXml, 'status');
+    const statusMsg = extractSoapTag(statusXml, 'message') || extractSoapTag(statusXml, 'error');
+
+    console.log(`[GRAVY FTECH] Resultado estado: code=${statusCode}, status=${statusVal}, msg=${statusMsg}`);
+
+    // If still processing, return enviada status
+    if (statusVal === 'PROCESSING' || statusCode === '200') {
+      return res.json({
+        success: true,
+        status: 'enviada',
+        message: statusMsg || 'El documento se encuentra en proceso de firma.'
+      });
+    }
+
+    // If rejected, return rechazada
+    if (statusVal === 'ERROR' || statusCode === '404' || statusCode === '409') {
+      return res.json({
+        success: true,
+        status: 'rechazada',
+        message: statusMsg || 'Documento rechazado por validaciones de Facturatech/DIAN.'
+      });
+    }
+
+    // If signed/accepted (statusVal is SIGNED_XML), we proceed to download CUFE & XML
+    if (statusVal === 'SIGNED_XML' || statusCode === '201') {
+      // 3. Download CUFE
+      const cufeEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:http://wsbaseftech.test/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.getCUFEFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <prefijo xsi:type="xsd:string">${prefix}</prefijo>
+         <folio xsi:type="xsd:string">${folio}</folio>
+      </urn:FtechAction.getCUFEFile>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+      const cufeAction = 'urn:http://wsbaseftech.test/#FtechAction.getCUFEFile';
+      console.log(`[GRAVY FTECH] Descargando CUFE para prefijo=${prefix}, folio=${folio}...`);
+      const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope);
+      let cufe = '';
+      if (cufeResponse.statusCode === 200) {
+        cufe = extractSoapTag(cufeResponse.data, 'resourceData');
+      }
+
+      // 4. Download signed XML
+      const xmlEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:http://wsbaseftech.test/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.downloadXMLFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <prefijo xsi:type="xsd:string">${prefix}</prefijo>
+         <folio xsi:type="xsd:string">${folio}</folio>
+      </urn:FtechAction.downloadXMLFile>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+      const xmlAction = 'urn:http://wsbaseftech.test/#FtechAction.downloadXMLFile';
+      console.log(`[GRAVY FTECH] Descargando XML firmado...`);
+      const xmlResponse = await postSoapRequest(endpointUrl, xmlAction, xmlEnvelope);
+      let xmlContent = '';
+      if (xmlResponse.statusCode === 200) {
+        const base64Xml = extractSoapTag(xmlResponse.data, 'resourceData');
+        if (base64Xml) {
+          xmlContent = Buffer.from(base64Xml, 'base64').toString('utf8');
+        }
+      }
+
+      return res.json({
+        success: true,
+        status: 'aceptada',
+        cufe,
+        xmlContent,
+        message: statusMsg || 'Documento firmado y aceptado por la DIAN.'
+      });
+    }
+
+    // Catch all status
+    return res.json({
+      success: true,
+      status: 'enviada',
+      message: statusMsg || `Estado desconocido de Facturatech: ${statusVal}`
+    });
+
+  } catch (err) {
+    console.error('[GRAVY FTECH] Excepción al consultar estado:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 const ORCHESTRATOR_PORT = 8088;
 app.listen(ORCHESTRATOR_PORT, () => {
   console.log(`GRAVY Orchestrator running on port ${ORCHESTRATOR_PORT}`);
 });
+

@@ -12,7 +12,11 @@ onBootstrap((e) => {
       ["dian_software_id", ""],
       ["dian_software_pin", ""],
       ["dian_certificate_base64", ""],
-      ["dian_certificate_password", ""]
+      ["dian_certificate_password", ""],
+      ["einvoice_method", "dian"],
+      ["ftech_username", ""],
+      ["ftech_password", ""],
+      ["ftech_environment", "2"]
     ];
 
     for (const [k, v] of dianKeys) {
@@ -27,4 +31,25 @@ onBootstrap((e) => {
   } catch (err) {
     console.error("[GRAVY] Error en migración de configuración DIAN:", err);
   }
+
+  // Agregar campo ftech_transaction_id a la colección einvoice_docs
+  try {
+    const docsCol = $app.findCollectionByNameOrId("einvoice_docs");
+    const docFields = new Set(docsCol.fields.fieldNames());
+    let modified = false;
+    if (!docFields.has("ftech_transaction_id")) {
+      docsCol.fields.add(new TextField({
+        name: "ftech_transaction_id",
+        required: false
+      }));
+      modified = true;
+    }
+    if (modified) {
+      $app.save(docsCol);
+      console.log("[GRAVY] Migración DIAN — Agregado campo ftech_transaction_id a einvoice_docs.");
+    }
+  } catch (err) {
+    console.error("[GRAVY] Error al modificar la colección einvoice_docs:", err);
+  }
 });
+

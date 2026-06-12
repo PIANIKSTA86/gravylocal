@@ -353,11 +353,12 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       $app.save(docRecord);
     }
     
-    let invoice = null;
-    try {
-      invoice = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
-    } catch (_) {}
     
+    const einvoiceMethod = getSetting("einvoice_method", "dian");
+    const ftechUsername = getSetting("ftech_username", "");
+    const ftechPassword = getSetting("ftech_password", "");
+    const ftechEnvironment = getSetting("ftech_environment", "2");
+
     const emitterNit = getSetting("dian_nit", getSetting("company_nit", "900123456"));
     const emitterName = getSetting("company_name", "GRAVY CORP SAS");
     const emitterAddress = getSetting("company_address", "Calle 1 # 2 - 3");
@@ -459,7 +460,69 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       softwareId
     });
     
-    // Call Hub
+    const prefix = txType ? txType.getString("prefix") : "";
+    let folio = docNumber;
+    if (prefix && folio.startsWith(prefix)) {
+      folio = folio.substring(prefix.length);
+    }
+    folio = folio.replace(/[^0-9]/g, '');
+
+    if (einvoiceMethod === "facturatech") {
+      if (docRecord.getString("status") === "enviada" && docRecord.getString("ftech_transaction_id")) {
+        e.json(400, { message: "El documento ya fue enviado a Facturatech. Use la opción de Consultar Estado para actualizar." });
+        return;
+      }
+      
+      const hubUrl = "http://127.0.0.1:8088/api/facturatech/upload-and-send";
+      console.log("[GRAVY HOOK] Enviando a Facturatech en Hub: " + hubUrl);
+      
+      const requestBody = {
+        xmlContent: xml,
+        ftechUsername,
+        ftechPassword,
+        ftechEnvironment,
+        documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
+        documentNumber: docNumber,
+        prefix,
+        folio
+      };
+      
+      const res = $http.send({
+        url: hubUrl,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (res.statusCode !== 200) {
+        throw new Error("El Hub Facturatech retornó código: " + res.statusCode + " - " + res.raw);
+      }
+      
+      const responseData = JSON.parse(res.raw);
+      
+      if (!responseData.success) {
+        throw new Error(responseData.error || responseData.message || "Error al subir a Facturatech.");
+      }
+      
+      docRecord.set("ftech_transaction_id", responseData.transaccionID || "");
+      docRecord.set("status", responseData.status || "enviada");
+      docRecord.set("cufe", responseData.cufe || "");
+      docRecord.set("dian_response", responseData.message || "Enviado a Facturatech.");
+      docRecord.set("xml_content", responseData.xmlContent || xml);
+      docRecord.set("sent_at", new Date().toISOString());
+      $app.save(docRecord);
+      
+      e.json(200, {
+        success: true,
+        status: docRecord.get("status"),
+        cufe: docRecord.get("cufe"),
+        dianResponse: docRecord.get("dian_response"),
+        simulated: !!responseData.simulated
+      });
+      return;
+    }
+    
+    // Call Hub (Direct DIAN)
     const hubUrl = "http://127.0.0.1:8088/api/dian/sign-and-send";
     console.log("[GRAVY HOOK] Enviando a firmar en Hub: " + hubUrl);
     
@@ -517,3 +580,109 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     e.json(500, { message: "Error al procesar la emisión DIAN: " + err.message });
   }
 });
+
+routerAdd('POST', '/api/dian/check-status', (e) => {
+  const auth = e.requestInfo()?.auth;
+  if (!auth) {
+    e.json(401, { message: "Autenticación requerida." });
+    return;
+  }
+  
+  const body = e.requestInfo()?.body || {};
+  const txId = body.txId || body.tx_id;
+  if (!txId) {
+    e.json(400, { message: "txId es requerido." });
+    return;
+  }
+  
+  try {
+    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
+    if (!docRecord) {
+      e.json(404, { message: "Documento de facturación no encontrado para esta transacción." });
+      return;
+    }
+    
+    if (docRecord.getString("status") === "aceptada") {
+      e.json(200, {
+        success: true,
+        status: "aceptada",
+        cufe: docRecord.getString("cufe"),
+        dianResponse: "Este documento ya fue aceptado por la DIAN."
+      });
+      return;
+    }
+    
+    const transId = docRecord.getString("ftech_transaction_id");
+    if (!transId) {
+      e.json(400, { message: "El documento no tiene un ID de transacción de Facturatech asociado." });
+      return;
+    }
+    
+    const tx = $app.findRecordById("transactions", txId);
+    $app.expandRecord(tx, ["tx_type_id"], null);
+    const txType = tx.expandedOne("tx_type_id");
+    const prefix = txType ? txType.getString("prefix") : "";
+    const docNumber = tx.getString("number") || "";
+    let folio = docNumber;
+    if (prefix && folio.startsWith(prefix)) {
+      folio = folio.substring(prefix.length);
+    }
+    folio = folio.replace(/[^0-9]/g, '');
+    
+    const ftechUsername = getSetting("ftech_username", "");
+    const ftechPassword = getSetting("ftech_password", "");
+    const ftechEnvironment = getSetting("ftech_environment", "2");
+    
+    const hubUrl = "http://127.0.0.1:8088/api/facturatech/check-status";
+    console.log("[GRAVY HOOK] Consultando estado en Hub: " + hubUrl);
+    
+    const requestBody = {
+      transId,
+      ftechUsername,
+      ftechPassword,
+      ftechEnvironment,
+      prefix,
+      folio
+    };
+    
+    const res = $http.send({
+      url: hubUrl,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (res.statusCode !== 200) {
+      throw new Error("El Hub retornó código: " + res.statusCode + " - " + res.raw);
+    }
+    
+    const responseData = JSON.parse(res.raw);
+    
+    if (!responseData.success) {
+      throw new Error(responseData.error || responseData.message || "Error al consultar estado en Facturatech.");
+    }
+    
+    docRecord.set("status", responseData.status || "enviada");
+    if (responseData.cufe) {
+      docRecord.set("cufe", responseData.cufe);
+    }
+    if (responseData.xmlContent) {
+      docRecord.set("xml_content", responseData.xmlContent);
+    }
+    docRecord.set("dian_response", responseData.message || "Procesado.");
+    $app.save(docRecord);
+    
+    e.json(200, {
+      success: true,
+      status: docRecord.get("status"),
+      cufe: docRecord.get("cufe"),
+      dianResponse: docRecord.get("dian_response"),
+      simulated: !!responseData.simulated
+    });
+    
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error al consultar estado Facturatech:", err);
+    e.json(500, { message: "Error al consultar estado Facturatech: " + err.message });
+  }
+});
+

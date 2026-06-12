@@ -2654,6 +2654,34 @@ window.viewSalesInvoiceDetail = async function(id: string) {
     const client = inv.expand?.customer_id;
     const wh = inv.expand?.warehouse_id;
 
+    // Extraer manifiestos de importación asociados a los productos
+    const productsWithManifests = lines
+      .map((l: any) => l.expand?.product_id)
+      .filter((p: any) => p && p.manifest_pdf);
+
+    const uniqueProducts = Array.from(new Map(productsWithManifests.map((p: any) => [p.id, p])).values());
+
+    let manifestsHtml = '';
+    if (uniqueProducts.length > 0) {
+      manifestsHtml = `
+        <div class="p-3.5 rounded-xl border flex flex-col gap-2" style="border-color:#FCA5A5; background:#FFF5F5">
+          <span class="text-xs font-extrabold text-red-800 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fas fa-file-pdf text-red-600 text-sm"></i> Manifiestos de Importación Asociados (${uniqueProducts.length})
+          </span>
+          <div class="flex flex-wrap gap-2 mt-1">
+            ${uniqueProducts.map((p: any) => {
+              const url = `${(window as any).PB_URL}/api/files/products/${p.id}/${p.manifest_pdf}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}`;
+              return `
+                <a href="${url}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold bg-white text-red-700 border-red-200 hover:bg-red-50 hover:border-red-300 transition-all shadow-sm">
+                  <i class="fas fa-external-link-alt text-[10px]"></i> [${(window as any).esc(p.code)}] ${(window as any).esc(p.name)}
+                </a>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     // Comprobante Diario
     let txLines: any[] = [];
     if (inv.tx_id) {
@@ -2685,6 +2713,8 @@ window.viewSalesInvoiceDetail = async function(id: string) {
           ${inv.due_date ? `<div><span class="text-xs text-gray-500 block">Vencimiento</span><p>${inv.due_date}</p></div>` : ''}
           ${inv.notes ? `<div class="md:col-span-3"><span class="text-xs text-gray-500 block">Notas</span><p class="text-gray-600 italic">${(window as any).esc(inv.notes)}</p></div>` : ''}
         </div>
+
+        ${manifestsHtml}
 
         <div class="border rounded-xl overflow-hidden mb-4" style="border-color:#F0F0F0">
           <table class="data-table">

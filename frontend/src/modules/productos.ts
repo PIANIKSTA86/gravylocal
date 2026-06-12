@@ -575,60 +575,94 @@ async function viewProductDetail(id) {
     const ca  = p.expand?.cost_account_id;
     const inv = p.expand?.inventory_account_id;
 
+    const imageUrl = p.image 
+      ? `${(window as any).PB_URL}/api/files/products/${p.id}/${p.image}?thumb=300x300${(window as any).pb.authToken ? '&token=' + (window as any).pb.authToken : ''}`
+      : '';
+    const manifestUrl = p.manifest_pdf
+      ? `${(window as any).PB_URL}/api/files/products/${p.id}/${p.manifest_pdf}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}`
+      : '';
+
+    const imageHtml = imageUrl 
+      ? `<div class="flex flex-col items-center justify-center border rounded-2xl p-2 bg-gray-50/50 shadow-sm" style="border-color:#E5E7EB; max-width:240px; margin: 0 auto;">
+          <img src="${imageUrl}" alt="${esc(p.name)}" class="rounded-xl object-cover w-full aspect-square bg-white border" style="border-color:#F0F0F0; max-height:200px">
+          <p class="text-xs text-gray-500 mt-2"><i class="fas fa-image mr-1"></i>Imagen del Producto</p>
+         </div>`
+      : `<div class="flex flex-col items-center justify-center border border-dashed rounded-2xl p-6 bg-gray-50/30 text-gray-400" style="border-color:#D1D5DB; max-width:240px; margin: 0 auto; min-height: 200px;">
+          <i class="fas fa-box-open text-3xl mb-2"></i>
+          <p class="text-xs text-center">Sin imagen catalogada</p>
+         </div>`;
+
+    const manifestHtml = manifestUrl
+      ? `<div class="mt-2">
+          <a href="${manifestUrl}" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold bg-red-50 text-red-700 border-red-200 hover:bg-red-100 transition-colors">
+            <i class="fas fa-file-pdf"></i> Ver Manifiesto de Importación PDF
+          </a>
+         </div>`
+      : `<p class="text-xs italic text-gray-400 mt-2">Sin manifiesto asociado</p>`;
+
     openModal(
       `Producto — ${esc(p.code)}`,
-      `<div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-        <div><span class="form-label">Código</span><p class="font-mono font-semibold" style="color:#1A4B8C">${esc(p.code)}</p></div>
-        <div class="md:col-span-2"><span class="form-label">Nombre</span><p class="font-semibold">${esc(p.name)}</p></div>
-        <div><span class="form-label">Tipo</span><p>${esc(typeLabel)}</p></div>
-        <div><span class="form-label">Unidad de medida</span><p class="font-mono">${esc(p.unit || '—')}</p></div>
-        <div><span class="form-label">Presentacion</span><p>${esc(p.presentacion || '—')}</p></div>
-        <div><span class="form-label">Categoria</span><p>${esc(p.categoria || '—')}</p></div>
-        <div><span class="form-label">Linea</span><p>${esc(p.linea || '—')}</p></div>
-        <div><span class="form-label">Tarifa IVA</span><p>${esc(ivaLabel)}</p></div>
-        <div><span class="form-label">Precio base venta</span><p>${p.base_price ? fmt(p.base_price) : '—'}</p></div>
-        <div><span class="form-label">Precio venta 2</span><p>${p.precio_venta_2 ? fmt(p.precio_venta_2) : '—'}</p></div>
-        <div><span class="form-label">Precio venta 3</span><p>${p.precio_venta_3 ? fmt(p.precio_venta_3) : '—'}</p></div>
-        <div><span class="form-label">Costo estimado</span><p>${p.cost_price ? fmt(p.cost_price) : '—'}</p></div>
-        <div><span class="form-label">Estado</span><p>${p.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</p></div>
-        <div><span class="form-label">Cód. UNSPSC (DIAN)</span><p class="font-mono">${esc(p.unspsc_code || '—')}</p></div>
-        <div><span class="form-label">Cód. EAN/barras</span><p class="font-mono">${esc(p.ean_code || '—')}</p></div>
-        <div><span class="form-label">Stock Mínimo (Alerta)</span><p class="font-semibold text-orange-700">${p.stock_min !== null && p.stock_min !== undefined ? fmtN(p.stock_min) : '—'}</p></div>
-        <div><span class="form-label">Stock Máximo (Alerta)</span><p class="font-semibold text-blue-700">${p.stock_max !== null && p.stock_max !== undefined ? fmtN(p.stock_max) : '—'}</p></div>
-        ${p.description ? `<div class="col-span-2 md:col-span-3"><span class="form-label">Descripción</span><p>${esc(p.description)}</p></div>` : ''}
-        <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
-          <span class="form-label">Cuentas contables</span>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
-            <div><p class="text-xs text-gray-500 mb-1">Ingresos</p>
-              <p class="font-mono text-xs">${ia ? esc(`${ia.code} — ${ia.name}`) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Costo/Gasto</p>
-              <p class="font-mono text-xs">${ca ? esc(`${ca.code} — ${ca.name}`) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Inventario</p>
-              <p class="font-mono text-xs">${inv ? esc(`${inv.code} — ${inv.name}`) : '—'}</p></div>
+      `<div class="grid grid-cols-1 md:grid-cols-4 gap-6 text-sm">
+        <div class="md:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div><span class="form-label">Código</span><p class="font-mono font-semibold" style="color:#1A4B8C">${esc(p.code)}</p></div>
+          <div class="md:col-span-2"><span class="form-label">Nombre</span><p class="font-semibold">${esc(p.name)}</p></div>
+          <div><span class="form-label">Tipo</span><p>${esc(typeLabel)}</p></div>
+          <div><span class="form-label">Unidad de medida</span><p class="font-mono">${esc(p.unit || '—')}</p></div>
+          <div><span class="form-label">Presentacion</span><p>${esc(p.presentacion || '—')}</p></div>
+          <div><span class="form-label">Categoria</span><p>${esc(p.categoria || '—')}</p></div>
+          <div><span class="form-label">Linea</span><p>${esc(p.linea || '—')}</p></div>
+          <div><span class="form-label">Tarifa IVA</span><p>${esc(ivaLabel)}</p></div>
+          <div><span class="form-label">Precio base venta</span><p>${p.base_price ? fmt(p.base_price) : '—'}</p></div>
+          <div><span class="form-label">Precio venta 2</span><p>${p.precio_venta_2 ? fmt(p.precio_venta_2) : '—'}</p></div>
+          <div><span class="form-label">Precio venta 3</span><p>${p.precio_venta_3 ? fmt(p.precio_venta_3) : '—'}</p></div>
+          <div><span class="form-label">Costo estimado</span><p>${p.cost_price ? fmt(p.cost_price) : '—'}</p></div>
+          <div><span class="form-label">Estado</span><p>${p.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</p></div>
+          <div><span class="form-label">Cód. UNSPSC (DIAN)</span><p class="font-mono">${esc(p.unspsc_code || '—')}</p></div>
+          <div><span class="form-label">Cód. EAN/barras</span><p class="font-mono">${esc(p.ean_code || '—')}</p></div>
+          <div><span class="form-label">Stock Mínimo (Alerta)</span><p class="font-semibold text-orange-700">${p.stock_min !== null && p.stock_min !== undefined ? fmtN(p.stock_min) : '—'}</p></div>
+          <div><span class="form-label">Stock Máximo (Alerta)</span><p class="font-semibold text-blue-700">${p.stock_max !== null && p.stock_max !== undefined ? fmtN(p.stock_max) : '—'}</p></div>
+          ${p.description ? `<div class="col-span-2 md:col-span-3"><span class="form-label">Descripción</span><p>${esc(p.description)}</p></div>` : ''}
+          <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
+            <span class="form-label">Cuentas contables</span>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+              <div><p class="text-xs text-gray-500 mb-1">Ingresos</p>
+                <p class="font-mono text-xs">${ia ? esc(`${ia.code} — ${ia.name}`) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Costo/Gasto</p>
+                <p class="font-mono text-xs">${ca ? esc(`${ca.code} — ${ca.name}`) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Inventario</p>
+                <p class="font-mono text-xs">${inv ? esc(`${inv.code} — ${inv.name}`) : '—'}</p></div>
+            </div>
+          </div>
+          <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
+            <span class="form-label">Condiciones especiales e Importación</span>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
+              <div><p class="text-xs text-gray-500 mb-1">Peso (General)</p><p class="font-mono text-xs">${p.peso != null ? esc(String(p.peso)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Peso Neto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_neto != null ? esc(String(p.peso_neto)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Peso Bruto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_bruto != null ? esc(String(p.peso_bruto)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Caja en Pallet</p><p class="font-mono text-xs">${p.cajas_en_pallet != null ? esc(String(p.cajas_en_pallet)) : '—'}</p></div>
+              
+              <div><p class="text-xs text-gray-500 mb-1">UndEmpaque</p><p class="font-mono text-xs">${p.und_empaque != null ? esc(String(p.und_empaque)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Peso x UndEmpaque</p><p class="font-mono text-xs">${p.peso_x_und_empaque != null ? esc(String(p.peso_x_und_empaque)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Posición Arancelaria</p><p class="font-mono text-xs font-semibold text-blue-800">${p.posicion_arancelaria ? esc(p.posicion_arancelaria) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Arancel Base (%)</p><p class="font-mono text-xs font-semibold text-blue-800">${p.arancel_rate_default != null ? esc(String(p.arancel_rate_default)) + '%' : '—'}</p></div>
+              
+              <div><p class="text-xs text-gray-500 mb-1">País de Origen</p><p class="text-xs font-semibold">${p.pais_origen ? esc(p.pais_origen) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Marca / Modelo</p><p class="text-xs">${p.marca || p.modelo ? esc(`${p.marca || '—'} / ${p.modelo || '—'}`) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Visto Bueno (VUCE)</p><p class="text-xs font-semibold">${p.visto_bueno_required ? `<span class="badge badge-orange">Requiere [${p.visto_bueno_entidad || 'S/E'}]</span>` : 'No requiere'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Registro Sanitario / Venta</p><p class="text-xs font-mono">${p.registro_sanitario ? esc(p.registro_sanitario) : '—'}</p></div>
+            </div>
+          </div>
+          <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
+            <span class="form-label">Manifiesto de Importación PDF</span>
+            ${manifestHtml}
           </div>
         </div>
-        <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
-          <span class="form-label">Condiciones especiales e Importación</span>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
-            <div><p class="text-xs text-gray-500 mb-1">Peso (General)</p><p class="font-mono text-xs">${p.peso != null ? esc(String(p.peso)) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Peso Neto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_neto != null ? esc(String(p.peso_neto)) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Peso Bruto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_bruto != null ? esc(String(p.peso_bruto)) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Caja en Pallet</p><p class="font-mono text-xs">${p.cajas_en_pallet != null ? esc(String(p.cajas_en_pallet)) : '—'}</p></div>
-            
-            <div><p class="text-xs text-gray-500 mb-1">UndEmpaque</p><p class="font-mono text-xs">${p.und_empaque != null ? esc(String(p.und_empaque)) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Peso x UndEmpaque</p><p class="font-mono text-xs">${p.peso_x_und_empaque != null ? esc(String(p.peso_x_und_empaque)) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Posición Arancelaria</p><p class="font-mono text-xs font-semibold text-blue-800">${p.posicion_arancelaria ? esc(p.posicion_arancelaria) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Arancel Base (%)</p><p class="font-mono text-xs font-semibold text-blue-800">${p.arancel_rate_default != null ? esc(String(p.arancel_rate_default)) + '%' : '—'}</p></div>
-            
-            <div><p class="text-xs text-gray-500 mb-1">País de Origen</p><p class="text-xs font-semibold">${p.pais_origen ? esc(p.pais_origen) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Marca / Modelo</p><p class="text-xs">${p.marca || p.modelo ? esc(`${p.marca || '—'} / ${p.modelo || '—'}`) : '—'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Visto Bueno (VUCE)</p><p class="text-xs font-semibold">${p.visto_bueno_required ? `<span class="badge badge-orange">Requiere [${p.visto_bueno_entidad || 'S/E'}]</span>` : 'No requiere'}</p></div>
-            <div><p class="text-xs text-gray-500 mb-1">Registro Sanitario / Venta</p><p class="text-xs font-mono">${p.registro_sanitario ? esc(p.registro_sanitario) : '—'}</p></div>
-          </div>
+        <div class="md:col-span-1 flex flex-col justify-start">
+          ${imageHtml}
         </div>
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
-      false
+      true
     );
   } catch (err) { showToast(err.message, 'error'); }
 }
@@ -800,6 +834,44 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       <div class="form-group md:col-span-3">
         <label class="form-label">Descripción</label>
         <textarea id="pf-desc" class="form-input" rows="2" placeholder="Descripción opcional para documentos comerciales">${esc(row?.description || '')}</textarea>
+      </div>
+
+      <!-- Fila 5.5: Archivos Adjuntos -->
+      <div class="form-group md:col-span-3 border-t pt-3 mt-2" style="border-color:#F0F0F0">
+        <p class="form-label mb-2" style="font-weight:700;color:#0D2137"><i class="fas fa-paperclip mr-2 text-blue-700"></i>Archivos y Multimedia</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Carga de Imagen -->
+          <div class="rounded-xl border p-3 bg-gray-50/50" style="border-color:#E5E7EB">
+            <label class="form-label text-xs font-semibold mb-1">Imagen de Catálogo (JPG, PNG, WEBP - Máx. 5MB)</label>
+            <input id="pf-image" type="file" accept="image/*" class="form-input text-xs w-full bg-white mb-2">
+            ${row?.image ? `
+              <div class="flex items-center justify-between bg-white border rounded-lg px-2 py-1.5 text-xs" style="border-color:#F0F0F0">
+                <span class="truncate text-gray-600 flex-1"><i class="fas fa-image text-blue-600 mr-1.5"></i>${esc(row.image)}</span>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <a href="${(window as any).PB_URL}/api/files/products/${row.id}/${row.image}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="text-blue-600 hover:underline font-semibold" title="Ver imagen actual">Ver</a>
+                  <button type="button" id="pf-image-clear-btn" class="text-red-500 hover:text-red-700 font-semibold bg-transparent border-none cursor-pointer" onclick="window.clearProductFile('image')">Eliminar</button>
+                  <input type="hidden" id="pf-image-clear" value="false">
+                </div>
+              </div>
+            ` : ''}
+          </div>
+          
+          <!-- Carga de Manifiesto PDF -->
+          <div class="rounded-xl border p-3 bg-gray-50/50" style="border-color:#E5E7EB">
+            <label class="form-label text-xs font-semibold mb-1">Manifiesto de Importación PDF (Máx. 10MB)</label>
+            <input id="pf-manifest-pdf" type="file" accept="application/pdf" class="form-input text-xs w-full bg-white mb-2">
+            ${row?.manifest_pdf ? `
+              <div class="flex items-center justify-between bg-white border rounded-lg px-2 py-1.5 text-xs" style="border-color:#F0F0F0">
+                <span class="truncate text-gray-600 flex-1"><i class="fas fa-file-pdf text-red-600 mr-1.5"></i>${esc(row.manifest_pdf)}</span>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <a href="${(window as any).PB_URL}/api/files/products/${row.id}/${row.manifest_pdf}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="text-blue-600 hover:underline font-semibold" title="Ver PDF actual">Ver</a>
+                  <button type="button" id="pf-manifest-clear-btn" class="text-red-500 hover:text-red-700 font-semibold bg-transparent border-none cursor-pointer" onclick="window.clearProductFile('manifest')">Eliminar</button>
+                  <input type="hidden" id="pf-manifest-clear" value="false">
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
       </div>
 
       <!-- Combo / Kit Config -->
@@ -980,54 +1052,77 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         }
       }
 
-      const payload = {
-        code,
-        name,
-        description:          getInputVal('pf-desc').trim(),
-        type:                 getSelectVal('pf-type'),
-        unit:                 getSelectVal('pf-unit'),
-        presentacion:         getInputVal('pf-presentacion').trim(),
-        categoria:            getSelectVal('pf-categoria'),
-        linea:                getSelectVal('pf-linea'),
-        iva_rate:             Number(getSelectVal('pf-iva') || 0),
-        base_price:           parseFloat(getInputVal('pf-base-price') || '0') || 0,
-        precio_venta_2:       toNullableNumber(getInputVal('pf-sale-price-2')),
-        precio_venta_3:       toNullableNumber(getInputVal('pf-sale-price-3')),
-        cost_price:           parseFloat(getInputVal('pf-cost-price') || '0') || 0,
-        active:               getSelectVal('pf-active') === 'true',
-        stock_min:            toNullableNumber(getInputVal('pf-stock-min')),
-        stock_max:            toNullableNumber(getInputVal('pf-stock-max')),
-        unspsc_code:          getInputVal('pf-unspsc').trim(),
-        ean_code:             getInputVal('pf-ean').trim(),
-        peso:                 specialConditions.peso,
-        cajas_en_pallet:      specialConditions.cajas_en_pallet,
-        und_empaque:          specialConditions.und_empaque,
-        peso_x_und_empaque:   specialConditions.peso_x_und_empaque,
-        peso_neto:            specialConditions.peso_neto,
-        peso_bruto:           specialConditions.peso_bruto,
-        posicion_arancelaria: specialConditions.posicion_arancelaria || null,
-        arancel_rate_default: specialConditions.arancel_rate_default,
-        pais_origen:          specialConditions.pais_origen || null,
-        marca:                specialConditions.marca || null,
-        modelo:               specialConditions.modelo || null,
-        visto_bueno_required: specialConditions.visto_bueno_required,
-        visto_bueno_entidad:  specialConditions.visto_bueno_entidad || null,
-        registro_sanitario:   specialConditions.registro_sanitario || null,
-        income_account_id:    getSelectVal('pf-income-acct')    || null,
-        cost_account_id:      getSelectVal('pf-cost-acct')      || null,
-        inventory_account_id: getSelectVal('pf-inv-acct')       || null,
-        is_combo:             isCombo,
-      };
+      const formData = new FormData();
+      formData.append('code', code);
+      formData.append('name', name);
+      formData.append('description', getInputVal('pf-desc').trim());
+      formData.append('type', getSelectVal('pf-type'));
+      formData.append('unit', getSelectVal('pf-unit'));
+      formData.append('presentacion', getInputVal('pf-presentacion').trim());
+      formData.append('categoria', getSelectVal('pf-categoria'));
+      formData.append('linea', getSelectVal('pf-linea'));
+      formData.append('iva_rate', String(Number(getSelectVal('pf-iva') || 0)));
+      formData.append('base_price', String(parseFloat(getInputVal('pf-base-price') || '0') || 0));
+      
+      const valV2 = toNullableNumber(getInputVal('pf-sale-price-2'));
+      formData.append('precio_venta_2', valV2 !== null ? String(valV2) : '');
+      const valV3 = toNullableNumber(getInputVal('pf-sale-price-3'));
+      formData.append('precio_venta_3', valV3 !== null ? String(valV3) : '');
+      formData.append('cost_price', String(parseFloat(getInputVal('pf-cost-price') || '0') || 0));
+      formData.append('active', String(getSelectVal('pf-active') === 'true'));
+      
+      const valStockMin = toNullableNumber(getInputVal('pf-stock-min'));
+      formData.append('stock_min', valStockMin !== null ? String(valStockMin) : '');
+      const valStockMax = toNullableNumber(getInputVal('pf-stock-max'));
+      formData.append('stock_max', valStockMax !== null ? String(valStockMax) : '');
+      
+      formData.append('unspsc_code', getInputVal('pf-unspsc').trim());
+      formData.append('ean_code', getInputVal('pf-ean').trim());
+      
+      formData.append('peso', specialConditions.peso !== null ? String(specialConditions.peso) : '');
+      formData.append('cajas_en_pallet', specialConditions.cajas_en_pallet !== null ? String(specialConditions.cajas_en_pallet) : '');
+      formData.append('und_empaque', specialConditions.und_empaque !== null ? String(specialConditions.und_empaque) : '');
+      formData.append('peso_x_und_empaque', specialConditions.peso_x_und_empaque !== null ? String(specialConditions.peso_x_und_empaque) : '');
+      formData.append('peso_neto', specialConditions.peso_neto !== null ? String(specialConditions.peso_neto) : '');
+      formData.append('peso_bruto', specialConditions.peso_bruto !== null ? String(specialConditions.peso_bruto) : '');
+      
+      formData.append('posicion_arancelaria', specialConditions.posicion_arancelaria || '');
+      formData.append('arancel_rate_default', specialConditions.arancel_rate_default !== null ? String(specialConditions.arancel_rate_default) : '');
+      formData.append('pais_origen', specialConditions.pais_origen || '');
+      formData.append('marca', specialConditions.marca || '');
+      formData.append('modelo', specialConditions.modelo || '');
+      formData.append('visto_bueno_required', String(specialConditions.visto_bueno_required));
+      formData.append('visto_bueno_entidad', specialConditions.visto_bueno_entidad || '');
+      formData.append('registro_sanitario', specialConditions.registro_sanitario || '');
+      
+      formData.append('income_account_id', getSelectVal('pf-income-acct') || '');
+      formData.append('cost_account_id', getSelectVal('pf-cost-acct') || '');
+      formData.append('inventory_account_id', getSelectVal('pf-inv-acct') || '');
+      formData.append('is_combo', String(isCombo));
+
+      const filePdf = (document.getElementById('pf-manifest-pdf') as HTMLInputElement)?.files?.[0];
+      if (filePdf) {
+        formData.append('manifest_pdf', filePdf);
+      } else if ((document.getElementById('pf-manifest-clear') as HTMLInputElement)?.value === 'true') {
+        formData.append('manifest_pdf', '');
+      }
+
+      const fileImg = (document.getElementById('pf-image') as HTMLInputElement)?.files?.[0];
+      if (fileImg) {
+        formData.append('image', fileImg);
+      } else if ((document.getElementById('pf-image-clear') as HTMLInputElement)?.value === 'true') {
+        formData.append('image', '');
+      }
 
       let savedId = "";
       if (row?.id) {
-        await pb.update('products', row.id, payload);
-        await API.logAudit('UPDATE', 'Producto', row.id, `${payload.code} — ${payload.name}`);
+        await pb.update('products', row.id, formData);
+        await API.logAudit('UPDATE', 'Producto', row.id, `${code} — ${name}`);
         showToast('Producto actualizado', 'success');
         savedId = row.id;
       } else {
-        const created = await pb.create('products', payload);
-        await API.logAudit('CREATE', 'Producto', created.id, `${payload.code} — ${payload.name}`);
+        const created = await pb.create('products', formData);
+        await API.logAudit('CREATE', 'Producto', created.id, `${code} — ${name}`);
         showToast('Producto creado', 'success');
         savedId = created.id;
       }
@@ -1065,6 +1160,59 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       const summary = $('#pf-special-summary');
       if (summary) summary.textContent = specialConditionsSummary(specialConditions);
     });
+  });
+
+  // Callbacks para carga y eliminación de archivos
+  (window as any).clearProductFile = function(type: 'image' | 'manifest') {
+    if (type === 'image') {
+      const clearFld = document.getElementById('pf-image-clear') as HTMLInputElement;
+      if (clearFld) clearFld.value = 'true';
+      const btn = document.getElementById('pf-image-clear-btn') as HTMLButtonElement;
+      if (btn) {
+        btn.textContent = 'Marcado para eliminar';
+        btn.classList.add('text-orange-600');
+        btn.classList.remove('text-red-500');
+        btn.disabled = true;
+      }
+    } else {
+      const clearFld = document.getElementById('pf-manifest-clear') as HTMLInputElement;
+      if (clearFld) clearFld.value = 'true';
+      const btn = document.getElementById('pf-manifest-clear-btn') as HTMLButtonElement;
+      if (btn) {
+        btn.textContent = 'Marcado para eliminar';
+        btn.classList.add('text-orange-600');
+        btn.classList.remove('text-red-500');
+        btn.disabled = true;
+      }
+    }
+  };
+
+  document.getElementById('pf-image')?.addEventListener('change', (e: any) => {
+    if (e.target.files && e.target.files.length) {
+      const clearFld = document.getElementById('pf-image-clear') as HTMLInputElement;
+      if (clearFld) clearFld.value = 'false';
+      const btn = document.getElementById('pf-image-clear-btn') as HTMLButtonElement;
+      if (btn) {
+        btn.textContent = 'Eliminar';
+        btn.classList.remove('text-orange-600');
+        btn.classList.add('text-red-500');
+        btn.disabled = false;
+      }
+    }
+  });
+
+  document.getElementById('pf-manifest-pdf')?.addEventListener('change', (e: any) => {
+    if (e.target.files && e.target.files.length) {
+      const clearFld = document.getElementById('pf-manifest-clear') as HTMLInputElement;
+      if (clearFld) clearFld.value = 'false';
+      const btn = document.getElementById('pf-manifest-clear-btn') as HTMLButtonElement;
+      if (btn) {
+        btn.textContent = 'Eliminar';
+        btn.classList.remove('text-orange-600');
+        btn.classList.add('text-red-500');
+        btn.disabled = false;
+      }
+    }
   });
 
   $('#btn-catalog-form')?.addEventListener('click', () => {

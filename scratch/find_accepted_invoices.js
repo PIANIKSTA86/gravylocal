@@ -10,13 +10,13 @@ async function run() {
     const { token } = await login.json();
     const headers = { 'Authorization': token };
 
-    // Fetch transactions
-    const res = await fetch(`${pbUrl}/api/collections/transactions/records?perPage=10&sort=-created`, { headers });
-    const txData = await res.json();
+    // Fetch all einvoice_docs
+    const res = await fetch(`${pbUrl}/api/collections/einvoice_docs/records?perPage=100`, { headers });
+    const docsData = await res.json();
     
-    console.log("=== TRANSACTIONS ===");
-    for (const tx of txData.items || []) {
-      console.log(`Tx ID: ${tx.id} | Number: ${tx.number} | Date: ${tx.date} | Status: ${tx.status}`);
+    console.log("=== EINVOICE DOCS ===");
+    for (const doc of docsData.items || []) {
+      console.log(`Doc ID: ${doc.id} | Status: ${doc.status} | CUFE: ${doc.cufe || '(empty)'} | Tx ID: ${doc.tx_id}`);
     }
   } catch (err) {
     console.error(err);

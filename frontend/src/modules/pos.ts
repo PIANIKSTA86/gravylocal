@@ -41,6 +41,7 @@ function defaultPOSConfig() {
       catalog_view_mode: 'grid',
       prices_include_iva: false,  // true = precios con IVA incluido (precio tax-in)
       default_customer_id: '',
+      print_logo: true,
     }
   };
 }
@@ -617,6 +618,7 @@ async function openPOSSettingsModal(onSaved: any = null) {
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-price-edit" type="checkbox" ${cfg.special.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-require-customer" type="checkbox" ${cfg.special.require_customer ? 'checked' : ''}>Exigir cliente en cada venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-prices-include-iva" type="checkbox" ${cfg.special.prices_include_iva ? 'checked' : ''}><span>Precios <strong>incluyen IVA</strong> (precio tax-in)</span></label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-print-logo" type="checkbox" ${cfg.special.print_logo !== false ? 'checked' : ''}>Imprimir logo en tirilla</label>
           <div class="form-group mb-0">
             <label class="form-label">Cliente Predeterminado</label>
             <select id="pos-cfg-default-customer" class="form-input">
@@ -723,6 +725,7 @@ async function openPOSSettingsModal(onSaved: any = null) {
           price_source: (document.getElementById('pos-cfg-price-source') as HTMLSelectElement)?.value || 'base_price',
           catalog_view_mode: (document.getElementById('pos-cfg-catalog-view') as HTMLSelectElement)?.value || 'grid',
           default_customer_id: (document.getElementById('pos-cfg-default-customer') as HTMLSelectElement)?.value || '',
+          print_logo: (document.getElementById('pos-cfg-print-logo') as HTMLInputElement)?.checked,
         }
       };
       await savePOSConfig(newCfg);
@@ -2907,10 +2910,13 @@ window.confirmPOSPayment = async function() {
 
 window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
+    if (!posConfig) {
+      posConfig = await getPOSConfig();
+    }
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, compLogo] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -2918,6 +2924,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
       (window as any).API.getSetting('company_email').catch(() => ''),
       (window as any).API.getSetting('company_city').catch(() => ''),
       (window as any).API.getSetting('company_country').catch(() => ''),
+      (window as any).API.getSetting('company_logo').catch(() => ''),
     ]);
 
     let einvoiceDoc = null;
@@ -3061,14 +3068,26 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
     }
 
     let qrAndCufeHtml = '';
-    if (isAccepted && einvoiceDoc?.cufe) {
+    const cufeVal = einvoiceDoc?.cufe || '';
+    if (cufeVal) {
       qrAndCufeHtml = `
         <div>================================</div>
         <div style="text-align:center;margin-top:8px">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + einvoiceDoc.cufe)}" style="display:inline-block;width:120px;height:120px;" alt="QR DIAN"/>
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufeVal)}" style="display:inline-block;width:120px;height:120px;" alt="QR DIAN"/>
         </div>
         <div style="word-break:break-all;font-size:8px;text-align:center;margin-top:4px;line-height:1.1">
-          <strong>CUFE:</strong><br>${einvoiceDoc.cufe}
+          <strong>CUFE:</strong><br>${cufeVal}
+        </div>
+      `;
+    } else {
+      const qrData = `Num: ${inv.number} | Nit: ${compNit} | Cliente: ${clientDoc} | Total: ${inv.payable_total ?? inv.total ?? 0} | CUFE: Temporal`;
+      qrAndCufeHtml = `
+        <div>================================</div>
+        <div style="text-align:center;margin-top:8px">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}" style="display:inline-block;width:120px;height:120px;" alt="QR Borrador"/>
+        </div>
+        <div style="word-break:break-all;font-size:8px;text-align:center;margin-top:4px;line-height:1.1;color:#666;">
+          <strong>CUFE/CUDE:</strong><br>(Pendiente de emisión DIAN)
         </div>
       `;
     }
@@ -3091,6 +3110,11 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
         <p class="text-xs text-center text-gray-500">A continuación puedes previsualizar e imprimir la tirilla térmica legal de venta de 80mm.</p>
         
         <div id="pos-thermal-tirilla" class="mx-auto p-5 border shadow-inner font-mono text-[11px] leading-tight text-black max-w-[280px]" style="background:#fffff8;border-color:#e2e8f0;box-shadow:inset 0 0 10px rgba(0,0,0,0.05)">
+          ${(posConfig?.special?.print_logo !== false && compLogo) ? `
+            <div class="text-center" style="margin-bottom:8px">
+              <img src="data:image/png;base64,${compLogo}" style="max-height:65px; max-width:180px; display:inline-block; object-fit:contain;" />
+            </div>
+          ` : ''}
           <div class="text-center" style="font-weight:bold;font-size:13px">${(window as any).esc(compName)}</div>
           <div class="text-center">NIT: ${(window as any).esc(compNit)}</div>
           ${compAddress ? `<div class="text-center">${(window as any).esc(compAddress)}</div>` : ''}
@@ -3139,7 +3163,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
           ${resolutionDesc ? `<div class="text-center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
           ${resolutionInfoHtml}
           <div class="text-center" style="font-size:8px;color:#555;margin-top:6px">
-            Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
+            Software: GRAVY POS | Fabricante: JULIAN ESPINOSA ARRUBLA, NIT. 1130636393-2
           </div>
           ${qrAndCufeHtml}
         </div>
@@ -3204,10 +3228,13 @@ window.emitPosToDian = async function(invoiceId: string, receivedCash: number = 
 
 window.printThermalReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
+    if (!posConfig) {
+      posConfig = await getPOSConfig();
+    }
     const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, compLogo] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -3215,6 +3242,7 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
       (window as any).API.getSetting('company_email').catch(() => ''),
       (window as any).API.getSetting('company_city').catch(() => ''),
       (window as any).API.getSetting('company_country').catch(() => ''),
+      (window as any).API.getSetting('company_logo').catch(() => ''),
     ]);
 
     let einvoiceDoc = null;
@@ -3358,14 +3386,26 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
     }
 
     let qrAndCufeHtml = '';
-    if (isAccepted && einvoiceDoc?.cufe) {
+    const cufeVal = einvoiceDoc?.cufe || '';
+    if (cufeVal) {
       qrAndCufeHtml = `
         <div class="dbl-hr"></div>
         <div class="center" style="margin-top:8px">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + einvoiceDoc.cufe)}" style="display:inline-block;width:120px;height:120px;" />
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent('https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=' + cufeVal)}" style="display:inline-block;width:120px;height:120px;" />
         </div>
         <div class="center" style="word-break:break-all;font-size:8px;margin-top:4px;line-height:1.1">
-          <strong>CUFE:</strong><br>${einvoiceDoc.cufe}
+          <strong>CUFE:</strong><br>${cufeVal}
+        </div>
+      `;
+    } else {
+      const qrData = `Num: ${inv.number} | Nit: ${compNit} | Cliente: ${clientDoc} | Total: ${inv.payable_total ?? inv.total ?? 0} | CUFE: Temporal`;
+      qrAndCufeHtml = `
+        <div class="dbl-hr"></div>
+        <div class="center" style="margin-top:8px">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}" style="display:inline-block;width:120px;height:120px;" />
+        </div>
+        <div class="center" style="word-break:break-all;font-size:8px;margin-top:4px;line-height:1.1;color:#666;">
+          <strong>CUFE/CUDE:</strong><br>(Pendiente de emisión DIAN)
         </div>
       `;
     }
@@ -3405,6 +3445,11 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         </style>
       </head>
       <body>
+        ${(posConfig?.special?.print_logo !== false && compLogo) ? `
+          <div class="center" style="margin-bottom:8px">
+            <img src="data:image/png;base64,${compLogo}" style="max-height:65px; max-width:180px; display:inline-block; object-fit:contain;" />
+          </div>
+        ` : ''}
         <div class="center bold" style="font-size:13px">${(window as any).esc(compName)}</div>
         <div class="center">NIT: ${(window as any).esc(compNit)}</div>
         ${compAddress ? `<div class="center">${(window as any).esc(compAddress)}</div>` : ''}
@@ -3453,7 +3498,7 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         ${resolutionDesc ? `<div class="center" style="font-size:8px;color:#555">${resolutionDesc}</div>` : ''}
         ${resolutionInfoHtml}
         <div class="center" style="font-size:8px;color:#555;margin-top:6px">
-          Software: GRAVY POS | Fabricante: ${(window as any).esc(compName)}. NIT: ${(window as any).esc(compNit)}
+          Software: GRAVY POS | Fabricante: JULIAN ESPINOSA ARRUBLA, NIT. 1130636393-2
         </div>
         ${qrAndCufeHtml}
         <script>

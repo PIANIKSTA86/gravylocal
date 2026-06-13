@@ -32,6 +32,7 @@ const PAGE_TITLES = {
   compras:           'Compras de Bienes y Servicios',
   ventas:            'Ventas y Facturación Comercial',
   pedidos:           'Pedidos y Cotizaciones',
+  'tienda-virtual':  'Tienda Virtual',
   pos:               'Punto de Venta POS',
   spa:               'Spa de Mascotas',
   tesoreria:         'Tesorería',
@@ -55,6 +56,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'utilidades':       'contabilidad',
   'ventas':           'comercial',
   'pedidos':          'comercial',
+  'tienda-virtual':   'comercial',
   'compras':          'comercial',
   'productos':        'comercial',
   'inventario':       'comercial',
@@ -103,6 +105,7 @@ const PAGE_RENDERERS = {
   compras:            () => typeof renderCompras           === 'function' && renderCompras($('#page-content')),
   ventas:             () => typeof renderVentas            === 'function' && renderVentas($('#page-content')),
   pedidos:            () => typeof renderPedidos           === 'function' && renderPedidos($('#page-content')),
+  'tienda-virtual':   () => {},
   pos:                () => typeof renderPOS               === 'function' && renderPOS($('#page-content')),
   spa:                () => typeof renderSpa               === 'function' && renderSpa($('#page-content')),
   copropiedades:      () => navigate('copro-facturacion'),
@@ -237,6 +240,11 @@ function navigate(page) {
   }
   if (page === 'auditoria' && !can('canViewAudit')) {
     showToast('No tienes permiso para acceder a esta sección', 'error');
+    return;
+  }
+
+  if (page === 'tienda-virtual') {
+    window.open('/store.html', '_blank');
     return;
   }
 

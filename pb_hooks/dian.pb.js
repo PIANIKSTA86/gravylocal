@@ -1,26 +1,27 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-function getSetting(key, fallback) {
-  try {
-    const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-    return r.get("value") || fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
+routerAdd('POST', '/api/dian/emit', (e) => {
+  const getSetting = function(key, fallback) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
+      return r.get("value") || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
 
-const mapDocType = (type) => {
-  switch (String(type).toUpperCase()) {
-    case 'NIT': return '31';
-    case 'CC': return '13';
-    case 'CE': return '22';
-    case 'TI': return '12';
-    case 'PAS': return '41';
-    default: return '13'; // CC fallback
-  }
-};
+  const mapDocType = (type) => {
+    switch (String(type).toUpperCase()) {
+      case 'NIT': return '31';
+      case 'CC': return '13';
+      case 'CE': return '22';
+      case 'TI': return '12';
+      case 'PAS': return '41';
+      default: return '13'; // CC fallback
+    }
+  };
 
-function buildUblXml({
+  const buildUblXml = function({
   documentType,
   documentNumber,
   issueDate,
@@ -297,7 +298,6 @@ function buildUblXml({
   return xml;
 }
 
-routerAdd('POST', '/api/dian/emit', (e) => {
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -358,12 +358,29 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     const ftechUsername = getSetting("ftech_username", "");
     const ftechPassword = getSetting("ftech_password", "");
     const ftechEnvironment = getSetting("ftech_environment", "2");
+    const companyThirdPartyId = getSetting("company_third_party_id", "");
 
-    const emitterNit = getSetting("dian_nit", getSetting("company_nit", "900123456"));
-    const emitterName = getSetting("company_name", "GRAVY CORP SAS");
-    const emitterAddress = getSetting("company_address", "Calle 1 # 2 - 3");
-    const emitterPhone = getSetting("company_phone", "601-555-0100");
-    const emitterEmail = getSetting("company_email", "dian@gravy.com");
+    let emitterNit = getSetting("dian_nit", getSetting("company_nit", "900123456"));
+    let emitterName = getSetting("company_name", "GRAVY CORP SAS");
+    let emitterAddress = getSetting("company_address", "Calle 1 # 2 - 3");
+    let emitterPhone = getSetting("company_phone", "601-555-0100");
+    let emitterEmail = getSetting("company_email", "dian@gravy.com");
+
+    if (companyThirdPartyId) {
+      try {
+        const companyThird = $app.findRecordById("third_parties", companyThirdPartyId);
+        if (companyThird) {
+          emitterNit = companyThird.getString("doc_number") || emitterNit;
+          emitterName = companyThird.getString("name") || emitterName;
+          emitterAddress = companyThird.getString("address") || emitterAddress;
+          emitterPhone = companyThird.getString("phone") || emitterPhone;
+          emitterEmail = companyThird.getString("email") || emitterEmail;
+        }
+      } catch (err) {
+        console.warn("[GRAVY] Error al cargar tercero de empresa:", err);
+      }
+    }
+
     const dianEnvironment = getSetting("dian_environment", "2");
     const clTec = getSetting("dian_cltec", "");
     const softwarePin = getSetting("dian_software_pin", "");
@@ -389,6 +406,15 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     let ivaTotal = 0;
     let total = 0;
     let items = [];
+    
+    let invoice = null;
+    try {
+      invoice = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+    } catch (_) {
+      try {
+        invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+      } catch (_) {}
+    }
     
     if (invoice) {
       subtotal = invoice.getFloat("subtotal");
@@ -582,6 +608,15 @@ routerAdd('POST', '/api/dian/emit', (e) => {
 });
 
 routerAdd('POST', '/api/dian/check-status', (e) => {
+  const getSetting = function(key, fallback) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
+      return r.get("value") || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -685,4 +720,100 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
     e.json(500, { message: "Error al consultar estado Facturatech: " + err.message });
   }
 });
+
+routerAdd('POST', '/api/dian/resend-email', (e) => {
+  const getSetting = function(key, fallback) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
+      return r.get("value") || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+
+  const auth = e.requestInfo()?.auth;
+  if (!auth) {
+    e.json(401, { message: "Autenticación requerida." });
+    return;
+  }
+  
+  const body = e.requestInfo()?.body || {};
+  const txId = body.txId || body.tx_id;
+  if (!txId) {
+    e.json(400, { message: "txId es requerido." });
+    return;
+  }
+  
+  try {
+    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
+    if (!docRecord) {
+      e.json(404, { message: "Documento de facturación no encontrado para esta transacción." });
+      return;
+    }
+    
+    const xmlContent = docRecord.getString("xml_content");
+    if (!xmlContent) {
+      e.json(400, { message: "El documento no posee contenido XML firmado para reenviar." });
+      return;
+    }
+    
+    const tx = $app.findRecordById("transactions", txId);
+    $app.expandRecord(tx, ["third_party_id"], null);
+    const customer = tx.expandedOne("third_party_id");
+    const custEmail = customer ? customer.getString("email") : "";
+    if (!custEmail) {
+      e.json(400, { message: "El cliente no tiene un correo electrónico configurado en su ficha de tercero." });
+      return;
+    }
+    
+    const companyName = getSetting("company_name", "GRAVY S.A.S");
+    const companyEmail = getSetting("company_email", "noreply@gravy.com");
+    const docNumber = tx.getString("number") || "Factura";
+
+    try {
+      if (typeof syncSmtpSettings === 'function') {
+        syncSmtpSettings();
+      }
+    } catch (e) {
+      console.warn("[GRAVY] Error syncing SMTP settings:", e);
+    }
+    
+    const message = new MailerMessage({
+      from: {
+        address: companyEmail,
+        name: companyName
+      },
+      to: [{ address: custEmail }],
+      subject: `Factura Electrónica ${docNumber} - ${companyName}`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #E5E7EB; border-radius: 12px;">
+          <h2 style="color: #1A4B8C; margin-top: 0;">Factura Electrónica</h2>
+          <p>Estimado cliente <strong>${customer.getString("name")}</strong>,</p>
+          <p>Adjunto a este correo encontrará el archivo XML firmado correspondiente a la Factura Electrónica de Venta No. <strong>${docNumber}</strong> emitida el ${tx.getString("date")}.</p>
+          <hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 20px 0;" />
+          <p style="font-size: 13px; color: #6B7280; margin-bottom: 5px;"><strong>Detalles de la Transacción:</strong></p>
+          <ul style="font-size: 13px; color: #374151; padding-left: 20px; margin-top: 5px;">
+            <li><strong>Emisor:</strong> ${companyName}</li>
+            <li><strong>Monto Total:</strong> $${tx.getFloat("cross_amount") || 0}</li>
+            <li><strong>CUFE / CUDE:</strong> <span style="font-family: monospace; font-size: 11px;">${docRecord.getString("cufe") || 'N/A'}</span></li>
+          </ul>
+          <p style="margin-top: 25px; font-size: 14px;">Gracias por su preferencia.</p>
+        </div>
+      `,
+    });
+    
+    const xmlFile = $filesystem.fileFromBytes(xmlContent, `${docNumber}.xml`);
+    message.attachments = {
+      [`${docNumber}.xml`]: xmlFile.reader.open()
+    };
+    
+    $app.newMailClient().send(message);
+    
+    e.json(200, { success: true, message: "Correo reenviado exitosamente a " + custEmail });
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error al reenviar correo:", err);
+    e.json(500, { message: "Error al reenviar correo: " + err.message });
+  }
+});
+
 

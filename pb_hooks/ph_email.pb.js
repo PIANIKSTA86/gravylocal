@@ -340,6 +340,7 @@ function buildPhEmailHtml({
   </div>
 </body>
 </html>`;
+}
 
 // ──────────────────────────────────────────────────────────
 // ROUTE: Envío individual de Factura / Estado de cuenta

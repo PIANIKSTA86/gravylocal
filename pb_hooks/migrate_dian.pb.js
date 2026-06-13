@@ -16,7 +16,8 @@ onBootstrap((e) => {
       ["einvoice_method", "dian"],
       ["ftech_username", ""],
       ["ftech_password", ""],
-      ["ftech_environment", "2"]
+      ["ftech_environment", "2"],
+      ["company_third_party_id", ""]
     ];
 
     for (const [k, v] of dianKeys) {

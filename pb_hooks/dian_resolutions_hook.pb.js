@@ -196,3 +196,155 @@ const resolutionHandler = (e) => {
 
 onRecordCreateRequest(resolutionHandler, "invoices");
 onRecordCreateRequest(resolutionHandler, "purchase_invoices");
+
+onBootstrap((e) => {
+  e.next();
+  
+  function syncResolution(res) {
+    const prefix = (res.getString("prefix") || "").trim().toUpperCase();
+    const docType = res.getString("document_type");
+    if (!prefix) return;
+    try {
+      const ttCol = $app.findCollectionByNameOrId("transaction_types");
+      let existing = null;
+      try {
+        existing = $app.findFirstRecordByFilter("transaction_types", "code = '" + docType + "' && prefix = '" + prefix + "'");
+      } catch (_) {}
+      let typeName = "";
+      if (docType === "POS") typeName = "Factura de Venta POS " + prefix;
+      else if (docType === "FV") typeName = "Factura de Venta " + prefix;
+      else if (docType === "NC") typeName = "Nota Crédito " + prefix;
+      else if (docType === "ND") typeName = "Nota Débito " + prefix;
+      else if (docType === "DS") typeName = "Documento Soporte " + prefix;
+      else if (docType === "NDS") typeName = "Nota Ajuste DS " + prefix;
+      else typeName = docType + " " + prefix;
+
+      if (existing) {
+        let changed = false;
+        if (!existing.getBool("active")) { existing.set("active", true); changed = true; }
+        const resConsec = res.getInt("current_number");
+        if (resConsec > existing.getInt("consecutive")) { existing.set("consecutive", resConsec); changed = true; }
+        if (changed) { $app.save(existing); console.log("[GRAVY-RESOLUCIONES] Sincronizado: " + docType + "-" + prefix); }
+      } else {
+        const newTt = new Record(ttCol, {
+          code: docType,
+          prefix: prefix,
+          name: typeName,
+          description: "Generada por resolución DIAN " + prefix,
+          consecutive: res.getInt("current_number"),
+          active: true
+        });
+        $app.save(newTt);
+        console.log("[GRAVY-RESOLUCIONES] Creado: " + docType + "-" + prefix);
+      }
+    } catch (err) {
+      console.log("[GRAVY-RESOLUCIONES] Error al sincronizar " + prefix + ": " + err);
+    }
+  }
+
+  try {
+    const resolutions = $app.findRecordsByFilter("dian_resolutions", "active = true", "");
+    for (const res of resolutions) {
+      syncResolution(res);
+    }
+  } catch (err) {
+    console.log("[GRAVY-RESOLUCIONES] Error en sincronización bootstrap:", err);
+  }
+});
+
+onRecordCreateRequest((e) => {
+  e.next();
+  
+  function syncResolution(res) {
+    const prefix = (res.getString("prefix") || "").trim().toUpperCase();
+    const docType = res.getString("document_type");
+    if (!prefix) return;
+    try {
+      const ttCol = $app.findCollectionByNameOrId("transaction_types");
+      let existing = null;
+      try {
+        existing = $app.findFirstRecordByFilter("transaction_types", "code = '" + docType + "' && prefix = '" + prefix + "'");
+      } catch (_) {}
+      let typeName = "";
+      if (docType === "POS") typeName = "Factura de Venta POS " + prefix;
+      else if (docType === "FV") typeName = "Factura de Venta " + prefix;
+      else if (docType === "NC") typeName = "Nota Crédito " + prefix;
+      else if (docType === "ND") typeName = "Nota Débito " + prefix;
+      else if (docType === "DS") typeName = "Documento Soporte " + prefix;
+      else if (docType === "NDS") typeName = "Nota Ajuste DS " + prefix;
+      else typeName = docType + " " + prefix;
+
+      if (existing) {
+        let changed = false;
+        if (!existing.getBool("active")) { existing.set("active", true); changed = true; }
+        const resConsec = res.getInt("current_number");
+        if (resConsec > existing.getInt("consecutive")) { existing.set("consecutive", resConsec); changed = true; }
+        if (changed) { $app.save(existing); console.log("[GRAVY-RESOLUCIONES] Sincronizado: " + docType + "-" + prefix); }
+      } else {
+        const newTt = new Record(ttCol, {
+          code: docType,
+          prefix: prefix,
+          name: typeName,
+          description: "Generada por resolución DIAN " + prefix,
+          consecutive: res.getInt("current_number"),
+          active: true
+        });
+        $app.save(newTt);
+        console.log("[GRAVY-RESOLUCIONES] Creado: " + docType + "-" + prefix);
+      }
+    } catch (err) {
+      console.log("[GRAVY-RESOLUCIONES] Error al sincronizar " + prefix + ": " + err);
+    }
+  }
+
+  syncResolution(e.record);
+}, "dian_resolutions");
+
+onRecordUpdateRequest((e) => {
+  e.next();
+
+  function syncResolution(res) {
+    const prefix = (res.getString("prefix") || "").trim().toUpperCase();
+    const docType = res.getString("document_type");
+    if (!prefix) return;
+    try {
+      const ttCol = $app.findCollectionByNameOrId("transaction_types");
+      let existing = null;
+      try {
+        existing = $app.findFirstRecordByFilter("transaction_types", "code = '" + docType + "' && prefix = '" + prefix + "'");
+      } catch (_) {}
+      let typeName = "";
+      if (docType === "POS") typeName = "Factura de Venta POS " + prefix;
+      else if (docType === "FV") typeName = "Factura de Venta " + prefix;
+      else if (docType === "NC") typeName = "Nota Crédito " + prefix;
+      else if (docType === "ND") typeName = "Nota Débito " + prefix;
+      else if (docType === "DS") typeName = "Documento Soporte " + prefix;
+      else if (docType === "NDS") typeName = "Nota Ajuste DS " + prefix;
+      else typeName = docType + " " + prefix;
+
+      if (existing) {
+        let changed = false;
+        if (!existing.getBool("active")) { existing.set("active", true); changed = true; }
+        const resConsec = res.getInt("current_number");
+        if (resConsec > existing.getInt("consecutive")) { existing.set("consecutive", resConsec); changed = true; }
+        if (changed) { $app.save(existing); console.log("[GRAVY-RESOLUCIONES] Sincronizado: " + docType + "-" + prefix); }
+      } else {
+        const newTt = new Record(ttCol, {
+          code: docType,
+          prefix: prefix,
+          name: typeName,
+          description: "Generada por resolución DIAN " + prefix,
+          consecutive: res.getInt("current_number"),
+          active: true
+        });
+        $app.save(newTt);
+        console.log("[GRAVY-RESOLUCIONES] Creado: " + docType + "-" + prefix);
+      }
+    } catch (err) {
+      console.log("[GRAVY-RESOLUCIONES] Error al sincronizar " + prefix + ": " + err);
+    }
+  }
+
+  syncResolution(e.record);
+}, "dian_resolutions");
+

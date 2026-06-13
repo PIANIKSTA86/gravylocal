@@ -1683,7 +1683,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
     const printFormat = formatOverride || defaultFormat;
     const docTitle = cfg.operational.document_title || 'Factura de Venta';
 
-    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' });
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, logoBase64] = await Promise.all([
@@ -1698,12 +1698,63 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
     ]);
 
     // --- DIAN Resolution & CUFE / Signature Lookup ---
+    let prefix = '';
+    if (inv.number && inv.number.includes('-')) {
+      prefix = inv.number.split('-')[0].trim().toUpperCase();
+    }
+    
+    let docType = 'POS';
+    if (inv.number && (inv.number.startsWith('FE') || inv.number.startsWith('FV') || inv.number.startsWith('NC') || inv.number.startsWith('ND'))) {
+      if (inv.number.startsWith('FE') || inv.number.startsWith('FV')) docType = 'FV';
+      else if (inv.number.startsWith('NC')) docType = 'NC';
+      else if (inv.number.startsWith('ND')) docType = 'ND';
+    } else if (!inv.pos_shift_id) {
+      docType = 'FV';
+    }
+
     let resolutionStr = 'Autorización Numeración DIAN No. 18764087257379, Valida desde 2025-01-16 al 2026-01-16. Rango desde FE953 al FE2000. NO Gran Contribuyente, NO Autorretenedor.';
     try {
-      const resolutions = await (window as any).pb.listAll('dian_resolutions', { filter: 'active=true' }).catch(() => []);
-      const resolution = resolutions.find((r: any) => r.document_type === 'FV') || resolutions[0];
+      const registerId = inv.expand?.pos_shift_id?.pos_register_id || '';
+      let filter = `document_type="${docType}" && active=true`;
+      
+      let resList = [];
+      if (registerId && docType === 'POS') {
+        resList = await (window as any).pb.listAll('dian_resolutions', { 
+          filter: `${filter} && pos_register_id="${(window as any).pb.escapeFilterValue(registerId)}"` 
+        }).catch(() => []);
+      }
+      
+      if (!resList.length) {
+        let fallbackFilter = `${filter}`;
+        if (docType === 'POS') {
+          fallbackFilter += ` && pos_register_id=""`;
+        }
+        if (prefix) {
+          fallbackFilter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+        }
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: fallbackFilter }).catch(() => []);
+      }
+      
+      if (!resList.length) {
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: `document_type="${docType}" && active=true` }).catch(() => []);
+      }
+
+      let resolution = null;
+      if (resList.length) {
+        const parts = inv.number ? inv.number.split('-') : [];
+        const invNum = parts.length ? (parseInt(parts[parts.length - 1], 10) || 0) : 0;
+        resolution = resList.find((r: any) => invNum >= r.number_from && invNum <= r.number_to);
+        if (!resolution) {
+          resolution = resList.find((r: any) => r.active) || resList[0];
+        }
+      }
+
       if (resolution) {
-        resolutionStr = `Autorización Numeración DIAN No. ${resolution.resolution_number} del ${resolution.resolution_date}. Rango desde ${resolution.prefix || ''}${resolution.number_from} al ${resolution.prefix || ''}${resolution.number_to}. Vigente hasta ${resolution.expiration_date}.`;
+        const rDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : '—';
+        const eDate = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : '—';
+        const rPrefix = resolution.prefix || '';
+        const docLabel = resolution.document_type === 'FV' ? 'Resolución Facturación Electrónica' : 'Autorización Facturación POS';
+        resolutionStr = `${docLabel} No. ${resolution.resolution_number} del ${rDate}. Rango desde ${rPrefix}${resolution.number_from} al ${rPrefix}${resolution.number_to}. Vigente hasta ${eDate}.`;
       }
     } catch (_) {}
 
@@ -2213,6 +2264,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
 
           <!-- Footer legal -->
           <div class="legal-footer">
+            <p style="margin: 4px 0; font-weight: 600; color: #475569;">${resolutionStr}</p>
             <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
             <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
           </div>
@@ -2349,6 +2401,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
           <!-- Footer / Notas legales -->
           <div class="footer">
             ${inv.notes ? `<p><strong>Observaciones:</strong> ${(window as any).esc(inv.notes)}</p>` : ''}
+            <p style="margin: 4px 0; font-weight: bold; color: #475569;">${resolutionStr}</p>
             <p>Esta factura de venta se asimila en sus efectos a una Letra de Cambio según el Artículo 779 del Código de Comercio colombiano.</p>
             <p>Software de Gestión GRAVY v2.0 — Sistema de ERP y Control Administrativo Autorizado. Soporte Técnico: soporte@gravy.com</p>
           </div>
@@ -2647,7 +2700,7 @@ window.viewSalesInvoiceDetail = async function(id: string) {
     const [inv, lines, history] = await Promise.all([
       (window as any).pb.get('invoices', id, { expand: 'customer_id,warehouse_id,tx_type_id' }),
       (window as any).API.getInvoiceLines(id),
-      (window as any).pb.listAll('audit_logs', { filter: `entity="Invoice" && entity_id="${(window as any).pb.escapeFilterValue(id)}"`, sort: '-created' }).catch(() => []),
+      (window as any).pb.listAll('audit_log', { filter: `entity="Invoice" && entity_id="${(window as any).pb.escapeFilterValue(id)}"`, sort: '-event_at' }).catch(() => []),
     ]);
 
     const meta = INV_STATUS[inv.status] || { label: inv.status, badge: 'badge-gray' };

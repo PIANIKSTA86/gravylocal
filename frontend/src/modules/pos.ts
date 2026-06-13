@@ -2907,7 +2907,7 @@ window.confirmPOSPayment = async function() {
 
 window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
-    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
@@ -2954,13 +2954,42 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
       prefix = inv.number.split('-')[0].trim().toUpperCase();
     }
     
+    let docType = 'POS';
+    if (inv.number && (inv.number.startsWith('FE') || inv.number.startsWith('FV') || inv.number.startsWith('NC') || inv.number.startsWith('ND'))) {
+      if (inv.number.startsWith('FE') || inv.number.startsWith('FV')) docType = 'FV';
+      else if (inv.number.startsWith('NC')) docType = 'NC';
+      else if (inv.number.startsWith('ND')) docType = 'ND';
+    } else if (!inv.pos_shift_id) {
+      docType = 'FV';
+    }
+
     let resolutionInfoHtml = '';
     try {
-      let filter = `document_type="POS"`;
-      if (prefix) {
-        filter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+      const registerId = inv.expand?.pos_shift_id?.pos_register_id || '';
+      let filter = `document_type="${docType}" && active=true`;
+      
+      let resList = [];
+      if (registerId && docType === 'POS') {
+        resList = await (window as any).pb.listAll('dian_resolutions', { 
+          filter: `${filter} && pos_register_id="${(window as any).pb.escapeFilterValue(registerId)}"` 
+        });
       }
-      const resList = await (window as any).pb.listAll('dian_resolutions', { filter });
+      
+      if (!resList.length) {
+        let fallbackFilter = `${filter}`;
+        if (docType === 'POS') {
+          fallbackFilter += ` && pos_register_id=""`;
+        }
+        if (prefix) {
+          fallbackFilter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+        }
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: fallbackFilter });
+      }
+      
+      if (!resList.length) {
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: `document_type="${docType}" && active=true` });
+      }
+
       let resolution = null;
       if (resList.length) {
         const parts = inv.number.split('-');
@@ -2974,9 +3003,10 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
         const rDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : '—';
         const eDate = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : '—';
         const rPrefix = resolution.prefix ? resolution.prefix + ' ' : '';
+        const docLabel = resolution.document_type === 'FV' ? 'Resolución Facturación Electrónica' : 'Autorización Facturación POS';
         resolutionInfoHtml = `
           <div class="text-center" style="font-size:8px;color:#555;margin-top:4px;line-height:1.2">
-            Autorización Facturación POS No. ${resolution.resolution_number}<br>
+            ${docLabel} No. ${resolution.resolution_number}<br>
             Fecha Res: ${rDate} | Vigencia hasta: ${eDate}<br>
             Rango: ${rPrefix}${resolution.number_from} al ${rPrefix}${resolution.number_to}
           </div>
@@ -3174,7 +3204,7 @@ window.emitPosToDian = async function(invoiceId: string, receivedCash: number = 
 
 window.printThermalReceipt = async function(invoiceId: string, receivedCash: number, changeCash: number) {
   try {
-    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id' });
+    const inv = await (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_id,tx_id.tx_type_id,pos_shift_id' });
     const lines = await (window as any).API.getInvoiceLines(invoiceId);
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
@@ -3221,13 +3251,42 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
       prefix = inv.number.split('-')[0].trim().toUpperCase();
     }
     
+    let docType = 'POS';
+    if (inv.number && (inv.number.startsWith('FE') || inv.number.startsWith('FV') || inv.number.startsWith('NC') || inv.number.startsWith('ND'))) {
+      if (inv.number.startsWith('FE') || inv.number.startsWith('FV')) docType = 'FV';
+      else if (inv.number.startsWith('NC')) docType = 'NC';
+      else if (inv.number.startsWith('ND')) docType = 'ND';
+    } else if (!inv.pos_shift_id) {
+      docType = 'FV';
+    }
+
     let resolutionInfoHtml = '';
     try {
-      let filter = `document_type="POS"`;
-      if (prefix) {
-        filter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+      const registerId = inv.expand?.pos_shift_id?.pos_register_id || '';
+      let filter = `document_type="${docType}" && active=true`;
+      
+      let resList = [];
+      if (registerId && docType === 'POS') {
+        resList = await (window as any).pb.listAll('dian_resolutions', { 
+          filter: `${filter} && pos_register_id="${(window as any).pb.escapeFilterValue(registerId)}"` 
+        });
       }
-      const resList = await (window as any).pb.listAll('dian_resolutions', { filter });
+      
+      if (!resList.length) {
+        let fallbackFilter = `${filter}`;
+        if (docType === 'POS') {
+          fallbackFilter += ` && pos_register_id=""`;
+        }
+        if (prefix) {
+          fallbackFilter += ` && prefix="${(window as any).pb.escapeFilterValue(prefix)}"`;
+        }
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: fallbackFilter });
+      }
+      
+      if (!resList.length) {
+        resList = await (window as any).pb.listAll('dian_resolutions', { filter: `document_type="${docType}" && active=true` });
+      }
+
       let resolution = null;
       if (resList.length) {
         const parts = inv.number.split('-');
@@ -3241,9 +3300,10 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
         const rDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : '—';
         const eDate = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : '—';
         const rPrefix = resolution.prefix ? resolution.prefix + ' ' : '';
+        const docLabel = resolution.document_type === 'FV' ? 'Resolución Facturación Electrónica' : 'Autorización Facturación POS';
         resolutionInfoHtml = `
           <div class="center" style="font-size:8px;color:#555;margin-top:4px;line-height:1.2">
-            Autorización Facturación POS No. ${resolution.resolution_number}<br>
+            ${docLabel} No. ${resolution.resolution_number}<br>
             Fecha Res: ${rDate} | Vigencia hasta: ${eDate}<br>
             Rango: ${rPrefix}${resolution.number_from} al ${rPrefix}${resolution.number_to}
           </div>

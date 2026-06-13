@@ -38,7 +38,7 @@ async function run() {
 
   if (!token) return;
 
-  const targetCols = ['products', 'inventory_stock'];
+  const targetCols = ['invoices'];
   for (const colName of targetCols) {
     const res = await fetch(`${pbUrl}/api/collections/${colName}`, {
       headers: { 'Authorization': 'Bearer ' + token }
@@ -46,8 +46,7 @@ async function run() {
     if (res.ok) {
       const col = await res.json();
       console.log(`Collection: ${col.name}`);
-      const fields = col.fields || col.schema;
-      console.log(JSON.stringify(fields, null, 2));
+      console.log(JSON.stringify(col, null, 2));
       console.log("-----------------------------------------");
     }
   }

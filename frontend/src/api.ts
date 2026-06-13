@@ -176,6 +176,19 @@ const pb = {
     err.data = body;
     return err;
   },
+
+  /** Enviar solicitud HTTP genérica */
+  async send(path, options = {}) {
+    const url = path.startsWith('http') ? path : `${PB_URL}${path}`;
+    const headers = { ...this.headers(), ...options.headers };
+    const res = await fetch(url, {
+      method: options.method || 'GET',
+      headers,
+      body: options.body,
+    });
+    if (!res.ok) throw await this._err(res);
+    return res.json();
+  },
 };
 
 /* -- Helpers internos de resolución de cuentas ---------------- */

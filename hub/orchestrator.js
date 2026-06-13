@@ -10,6 +10,15 @@ const http = require('http');
 const app = express();
 app.use(express.json());
 
+// Enable CORS for frontend requests
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 const BASE_DIR = path.resolve(__dirname, '..');
 const EMPRESAS_DIR = path.join(BASE_DIR, 'empresas');
 const PB_HOOKS_DIR = path.join(BASE_DIR, 'pb_hooks');
@@ -766,6 +775,26 @@ app.post('/api/facturatech/check-status', async (req, res) => {
   } catch (err) {
     console.error('[GRAVY FTECH] Excepción al consultar estado:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/dian/download-zip', (req, res) => {
+  try {
+    const { xmlContent, filename } = req.body;
+    if (!xmlContent || !filename) {
+      return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
+    }
+    
+    const zip = new AdmZip();
+    zip.addFile(`${filename}.xml`, Buffer.from(xmlContent, 'utf-8'));
+    const zipBuffer = zip.toBuffer();
+    
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.zip"`);
+    res.send(zipBuffer);
+  } catch (err) {
+    console.error('[GRAVY ORCHESTRATOR] Error al generar ZIP:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 

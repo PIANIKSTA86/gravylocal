@@ -91,9 +91,10 @@ async function saveSignatureSettingsFromForm() {
 async function renderConfiguracion(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando configuración...</div>`;
   try {
-    const [settings, signatureValues] = await Promise.all([
+    const [settings, signatureValues, terceros] = await Promise.all([
       pb.listAll('settings', { sort: 'key' }),
       loadSignatureSettings(),
+      pb.listAll('third_parties', { sort: 'name' }),
     ]);
     const byKey = Object.fromEntries(settings.map((row) => [String(row.key || ''), row]));
     const canEdit = can('canWrite');
@@ -110,6 +111,22 @@ async function renderConfiguracion(c) {
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
         <div class="xl:col-span-2 bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
           <h4 class="font-bold mb-4" style="color:#0D2137">Datos generales</h4>
+          
+          <div class="form-group mb-4">
+            <label class="form-label font-semibold" style="color:#1A4B8C"><i class="fas fa-link mr-1"></i> Vincular a un Tercero de la Base de Datos</label>
+            <div id="cfg-third-search-wrap" class="relative">
+              <input
+                id="cfg-third-search"
+                class="form-input font-semibold"
+                autocomplete="off"
+                placeholder="Buscar por NIT o Nombre para rellenar datos..."
+                ${canEdit ? '' : 'disabled'}>
+              <input id="cfg-third" type="hidden" value="${esc(byKey['company_third_party_id']?.value || '')}">
+              <div id="cfg-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
+            </div>
+            <p class="text-xs mt-1" style="color:#9CA3AF">Si selecciona un tercero, la DIAN leerá los datos del emisor de esta ficha. Los campos de texto a continuación se autocompletarán.</p>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             ${CONFIG_FIELDS.map((field) => `
               <div class="form-group ${field.key === 'company_address' ? 'md:col-span-2' : ''}">
@@ -371,6 +388,71 @@ async function renderConfiguracion(c) {
       }
     });
 
+    // Initialize Autocomplete for company third party
+    const wrap = $('#cfg-third-search-wrap');
+    const hidden = $('#cfg-third') as HTMLInputElement;
+    const input = $('#cfg-third-search') as HTMLInputElement;
+    const results = $('#cfg-third-results');
+    if (wrap && hidden && input && results) {
+      const paint = (query = '') => {
+        const found = terceros.filter((t: any) => {
+          const hay = `${t.doc_number || ''} ${t.name || ''}`.toLowerCase();
+          return hay.includes(query.toLowerCase());
+        }).slice(0, 30);
+        
+        if (!found.length) {
+          results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin resultados</div>';
+          return;
+        }
+        results.innerHTML = found.map((t: any) => `
+          <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 transition-colors" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+            <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
+            <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
+          </button>
+        `).join('');
+      };
+      
+      const show = () => { paint(input.value); results.style.display = 'block'; };
+      const hide = () => { results.style.display = 'none'; };
+      
+      const currentThird = terceros.find((t: any) => t.id === hidden.value);
+      if (currentThird) {
+        input.value = `${currentThird.doc_number || ''} - ${currentThird.name || ''}`;
+      }
+      
+      input.addEventListener('focus', show);
+      input.addEventListener('input', () => {
+        hidden.value = '';
+        paint(input.value);
+        results.style.display = 'block';
+      });
+      
+      results.addEventListener('click', (ev) => {
+        const btn = (ev.target as HTMLElement).closest('[data-third-id]');
+        if (!btn) return;
+        const id = btn.getAttribute('data-third-id') || '';
+        hidden.value = id;
+        const third = terceros.find((t: any) => t.id === id);
+        if (third) {
+          input.value = `${third.doc_number || ''} - ${third.name || ''}`;
+          
+          // Auto-fill fields below
+          setInputVal('cfg-company_name', third.name || '');
+          setInputVal('cfg-company_nit', (third.doc_number || '') + (third.dv ? '-' + third.dv : ''));
+          setInputVal('cfg-company_address', third.address || '');
+          setInputVal('cfg-company_phone', third.phone || '');
+          setInputVal('cfg-company_email', third.email || '');
+        } else {
+          input.value = '';
+        }
+        hide();
+      });
+      
+      document.addEventListener('click', (ev) => {
+        if (!wrap.contains(ev.target as Node)) hide();
+      });
+    }
+
     let uploadedCertBase64: string | null = null;
     const certFileInput = $('#dian-cert-file') as HTMLInputElement | null;
     certFileInput?.addEventListener('change', (e: Event) => {
@@ -488,6 +570,7 @@ async function renderConfiguracion(c) {
     $('#btn-save-config')?.addEventListener('click', async () => {
       try {
         const payload = CONFIG_FIELDS.map((field) => [field.key, getInputVal(`cfg-${field.key}`).trim()]);
+        payload.push(['company_third_party_id', getInputVal('cfg-third').trim()]);
         await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
         
         // Guardar o eliminar el logo de la empresa

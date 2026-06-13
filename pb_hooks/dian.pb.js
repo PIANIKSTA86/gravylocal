@@ -298,6 +298,392 @@ routerAdd('POST', '/api/dian/emit', (e) => {
   return xml;
 }
 
+  const buildFtechXml = function({
+    documentType,
+    documentNumber,
+    issueDate,
+    issueTime,
+    ftechEnvironment,
+    emitterNit,
+    emitterName,
+    emitterAddress,
+    emitterPhone,
+    emitterEmail,
+    custDIANDocType,
+    custDocNum,
+    custName,
+    custAddress,
+    custPhone,
+    custEmail,
+    items,
+    subtotal,
+    ivaTotal,
+    total,
+    prefix,
+    folio,
+    resolution,
+    companyThird,
+    customer,
+    crossDocRef,
+    clTec,
+    cajaName
+  }) {
+    const dec = (val) => Number(val || 0).toFixed(2);
+    const escXml = (val) => String(val || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+    const isNC = (documentType === 'CreditNote');
+    const isND = (documentType === 'DebitNote');
+    const isInv = (documentType === 'Invoice');
+
+    // 1. Root Element
+    const rootTag = (isNC || isND) ? 'NOTA' : 'FACTURA';
+
+    // 2. ENC Block
+    const enc1 = isNC ? 'NC' : (isND ? 'ND' : 'INVOIC');
+    const enc2 = escXml(emitterNit);
+    const enc3 = escXml(custDocNum);
+    const enc4 = 'UBL 2.1';
+    const enc5 = 'DIAN 2.1';
+    const enc6 = escXml(prefix + (isNaN(Number(folio)) ? folio : String(Number(folio))));
+    const enc9 = isNC ? '91' : (isND ? '92' : '01');
+    const enc10 = 'COP';
+    const enc15 = String(items.length);
+    const enc16 = issueDate;
+    const enc20 = escXml(ftechEnvironment || '2'); // 1 = Prod, 2 = Test
+    const enc21 = isNC ? '20' : (isND ? '30' : '10');
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<${rootTag}>
+  <ENC>
+    <ENC_1>${enc1}</ENC_1>
+    <ENC_2>${enc2}</ENC_2>
+    <ENC_3>${enc3}</ENC_3>
+    <ENC_4>${enc4}</ENC_4>
+    <ENC_5>${enc5}</ENC_5>
+    <ENC_6>${enc6}</ENC_6>
+    <ENC_9>${enc9}</ENC_9>
+    <ENC_10>${enc10}</ENC_10>
+    <ENC_15>${enc15}</ENC_15>
+    <ENC_16>${enc16}</ENC_16>
+    <ENC_20>${enc20}</ENC_20>
+    <ENC_21>${enc21}</ENC_21>
+  </ENC>`;
+
+    // 3. IPV Block (Establishment & Resolution)
+    const ipv1 = escXml(clTec || "00331-10000-00001-AA962");
+    const ipv2 = escXml(cajaName || "Caja1");
+    const ipv3 = escXml(companyThird ? companyThird.getString("contact_name") : emitterName);
+    const ipv4 = escXml(cajaName || "CAJA1").toUpperCase();
+    const ipv5 = escXml(prefix || 'FE');
+    const ipv6 = dec(total);
+
+    xml += `
+  <IPV>
+    <IPV_1>${ipv1}</IPV_1>
+    <IPV_2>${ipv2}</IPV_2>
+    <IPV_3>${ipv3}</IPV_3>
+    <IPV_4>${ipv4}</IPV_4>
+    <IPV_5>${ipv5}</IPV_5>
+    <IPV_6>${ipv6}</IPV_6>
+  </IPV>`;
+
+    // 4. EMI Block (Emitter)
+    const emi1 = companyThird && companyThird.getString("person_type") === 'JURIDICA' ? '2' : '1';
+    const emi2 = escXml(emitterNit);
+    const emi3 = companyThird ? mapDocType(companyThird.getString("doc_type")) : '13';
+    const emi6 = escXml(emitterName);
+    const emi7 = escXml(companyThird ? (companyThird.getString("commercial_name") || companyThird.getString("name")) : emitterName);
+    const emi10 = escXml(emitterAddress);
+    
+    const emiDeptCode = companyThird ? (companyThird.getString("dept_code") || '11') : '11';
+    const emiDeptName = companyThird ? (companyThird.getString("department") || 'BOGOTA') : 'BOGOTA';
+    const emiCityCode = companyThird ? (companyThird.getString("city_code") || '11001') : '11001';
+    const emiCityName = companyThird ? (companyThird.getString("city") || 'BOGOTA D.C.') : 'BOGOTA D.C.';
+    const emiCountryCode = companyThird ? (companyThird.getString("country") || 'CO') : 'CO';
+    const emiDv = companyThird ? (companyThird.getString("dv") || '0') : '0';
+    const emiPostal = '110111';
+    const emiPostalDfe = '111011';
+    const emiContact = escXml(companyThird ? (companyThird.getString("contact_name") || companyThird.getString("name")) : emitterName);
+    
+    const emiTac1 = emi1 === '1' ? 'R-99-PN' : 'R-99-PJ';
+    const emiIcc1 = '000000';
+    const emiIcc9 = escXml(prefix || 'FE');
+
+    xml += `
+  <EMI>
+    <EMI_1>${emi1}</EMI_1>
+    <EMI_2>${emi2}</EMI_2>
+    <EMI_3>${emi3}</EMI_3>
+    <EMI_6>${emi6}</EMI_6>
+    <EMI_7>${emi7}</EMI_7>
+    <EMI_10>${emi10}</EMI_10>
+    <EMI_11>${emiDeptCode}</EMI_11>
+    <EMI_13>${emiDeptName}</EMI_13>
+    <EMI_14>${emiPostal}</EMI_14>
+    <EMI_15>${emiCountryCode}</EMI_15>
+    <EMI_19>${emiCityName}</EMI_19>
+    <EMI_22>${emiDv}</EMI_22>
+    <EMI_23>${emiCityCode}</EMI_23>
+    <EMI_24>${emiContact}</EMI_24>
+    <TAC>
+      <TAC_1>${emiTac1}</TAC_1>
+    </TAC>
+    <DFE>
+      <DFE_1>${emiCityCode}</DFE_1>
+      <DFE_2>${emiDeptCode}</DFE_2>
+      <DFE_3>${emiCountryCode}</DFE_3>
+      <DFE_4>${emiPostalDfe}</DFE_4>
+      <DFE_5>COLOMBIA</DFE_5>
+      <DFE_6>${emiCityName}</DFE_6>
+      <DFE_7>${emiDeptName}</DFE_7>
+      <DFE_8>${emi10}</DFE_8>
+    </DFE>
+    <ICC>
+      <ICC_1>${emiIcc1}</ICC_1>
+      <ICC_9>${emiIcc9}</ICC_9>
+    </ICC>
+    <CDE>
+      <CDE_2>${emiContact}</CDE_2>
+      <CDE_3>${escXml(emitterPhone)}</CDE_3>
+      <CDE_4>${escXml(emitterEmail)}</CDE_4>
+    </CDE>
+    <GTE>
+      <GTE_1>01</GTE_1>
+      <GTE_2>IVA</GTE_2>
+    </GTE>
+  </EMI>`;
+
+    // 5. ADQ Block (Acquirer)
+    const adq1 = customer && customer.getString("person_type") === 'JURIDICA' ? '2' : '1';
+    const adq2 = escXml(custDocNum);
+    const adq3 = (custDocNum === '222222222222' || custName.toUpperCase() === 'CONSUMIDOR FINAL') ? '13' : escXml(custDIANDocType);
+    const adq6 = escXml(custName);
+    
+    const adqDeptCode = customer ? (customer.getString("dept_code") || '11') : '11';
+    const adqDeptName = customer ? (customer.getString("department") || 'BOGOTA') : 'BOGOTA';
+    const adqCityCode = customer ? (customer.getString("city_code") || '11001') : '11001';
+    const adqCityName = customer ? (customer.getString("city") || 'BOGOTA D.C.') : 'BOGOTA D.C.';
+    const adqCountryCode = customer ? (customer.getString("country") || 'CO') : 'CO';
+    const adqAddress = escXml(custAddress);
+    const adqTac1 = adq1 === '1' ? 'R-99-PN' : 'R-99-PJ';
+
+    xml += `
+  <ADQ>
+    <ADQ_1>${adq1}</ADQ_1>
+    <ADQ_2>${adq2}</ADQ_2>
+    <ADQ_3>${adq3}</ADQ_3>
+    <ADQ_6>${adq6}</ADQ_6>
+    <ADQ_11>${adqDeptCode}</ADQ_11>
+    <ADQ_13>${adqCityName}</ADQ_13>
+    <ADQ_15>${adqCountryCode}</ADQ_15>
+    <ADQ_22>9</ADQ_22>
+    <TCR>
+      <TCR_1>${adqTac1}</TCR_1>
+    </TCR>
+    <CDA>
+      <CDA_2>${adq6}</CDA_2>
+      <CDA_3>${escXml(custPhone)}</CDA_3>
+      <CDA_4>${escXml(custEmail)}</CDA_4>
+    </CDA>
+    <GTA>
+      <GTA_1>01</GTA_1>
+      <GTA_2>IVA</GTA_2>
+    </GTA>
+  </ADQ>`;
+
+    // 6. TOT Block
+    xml += `
+  <TOT>
+    <TOT_1>${dec(subtotal)}</TOT_1>
+    <TOT_2>COP</TOT_2>
+    <TOT_3>${dec(subtotal)}</TOT_3>
+    <TOT_4>COP</TOT_4>
+    <TOT_5>${dec(total)}</TOT_5>
+    <TOT_6>COP</TOT_6>
+    <TOT_7>${dec(total)}</TOT_7>
+    <TOT_8>COP</TOT_8>
+  </TOT>`;
+
+    // 7. TIM Block
+    const taxGroups = {};
+    for (const item of items) {
+      const rate = Number(item.ivaRate || 0).toFixed(1);
+      if (!taxGroups[rate]) {
+        taxGroups[rate] = { base: 0, amount: 0 };
+      }
+      taxGroups[rate].base += Number(item.subtotal || 0);
+      taxGroups[rate].amount += Number(item.ivaAmount || 0);
+    }
+    
+    if (Object.keys(taxGroups).length === 0) {
+      taxGroups["0.0"] = { base: subtotal, amount: 0 };
+    }
+
+    xml += `
+  <TIM>
+    <TIM_1>false</TIM_1>
+    <TIM_2>${dec(ivaTotal)}</TIM_2>
+    <TIM_3>COP</TIM_3>`;
+
+    for (const rate of Object.keys(taxGroups)) {
+      const group = taxGroups[rate];
+      xml += `
+    <IMP>
+      <IMP_1>01</IMP_1>
+      <IMP_2>${dec(group.base)}</IMP_2>
+      <IMP_3>COP</IMP_3>
+      <IMP_4>${dec(group.amount)}</IMP_4>
+      <IMP_5>COP</IMP_5>
+      <IMP_6>${rate}</IMP_6>
+    </IMP>`;
+    }
+    xml += `
+  </TIM>`;
+
+    // 8. DRF Block
+    const drf1 = escXml(resolution ? resolution.getString("resolution_number") : "18764000000001");
+    const drf2 = resolution ? resolution.getString("resolution_date").slice(0, 10) : "2026-01-01";
+    const drf3 = resolution ? resolution.getString("expiration_date").slice(0, 10) : "2030-01-01";
+    const drf4 = escXml(prefix || 'FE');
+    const drf5 = String(resolution ? resolution.getInt("number_from") : 1);
+    const drf6 = String(resolution ? resolution.getInt("number_to") : 10000);
+
+    xml += `
+  <DRF>
+    <DRF_1>${drf1}</DRF_1>
+    <DRF_2>${drf2}</DRF_2>
+    <DRF_3>${drf3}</DRF_3>
+    <DRF_4>${drf4}</DRF_4>
+    <DRF_5>${drf5}</DRF_5>
+    <DRF_6>${drf6}</DRF_6>
+  </DRF>`;
+
+    // 9. REF Block
+    if ((isNC || isND) && crossDocRef) {
+      let refPrefix = "FE";
+      let refFolio = crossDocRef.replace(/[^0-9]/g, '');
+      let refDate = "";
+      let refCufe = "";
+      
+      try {
+        const origInvoice = $app.findFirstRecordByFilter("invoices", "number = '" + crossDocRef + "'");
+        if (origInvoice) {
+          refDate = origInvoice.getString("date").slice(0, 10);
+          try {
+            const origDoc = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + origInvoice.getString("tx_id") + "'");
+            if (origDoc) {
+              refCufe = origDoc.getString("cufe");
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      const parts = crossDocRef.split("-");
+      if (parts.length > 1) {
+        refPrefix = parts[0];
+        refFolio = parts.slice(1).join("-").replace(/[^0-9]/g, '');
+      } else {
+        const match = crossDocRef.match(/^([A-Za-z]+)(\d+)$/);
+        if (match) {
+          refPrefix = match[1];
+          refFolio = match[2];
+        }
+      }
+      
+      if (!refDate) {
+        refDate = new Date().toISOString().slice(0, 10);
+      }
+      if (!refCufe) {
+        refCufe = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+      }
+
+      xml += `
+  <REF>
+    <REF_1>IV</REF_1>
+    <REF_2>${escXml(refPrefix + refFolio)}</REF_2>
+    <REF_3>${refDate}</REF_3>
+    <REF_4>${escXml(refCufe)}</REF_4>
+    <REF_5>CUFE-SHA384</REF_5>
+  </REF>`;
+    }
+
+    // 10. MEP Block
+    let mep1 = "10";
+    let mep2 = "1";
+    xml += `
+  <MEP>
+    <MEP_1>${mep1}</MEP_1>
+    <MEP_2>${mep2}</MEP_2>
+  </MEP>`;
+
+    // 11. CDN Block
+    if (isNC || isND) {
+      const cdn1 = isNC ? '2' : '1';
+      const cdn2 = isNC ? 'Anulacion de factura electronica de venta' : 'Ajuste de factura electronica de venta';
+      xml += `
+  <CDN>
+    <CDN_1>${cdn1}</CDN_1>
+    <CDN_2>${cdn2}</CDN_2>
+  </CDN>`;
+    }
+
+    // 12. ITE Blocks
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
+      const itemIdx = String(idx + 1);
+      const itemQty = dec(item.qty);
+      const itemPrice = dec(item.price);
+      const itemSubtotal = dec(item.subtotal);
+      const itemDesc = escXml(item.description);
+      const itemIvaRate = dec(item.ivaRate || 0);
+      const itemIvaAmount = dec(item.ivaAmount || 0);
+
+      xml += `
+  <ITE>
+    <ITE_1>${itemIdx}</ITE_1>
+    <ITE_3>${itemQty}</ITE_3>
+    <ITE_4>ZZ</ITE_4>
+    <ITE_5>${itemPrice}</ITE_5>
+    <ITE_6>COP</ITE_6>
+    <ITE_7>${itemSubtotal}</ITE_7>
+    <ITE_8>COP</ITE_8>
+    <ITE_11>${itemDesc}</ITE_11>
+    <ITE_19>${itemSubtotal}</ITE_19>
+    <ITE_20>COP</ITE_20>
+    <ITE_27>${itemQty}</ITE_27>
+    <ITE_28>ZZ</ITE_28>
+    <IAE>
+      <IAE_1>99999999</IAE_1>
+      <IAE_2>999</IAE_2>
+    </IAE>
+    <TII>
+      <TII_1>${itemIvaAmount}</TII_1>
+      <TII_2>COP</TII_2>
+      <TII_3>false</TII_3>
+      <IIM>
+        <IIM_1>01</IIM_1>
+        <IIM_2>${itemIvaAmount}</IIM_2>
+        <IIM_3>COP</IIM_3>
+        <IIM_4>${itemSubtotal}</IIM_4>
+        <IIM_5>COP</IIM_5>
+        <IIM_6>${itemIvaRate}</IIM_6>
+      </IIM>
+    </TII>
+  </ITE>`;
+    }
+
+    xml += `
+</${rootTag}>`;
+
+    return xml;
+  };
+
+
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -424,9 +810,26 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       const lines = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invoice.id + "'", "line_order");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        
+        let desc = line.getString("description");
+        if (!desc) {
+          const prodId = line.getString("product_id");
+          if (prodId) {
+            try {
+              const product = $app.findRecordById("products", prodId);
+              if (product) {
+                desc = product.getString("name") || product.getString("description");
+              }
+            } catch (_) {}
+          }
+        }
+        if (!desc) {
+          desc = "Producto/Servicio";
+        }
+
         items.push({
           id: String(i + 1),
-          description: line.getString("description") || "Producto/Servicio",
+          description: desc,
           qty: line.getFloat("qty") || 1,
           price: line.getFloat("unit_price") || 0,
           ivaRate: line.getFloat("iva_rate") || 0,
@@ -461,37 +864,128 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     }
     
     const docNumber = tx.getString("number") || ("TEMP" + Date.now());
-    
-    const xml = buildUblXml({
-      documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
-      documentNumber: docNumber,
-      issueDate,
-      issueTime,
-      dianEnvironment,
-      emitterNit,
-      emitterName,
-      emitterAddress,
-      emitterPhone,
-      emitterEmail,
-      custDIANDocType,
-      custDocNum,
-      custName,
-      custAddress,
-      custPhone,
-      custEmail,
-      items,
-      subtotal,
-      ivaTotal,
-      total,
-      softwareId
-    });
-    
     const prefix = txType ? txType.getString("prefix") : "";
     let folio = docNumber;
     if (prefix && folio.startsWith(prefix)) {
       folio = folio.substring(prefix.length);
     }
     folio = folio.replace(/[^0-9]/g, '');
+
+    let companyThird = null;
+    if (companyThirdPartyId) {
+      try {
+        companyThird = $app.findRecordById("third_parties", companyThirdPartyId);
+      } catch (err) {
+        console.warn("[GRAVY] Error al cargar tercero de empresa:", err);
+      }
+    }
+
+    let docTypeForRes = "FV";
+    if (isNC) docTypeForRes = "NC";
+    else if (isND) docTypeForRes = "ND";
+    else if (isPOS) docTypeForRes = "POS";
+
+    let resolution = null;
+    try {
+      resolution = $app.findFirstRecordByFilter("dian_resolutions", "active = true && prefix = '" + prefix + "' && document_type = '" + docTypeForRes + "'");
+    } catch (_) {
+      try {
+        resolution = $app.findFirstRecordByFilter("dian_resolutions", "active = true && document_type = '" + docTypeForRes + "'");
+      } catch (_) {}
+    }
+
+    let cajaName = "Caja1";
+    const posShiftId = tx.getString("pos_shift_id");
+    if (posShiftId) {
+      try {
+        const shift = $app.findRecordById("pos_shifts", posShiftId);
+        const regId = shift.getString("pos_register_id");
+        if (regId) {
+          const register = $app.findRecordById("pos_registers", regId);
+          if (register) {
+            cajaName = (register.getString("name") || "Caja1").replace(/\s+/g, "");
+          }
+        }
+      } catch (_) {}
+    } else if (resolution) {
+      const regId = resolution.getString("pos_register_id");
+      if (regId) {
+        try {
+          const register = $app.findRecordById("pos_registers", regId);
+          if (register) {
+            cajaName = (register.getString("name") || "Caja1").replace(/\s+/g, "");
+          }
+        } catch (_) {}
+      }
+    }
+
+    let xml = "";
+    if (einvoiceMethod === "facturatech") {
+      xml = buildFtechXml({
+        documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
+        documentNumber: docNumber,
+        issueDate,
+        issueTime,
+        ftechEnvironment,
+        emitterNit,
+        emitterName,
+        emitterAddress,
+        emitterPhone,
+        emitterEmail,
+        custDIANDocType,
+        custDocNum,
+        custName,
+        custAddress,
+        custPhone,
+        custEmail,
+        items,
+        subtotal,
+        ivaTotal,
+        total,
+        prefix,
+        folio,
+        resolution,
+        companyThird,
+        customer,
+        clTec,
+        cajaName,
+        crossDocRef: (() => {
+          if (!invoice) return "";
+          const notesStr = invoice.getString("notes") || "";
+          const m = notesStr.match(/Ajuste a documento\s+([A-Za-z0-9\-]+)/i);
+          return m ? m[1].trim() : "";
+        })()
+      });
+    } else {
+      xml = buildUblXml({
+        documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
+        documentNumber: docNumber,
+        issueDate,
+        issueTime,
+        dianEnvironment,
+        emitterNit,
+        emitterName,
+        emitterAddress,
+        emitterPhone,
+        emitterEmail,
+        custDIANDocType,
+        custDocNum,
+        custName,
+        custAddress,
+        custPhone,
+        custEmail,
+        items,
+        subtotal,
+        ivaTotal,
+        total,
+        softwareId
+      });
+    }
+
+    if (body.dryRun || body.testXml) {
+      e.json(200, { success: true, xml: xml });
+      return;
+    }
 
     if (einvoiceMethod === "facturatech") {
       if (docRecord.getString("status") === "enviada" && docRecord.getString("ftech_transaction_id")) {

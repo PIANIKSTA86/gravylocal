@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="UTF-8"?>
+ <FACTURA>
+ <ENC>
+       <ENC_1>INVOIC</ENC_1>
+       <ENC_2>1144054250</ENC_2>
+       <ENC_3>2222222222</ENC_3>
+       <ENC_4>UBL 2.1</ENC_4>
+       <ENC_5>DIAN 2.1</ENC_5>
+       <ENC_6>FE2945</ENC_6>
+       <ENC_9>01</ENC_9>
+       <ENC_10>COP</ENC_10>
+       <ENC_15>3</ENC_15>
+       <ENC_16>2025-05-15</ENC_16>
+       <ENC_20>1</ENC_20>
+       <ENC_21>10</ENC_21>
+ </ENC>
+
+ <IPV>
+       <IPV_1>00331-10000-00001-AA962</IPV_1>
+       <IPV_2>CC. CALICENTRO</IPV_2>
+       <IPV_3>Claudia Guerrero</IPV_3>
+       <IPV_4>CAJA1</IPV_4>
+       <IPV_5>FE</IPV_5>
+       <IPV_6>180672.27</IPV_6>
+ </IPV>
+ <EMI>
+       <EMI_1>1</EMI_1>
+       <EMI_2>1144054250</EMI_2>
+       <EMI_3>31</EMI_3>
+       <EMI_6>CINDY VANESSA RAMIREZ DUQUE</EMI_6>
+       <EMI_7>CINDY VANESSA RAMIREZ DUQUE</EMI_7>
+       <EMI_10>CR 8 13 47 LC 143 C8</EMI_10>
+       <EMI_11>76</EMI_11>
+       <EMI_13>VALLE DEL CAUCA</EMI_13>
+       <EMI_14>760044</EMI_14>
+       <EMI_15>CO</EMI_15>
+       <EMI_19>CALI</EMI_19>
+       <EMI_22>0</EMI_22>
+       <EMI_23>76001</EMI_23>
+       <EMI_24>CINDY VANESSA RAMIREZ DUQUE</EMI_24>
+
+       <TAC>
+           <TAC_1>R-99-PN</TAC_1>
+       </TAC>
+
+       <DFE>
+           <DFE_1>76001</DFE_1>
+           <DFE_2>76</DFE_2>
+           <DFE_3>CO</DFE_3>
+           <DFE_4>760044</DFE_4>
+           <DFE_5>COLOMBIA</DFE_5>
+           <DFE_6>CALI</DFE_6>
+           <DFE_7>VALLE DEL CAUCA</DFE_7>
+           <DFE_8>CR 8 13 47 LC 143 C8</DFE_8>
+       </DFE>
+
+       <ICC>
+           <ICC_1>844962</ICC_1>
+           <ICC_9>FE</ICC_9>
+       </ICC>
+
+       <CDE>
+           <CDE_2>CINDY VANESSA RAMIREZ DUQUE</CDE_2>
+           <CDE_3>3186226229</CDE_3>
+           <CDE_4>zeusmamas@gmail.com</CDE_4>
+       </CDE>
+
+       <GTE>
+           <GTE_1>01</GTE_1>
+           <GTE_2>IVA</GTE_2>
+       </GTE>
+
+ </EMI>
+ <ADQ>
+       <ADQ_1>2</ADQ_1>
+       <ADQ_2>2222222222</ADQ_2>
+       <ADQ_3>13</ADQ_3>
+       <ADQ_6>CONSUMIDOR_FINAL</ADQ_6>
+       <ADQ_11>76</ADQ_11>
+       <ADQ_13>CALI</ADQ_13>
+       <ADQ_15>CO</ADQ_15>
+       <ADQ_22>9</ADQ_22>
+       <TCR>
+           <TCR_1>R-99-PN</TCR_1>
+       </TCR>
+
+       <CDA>
+           <CDA_2>CONSUMIDOR_FINAL / Departamento de Compras</CDA_2>
+           <CDA_3>3186626229</CDA_3>
+           <CDA_4>na@gmail.com</CDA_4>
+       </CDA>
+
+       <GTA>
+           <GTA_1>01</GTA_1>
+           <GTA_2>IVA</GTA_2>
+       </GTA>
+ </ADQ>
+
+ <TOT>
+       <TOT_1>180672.27</TOT_1>
+       <TOT_2>COP</TOT_2>
+       <TOT_3>180672.27</TOT_3>
+       <TOT_4>COP</TOT_4>
+       <TOT_5>215000.00</TOT_5>
+       <TOT_6>COP</TOT_6>
+       <TOT_7>215000.00</TOT_7>
+       <TOT_8>COP</TOT_8>
+ </TOT>
+
+<TIM>
+       <TIM_1>false</TIM_1>
+       <TIM_2>34327.73</TIM_2>
+       <TIM_3>COP</TIM_3>
+    
+       <IMP>
+           <IMP_1>01</IMP_1>
+           <IMP_2>180672.27</IMP_2>
+           <IMP_3>COP</IMP_3>
+           <IMP_4>34327.73</IMP_4>
+           <IMP_5>COP</IMP_5>
+           <IMP_6>19.0</IMP_6>
+       </IMP>
+</TIM>
+
+   <DRF>
+       <DRF_1>18764074485861</DRF_1>
+       <DRF_2>2024-07-05</DRF_2>
+       <DRF_3>2026-07-05</DRF_3>
+       <DRF_4>FE</DRF_4>
+       <DRF_5>1001</DRF_5>
+       <DRF_6>5000</DRF_6>
+   </DRF>
+ 
+   <MEP>
+       <MEP_1>47</MEP_1>
+       <MEP_2>1</MEP_2>
+   </MEP>
+ <ITE>
+       <ITE_1>1</ITE_1>
+       <ITE_3>1.00</ITE_3>
+       <ITE_4>ZZ</ITE_4>
+       <ITE_5>54621.85</ITE_5>
+       <ITE_6>COP</ITE_6>
+       <ITE_7>54621.85</ITE_7>
+       <ITE_8>COP</ITE_8>
+       <ITE_11>BLUSA M SISA</ITE_11>
+       <ITE_19>54621.85</ITE_19>
+       <ITE_20>COP</ITE_20>
+       <ITE_27>1</ITE_27>
+       <ITE_28>ZZ</ITE_28>
+       <IAE>
+               <IAE_1>25010104</IAE_1>
+               <IAE_2>999</IAE_2>
+       </IAE>
+
+ <TII>
+       <TII_1>10378.15</TII_1>
+       <TII_2>COP</TII_2>
+       <TII_3>false</TII_3>
+       <IIM>
+           <IIM_1>01</IIM_1>
+           <IIM_2>10378.15</IIM_2>
+           <IIM_3>COP</IIM_3>
+           <IIM_4>54621.85</IIM_4>
+           <IIM_5>COP</IIM_5>
+           <IIM_6>19</IIM_6>
+       </IIM>
+ </TII>
+ </ITE>
+
+ <ITE>
+       <ITE_1>2</ITE_1>
+       <ITE_3>1.00</ITE_3>
+       <ITE_4>ZZ</ITE_4>
+       <ITE_5>63025.21</ITE_5>
+       <ITE_6>COP</ITE_6>
+       <ITE_7>63025.21</ITE_7>
+       <ITE_8>COP</ITE_8>
+       <ITE_11>BLUSA SATIN</ITE_11>
+       <ITE_19>63025.21</ITE_19>
+       <ITE_20>COP</ITE_20>
+       <ITE_27>1</ITE_27>
+       <ITE_28>ZZ</ITE_28>
+       <IAE>
+               <IAE_1>25010146</IAE_1>
+               <IAE_2>999</IAE_2>
+       </IAE>
+
+ <TII>
+       <TII_1>11974.79</TII_1>
+       <TII_2>COP</TII_2>
+       <TII_3>false</TII_3>
+       <IIM>
+           <IIM_1>01</IIM_1>
+           <IIM_2>11974.79</IIM_2>
+           <IIM_3>COP</IIM_3>
+           <IIM_4>63025.21</IIM_4>
+           <IIM_5>COP</IIM_5>
+           <IIM_6>19</IIM_6>
+       </IIM>
+ </TII>
+ </ITE>
+
+ <ITE>
+       <ITE_1>3</ITE_1>
+       <ITE_3>1.00</ITE_3>
+       <ITE_4>ZZ</ITE_4>
+       <ITE_5>63025.21</ITE_5>
+       <ITE_6>COP</ITE_6>
+       <ITE_7>63025.21</ITE_7>
+       <ITE_8>COP</ITE_8>
+       <ITE_11>BLUSA CAMISERA</ITE_11>
+       <ITE_19>63025.21</ITE_19>
+       <ITE_20>COP</ITE_20>
+       <ITE_27>1</ITE_27>
+       <ITE_28>ZZ</ITE_28>
+       <IAE>
+               <IAE_1>25010106</IAE_1>
+               <IAE_2>999</IAE_2>
+       </IAE>
+
+ <TII>
+       <TII_1>11974.79</TII_1>
+       <TII_2>COP</TII_2>
+       <TII_3>false</TII_3>
+       <IIM>
+           <IIM_1>01</IIM_1>
+           <IIM_2>11974.79</IIM_2>
+           <IIM_3>COP</IIM_3>
+           <IIM_4>63025.21</IIM_4>
+           <IIM_5>COP</IIM_5>
+           <IIM_6>19</IIM_6>
+       </IIM>
+ </TII>
+ </ITE>
+
+</FACTURA>

@@ -6,6 +6,18 @@ const forge = require('node-forge');
 const AdmZip = require('adm-zip');
 const https = require('https');
 const http = require('http');
+const PDFDocument = require('pdfkit');
+
+/**
+ * hashFtechPassword: Returns SHA-256 hex of the password.
+ * If the password is ALREADY a 64-char hex string (pre-hashed), use it as-is.
+ * This prevents double-hashing when the password was saved already hashed.
+ */
+function hashFtechPassword(ftechPassword) {
+  const isAlreadyHashed = /^[0-9a-f]{64}$/i.test(String(ftechPassword || ''));
+  if (isAlreadyHashed) return String(ftechPassword);
+  return crypto.createHash('sha256').update(ftechPassword).digest('hex');
+}
 
 const app = express();
 app.use(express.json());
@@ -546,10 +558,9 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, ftechUsername).' });
     }
 
-    // 1. Simulation Mode if password is empty or starting with "mock"
+    // 1. Simulation Mode if password is empty or starts with "mock"
     if (!ftechPassword || ftechPassword.toLowerCase().startsWith('mock')) {
       console.log(`[GRAVY FTECH] Operando en MODO SIMULADO para ${documentType} ${documentNumber}`);
-      
       const mockTxId = `FTECH_MOCK_TX_${Date.now()}`;
       return res.json({
         success: true,
@@ -561,8 +572,9 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
       });
     }
 
-    // 2. Real Mode: Encrypt password with SHA256 (lowercase hex)
-    const hashedPassword = crypto.createHash('sha256').update(ftechPassword).digest('hex');
+    // 2. Real Mode: Use password — detect if already SHA-256 hashed (64 hex chars)
+    const hashedPassword = hashFtechPassword(ftechPassword);
+    console.log(`[GRAVY FTECH] Usando password hash (${hashedPassword.length} chars): ${hashedPassword.slice(0,8)}...`);
     const xmlBase64 = Buffer.from(xmlContent, 'utf8').toString('base64');
 
     // 3. Construct SOAP RPC encoded Envelope
@@ -641,10 +653,8 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     // 1. Simulation Mode check
     if (!ftechPassword || ftechPassword.toLowerCase().startsWith('mock')) {
       console.log(`[GRAVY FTECH] Consulta de estado SIMULADA para transId: ${transId}`);
-      
       const mockCufe = 'FTECHMOCKCUFE' + crypto.createHash('sha256').update(prefix + folio).digest('hex').substring(0, 52).toUpperCase();
       const mockSignedXml = `<Invoice><Note>MOCK SIGNED XML VIA FACTURATECH</Note><CUFE>${mockCufe}</CUFE></Invoice>`;
-      
       return res.json({
         success: true,
         simulated: true,
@@ -655,7 +665,9 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       });
     }
 
-    const hashedPassword = crypto.createHash('sha256').update(ftechPassword).digest('hex');
+    // Use password — detect if already SHA-256 hashed
+    const hashedPassword = hashFtechPassword(ftechPassword);
+    console.log(`[GRAVY FTECH] check-status hash (${hashedPassword.length} chars): ${hashedPassword.slice(0,8)}...`);
     const endpointUrl = ftechEnvironment === '1'
       ? 'https://ws.facturatech.co/v2/pro/index.php'
       : 'https://ws.facturatech.co/21/index.php';
@@ -778,17 +790,263 @@ app.post('/api/facturatech/check-status', async (req, res) => {
   }
 });
 
-app.post('/api/dian/download-zip', (req, res) => {
+/**
+ * generateInvoicePdf: Generates a PDF representation (Representación Gráfica)
+ * of an electronic invoice from its UBL XML content.
+ * Returns a Promise<Buffer> with the PDF bytes.
+ */
+function generateInvoicePdf(xmlContent, filename) {
+  return new Promise((resolve, reject) => {
+    try {
+      // --- Extract key fields from XML using simple regex (no DOM parser needed) ---
+      const getTag = (tag) => {
+        const m = xmlContent.match(new RegExp(`<(?:[a-zA-Z]+:)?${tag}[^>]*>([\\s\\S]*?)<\/(?:[a-zA-Z]+:)?${tag}>`, 'i'));
+        return m ? m[1].trim().replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1') : '';
+      };
+      const getAttr = (tag, attr) => {
+        const m = xmlContent.match(new RegExp(`<(?:[a-zA-Z]+:)?${tag}[^>]*${attr}="([^"]*)"`));
+        return m ? m[1] : '';
+      };
+
+      const docId       = getTag('ID') || filename;
+      const issueDate   = getTag('IssueDate') || '';
+      const issueTime   = getTag('IssueTime') || '';
+      const cufe        = getTag('UUID') || 'No disponible';
+      const currency    = getTag('DocumentCurrencyCode') || 'COP';
+      const docTypeRaw  = xmlContent.match(/<(?:[a-zA-Z]+:)?InvoiceTypeCode[^>]*>(.*?)<\/(?:[a-zA-Z]+:)?InvoiceTypeCode>/i);
+      const docTypeCode = docTypeRaw ? docTypeRaw[1].trim() : '';
+      const docTypeLabel = docTypeCode === '01' ? 'Factura Electrónica de Venta' : docTypeCode === '91' ? 'Nota Crédito' : docTypeCode === '92' ? 'Nota Débito' : 'Documento Electrónico';
+
+      // Supplier info
+      const supplierName = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?RegistrationName>([\s\S]*?)<\/(?:[a-zA-Z]+:)?RegistrationName>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const supplierNit = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?CompanyID[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?CompanyID>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const supplierEmail = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?ElectronicMail>([\s\S]*?)<\/(?:[a-zA-Z]+:)?ElectronicMail>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const supplierPhone = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?Telephone>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Telephone>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const supplierAddress = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?AddressLine>([\s\S]*?)<\/(?:[a-zA-Z]+:)?AddressLine>/i);
+        return m ? m[1].trim() : '';
+      })();
+
+      // Customer info
+      const customerName = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?RegistrationName>([\s\S]*?)<\/(?:[a-zA-Z]+:)?RegistrationName>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const customerNit = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?CompanyID[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?CompanyID>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const customerEmail = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?ElectronicMail>([\s\S]*?)<\/(?:[a-zA-Z]+:)?ElectronicMail>/i);
+        return m ? m[1].trim() : '';
+      })();
+      const customerAddress = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?AddressLine>([\s\S]*?)<\/(?:[a-zA-Z]+:)?AddressLine>/i);
+        return m ? m[1].trim() : '';
+      })();
+
+      // Totals
+      const payableAmount = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?PayableAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?PayableAmount>/i);
+        return m ? parseFloat(m[1].trim()) : 0;
+      })();
+      const taxAmount = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?TaxTotal>[\s\S]*?<(?:[a-zA-Z]+:)?TaxAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?TaxAmount>/i);
+        return m ? parseFloat(m[1].trim()) : 0;
+      })();
+      const lineExtension = (() => {
+        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?LegalMonetaryTotal>[\s\S]*?<(?:[a-zA-Z]+:)?LineExtensionAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?LineExtensionAmount>/i);
+        return m ? parseFloat(m[1].trim()) : 0;
+      })();
+
+      // Invoice lines
+      const lines = [];
+      const linePattern = /<(?:[a-zA-Z]+:)?(?:Invoice|CreditNote|DebitNote)Line>([\s\S]*?)<\/(?:[a-zA-Z]+:)?(?:Invoice|CreditNote|DebitNote)Line>/gi;
+      let lineMatch;
+      while ((lineMatch = linePattern.exec(xmlContent)) !== null) {
+        const lineXml = lineMatch[1];
+        const desc = (lineXml.match(/<(?:[a-zA-Z]+:)?Description>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Description>/i) || [])[1]?.trim() || '';
+        const qty = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?(?:Invoiced|Credited|Debited)Quantity[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?(?:Invoiced|Credited|Debited)Quantity>/i) || [])[1] || '0');
+        const unitPrice = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?PriceAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?PriceAmount>/i) || [])[1] || '0');
+        const lineTotal = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?LineExtensionAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?LineExtensionAmount>/i) || [])[1] || '0');
+        const ivaRate = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?Percent>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Percent>/i) || [])[1] || '0');
+        if (desc) lines.push({ desc, qty, unitPrice, lineTotal, ivaRate });
+      }
+
+      const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0);
+
+      // --- Build PDF ---
+      const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+      const buffers = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const BLUE  = '#1A4B8C';
+      const ORANGE = '#E87D1E';
+      const GRAY  = '#6B7280';
+      const LGRAY = '#F3F4F6';
+      const TEXT  = '#111827';
+      const W     = doc.page.width - 80; // usable width
+      const L     = 40; // left margin
+
+      // ── HEADER BAR ──────────────────────────────────────────────
+      doc.rect(L, 40, W, 70).fill(BLUE);
+      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(16)
+         .text(docTypeLabel.toUpperCase(), L + 12, 52, { width: W - 120 });
+      doc.font('Helvetica').fontSize(10)
+         .text(`No. ${docId}`, L + 12, 72, { width: W - 120 });
+
+      // Date top-right
+      doc.font('Helvetica-Bold').fontSize(9)
+         .text('FECHA', L + W - 110, 50, { width: 100, align: 'right' })
+         .font('Helvetica').text(`${issueDate}`, L + W - 110, 62, { width: 100, align: 'right' })
+         .text(`${issueTime.slice(0,8)}`, L + W - 110, 74, { width: 100, align: 'right' });
+
+      // ── SUPPLIER ────────────────────────────────────────────────
+      let y = 120;
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
+         .text('EMISOR', L, y);
+      y += 14;
+      doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
+         .text(supplierName || 'Razón Social del Emisor', L, y, { width: W * 0.55 });
+      y += 13;
+      doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+         .text(`NIT: ${supplierNit}`, L, y)
+         .text(`Tel: ${supplierPhone}  |  Email: ${supplierEmail}`, L, y + 10)
+         .text(`Dirección: ${supplierAddress}`, L, y + 20);
+
+      // ── CUSTOMER ────────────────────────────────────────────────
+      const cx = L + W * 0.58;
+      y = 120;
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
+         .text('RECEPTOR / CLIENTE', cx, y);
+      y += 14;
+      doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
+         .text(customerName || 'Consumidor Final', cx, y, { width: W * 0.42 });
+      y += 13;
+      doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+         .text(`NIT / CC: ${customerNit}`, cx, y)
+         .text(`Email: ${customerEmail}`, cx, y + 10)
+         .text(`Dirección: ${customerAddress}`, cx, y + 20);
+
+      // ── DIVIDER ─────────────────────────────────────────────────
+      y = 190;
+      doc.moveTo(L, y).lineTo(L + W, y).strokeColor(ORANGE).lineWidth(1.5).stroke();
+      y += 10;
+
+      // ── LINES TABLE HEADER ───────────────────────────────────────
+      doc.rect(L, y, W, 18).fill(LGRAY);
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8);
+      const cols = { desc: L + 4, qty: L + W * 0.52, price: L + W * 0.63, iva: L + W * 0.76, total: L + W * 0.87 };
+      doc.text('DESCRIPCIÓN', cols.desc, y + 5, { width: W * 0.50 })
+         .text('CANT.', cols.qty, y + 5, { width: 50, align: 'right' })
+         .text('V. UNIT.', cols.price, y + 5, { width: 60, align: 'right' })
+         .text('IVA%', cols.iva, y + 5, { width: 40, align: 'right' })
+         .text('SUBTOTAL', cols.total, y + 5, { width: 60, align: 'right' });
+      y += 20;
+
+      // ── LINES ────────────────────────────────────────────────────
+      doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+      lines.forEach((line, idx) => {
+        if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
+        if (idx % 2 === 1) doc.rect(L, y - 2, W, 15).fill('#F9FAFB');
+        doc.fillColor(TEXT)
+           .text(line.desc, cols.desc, y, { width: W * 0.50 })
+           .text(String(line.qty), cols.qty, y, { width: 50, align: 'right' })
+           .text(fmt(line.unitPrice), cols.price, y, { width: 60, align: 'right' })
+           .text(`${line.ivaRate}%`, cols.iva, y, { width: 40, align: 'right' })
+           .text(fmt(line.lineTotal), cols.total, y, { width: 60, align: 'right' });
+        y += 15;
+      });
+
+      // ── TOTALS ───────────────────────────────────────────────────
+      y += 6;
+      doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+      y += 8;
+      const tw = 200;
+      const tx = L + W - tw;
+      const addTotal = (label, value, bold = false, highlight = false) => {
+        if (highlight) {
+          doc.rect(tx - 8, y - 3, tw + 8, 18).fill(BLUE);
+          doc.fillColor('#FFFFFF').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8);
+        } else {
+          doc.fillColor(GRAY).font('Helvetica').fontSize(8);
+        }
+        doc.text(label, tx, y, { width: tw * 0.55 });
+        doc.fillColor(highlight ? '#FFFFFF' : TEXT)
+           .font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8)
+           .text(value, tx + tw * 0.55, y, { width: tw * 0.45, align: 'right' });
+        y += bold ? 20 : 14;
+      };
+      addTotal('Subtotal (sin IVA):', fmt(lineExtension));
+      addTotal('IVA:', fmt(taxAmount));
+      addTotal('TOTAL A PAGAR:', fmt(payableAmount), true, true);
+
+      // ── CUFE BOX ─────────────────────────────────────────────────
+      y += 10;
+      doc.rect(L, y, W, 42).fill('#F0F4FF');
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8)
+         .text('CUFE / CUDE (Código Único de Factura Electrónica):', L + 6, y + 6);
+      doc.fillColor(TEXT).font('Helvetica').fontSize(6.5)
+         .text(cufe, L + 6, y + 18, { width: W - 12 });
+      y += 50;
+
+      // ── LEGAL FOOTER ─────────────────────────────────────────────
+      doc.fillColor(GRAY).font('Helvetica').fontSize(6.5)
+         .text(
+           `Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente. Generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}.`,
+           L, y, { width: W, align: 'justify' }
+         );
+
+      // ── ORANGE BOTTOM BAR ────────────────────────────────────────
+      const pageH = doc.page.height;
+      doc.rect(L, pageH - 28, W, 6).fill(ORANGE);
+      doc.fillColor(GRAY).font('Helvetica').fontSize(6)
+         .text('Documento generado por GRAVY ERP | Facturación Electrónica DIAN', L, pageH - 18, { width: W, align: 'center' });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+app.post('/api/dian/download-zip', async (req, res) => {
   try {
     const { xmlContent, filename } = req.body;
     if (!xmlContent || !filename) {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
     }
-    
+
+    // Generate PDF representation
+    let pdfBuffer = null;
+    try {
+      pdfBuffer = await generateInvoicePdf(xmlContent, filename);
+      console.log(`[GRAVY ORCHESTRATOR] PDF generado: ${pdfBuffer.length} bytes para ${filename}`);
+    } catch (pdfErr) {
+      console.warn(`[GRAVY ORCHESTRATOR] No se pudo generar PDF (se incluirá solo XML): ${pdfErr.message}`);
+    }
+
     const zip = new AdmZip();
     zip.addFile(`${filename}.xml`, Buffer.from(xmlContent, 'utf-8'));
+    if (pdfBuffer) {
+      zip.addFile(`${filename}.pdf`, pdfBuffer);
+    }
+
     const zipBuffer = zip.toBuffer();
-    
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}.zip"`);
     res.send(zipBuffer);

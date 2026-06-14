@@ -1,5 +1,19 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+const calcularDV = (nit) => {
+  const cleanNit = String(nit || '').replace(/[^0-9]/g, '');
+  if (!cleanNit) return '0';
+  const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+  let suma = 0;
+  const len = cleanNit.length;
+  for (let i = 0; i < len; i++) {
+    const digito = parseInt(cleanNit.charAt(len - 1 - i), 10);
+    suma += digito * pesos[i];
+  }
+  const residuo = suma % 11;
+  return String(residuo > 1 ? 11 - residuo : residuo);
+};
+
 routerAdd('POST', '/api/dian/emit', (e) => {
   const getSetting = function(key, fallback) {
     try {
@@ -51,6 +65,9 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+    
+  const emitterDv = calcularDV(emitterNit);
+  const custDv = custDIANDocType === '31' ? calcularDV(custDocNum) : '0';
     
   const typeCode = documentType === 'Invoice' ? '01' : (documentType === 'CreditNote' ? '91' : '92');
   
@@ -144,7 +161,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       </cac:PhysicalLocation>
       <cac:PartyTaxScheme>
         <cbc:RegistrationName>${escXml(emitterName)}</cbc:RegistrationName>
-        <cbc:CompanyID schemeAgencyID="195" schemeID="4" schemeName="31">${escXml(emitterNit)}</cbc:CompanyID>
+        <cbc:CompanyID schemeAgencyID="195" schemeID="${emitterDv}" schemeName="31">${escXml(emitterNit)}</cbc:CompanyID>
         <cac:TaxScheme>
           <cbc:ID>01</cbc:ID>
           <cbc:Name>IVA</cbc:Name>
@@ -166,7 +183,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
       </cac:PhysicalLocation>
       <cac:PartyTaxScheme>
         <cbc:RegistrationName>${escXml(custName)}</cbc:RegistrationName>
-        <cbc:CompanyID schemeAgencyID="195" schemeID="4" schemeName="${custDIANDocType}">${escXml(custDocNum)}</cbc:CompanyID>
+        <cbc:CompanyID schemeAgencyID="195" schemeID="${custDv}" schemeName="${custDIANDocType}">${escXml(custDocNum)}</cbc:CompanyID>
         <cac:TaxScheme>
           <cbc:ID>01</cbc:ID>
           <cbc:Name>IVA</cbc:Name>
@@ -395,7 +412,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     // 4. EMI Block (Emitter)
     const emi1 = companyThird && companyThird.getString("person_type") === 'JURIDICA' ? '2' : '1';
     const emi2 = escXml(emitterNit);
-    const emi3 = companyThird ? mapDocType(companyThird.getString("doc_type")) : '13';
+    const emi3 = '31'; // Emitter ID type must always be NIT (31) for electronic billing
     const emi6 = escXml(emitterName);
     const emi7 = escXml(companyThird ? (companyThird.getString("commercial_name") || companyThird.getString("name")) : emitterName);
     const emi10 = escXml(emitterAddress);
@@ -405,7 +422,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     const emiCityCode = companyThird ? (companyThird.getString("city_code") || '11001') : '11001';
     const emiCityName = companyThird ? (companyThird.getString("city") || 'BOGOTA D.C.') : 'BOGOTA D.C.';
     const emiCountryCode = companyThird ? (companyThird.getString("country") || 'CO') : 'CO';
-    const emiDv = companyThird ? (companyThird.getString("dv") || '0') : '0';
+    const emiDv = calcularDV(emitterNit);
     const emiPostal = '110111';
     const emiPostalDfe = '111011';
     const emiContact = escXml(companyThird ? (companyThird.getString("contact_name") || companyThird.getString("name")) : emitterName);
@@ -471,6 +488,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     const adqCountryCode = customer ? (customer.getString("country") || 'CO') : 'CO';
     const adqAddress = escXml(custAddress);
     const adqTac1 = adq1 === '1' ? 'R-99-PN' : 'R-99-PJ';
+    const adqDv = adq3 === '31' ? calcularDV(custDocNum) : (customer ? (customer.getString("dv") || '0') : '0');
 
     xml += `
   <ADQ>
@@ -481,7 +499,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     <ADQ_11>${adqDeptCode}</ADQ_11>
     <ADQ_13>${adqCityName}</ADQ_13>
     <ADQ_15>${adqCountryCode}</ADQ_15>
-    <ADQ_22>9</ADQ_22>
+    <ADQ_22>${adqDv}</ADQ_22>
     <TCR>
       <TCR_1>${adqTac1}</TCR_1>
     </TCR>
@@ -1004,7 +1022,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
         documentNumber: docNumber,
         prefix,
-        folio
+        folio,
+        isPOS: isPOS
       };
       
       const res = $http.send({
@@ -1165,13 +1184,16 @@ routerAdd('POST', '/api/dian/check-status', (e) => {
     const hubUrl = "http://127.0.0.1:8088/api/facturatech/check-status";
     console.log("[GRAVY HOOK] Consultando estado en Hub: " + hubUrl);
     
+    const isPOS = txType ? (txType.getString("code") === "POS") : false;
     const requestBody = {
       transId,
       ftechUsername,
       ftechPassword,
       ftechEnvironment,
       prefix,
-      folio
+      folio,
+      isPOS: isPOS,
+      documentNumber: docNumber
     };
     
     const res = $http.send({

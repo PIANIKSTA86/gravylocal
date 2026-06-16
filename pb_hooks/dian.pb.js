@@ -1306,9 +1306,12 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
     const tx = $app.findRecordById("transactions", txId);
     $app.expandRecord(tx, ["third_party_id"], null);
     const customer = tx.expandedOne("third_party_id");
-    const custEmail = customer ? customer.getString("email") : "";
+    let custEmail = body.email || body.custEmail;
     if (!custEmail) {
-      e.json(400, { message: "El cliente no tiene un correo electrónico configurado en su ficha de tercero." });
+      custEmail = customer ? customer.getString("email") : "";
+    }
+    if (!custEmail) {
+      e.json(400, { message: "Debe configurar un correo en la ficha del tercero o ingresar un correo alternativo." });
       return;
     }
     

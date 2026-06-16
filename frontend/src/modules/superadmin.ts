@@ -260,6 +260,13 @@ async function _loadSALicenses() {
     comercial:     { label: 'Comercial',     icon: 'fa-store',      color: '#0C728F' },
     nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7F7CFF' },
     copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B' },
+    inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899' },
+    logistica:     { label: 'Logística',     icon: 'fa-ship',       color: '#3B82F6' },
+    inventarios:   { label: 'Inventarios',   icon: 'fa-warehouse',  color: '#10B981' },
+    tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B' },
+    'tienda-virtual': { label: 'Tienda Virtual', icon: 'fa-basket-shopping', color: '#14B8A6' },
+    spa:           { label: 'Spa Mascotas',  icon: 'fa-paw',        color: '#F43F5E' },
+    conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1' },
   };
 
   try {
@@ -276,7 +283,7 @@ async function _loadSALicenses() {
     const licMap: Record<string, any> = {};
     (data.items || []).forEach((m: any) => licMap[m.module_key] = m);
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades'];
+    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
     
     container.innerHTML = ORDER.map(key => {
       const meta = MODULE_META[key];

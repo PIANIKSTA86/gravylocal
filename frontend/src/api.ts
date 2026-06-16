@@ -43,8 +43,15 @@ const pb = {
     return h;
   },
 
-  /** GET /api/collections/:col/records con filtro y paginaci�n */
-  async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '' } = {}) {
+  /** GET /api/collections/:col/records con filtro y paginacin */
+  async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '', ignoreBranch = false } = {}) {
+    const branchScoped = ['transactions', 'tx_lines', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts'];
+    const activeBranchId = localStorage.getItem('active_branch_id');
+    if (activeBranchId && activeBranchId !== 'TODAS' && branchScoped.includes(collection) && !ignoreBranch) {
+      const branchFilter = `branch_id = "${this.escapeFilterValue(activeBranchId)}"`;
+      filter = filter ? `(${filter}) && ${branchFilter}` : branchFilter;
+    }
+
     const params = new URLSearchParams({ page, perPage });
     if (filter) params.set('filter', filter);
     if (sort) params.set('sort', sort);
@@ -81,6 +88,19 @@ const pb = {
 
   /** POST  crear registro */
   async create(collection, data) {
+    const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts'];
+    if (branchScoped.includes(collection) && data && typeof data === 'object' && !(data instanceof FormData)) {
+      const activeBranchId = localStorage.getItem('active_branch_id');
+      const user = this.currentUser;
+      const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS') 
+        ? activeBranchId 
+        : (user?.default_branch_id || null);
+      
+      if (targetBranchId && !data.branch_id) {
+        data.branch_id = targetBranchId;
+      }
+    }
+
     const isForm = data instanceof FormData;
     const headers = isForm ? (this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {}) : this.headers();
     const body = isForm ? data : JSON.stringify(data);
@@ -348,21 +368,27 @@ const API = {
 
   // -- Transacciones -----------------------------------------
   async createTransaction(txData, lines) {
-    // txData: { tx_type_id, number, date, description, third_party_id?, cross_*, user_id, status }
-    // lines: [{ account_id, debit, credit, description, line_order }]
+    // txData: { tx_type_id, number, date, description, third_party_id?, cross_*, user_id, status, branch_id? }
+    // lines: [{ account_id, debit, credit, description, line_order, branch_id? }]
+    const txBranchId = txData.branch_id || null;
     const tx = await pb.create('transactions', {
       ...txData,
       // El número se asigna en hook server-side al crear transactions.
       number: txData.number || 'AUTO',
       status: txData.status || 'active',
+      branch_id: txBranchId,
     });
 
     try {
       for (const line of lines) {
-        await pb.create('tx_lines', { tx_id: tx.id, ...line });
+        await pb.create('tx_lines', {
+          tx_id: tx.id,
+          ...line,
+          branch_id: line.branch_id || txBranchId || null
+        });
       }
     } catch (lineErr) {
-      // Evita dejar cabeceras hu�rfanas si falla la persistencia de una l�nea.
+      // Evita dejar cabeceras hurfanas si falla la persistencia de una lnea.
       try { await pb.delete('transactions', tx.id); } catch (_) { }
       throw lineErr;
     }
@@ -4373,6 +4399,345 @@ const API = {
     await this.logAudit('CAPITALIZE', 'imports', importId, `Importación capitalizada y trasladada a bodega. Transacción: ${tx.number}. Movimiento: ${mov.number}`);
 
     return { tx, mov };
+  },
+
+  // ── Inmobiliarias (F9) ────────────────────────────────────
+
+  async getInmoProperties(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('inmo_properties', {
+      filter,
+      sort: 'code',
+      expand: 'owner_id',
+    });
+  },
+
+  async getInmoContracts(activeOnly = true) {
+    const filter = activeOnly ? 'active=true' : '';
+    return pb.listAll('inmo_contracts', {
+      filter,
+      sort: 'number',
+      expand: 'property_id,property_id.owner_id,tenant_id',
+    });
+  },
+
+  async getInmoInvoices(opts = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('inmo_invoices', {
+      page, perPage, filter, sort,
+      expand: 'contract_id,contract_id.property_id,contract_id.property_id.owner_id,contract_id.tenant_id',
+    });
+  },
+
+  async getInmoInvoiceLines(invoiceId) {
+    const safe = pb.escapeFilterValue(invoiceId);
+    return pb.listAll('inmo_invoice_lines', {
+      filter: `invoice_id="${safe}"`,
+      sort: 'line_order',
+    });
+  },
+
+  async generateInmoInvoices(period, dueDate = '') {
+    const safePeriod = pb.escapeFilterValue(period);
+    const contracts = await this.getInmoContracts(true);
+    if (!contracts.length) throw new Error('No hay contratos activos registrados.');
+
+    // Validar facturas ya existentes para este período
+    const existing = await pb.listAll('inmo_invoices', {
+      filter: `period="${safePeriod}"`,
+      perPage: 200,
+    });
+    const existingContractIds = new Set(existing.map(i => i.contract_id));
+
+    const toCreate = contracts.filter(c => c.status === 'VIGENTE' && !existingContractIds.has(c.id));
+    if (!toCreate.length) throw new Error(`Todos los contratos vigentes ya tienen factura para el período ${period}.`);
+
+    const dateStr = period + '-01';
+    const dueDateStr = dueDate || (period + '-10');
+    let created = 0;
+
+    for (const contract of toCreate) {
+      const prop = contract.expand?.property_id;
+      const rate = Number(contract.increment_percentage || prop?.commission_rate || 8);
+      const rentAmount = Number(contract.monthly_rent || 0);
+      const commissionAmount = Math.round(rentAmount * (rate / 100));
+      const netToOwner = rentAmount - commissionAmount;
+
+      // Generar consecutivo de factura
+      const randomPart = String(Date.now()).slice(-4);
+      const invoiceNum = `IA-${period.replace('-', '')}-${randomPart}-${created + 1}`;
+
+      const inv = await pb.create('inmo_invoices', {
+        number: invoiceNum,
+        period: safePeriod,
+        contract_id: contract.id,
+        date: dateStr,
+        due_date: dueDateStr,
+        rent_amount: rentAmount,
+        other_amount: 0,
+        commission_amount: commissionAmount,
+        net_to_owner: netToOwner,
+        total: rentAmount,
+        status: 'draft',
+        notes: `Facturación canon de arrendamiento período ${period}. Inmueble: ${prop?.title || ''}.`,
+      });
+
+      // Crear línea de factura
+      await pb.create('inmo_invoice_lines', {
+        invoice_id: inv.id,
+        description: 'Canon de arrendamiento',
+        amount: rentAmount,
+        line_order: 1,
+      });
+
+      created++;
+    }
+
+    return created;
+  },
+
+  async postInmoInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let posted = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failures = [];
+
+    for (const inv of invoices) {
+      if (inv.status !== 'draft') {
+        skipped++;
+        continue;
+      }
+      try {
+        await this.postInmoInvoice(inv.id);
+        posted++;
+      } catch (err) {
+        failed++;
+        failures.push(`${inv.number || inv.id}: ${err?.message || 'Error'}`);
+      }
+    }
+
+    await this.logAudit(
+      'POST_PERIOD',
+      'InmoInvoices',
+      period,
+      `Período ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
+    );
+
+    return { period, total: invoices.length, posted, skipped, failed, failures };
+  },
+
+  async unpostInmoInvoice(invoiceId) {
+    const inv = await pb.get('inmo_invoices', invoiceId);
+    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+
+    let txAction = 'none';
+    if (inv.tx_id) {
+      try {
+        await pb.update('transactions', inv.tx_id, { status: 'draft' });
+        txAction = 'draft';
+      } catch (_) {
+        await pb.update('transactions', inv.tx_id, { status: 'voided' });
+        txAction = 'voided';
+      }
+    }
+
+    await pb.update('inmo_invoices', invoiceId, { status: 'draft', tx_id: null });
+    await this.logAudit('UNPOST', 'InmoInvoice', invoiceId, `Descontabilizada ${inv.number || invoiceId} | TX->${txAction}`);
+    return { invoiceId, txAction };
+  },
+
+  async unpostInmoInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let reverted = 0;
+    let skipped = 0;
+    let txDraft = 0;
+    let txVoided = 0;
+
+    for (const inv of invoices) {
+      if (inv.status === 'draft' || inv.status === 'voided') {
+        skipped++;
+        continue;
+      }
+
+      if (inv.tx_id) {
+        try {
+          await pb.update('transactions', inv.tx_id, { status: 'draft' });
+          txDraft++;
+        } catch (_) {
+          await pb.update('transactions', inv.tx_id, { status: 'voided' });
+          txVoided++;
+        }
+      }
+
+      await pb.update('inmo_invoices', inv.id, { status: 'draft', tx_id: null });
+      reverted++;
+    }
+
+    await this.logAudit(
+      'UNPOST_PERIOD',
+      'InmoInvoices',
+      period,
+      `Período ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
+    );
+
+    return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
+  },
+
+  async deleteInmoInvoicesByPeriod(period) {
+    const safePeriod = pb.escapeFilterValue(period);
+    const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+
+    let deleted = 0;
+    let txDeleted = 0;
+    let txVoided = 0;
+
+    for (const inv of invoices) {
+      if (inv.tx_id) {
+        try {
+          await pb.delete('transactions', inv.tx_id);
+          txDeleted++;
+        } catch (_) {
+          await pb.update('transactions', inv.tx_id, { status: 'voided' });
+          txVoided++;
+        }
+      }
+
+      await pb.delete('inmo_invoices', inv.id);
+      deleted++;
+    }
+
+    await this.logAudit(
+      'DELETE_PERIOD',
+      'InmoInvoices',
+      period,
+      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+    );
+
+    return { period, total: invoices.length, deleted, txDeleted, txVoided };
+  },
+
+  async postInmoInvoice(invoiceId) {
+    const inv = await pb.get('inmo_invoices', invoiceId, {
+      expand: 'contract_id,contract_id.property_id,contract_id.property_id.owner_id,contract_id.tenant_id',
+    });
+    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+
+    const lines = await this.getInmoInvoiceLines(invoiceId);
+    if (!lines.length) throw new Error('La factura no tiene líneas.');
+
+    // Leer configuración contable Inmobiliarias
+    let inmoCfg = {};
+    try {
+      const raw = await this.getSetting('inmo_config_v1');
+      inmoCfg = raw ? JSON.parse(raw) : {};
+    } catch (_) { inmoCfg = {}; }
+
+    const cxcTenantCode = String(inmoCfg.cxc_tenant_code || '130505').trim();
+    const commissionIncomeCode = String(inmoCfg.commission_income_code || '413505').trim();
+    const cxpOwnerCode = String(inmoCfg.cxp_owner_code || '220505').trim();
+
+    // Buscar tipo de transacción IA
+    const iaTypes = await pb.list('transaction_types', {
+      filter: 'code="IA" && active=true',
+      perPage: 1,
+    });
+    if (!iaTypes.items.length) throw new Error('Tipo de transacción IA no encontrado. Reinicia PocketBase para aplicar la migración.');
+    const txType = iaTypes.items[0];
+
+    // Terceros involucrados
+    const tenantId = inv.expand?.contract_id?.tenant_id?.id || null;
+    const ownerId = inv.expand?.contract_id?.property_id?.expand?.owner_id?.id || null;
+
+    const accountByIdCache = {};
+    const accountByCodeCache = {};
+    const getAccById = async (id) => {
+      const key = String(id || '').trim();
+      if (!key) throw new Error('Cuenta contable inválida.');
+      if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
+      return accountByIdCache[key];
+    };
+    const findAccByCode = async (code) => {
+      const key = String(code || '').trim();
+      if (!key) throw new Error('Código de cuenta inválido.');
+      if (accountByCodeCache[key]) return accountByCodeCache[key];
+      const safeCode = pb.escapeFilterValue(key);
+      const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+      if (!res.items.length) throw new Error(`Cuenta "${code}" no encontrada.`);
+      const acc = res.items[0];
+      accountByCodeCache[key] = acc;
+      accountByIdCache[acc.id] = acc;
+      return acc;
+    };
+
+    const cxcTenantAcc = await findAccByCode(cxcTenantCode);
+    const commissionIncomeAcc = await findAccByCode(commissionIncomeCode);
+    const cxpOwnerAcc = await findAccByCode(cxpOwnerCode);
+
+    const txLines = [];
+    
+    // 1. Débito a Cuentas por cobrar inquilino (por el total)
+    txLines.push({
+      account_id: cxcTenantAcc.id,
+      third_party_id: tenantId,
+      debit: inv.total || 0,
+      credit: 0,
+      description: `Canon Inmueble ${inv.expand?.contract_id?.expand?.property_id?.title || ''} período ${inv.period}`,
+      line_order: 1,
+    });
+
+    // 2. Crédito a Ingresos por comisión (por el commission_amount)
+    txLines.push({
+      account_id: commissionIncomeAcc.id,
+      third_party_id: ownerId, // La comisión se le cobra al propietario
+      debit: 0,
+      credit: inv.commission_amount || 0,
+      description: `Comisión Administración Inmobiliaria - Factura ${inv.number}`,
+      line_order: 2,
+    });
+
+    // 3. Crédito a Cuentas por pagar propietario (por el net_to_owner)
+    txLines.push({
+      account_id: cxpOwnerAcc.id,
+      third_party_id: ownerId,
+      debit: 0,
+      credit: inv.net_to_owner || 0,
+      description: `Neto Propietario por Canon - Factura ${inv.number}`,
+      line_order: 3,
+    });
+
+    // Validar sumas de partida doble
+    const totalDebit = txLines.reduce((sum, l) => sum + (l.debit || 0), 0);
+    const totalCredit = txLines.reduce((sum, l) => sum + (l.credit || 0), 0);
+    if (Math.abs(totalDebit - totalCredit) > 1.0) {
+      throw new Error(`Descuadre contable detectado. Débito: ${totalDebit}, Crédito: ${totalCredit}.`);
+    }
+
+    const tx = await this.createTransaction({
+      tx_type_id: txType.id,
+      number: 'AUTO',
+      date: inv.date,
+      description: `Facturación Arriendo ${inv.number} - Inmueble: ${inv.expand?.contract_id?.expand?.property_id?.title || ''}`,
+      third_party_id: tenantId,
+      status: 'active',
+    }, txLines);
+
+    await pb.update('inmo_invoices', invoiceId, {
+      status: 'posted',
+      tx_id: tx.id,
+    });
+
+    await this.logAudit('POST', 'InmoInvoice', invoiceId, `Contabilizada ${inv.number} -> TX ${tx.number}`);
+    return { inv, tx };
   },
 };
 

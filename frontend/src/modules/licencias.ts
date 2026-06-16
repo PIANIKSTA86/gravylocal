@@ -108,6 +108,55 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
       description: 'Administración de propiedad horizontal: cuotas, propietarios, informes.',
       pages:       ['Copropiedades', 'Propietarios', 'Cuotas PH'],
     },
+    inmobiliarias: {
+      label:       'Inmobiliaria',
+      icon:        'fa-house-chimney-window',
+      color:       '#EC4899',
+      description: 'Gestión inmobiliaria: alquileres, inmuebles, contratos y comisiones.',
+      pages:       ['Inmuebles', 'Contratos', 'Liquidación'],
+    },
+    logistica: {
+      label:       'Logística',
+      icon:        'fa-ship',
+      color:       '#3B82F6',
+      description: 'Gestión de logística, importaciones y control aduanero.',
+      pages:       ['Importaciones'],
+    },
+    inventarios: {
+      label:       'Inventarios',
+      icon:        'fa-warehouse',
+      color:       '#10B981',
+      description: 'Control de existencias, bodegas, productos y servicios.',
+      pages:       ['Productos y Servicios', 'Inventarios'],
+    },
+    tesoreria: {
+      label:       'Tesorería',
+      icon:        'fa-landmark',
+      color:       '#F59E0B',
+      description: 'Gestión de flujo de caja, bancos y conciliación bancaria.',
+      pages:       ['Tesorería', 'Conciliación Bancaria'],
+    },
+    'tienda-virtual': {
+      label:       'Tienda Virtual',
+      icon:        'fa-basket-shopping',
+      color:       '#14B8A6',
+      description: 'Tienda en línea integrada con inventarios y pedidos.',
+      pages:       ['Tienda Virtual'],
+    },
+    spa: {
+      label:       'Spa Mascotas',
+      icon:        'fa-paw',
+      color:       '#F43F5E',
+      description: 'Gestión de agenda y servicios de spa de mascotas.',
+      pages:       ['Spa Mascotas'],
+    },
+    conciliacion: {
+      label:       'Conciliación Bancaria',
+      icon:        'fa-scale-balanced',
+      color:       '#6366F1',
+      description: 'Cotejo y conciliación de extractos bancarios con libros.',
+      pages:       ['Conciliación Bancaria'],
+    },
   };
 
   try {
@@ -145,7 +194,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     if (grid)    grid.style.display    = 'grid';
     if (info)    info.style.display    = 'block';
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades'];
+    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
     grid.innerHTML = ORDER.map(key => {
       const meta    = MODULE_META[key];
       if (!meta) return '';

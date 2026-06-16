@@ -51,12 +51,12 @@ function applyModuleVisibility(): void {
     'utilidades':       'contabilidad',
     'ventas':           'comercial',
     'compras':          'comercial',
-    'productos':        'comercial',
-    'inventario':       'comercial',
+    'productos':        'inventarios',
+    'inventario':       'inventarios',
     'pos':              'comercial',
-    'spa':              'comercial',
-    'tesoreria':        'comercial',
-    'conciliacion':     'comercial',
+    'spa':              'spa',
+    'tesoreria':        'tesoreria',
+    'conciliacion':     'conciliacion',
     'nomina':           'nomina',
     'copro-facturacion': 'copropiedades',
     'copro-cartera':     'copropiedades',
@@ -64,6 +64,9 @@ function applyModuleVisibility(): void {
     'copro-unidades':    'copropiedades',
     'copro-reservas':    'copropiedades',
     'copro-pqrs':        'copropiedades',
+    'importaciones':     'logistica',
+    'inmobiliarias':     'inmobiliarias',
+    'tienda-virtual':   'tienda-virtual',
   };
 
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');
@@ -393,6 +396,10 @@ function doHubLogout() {
 /* -- Logout de la Empresa (Vuelve al selector o Login) ---- */
 async function doLogout() {
   pb.logout();
+  localStorage.removeItem('active_branch_id');
+  const branchSel = document.getElementById('global-branch-selector');
+  if (branchSel) branchSel.style.display = 'none';
+
   const hubToken = localStorage.getItem('gravy_hub_token');
   if (hubToken) {
     // Re-cargar empresas
@@ -414,6 +421,9 @@ async function doLogout() {
 /* -- Mostrar pantalla de login ----------------------------- */
 function showLogin() {
   $$('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
+  const branchSel = document.getElementById('global-branch-selector');
+  if (branchSel) branchSel.style.display = 'none';
+
   const ls = $('#screen-login');
   ls.style.display = 'flex';
   ls.classList.add('active');
@@ -422,6 +432,83 @@ function showLogin() {
   if ($('#login-pass')) $('#login-pass').value = '';
   $('#login-error')?.classList.add('hidden');
   $('#login-server-url').textContent = window.location.host;
+}
+
+/* -- Inicializar selector global de sucursal ----------------- */
+async function initGlobalBranchSelector() {
+  const selector = document.getElementById('global-branch-selector') as HTMLSelectElement;
+  if (!selector) return;
+
+  const user = pb.currentUser;
+  if (!user) {
+    selector.style.display = 'none';
+    return;
+  }
+
+  try {
+    // 1. Obtener todas las sucursales activas (ignoramos el filtro dinámico de sucursal en la query)
+    const allBranches = await pb.listAll('branches', { filter: 'active=true', ignoreBranch: true });
+    
+    // 2. Filtrar por allowed_branches si existe restricción
+    let allowedBranches = allBranches;
+    if (user.allowed_branches && user.allowed_branches.length > 0) {
+      allowedBranches = allBranches.filter((b: any) => user.allowed_branches.includes(b.id));
+    }
+
+    // 3. Limpiar y rellenar selector
+    selector.innerHTML = '';
+
+    // Si no hay restricción de usuario (o es admin/superadmin/contador), se añade "TODAS"
+    const hasRestriction = user.allowed_branches && user.allowed_branches.length > 0;
+    const isAdmin = ['superadmin', 'admin', 'contador'].includes(user.role);
+    
+    if (!hasRestriction || isAdmin) {
+      const optAll = document.createElement('option');
+      optAll.value = 'TODAS';
+      optAll.textContent = 'TODAS LAS SUCURSALES';
+      selector.appendChild(optAll);
+    }
+
+    allowedBranches.forEach((b: any) => {
+      const opt = document.createElement('option');
+      opt.value = b.id;
+      opt.textContent = `${b.code} - ${b.name}`;
+      selector.appendChild(opt);
+    });
+
+    // 4. Determinar selección activa
+    let activeBranchId = localStorage.getItem('active_branch_id');
+    
+    // Validar que la opción guardada sea válida
+    const options = Array.from(selector.options).map(o => o.value);
+    if (!activeBranchId || !options.includes(activeBranchId)) {
+      if (options.length > 0) {
+        activeBranchId = options[0];
+      } else {
+        activeBranchId = 'TODAS';
+      }
+      localStorage.setItem('active_branch_id', activeBranchId);
+    }
+
+    selector.value = activeBranchId;
+    selector.style.display = 'inline-block';
+
+    // 5. Enlazar evento de cambio
+    selector.onchange = (e: any) => {
+      const newVal = e.target.value;
+      localStorage.setItem('active_branch_id', newVal);
+      
+      // Recargar la pantalla actual para refrescar los datos bajo el nuevo filtro
+      const curPage = (window as any).currentPage || 'dashboard';
+      if (typeof (window as any).navigate === 'function') {
+        (window as any).navigate(curPage);
+      }
+    };
+
+  } catch (err) {
+    console.error('[GRAVY] Error inicializando selector de sucursales:', err);
+    selector.style.display = 'none';
+  }
 }
 
 /* -- Mostrar app principal --------------------------------- */
@@ -452,6 +539,9 @@ async function showApp() {
 
   // Aplicar visibilidad de módulos según licencia + rol
   applyModuleVisibility();
+
+  // Inicializar selector global de sucursal
+  await initGlobalBranchSelector();
 
   // Topbar
   $('#topbar-company').textContent = activeCompany.company_name || 'GRAVY';

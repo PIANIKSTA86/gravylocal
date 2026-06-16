@@ -1622,6 +1622,7 @@ async function renderNomina(c) {
                       <button class="btn btn-outline btn-sm" title="Ver liquidaciones" onclick="viewPeriodLines('${esc(p.id)}','${esc(p.name)}','${esc(p.status || 'draft')}')"><i class="fas fa-list-ul"></i></button>
                        ${can('canWrite') && p.status === 'draft' ? `<button class="btn btn-primary btn-sm" title="Aprobar período" onclick="setPeriodStatus('${esc(p.id)}','approved')"><i class="fas fa-check"></i></button>` : ''}
                       ${can('canWrite') && p.status === 'approved' ? `<button class="btn btn-secondary btn-sm" title="Marcar pagada" onclick="setPeriodStatus('${esc(p.id)}','paid')"><i class="fas fa-money-bill-wave"></i></button>` : ''}
+                      ${can('canWrite') && (p.status === 'approved' || p.status === 'paid') ? `<button class="btn btn-outline btn-sm" title="Pagar Planilla Aportes" onclick="window._openPayPlanillaModal('${esc(p.id)}','${esc(p.name)}')"><i class="fas fa-file-invoice text-emerald-600"></i></button>` : ''}
                       ${can('canDelete') && p.status === 'draft' ? `<button class="btn btn-outline btn-sm" title="Eliminar período" onclick="deletePayrollPeriod('${esc(p.id)}','${esc(p.name)}')"><i class="fas fa-trash"></i></button>` : ''}
                     </div>
                   </td>
@@ -2439,3 +2440,179 @@ async function openPayrollLineForm(periods, employees) {
 (window as any).NOMINA_CONCEPT_BY_KEY = NOMINA_CONCEPT_BY_KEY;
 (window as any).openPeriodForm = openPeriodForm;
 (window as any).getNominaDevengadoTotal = getNominaDevengadoTotal;
+
+async function openPayPlanillaModal(periodId: string, periodName: string) {
+  try {
+    const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+    if (!metodosPago.length) {
+      return showToast('No hay métodos de pago o cuentas bancarias activas registradas.', 'warning');
+    }
+
+    const payLines = await pb.listAll('payroll_lines', {
+      filter: `period_id="${pb.escapeFilterValue(periodId)}"`,
+      expand: 'employee_id'
+    });
+    if (!payLines.length) {
+      return showToast('El período no tiene liquidaciones registradas.', 'warning');
+    }
+
+    const { config } = await getNominaConfigWithRow();
+    const companyRules = config.company_rules || {};
+
+    const conceptsToPay = [
+      'deduction_health', 'employer_health',
+      'deduction_pension', 'employer_pension', 'solidarity_fund',
+      'employer_arl', 'caja_comp', 'sena', 'icbf'
+    ];
+
+    const grouped = new Map<string, { accountId: string, thirdPartyId: string, amount: number, label: string }>();
+    let grandTotal = 0;
+
+    for (const line of payLines) {
+      const effectiveRule = getEmployeePayrollRule(config, line.employee_id);
+      for (const key of conceptsToPay) {
+        const amount = getNominaConceptAmount(line, key);
+        if (amount <= 0) continue;
+
+        const mappingList = resolveAllNominaMappings(config.mappings, key, line.employee_id, effectiveRule.group_id || '');
+        const creditMapping = mappingList.find((m: any) => m.side === 'credit');
+        if (!creditMapping) {
+          throw new Error(`Falta mapeo de pasivo (Crédito) para el concepto ${NOMINA_CONCEPT_BY_KEY[key]?.label || key}. Configúralo en el engranaje de nómina.`);
+        }
+
+        const thirdPartyId = resolveNominaTerceroId(key, line, effectiveRule, companyRules);
+        const mapKey = `${creditMapping.account_id}|${thirdPartyId}`;
+
+        if (!grouped.has(mapKey)) {
+          grouped.set(mapKey, {
+            accountId: creditMapping.account_id,
+            thirdPartyId: thirdPartyId,
+            amount: 0,
+            label: NOMINA_CONCEPT_BY_KEY[key]?.label || key
+          });
+        }
+        const item = grouped.get(mapKey)!;
+        item.amount = round2(item.amount + amount);
+        grandTotal = round2(grandTotal + amount);
+      }
+    }
+
+    if (grandTotal <= 0.01) {
+      return showToast('El total de la planilla de aportes y parafiscales para este período es cero.', 'warning');
+    }
+
+    (window as any)._payPlanillaData = {
+      periodId,
+      periodName,
+      grouped: Array.from(grouped.values()),
+      grandTotal
+    };
+
+    const bodyHtml = `
+      <div class="space-y-4 text-sm text-left">
+        <div class="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-100">
+          <strong>Período:</strong> ${esc(periodName)}<br>
+          <strong>Total Planilla Aportes y Parafiscales:</strong> ${fmt(grandTotal)}
+        </div>
+        <div class="form-group">
+          <label class="form-label">Método / Banco / Caja</label>
+          <select id="modal-pay-planilla-cuenta" class="form-input">
+            <option value="">— Seleccionar —</option>
+            ${metodosPago.map((c: any) => `<option value="${c.id}" data-account="${c.account_id}">${esc(c.name)} (${esc(c.bank)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Pago</label>
+          <input type="date" id="modal-pay-planilla-date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <input type="text" id="modal-pay-planilla-obs" class="form-input" value="Pago Planilla Aportes Nómina período ${periodName}">
+        </div>
+      </div>
+    `;
+
+    openModal(
+      'Registrar Pago de Planilla Aportes',
+      bodyHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="btn-confirm-pay-planilla" onclick="window._savePayPlanilla()"><i class="fas fa-check mr-2"></i>Registrar Pago</button>`,
+      false
+    );
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function savePayPlanilla() {
+  const ctaSelect = $('#modal-pay-planilla-cuenta') as HTMLSelectElement;
+  const dateInput = $('#modal-pay-planilla-date') as HTMLInputElement;
+  const obsInput = $('#modal-pay-planilla-obs') as HTMLInputElement;
+
+  const bankAccountId = ctaSelect?.value || '';
+  const accountId = ctaSelect?.options[ctaSelect.selectedIndex]?.dataset?.account || '';
+  const date = dateInput?.value || todayStr();
+  const obs = obsInput?.value?.trim() || '';
+
+  if (!bankAccountId || !accountId) {
+    return showToast('Selecciona un método de pago válido.', 'warning');
+  }
+
+  const data = (window as any)._payPlanillaData;
+  if (!data) return;
+
+  const btn = $('#btn-confirm-pay-planilla') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
+  }
+
+  try {
+    const typeRes = await pb.listAll('transaction_types', { filter: 'code="CE"' });
+    if (!typeRes.length) throw new Error('No se encontró el tipo de transacción CE.');
+    const txTypeId = typeRes[0].id;
+
+    const txLines = [];
+    let lineOrder = 1;
+
+    for (const item of data.grouped) {
+      if (item.amount <= 0.01) continue;
+      txLines.push({
+        account_id: item.accountId,
+        third_party_id: item.thirdPartyId || undefined,
+        debit: item.amount,
+        credit: 0,
+        description: `Pago Planilla Nómina ${data.periodName} - ${item.label}`,
+        line_order: lineOrder++
+      });
+    }
+
+    txLines.push({
+      account_id: accountId,
+      debit: 0,
+      credit: data.grandTotal,
+      description: `Salida de Caja/Bancos por Pago Planilla Aportes Nómina`,
+      line_order: lineOrder++
+    });
+
+    const txRecord = await (window as any).API.createTransaction({
+      tx_type_id: txTypeId,
+      date: date,
+      description: obs || `Pago Planilla Aportes Nómina período ${data.periodName}`,
+      status: 'active'
+    }, txLines);
+
+    closeModal();
+    showToast(`Comprobante de Egreso ${txRecord.number} creado exitosamente.`, 'success');
+    renderNomina($('#page-content'));
+  } catch (err: any) {
+    showToast(`Error al registrar pago: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
+    }
+  }
+}
+
+(window as any)._openPayPlanillaModal = openPayPlanillaModal;
+(window as any)._savePayPlanilla = savePayPlanilla;

@@ -1386,9 +1386,9 @@
       font-size: 10px;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-B05ftJtK.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-XwjGuIjU.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-B-p9pAMe.css">
+  <script type="module" crossorigin src="/assets/main-Cn_foODV.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-DXzOq2Fm.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-rftr6Xoi.css">
 </head>
 
 <body>
@@ -1525,16 +1525,16 @@
 
         <div class="nav-section" data-section="logistica"><span>Logística e Inventarios</span><i
             class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
-        <div class="nav-item" data-page="productos" data-label="Productos y Servicios" data-module="comercial">
+        <div class="nav-item" data-page="productos" data-label="Productos y Servicios" data-module="inventarios">
           <i class="fas fa-box-open"></i><span class="nav-label">Productos y Servicios</span>
         </div>
-        <div class="nav-item" data-page="inventario" data-label="Inventarios" data-module="comercial">
+        <div class="nav-item" data-page="inventario" data-label="Inventarios" data-module="inventarios">
           <i class="fas fa-warehouse"></i><span class="nav-label">Inventarios</span>
         </div>
         <div class="nav-item" data-page="compras" data-label="Compras" data-module="comercial">
           <i class="fas fa-cart-flatbed"></i><span class="nav-label">Compras</span>
         </div>
-        <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="comercial">
+        <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="logistica">
           <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
         </div>
 
@@ -1546,14 +1546,14 @@
         <div class="nav-item" data-page="ventas" data-label="Ventas" data-module="comercial">
           <i class="fas fa-receipt"></i><span class="nav-label">Facturación</span>
         </div>
-        <div class="nav-item" data-page="tienda-virtual" data-label="Tienda Virtual" data-module="comercial">
+        <div class="nav-item" data-page="tienda-virtual" data-label="Tienda Virtual" data-module="tienda-virtual">
           <i class="fas fa-store"></i><span class="nav-label">Tienda Virtual <i
               class="fas fa-up-right-from-square ml-1 text-[9px] opacity-60"></i></span>
         </div>
         <div class="nav-item" data-page="pos" data-label="POS" data-module="comercial">
           <i class="fas fa-cash-register"></i><span class="nav-label">Punto de Venta POS</span>
         </div>
-        <div class="nav-item" data-page="spa" data-label="Spa Mascotas" data-module="comercial">
+        <div class="nav-item" data-page="spa" data-label="Spa Mascotas" data-module="spa">
           <i class="fas fa-spa"></i><span class="nav-label">Spa Mascotas</span>
         </div>
         <div class="nav-item" data-page="comisiones" data-label="Comisiones" data-module="comercial">
@@ -1562,10 +1562,10 @@
 
         <div class="nav-section" data-section="finanzas"><span>Tesorería</span><i
             class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
-        <div class="nav-item" data-page="tesoreria" data-label="Tesorería" data-module="comercial">
+        <div class="nav-item" data-page="tesoreria" data-label="Tesorería" data-module="tesoreria">
           <i class="fas fa-landmark"></i><span class="nav-label">Tesorería</span>
         </div>
-        <div class="nav-item" data-page="conciliacion" data-label="Conciliación Bancaria" data-module="comercial">
+        <div class="nav-item" data-page="conciliacion" data-label="Conciliación Bancaria" data-module="conciliacion">
           <i class="fas fa-scale-balanced"></i><span class="nav-label">Conciliación Bancaria</span>
         </div>
 
@@ -1594,6 +1594,11 @@
         </div>
         <div class="nav-item" data-page="copro-pqrs" data-label="PQRs PH" data-module="copropiedades">
           <i class="fas fa-comments"></i><span class="nav-label">PQRs PH</span>
+        </div>
+        <div class="nav-section" data-section="inmobiliarias"><span>Inmobiliaria</span><i
+            class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
+        <div class="nav-item" data-page="inmobiliarias" data-label="Gestión Inmobiliaria" data-module="inmobiliarias">
+          <i class="fas fa-house-chimney-window"></i><span class="nav-label">Gestión Inmobiliaria</span>
         </div>
         <div class="nav-section" data-section="reportes"><span>Reportes y Admin</span><i
             class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
@@ -1629,6 +1634,9 @@
           <h2 class="text-lg font-bold" style="color:var(--text-strong)" id="page-title">Dashboard</h2>
         </div>
         <div class="flex items-center gap-4">
+          <select id="global-branch-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all" style="display: none;">
+            <option value="TODAS">TODAS LAS SUCURSALES</option>
+          </select>
           <span class="text-xs font-medium hidden sm:block" style="color:#6B7280" id="topbar-company"></span>
           <span class="text-xs hidden sm:block" style="color:#9CA3AF" id="topbar-date"></span>
           <!-- Indicador de conexión -->

@@ -320,24 +320,35 @@ async function openNuevaTxModal() {
   (window as any).__txModalOpen = true;
   openModal('Nueva Transacci\u00f3n', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
   try {
-    const [accounts, txTypes, terceros] = await Promise.all([
+    const [accounts, txTypes, terceros, branches] = await Promise.all([
       API.getAccounts(true),
       API.getTxTypes(),
       API.getTerceros({}),
+      pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
     ]);
+    const user = pb.currentUser;
+    let allowedBranches = branches;
+    if (user && user.allowed_branches && user.allowed_branches.length > 0) {
+      allowedBranches = branches.filter((b: any) => user.allowed_branches.includes(b.id));
+    }
+    const activeBranchId = localStorage.getItem('active_branch_id') || 'TODAS';
+    const defaultBranchId = (activeBranchId !== 'TODAS') ? activeBranchId : (user?.default_branch_id || (allowedBranches[0]?.id || ''));
+
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
     const postableAccountIds = new Set(
       accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id)
     );
     const accountMap = new Map(accounts.map(a => [a.id, a]));
-    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: true };
+    TX_STATE = { accounts, txTypes, terceros, branches: allowedBranches, lines: [], postableAccountIds, accountMap, inModal: true };
 
     const body = `
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border-b" style="border-color:#F3F4F6">
         <div class="form-group"><label class="form-label">Tipo / Serie</label><select id="tx-type" class="form-input">${buildTxTypeOptions(txTypes)}</select></div>
         <div class="form-group"><label class="form-label">Consecutivo</label><input id="tx-number" class="form-input" readonly placeholder="Auto"></div>
         <div class="form-group"><label class="form-label">Fecha</label><input id="tx-date" type="date" class="form-input" value="${todayStr()}"></div>
-          <div class="form-group">
+        <div class="form-group"><label class="form-label">Sucursal</label><select id="tx-branch" class="form-input">${allowedBranches.map(b => `<option value="${esc(b.id)}" ${b.id === defaultBranchId ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('')}</select></div>
+        
+        <div class="form-group md:col-span-2">
           <label class="form-label">Tercero</label>
           <div class="flex gap-2">
             <div id="tx-third-search-wrap" class="relative" style="flex:1">
@@ -353,7 +364,7 @@ async function openNuevaTxModal() {
             </button>
           </div>
         </div>
-        <div class="form-group md:col-span-3"><label class="form-label">Descripci\u00f3n</label><input id="tx-desc" class="form-input" placeholder="Descripci\u00f3n del comprobante"></div>
+        <div class="form-group md:col-span-2"><label class="form-label">Descripci\u00f3n</label><input id="tx-desc" class="form-input" placeholder="Descripci\u00f3n del comprobante"></div>
         <div class="form-group"><label class="form-label">Plazo (d\u00edas)</label><input id="tx-payment-days" type="number" min="0" class="form-input" value="0" placeholder="0"></div>
       </div>
       <div class="p-4">
@@ -797,8 +808,10 @@ function renderTxLines(repaint = true) {
       const calcAmount  = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
       const debitVal    = Number(line.debit || 0);
       const creditVal   = Number(line.credit || 0);
+      const headerBranchId = getSelectVal('tx-branch');
+      const lineBranchId = line.branch_id || headerBranchId || '';
       return `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(200px,240px) minmax(200px,240px) minmax(120px,140px) minmax(120px,140px) minmax(100px,120px) minmax(100px,120px) auto auto;gap:8px;align-items:center">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
@@ -831,9 +844,19 @@ function renderTxLines(repaint = true) {
             <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
           </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-building" style="color:#4B5563;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#4B5563;white-space:nowrap">Sucursal</span>
+          </div>
+          <select class="form-input" style="font-size:13px;padding:4px 8px;height:32px" onchange="updateTxLine(${i}, 'branch_id', this.value)">
+            ${(TX_STATE.branches || []).map(b => `<option value="${esc(b.id)}" ${b.id === lineBranchId ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('')}
+          </select>
         </div>
 
         <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onkeydown="if(event.key==='Enter' || event.key==='Tab'){event.preventDefault(); document.getElementById('tx-line-credit-${i}')?.focus();}" onblur="autoAppendTxLineFrom(${i})">
@@ -1231,6 +1254,8 @@ async function saveTransaction(approve = false) {
     const sum = validLines.reduce((acc, l) => ({ d: acc.d + Number(l.debit || 0), c: acc.c + Number(l.credit || 0) }), { d: 0, c: 0 });
     if (Math.abs(sum.d - sum.c) > 0.0001 || sum.d <= 0) return showToast('La transacción no está cuadrada', 'error');
 
+    const txBranchId = getSelectVal('tx-branch') || null;
+
     const tx = await API.createTransaction({
       tx_type_id: txTypeId,
       number: '',
@@ -1241,6 +1266,7 @@ async function saveTransaction(approve = false) {
       payment_days: parseInt(getInputVal('tx-payment-days'), 10) || 0,
       cross_enabled: validLines.some(l => TX_STATE.accountMap.get(l.account_id)?.maneja_cruce),
       status: 'draft',
+      branch_id: txBranchId,
     }, validLines.map((l, i) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,
@@ -1249,6 +1275,7 @@ async function saveTransaction(approve = false) {
       description: l.description || '', // Ítem 8: No hacer fallback a txDesc. Si está vacío, es vacío.
       line_order: i + 1,
       cross_doc_ref: l.cross_doc_ref || '',
+      branch_id: l.branch_id || txBranchId || null,
     })));
 
     if (approve && can('canApprove')) {
@@ -1845,12 +1872,13 @@ async function editTx(id) {
     '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
 
   try {
-    const [tx, lines, accounts, txTypes, terceros] = await Promise.all([
+    const [tx, lines, accounts, txTypes, terceros, branches] = await Promise.all([
       pb.get('transactions', id, { expand: 'tx_type_id,third_party_id' }),
       API.getTxLines(id),
       API.getAccounts(true),
       API.getTxTypes(),
       API.getTerceros({}),
+      pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
     ]);
 
     if (tx.status === 'voided') {
@@ -1876,11 +1904,24 @@ async function editTx(id) {
         '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>');
     }
 
+    const user = pb.currentUser;
+    let allowedBranches = branches;
+    if (user && user.allowed_branches && user.allowed_branches.length > 0) {
+      allowedBranches = branches.filter((b: any) => user.allowed_branches.includes(b.id));
+    }
+    if (tx.branch_id && !allowedBranches.some(b => b.id === tx.branch_id)) {
+      try {
+        const txBranch = await pb.get('branches', tx.branch_id);
+        allowedBranches.push(txBranch);
+      } catch (_) {}
+    }
+
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
     const postableAccountIds = new Set(accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id));
     const accountMap = new Map(accounts.map(a => [a.id, a]));
     TX_EDIT_STATE = {
-      txId: id, accounts, txTypes, terceros, postableAccountIds, accountMap,
+      txId: id, accounts, txTypes, terceros, branches: allowedBranches, postableAccountIds, accountMap,
+      txBranchId: tx.branch_id || '',
       selectedThird: tx.third_party_id || '',
       lines: lines.map(l => ({
         account_id: l.account_id,
@@ -1892,6 +1933,7 @@ async function editTx(id) {
         ret_base: '',
         ret_rate: '',
         line_order: l.line_order || 0,
+        branch_id: l.branch_id || tx.branch_id || '',
       })),
     };
 
@@ -1916,6 +1958,12 @@ async function editTx(id) {
           <input id="edit-tx-date" type="date" class="form-input" value="${esc(tx.date || '')}">
         </div>
         <div class="form-group">
+          <label class="form-label">Sucursal</label>
+          <select id="edit-tx-branch" class="form-input">
+            ${allowedBranches.map(b => `<option value="${esc(b.id)}" ${b.id === tx.branch_id ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group md:col-span-2">
           <label class="form-label">Tercero</label>
           <div class="flex gap-2">
             <div id="edit-tx-third-search-wrap" class="relative" style="flex:1">
@@ -1928,7 +1976,7 @@ async function editTx(id) {
             </button>
           </div>
         </div>
-        <div class="form-group md:col-span-3">
+        <div class="form-group md:col-span-2">
           <label class="form-label">Descripción</label>
           <input id="edit-tx-desc" class="form-input" value="${esc(tx.description || '')}">
         </div>
@@ -2089,8 +2137,10 @@ function renderEditTxLines(repaint = true) {
       const calcAmount = calcBase && calcRate ? fmt(calcBase * calcRate / 100) : '$0';
       const debitVal   = Number(line.debit || 0);
       const creditVal  = Number(line.credit || 0);
+      const headerBranchId = (document.getElementById('edit-tx-branch') as HTMLSelectElement)?.value || TX_EDIT_STATE.txBranchId || '';
+      const lineBranchId = line.branch_id || headerBranchId || '';
       return `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(250px,320px) minmax(260px,1fr) minmax(160px,190px) minmax(120px,140px) minmax(120px,140px) auto auto;gap:8px;align-items:center">
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(200px,240px) minmax(200px,240px) minmax(120px,140px) minmax(120px,140px) minmax(100px,120px) minmax(100px,120px) auto auto;gap:8px;align-items:center">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
@@ -2123,9 +2173,19 @@ function renderEditTxLines(repaint = true) {
             <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura / documento" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
           </div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-building" style="color:#4B5563;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#4B5563;white-space:nowrap">Sucursal</span>
+          </div>
+          <select class="form-input" style="font-size:13px;padding:4px 8px;height:32px" onchange="updateEditTxLine(${i}, 'branch_id', this.value)">
+            ${(TX_EDIT_STATE.branches || []).map(b => `<option value="${esc(b.id)}" ${b.id === lineBranchId ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('')}
+          </select>
         </div>
 
         <input id="edit-tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
@@ -2210,11 +2270,14 @@ async function saveEditTx(txId) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
   try {
+    const txBranchId = (document.getElementById('edit-tx-branch') as HTMLSelectElement)?.value || null;
+
     await API.updateTransaction(txId, {
       date: txDate,
       description: txDesc,
       third_party_id: thirdId || null,
       payment_days: parseInt(document.getElementById('edit-tx-payment-days')?.value, 10) || 0,
+      branch_id: txBranchId,
     }, validLines.map((l, idx) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,
@@ -2223,6 +2286,7 @@ async function saveEditTx(txId) {
       description: l.description || '', // Ítem 8: sin fallback
       line_order: idx + 1,
       cross_doc_ref: l.cross_doc_ref || '',
+      branch_id: l.branch_id || txBranchId || null,
     })));
     _closeTxModal();
     showToast('Transacción modificada exitosamente', 'success');

@@ -12,6 +12,12 @@ let REPORT_STATE = {
 };
 
 async function renderReportes(c) {
+  REPORT_STATE.accounts = null;
+  REPORT_STATE.saldos = null;
+  REPORT_STATE.transactions = null;
+  REPORT_STATE.txLines = null;
+  REPORT_STATE.thirdParties = null;
+
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
@@ -4045,7 +4051,10 @@ async function generateIvaReportRows() {
             <p class="text-xs font-bold uppercase opacity-80">Sugerencia de Liquidación</p>
             <p class="text-2xl font-bold mt-1">${netSuggested >= 0 ? fmt(netSuggested) : fmt(Math.abs(netSuggested))}</p>
           </div>
-          <p class="text-xs font-semibold mt-1 flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+          <div class="flex items-center justify-between gap-2 mt-2">
+            <p class="text-xs font-semibold flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+            ${netSuggested > 0 && can('canWrite') ? `<button class="btn btn-secondary btn-xs py-1" id="btn-pay-iva"><i class="fas fa-money-bill-wave mr-1"></i>Pagar</button>` : ''}
+          </div>
         </div>
       </div>
 
@@ -4172,6 +4181,7 @@ async function generateIvaReportRows() {
     const pdfBtn = $('#btn-pdf-iva') as HTMLButtonElement | null;
     if (expBtn) expBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
+    $('#btn-pay-iva')?.addEventListener('click', () => (window as any)._openPayIvaModal());
   } catch (err: any) {
     results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
@@ -4552,7 +4562,10 @@ async function generateRetReportRows() {
             <p class="text-xs font-bold uppercase opacity-80">Sugerencia de Liquidación</p>
             <p class="text-2xl font-bold mt-1">${netSuggested >= 0 ? fmt(netSuggested) : fmt(Math.abs(netSuggested))}</p>
           </div>
-          <p class="text-xs font-semibold mt-1 flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+          <div class="flex items-center justify-between gap-2 mt-2">
+            <p class="text-xs font-semibold flex items-center gap-1"><i class="fas ${suggestedIcon}"></i> ${suggestedText}</p>
+            ${netSuggested > 0 && can('canWrite') ? `<button class="btn btn-secondary btn-xs py-1" id="btn-pay-retenciones"><i class="fas fa-money-bill-wave mr-1"></i>Pagar</button>` : ''}
+          </div>
         </div>
       </div>
 
@@ -4715,6 +4728,7 @@ async function generateRetReportRows() {
     const pdfBtn = $('#btn-pdf-ret') as HTMLButtonElement | null;
     if (expBtn) expBtn.disabled = false;
     if (pdfBtn) pdfBtn.disabled = false;
+    $('#btn-pay-retenciones')?.addEventListener('click', () => (window as any)._openPayRetencionesModal());
   } catch (err: any) {
     results.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
@@ -6538,3 +6552,315 @@ async function exportDetailedBudgetToPdf() {
 (window as any).exportDetailedBudgetToExcel = exportDetailedBudgetToExcel;
 (window as any).exportDetailedBudgetToPdf = exportDetailedBudgetToPdf;
 (window as any).launchReportModal = launchReportModal;
+
+async function openPayRetencionesModal() {
+  try {
+    const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+    if (!metodosPago.length) {
+      return showToast('No hay métodos de pago o cuentas bancarias activas registradas.', 'warning');
+    }
+
+    const data = (window as any)._retReportData;
+    if (!data) return;
+
+    const bodyHtml = `
+      <div class="space-y-4 text-sm text-left">
+        <div class="p-3 bg-indigo-50 text-indigo-800 rounded-xl border border-indigo-100">
+          <strong>Período:</strong> ${data.fromDate} a ${data.toDate}<br>
+          <strong>Total Retenciones Practicadas a Pagar:</strong> ${fmt(data.netSuggested)}
+        </div>
+        <div class="form-group">
+          <label class="form-label">Método / Banco / Caja</label>
+          <select id="modal-pay-ret-cuenta" class="form-input">
+            <option value="">— Seleccionar —</option>
+            ${metodosPago.map((c: any) => `<option value="${c.id}" data-account="${c.account_id}">${esc(c.name)} (${esc(c.bank)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Pago</label>
+          <input type="date" id="modal-pay-ret-date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <input type="text" id="modal-pay-ret-obs" class="form-input" value="Pago Retenciones Practicadas período ${data.fromDate} a ${data.toDate}">
+        </div>
+      </div>
+    `;
+
+    openModal(
+      'Registrar Pago de Retenciones',
+      bodyHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="btn-confirm-pay-ret" onclick="window._savePayRetenciones()"><i class="fas fa-check mr-2"></i>Registrar Pago</button>`,
+      false
+    );
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function savePayRetenciones() {
+  const ctaSelect = $('#modal-pay-ret-cuenta') as HTMLSelectElement;
+  const dateInput = $('#modal-pay-ret-date') as HTMLInputElement;
+  const obsInput = $('#modal-pay-ret-obs') as HTMLInputElement;
+
+  const bankAccountId = ctaSelect?.value || '';
+  const accountId = ctaSelect?.options[ctaSelect.selectedIndex]?.dataset?.account || '';
+  const date = dateInput?.value || todayStr();
+  const obs = obsInput?.value?.trim() || '';
+
+  if (!bankAccountId || !accountId) {
+    return showToast('Selecciona un método de pago válido.', 'warning');
+  }
+
+  const data = (window as any)._retReportData;
+  if (!data || !data.pracLines || !data.pracLines.length) {
+    return showToast('No hay datos de retenciones para pagar.', 'warning');
+  }
+
+  const btn = $('#btn-confirm-pay-ret') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
+  }
+
+  try {
+    const typeRes = await pb.listAll('transaction_types', { filter: 'code="CE"' });
+    if (!typeRes.length) throw new Error('No se encontró el tipo de transacción CE.');
+    const txTypeId = typeRes[0].id;
+
+    const grouped = new Map<string, number>();
+    for (const l of data.pracLines) {
+      const thirdPartyId = l.line.third_party_id || l.tx.third_party_id;
+      if (!thirdPartyId) continue;
+      const acctId = l.line.account_id;
+      if (!acctId) continue;
+      const key = `${acctId}|${thirdPartyId}`;
+      const amount = Number(l.net || 0);
+      grouped.set(key, (grouped.get(key) || 0) + amount);
+    }
+
+    const txLines = [];
+    let totalPaid = 0;
+    let lineOrder = 1;
+
+    for (const [key, amount] of grouped.entries()) {
+      if (Math.abs(amount) <= 0.01) continue;
+      const [acctId, thirdPartyId] = key.split('|');
+      txLines.push({
+        account_id: acctId,
+        third_party_id: thirdPartyId,
+        debit: amount > 0 ? amount : 0,
+        credit: amount < 0 ? Math.abs(amount) : 0,
+        description: `Cierre Retención en la Fuente período ${data.fromDate} a ${data.toDate}`,
+        line_order: lineOrder++
+      });
+      totalPaid += amount;
+    }
+
+    if (txLines.length === 0) {
+      throw new Error('El saldo neto a pagar para el período seleccionado es cero.');
+    }
+
+    txLines.push({
+      account_id: accountId,
+      debit: 0,
+      credit: totalPaid,
+      description: `Salida de Caja/Bancos por Pago de Retenciones`,
+      line_order: lineOrder++
+    });
+
+    const txRecord = await (window as any).API.createTransaction({
+      tx_type_id: txTypeId,
+      date: date,
+      description: obs || `Pago Retenciones Practicadas Periodo ${data.fromDate} a ${data.toDate}`,
+      status: 'active'
+    }, txLines);
+
+    closeModal();
+    showToast(`Comprobante de Egreso ${txRecord.number} creado exitosamente.`, 'success');
+    generateRetReportRows();
+  } catch (err: any) {
+    showToast(`Error al registrar pago: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
+    }
+  }
+}
+
+async function openPayIvaModal() {
+  try {
+    const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+    if (!metodosPago.length) {
+      return showToast('No hay métodos de pago o cuentas bancarias activas registradas.', 'warning');
+    }
+
+    const data = (window as any)._ivaReportData;
+    if (!data) return;
+
+    const bodyHtml = `
+      <div class="space-y-4 text-sm text-left">
+        <div class="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-100">
+          <strong>Período:</strong> ${data.fromDate} a ${data.toDate}<br>
+          <strong>Impuesto Neto a Pagar:</strong> ${fmt(data.netSuggested)}
+        </div>
+        <div class="form-group">
+          <label class="form-label">Método / Banco / Caja</label>
+          <select id="modal-pay-iva-cuenta" class="form-input">
+            <option value="">— Seleccionar —</option>
+            ${metodosPago.map((c: any) => `<option value="${c.id}" data-account="${c.account_id}">${esc(c.name)} (${esc(c.bank)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Pago</label>
+          <input type="date" id="modal-pay-iva-date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <input type="text" id="modal-pay-iva-obs" class="form-input" value="Pago IVA período ${data.fromDate} a ${data.toDate}">
+        </div>
+      </div>
+    `;
+
+    openModal(
+      'Registrar Pago de IVA',
+      bodyHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="btn-confirm-pay-iva" onclick="window._savePayIva()"><i class="fas fa-check mr-2"></i>Registrar Pago</button>`,
+      false
+    );
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function savePayIva() {
+  const ctaSelect = $('#modal-pay-iva-cuenta') as HTMLSelectElement;
+  const dateInput = $('#modal-pay-iva-date') as HTMLInputElement;
+  const obsInput = $('#modal-pay-iva-obs') as HTMLInputElement;
+
+  const bankAccountId = ctaSelect?.value || '';
+  const accountId = ctaSelect?.options[ctaSelect.selectedIndex]?.dataset?.account || '';
+  const date = dateInput?.value || todayStr();
+  const obs = obsInput?.value?.trim() || '';
+
+  if (!bankAccountId || !accountId) {
+    return showToast('Selecciona un método de pago válido.', 'warning');
+  }
+
+  const data = (window as any)._ivaReportData;
+  if (!data) return;
+
+  const btn = $('#btn-confirm-pay-iva') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
+  }
+
+  try {
+    const typeRes = await pb.listAll('transaction_types', { filter: 'code="CE"' });
+    if (!typeRes.length) throw new Error('No se encontró el tipo de transacción CE.');
+    const txTypeId = typeRes[0].id;
+
+    const genGrouped = new Map<string, number>();
+    for (const l of data.genLines) {
+      const thirdPartyId = l.line.third_party_id || l.tx.third_party_id;
+      if (!thirdPartyId) continue;
+      const acctId = l.line.account_id;
+      if (!acctId) continue;
+      const key = `${acctId}|${thirdPartyId}`;
+      const amount = Number(l.net || 0);
+      genGrouped.set(key, (genGrouped.get(key) || 0) + amount);
+    }
+
+    const descGrouped = new Map<string, number>();
+    for (const l of data.descLines) {
+      const thirdPartyId = l.line.third_party_id || l.tx.third_party_id;
+      if (!thirdPartyId) continue;
+      const acctId = l.line.account_id;
+      if (!acctId) continue;
+      const key = `${acctId}|${thirdPartyId}`;
+      const amount = Number(l.net || 0);
+      descGrouped.set(key, (descGrouped.get(key) || 0) + amount);
+    }
+
+    const txLines = [];
+    let lineOrder = 1;
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const [key, amount] of genGrouped.entries()) {
+      if (Math.abs(amount) <= 0.01) continue;
+      const [acctId, thirdPartyId] = key.split('|');
+      txLines.push({
+        account_id: acctId,
+        third_party_id: thirdPartyId,
+        debit: amount > 0 ? amount : 0,
+        credit: amount < 0 ? Math.abs(amount) : 0,
+        description: `Cierre IVA Generado período ${data.fromDate} a ${data.toDate}`,
+        line_order: lineOrder++
+      });
+      totalDebit += amount;
+    }
+
+    for (const [key, amount] of descGrouped.entries()) {
+      if (Math.abs(amount) <= 0.01) continue;
+      const [acctId, thirdPartyId] = key.split('|');
+      txLines.push({
+        account_id: acctId,
+        third_party_id: thirdPartyId,
+        debit: amount < 0 ? Math.abs(amount) : 0,
+        credit: amount > 0 ? amount : 0,
+        description: `Cierre IVA Descontable período ${data.fromDate} a ${data.toDate}`,
+        line_order: lineOrder++
+      });
+      totalCredit += amount;
+    }
+
+    const netPayable = totalDebit - totalCredit;
+    if (Math.abs(netPayable) <= 0.01 && txLines.length === 0) {
+      throw new Error('El saldo neto de IVA a pagar en el período es cero.');
+    }
+
+    if (netPayable > 0.01) {
+      txLines.push({
+        account_id: accountId,
+        debit: 0,
+        credit: netPayable,
+        description: `Salida de Caja/Bancos por Pago de IVA`,
+        line_order: lineOrder++
+      });
+    } else if (netPayable < -0.01) {
+      txLines.push({
+        account_id: accountId,
+        debit: Math.abs(netPayable),
+        credit: 0,
+        description: `Ingreso a Caja/Bancos por Excedente de IVA / Saldo a Favor`,
+        line_order: lineOrder++
+      });
+    }
+
+    const txRecord = await (window as any).API.createTransaction({
+      tx_type_id: txTypeId,
+      date: date,
+      description: obs || `Pago IVA Periodo ${data.fromDate} a ${data.toDate}`,
+      status: 'active'
+    }, txLines);
+
+    closeModal();
+    showToast(`Comprobante de Egreso ${txRecord.number} creado exitosamente.`, 'success');
+    generateIvaReportRows();
+  } catch (err: any) {
+    showToast(`Error al registrar pago: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
+    }
+  }
+}
+
+(window as any)._openPayRetencionesModal = openPayRetencionesModal;
+(window as any)._savePayRetenciones = savePayRetenciones;
+(window as any)._openPayIvaModal = openPayIvaModal;
+(window as any)._savePayIva = savePayIva;

@@ -609,10 +609,20 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
 
 (window as any).resendDianEmail = async function(txId: string, number: string) {
   try {
-    showToast(`Reenviando correo del documento ${number}...`, 'info');
+    showToast('Obteniendo información del cliente...', 'info');
+    const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
+    const defaultEmail = tx.expand?.third_party_id?.email || '';
+
+    const customEmail = window.prompt("Confirmar o modificar el correo electrónico del destinatario:", defaultEmail);
+    if (customEmail === null) return; // Operación cancelada
+    if (!customEmail.trim()) {
+      return showToast('Debe ingresar un correo electrónico válido.', 'warning');
+    }
+
+    showToast(`Reenviando correo del documento ${number} a ${customEmail.trim()}...`, 'info');
     const res = await pb.send('/api/dian/resend-email', {
       method: 'POST',
-      body: JSON.stringify({ txId }),
+      body: JSON.stringify({ txId, email: customEmail.trim() }),
       headers: { 'Content-Type': 'application/json' }
     });
     if (res && res.success) {

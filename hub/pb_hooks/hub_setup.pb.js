@@ -87,6 +87,36 @@ onBootstrap((e) => {
   let licenses;
   try {
     licenses = $app.findCollectionByNameOrId("licenses");
+    // Parche dinámico para asegurar que todos los nuevos módulos estén en licenses.module_key si la tabla ya existe
+    let moduleKeyField = null;
+    if (licenses && licenses.fields) {
+      for (let i = 0; i < licenses.fields.length; i++) {
+        if (licenses.fields[i].name === "module_key") {
+          moduleKeyField = licenses.fields[i];
+          break;
+        }
+      }
+    }
+    if (moduleKeyField) {
+      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "conciliacion"];
+      let changed = false;
+      const currentVals = moduleKeyField.values || [];
+      const valsArray = [];
+      for (let j = 0; j < currentVals.length; j++) {
+        valsArray.push(currentVals[j]);
+      }
+      needed.forEach(v => {
+        if (valsArray.indexOf(v) === -1) {
+          valsArray.push(v);
+          changed = true;
+        }
+      });
+      if (changed) {
+        moduleKeyField.values = valsArray;
+        $app.save(licenses);
+        console.log("[GRAVY HUB] Agregados módulos " + needed.join(", ") + " a licenses.module_key.");
+      }
+    }
   } catch (_) {
     licenses = new Collection({
       name: "licenses",
@@ -98,7 +128,7 @@ onBootstrap((e) => {
       deleteRule: "@request.auth.is_superadmin = true",
       fields: [
         { name: "company_id", type: "relation", required: true, collectionId: companies.id, maxSelect: 1 },
-        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","nomina","copropiedades","full"] },
+        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","nomina","copropiedades","inmobiliarias","logistica","inventarios","tesoreria","tienda-virtual","spa","conciliacion","full"] },
         { name: "enabled",    type: "bool",     required: true },
         { name: "expires_at", type: "text",     required: false },
         { name: "plan",       type: "select",   required: false, values: ["trial","mensual","anual","perpetua"] },

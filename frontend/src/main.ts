@@ -36,5 +36,6 @@ import './modules/exogena.ts';
 import './modules/tesoreria.ts';
 import './modules/licencias.ts';
 import './modules/superadmin.ts';
+import './modules/inmobiliarias.ts';
 
 import './app.ts';

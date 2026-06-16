@@ -42,6 +42,7 @@ const PAGE_TITLES = {
   resoluciones:      'Resoluciones y Consecutivos DIAN',
   importaciones:     'Gestión de Importaciones',
   comisiones:        'Comisiones a Vendedores',
+  inmobiliarias:     'Gestión Inmobiliaria',
 };
 
 // Módulo de licencia requerido por cada página.
@@ -56,14 +57,14 @@ const MODULE_LICENSE: Record<string, string> = {
   'utilidades':       'contabilidad',
   'ventas':           'comercial',
   'pedidos':          'comercial',
-  'tienda-virtual':   'comercial',
+  'tienda-virtual':   'tienda-virtual',
   'compras':          'comercial',
-  'productos':        'comercial',
-  'inventario':       'comercial',
+  'productos':        'inventarios',
+  'inventario':       'inventarios',
   'pos':              'comercial',
-  'spa':              'comercial',
-  'tesoreria':        'comercial',
-  'conciliacion':     'comercial',
+  'spa':              'spa',
+  'tesoreria':        'tesoreria',
+  'conciliacion':     'conciliacion',
   'nomina':           'nomina',
   'copro-facturacion': 'copropiedades',
   'copro-cartera':     'copropiedades',
@@ -71,8 +72,9 @@ const MODULE_LICENSE: Record<string, string> = {
   'copro-unidades':    'copropiedades',
   'copro-reservas':    'copropiedades',
   'copro-pqrs':        'copropiedades',
-  'importaciones':     'comercial',
+  'importaciones':     'logistica',
   'comisiones':        'comercial',
+  'inmobiliarias':     'inmobiliarias',
 };
 
 // Etiquetas visibles de los módulos para mensajes al usuario
@@ -81,6 +83,13 @@ const MODULE_LABELS: Record<string, string> = {
   comercial:     'Comercial (Ventas, Compras, POS, Inventario)',
   nomina:        'Nómina',
   copropiedades: 'Copropiedades',
+  inmobiliarias: 'Gestión Inmobiliaria',
+  logistica:     'Logística e Importaciones',
+  inventarios:   'Inventarios y Catálogo',
+  tesoreria:     'Tesorería y Bancos',
+  'tienda-virtual': 'Tienda Virtual',
+  spa:           'Spa de Mascotas',
+  conciliacion:  'Conciliación Bancaria',
   full:          'Full',
 };
 
@@ -122,6 +131,7 @@ const PAGE_RENDERERS = {
   resoluciones:       () => typeof renderResoluciones      === 'function' && renderResoluciones($('#page-content')),
   importaciones:      () => typeof renderImportaciones     === 'function' && renderImportaciones($('#page-content')),
   comisiones:         () => typeof renderComisiones        === 'function' && renderComisiones($('#page-content')),
+  inmobiliarias:      () => typeof renderInmobiliarias     === 'function' && renderInmobiliarias($('#page-content')),
 };
 
 let currentPage = 'dashboard';
@@ -202,6 +212,7 @@ function navigate(page) {
   const requiredModule = (MODULE_LICENSE as any)[page];
   if (requiredModule && typeof hasModule === 'function' && !hasModule(requiredModule)) {
     currentPage = page;
+    (window as any).currentPage = page;
     $$('#nav-menu .nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));
     
     // Auto-expandir la sección del ítem activo y colapsar las demás (comportamiento acordeón)
@@ -249,6 +260,7 @@ function navigate(page) {
   }
 
   currentPage = page;
+  (window as any).currentPage = page;
 
   // Actualizar sidebar
   $$('#nav-menu .nav-item').forEach(n => n.classList.toggle('active', n.dataset.page === page));

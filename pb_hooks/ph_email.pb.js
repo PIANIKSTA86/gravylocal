@@ -113,12 +113,13 @@ function syncSmtpSettings() {
       pbSettings.smtp.port = port;
       pbSettings.smtp.username = user;
       pbSettings.smtp.password = pass;
+      pbSettings.smtp.tls = (port === 465);
       pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
       pbSettings.meta.senderAddress = senderAddr || user;
     } else {
       pbSettings.smtp.enabled = false;
     }
-    $app.saveSettings(pbSettings);
+    $app.save(pbSettings);
   } catch (err) {
     console.error("[GRAVY SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
   }

@@ -1,0 +1,2016 @@
+
+Reglas de Rechazo DIAN - Integración
+
+Sumario
+1	Regla de Rechazo FAJ71- Mensaje:No corresponde al correo electrónico para la recepción de documentos e instrumentos electrónicos no informado
+2	Regla de Rechazo FAS01A - Mensaje: Existe más de un grupo con información de totales para un mismo tríbuto en la factura.
+3	Regla de Rechazo FAS01B - Mensaje: Existe un grupo invoce/taxTotal para uno de los impuestos IVA(O1), INC(04), sin que exista un grupo Invoce/CAC:Invoiceline con información correspondiente al mismo impuesto.
+4	Regla de Rechazo FAK28 - Mensaje: No se encuentra el grupo RegistrationAddress.
+5	Regla de Rechazo FAK29 - Mensaje: Este código no corresponde a un valor válido de la lista.
+6	Regla de Rechazo FAK32 - Mensaje: Este código no corresponde a un valor válido de la lista.
+7	Regla de Rechazo FAK58 - Mensaje: Estructura código no válida.
+8	Regla de Rechazo CDG01- Mensaje: El código del departamento no coincide con el del municipio.
+9	Regla de Rechazo FAK12- Mensaje: Este código no corresponde a un valor válido de la lista.
+10	Regla de Rechazo FAK26- Mensaje: Responsabilidad informada para receptor no válido según lista.
+11	Regla de Rechazo FAK14- Mensaje:Informar la dirección, sin ciudad ni departamento.
+12	Regla de Rechazo FAV05- Mensaje:La unidad de la cantidad utilizada no existe en la lista de unidades.
+13	Regla de Rechazo FAD09A- Mensaje:Fecha de emisión anterior a la fecha de inicio de la autorización de la numeración.
+14	Regla de Rechazo FAD09B- Mensaje:Fecha de emisión posterior a la fecha final de la autorización de la numeración.
+15	Regla de Rechazo FAD09C- Mensaje:La fecha de emisión no puede ser inferior a 10 días calendarios de la fecha actual.
+16	Regla de Rechazo FAD09D- Mensaje:La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual.
+17	Regla de Rechazo FAU14- Mensaje:Valor a Pagar de Factura es distinto de la Suma de Valor Bruto más tributos ‐ Valor del Descuento Total + Valor del Cargo Total.
+18	Regla de Rechazo FAM08- Mensaje:Este código no corresponde a un valor válido de la lista.
+19	Regla de Rechazo FAS07- Mensaje:El valor del tributo correspondiente al precio unitario del impuesto multiplicado por la cantidad de ítem vendidos.
+20	Regla de Rechazo FAX07- Mensaje:El valor del tributo correspondiente a una de las tarifas correspondientes es diferente del producto del porcentaje aplicado sobre la base imponible.
+21	Regla de Rechazo FAZ09- Mensaje:StandardItemIdentification no informado.
+22	Regla de Rechazo FAU06- Mensaje:Valor Bruto más tributos es diferente a Valor Bruto de la factura que contienen el valor comercial más la Suma de los Tributos de todas las líneas de detalle.
+23	Regla de Rechazo FAX11- Mensaje:Si el elemento NO es informado o no existe.
+24	Regla de Rechazo FAX09- Mensaje: Si el elemento NO es informado o no existe.
+25	Regla de Rechazo CAK12 - Mensaje: Este código no corresponde a un valor válido de la lista
+26	Regla de Rechazo CAK29- Mensaje:Este código no corresponde a un valor válido de la lista
+27	Regla de Rechazo CAK32- Mensaje:Este código no corresponde a un valor válido de la lista
+28	Regla de Rechazo CAD09c- Mensaje:La fecha de emisión no puede ser inferior a 5 días calendarios de la fecha actual
+29	Regla de Rechazo CAD09d- Mensaje:La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual
+30	Regla De Rechazo FAW01- Mensaje: Línea de factura informado con LineExtensionAmount en cero y grupo cac:PricingReference no informado
+31	Regla De Rechazo FAJ26- Mensaje: Responsabilidad informada por emisor no válido según lista
+32	Regla De Rechazo FAK08- Mensaje: El grupo deberá estar conformado al menos por el conjunto de elementos ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode
+33	Regla De Rechazo FAJ09- Mensaje: Este código no corresponde a un valor válido de la lista
+34	Regla De Rechazo FAJ16- Mensaje: Código del país del emisor del documento NO corresponde al literal "CO"
+35	Regla De Rechazo FAJ12- Mensaje: Este código no corresponde a un valor válido de la lista
+36	Regla de Notificación CAD12B- Mensaje:El código informado no corresponde a un tipo válido para este tipo de documento
+37	Regla de Rechazo CAD15B- Mensaje:Código de divisa inválido
+38	Regla de Rechazo CAJ08- Mensaje: No fue informado el conjunto de elementos: ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode
+39	Regla de Rechazo CAJ16- Mensaje: Código del país del emisor del documento NO corresponde al literal "CO"
+40	Regla de Rechazo CAJ24b- Mensaje: El DV del NIT no es correcto
+41	Regla de Rechazo FAB10a - Mensaje: No es igual al código de la sucursal correspondiente a este punto de facturación
+42	Regla de Rechazo FAB10b - Mensaje: El prefijo no corresponder al prefijo de la autorización de numeración
+43	Regla de Rechazo FAJ09 - Mensaje: Este código no corresponde a un valor válido de la lista
+44	Regla de Rechazo FAJ29- Mensaje: Este código no corresponde a un valor válido de la lista
+45	Regla de Rechazo FAJ32- Mensaje: Este código no corresponde a un valor válido de la lista
+46	Regla de Rechazo FAK09- Mensaje: Este código no corresponde a un valor válido de la lista
+47	Regla de Rechazo FAK43- Mensaje: Nombre o Razón Social del adquirente debe ser informado
+48	Regla de Rechazo FAK44- Mensaje: Debe informar el NIT si es responsable
+49	Regla de Rechazo FAK48- Mensaje: El contenido de este atributo no corresponde a uno de los valores posibles de las listas
+50	Regla de Rechazo FAN01- Mensaje: Grupo de campos para información relacionadas con el pago de la factura
+51	Regla de Rechazo FAQ01- Mensaje: No fue informado el conjunto de elementos: cantidadUnidades, monto, baseImponibleTOTALimp y precioventaUnitario
+52	Regla de Rechazo FAQ06- Mensaje: Porcentaje que aplica superior al 100%
+53	Regla de Rechazo FAQ09- Mensaje: Valor Base para calcular el descuento o cargo superior al valor total de la factura
+54	Regla de Rechazo FAV08a - Mensaje: Debe corresponde a un valor valido
+55	Regla de Rechazo FAV08b - Mensaje: El atributo no puede estar vacío
+56	Regla de Rechazo FBE01- Mensaje: No fue informado el conjunto de elementos
+57	Regla de Rechazo FBE03- Mensaje: Indica que el elemento es un Cargo y no un Descuento
+58	Regla de Rechazo FBE05- Mensaje: Porcentaje aplicado en decimales
+59	REGLAS RECHAZO DOCUMENTO SOPORTE Y NOTA DE AJUSTE
+60	Regla de Rechazo DSAJ08a- Mensaje: No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor
+61	Regla de Rechazo DSFC01- Mensaje: No se informó el grupo InvoicePeriod
+62	Regla de Rechazo DSAJ25a- Mensaje: El contenido de este atributo no corresponde a ’31’
+63	Regla de Rechazo DSFC03- Mensaje: Código no corresponde de acuerdo a tabla de referencia
+64	Regla de Rechazo DSAZ12- Mensaje: No fue informado el Código de Clasificación
+65	Regla de Rechazo DSAZ13- Mensaje: No se está informando el Nombre del estándar
+66	Regla de Rechazo DSAB08b- Mensaje: Fecha final del rango de numeración informado no corresponde a la fecha final del rango vigente para el ABS
+67	Regla de Rechazo FAJ44- Mensaje: Emisor de servicios no autorizado.
+68	Regla de Rechazo DSAJ24b- Mensaje: El DV del NIT del vendedor no es correcto
+69	Regla de Rechazo DSAQ07- Mensaje: Valor del descuento o recargo informado no es correcto
+70	Regla de Rechazo DSAJ09- Mensaje:Este código no corresponde a un valor correcto de la lista
+71	Regla de Rechazo DSFC04- Mensaje: Descripción no corresponde de acuerdo a tabla de referencia
+72	Regla de Rechazo DSAB07b- Mensaje: Fecha inicial del rango de numeración informado NO corresponde a la fecha inicial del rango vigente para el ABS.
+73	Regla de Rechazo DSAV06- Mensaje: Valor total de la línea, libre de tributos, diferente del producto de la cantidad por el precio unitario, incluidos los cargos y los descuentos aplicados en esta línea.
+74	Regla de Rechazo DSAB10- Mensaje: Debe corresponder al prefijo de la autorización de numeración
+75	Regla de Rechazo DSAB05a- Mensaje: Número de Formato 1876 que fue autorizado
+76	Regla de Rechazo DSAJ12- Mensaje: Debe ser un código de Departamento la República de Colombia cuando el CustomizationID es igual a '10'.
+77	Regla de Rechazo DSAU04- Mensaje: Total valor base Imponible: Base imponible para el cálculo de los tributos.
+78	Regla de Rechazo DSAJ73- Mensaje:Valida estructura de composición de Código postal cuando el cando el CustomizationID es igual a '10'
+79	Regla de Rechazo DSAZ09- Mensaje: StandardItemIdentification no informado
+80	Regla de Rechazo DSAD06- Mensaje: Valor del CUDS no está calculado correctamente
+81	Regla de Rechazo NSBF01- Mensaje: No se encuentra el grupo DiscrepancyResponse
+82	Regla de Rechazo NSAJ11- Mensaje: El nombre no corresponde un valor correcto de la lista
+83	Regla de Rechazo NSBG06- Mensaje: Fecha DS referenciado posterior a fecha de la Nota de ajuste al documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+84	Regla de Rechazo NSBF04- Mensaje: Si no se informa la naturaleza de la corrección
+85	Regla de Rechazo NSAZ12- Mensaje: No fue informado el Código de Clasificación
+86	Regla de Rechazo DSAU02- Mensaje: El Valor Bruto antes de tributos tieneque ser la suma de los valores de laslíneas del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial
+87	Regla de Rechazo DSAT07- Mensaje: Valor reportado no corresponde al producto del porcentaje aplicado sobre la base imponible
+88	Regla de Rechazo DSFC02b- Mensaje: Fecha no corresponde a una compra por operación
+89	Regla de Rechazo CDG01- Mensaje: El código del departamento no coincide con el del municipio
+90	Regla de Rechazo DSFC02c- Mensaje: Fecha no corresponde a una compra de acumulado semanal
+91	Regla de Rechazo DSBB02- Mensaje: No está informado valor del artículo.
+92	Regla de Rechazo NSBG01- Mensaje: Nota tipo uno a uno y no se informa BillingReference
+93	Regla de Rechazo NSBG02- Mensaje: No se encuentra el grupo InvoiceDocumentReference
+94	Regla de Rechazo DSAJ14- Mensaje: Informar la dirección sin ciudad ni departamento
+95	Regla de Rechazo DSAX17- Mensaje: Si la información de este elemento no corresponde al contenido de la columna “Nombre”
+96	Regla de Rechazo DSAS01b- Mensaje: Existe un grupo /Invoice/TaxTotal para el impuesto IVA (01), sin que exista un grupo /Invoice/cac:InvoiceLine con información correspondiente al mismo impuesto.
+97	Regla de Rechazo DSAJ20- Mensaje: Nombre o Razón Social del vendedor no informado
+98	Regla de Rechazo RUT01- Mensaje: El facturador electrónico y/o proveedor tecnológico tiene el RUT en estado cancelado, suspendido o inactivo.
+99	Regla de Rechazo DSAU06- Mensaje: Valor Bruto más tributos es diferente a Valor Bruto del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial más la suma de los Tributos de todas las líneas de detalle.
+100	Regla de Rechazo DASJ08b- Mensaje: No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor.
+101	Regla de Rechazo DSAJ10b - Mensaje: El nombre de la cuidad de procedencia no fue informada.
+102	Regla de Rechazo DSAT02 - Mensaje: valor reportado no corresponde a la suma de todos los elementos /Invoice/cac:WithholdingTaxTota l/TaxSubtotal/cbc:TaxAmount
+103	Regla de Rechazo DSAQ02 - Mensaje: Número de línea no es consecutivo
+104	Regla de Rechazo DSAT05 - Mensaje: No se informó base imponible
+105	Regla de Rechazo DSAT05 - Mensaje: Hay un descuento a nivel de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente y no indicó el código del descuento
+106	Regla de Rechazo DSAJ16a - Mensaje: Código del país del vendedor del documento NO corresponde al literal "CO" cuando el CustomizationID es igual a '10'
+107	Regla de Rechazo DSAJ17a - Mensaje: Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+108	Regla de Rechazo DSBE06 - Mensaje: El valor no corresponde a la operación entre la base y el porcentaje del cargo o descuento.
+109	Regla de Rechazo DSAU08 - Mensaje: Total descuentos es diferente de la suma de todos los descuentos aplicados al total del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+110	Regla de Rechazo DSAD05e - Mensaje: Número de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente no existe para el número de autorización.
+111	Regla de Rechazo NSBG01 - Mensaje: Nota tipo uno a uno y no se informa BillingReference
+112	Regla de Rechazo NSAD02b - Mensaje: Valor informado no corresponde a un código valido de la lista
+113	Regla de Rechazo NSAJ17b - Mensaje: Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+114	Regla: NSBG05, Rechazo: Algoritmo no corresponde
+115	Regla: SIGNPLGNS , Rechazo: No se pudo validar firma
+116	Regla: DSAJ05b, Rechazo: El contenido de este atributo no corresponde a uno de los valores posibles de la lista.
+117	Regla: regla ZA01, Rechazo: Verificar si el tamaño del archivo XML es superior a 500 KB de la lista.
+Regla de Rechazo FAJ71- Mensaje:No corresponde al correo electrónico para la recepción de documentos e instrumentos electrónicos no informado
+
+Mensaje de Error:
+No corresponde al correo electrónico para la recepción de documentos e instrumentos electrónicos no informado
+
+Rechazo:
+
+Si el correo electrónico informado no corresponde al correo de recepción para documentos e instrumentos electrónicos informado en los ambientes de habilitación o producción.
+La Regla FAJ71 del Anexo 1.8 obliga a que el emisor de la factura identifique en la facturación electrónica el "Correo de Recepción" que ha configurado en el portal de la DIAN. En caso de no identificarse este correo la DIAN rechazará la factura.
+Solución:
+Configurar Correo Recepción DIAN
+
+El cliente debe configurar el correo para recepción de facturas en el portal de la DIAN.
+En el siguiente enlace puede encontrar una guía del proceso de que debe seguir:
+
+
+Paso a paso para configurar correo.
+
+
+Regla de Rechazo FAS01A - Mensaje: Existe más de un grupo con información de totales para un mismo tríbuto en la factura.
+
+
+Mensaje de Error:
+Existe más de un grupo con información de totales para un mismo tributo en la factura.
+
+Rechazo:
+
+En los impuestos generales se está reportando de una manera incorrecta, no es consistente con los impuestos detalles.
+La base imponible está calculada de forma incorrecta.
+No se está reportando los impuestos en los detalles.
+El código del impuesto no corresponde al reportado.
+Reportan solo ítems excluidos de impuestos, sin embargo detallan la totalización de un impuesto con tarifa igual a 0%.
+Solución:
+.
+
+Se recomienda no reportar la sección de impuestosGenerales e impuestosTotales de FacturaGeneral.
+Calcular de forma correcta los impuestos generales.
+En los impuestos generales están reportando el IVA de 19% varias veces, en impuestosGnerales los impuestos deben ser sumarizados por tipo y por porcentaje de impuesto, es decir debe existrir un solo arreglo de IVA de 19%
+
+
+Class.FacturaImpuestos
+
+
+Regla de Rechazo FAS01B - Mensaje: Existe un grupo invoce/taxTotal para uno de los impuestos IVA(O1), INC(04), sin que exista un grupo Invoce/CAC:Invoiceline con información correspondiente al mismo impuesto.
+
+
+
+Mensaje de Error:
+Existe un grupo /Invoice/TaxTotal para uno de los impuestos IVA (01), INC (04), sin que exista un grupo /Invoice/cac:InvoiceLine con información correspondiente al mismo impuesto.
+
+Rechazo:
+
+En los detalles están reportando impuestos exentos de IVA pero en los impuestos totales no están reportando este tipo de impuesto de 0%
+Estas validaciones son parte de las nuevas reglas más rigurosas del anexo 1.8 DIAN
+No totalizan los impuestos en los impuestos totales
+
+Solución:
+
+En los impuestos con IVA (01), el porcentaje deben reportar con 2 decimales ya que anexo el 1.8 es más riguroso con esta validación en las tarifas.
+Se deben validar el reporte del impuesto 22, el cual es un impuesto nominal, es decir no es base por porcentaje.
+
+
+Class.FacturaImpuestos
+
+
+Regla de Rechazo FAK28 - Mensaje: No se encuentra el grupo RegistrationAddress.
+
+
+Mensaje de Error:
+No se encuentra el grupo RegistrationAddress
+
+Rechazo:
+
+Debe reportarse el atributo direccionFiscal de la clase Cliente
+Solución:
+
+Se deben reportar los siguientes datos: ciudad, codigoDepartamento, departamento, direccion, lenguaje, municipio y pais.
+
+
+Class.Dirección
+
+
+Regla de Rechazo FAK29 - Mensaje: Este código no corresponde a un valor válido de la lista.
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista
+
+Rechazo:
+
+Envia de forma incorrecta los códigos departamento y municipio
+Envia códigos diferentes en el departamento y municipio
+Solución:
+
+Se debe enviar los códigos de departamento y municipio exactamente igual a los indicados en la columna código del anexo técnico para ambos campos
+Anexo técnico 1.8 Pagina 624 a la 654
+Anexo Técnico
+Class.Dirección
+
+
+
+
+Regla de Rechazo FAK32 - Mensaje: Este código no corresponde a un valor válido de la lista.
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista
+
+Rechazo:
+
+Envia el código del departamento en la dirección fiscal del adquiriente.
+Envia códigos diferentes en el departamento y municipio.
+Solución:
+
+Validar que el código del departamento informado en la dirección fiscal del adquiriente se encuentre dentro del catálogo dispuesto por la DIAN en el numeral 13.4.2 del Anexo Técnico V1.8.
+Anexo tecnico 1.8 Pagina 624 a la 654
+Anexo Técnico
+
+
+Regla de Rechazo FAK58 - Mensaje: Estructura código no válida.
+
+
+Mensaje de Error:
+Estructura código no válida
+
+Rechazo:
+
+El valor informado no se encuentra en la tabla 13.4.4
+Solución:
+
+Valida estructura de composición de Código postal.
+Numeral 13.4.4 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 654 a la 655.
+Anexo Técnico
+
+
+Regla de Rechazo CDG01- Mensaje: El código del departamento no coincide con el del municipio.
+
+
+Mensaje de Error:
+El código del departamento no coincide con el del municipio.
+
+Rechazo:
+
+El código del departamento no coincide con el municipio según el anexo técnico 1.8.
+Solución:
+
+Se debe enviar los códigos de departamento y municipio exactamente igual a los indicados en la columna código del anexo técnico para ambos campos
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+
+
+Regla de Rechazo FAK12- Mensaje: Este código no corresponde a un valor válido de la lista.
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista.
+
+Rechazo:
+
+El codigo del departamento no coincide con el municipio segun el anexo tecnico 1.8.
+Solución:
+
+Validar que el código del departamento informado en la direccionCliente del adquiriente se encuentre dentro del catálogo dispuesto por la DIAN en el numeral 13.4.2 del Anexo Técnico V1.8.
+
+
+Regla de Rechazo FAK26- Mensaje: Responsabilidad informada para receptor no válido según lista.
+
+
+Mensaje de Error:
+Responsabilidad informada para receptor no válido según lista.
+
+Rechazo:
+
+Las obligaciones reportadas, tanto para el emisor como para el adquiriente, no está correspondiendo con el cátalago
+Solución:
+
+Para reportar varias obligaciones / responsabilidades, se deben reportar separando cada uno de los valores de la lista con " ; ". Ejemplo O‐13;O‐15; ya así sucesivamente, de acuerdo a las responsabilidades a reportar.
+Valida que Responsabilidad informada por receptor se encuentren dentro de la lista.
+Obligaciones
+
+
+Regla de Rechazo FAK14- Mensaje:Informar la dirección, sin ciudad ni departamento.
+
+
+Mensaje de Error:
+Informar la dirección, sin ciudad ni departamento.
+
+Rechazo:
+
+Se está enviado la información de la dirección sin especificar ciudad ni departamento.
+Solución:
+
+Cuando se envíe la dirección especificar la ciudad y el departamento.
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+Ver el enlace para mas detalles
+
+
+
+
+Regla de Rechazo FAV05- Mensaje:La unidad de la cantidad utilizada no existe en la lista de unidades.
+
+
+Mensaje de Error:
+La unidad de la cantidad utilizada no existe en la lista de unidades.
+
+Rechazo:
+
+Unidad de medida reportada se encuentra fuera del cátalogo de la DIAN.
+No Corresponde a uno de los valores de la tabla de unidades de medida del numeral 13.3.6
+
+Solución:
+
+Valida la Unidad de Medida de la cantidad del artículo solicitado.
+Ver lista de valores posibles en 13.3.6
+Anexo técnico 1.8 Pagina 603 a la 618.
+Anexo Técnico
+
+
+
+
+Regla de Rechazo FAD09A- Mensaje:Fecha de emisión anterior a la fecha de inicio de la autorización de la numeración.
+
+
+Mensaje de Error:
+Fecha de emisión anterior a la fecha de inicio de la autorización de la numeración.
+
+Rechazo:
+
+La fecha de emision del documento es igual o anterior a la fecha de inicio de la autorización de la numeracion.
+Solución:
+
+Valida que la Fecha de emisión no sea anterior o igual a la fecha de inicio.
+Considerar y validar la zona horaria de colombia.
+
+
+Regla de Rechazo FAD09B- Mensaje:Fecha de emisión posterior a la fecha final de la autorización de la numeración.
+
+
+Mensaje de Error:
+Fecha de emisión posterior a la fecha final de la autorización de la numeración.
+
+Rechazo:
+
+La fecha de factura no es igual o no es inferior a fecha de fin de la autorización de la numeración
+Solución:
+
+Valida que la Fecha de Factura sea igual o inferior a la autorizacion de la numeración.
+Considerar y validar la zona hoararia de colombia.
+
+
+Regla de Rechazo FAD09C- Mensaje:La fecha de emisión no puede ser inferior a 10 días calendarios de la fecha actual.
+
+
+Mensaje de Error:
+La fecha de emisión no puede ser inferior a 10 días calendarios de la fecha actual.
+
+Rechazo:
+
+La fecha de factura es inferior a 10 días calendario.
+Solución:
+
+Valida que la fecha de factura no sea inferior a 5 días calendario.
+Considerar y validar la zona hoararia de colombia.
+
+
+Regla de Rechazo FAD09D- Mensaje:La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual.
+
+
+Mensaje de Error:
+La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual.
+
+Rechazo:
+
+La fecha de factura es superior a 10 días calendario.
+Solución:
+
+Valida que fecha de factura no sea superior a 10 días calendario
+Considerar y validar la zona hoararia de colombia.
+
+
+Regla de Rechazo FAU14- Mensaje:Valor a Pagar de Factura es distinto de la Suma de Valor Bruto más tributos ‐ Valor del Descuento Total + Valor del Cargo Total.
+
+
+Mensaje de Error:
+Valor a Pagar de Factura es distinto de la Suma del Valor Bruto más tributos ‐ Valor del Descuento Total + Valor del Cargo Total.
+
+Rechazo:
+
+El Valor a Pagar de la factura no es igual a la Suma del Valor Bruto más tributos menos Valor del Descuento Total mas Valor del Cargo Total.
+
+Solución:
+
+Los anticipos pasaron a ser informativos, por lo cual no deben restar del total a pagar de los documentos.
+Ver mas detalles de Class anticipos
+
+
+
+
+Regla de Rechazo FAM08- Mensaje:Este código no corresponde a un valor válido de la lista.
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista.
+
+Rechazo:
+
+Hace referencia al Código del Departamento, Si IdentificationCode es “CO”,CountrySubentity debe corresponder a uno de los valores de la lista correspondiente.
+No envia los códigos correctamente segun el anexo técnico.
+
+Solución:
+
+Se debe enviar los códigos de departamento exactamente igual a los indicados en la columna código del anexo técnico para ambos campos.
+Numeral 13.4.2 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+
+
+
+
+Regla de Rechazo FAS07- Mensaje:El valor del tributo correspondiente al precio unitario del impuesto multiplicado por la cantidad de ítem vendidos.
+
+
+Mensaje de Error:
+El valor del tributo correspondiente al precio unitario del impuesto multiplicado por la cantidad de ítem vendidos.
+
+Rechazo:
+
+Se reporta un impuesto por valor fijo a nivel del registro item.
+Se totaliza un impuesto que no se está aplicando en el detalle del documento.
+Solución:
+
+Se debe indicar el valor fijo por unidad.
+Los campos unidadMedidaTributo y valorTributoUnidad deben tener el mismo valor y corresponden al valor nominas del impuesto.
+En el campo ValorTotalImpuesto debe reportase, y el resultado de ValorTributoUnidad * cantidadUnidades.
+A nivel general se debe reportar el impuesto 01 y se debe totalizar el impuesto en impuestosTotales.
+
+
+
+
+Regla de Rechazo FAX07- Mensaje:El valor del tributo correspondiente a una de las tarifas correspondientes es diferente del producto del porcentaje aplicado sobre la base imponible.
+
+
+Mensaje de Error:
+El valor del tributo correspondiente a una de las tarifas correspondientes es diferente del producto del porcentaje aplicado sobre la base imponible.
+
+Rechazo:
+
+Se reporta un impuesto por valor fijo a nivel del registro item.
+Se totaliza un impuesto que no se está aplicando en el detalle del documento.
+Solución:
+
+Se debe indicar el valor fijo por unidad.
+Los campos unidadMedidaTributo y valorTributoUnidad deben tener el mismo valor y corresponden al valor nominas del impuesto.
+En el campo ValorTotalImpuesto debe reportase, y el resultado de ValorTributoUnidad * cantidadUnidades.
+A nivel general se debe reportar el impuesto 01 y se debe totalizar el impuesto en impuestosTotales.
+
+
+Regla de Rechazo FAZ09- Mensaje:StandardItemIdentification no informado.
+
+
+Mensaje de Error:
+StandardItemIdentification no informado.
+
+Rechazo:
+
+Se hace referencia al grupo de datos de identificación del artículo o servicio de acuerdo con un estándar debe ser informado.
+Se totaliza un impuesto que no se está aplicando en el detalle del documento.
+La DIAN se encuentra validando el reporte tanto del estándar, como el código del producto del mismo.
+Solución:
+
+Son admitidas hasta tres codificaciones estándar para un mismo artículo.
+Se recomienda indicar los atributos estandarCodigo y estandarCodigoProducto.
+
+
+
+
+Regla de Rechazo FAU06- Mensaje:Valor Bruto más tributos es diferente a Valor Bruto de la factura que contienen el valor comercial más la Suma de los Tributos de todas las líneas de detalle.
+
+
+Mensaje de Error:
+Valor Bruto más tributos es diferente a Valor Bruto de la factura que contienen el valor comercial más la Suma de los Tributos de todas las líneas de detalle.
+
+Rechazo:
+
+El Valor Bruto más tributos no es igual al Valor Bruto de la factura que contienen el valor comercial más la suma de los tributos de todas las líneas de detalle.
+Solución:
+
+El Valor Bruto más tributos tiene que ser igual al Valor Bruto de la factura que contienen el valor comercial más la suma de los tributos de todas las líneas de detalle.
+Si están reportando impuesto a nivel General deben también reportarlo a nivel de detalle.
+Se encuentra asociada a la totalización de las bases antes de la suma de tributos en el documento.
+Validar que los cálculos de la base total imponible del impuesto al igual que en el monto total del mismo estén correctos.
+Los impuestos reportados a nivel general deben ser igual a los reportados a nivel de detalle.
+Regla FAU06
+Anexo Técnico
+
+
+
+
+Regla de Rechazo FAX11- Mensaje:Si el elemento NO es informado o no existe.
+
+
+Mensaje de Error:
+Si el elemento NO es informado o no existe.
+
+Rechazo:
+
+Es el valor nominal del tríbuto por unidad, causara rechazo si el elemento no es informado o no existe.
+Solución:
+
+UnidadMedidaTributo = El valor nominal del impuesto a aplicar por unidad de producto.
+ValorTributoUnidad = El valor nominal del impuesto a aplicar por unidad de producto.
+Regla FAX11
+Anexo Técnico
+
+
+Regla de Rechazo FAX09- Mensaje: Si el elemento NO es informado o no existe.
+
+
+Mensaje de Error:
+Si el elemento NO es informado o no existe.
+
+Rechazo:
+
+Es el valor nominal del tríbuto por unidad, causara rechazo si el elemento no es informado o no existe.
+Solución:
+
+Esta regla hace referencia al campo unidadMedidaTributo usado en el caso de que el tributo es un valor fijo por unidad tributada.
+Informar el valor del tributo por unidad tributada.
+ValorTOTALImp = El valor total del impuesto a aplicar, resultante de la operación cantidadUnidades*valor nominal del impuestos por unidad de producto.
+Regla FAX09
+Anexo Técnico
+
+
+
+
+Regla de Rechazo CAK12 - Mensaje: Este código no corresponde a un valor válido de la lista
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista.
+
+Rechazo:
+
+Los códigos no existen o no se están enviando correctamente
+Solución:
+
+Validar los códigos de municipio y departamento indicados en las direcciones de la clase Cliente (atributos direccionCliente y direccionFiscal).
+Se debe enviar los códigos de departamento exactamente igual a los indicados en la columna código del anexo técnico para ambos campos.
+Numeral 13.4.3 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+
+
+Regla de Rechazo CAK29- Mensaje:Este código no corresponde a un valor válido de la lista
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista.
+
+Rechazo:
+
+Los códigos no existen o no se están enviando correctamente.
+Solución:
+
+Si IdentificationCode=CO Valida que el código de municipio corresponda al valor correcto de la lista de municipios.
+Se debe enviar los códigos de departamento exactamente igual a los indicados en la columna código del anexo técnico para ambos campos.
+Numeral 13.4.3 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+
+
+Regla de Rechazo CAK32- Mensaje:Este código no corresponde a un valor válido de la lista
+
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista.
+
+Rechazo:
+
+Los códigos no existen o no se están enviando correctamente.
+Solución:
+
+Si IdentificationCode es “CO”, CountrySubentity debe corresponder a uno de los valores de la columna Código de la tabla 13.4.2 .
+Numeral 13.4.2 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 632 a la 654.
+Anexo Técnico
+
+
+
+
+Regla de Rechazo CAD09c- Mensaje:La fecha de emisión no puede ser inferior a 5 días calendarios de la fecha actual
+
+
+Mensaje de Error:
+La fecha de emisión no puede ser inferior a 5 días calendarios de la fecha actual.
+
+Rechazo:
+
+La fecha del documento nota credito es inferior a 5 días calendario.
+Solución:
+
+Validar que la fecha de emision no sea inferior a 5 días calendarios de la fecha actual.
+Validar zona horaria de colombia
+Regla CAD09
+Anexo Técnico
+
+
+Regla de Rechazo CAD09d- Mensaje:La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual
+
+
+Mensaje de Error:
+La fecha de emisión no sea posterior a 10 días calendarios de la fecha actual.
+
+Rechazo:
+
+La fecha del documento nota credito es superior a 10 días calendario.
+Solución:
+
+Validar que la fecha de emision no sea superior a 10 días calendarios de la fecha actual.
+Validar zona horaria de colombia
+Regla CAD09
+Anexo Técnico
+
+
+Regla De Rechazo FAW01- Mensaje: Línea de factura informado con LineExtensionAmount en cero y grupo cac:PricingReference no informado
+Mensaje de Error:
+Línea de factura informado con LineExtensionAmount en cero y grupo cac:PricingReference no informado
+
+Rechazo:
+
+Este error surge cuando la DIAN recibe un UBL indicando que la base imponible de un elemento a nivel de línea es 0 y la validación rechaza el documento.
+Solución:
+
+En el caso de estar enviando una muestra se deben enviar los campos obligatoriamente: codigoTipoPrecio, muestraGratis, precioReferencia, precioTotal, precioTotalSinImpuestos.
+
+
+Regla De Rechazo FAJ26- Mensaje: Responsabilidad informada por emisor no válido según lista
+Mensaje de Error:
+Responsabilidad informada por emisor no válido según lista.
+
+Rechazo:
+
+El error de validación que está presentando es debido a que la DIAN no ha actualizado los catálogos donde se incluyen estos nuevos elementos, y por eso están siendo rechazados.
+Solución:
+
+Ver lista de valores posibles en el numeral 13.2.6
+Anexo Técnico
+En el catálogo/cliente y en datos fiscales de la empresa, valide que en el campo de responsabilidades no se encuentre seleccionada las siguientes opciones:
+
+O-47 Régimen Simple de Tributación – SIMPLE.
+O-48 Impuesto sobre las ventas.
+O-49 No responsable de IVA.
+O-52 Facturador electrónico.
+Ya que el error de validación que está presentando es debido a que la DIAN no ha actualizado los catálogos donde se incluyen estos nuevos elementos, y por eso están siendo rechazados. Se recomienda retirarlos temporalmente hasta que la DIAN permita su uso.
+
+Dicha modificación la puede realizar en nuestro portal de la siguiente manera:
+
+En la opción de Datos fiscales/ Información Adicional/Responsabilidades debe tener configurado la responsabilidad Responsabilidad sobre las ventas(O-48)
+
+Opción de edición de Responsabilidades en portal
+Debe destildar esa opción en la sección Responsabilidades:
+
+Modificación de Responsabilidades en portal
+Posteriormente seleccione la opción de guardar para que dicha modificación se realice satisfactoriamente.
+
+
+
+Regla De Rechazo FAK08- Mensaje: El grupo deberá estar conformado al menos por el conjunto de elementos ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode
+Mensaje de Error:
+El grupo deberá estar conformado al menos por el conjunto de elementos ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode.
+
+Rechazo:
+
+Esto se debe a que la DIAN está validando que se envíen obligatoriamente los campos ciudad, codigoDepartamento, departamento, dirección, municipio y país en la dirección del cliente.
+Solución:
+
+El grupo deberá estar conformado por lo menos por el conjunto de elementos ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, dentificationCode.
+
+
+Regla De Rechazo FAJ09- Mensaje: Este código no corresponde a un valor válido de la lista
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+Si IdentificationCode es “CO”, CountrySubentity debe corresponder a uno de los valores de la Columna Nombre Municipio de la lista de municipios.
+Si este es un grupo con información con respeto a la dirección del emisor de un documento electrónico, debe ser un municipio de Colombia.
+Solución:
+
+1. Deben validar que en nuestro portal web en la sección Catálogos->Establecimientos, la dirección física del establecimiento se encuentre correctamente configurada:
+Catálogos->Establecimientos
+2. Validar que la dirección fiscal o dirección física del receptor está correctamente construida mínimo con lo siguiente:
+Campos mínimos en dirección fiscal y dirección física
+Anexo Técnico
+
+
+Regla De Rechazo FAJ16- Mensaje: Código del país del emisor del documento NO corresponde al literal "CO"
+Mensaje de Error:
+Código del país del emisor del documento NO corresponde al literal "CO". Rechazo:
+
+Código identificador del país del emisor debe corresponder al literal "CO".
+Solución:
+
+1. Deben validar que en nuestro portal web en la sección Catálogos->Establecimientos, la dirección física del establecimiento se encuentre correctamente configurada:
+Catálogos->Establecimientos
+2. Validar que la dirección fiscal o dirección física del receptor está correctamente construida mínimo con lo siguiente:
+Campos mínimos en dirección fiscal y dirección física
+Anexo Técnico
+
+
+Regla De Rechazo FAJ12- Mensaje: Este código no corresponde a un valor válido de la lista
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+Si este es un grupo con información con respeto a la dirección del emisor de un documento electrónico, debe ser un código de Departamento de Colombia.
+Solución:
+
+1. Deben validar que en nuestro portal web en la sección Catálogos->Establecimientos, la dirección física del establecimiento se encuentre correctamente configurada:
+Catálogos->Establecimientos
+2. Validar que la dirección fiscal o dirección física del receptor está correctamente construida mínimo con lo siguiente:
+Campos mínimos en dirección fiscal y dirección física
+Anexo Técnico
+
+
+Regla de Notificación CAD12B- Mensaje:El código informado no corresponde a un tipo válido para este tipo de documento
+
+
+Mensaje de Error:
+El código informado no corresponde a un tipo válido para este tipo de documento.
+
+Rechazo:
+
+Los codigos informados de nota credito no son validos. Solución:
+
+Valida que el código de tipo de Nota Crédito informado corresponda a uno de los tipos validos.
+Anexo Técnico
+
+
+Regla de Rechazo CAD15B- Mensaje:Código de divisa inválido
+
+
+Mensaje de Error:
+Código de divisa inválido.
+
+Rechazo:
+
+Rechazo por documento nota crédito.
+El valor de este elemento no corresponde a un valor de la columna "Código".
+Solución:
+
+Divisa aplicable a toda la Nota Crédito informada en este elemento debe corresponder al mismo valor para todos los @currencyID, excepto para la información que se exprese en extension.
+Numeral 13.3.3 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 596 a la 601.
+Anexo Técnico
+
+
+Regla de Rechazo CAJ08- Mensaje: No fue informado el conjunto de elementos: ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode
+
+
+Mensaje de Error:
+
+No fue informado el conjunto de elementos: ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode.
+
+Rechazo:
+
+No fue informado el conjunto de elementos: ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode.
+Solución:
+
+El grupo deberá estar conformado al menos por el conjunto de elementos: ID, CityName, CountrySubentity, CountrySubentityCode, AddressLine, Line, Country, IdentificationCode
+Class autorizado
+Anexo Técnico
+
+
+Regla de Rechazo CAJ16- Mensaje: Código del país del emisor del documento NO corresponde al literal "CO"
+
+
+Mensaje de Error:
+Código del país del emisor del documento NO corresponde al literal "CO"
+
+Rechazo:
+
+El código identificador del país del emisor debe corresponder al literal "CO".
+Los códigos utilizados no corresponden a los indicados en el anexo técnico 1.8.
+Solución:
+
+Numeral 13.4.1 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 624 a la 632.
+Anexo Técnico
+
+
+Regla de Rechazo CAJ24b- Mensaje: El DV del NIT no es correcto
+
+
+Mensaje de Error:
+El DV del NIT no es correcto. Rechazo:
+
+El código identificador del país del emisor debe corresponder al literal "CO".
+Los códigos utilizados no corresponden a los indicados en el anexo técnico 1.8.
+Solución:
+
+Valida que el DV del NIT del emisor informado sea correcto.
+Numeral 13.4.1 del Anexo Técnico V1.8.
+Anexo técnico 1.8 Pagina 624 a la 632.
+Anexo Técnico
+
+
+Regla de Rechazo FAB10a - Mensaje: No es igual al código de la sucursal correspondiente a este punto de facturación
+
+Mensaje de Error:
+No es igual al código de la sucursal correspondiente a este punto de facturación
+
+Rechazo:
+
+Si el Prefijo existe entonces debe ser igual al código de la sucursal.
+Solución:
+
+Se debe validar la información indicada en la solicitud de las numeraciones en la DIAN, ya que al solicitar las mismas deben asociar una sucursal, cuyos datos deben coincidir con los datos del Establecimiento configurado en nuestro portal en la sección Catálogos -> Establecimientos:
+
+
+
+ReglaFAB10a
+
+
+Regla de Rechazo FAB10b - Mensaje: El prefijo no corresponder al prefijo de la autorización de numeración
+
+Mensaje de Error:
+El prefijo no corresponder al prefijo de la autorización de numeración.
+
+Rechazo:
+
+Debe corresponder al prefijo de la autorización de numeración.
+Solución:
+
+Se está utilizando un prefijo para generar facturas de que no está autorizado por la DIAN.
+
+
+Regla de Rechazo FAJ09 - Mensaje: Este código no corresponde a un valor válido de la lista
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+Valida que código de municipio debe corresponder a valor válido de lista de municipios.
+Solución:
+
+Ver lista de municipios en el numeral 13.4.3.
+Anexo técnico 1.8 Pagina 633 a la 654
+Anexo Técnico
+
+
+Regla de Rechazo FAJ29- Mensaje: Este código no corresponde a un valor válido de la lista
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+El código de municipio no corresponde a un valor valido de la lista de municipios o no se están enviando correctamente.
+Solución:
+
+El código de municipio debe corresponder a un valor válido de lista de municipios.
+Anexo técnico 1.8 Pagina 633 a la 654
+
+
+Anexo Técnico
+
+
+ReglaFAJ29
+
+
+Regla de Rechazo FAJ32- Mensaje: Este código no corresponde a un valor válido de la lista
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+Si este es un grupo con informaciones con respeto a la dirección del emisor de un documento electrónico, debe ser un Departamento de Colombia.
+Solución:
+
+Debe corresponder a uno de los valores de la columna Código en el numeral 13.4.2.
+Anexo técnico 1.8 Pagina 632.
+Anexo Técnico
+
+
+ReglaFAJ32
+
+
+Regla de Rechazo FAK09- Mensaje: Este código no corresponde a un valor válido de la lista
+
+Mensaje de Error:
+Este código no corresponde a un valor válido de la lista. Rechazo:
+
+Si el valor no corresponde a el Código municipio del numeral 13.4.3 y el IdentificationCode es “CO”
+Solución:
+
+El código de municipio debe corresponder a el valor válido de lista de municipios.
+Anexo técnico 1.8 Pagina 633 a la 654.
+Anexo Técnico
+
+
+Regla de Rechazo FAK43- Mensaje: Nombre o Razón Social del adquirente debe ser informado
+
+Mensaje de Error:
+Nombre o Razón Social del adquirente debe ser informado. Rechazo:
+
+Si el Nombre o Razón social del adquiriente no está informado o no corresponde a un valor válido.
+Solución:
+
+Valida que el nombre de la Razón social se esté declarando correctamente
+
+
+ReglaFAK43
+
+
+Regla de Rechazo FAK44- Mensaje: Debe informar el NIT si es responsable
+
+Mensaje de Error:
+Debe informar el NIT si es responsable. Rechazo:
+
+Si el NIT o ID del adquiriente no está informado.
+Solución:
+
+Valida que el NIT se esté declarando correctamente en el campo informado.
+
+
+Regla de Rechazo FAK48- Mensaje: El contenido de este atributo no corresponde a uno de los valores posibles de las listas
+
+Mensaje de Error:
+El contenido de este atributo no corresponde a uno de los valores posibles de las listas. Rechazo:
+
+Si él Identificador del tipo de documento de identidad no corresponde a un valor valido de la lista.
+Solución:
+
+Ver lista de valores posibles en la columna “Código” del ítem 13.2.1.
+El Identificador del tipo de documento de identidad (tipoIdentificacion=31) del adquiriente que indica que está identificado por NIT y por tanto el DV del NIT debe ser informado en atributo “numeroIdentificacionDV”.
+
+
+FAK48
+ReglaFAK48
+
+
+Regla de Rechazo FAN01- Mensaje: Grupo de campos para información relacionadas con el pago de la factura
+
+Mensaje de Error:
+Grupo de campos para información relacionadas con el pago de la factura. Rechazo:
+
+Si los campos asociados con el pago, no se encuentra informado.
+Solución:
+
+Verificar la Forma de pago y el Medio de pago teniendo en cuenta los numerales.
+Ver la lista de valores posibles de acuerdo los numerales 13.3.4. y 13.3.4.2.
+
+
+Regla de Rechazo FAQ01- Mensaje: No fue informado el conjunto de elementos: cantidadUnidades, monto, baseImponibleTOTALimp y precioventaUnitario
+
+Mensaje de Error:
+No fue informado el conjunto de elementos: cantidadUnidades, monto, baseImponibleTOTALimp y precioventaUnitario. Rechazo:
+
+Si él grupo de campos no se encuentra informado.
+Solución:
+
+Validar que cada uno de los campos se encuentre y este correctamente diligenciado.
+Los descuentos o cargos que afectan las bases gravables se informan a nivel de ítem. Ejemplo:
+
+
+FAQ01
+ReglaFAQ01
+
+
+Regla de Rechazo FAQ06- Mensaje: Porcentaje que aplica superior al 100%
+
+Mensaje de Error:
+Porcentaje que aplica superior al 100%. Rechazo:
+
+Si este elemento es mayor que 100.
+Solución:
+
+Porcentaje aplicado en decimales, debe corresponder a un valor entre 0 a 100 a nivel de factura general.
+
+
+Regla de Rechazo FAQ09- Mensaje: Valor Base para calcular el descuento o cargo superior al valor total de la factura
+
+Mensaje de Error:
+Descuento superior al valor base. Rechazo:
+
+Si es descuento, no puede ser superior al valor total de la factura.
+Solución:
+
+El campo totalDecuentos debe tener un número que sea menor que en totalMonto.
+
+
+FAQ09
+
+
+Regla de Rechazo FAV08a - Mensaje: Debe corresponde a un valor valido
+
+Mensaje de Error:
+Debe corresponde a un valor valido. Rechazo:
+
+Debe ser informado cuando el tipo de operación es “11”.
+Solución:
+
+El campo estandarCodigo.detalleFactura debe corresponder a un valor valido y Debe ser informado cuando el tipo de operación es “11”.
+
+
+Regla de Rechazo FAV08b - Mensaje: El atributo no puede estar vacío
+
+Mensaje de Error:
+Atributo no puede estar vacío. Rechazo:
+
+Debe ser informado cuando el tipo de operación es “11”.
+Solución:
+
+El campo estandarCodigo.detalleFactura debe ser informado cuando el tipo de operación es “11”.
+
+
+Regla de Rechazo FBE01- Mensaje: No fue informado el conjunto de elementos
+
+Mensaje de Error:
+No fue informado el conjunto de elementos. Rechazo:
+
+El Grupo de campos para información relacionadas con un cargo o un descuento no está diligenciado correctamente.
+Si hace fata algún campo relacionado a el cargo o descuento.
+Solución:
+
+Cuando se informa de un cargo o descuento a nivel de ítem debe enviarse obligatoriamente los campos: indicador, porcentaje, monto y montoBase.
+
+
+Regla de Rechazo FBE03- Mensaje: Indica que el elemento es un Cargo y no un Descuento
+
+Mensaje de Error:
+Indica que el elemento es un Cargo y no un Descuento. Rechazo:
+
+El campo indicador de la clase cargosDescuentos indica una información diferente a “true” o “false”.
+Solución:
+
+Cargo es true, es Débito aumenta el valor de la item.
+Descuento es false, es Crédito descuenta el valor del ítem
+El elemento solamente puede identificar “true o false”.
+
+
+
+
+Regla de Rechazo FBE05- Mensaje: Porcentaje aplicado en decimales
+
+Mensaje de Error:
+Porcentaje aplicado en decimales. Rechazo:
+
+Si el porcentaje informado es mayor a “100.00”.
+Solución:
+
+EL porcentaje aplicado a nivel de Factura Detalle debe ser igual o menor “100.00”.
+REGLAS RECHAZO DOCUMENTO SOPORTE Y NOTA DE AJUSTE
+Regla de Rechazo DSAJ08a- Mensaje: No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor
+
+Mensaje de Error:
+No fue informado el conjunto de elementos correctos de acuerdo a la proccedencia del vendedor
+Rechazo:
+
+El grupo deberá estar conformado al menos por el conjunto formado por loselementos ID, CityName, PostalZone,CountrySubentity,CountrySubentityCode, AddressLine,Line, Country, IdentificationCode cuandoel CustomizationID es igual a '10'.
+Solución:
+
+Debe informar la zona postal, en estos momentos recomendamos informar la zona postal con 6 ceros - zonaPostal = 000000.
+
+
+Zona Postal
+
+
+Regla de Rechazo DSFC01- Mensaje: No se informó el grupo InvoicePeriod
+
+Mensaje de Error:
+No se informó el grupo InvoicePeriod
+Rechazo:
+
+Rechazo si no es informado el grupo.
+Solución:
+
+Debe reportarse de forma correcta la <descripcion2> año-mes-dia; Es uno de los cambios de integración para documento soporte que deben configurar en el xml.
+
+
+Descripcion2
+
+
+Regla de Rechazo DSAJ25a- Mensaje: El contenido de este atributo no corresponde a ’31’
+
+Mensaje de Error:
+El contenido de este atributo no corresponde a ’31’
+Rechazo:
+
+Cuando el CustomizationID es igual a '10' el @schemeName deberá ser '31'.
+Solución:
+
+Debe reportar el tipo de identificación correcto según la resolución 000167 de documento soporte.
+RECOMENDACIÓN: Si su proveedor es una persona natural residente que no cuenta con NIT, deberá exigirle que se registre ante la DIAN y adquiera una responsabilidad 20 para que le asignen un NIT; ya que como se informó previamente Cédula de Ciudadanía no se contempla en el catálogo desplegado en la resolución 00167.
+
+DocumentoID
+Regla de Rechazo DSFC03- Mensaje: Código no corresponde de acuerdo a tabla de referencia
+
+Mensaje de Error:
+Código no corresponde de acuerdo a tabla de referencia
+Rechazo:
+
+Código para indicar la forma de generación y transmisión.
+Solución:
+
+Debe reportarse de forma correcta la <descripcion3> (1) si es por operación, (2) si es por acumulado semanal.
+
+
+Descripcion
+Regla de Rechazo DSAZ12- Mensaje: No fue informado el Código de Clasificación
+
+Mensaje de Error:
+No fue informado el Código de Clasificación
+Rechazo:
+
+Rechazo: si el código no existe en un estándar cerrado
+Ejemplo: UNSPSC
+Rechazo: si el código no sigue la regla de formación de un código abierto, pero con valores verificables
+
+Ejemplo: GTIN
+Ejemplo: Partidas arancelarias
+
+Solución:
+
+Debe indicar el código estándar en la clase facturaDetalle
+
+
+NombreEstandar
+Regla de Rechazo DSAZ13- Mensaje: No se está informando el Nombre del estándar
+
+Mensaje de Error:
+No se está informando el Nombre del estándar
+Rechazo:
+
+Nombre del estándar
+Solución:
+
+Debe indicar el código estándar en la clase facturaDetalle
+
+
+CodigoEstandar
+Regla de Rechazo DSAB08b- Mensaje: Fecha final del rango de numeración informado no corresponde a la fecha final del rango vigente para el ABS
+
+Mensaje de Error:
+Fecha final del rango de numeración informado no corresponde a la fecha final del rango vigente para el ABS
+Rechazo:
+
+Fecha final del rango de numeración informado no corresponde a la fecha final delrango vigente para el ABS
+Solución:
+
+Debe validar Fecha final del rango de numeración informado y configurado en portal web de factura electrónica en el apartado secuenciales ya que no corresponde a la fecha final del rango vigente para el ABS
+Regla de Rechazo FAJ44- Mensaje: Emisor de servicios no autorizado.
+
+Mensaje de Error:
+
+Emisor de servicios no autorizado
+
+Rechazo:
+
+NIT del emisor
+Solución:
+
+Se recomienda que en el documento de soporte (tipo 05 y tipo 95) no se reporte la sección informacionLegalCliente, es decir Cliente. informacionLegalCliente = NULL
+Por resolución 00067 esta sección fue eliminada del anexo.
+
+
+Regla eliminada
+
+
+Regla de Rechazo DSAJ24b- Mensaje: El DV del NIT del vendedor no es correcto
+
+Mensaje de Error:
+
+El DV del NIT del vendedor no es correcto
+
+Rechazo:
+
+El DV del NIT del vendedor no es correcto
+Solución:
+
+Valida que el DV del NIT del vendedorinformado sea correcto cuando @schemeName es 31 y no se informa el DV en este campo, cuando el CustomizationID es igual a '10'
+
+
+Regla de Rechazo DSAQ07- Mensaje: Valor del descuento o recargo informado no es correcto
+
+Mensaje de Error:
+
+Valor del descuento o recargo informado no es correcto
+
+Rechazo:
+
+Rechazo si es descuento es superior al valor base (BaseAmount).
+Solución:
+
+Debe verificar el monto y el porcentaje que está seteando en la clase cargoDescuento.
+
+
+CargosDescuentos
+
+
+
+
+Regla de Rechazo DSAJ09- Mensaje:Este código no corresponde a un valor correcto de la lista
+
+Mensaje de Error:
+
+Este código no corresponde a un valor correcto de la lista
+
+Rechazo:
+
+Código del municipio
+Solución:
+
+Valida que código de municipio debe corresponder a valor correcto de lista de municipios cuando el CustomizationID es igual a '10'
+
+
+Regla de Rechazo DSFC04- Mensaje: Descripción no corresponde de acuerdo a tabla de referencia
+
+Mensaje de Error:
+
+Descripción no corresponde de acuerdo a tabla de referencia
+
+Rechazo:
+
+Rechazo si el elemento no corresponde a una descripción de la tabla 16.1.6
+Solución:
+
+Debe indicar la forma de generación y transmisión como se muestra a continuación.
+
+
+Generación y Transmisión
+
+
+Regla de Rechazo DSAB07b- Mensaje: Fecha inicial del rango de numeración informado NO corresponde a la fecha inicial del rango vigente para el ABS.
+
+Mensaje de Error:
+
+Fecha inicial del rango de numeración informado NO corresponde a la fecha inicial del rango vigente para el ABS
+
+Rechazo:
+
+Fecha inicial del rango de numeración informado corresponde a la fecha inicial del rango vigente para el ABS.
+Solución:
+
+Debe validar Fecha inicial del rango de numeración informado y configurado en portal web de factura electrónica en el apartado secuenciales ya que no corresponde a la fecha final del rango vigente para el ABS
+
+
+Regla de Rechazo DSAV06- Mensaje: Valor total de la línea, libre de tributos, diferente del producto de la cantidad por el precio unitario, incluidos los cargos y los descuentos aplicados en esta línea.
+
+Mensaje de Error:
+
+Valor total de la línea, libre de tributos, diferente del producto de la cantidad por el precio unitario, incluidos los cargos y los descuentos aplicados en esta línea.
+
+Rechazo:
+
+Valor total de la línea. Cantidad x Precio Unidad menos
+Solución:
+
+Debe validar el Valor total de la línea. El Valor Total de la línea es igual al producto de Cantidad x Precio Unidad menos Descuentos más Recargos que apliquen para la línea.
+
+
+Regla de Rechazo DSAB10- Mensaje: Debe corresponder al prefijo de la autorización de numeración
+
+Mensaje de Error:
+
+El prefijo no corresponder al que contiene la autorización de numeración
+
+Rechazo:
+
+Prefijo de Autorización de Numeración
+Solución:
+
+Debe ingresar el Prefijo de la autorización de numeración dado por el SIE de Numeración.
+
+
+Regla de Rechazo DSAB05a- Mensaje: Número de Formato 1876 que fue autorizado
+
+Mensaje de Error:
+
+Número de Formato 1876 que fue autorizado
+
+Rechazo:
+
+No se encuentra el número de autorización del rango de numeración otorgado
+Solución:
+
+Debe ingresar el número de autorización del rango de numeración otorgado.
+
+
+Regla de Rechazo DSAJ12- Mensaje: Debe ser un código de Departamento la República de Colombia cuando el CustomizationID es igual a '10'.
+
+Mensaje de Error:
+
+Este código no corresponde a un valor correcto de la lista
+
+Rechazo:
+
+Código del Departamento
+Solución:
+
+Si este es un grupo con Información con respeto a la dirección del vendedor de un documento electrónico, debe ser un Departamento la República de Colombia cuando el CustomizationID es igual a '10',debe corresponder a uno de los valores de la columna código en el numeral 16.4.2
+
+
+Departamento
+
+
+Regla de Rechazo DSAU04- Mensaje: Total valor base Imponible: Base imponible para el cálculo de los tributos.
+
+Mensaje de Error:
+
+Base Imponible es distinto a la suma de los valores de las bases imponibles de todas líneas de detalle.
+
+Rechazo:
+
+Case Imponible es distinto a la suma de los valores de las bases imponibles de todas líneas de detalle.
+Solución:
+
+El Valor Base Imponible tiene que ser la suma de los valores de las bases imponibles de todas líneas de detalle.
+
+
+Regla de Rechazo DSAJ73- Mensaje:Valida estructura de composición de Código postal cuando el cando el CustomizationID es igual a '10'
+
+Mensaje de Error:
+
+Estructura código no válida.
+
+Rechazo:
+
+Sí el valor no corresponde a un valor correspondiente.
+Solución:
+
+El código postal es una estructura numérica o alfanumérica que se asigna a un área geográfica de un país y facilita la entrega de correspondencia, porque identifica cada destino con un único número.
+No reemplaza la dirección, sino que la complementa para facilitar la entrega de un envío. En Colombia el código postal consta de 6 dígitos (ejemplo: 578986) que señalan inicialmente la posición geográfica.
+Debe informar la zona postal, en estos momentos recomendamos informar la zona postal con 6 ceros - zonaPostal = 000000.
+
+
+Zona Postal
+
+
+Regla de Rechazo DSAZ09- Mensaje: StandardItemIdentification no informado
+
+Mensaje de Error:
+
+StandardItemIdentification no informado
+
+Rechazo:
+
+Grupo de datos de identificación del artículo o servicio de acuerdo con un esta estándar debe ser informado.
+Solución:
+
+Caso 1: Generación de documentos soporte desde integraciones con The Factory HKA Colombia:
+Al informar el campo estándar código como "999", el campo estandarCodigoProducto se puede reportar con base en su modelo de facturación, incluso puede ser el mismo código del producto. Recuerde que estos campos se encuentran en la clase FacturaDetalle. Ver los ajustes en la siguiente imagen.
+
+999integracion
+
+Caso 2: Generación de documentos soporte desde el portal de emisión HKA Factura: Al igual que el caso 1, se debe a que no se reporta el Tipo de Código Estándar ni el Código Estándar en el producto o servicio del proveedor, el cual se debe configurar en el portal de emisión, específicamente en la sección Catálogo de Documento Soporte>Productos de Proveedores, teniendo en cuenta que se debe informar de acuerdo con lo indicado en la imagen que se muestra a continuación.
+
+999portal
+
+
+Regla de Rechazo DSAD06- Mensaje: Valor del CUDS no está calculado correctamente
+
+Mensaje de Error:
+
+Valor del CUDS no está calculado correctamente
+
+Rechazo:
+
+Si el valor UUID no está correctamente calculado
+Solución:
+
+El CUDS debe ser calculado de acuerdo con lo que se especifica en el anexo técnico.
+
+
+Regla de Rechazo NSBF01- Mensaje: No se encuentra el grupo DiscrepancyResponse
+
+Mensaje de Error:
+
+No se encuentra el grupo DiscrepancyResponse
+
+Rechazo:
+
+Grupo para explicaciones sobre la naturaleza de la Nota de ajuste al documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+Solución:
+
+Se debe diligenciar únicamente cuando el DS se origina a partir de la corrección o ajuste que se da mediante un NAS.
+
+
+Regla de Rechazo NSAJ11- Mensaje: El nombre no corresponde un valor correcto de la lista
+
+Mensaje de Error:
+
+El nombre no corresponde un valor correcto de la lista
+
+Rechazo:
+
+Nombre del Departamento
+Solución:
+
+Si este es un grupo con Información con respecto a la dirección del vendedor de un documento electrónico, debe ser un Departamento la República de Colombia cuando el CustomizationID es igual a'10'.
+Debe corresponder a uno de los valores de la columna Nombre en el numeral 16.4.2.
+
+
+Departamentos
+
+
+Regla de Rechazo NSBG06- Mensaje: Fecha DS referenciado posterior a fecha de la Nota de ajuste al documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+
+Mensaje de Error:
+
+Algoritmo no corresponde
+
+Rechazo:
+
+Si fecha de Documento soporte es posterior al de la nota de ajuste.
+Solución:
+
+Fecha de generación del Documento Soporte relacionado debe ser anterior a la fecha de la Nota de ajuste al documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente.
+
+
+Regla de Rechazo NSBF04- Mensaje: Si no se informa la naturaleza de la corrección
+
+Mensaje de Error:
+
+Si no se informa la naturaleza de la corrección
+
+Rechazo:
+
+Si no se informa la naturaleza de la corrección.
+Solución:
+
+Debe informar la naturaleza de la corrección.
+
+
+Regla de Rechazo NSAZ12- Mensaje: No fue informado el Código de Clasificación
+
+Mensaje de Error:
+
+No fue informado el Código de Clasificación
+
+Rechazo:
+
+si el código no existe en un estándar cerrado
+Ejemplo: UNSPSC
+Rechazo si el código no sigue la regla de formación de un código abierto, pero con valores verificables
+Ejemplo: GTIN
+Ejemplo: Partidas arancelarias
+Solución:
+
+Ver el estandar en 16.3.5
+
+
+Estandar
+
+
+Regla de Rechazo DSAU02- Mensaje: El Valor Bruto antes de tributos tieneque ser la suma de los valores de laslíneas del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial
+
+Mensaje de Error:
+
+El Valor Bruto antes de atributos tiene que ser la suma de los valores de las líneas del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial
+
+Rechazo:
+
+Si round(Invoice/cac:LegalMonetaryTotal/cbc:LineExtensionAmount) es distinto de round(sum(/Invoice/cac:InvoiceLine/cbc:LineExtensionAmount))
+Solución:
+
+El valor del atributo precio total sin impuesto en la clase factura detalle debe ser consistente con el valor del atributo total sin impuestos en factura feneral.
+
+
+Regla de Rechazo DSAT07- Mensaje: Valor reportado no corresponde al producto del porcentaje aplicado sobre la base imponible
+
+Mensaje de Error:
+
+Valor reportado no corresponde al producto del porcentaje aplicado sobre la base imponible.
+
+Rechazo:
+
+Si
+../cac:TaxTotal/cbc:TaxAmount <>../cac:TaxTotal/cbc:TaxableAmount *../cac:TaxTotal/cbc:Percent Solución:
+
+El valor del atributo valorTOTALImp no debe ser mayor o menor a el valor de baseImponibleTOTALImp * porcentajeTOTALImp.
+
+
+Regla de Rechazo DSFC02b- Mensaje: Fecha no corresponde a una compra por operación
+
+Mensaje de Error:
+
+Fecha no corresponde a una compra por operación.
+
+Rechazo:
+
+Si el elemento StartDate es diferente al elemento SigningTime cuando el elemento DescriptionCode es igual a 1
+Solución:
+
+La fecha que se reporta dentro de la descripcion2 debe ser consistente co la fecha de emision cuando descripcion3 en igual a 1 es decir por operación.
+
+
+Regla de Rechazo CDG01- Mensaje: El código del departamento no coincide con el del municipio
+
+Mensaje de Error:
+
+El código del departamento no coincide con el del municipio
+
+Rechazo:
+
+Códigos de departamento y municipios
+Solución:
+
+Debe validar que el codigo del departamento coincide con el del municipio
+
+
+Codigo departamento
+
+
+Regla de Rechazo DSFC02c- Mensaje: Fecha no corresponde a una compra de acumulado semanal
+
+Mensaje de Error:
+
+Fecha no corresponde a una compra de acumulado semanal
+
+Rechazo:
+
+Rechazo si el elemento StartDate es menor a 6 días calendario del elemento SigningTime cuando el elemento DescriptionCode es igual a 2
+Solución:
+
+la fecha que se reporta en descripcion2 debe ser menor a 6 dias calendario de la fecha que reportamos en fecha de emisión cando descripcion3 es igual a 2 es decir por acumulación.
+
+
+Regla de Rechazo DSBB02- Mensaje: No está informado valor del artículo.
+
+Mensaje de Error:
+
+No está informado valor del artículo
+
+Rechazo:
+
+Valor del artículo o servicio
+Solución:
+
+Se debe reportar en valor en el atributo precioVentaUnitario dentro de la clase factura detalle.
+
+
+Regla de Rechazo NSBG01- Mensaje: Nota tipo uno a uno y no se informa BillingReference
+
+Mensaje de Error:
+
+Nota tipo uno a uno y no se informa BillingReference
+
+Rechazo:
+
+Nota tipo uno a uno y no se informa BillingReference
+Solución:
+
+Se debe reportar el arreglo de documento referenciado con valor en el codigo interno 5
+
+
+Codigo Interno
+
+
+Regla de Rechazo NSBG02- Mensaje: No se encuentra el grupo InvoiceDocumentReference
+
+Mensaje de Error:
+
+No se encuentra el grupo InvoiceDocumentReference
+
+Rechazo:
+
+No se encuentra el grupo InvoiceDocumentReference
+Solución:
+
+Se debe reportar el arreglo de documento referenciado con valor en el codigo interno 5
+
+
+Codigo Interno
+
+
+Regla de Rechazo DSAJ14- Mensaje: Informar la dirección sin ciudad ni departamento
+
+Mensaje de Error:
+
+Informar la dirección sin ciudad ni departamento.
+
+Rechazo:
+
+Elemento para informar la dirección de ubicación exacta
+Solución:
+
+Se debe reportar los campos de dirección del no obligado. En documento de soporte, si es Residente se debe reportar todos los campos d dirección de acuerdo a los catalogos de la DIAN
+Validar que la dirección del cliente y dirección fiscal o dirección física del receptor está correctamente construida mínimo con lo siguiente:
+
+
+Direcciones
+
+
+Regla de Rechazo DSAX17- Mensaje: Si la información de este elemento no corresponde al contenido de la columna “Nombre”
+
+Mensaje de Error:
+
+Nombre del tributo
+
+Rechazo:
+
+Sí la información de este elemento no corresponde al contenido de la columna “Nombre”
+Solución:
+
+El codigo debe corresponder al nombre del tributo de la siguiente lista:
+
+
+Tributos
+
+
+Regla de Rechazo DSAS01b- Mensaje: Existe un grupo /Invoice/TaxTotal para el impuesto IVA (01), sin que exista un grupo /Invoice/cac:InvoiceLine con información correspondiente al mismo impuesto.
+
+Mensaje de Error:
+
+Existe un grupo /Invoice/TaxTotal para el impuesto IVA (01), sin que exista un grupo /Invoice/cac:InvoiceLine con información correspondiente al mismo impuesto.
+
+Rechazo:
+
+Si existe un grupo /Invoice/TaxTotal para el impuesto IVA (01), sin que exista un grupo /Invoice/cac:InvoiceLine con información correspondiente al mismo impuesto.
+Solución:
+
+Debe Validar que existe solo un grupo con información de totales para un mismo tributo en el documento soporte y que el impuesto IVA (01), debe existir también en al menos una línea del documento soporte.
+
+
+
+
+Regla de Rechazo DSAJ20- Mensaje: Nombre o Razón Social del vendedor no informado
+
+Mensaje de Error:
+
+Nombre o Razón Social del vendedor no informado
+
+Rechazo:
+
+Si el Nombre o Razón Social del vendedor no se informa.
+Solución:
+
+Nombre o Razón Social del vendedor debe ser informado.
+
+
+
+
+Regla de Rechazo RUT01- Mensaje: El facturador electrónico y/o proveedor tecnológico tiene el RUT en estado cancelado, suspendido o inactivo.
+
+Mensaje de Error:
+
+El facturador electrónico y/o proveedor tecnológico tiene el RUT en estado cancelado, suspendido o inactivo.
+
+Rechazo:
+
+El facturador electrónico y/o proveedor tecnológico tiene el RUT en estado cancelado, suspendido o inactivo.
+Solución:
+
+Este rechazo es un error de validación de la DIAN y esperamos se subsane pronto, es un comportamiento generalizado originado en la DIAN y está afectando a todo el servicio de Facturación Electrónica.
+En estos momentos la DIAN se encuentra operando con NORMALIDAD. Es posible que la regla RUT01 siga presentándose en reglas de notificaciones. Por favor intente el reenvío del documento.
+
+
+
+
+Regla de Rechazo DSAU06- Mensaje: Valor Bruto más tributos es diferente a Valor Bruto del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial más la suma de los Tributos de todas las líneas de detalle.
+
+Mensaje de Error:
+
+Valor Bruto más tributos es diferente a Valor Bruto del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial más la suma de los Tributos de todas las líneas de detalle.
+
+Rechazo:
+
+Si el valor Bruto más tributos es diferente a Valor Bruto del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente que contienen el valor comercial más la suma de los Tributos de todas las líneas de detalle.
+Solución:
+
+Posibles soluciones:
+
+
+El Valor Bruto más tributos tiene que ser igual al Valor Bruto de la factura que contienen el valor comercial más la suma de los tributos de todas las líneas de detalle.
+
+
+Si están reportando impuesto a nivel General deben también reportarlo a nivel de detalle.
+
+
+Se encuentra asociada a la totalización de las bases antes de la suma de tributos en el documento.
+
+
+Validar que los cálculos de la base total imponible del impuesto al igual que en el monto total del mismo estén correctos.
+
+
+Los impuestos reportados a nivel general deben ser igual a los reportados a nivel de detalle.
+
+
+
+
+Regla de Rechazo DASJ08b- Mensaje: No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor.
+
+Mensaje de Error:
+
+No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor.
+
+Rechazo:
+
+No fue informado el conjunto de elementos correctos de acuerdo a la procedencia del vendedor.
+Solución:
+
+El grupo deberá estar conformado al menos por el conjunto formado por los elementos CityName, Country, IdentificationCode cuando el CustomizationID es igual a '11'
+
+
+Ejemplo:
+
+
+Direcciones no Residente
+
+
+
+
+Regla de Rechazo DSAJ10b - Mensaje: El nombre de la cuidad de procedencia no fue informada.
+
+Mensaje de Error:
+
+El nombre de la cuidad de procedencia no fue informada.
+
+Rechazo:
+
+Si el nombre de la cuidad de procedencia no es informado.
+Solución:
+
+Deberá contener el nombre de la cuidad correspondiente cuando el CustomizationID es igual a '11'
+
+
+Ejemplo:
+
+
+Direcciones no Residente
+
+
+
+
+Regla de Rechazo DSAT02 - Mensaje: valor reportado no corresponde a la suma de todos los elementos /Invoice/cac:WithholdingTaxTota l/TaxSubtotal/cbc:TaxAmount
+
+Mensaje de Error:
+
+valor reportado no corresponde a la suma de todos los elementos /Invoice/cac:WithholdingTaxTota l/TaxSubtotal/cbc:TaxAmount
+
+Rechazo:
+
+Si el valor reportado no corresponde a la suma de todos los elementos /Invoice/cac:WithholdingTaxTota l/TaxSubtotal/cbc:TaxAmount
+Solución:
+
+Se debe a que el Valor reportado no corresponde al producto del porcentaje aplicado sobre la base imponible, Según el catálogo que la DIAN nos entregó en la resolución 000167, los valores posibles para retenciones e impuestos son:
+
+
+Ejemplo:
+
+
+Tipos de impuestos
+
+
+
+
+Regla de Rechazo DSAQ02 - Mensaje: Número de línea no es consecutivo
+
+Mensaje de Error:
+
+Número de línea no es consecutivo
+
+Rechazo:
+
+Si el Número de línea no es consecutivo.
+Solución:
+
+Número de cargo o descuento, Valida que los números de línea del descuento o recargo sean consecutivos.
+Empieza con “1”, los números utilizados en los diferentes grupos deben ser consecutivos.
+
+
+
+
+Regla de Rechazo DSAT05 - Mensaje: No se informó base imponible
+
+Mensaje de Error:
+
+No se informó base imponible
+
+Rechazo:
+
+Base Imponible sobre la que se calcula el valor del tributo
+Solución:
+
+En el caso de que el tributo es un porcentaje del valor tributable: informar la base imponible en valor monetario, en el caso de que el tributo es un valor fijo por unidad tributaria: informar el número de unidades tributadas.
+debe validar que tipo de impuestos está reportando en los servicios, ya que por normativa la DIAN los impuestos permitidos son:
+
+
+
+Tipos de impuestos
+
+
+
+
+Regla de Rechazo DSAT05 - Mensaje: Hay un descuento a nivel de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente y no indicó el código del descuento
+
+Mensaje de Error:
+
+Hay un descuento a nivel de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente y no indicó el código del descuento
+
+Rechazo:
+
+Base Imponible sobre la que se calcula el valor del tributo
+Solución:
+
+Si es descuento y no se informa.
+
+
+Descuentos documento soporte
+
+
+Regla de Rechazo DSAJ16a - Mensaje: Código del país del vendedor del documento NO corresponde al literal "CO" cuando el CustomizationID es igual a '10'
+
+Mensaje de Error:
+
+Código del país del vendedor del documento NO corresponde al literal "CO" cuando el CustomizationID es igual a '10'
+
+Rechazo:
+
+Si el código del país del vendedor del documento NO corresponde al literal "CO" cuando el CustomizationID es igual a '10'
+Solución:
+
+Código identificador del país del vendedor debe corresponder al literal "CO" cuando el CustomizationID es igual a '10', En documento de soporte, si es Residente se debe reportar todos los campos de dirección (cliente y fiscal) de acuerdo a los catalogos de la DIAN
+
+
+
+
+Regla de Rechazo DSAJ17a - Mensaje: Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+
+Mensaje de Error:
+
+Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+
+Rechazo:
+
+Si el nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+Solución:
+
+Nombre del país del vendedor debe corresponder al literal “Colombia” cuando el CustomizationID es igual a '10', En documento de soporte, si es Residente se debe reportar todos los campos de dirección (cliente y fiscal) de acuerdo a los catalogos de la DIAN
+
+
+
+
+Regla de Rechazo DSBE06 - Mensaje: El valor no corresponde a la operación entre la base y el porcentaje del cargo o descuento.
+
+Mensaje de Error:
+
+El valor no corresponde a la operación entre la base y el porcentaje del cargo o descuento.
+
+Rechazo:
+
+Si si es descuento es superior al valor base (BaseAmount).
+Solución:
+
+Si es descuento, no puede ser superior al valor base.
+
+
+
+
+Regla de Rechazo DSAU08 - Mensaje: Total descuentos es diferente de la suma de todos los descuentos aplicados al total del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+
+Mensaje de Error:
+
+Total descuentos es diferente de la suma de todos los descuentos aplicados al total del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente
+
+Rechazo:
+
+Si round(/Invoice/cac:LegalMonetaryTotal/ cbc:AllowanceTotalAmount) es distinto de round(sum(/Invoice/cac:AllowanceCharge[cbc: ChargeIndicator = "false"]/cbc:Amount))
+Solución:
+
+El Valor del Descuento Total es igual a la suma de todos los descuentos globales aplicados al total del documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente.
+La DIAN está validando que para el documento de soporte se debe enviar 2 decimales en el campo cantidadDecimales por lo cual debe enviarlo de esta forma para poder solventar esta regla.
+
+
+Regla de Rechazo DSAD05e - Mensaje: Número de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente no existe para el número de autorización.
+
+Mensaje de Error:
+
+Número de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente no existe para el número de autorización.
+
+Rechazo:
+
+Si Número de documento soporte en adquisiciones efectuadas a sujetos no obligados a expedir factura o documento equivalente no existe para el número de autorización.
+Solución:
+
+La DIAN está generando rechazos en documento de soporte para prefijos que contengan números, recomendamos indicar al cliente que debe solicitar y asociar solo prefijos con letras.
+
+
+Regla de Rechazo NSBG01 - Mensaje: Nota tipo uno a uno y no se informa BillingReference
+
+Mensaje de Error:
+
+Nota tipo uno a uno y no se informa BillingReference
+
+Rechazo:
+
+Si no se reporta el grupo de información para referenciar el Documento Soporte afectado por la NAS
+Solución:
+
+Se debe diligenciar únicamente cuando el Documento Soporte se origina a partir de la corrección o ajuste que se da mediante una NAS
+
+
+Regla de Rechazo NSAD02b - Mensaje: Valor informado no corresponde a un código valido de la lista
+
+Mensaje de Error:
+
+Valor informado no corresponde a un código valido de la lista
+
+Rechazo:
+
+Si el valor informado no corresponde a un código valido de la lista
+Solución:
+
+Valida que el tipo de procedencia del vendedor este en la lista.
+
+
+Regla de Rechazo NSAJ17b - Mensaje: Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+
+Mensaje de Error:
+
+Nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+
+Rechazo:
+
+Si el nombre del país del vendedor del documento NO corresponde al literal “Colombia” cuando el CustomizationID es igual a '10'
+Solución:
+
+Nombre del país del vendedor debe corresponder al literal “Colombia” cuando el CustomizationID es igual a '10', validar que esten reportando todos los campos de la direccionCliente.
+
+
+Regla: NSBG05, Rechazo: Algoritmo no corresponde
+
+Mensaje de Error:
+
+Algoritmo del CUDS
+
+Rechazo:
+
+Si el algoritmo no corresponde
+Solución:
+
+El tipoCUFE en DocumentoReferenciado para una nota de ajuste debe ir CUDS-SHA384
+
+
+tipoCufe
+Regla: SIGNPLGNS , Rechazo: No se pudo validar firma
+
+Mensaje de Error:
+
+No se pudo validar firma
+
+Rechazo:
+
+No se pudo validar firma
+Solución:
+
+Esta regla de rechazo la retorna la misma DIAN al servicio, es decir la DIAN está presentando inconvenientes en su proceso de validación.
+Se sugiere tener en cuenta las recomendaciones ante escenarios de intermitencia o Timeouts DIAN.
+
+
+
+
+Regla: DSAJ05b, Rechazo: El contenido de este atributo no corresponde a uno de los valores posibles de la lista.
+
+Mensaje de Error:
+
+El contenido de este atributo no corresponde a uno de los valores posibles de la lista.
+
+Rechazo:
+
+Si el contenido de este atributo no corresponde a uno de los valores posibles de la lista.
+Solución:
+
+Cuando el campo <tipoOperacion> se reporte como 11 (No Residente),
+
+
+dsaj05b
+
+
+Regla: regla ZA01, Rechazo: Verificar si el tamaño del archivo XML es superior a 500 KB de la lista.
+
+Mensaje de Error:
+código 99, Documento rechazado por la DIAN, ZA01, “Verificar si el tamaño del archivo XML es superior a 500 KB”
+
+Rechazo:
+Tamaño del mensaje superior al limite establecido [Maximo: 500 KB].
+
+Solución:
+
+Para solucionar este inconveniente, les recomendamos enviar los documentos con menos de 400 líneas o productos. Esto asegurará que el tamaño del archivo XML no exceda el límite máximo de 500 KB.
+Nota
+Es importante tener en cuenta que, incluso si el número de líneas o productos es inferior a 400, la inclusión de información adicional detallada por cada línea (como descripciones extensas, campos personalizados o atributos adicionales) puede incrementar significativamente el tamaño del archivo XML, haciendo que supere el límite de 500 KB. Hemos identificado casos donde documentos con menos de 400 líneas superan este límite debido a líneas de información adicional por cada ítem. En estos escenarios, se recomienda revisar y optimizar la cantidad de información detallada por línea para asegurar que el XML se mantenga dentro del tamaño permitido.
+
+Esta regla garantiza que el tamaño del archivo XML sea inferior o igual a 500 KB, tal como está estipulado en la sección "8.8.1 Mensaje del Web Service" de los anexos técnicos 1.8 y 1.9 de Facturación Electrónica.
+
+dsaj05b
+
+

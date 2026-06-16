@@ -54,7 +54,8 @@ function writeDocumentLog(documentNumber, action, details) {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Enable CORS for frontend requests
 app.use((req, res, next) => {
@@ -886,11 +887,12 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     const statusCode = extractSoapTag(statusXml, 'code');
     const statusVal = extractSoapTag(statusXml, 'status');
     const statusMsg = extractSoapTag(statusXml, 'message') || extractSoapTag(statusXml, 'error');
+    const documentBase64 = extractSoapTag(statusXml, 'documentBase64') || extractSoapTag(statusXml, 'resourceData');
 
-    console.log(`[GRAVY FTECH] Resultado estado: code=${statusCode}, status=${statusVal}, msg=${statusMsg}`);
+    console.log(`[GRAVY FTECH] Resultado estado: code=${statusCode}, status=${statusVal}, msg=${statusMsg}, hasDocBase64=${!!documentBase64}`);
 
     // If still processing, return enviada status
-    if (statusVal === 'PROCESSING' || statusCode === '200') {
+    if (statusVal === 'PROCESSING' || (statusCode === '200' && !documentBase64)) {
       writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (PROCESSING)', {
         provider: 'Facturatech',
         transId,
@@ -931,8 +933,8 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       });
     }
 
-    // If signed/accepted (statusVal is SIGNED_XML), we proceed to download CUFE & XML
-    if (statusVal === 'SIGNED_XML' || statusCode === '201') {
+    // If signed/accepted, we proceed to download CUFE & XML
+    if (statusVal === 'SIGNED_XML' || statusCode === '201' || (statusCode === '200' && documentBase64)) {
       // 3. Download CUFE
       let cufeEnvelope = '';
       let cufeAction = '';
@@ -966,10 +968,14 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       }
 
       console.log(`[GRAVY FTECH] Descargando CUFE para prefijo=${prefix}, folio=${folio}...`);
-      const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope);
       let cufe = '';
-      if (cufeResponse.statusCode === 200) {
-        cufe = extractSoapTag(cufeResponse.data, 'resourceData');
+      try {
+        const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope);
+        if (cufeResponse.statusCode === 200) {
+          cufe = extractSoapTag(cufeResponse.data, 'resourceData');
+        }
+      } catch (err) {
+        console.warn(`[GRAVY FTECH] Error al descargar CUFE por SOAP (se intentará fallback regex):`, err.message);
       }
 
       // 4. Download signed XML
@@ -1005,12 +1011,29 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       }
 
       console.log(`[GRAVY FTECH] Descargando XML firmado...`);
-      const xmlResponse = await postSoapRequest(endpointUrl, xmlAction, xmlEnvelope);
       let xmlContent = '';
-      if (xmlResponse.statusCode === 200) {
-        const base64Xml = extractSoapTag(xmlResponse.data, 'documentBase64') || extractSoapTag(xmlResponse.data, 'resourceData');
-        if (base64Xml) {
-          xmlContent = Buffer.from(base64Xml, 'base64').toString('utf8');
+      try {
+        const xmlResponse = await postSoapRequest(endpointUrl, xmlAction, xmlEnvelope);
+        if (xmlResponse.statusCode === 200) {
+          const base64Xml = extractSoapTag(xmlResponse.data, 'documentBase64') || extractSoapTag(xmlResponse.data, 'resourceData');
+          if (base64Xml) {
+            xmlContent = Buffer.from(base64Xml, 'base64').toString('utf8');
+          }
+        }
+      } catch (err) {
+        console.warn(`[GRAVY FTECH] Error al descargar XML por SOAP (se intentará fallback documentBase64):`, err.message);
+      }
+
+      // Fallbacks if SOAP download calls returned empty but we already had documentBase64
+      if (!xmlContent && documentBase64) {
+        console.log(`[GRAVY FTECH] Usando documentBase64 de la respuesta de estado como xmlContent.`);
+        xmlContent = Buffer.from(documentBase64, 'base64').toString('utf8');
+      }
+      if (!cufe && xmlContent) {
+        const cufeMatch = xmlContent.match(/<[^>]*UUID[^>]*>([a-fA-F0-9]+)<\/[^>]*UUID>/i);
+        if (cufeMatch) {
+          cufe = cufeMatch[1];
+          console.log(`[GRAVY FTECH] CUFE extraído del XML firmado mediante regex: ${cufe}`);
         }
       }
 
@@ -1028,11 +1051,9 @@ app.post('/api/facturatech/check-status', async (req, res) => {
         parsedMessage: statusMsg,
         cufeAction,
         cufeEnvelope,
-        cufeResponseXml: cufeResponse.data,
         extractedCufe: cufe,
         xmlAction,
         xmlEnvelope,
-        xmlResponseXml: xmlResponse.data,
         extractedXmlLength: xmlContent ? xmlContent.length : 0
       });
 
@@ -1063,233 +1084,574 @@ app.post('/api/facturatech/check-status', async (req, res) => {
 });
 
 /**
+ * fetchQrCode: Fetches QR code image bytes from QR server API.
+ * Falls back to null if request fails or times out.
+ */
+function fetchQrCode(text) {
+  return new Promise((resolve) => {
+    try {
+      const url = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(text)}`;
+      const req = https.get(url, { timeout: 3000 }, (res) => {
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(null);
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+/**
  * generateInvoicePdf: Generates a PDF representation (Representación Gráfica)
  * of an electronic invoice from its UBL XML content.
  * Returns a Promise<Buffer> with the PDF bytes.
  */
-function generateInvoicePdf(xmlContent, filename) {
-  return new Promise((resolve, reject) => {
+function generateInvoicePdf(xmlContent, filename, invoiceData) {
+  return new Promise(async (resolve, reject) => {
     try {
-      // --- Extract key fields from XML using simple regex (no DOM parser needed) ---
+      const stripTags = (str) => {
+        return String(str || '').replace(/<[^>]*>/g, '').trim();
+      };
+
+      // Clean XML of extensions and signatures to avoid false matches on metadata tags
+      const cleanXml = String(xmlContent || '')
+        .replace(/<(?:[a-zA-Z0-9_-]+:)?UBLExtensions>[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?UBLExtensions>/gi, '')
+        .replace(/<(?:[a-zA-Z0-9_-]+:)?Signature>[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?Signature>/gi, '');
+
       const getTag = (tag) => {
-        const m = xmlContent.match(new RegExp(`<(?:[a-zA-Z]+:)?${tag}[^>]*>([\\s\\S]*?)<\/(?:[a-zA-Z]+:)?${tag}>`, 'i'));
-        return m ? m[1].trim().replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1') : '';
-      };
-      const getAttr = (tag, attr) => {
-        const m = xmlContent.match(new RegExp(`<(?:[a-zA-Z]+:)?${tag}[^>]*${attr}="([^"]*)"`));
-        return m ? m[1] : '';
+        const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
+        const m = cleanXml.match(regex);
+        return m ? stripTags(m[1].trim().replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')) : '';
       };
 
-      const docId       = getTag('ID') || filename;
-      const issueDate   = getTag('IssueDate') || '';
-      const issueTime   = getTag('IssueTime') || '';
-      const cufe        = getTag('UUID') || 'No disponible';
-      const currency    = getTag('DocumentCurrencyCode') || 'COP';
-      const docTypeRaw  = xmlContent.match(/<(?:[a-zA-Z]+:)?InvoiceTypeCode[^>]*>(.*?)<\/(?:[a-zA-Z]+:)?InvoiceTypeCode>/i);
-      const docTypeCode = docTypeRaw ? docTypeRaw[1].trim() : '';
-      const docTypeLabel = docTypeCode === '01' ? 'Factura Electrónica de Venta' : docTypeCode === '91' ? 'Nota Crédito' : docTypeCode === '92' ? 'Nota Débito' : 'Documento Electrónico';
+      const extractField = (party, tag) => {
+        const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${party}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_-]+:)?${party}>`, 'i');
+        const partyMatch = cleanXml.match(regex);
+        if (!partyMatch) return '';
+        const innerXml = partyMatch[1];
+        const fieldRegex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_-]+:)?${tag}>`, 'i');
+        const fieldMatch = innerXml.match(fieldRegex);
+        return fieldMatch ? stripTags(fieldMatch[1]) : '';
+      };
 
-      // Supplier info
-      const supplierName = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?RegistrationName>([\s\S]*?)<\/(?:[a-zA-Z]+:)?RegistrationName>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const supplierNit = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?CompanyID[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?CompanyID>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const supplierEmail = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?ElectronicMail>([\s\S]*?)<\/(?:[a-zA-Z]+:)?ElectronicMail>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const supplierPhone = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?Telephone>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Telephone>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const supplierAddress = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingSupplierParty>[\s\S]*?<(?:[a-zA-Z]+:)?AddressLine>([\s\S]*?)<\/(?:[a-zA-Z]+:)?AddressLine>/i);
-        return m ? m[1].trim() : '';
-      })();
+      let docId, issueDate, issueTime, cufe, docTypeLabel;
+      let supplierName, supplierNit, supplierAddress, supplierPhone, supplierEmail;
+      let customerName, customerNit, customerAddress, customerPhone, customerEmail;
+      let payableAmount, taxAmount, lineExtension;
+      let lines = [];
 
-      // Customer info
-      const customerName = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?RegistrationName>([\s\S]*?)<\/(?:[a-zA-Z]+:)?RegistrationName>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const customerNit = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?CompanyID[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?CompanyID>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const customerEmail = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?ElectronicMail>([\s\S]*?)<\/(?:[a-zA-Z]+:)?ElectronicMail>/i);
-        return m ? m[1].trim() : '';
-      })();
-      const customerAddress = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?AccountingCustomerParty>[\s\S]*?<(?:[a-zA-Z]+:)?AddressLine>([\s\S]*?)<\/(?:[a-zA-Z]+:)?AddressLine>/i);
-        return m ? m[1].trim() : '';
-      })();
+      let cajero = 'Admin';
+      let paymentMethod = 'EFECTIVO';
+      let received = 0;
+      let change = 0;
+      let companyLogo = '';
+      let resolutionName = 'DOCUMENTO EQUIVALENTE DE VENTA';
+      let resolutionDesc = '';
+      let resolutionNumber = '';
+      let resolutionDate = '';
+      let resolutionExpiry = '';
+      let resolutionRangeFrom = '';
+      let resolutionRangeTo = '';
+      let resolutionPrefix = '';
 
-      // Totals
-      const payableAmount = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?PayableAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?PayableAmount>/i);
-        return m ? parseFloat(m[1].trim()) : 0;
-      })();
-      const taxAmount = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?TaxTotal>[\s\S]*?<(?:[a-zA-Z]+:)?TaxAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?TaxAmount>/i);
-        return m ? parseFloat(m[1].trim()) : 0;
-      })();
-      const lineExtension = (() => {
-        const m = xmlContent.match(/<(?:[a-zA-Z]+:)?LegalMonetaryTotal>[\s\S]*?<(?:[a-zA-Z]+:)?LineExtensionAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?LineExtensionAmount>/i);
-        return m ? parseFloat(m[1].trim()) : 0;
-      })();
+      if (invoiceData) {
+        docId = invoiceData.docId || filename;
+        issueDate = invoiceData.issueDate || '';
+        issueTime = invoiceData.issueTime || '';
+        cufe = invoiceData.cufe || 'No disponible';
+        supplierName = invoiceData.supplierName || '';
+        supplierNit = invoiceData.supplierNit || '';
+        supplierAddress = invoiceData.supplierAddress || '';
+        supplierPhone = invoiceData.supplierPhone || '';
+        supplierEmail = invoiceData.supplierEmail || '';
+        customerName = invoiceData.customerName || '';
+        customerNit = invoiceData.customerNit || '';
+        customerAddress = invoiceData.customerAddress || '';
+        customerPhone = invoiceData.customerPhone || '';
+        customerEmail = invoiceData.customerEmail || '';
+        payableAmount = invoiceData.payableAmount || 0;
+        
+        cajero = invoiceData.cajero || 'Admin';
+        paymentMethod = invoiceData.paymentMethod || 'EFECTIVO';
+        received = invoiceData.received || 0;
+        change = invoiceData.change || 0;
+        companyLogo = invoiceData.companyLogo || '';
+        resolutionName = invoiceData.resolutionName || 'Factura de Venta POS';
+        resolutionDesc = invoiceData.resolutionDesc || '';
+        resolutionNumber = invoiceData.resolutionNumber || '';
+        resolutionDate = invoiceData.resolutionDate || '';
+        resolutionExpiry = invoiceData.resolutionExpiry || '';
+        resolutionRangeFrom = invoiceData.resolutionRangeFrom || '';
+        resolutionRangeTo = invoiceData.resolutionRangeTo || '';
+        resolutionPrefix = invoiceData.resolutionPrefix || '';
 
-      // Invoice lines
-      const lines = [];
-      const linePattern = /<(?:[a-zA-Z]+:)?(?:Invoice|CreditNote|DebitNote)Line>([\s\S]*?)<\/(?:[a-zA-Z]+:)?(?:Invoice|CreditNote|DebitNote)Line>/gi;
-      let lineMatch;
-      while ((lineMatch = linePattern.exec(xmlContent)) !== null) {
-        const lineXml = lineMatch[1];
-        const desc = (lineXml.match(/<(?:[a-zA-Z]+:)?Description>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Description>/i) || [])[1]?.trim() || '';
-        const qty = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?(?:Invoiced|Credited|Debited)Quantity[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?(?:Invoiced|Credited|Debited)Quantity>/i) || [])[1] || '0');
-        const unitPrice = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?PriceAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?PriceAmount>/i) || [])[1] || '0');
-        const lineTotal = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?LineExtensionAmount[^>]*>([\s\S]*?)<\/(?:[a-zA-Z]+:)?LineExtensionAmount>/i) || [])[1] || '0');
-        const ivaRate = parseFloat((lineXml.match(/<(?:[a-zA-Z]+:)?Percent>([\s\S]*?)<\/(?:[a-zA-Z]+:)?Percent>/i) || [])[1] || '0');
-        if (desc) lines.push({ desc, qty, unitPrice, lineTotal, ivaRate });
+        lineExtension = 0;
+        taxAmount = 0;
+        lines = (invoiceData.lines || []).map(l => {
+          const lineSubtotal = (l.qty || 0) * (l.unitPrice || 0);
+          lineExtension += lineSubtotal;
+          taxAmount += (l.lineTotal || 0) - lineSubtotal;
+          return {
+            desc: l.desc || '',
+            code: l.code || '—',
+            qty: l.qty || 0,
+            unitPrice: l.unitPrice || 0,
+            lineTotal: l.lineTotal || 0,
+            ivaRate: l.ivaRate || 0
+          };
+        });
+        
+        const isNC = filename.toUpperCase().includes('NC');
+        const isND = filename.toUpperCase().includes('ND');
+        docTypeLabel = isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Factura Electrónica de Venta';
+      } else {
+        docId       = getTag('ID') || filename;
+        if (docId.includes('://') || docId.length > 50) {
+          docId = filename;
+        }
+        issueDate   = getTag('IssueDate') || '';
+        issueTime   = getTag('IssueTime') || '';
+        cufe        = getTag('UUID') || 'No disponible';
+        
+        const docTypeRaw  = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode(?:\s[^>]*)?>(.*?)<\/(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode>/i);
+        const docTypeCode = docTypeRaw ? stripTags(docTypeRaw[1].trim()) : '';
+        docTypeLabel = docTypeCode === '01' ? 'Factura Electrónica de Venta' : docTypeCode === '91' ? 'Nota Crédito' : docTypeCode === '92' ? 'Nota Débito' : 'Documento Electrónico';
+
+        supplierName = extractField('AccountingSupplierParty', 'RegistrationName') || extractField('AccountingSupplierParty', 'Name');
+        supplierNit = extractField('AccountingSupplierParty', 'CompanyID');
+        supplierEmail = extractField('AccountingSupplierParty', 'ElectronicMail');
+        supplierPhone = extractField('AccountingSupplierParty', 'Telephone');
+        supplierAddress = extractField('AccountingSupplierParty', 'Line') || extractField('AccountingSupplierParty', 'AddressLine');
+
+        customerName = extractField('AccountingCustomerParty', 'RegistrationName') || extractField('AccountingCustomerParty', 'Name');
+        customerNit = extractField('AccountingCustomerParty', 'CompanyID');
+        customerEmail = extractField('AccountingCustomerParty', 'ElectronicMail');
+        customerPhone = extractField('AccountingCustomerParty', 'Telephone');
+        customerAddress = extractField('AccountingCustomerParty', 'Line') || extractField('AccountingCustomerParty', 'AddressLine');
+
+        const xmlPayableAmount = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?PayableAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?PayableAmount>/i);
+        payableAmount = xmlPayableAmount ? parseFloat(stripTags(xmlPayableAmount[1])) : 0;
+        
+        const xmlTaxAmount = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?TaxTotal>[\s\S]*?<(?:[a-zA-Z0-9_-]+:)?TaxAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?TaxAmount>/i);
+        taxAmount = xmlTaxAmount ? parseFloat(stripTags(xmlTaxAmount[1])) : 0;
+        
+        const xmlLineExtension = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?LegalMonetaryTotal>[\s\S]*?<(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount>/i);
+        lineExtension = xmlLineExtension ? parseFloat(stripTags(xmlLineExtension[1])) : 0;
+
+        const authMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?InvoiceAuthorization[^>]*(?:Auto-habilitacion)?>([0-9]+)<\/(?:[a-zA-Z0-9_-]+:)?InvoiceAuthorization>/i);
+        resolutionNumber = authMatch ? authMatch[1] : '';
+        const startMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?StartDate[^>]*>([^<]+)<\/(?:[a-zA-Z0-9_-]+:)?StartDate>/i);
+        resolutionDate = startMatch ? stripTags(startMatch[1]) : '';
+        const endMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?EndDate[^>]*>([^<]+)<\/(?:[a-zA-Z0-9_-]+:)?EndDate>/i);
+        resolutionExpiry = endMatch ? stripTags(endMatch[1]) : '';
+        const fromMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?From[^>]*>([0-9]+)<\/(?:[a-zA-Z0-9_-]+:)?From>/i);
+        resolutionRangeFrom = fromMatch ? fromMatch[1] : '';
+        const toMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?To[^>]*>([0-9]+)<\/(?:[a-zA-Z0-9_-]+:)?To>/i);
+        resolutionRangeTo = toMatch ? toMatch[1] : '';
+        const prefixMatch = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?Prefix[^>]*>([^<]*)<\/(?:[a-zA-Z0-9_-]+:)?Prefix>/i);
+        resolutionPrefix = prefixMatch ? stripTags(prefixMatch[1]) : '';
+
+        const linePattern = /<(?:[a-zA-Z0-9_-]+:)?(?:Invoice|CreditNote|DebitNote)Line>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?(?:Invoice|CreditNote|DebitNote)Line>/gi;
+        let lineMatch;
+        while ((lineMatch = linePattern.exec(cleanXml)) !== null) {
+          const lineXml = lineMatch[1];
+          const desc = stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Description>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
+          const qty = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity>/i) || [])[1] || '0'));
+          const unitPrice = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?PriceAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?PriceAmount>/i) || [])[1] || '0'));
+          const lineTotal = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount(?:\s[^>]?>)?([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount>/i) || [])[1] || '0'));
+          const ivaRate = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Percent>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Percent>/i) || [])[1] || '0'));
+          
+          const codeMatch = lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?(?:SellersItemIdentification|StandardItemIdentification|ModelName)>[\s\S]*?<(?:[a-zA-Z0-9_-]+:)?ID[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?ID>/i);
+          const code = codeMatch ? stripTags(codeMatch[1]) : '—';
+          
+          if (desc) lines.push({ desc, code, qty, unitPrice, lineTotal, ivaRate });
+        }
       }
 
       const fmt = (n) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(n || 0);
 
       // --- Build PDF ---
-      const doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+      const isPosReceipt = xmlContent.includes('PuntoVenta') || filename.toUpperCase().includes('POS') || xmlContent.includes('languageLocaleID="PuntoVenta"');
+      
+      let doc;
+      if (isPosReceipt) {
+        // Group taxes by rate to compute base and tax totals
+        const taxGroups = {};
+        lines.forEach(line => {
+          const rate = line.ivaRate || 0;
+          if (!taxGroups[rate]) {
+            taxGroups[rate] = { base: 0, tax: 0 };
+          }
+          const lineSubtotal = (line.qty || 0) * (line.unitPrice || 0);
+          taxGroups[rate].base += lineSubtotal;
+          taxGroups[rate].tax += (line.lineTotal || 0) - lineSubtotal;
+        });
+
+        // Compute page height dynamically
+        const itemHeight = 35;
+        const taxGroupsCount = Object.keys(taxGroups).length;
+        const baseHeight = 520 + (taxGroupsCount * 10) + (companyLogo ? 55 : 0);
+        const pageHeight = baseHeight + (lines.length * itemHeight);
+        
+        doc = new PDFDocument({ margin: 10, size: [226, pageHeight] });
+      } else {
+        doc = new PDFDocument({ margin: 40, size: 'LETTER' });
+      }
+
       const buffers = [];
       doc.on('data', (chunk) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
-      const BLUE  = '#1A4B8C';
-      const ORANGE = '#E87D1E';
-      const GRAY  = '#6B7280';
-      const LGRAY = '#F3F4F6';
-      const TEXT  = '#111827';
-      const W     = doc.page.width - 80; // usable width
-      const L     = 40; // left margin
+      if (isPosReceipt) {
+        const W = 206; // 226 - 20 (margins)
+        const L = 10;
+        let y = 10;
 
-      // ── HEADER BAR ──────────────────────────────────────────────
-      doc.rect(L, 40, W, 70).fill(BLUE);
-      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(16)
-         .text(docTypeLabel.toUpperCase(), L + 12, 52, { width: W - 120 });
-      doc.font('Helvetica').fontSize(10)
-         .text(`No. ${docId}`, L + 12, 72, { width: W - 120 });
-
-      // Date top-right
-      doc.font('Helvetica-Bold').fontSize(9)
-         .text('FECHA', L + W - 110, 50, { width: 100, align: 'right' })
-         .font('Helvetica').text(`${issueDate}`, L + W - 110, 62, { width: 100, align: 'right' })
-         .text(`${issueTime.slice(0,8)}`, L + W - 110, 74, { width: 100, align: 'right' });
-
-      // ── SUPPLIER ────────────────────────────────────────────────
-      let y = 120;
-      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
-         .text('EMISOR', L, y);
-      y += 14;
-      doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
-         .text(supplierName || 'Razón Social del Emisor', L, y, { width: W * 0.55 });
-      y += 13;
-      doc.font('Helvetica').fontSize(8).fillColor(GRAY)
-         .text(`NIT: ${supplierNit}`, L, y)
-         .text(`Tel: ${supplierPhone}  |  Email: ${supplierEmail}`, L, y + 10)
-         .text(`Dirección: ${supplierAddress}`, L, y + 20);
-
-      // ── CUSTOMER ────────────────────────────────────────────────
-      const cx = L + W * 0.58;
-      y = 120;
-      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
-         .text('RECEPTOR / CLIENTE', cx, y);
-      y += 14;
-      doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
-         .text(customerName || 'Consumidor Final', cx, y, { width: W * 0.42 });
-      y += 13;
-      doc.font('Helvetica').fontSize(8).fillColor(GRAY)
-         .text(`NIT / CC: ${customerNit}`, cx, y)
-         .text(`Email: ${customerEmail}`, cx, y + 10)
-         .text(`Dirección: ${customerAddress}`, cx, y + 20);
-
-      // ── DIVIDER ─────────────────────────────────────────────────
-      y = 190;
-      doc.moveTo(L, y).lineTo(L + W, y).strokeColor(ORANGE).lineWidth(1.5).stroke();
-      y += 10;
-
-      // ── LINES TABLE HEADER ───────────────────────────────────────
-      doc.rect(L, y, W, 18).fill(LGRAY);
-      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8);
-      const cols = { desc: L + 4, qty: L + W * 0.52, price: L + W * 0.63, iva: L + W * 0.76, total: L + W * 0.87 };
-      doc.text('DESCRIPCIÓN', cols.desc, y + 5, { width: W * 0.50 })
-         .text('CANT.', cols.qty, y + 5, { width: 50, align: 'right' })
-         .text('V. UNIT.', cols.price, y + 5, { width: 60, align: 'right' })
-         .text('IVA%', cols.iva, y + 5, { width: 40, align: 'right' })
-         .text('SUBTOTAL', cols.total, y + 5, { width: 60, align: 'right' });
-      y += 20;
-
-      // ── LINES ────────────────────────────────────────────────────
-      doc.font('Helvetica').fontSize(8).fillColor(TEXT);
-      lines.forEach((line, idx) => {
-        if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
-        if (idx % 2 === 1) doc.rect(L, y - 2, W, 15).fill('#F9FAFB');
-        doc.fillColor(TEXT)
-           .text(line.desc, cols.desc, y, { width: W * 0.50 })
-           .text(String(line.qty), cols.qty, y, { width: 50, align: 'right' })
-           .text(fmt(line.unitPrice), cols.price, y, { width: 60, align: 'right' })
-           .text(`${line.ivaRate}%`, cols.iva, y, { width: 40, align: 'right' })
-           .text(fmt(line.lineTotal), cols.total, y, { width: 60, align: 'right' });
-        y += 15;
-      });
-
-      // ── TOTALS ───────────────────────────────────────────────────
-      y += 6;
-      doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-      y += 8;
-      const tw = 200;
-      const tx = L + W - tw;
-      const addTotal = (label, value, bold = false, highlight = false) => {
-        if (highlight) {
-          doc.rect(tx - 8, y - 3, tw + 8, 18).fill(BLUE);
-          doc.fillColor('#FFFFFF').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8);
-        } else {
-          doc.fillColor(GRAY).font('Helvetica').fontSize(8);
+        // --- Logo ---
+        if (companyLogo) {
+          try {
+            const base64Data = companyLogo.replace(/^data:image\/\w+;base64,/, "");
+            const logoBuffer = Buffer.from(base64Data, 'base64');
+            doc.image(logoBuffer, L + (W - 50) / 2, y, { width: 50 });
+            y += 55;
+          } catch (logoErr) {
+            console.warn("[ORCHESTRATOR] Error rendering company logo:", logoErr.message);
+          }
         }
-        doc.text(label, tx, y, { width: tw * 0.55 });
-        doc.fillColor(highlight ? '#FFFFFF' : TEXT)
-           .font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8)
-           .text(value, tx + tw * 0.55, y, { width: tw * 0.45, align: 'right' });
-        y += bold ? 20 : 14;
-      };
-      addTotal('Subtotal (sin IVA):', fmt(lineExtension));
-      addTotal('IVA:', fmt(taxAmount));
-      addTotal('TOTAL A PAGAR:', fmt(payableAmount), true, true);
 
-      // ── CUFE BOX ─────────────────────────────────────────────────
-      y += 10;
-      doc.rect(L, y, W, 42).fill('#F0F4FF');
-      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8)
-         .text('CUFE / CUDE (Código Único de Factura Electrónica):', L + 6, y + 6);
-      doc.fillColor(TEXT).font('Helvetica').fontSize(6.5)
-         .text(cufe, L + 6, y + 18, { width: W - 12 });
-      y += 50;
+        // --- Company info (Supplier) ---
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(10)
+           .text(supplierName || 'Razón Social Emisor', L, y, { width: W, align: 'center' });
+        y += 14;
+        
+        doc.font('Helvetica').fontSize(8.5)
+           .text(`NIT: ${supplierNit}`, L, y, { width: W, align: 'center' });
+        y += 11;
+        if (supplierAddress) {
+          doc.text(supplierAddress, L, y, { width: W, align: 'center' });
+          y += 11;
+        }
+        if (supplierPhone) {
+          doc.text(`Teléfono: ${supplierPhone}`, L, y, { width: W, align: 'center' });
+          y += 12;
+        }
 
-      // ── LEGAL FOOTER ─────────────────────────────────────────────
-      doc.fillColor(GRAY).font('Helvetica').fontSize(6.5)
-         .text(
-           `Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente. Generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}.`,
-           L, y, { width: W, align: 'justify' }
-         );
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
 
-      // ── ORANGE BOTTOM BAR ────────────────────────────────────────
-      const pageH = doc.page.height;
-      doc.rect(L, pageH - 28, W, 6).fill(ORANGE);
-      doc.fillColor(GRAY).font('Helvetica').fontSize(6)
-         .text('Documento generado por GRAVY ERP | Facturación Electrónica DIAN', L, pageH - 18, { width: W, align: 'center' });
+        // Document Info
+        doc.font('Helvetica-Bold').fontSize(9)
+           .text(docTypeLabel.toUpperCase(), L, y, { width: W, align: 'center' });
+        y += 11;
+        doc.text(docId, L, y, { width: W, align: 'center' });
+        y += 12;
 
-      doc.end();
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
+
+        // --- Transaction Info ---
+        doc.font('Helvetica').fontSize(8.5)
+           .text(`Fecha: ${issueDate} ${issueTime.slice(0, 5)}`, L, y)
+           .text(`Cajero: ${cajero}`, L, y + 11)
+           .text(`Cliente: ${customerName}`, L, y + 22)
+           .text(`NIT/C.C: ${customerNit}`, L, y + 33);
+        y += 46;
+
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
+
+        // --- Items Table Header ---
+        doc.font('Helvetica-Bold').fontSize(8.5);
+        doc.text('DETALLE', L, y)
+           .text('TOTAL', L, y, { width: W, align: 'right' });
+        y += 11;
+
+        // Dashed Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).dash(2, { space: 2 }).stroke().undash();
+        y += 6;
+
+        // --- Items Table Rows ---
+        lines.forEach(line => {
+          // Description line
+          doc.font('Helvetica-Bold').fontSize(8.5)
+             .text(line.desc, L, y, { width: W });
+          y += 11;
+          
+          // Code & IVA line
+          const codeVal = line.code || '—';
+          doc.font('Helvetica').fontSize(7.5).fillColor('#4B5563')
+             .text(`Cód: ${codeVal} | IVA: ${line.ivaRate}%`, L, y);
+          y += 10;
+
+          // Qty x Price and Line Total
+          const qtyText = `${line.qty} UND x ${fmt(line.unitPrice)}`;
+          doc.font('Helvetica').fontSize(8.5).fillColor('#000000')
+             .text(qtyText, L, y);
+          doc.font('Helvetica-Bold')
+             .text(fmt(line.lineTotal), L, y, { width: W, align: 'right' });
+          y += 14;
+        });
+
+        // Dashed Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).dash(2, { space: 2 }).stroke().undash();
+        y += 6;
+
+        // --- Totals ---
+        const drawTotalLine = (label, value, isBold = false) => {
+          doc.font(isBold ? 'Helvetica-Bold' : 'Helvetica').fontSize(isBold ? 9.5 : 8.5)
+             .text(label, L, y)
+             .text(value, L, y, { width: W, align: 'right' });
+          y += isBold ? 12 : 11;
+        };
+        drawTotalLine('Subtotal:', fmt(lineExtension));
+        drawTotalLine('IVA:', fmt(taxAmount));
+        drawTotalLine('TOTAL:', fmt(payableAmount), true);
+        
+        // Dashed Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).dash(2, { space: 2 }).stroke().undash();
+        y += 6;
+
+        // --- Tax Breakdown ---
+        const taxGroups = {};
+        lines.forEach(line => {
+          const rate = line.ivaRate || 0;
+          if (!taxGroups[rate]) {
+            taxGroups[rate] = { base: 0, tax: 0 };
+          }
+          const lineSubtotal = (line.qty || 0) * (line.unitPrice || 0);
+          taxGroups[rate].base += lineSubtotal;
+          taxGroups[rate].tax += (line.lineTotal || 0) - lineSubtotal;
+        });
+
+        doc.font('Helvetica-Bold').fontSize(8)
+           .text('DESGLOSE DE IMPUESTOS (IVA)', L, y, { width: W, align: 'center' });
+        y += 11;
+        doc.font('Helvetica-Bold').fontSize(7.5)
+           .text('Tarifa', L, y)
+           .text('Base', L + W * 0.35, y, { width: W * 0.3, align: 'right' })
+           .text('Impuesto', L + W * 0.65, y, { width: W * 0.35, align: 'right' });
+        y += 10;
+        doc.font('Helvetica').fontSize(7.5);
+        for (const rate of Object.keys(taxGroups).map(Number).sort((a,b)=>a-b)) {
+          const group = taxGroups[rate];
+          doc.text(`IVA ${rate}%`, L, y)
+             .text(fmt(group.base), L + W * 0.35, y, { width: W * 0.3, align: 'right' })
+             .text(fmt(group.tax), L + W * 0.65, y, { width: W * 0.35, align: 'right' });
+          y += 10;
+        }
+
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
+
+        // --- Payment Details ---
+        doc.font('Helvetica').fontSize(8.5)
+           .text('Método Pago:', L, y)
+           .text(paymentMethod, L, y, { width: W, align: 'right' });
+        y += 11;
+        doc.text('Recibido:', L, y)
+           .text(fmt(received), L, y, { width: W, align: 'right' });
+        y += 11;
+        doc.font('Helvetica-Bold')
+           .text('Vueltas:', L, y)
+           .text(fmt(change), L, y, { width: W, align: 'right' });
+        y += 14;
+
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
+
+        // --- Resolution and legal info ---
+        doc.font('Helvetica-Bold').fontSize(8)
+           .text(resolutionName, L, y, { width: W, align: 'center' });
+        y += 11;
+        if (resolutionNumber) {
+          doc.font('Helvetica').fontSize(7).fillColor('#4B5563')
+             .text(`Autorización Facturación POS No. ${resolutionNumber}`, L, y, { width: W, align: 'center' });
+          y += 10;
+          doc.text(`Fecha Res: ${resolutionDate} | Vigencia hasta: ${resolutionExpiry}`, L, y, { width: W, align: 'center' });
+          y += 10;
+          const rPrefix = resolutionPrefix ? resolutionPrefix + ' ' : '';
+          doc.text(`Rango: ${rPrefix}${resolutionRangeFrom} al ${rPrefix}${resolutionRangeTo}`, L, y, { width: W, align: 'center' });
+          y += 10;
+        }
+        doc.font('Helvetica').fontSize(7).fillColor('#4B5563')
+           .text('Software: GRAVY POS | Fabricante: JULIAN ESPINOSA ARRUBLA,', L, y, { width: W, align: 'center' });
+        y += 10;
+        doc.text('NIT. 1130636393-2', L, y, { width: W, align: 'center' });
+        y += 12;
+
+        // Solid Line
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
+        y += 6;
+
+        // --- QR Code ---
+        let qrBuffer = null;
+        if (cufe && cufe !== 'No disponible') {
+          const qrUrlText = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
+          qrBuffer = await fetchQrCode(qrUrlText);
+        } else {
+          const qrUrlText = `Num: ${docId} | Nit: ${supplierNit} | Cliente: ${customerNit} | Total: ${payableAmount} | CUFE: Temporal`;
+          qrBuffer = await fetchQrCode(qrUrlText);
+        }
+
+        if (qrBuffer) {
+          try {
+            doc.image(qrBuffer, L + (W - 100) / 2, y, { width: 100, height: 100 });
+            y += 105;
+          } catch (qrErr) {
+            console.warn("[ORCHESTRATOR] Error rendering QR code image:", qrErr.message);
+          }
+        }
+
+        // --- CUFE Text ---
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(7.5)
+           .text('CUFE:', L, y, { width: W, align: 'center' });
+        y += 10;
+        doc.font('Helvetica').fontSize(6)
+            .text(cufe, L, y, { width: W, align: 'center' });
+
+        doc.end();
+      } else {
+        const BLUE  = '#1A4B8C';
+        const ORANGE = '#E87D1E';
+        const GRAY  = '#6B7280';
+        const LGRAY = '#F3F4F6';
+        const TEXT  = '#111827';
+        const W     = doc.page.width - 80; // usable width
+        const L     = 40; // left margin
+
+        // ── HEADER BAR ──────────────────────────────────────────────
+        doc.rect(L, 40, W, 70).fill(BLUE);
+        doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(16)
+           .text(docTypeLabel.toUpperCase(), L + 12, 52, { width: W - 120 });
+        doc.font('Helvetica').fontSize(10)
+           .text(`No. ${docId}`, L + 12, 72, { width: W - 120 });
+
+        // Date top-right
+        doc.font('Helvetica-Bold').fontSize(9)
+           .text('FECHA', L + W - 110, 50, { width: 100, align: 'right' })
+           .font('Helvetica').text(`${issueDate}`, L + W - 110, 62, { width: 100, align: 'right' })
+           .text(`${issueTime.slice(0,8)}`, L + W - 110, 74, { width: 100, align: 'right' });
+
+        // ── SUPPLIER ────────────────────────────────────────────────
+        let y = 120;
+        doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
+           .text('EMISOR', L, y);
+        y += 14;
+        doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
+           .text(supplierName || 'Razón Social del Emisor', L, y, { width: W * 0.55 });
+        y += 13;
+        doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+           .text(`NIT: ${supplierNit}`, L, y)
+           .text(`Tel: ${supplierPhone}  |  Email: ${supplierEmail}`, L, y + 10)
+           .text(`Dirección: ${supplierAddress}`, L, y + 20);
+
+        // ── CUSTOMER ────────────────────────────────────────────────
+        const cx = L + W * 0.58;
+        y = 120;
+        doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(9)
+           .text('RECEPTOR / CLIENTE', cx, y);
+        y += 14;
+        doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(10)
+           .text(customerName || 'Consumidor Final', cx, y, { width: W * 0.42 });
+        y += 13;
+        doc.font('Helvetica').fontSize(8).fillColor(GRAY)
+           .text(`NIT / CC: ${customerNit}`, cx, y)
+           .text(`Email: ${customerEmail}`, cx, y + 10)
+           .text(`Dirección: ${customerAddress}`, cx, y + 20);
+
+        // ── DIVIDER ─────────────────────────────────────────────────
+        y = 190;
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor(ORANGE).lineWidth(1.5).stroke();
+        y += 10;
+
+        // ── LINES TABLE HEADER ───────────────────────────────────────
+        doc.rect(L, y, W, 18).fill(LGRAY);
+        doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8);
+        const cols = { desc: L + 4, qty: L + W * 0.52, price: L + W * 0.63, iva: L + W * 0.76, total: L + W * 0.87 };
+        doc.text('DESCRIPCIÓN', cols.desc, y + 5, { width: W * 0.50 })
+           .text('CANT.', cols.qty, y + 5, { width: 50, align: 'right' })
+           .text('V. UNIT.', cols.price, y + 5, { width: 60, align: 'right' })
+           .text('IVA%', cols.iva, y + 5, { width: 40, align: 'right' })
+           .text('SUBTOTAL', cols.total, y + 5, { width: 60, align: 'right' });
+        y += 20;
+
+        // ── LINES ────────────────────────────────────────────────────
+        doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+        lines.forEach((line, idx) => {
+          if (y > doc.page.height - 120) { doc.addPage(); y = 40; }
+          if (idx % 2 === 1) doc.rect(L, y - 2, W, 15).fill('#F9FAFB');
+          doc.fillColor(TEXT)
+             .text(line.desc, cols.desc, y, { width: W * 0.50 })
+             .text(String(line.qty), cols.qty, y, { width: 50, align: 'right' })
+             .text(fmt(line.unitPrice), cols.price, y, { width: 60, align: 'right' })
+             .text(`${line.ivaRate}%`, cols.iva, y, { width: 40, align: 'right' })
+             .text(fmt(line.lineTotal), cols.total, y, { width: 60, align: 'right' });
+          y += 15;
+        });
+
+        // ── TOTALS ───────────────────────────────────────────────────
+        y += 6;
+        doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+        y += 8;
+        const tw = 200;
+        const tx = L + W - tw;
+        const addTotal = (label, value, bold = false, highlight = false) => {
+          if (highlight) {
+            doc.rect(tx - 8, y - 3, tw + 8, 18).fill(BLUE);
+            doc.fillColor('#FFFFFF').font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8);
+          } else {
+            doc.fillColor(GRAY).font('Helvetica').fontSize(8);
+          }
+          doc.text(label, tx, y, { width: tw * 0.55 });
+          doc.fillColor(highlight ? '#FFFFFF' : TEXT)
+             .font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 8)
+             .text(value, tx + tw * 0.55, y, { width: tw * 0.45, align: 'right' });
+          y += bold ? 20 : 14;
+        };
+        addTotal('Subtotal (sin IVA):', fmt(lineExtension));
+        addTotal('IVA:', fmt(taxAmount));
+        addTotal('TOTAL A PAGAR:', fmt(payableAmount), true, true);
+
+        // ── CUFE BOX ─────────────────────────────────────────────────
+        y += 10;
+        doc.rect(L, y, W, 42).fill('#F0F4FF');
+        doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(8)
+           .text('CUFE / CUDE (Código Único de Factura Electrónica):', L + 6, y + 6);
+        doc.fillColor(TEXT).font('Helvetica').fontSize(6.5)
+           .text(cufe, L + 6, y + 18, { width: W - 12 });
+        y += 50;
+
+        // ── LEGAL FOOTER ─────────────────────────────────────────────
+        doc.fillColor(GRAY).font('Helvetica').fontSize(6.5)
+           .text(
+             `Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente. Generado el ${new Date().toLocaleDateString('es-CO')} a las ${new Date().toLocaleTimeString('es-CO')}.`,
+             L, y, { width: W, align: 'justify' }
+           );
+
+        // ── ORANGE BOTTOM BAR ────────────────────────────────────────
+        const pageH = doc.page.height;
+        doc.rect(L, pageH - 28, W, 6).fill(ORANGE);
+        doc.fillColor(GRAY).font('Helvetica').fontSize(6)
+           .text('Documento generado por GRAVY ERP | Facturación Electrónica DIAN', L, pageH - 18, { width: W, align: 'center' });
+
+        doc.end();
+      }
     } catch (err) {
       reject(err);
     }
@@ -1298,7 +1660,7 @@ function generateInvoicePdf(xmlContent, filename) {
 
 app.post('/api/dian/download-zip', async (req, res) => {
   try {
-    const { xmlContent, filename } = req.body;
+    const { xmlContent, filename, invoiceData } = req.body;
     if (!xmlContent || !filename) {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
     }
@@ -1306,7 +1668,7 @@ app.post('/api/dian/download-zip', async (req, res) => {
     // Generate PDF representation
     let pdfBuffer = null;
     try {
-      pdfBuffer = await generateInvoicePdf(xmlContent, filename);
+      pdfBuffer = await generateInvoicePdf(xmlContent, filename, invoiceData);
       console.log(`[GRAVY ORCHESTRATOR] PDF generado: ${pdfBuffer.length} bytes para ${filename}`);
     } catch (pdfErr) {
       console.warn(`[GRAVY ORCHESTRATOR] No se pudo generar PDF (se incluirá solo XML): ${pdfErr.message}`);
@@ -1324,6 +1686,44 @@ app.post('/api/dian/download-zip', async (req, res) => {
     res.send(zipBuffer);
   } catch (err) {
     console.error('[GRAVY ORCHESTRATOR] Error al generar ZIP:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/dian/generate-zip-file', async (req, res) => {
+  try {
+    const { xmlContent, filename, invoiceData } = req.body;
+    if (!xmlContent || !filename) {
+      return res.status(400).json({ error: 'Faltan parámetros requeridos (xmlContent, filename).' });
+    }
+
+    let pdfBuffer = null;
+    try {
+      pdfBuffer = await generateInvoicePdf(xmlContent, filename, invoiceData);
+      console.log(`[GRAVY ORCHESTRATOR] PDF generado para ZIP de correo: ${pdfBuffer.length} bytes para ${filename}`);
+    } catch (pdfErr) {
+      console.warn(`[GRAVY ORCHESTRATOR] No se pudo generar PDF para ZIP de correo (se incluirá solo XML): ${pdfErr.message}`);
+    }
+
+    const zip = new AdmZip();
+    zip.addFile(`${filename}.xml`, Buffer.from(xmlContent, 'utf-8'));
+    if (pdfBuffer) {
+      zip.addFile(`${filename}.pdf`, pdfBuffer);
+    }
+
+    const zipBuffer = zip.toBuffer();
+    const tempDir = path.resolve(__dirname, '..', 'temp_zips');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    const absoluteZipPath = path.join(tempDir, `${filename}.zip`);
+    fs.writeFileSync(absoluteZipPath, zipBuffer);
+    
+    console.log(`[GRAVY ORCHESTRATOR] ZIP temporal de correo guardado en: ${absoluteZipPath}`);
+    res.json({ success: true, zipPath: absoluteZipPath });
+  } catch (err) {
+    console.error('[GRAVY ORCHESTRATOR] Error al generar archivo ZIP de correo:', err);
     res.status(500).json({ error: err.message });
   }
 });

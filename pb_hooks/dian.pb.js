@@ -1,20 +1,20 @@
 /// <reference path="../pb_data/types.d.ts" />
 
-const calcularDV = (nit) => {
-  const cleanNit = String(nit || '').replace(/[^0-9]/g, '');
-  if (!cleanNit) return '0';
-  const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
-  let suma = 0;
-  const len = cleanNit.length;
-  for (let i = 0; i < len; i++) {
-    const digito = parseInt(cleanNit.charAt(len - 1 - i), 10);
-    suma += digito * pesos[i];
-  }
-  const residuo = suma % 11;
-  return String(residuo > 1 ? 11 - residuo : residuo);
-};
-
 routerAdd('POST', '/api/dian/emit', (e) => {
+  const calcularDV = (nit) => {
+    const cleanNit = String(nit || '').replace(/[^0-9]/g, '');
+    if (!cleanNit) return '0';
+    const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+    let suma = 0;
+    const len = cleanNit.length;
+    for (let i = 0; i < len; i++) {
+      const digito = parseInt(cleanNit.charAt(len - 1 - i), 10);
+      suma += digito * pesos[i];
+    }
+    const residuo = suma % 11;
+    return String(residuo > 1 ? 11 - residuo : residuo);
+  };
+
   const getSetting = function(key, fallback) {
     try {
       const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
@@ -1247,6 +1247,36 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
     }
   };
 
+  const syncSmtpSettings = function() {
+    const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
+    try {
+      const pbSettings = $app.settings();
+      if (smtpEnabled) {
+        const host = getSetting("smtp_host", "");
+        const port = parseInt(getSetting("smtp_port", "587"), 10);
+        const user = getSetting("smtp_username", "");
+        const pass = getSetting("smtp_password", "");
+        const senderName = getSetting("smtp_sender_name", "");
+        const senderAddr = getSetting("smtp_sender_address", "");
+        
+        pbSettings.smtp.enabled = true;
+        pbSettings.smtp.host = host;
+        pbSettings.smtp.port = port;
+        pbSettings.smtp.username = user;
+        pbSettings.smtp.password = pass;
+        pbSettings.smtp.tls = (port === 465);
+        pbSettings.meta.senderName = senderName || getSetting("company_name", "GRAVY S.A.S");
+        pbSettings.meta.senderAddress = senderAddr || user;
+      } else {
+        pbSettings.smtp.enabled = false;
+      }
+      $app.save(pbSettings);
+      console.log("[GRAVY DIAN SMTP SYNC] SMTP settings applied successfully. Host:", pbSettings.smtp.host, "Enabled:", pbSettings.smtp.enabled);
+    } catch (err) {
+      console.error("[GRAVY DIAN SMTP SYNC] Falló al aplicar settings SMTP locales a PocketBase:", err);
+    }
+  };
+
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -1286,12 +1316,353 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
     const companyEmail = getSetting("company_email", "noreply@gravy.com");
     const docNumber = tx.getString("number") || "Factura";
 
+    let totalVal = 0;
+    try {
+      const invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+      totalVal = invRec.getFloat("total") || 0;
+    } catch (_) {
+      try {
+        const purRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+        totalVal = purRec.getFloat("total") || 0;
+      } catch (_2) {}
+    }
+    const fmtTotal = "$ " + Math.round(totalVal).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+    const companyNitRaw = getSetting("company_nit", "900123456");
+    const companyNit = companyNitRaw.split('-')[0].replace(/[^0-9]/g, '');
+    
+    $app.expandRecord(tx, ["tx_type_id"], null);
+    const txType = tx.expandedOne("tx_type_id");
+    const txTypeCode = txType ? txType.getString("code") : "";
+    let docTypeCode = "01";
+    if (txTypeCode === "ND") docTypeCode = "02";
+    else if (txTypeCode === "NC") docTypeCode = "03";
+    
+    const commercialName = getSetting("company_name", "GRAVY S.A.S");
+    const emailSubject = `${companyNit};${companyName};${docNumber};${docTypeCode};${commercialName};`;
+
+    const einvoiceMethod = getSetting("einvoice_method", "dian");
+    let integrationComment = "";
+    if (einvoiceMethod === "facturatech") {
+      integrationComment = "La integracion de datos es realizada por proveedor tecnologico CADENA S.A. / NIT. 890.930.534-0";
+    } else {
+      integrationComment = "La integracion de datos es realizada directamente por la UAE DIAN bajo la modalidad de software propio a nombre del emisor de este documento electronico";
+    }
+
+    let invoiceData = null;
+    try {
+      let invRec = null;
+      let isPurchase = false;
+      try {
+        invRec = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
+      } catch (_) {
+        try {
+          invRec = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
+          isPurchase = true;
+        } catch (_2) {}
+      }
+
+      if (invRec) {
+        let linesList = [];
+        if (!isPurchase) {
+          linesList = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invRec.id + "'");
+        } else {
+          linesList = $app.findRecordsByFilter("purchase_invoice_lines", "purchase_invoice_id = '" + invRec.id + "'");
+        }
+        
+        $app.expandRecords(linesList, ["product_id"], null);
+        const linesData = [];
+        for (let i = 0; i < linesList.length; i++) {
+          const l = linesList[i];
+          const prod = l.expandedOne("product_id");
+          linesData.push({
+            desc: prod ? prod.getString("name") : "Producto",
+            code: prod ? prod.getString("code") : "—",
+            qty: l.getFloat("qty") || 0,
+            unitPrice: l.getFloat("unit_price") || 0,
+            lineTotal: l.getFloat("total") || 0,
+            ivaRate: l.getFloat("iva_rate") || 0
+          });
+        }
+
+        const supplierAddress = getSetting("company_address", "");
+        const supplierPhone = getSetting("company_phone", "");
+        const supplierEmail = getSetting("company_email", "");
+
+        const customerName = customer ? customer.getString("name") : "Consumidor Final";
+        const customerNit = customer ? customer.getString("doc_number") : "222222222";
+        const customerAddress = customer ? customer.getString("address") : "";
+        const customerPhone = customer ? customer.getString("phone") : "";
+        const customerEmail = customer ? customer.getString("email") : "";
+
+        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
+
+        // Cashier name resolution
+        let cajeroName = "Admin";
+        const posShiftId = invRec.getString("pos_shift_id");
+        if (posShiftId) {
+          try {
+            const shift = $app.findRecordById("pos_shifts", posShiftId);
+            $app.expandRecord(shift, ["user_id"], null);
+            const user = shift.expandedOne("user_id");
+            if (user) {
+              cajeroName = user.getString("name") || user.getString("email") || "Admin";
+            }
+          } catch (_) {}
+        }
+
+        // Fetch resolution info
+        let resName = "Factura de Venta POS";
+        let resDesc = "";
+        let resNum = "";
+        let resDate = "";
+        let resExpiry = "";
+        let resFrom = "";
+        let resTo = "";
+        let resPrefix = "";
+        
+        let prefix = "";
+        if (docNumber.includes('-')) {
+          prefix = docNumber.split('-')[0].trim().toUpperCase();
+        }
+        let docType = invRec.getString("pos_shift_id") ? "POS" : "FV";
+        
+        try {
+          const registerId = invRec.getString("pos_shift_id") ? ($app.findRecordById("pos_shifts", invRec.getString("pos_shift_id")).getString("pos_register_id") || "") : "";
+          let filter = "document_type=\"" + docType + "\" && active=true";
+          let resList = [];
+          if (registerId && docType === "POS") {
+            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
+          }
+          if (!resList.length) {
+            let fallbackFilter = filter;
+            if (docType === "POS") {
+              fallbackFilter += " && pos_register_id=\"\"";
+            }
+            if (prefix) {
+              fallbackFilter += " && prefix=\"" + prefix + "\"";
+            }
+            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
+          }
+          if (!resList.length) {
+            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
+          }
+          if (resList.length) {
+            const parts = docNumber.split('-');
+            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
+            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
+            if (!resolution) {
+              resolution = resList.find(r => r.getBool("active")) || resList[0];
+            }
+            if (resolution) {
+              resName = resolution.getString("name") || "Factura de Venta POS";
+              resDesc = resolution.getString("description") || "";
+              resNum = resolution.getString("resolution_number") || "";
+              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
+              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
+              resFrom = resolution.getInt("number_from") || "";
+              resTo = resolution.getInt("number_to") || "";
+              resPrefix = resolution.getString("prefix") || "";
+            }
+          }
+        } catch (_) {}
+
+        invoiceData = {
+          docId: docNumber,
+          issueDate: tx.getString("date"),
+          issueTime: issueTime,
+          cufe: docRecord.getString("cufe") || "N/A",
+          payableAmount: totalVal,
+          supplierName: companyName,
+          supplierNit: companyNitRaw,
+          supplierAddress: supplierAddress,
+          supplierPhone: supplierPhone,
+          supplierEmail: supplierEmail,
+          customerName: customerName,
+          customerNit: customerNit,
+          customerAddress: customerAddress,
+          customerPhone: customerPhone,
+          customerEmail: customerEmail,
+          lines: linesData,
+          companyLogo: getSetting("company_logo", ""),
+          cajero: cajeroName,
+          paymentMethod: invRec.getString("payment_method") || "EFECTIVO",
+          received: 0,
+          change: 0,
+          resolutionName: resName,
+          resolutionDesc: resDesc,
+          resolutionNumber: resNum,
+          resolutionDate: resDate,
+          resolutionExpiry: resExpiry,
+          resolutionRangeFrom: resFrom,
+          resolutionRangeTo: resTo,
+          resolutionPrefix: resPrefix
+        };
+      } else {
+        // Fallback for POS/other transactions that might not have a record in invoices or purchase_invoices
+        const linesList = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
+        const linesData = [];
+        let totalFromLines = 0;
+        for (let i = 0; i < linesList.length; i++) {
+          const l = linesList[i];
+          const d = l.getFloat("debit");
+          const c = l.getFloat("credit");
+          const amount = d > 0 ? d : c;
+          if (amount > 0) {
+            linesData.push({
+              desc: l.getString("description") || "Concepto Contable",
+              code: "—",
+              qty: 1,
+              unitPrice: amount,
+              lineTotal: amount,
+              ivaRate: 0
+            });
+            totalFromLines += amount;
+          }
+        }
+
+        const supplierAddress = getSetting("company_address", "");
+        const supplierPhone = getSetting("company_phone", "");
+        const supplierEmail = getSetting("company_email", "");
+
+        const customerName = customer ? customer.getString("name") : "Consumidor Final";
+        const customerNit = customer ? customer.getString("doc_number") : "222222222";
+        const customerAddress = customer ? customer.getString("address") : "";
+        const customerPhone = customer ? customer.getString("phone") : "";
+        const customerEmail = customer ? customer.getString("email") : "";
+
+        const issueTime = docRecord.getString("sent_at") ? docRecord.getString("sent_at").split(" ")[1] || "12:00:00" : "12:00:00";
+
+        // Cashier name resolution for fallback
+        let cajeroName = "Admin";
+        const posShiftId = tx.getString("pos_shift_id");
+        if (posShiftId) {
+          try {
+            const shift = $app.findRecordById("pos_shifts", posShiftId);
+            $app.expandRecord(shift, ["user_id"], null);
+            const user = shift.expandedOne("user_id");
+            if (user) {
+              cajeroName = user.getString("name") || user.getString("email") || "Admin";
+            }
+          } catch (_) {}
+        }
+
+        // Fetch resolution info
+        let resName = "Factura de Venta POS";
+        let resDesc = "";
+        let resNum = "";
+        let resDate = "";
+        let resExpiry = "";
+        let resFrom = "";
+        let resTo = "";
+        let resPrefix = "";
+        
+        let prefix = "";
+        if (docNumber.includes('-')) {
+          prefix = docNumber.split('-')[0].trim().toUpperCase();
+        }
+        let docType = posShiftId ? "POS" : "FV";
+        
+        try {
+          const registerId = posShiftId ? ($app.findRecordById("pos_shifts", posShiftId).getString("pos_register_id") || "") : "";
+          let filter = "document_type=\"" + docType + "\" && active=true";
+          let resList = [];
+          if (registerId && docType === "POS") {
+            resList = $app.findRecordsByFilter("dian_resolutions", filter + " && pos_register_id=\"" + registerId + "\"");
+          }
+          if (!resList.length) {
+            let fallbackFilter = filter;
+            if (docType === "POS") {
+              fallbackFilter += " && pos_register_id=\"\"";
+            }
+            if (prefix) {
+              fallbackFilter += " && prefix=\"" + prefix + "\"";
+            }
+            resList = $app.findRecordsByFilter("dian_resolutions", fallbackFilter);
+          }
+          if (!resList.length) {
+            resList = $app.findRecordsByFilter("dian_resolutions", "document_type=\"" + docType + "\" && active=true");
+          }
+          if (resList.length) {
+            const parts = docNumber.split('-');
+            const invNum = parseInt(parts[parts.length - 1], 10) || 0;
+            let resolution = resList.find(r => invNum >= r.getInt("number_from") && invNum <= r.getInt("number_to"));
+            if (!resolution) {
+              resolution = resList.find(r => r.getBool("active")) || resList[0];
+            }
+            if (resolution) {
+              resName = resolution.getString("name") || "Factura de Venta POS";
+              resDesc = resolution.getString("description") || "";
+              resNum = resolution.getString("resolution_number") || "";
+              resDate = resolution.getString("resolution_date") ? resolution.getString("resolution_date").slice(0, 10) : "";
+              resExpiry = resolution.getString("expiration_date") ? resolution.getString("expiration_date").slice(0, 10) : "";
+              resFrom = resolution.getInt("number_from") || "";
+              resTo = resolution.getInt("number_to") || "";
+              resPrefix = resolution.getString("prefix") || "";
+            }
+          }
+        } catch (_) {}
+
+        invoiceData = {
+          docId: docNumber,
+          issueDate: tx.getString("date"),
+          issueTime: issueTime,
+          cufe: docRecord.getString("cufe") || "N/A",
+          payableAmount: totalVal || totalFromLines,
+          supplierName: companyName,
+          supplierNit: companyNitRaw,
+          supplierAddress: supplierAddress,
+          supplierPhone: supplierPhone,
+          supplierEmail: supplierEmail,
+          customerName: customerName,
+          customerNit: customerNit,
+          customerAddress: customerAddress,
+          customerPhone: customerPhone,
+          customerEmail: customerEmail,
+          lines: linesData,
+          companyLogo: getSetting("company_logo", ""),
+          cajero: cajeroName,
+          paymentMethod: "EFECTIVO",
+          received: 0,
+          change: 0,
+          resolutionName: resName,
+          resolutionDesc: resDesc,
+          resolutionNumber: resNum,
+          resolutionDate: resDate,
+          resolutionExpiry: resExpiry,
+          resolutionRangeFrom: resFrom,
+          resolutionRangeTo: resTo,
+          resolutionPrefix: resPrefix
+        };
+      }
+    } catch (errData) {
+      console.warn("[GRAVY HOOK] Error al preparar structured invoiceData:", errData);
+    }
+
     try {
       if (typeof syncSmtpSettings === 'function') {
         syncSmtpSettings();
       }
     } catch (e) {
       console.warn("[GRAVY] Error syncing SMTP settings:", e);
+    }
+
+    let zipPath = "";
+    try {
+      const zipRes = $http.send({
+        url: "http://127.0.0.1:8088/api/dian/generate-zip-file",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ xmlContent: xmlContent, filename: docNumber, invoiceData: invoiceData })
+      });
+      if (zipRes.statusCode === 200) {
+        const zipData = JSON.parse(zipRes.raw);
+        if (zipData.success) {
+          zipPath = zipData.zipPath;
+        }
+      }
+    } catch (err) {
+      console.error("[GRAVY HOOK] Error al generar ZIP en el orquestador:", err);
     }
     
     const message = new MailerMessage({
@@ -1300,28 +1671,102 @@ routerAdd('POST', '/api/dian/resend-email', (e) => {
         name: companyName
       },
       to: [{ address: custEmail }],
-      subject: `Factura Electrónica ${docNumber} - ${companyName}`,
+      subject: emailSubject,
       html: `
-        <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; border: 1px solid #E5E7EB; border-radius: 12px;">
-          <h2 style="color: #1A4B8C; margin-top: 0;">Factura Electrónica</h2>
-          <p>Estimado cliente <strong>${customer.getString("name")}</strong>,</p>
-          <p>Adjunto a este correo encontrará el archivo XML firmado correspondiente a la Factura Electrónica de Venta No. <strong>${docNumber}</strong> emitida el ${tx.getString("date")}.</p>
-          <hr style="border: 0; border-top: 1px solid #E5E7EB; margin: 20px 0;" />
-          <p style="font-size: 13px; color: #6B7280; margin-bottom: 5px;"><strong>Detalles de la Transacción:</strong></p>
-          <ul style="font-size: 13px; color: #374151; padding-left: 20px; margin-top: 5px;">
-            <li><strong>Emisor:</strong> ${companyName}</li>
-            <li><strong>Monto Total:</strong> $${tx.getFloat("cross_amount") || 0}</li>
-            <li><strong>CUFE / CUDE:</strong> <span style="font-family: monospace; font-size: 11px;">${docRecord.getString("cufe") || 'N/A'}</span></li>
-          </ul>
-          <p style="margin-top: 25px; font-size: 14px;">Gracias por su preferencia.</p>
+        <div style="font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8FAFC; padding: 40px 20px; color: #1E293B; max-width: 600px; margin: 0 auto; border-radius: 16px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <img src="cid:gravy-logo.png" alt="GRAVY Logo" style="height: 48px; width: auto; display: block; margin: 0 auto;" />
+          </div>
+          <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 32px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <span style="background-color: #E0F2FE; color: #0369A1; padding: 6px 16px; border-radius: 9999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;">
+                Documento Oficial DIAN
+              </span>
+            </div>
+            
+            <h2 style="color: #0F172A; font-size: 22px; font-weight: 800; text-align: center; margin-top: 12px; margin-bottom: 8px;">
+              ¡Tu Factura Electrónica está lista!
+            </h2>
+            <p style="text-align: center; color: #64748B; font-size: 14px; margin-top: 0; margin-bottom: 28px;">
+              Emitida por <strong>${companyName}</strong>
+            </p>
+            
+            <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
+              <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
+                Estimado cliente <strong>${customer.getString("name")}</strong>,
+              </p>
+              <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
+                Adjunto en este correo encontrará el archivo comprimido <strong>ZIP</strong> que contiene el XML firmado y la representación gráfica en formato PDF correspondientes a la <strong>Factura Electrónica de Venta No. ${docNumber}</strong>.
+              </p>
+            </div>
+            
+            <h3 style="color: #0F172A; font-size: 14px; font-weight: 700; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
+              Detalles del Documento
+            </h3>
+            
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 28px;">
+              <tr>
+                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Número de Documento:</td>
+                <td style="padding: 10px 0; text-align: right; font-weight: 700; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${docNumber}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Fecha de Emisión:</td>
+                <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #0F172A; border-bottom: 1px solid #F1F5F9;">${tx.getString("date")}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #64748B; border-bottom: 1px solid #F1F5F9;">Monto Total:</td>
+                <td style="padding: 10px 0; text-align: right; font-size: 16px; font-weight: 800; color: #0284C7; border-bottom: 1px solid #F1F5F9;">${fmtTotal}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #64748B; vertical-align: top;">CUFE / CUDE:</td>
+                <td style="padding: 10px 0; text-align: right; font-family: monospace; font-size: 11px; word-break: break-all; color: #475569; max-width: 200px;">
+                  ${docRecord.getString("cufe") || 'N/A'}
+                </td>
+              </tr>
+            </table>
+            
+            <div style="text-align: center; margin-top: 20px;">
+              <p style="font-size: 13px; color: #94A3B8; margin: 0;">
+                Gracias por su preferencia y confianza.
+              </p>
+            </div>
+          </div>
+          
+          <div style="text-align: center; margin-top: 24px; padding: 0 16px;">
+            <p style="font-size: 11px; color: #94A3B8; line-height: 1.5; margin: 0;">
+              ${integrationComment}
+            </p>
+            <p style="font-size: 10px; color: #CBD5E1; margin-top: 12px; margin-bottom: 0;">
+              Este es un mensaje automático generado por GRAVY. Por favor no responda a este correo.
+            </p>
+          </div>
         </div>
       `,
     });
     
-    const xmlFile = $filesystem.fileFromBytes(xmlContent, `${docNumber}.xml`);
-    message.attachments = {
-      [`${docNumber}.xml`]: xmlFile.reader.open()
-    };
+    const attachments = {};
+    if (zipPath) {
+      try {
+        const zipFile = $filesystem.fileFromPath(zipPath);
+        attachments[`${docNumber}.zip`] = zipFile.reader.open();
+      } catch (zipErr) {
+        console.error("[GRAVY HOOK] No se pudo abrir el archivo ZIP generado:", zipErr);
+        const xmlFile = $filesystem.fileFromBytes(xmlContent, `${docNumber}.xml`);
+        attachments[`${docNumber}.xml`] = xmlFile.reader.open();
+      }
+    } else {
+      const xmlFile = $filesystem.fileFromBytes(xmlContent, `${docNumber}.xml`);
+      attachments[`${docNumber}.xml`] = xmlFile.reader.open();
+    }
+
+    try {
+      const logoFile = $filesystem.fileFromPath("pb_public/assets/gravy-logo.png");
+      attachments["gravy-logo.png"] = logoFile.reader.open();
+    } catch (logoErr) {
+      console.warn("[GRAVY HOOK] No se pudo adjuntar el logo de GRAVY:", logoErr);
+    }
+    
+    message.attachments = attachments;
     
     $app.newMailClient().send(message);
     

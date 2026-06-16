@@ -255,7 +255,7 @@ async function renderFacturacionDIAN(c: HTMLElement) {
                     
                     ${canCheck ? `<button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech" onclick="window.checkFtechStatus('${esc(item.id)}','${esc(item.tx.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>` : ''}
                     
-                    ${canDownload ? `<button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Descargar ZIP XML" onclick="window.downloadDianZip('${esc(item.tx.id)}','${esc(item.number)}', \`${esc(item.xmlContent)}\`)"><i class="fas fa-file-zipper text-emerald-600"></i></button>` : ''}
+                    ${canDownload ? `<button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Descargar ZIP XML" onclick="window.downloadDianZip('${esc(item.tx.id)}','${esc(item.number)}')"><i class="fas fa-file-zipper text-emerald-600"></i></button>` : ''}
                     
                     ${canResend ? `<button class="btn btn-outline btn-sm p-1.5 border-sky-500 hover:bg-sky-50" title="Reenviar Correo Cliente" onclick="window.resendDianEmail('${esc(item.tx.id)}','${esc(item.number)}')"><i class="fas fa-envelope text-sky-600"></i></button>` : ''}
                     
@@ -405,19 +405,192 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
   });
 };
 
-(window as any).downloadDianZip = async function(txId: string, number: string, xmlContent: string) {
-  if (!xmlContent || xmlContent.trim().startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<!-- Documento Electrónico DIAN - Sin XML')) {
-    showToast('No hay XML firmado disponible para descargar.', 'warning');
-    return;
-  }
+(window as any).downloadDianZip = async function(txId: string, number: string) {
   try {
+    showToast('Obteniendo XML firmado...', 'info');
+    const docs = await pb.listAll('einvoice_docs', {
+      filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
+    });
+    if (!docs.length || !docs[0].xml_content) {
+      showToast('No hay XML firmado disponible para descargar.', 'warning');
+      return;
+    }
+    const xmlContent = docs[0].xml_content;
+
+    showToast('Obteniendo detalles del documento...', 'info');
+    const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
+    const customer = tx.expand?.third_party_id;
+    
+    let invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
+    let isPurchase = false;
+    let invoice = invoices[0];
+    if (!invoice) {
+      invoices = await pb.listAll('purchase_invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
+      invoice = invoices[0];
+      isPurchase = true;
+    }
+
+    let linesList = [];
+    let isPOSFallback = false;
+    if (invoice) {
+      if (!isPurchase) {
+        linesList = await pb.listAll('invoice_lines', {
+          filter: `invoice_id = "${invoice.id}"`,
+          expand: 'product_id'
+        });
+      } else {
+        linesList = await pb.listAll('purchase_invoice_lines', {
+          filter: `purchase_invoice_id = "${invoice.id}"`,
+          expand: 'product_id'
+        });
+      }
+    } else {
+      linesList = await pb.listAll('tx_lines', {
+        filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
+      });
+      isPOSFallback = true;
+    }
+
+    const linesData = isPOSFallback
+      ? linesList.filter((l: any) => (l.debit || 0) > 0 || (l.credit || 0) > 0).map((l: any) => {
+          const amount = (l.debit || 0) > 0 ? (l.debit || 0) : (l.credit || 0);
+          return {
+            desc: l.description || 'Concepto Contable',
+            code: '—',
+            qty: 1,
+            unitPrice: amount,
+            lineTotal: amount,
+            ivaRate: 0
+          };
+        })
+      : linesList.map((line: any) => ({
+          desc: line.expand?.product_id?.name || 'Producto',
+          code: line.expand?.product_id?.code || '—',
+          qty: line.qty || 0,
+          unitPrice: line.unit_price || 0,
+          lineTotal: line.total || 0,
+          ivaRate: line.iva_rate || 0
+        }));
+
+    const totalFromLines = linesData.reduce((acc: number, cur: any) => acc + cur.lineTotal, 0);
+    const payableAmount = invoice?.total || totalFromLines || tx.amount || 0;
+
+    const settingsList = await pb.listAll('settings');
+    const settingsMap = new Map<string, string>();
+    settingsList.forEach((s: any) => settingsMap.set(s.key, s.value));
+
+    // Resolve cashier (cajero)
+    let cashierName = 'Admin';
+    const posShiftId = invoice?.pos_shift_id || tx.pos_shift_id;
+    if (posShiftId) {
+      try {
+        const shift = await pb.get('pos_shifts', posShiftId, { expand: 'user_id' });
+        if (shift.expand?.user_id?.name) {
+          cashierName = shift.expand.user_id.name;
+        }
+      } catch (_) {}
+    }
+
+    // Resolve resolution info
+    let resName = "Factura de Venta POS";
+    let resDesc = "";
+    let resNum = "";
+    let resDate = "";
+    let resExpiry = "";
+    let resFrom = "";
+    let resTo = "";
+    let resPrefix = "";
+    
+    let prefix = "";
+    if (tx.number && tx.number.includes('-')) {
+      prefix = tx.number.split('-')[0].trim().toUpperCase();
+    }
+    let docType = (invoice?.pos_shift_id || tx.pos_shift_id) ? "POS" : "FV";
+    
+    try {
+      const registerId = (invoice?.pos_shift_id || tx.pos_shift_id) 
+        ? (await pb.get('pos_shifts', invoice?.pos_shift_id || tx.pos_shift_id).then((s: any) => s.pos_register_id || ''))
+        : '';
+      let filter = `document_type="${docType}" && active=true`;
+      let resList: any[] = [];
+      if (registerId && docType === 'POS') {
+        resList = await pb.listAll('dian_resolutions', { 
+          filter: `${filter} && pos_register_id="${pb.escapeFilterValue(registerId)}"` 
+        });
+      }
+      if (!resList.length) {
+        let fallbackFilter = filter;
+        if (docType === 'POS') {
+          fallbackFilter += ` && pos_register_id=""`;
+        }
+        if (prefix) {
+          fallbackFilter += ` && prefix="${pb.escapeFilterValue(prefix)}"`;
+        }
+        resList = await pb.listAll('dian_resolutions', { filter: fallbackFilter });
+      }
+      if (!resList.length) {
+        resList = await pb.listAll('dian_resolutions', { filter: `document_type="${docType}" && active=true` });
+      }
+      if (resList.length) {
+        const parts = tx.number.split('-');
+        const invNum = parseInt(parts[parts.length - 1], 10) || 0;
+        let resolution = resList.find((r: any) => invNum >= r.number_from && invNum <= r.number_to);
+        if (!resolution) {
+          resolution = resList.find((r: any) => r.active) || resList[0];
+        }
+        if (resolution) {
+          resName = resolution.name || "Factura de Venta POS";
+          resDesc = resolution.description || "";
+          resNum = resolution.resolution_number || "";
+          resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
+          resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
+          resFrom = resolution.number_from || "";
+          resTo = resolution.number_to || "";
+          resPrefix = resolution.prefix || "";
+        }
+      }
+    } catch (_) {}
+
+    const invoiceData = {
+      docId: tx.number,
+      issueDate: tx.date,
+      issueTime: docs[0].sent_at ? docs[0].sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
+      cufe: docs[0].cufe || 'N/A',
+      payableAmount: payableAmount,
+      supplierName: settingsMap.get('company_name') || 'GRAVY S.A.S',
+      supplierNit: settingsMap.get('company_nit') || '900123456',
+      supplierAddress: settingsMap.get('company_address') || '',
+      supplierPhone: settingsMap.get('company_phone') || '',
+      supplierEmail: settingsMap.get('company_email') || '',
+      customerName: customer?.name || 'Consumidor Final',
+      customerNit: customer?.doc_number || '222222222',
+      customerAddress: customer?.address || '',
+      customerPhone: customer?.phone || '',
+      customerEmail: customer?.email || '',
+      lines: linesData,
+      companyLogo: settingsMap.get('company_logo') || '',
+      cajero: cashierName,
+      paymentMethod: invoice?.payment_method || 'EFECTIVO',
+      received: 0,
+      change: 0,
+      resolutionName: resName,
+      resolutionDesc: resDesc,
+      resolutionNumber: resNum,
+      resolutionDate: resDate,
+      resolutionExpiry: resExpiry,
+      resolutionRangeFrom: resFrom,
+      resolutionRangeTo: resTo,
+      resolutionPrefix: resPrefix
+    };
+
     showToast('Comprimiendo y descargando ZIP...', 'info');
     const res = await fetch('http://localhost:8088/api/dian/download-zip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         xmlContent: xmlContent,
-        filename: number
+        filename: number,
+        invoiceData: invoiceData
       })
     });
     if (!res.ok) throw new Error('El orquestador no pudo generar el ZIP');

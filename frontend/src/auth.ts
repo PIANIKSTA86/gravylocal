@@ -611,4 +611,5 @@ function startConnCheck() {
 (window as any).hasModule = hasModule;
 (window as any).applyModuleVisibility = applyModuleVisibility;
 (window as any).HUB_URL = HUB_URL;
+(window as any).initGlobalBranchSelector = initGlobalBranchSelector;
 

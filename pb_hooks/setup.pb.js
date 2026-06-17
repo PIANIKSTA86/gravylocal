@@ -1495,6 +1495,7 @@ onBootstrap((e) => {
         ["ret_rule_renta_id", new TextField({ name: "ret_rule_renta_id", required: false })],
         ["ret_rule_ica_id",   new TextField({ name: "ret_rule_ica_id",   required: false })],
         ["ret_rule_iva_id",   new TextField({ name: "ret_rule_iva_id",   required: false })],
+        ["discount_amount",   new NumberField({ name: "discount_amount", required: false, min: 0 })],
       ];
       for (const [fname, fieldObj] of invExtra) {
         let hasIt = false;
@@ -1520,6 +1521,8 @@ onBootstrap((e) => {
         ["ret_rate", new NumberField({ name: "ret_rate", required: false, min: 0 })],
         ["ret_amount", new NumberField({ name: "ret_amount", required: false, min: 0 })],
         ["ret_account_code", new TextField({ name: "ret_account_code", required: false })],
+        ["discount_rate", new NumberField({ name: "discount_rate", required: false, min: 0 })],
+        ["discount_pct", new NumberField({ name: "discount_pct", required: false, min: 0 })],
       ];
       for (const [fname, fieldObj] of lineExtra) {
         let hasIt = false;

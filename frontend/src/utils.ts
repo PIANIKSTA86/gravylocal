@@ -69,6 +69,8 @@ function closeModal() {
   $('#modal-footer').innerHTML = '';
   (window as any).__salesModalOpen = false;
   (window as any).__txModalOpen = false; // Ítem 5: limpiar bandera de modal de transacción
+  (window as any).__poModalOpen = false;
+  (window as any).__poFormActive = false;
 }
 
 // ── Mini-overlay de comentario de línea (no reemplaza el modal padre) ────────
@@ -113,7 +115,7 @@ function saveLineComment() {
 function confirmDialog(title, message, onConfirm, danger = true) {
   openModal(
     title,
-    `<p class="text-sm" style="color:#374151">${esc(message)}</p>`,
+    `<div class="text-sm" style="color:#374151">${message}</div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
      <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="modal-confirm-btn">Confirmar</button>`
   );

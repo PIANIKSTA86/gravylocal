@@ -668,7 +668,8 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     .filter((r: any) => String(r.account_code || '').trim() && Number(r.rate || 0) > 0);
 
   (window as any).__poRetRulesCache = withholdingRules;
-  (window as any).__poRetMode = inv?.ret_total > 0 ? 'header' : 'line'; // Inicializa modo retención
+  const hasLineRet = existingLines.some((l: any) => l.ret_rule_id);
+  (window as any).__poRetMode = hasLineRet ? 'line' : 'header'; // Inicializa modo retención
 
   const retRuleLabel = (r: any) => `${r.concept} ${r.rate}% (${r.base_type}${Number(r.min_base || 0) > 0 ? `, >= ${(window as any).fmt(r.min_base || 0)}` : ''})`;
   const retRuleOptions = (rules = withholdingRules, selectedId = '') => `<option value="">— Sin retención —</option>${rules.map(r => `<option value="${(window as any).esc(r.id)}"${r.id === selectedId ? ' selected' : ''}>${(window as any).esc(retRuleLabel(r))}</option>`).join('')}`;
@@ -692,6 +693,18 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
   const formHtml = `
     <div class="space-y-4 text-sm" style="color:#374151">
 
+      <!-- Banner de restauración temporal -->
+      <div id="po-restore-alert" class="rounded-xl p-3 mb-2 flex items-center justify-between gap-3" style="display:none;background:#EEF4FF;border:1px solid #D2E3FC;color:#1A4B8C">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-history text-lg"></i>
+          <span>Se encontró una compra anterior sin guardar. ¿Deseas recuperar los datos?</span>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-po-restore-yes">Recuperar</button>
+          <button type="button" class="btn btn-outline btn-sm" id="btn-po-restore-no" style="background:#fff">Descartar</button>
+        </div>
+      </div>
+
       <!-- ══ HEADER COMPACTO ══ -->
       ${noteConfig ? `
       <div class="rounded-xl p-3 mb-2 flex items-center gap-3" style="background:#FFF7ED;border:1px solid #FFEDD5">
@@ -703,7 +716,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
             <option value="1">1 - Devolución de parte de los bienes</option>
             <option value="2">2 - Anulación de documento soporte</option>
             <option value="3">3 - Rebaja total aplicada</option>
-            <option value="4">4 - Descuento total aplicado</option>
+            <option value="4">4 - Descuento total aplicada</option>
             <option value="5">5 - Rescisión: nulidad por falta de requisitos</option>
             <option value="6">6 - Otros (Especificar en descripción)</option>
           </select>
@@ -812,6 +825,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
                 <th class="text-right" style="width:110px;background:#FFF8F0;color:#374151">Cantidad</th>
                 <th class="text-right" style="width:155px;background:#FFF8F0;color:#374151">Costo Unit.</th>
                 <th class="text-right" style="width:95px;background:#FFF8F0;color:#374151">IVA %</th>
+                <th class="text-right po-discount-col" style="width:95px;background:#FFF8F0;color:#374151;display:none">Dscto %</th>
                 <th class="po-ret-col" style="min-width:185px;background:#FFF8F0;color:#374151;display:none">Retención</th>
                 <th class="po-ret-col text-right" style="width:105px;background:#FFF8F0;color:#374151;display:none">Vlr Ret.</th>
                 <th class="text-right" style="width:145px;background:#FFF8F0;color:#374151">Total línea</th>
@@ -831,6 +845,10 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
               <div class="flex justify-between gap-4">
                 <span style="color:#6B7280">Subtotal:</span>
                 <span id="po-total-sub" class="font-semibold" style="color:#0D2137">$ 0</span>
+              </div>
+              <div class="flex justify-between gap-4 po-discount-col" style="color:#EF4444;display:none">
+                <span class="font-medium">Descuento:</span>
+                <span id="po-total-discount" class="font-semibold">-$ 0</span>
               </div>
               <div class="flex justify-between gap-4">
                 <span style="color:#6B7280">IVA:</span>
@@ -898,9 +916,48 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
 
   (window as any).__poConfig = poConfig;
   (window as any).__poModalOpen = true;
+  (window as any).__poFormActive = true;
+  (window as any).__poCurrentInvoiceId = invoiceId;
   (window as any).openModal(invoiceId ? 'Editar Factura de Compra' : 'Nueva Compra', formHtml, footer, true);
   const mbox = document.getElementById('modal-box');
   if (mbox) { mbox.classList.add('xl'); mbox.classList.remove('wide'); }
+
+  // Configurar visibilidad de descuentos
+  const isDiscountEnabled = poConfig.operational.enable_discounts !== false;
+  document.querySelectorAll('.po-discount-col').forEach((el: any) => {
+    el.style.display = isDiscountEnabled ? '' : 'none';
+  });
+
+  // Manejo de restauración de borrador temporal
+  setTimeout(() => {
+    const restoreAlert = document.getElementById('po-restore-alert');
+    const btnRestoreYes = document.getElementById('btn-po-restore-yes');
+    const btnRestoreNo = document.getElementById('btn-po-restore-no');
+
+    if (!invoiceId && !preloadedImportId && !noteConfig) {
+      const savedStateStr = localStorage.getItem('temp_purchase_form_state');
+      if (savedStateStr) {
+        try {
+          const savedState = JSON.parse(savedStateStr);
+          if ((savedState.lines && savedState.lines.length > 0) || savedState.supplier_id) {
+            if (restoreAlert) restoreAlert.style.display = 'flex';
+            
+            btnRestoreYes?.addEventListener('click', () => {
+              restorePurchaseFormState(savedState);
+              if (restoreAlert) restoreAlert.style.display = 'none';
+            });
+            
+            btnRestoreNo?.addEventListener('click', () => {
+              localStorage.removeItem('temp_purchase_form_state');
+              if (restoreAlert) restoreAlert.style.display = 'none';
+            });
+          }
+        } catch (e) {
+          localStorage.removeItem('temp_purchase_form_state');
+        }
+      }
+    }
+  }, 100);
 
   // --- AutoComplete de Proveedores ---
   function initPoSupplierSearch() {
@@ -951,6 +1008,9 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     if (hidden && input) {
       hidden.value = id;
       input.value = text;
+      if (typeof (window as any).poSaveTempState === 'function') {
+        (window as any).poSaveTempState(invoiceId);
+      }
     }
   };
 
@@ -1018,6 +1078,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     const initQty     = preloadedLine?.qty        ?? 1;
     const initIva     = preloadedLine?.iva_rate   ?? prod?.iva_rate ?? 0;
     const initPrice   = preloadedLine?.unit_price ?? prod?.cost_price ?? 0;
+    const initDisc    = preloadedLine?.discount_rate || preloadedLine?.discount_pct || 0;
 
     const tr = document.createElement('tr');
     tr.id = `po-row-${idx}`;
@@ -1041,6 +1102,9 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
           <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
         </select>
       </td>
+      <td class="po-discount-col" style="display:none">
+        <input type="number" id="pol-disc-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.01" value="${initDisc}" placeholder="0" oninput="window.poRecalcLine(${idx})">
+      </td>
       <td class="po-ret-col" style="display:none">
         <select id="pol-ret-rule-${idx}" class="form-input text-xs py-1 w-full" onchange="window.poRecalcLine(${idx})">
           ${retRuleOptions(withholdingRules, preloadedLine?.ret_rule_id || '')}
@@ -1050,7 +1114,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       <td class="text-right font-extrabold" style="color:#1A4B8C;font-size:13px" id="pol-total-${idx}">$ 0</td>
       <td>
         <div class="flex items-center gap-1 justify-center">
-          <button type="button" class="btn btn-outline btn-sm" id="pol-comment-btn-${idx}" onclick="poEditLineComment(${idx})"><i class="fas fa-comment"></i></button>
+          <button type="button" class="btn btn-outline btn-sm" id="pol-comment-btn-${idx}" onclick="window.poEditLineComment(${idx})"><i class="fas fa-comment"></i></button>
           <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('po-row-${idx}').remove(); window.poRecalcLine(0)"><i class="fas fa-trash"></i></button>
         </div>
       </td>
@@ -1060,6 +1124,10 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     // Visibilidad columnas retención
     const isPerLine = (window as any).__poRetMode === 'line';
     tr.querySelectorAll('.po-ret-col').forEach((el: any) => { el.style.display = isPerLine ? '' : 'none'; });
+
+    // Visibilidad columnas descuento
+    const isDiscountEnabled = (window as any).__poConfig?.operational?.enable_discounts !== false;
+    tr.querySelectorAll('.po-discount-col').forEach((el: any) => { el.style.display = isDiscountEnabled ? '' : 'none'; });
 
     paintLineCommentBtn(idx);
     window.poRecalcLine(idx);
@@ -1130,6 +1198,16 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
 
     let highlighted = -1;
 
+    // Registrar callback global para sincronizar hover del mouse
+    (window as any).poGlobalSearchHover = (idx: number) => {
+      highlighted = idx;
+      const items = dropdown.querySelectorAll('.po-gsr-row');
+      items.forEach((el: any) => { el.style.background = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+      }
+    };
+
     const renderResults = (filtered: any[]) => {
       if (!filtered.length) {
         dropdown.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400"><i class="fas fa-box-open mr-1"></i>Sin resultados para esta búsqueda.</div>';
@@ -1141,7 +1219,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
           data-prod-idx="${i}"
           class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block po-gsr-row"
           style="border-bottom:1px solid #F3F4F6;transition:background .1s"
-          onmouseenter="this.style.background='#F0FBFF'"
+          onmouseenter="window.poGlobalSearchHover(${i})"
           onmouseleave="this.style.background=''"
           onclick="window.poGlobalSelectProduct(${i})">
           <div class="flex items-center justify-between gap-3">
@@ -1168,27 +1246,31 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       }
     };
 
-    input.addEventListener('input', () => {
+    const handleSearch = () => {
       const q = input.value.trim().toLowerCase();
-      const filtered = !q
-        ? products.slice(0, 40)
-        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      if (!q) {
+        dropdown.style.display = 'none';
+        return;
+      }
+      const filtered = products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
       renderResults(filtered);
       dropdown.style.display = 'block';
-    });
+    };
 
-    input.addEventListener('focus', () => {
-      const q = input.value.trim().toLowerCase();
-      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
-      renderResults(filtered);
-      dropdown.style.display = 'block';
-    });
+    input.addEventListener('input', handleSearch);
+    input.addEventListener('focus', handleSearch);
 
     input.addEventListener('keydown', (ev: KeyboardEvent) => {
       const items = dropdown.querySelectorAll('.po-gsr-row');
-      if (ev.key === 'ArrowDown') { ev.preventDefault(); highlighted = Math.min(highlighted + 1, items.length - 1); highlightItem(highlighted, items); }
-      else if (ev.key === 'ArrowUp') { ev.preventDefault(); highlighted = Math.max(highlighted - 1, 0); highlightItem(highlighted, items); }
-      else if (ev.key === 'Enter') {
+      if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        highlighted = Math.min(highlighted + 1, items.length - 1);
+        highlightItem(highlighted, items);
+      } else if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        highlighted = Math.max(highlighted - 1, 0);
+        highlightItem(highlighted, items);
+      } else if (ev.key === 'Enter') {
         ev.preventDefault();
         if (!input.value.trim()) return;
         if (highlighted >= 0) {
@@ -1199,6 +1281,10 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       } else if (ev.key === 'Escape') {
         dropdown.style.display = 'none';
       }
+    });
+
+    dropdown.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
     });
 
     input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
@@ -1220,6 +1306,21 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
   const switchEl = document.getElementById('po-ret-mode-switch') as HTMLInputElement;
   if (switchEl) switchEl.checked = isLineMode;
   (window as any).poSetRetMode(isLineMode);
+
+  // Escuchar cambios para persistencia temporal
+  const triggerStateSave = () => {
+    if ((window as any).__poFormActive === true && typeof (window as any).poSaveTempState === 'function') {
+      (window as any).poSaveTempState(invoiceId);
+    }
+  };
+  document.getElementById('po-supplier-search')?.addEventListener('input', triggerStateSave);
+  document.getElementById('po-date')?.addEventListener('change', triggerStateSave);
+  document.getElementById('po-due-date')?.addEventListener('change', triggerStateSave);
+  document.getElementById('po-payment-method')?.addEventListener('change', triggerStateSave);
+  document.getElementById('po-warehouse')?.addEventListener('change', triggerStateSave);
+  document.getElementById('po-tx-type')?.addEventListener('change', triggerStateSave);
+  document.getElementById('po-supplier-ref')?.addEventListener('input', triggerStateSave);
+  document.getElementById('po-notes')?.addEventListener('input', triggerStateSave);
 
   // Configurar guardado
   document.getElementById('btn-save-po')?.addEventListener('click', () => savePurchaseDraftWrapper(invoiceId, onDone, inv, noteConfig));
@@ -1261,6 +1362,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
 
     const tableRows = document.querySelectorAll('#po-lines-body tr');
     const lines: any[] = [];
+    let totalDiscount = 0;
 
     tableRows.forEach((row: any, lineIdx: number) => {
       const idParts = row.id.split('-');
@@ -1270,15 +1372,20 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       const qty = parseFloat((document.getElementById(`pol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const price = parseFloat((document.getElementById(`pol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const ivaRate = parseFloat((document.getElementById(`pol-iva-${idx}`) as HTMLSelectElement)?.value || '0') || 0;
+      const discPct = parseFloat((document.getElementById(`pol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const retRuleId = (window as any).__poRetMode === 'line' ? ((document.getElementById(`pol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '') : '';
       const desc = String(row.dataset.comment || '').trim();
 
       if (!prodId) throw new Error(`Fila ${lineIdx + 1}: selecciona un producto.`);
       if (qty <= 0) throw new Error(`Fila ${lineIdx + 1}: la cantidad debe ser mayor que cero.`);
 
-      const subtotal = qty * price;
+      const gross = qty * price;
+      const discAmt = gross * (discPct / 100);
+      const subtotal = gross - discAmt;
       const iva_amount = subtotal * (ivaRate / 100);
       const total = subtotal + iva_amount;
+
+      totalDiscount += discAmt;
 
       // Calcular retención de línea si aplica
       let retAmt = 0;
@@ -1299,6 +1406,8 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
         subtotal,
         total,
         description: desc,
+        discount_rate: discPct,
+        discount_pct: discPct,
         ret_rule_id: retRule ? retRule.id : '',
         ret_concept: retRule ? retRule.concept : '',
         ret_base_type: retRule ? retRule.base_type : '',
@@ -1387,6 +1496,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       notes: notes.trim(),
       subtotal,
       iva_total,
+      discount_amount: totalDiscount,
       ret_total: retTotal,
       total: gross,
       payable_total: gross - retTotal,
@@ -1426,6 +1536,8 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       }
     }
 
+    localStorage.removeItem('temp_purchase_form_state');
+    (window as any).__poFormActive = false;
     (window as any).closeModal();
     if (typeof onDone === 'function') onDone();
   } catch (err: any) {
@@ -1516,7 +1628,8 @@ async function viewPurchaseDetail(id: string) {
 
       <div class="flex justify-end">
         <div class="text-sm space-y-1 min-w-56">
-          <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span><span class="font-semibold font-mono">${(window as any).fmt(inv.subtotal||0)}</span></div>
+          <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span><span class="font-semibold font-mono">${(window as any).fmt((inv.subtotal || 0) + (inv.discount_amount || 0))}</span></div>
+          ${inv.discount_amount ? `<div class="flex justify-between gap-8" style="color:#EF4444"><span class="font-medium">Descuento:</span><span class="font-semibold font-mono">-${(window as any).fmt(inv.discount_amount)}</span></div>` : ''}
           <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA:</span><span class="font-semibold font-mono">${(window as any).fmt(inv.iva_total||0)}</span></div>
           <div class="flex justify-between gap-8"><span style="color:#6B7280">Retenciones:</span><span class="font-semibold font-mono text-orange-600">${(window as any).fmt(inv.ret_total||0)}</span></div>
           <div class="flex justify-between gap-8 border-t pt-2 text-base" style="border-color:#E5E7EB"><span class="font-bold text-gray-800">TOTAL CxP:</span><span class="font-bold text-orange-700 font-mono">${(window as any).fmt(inv.payable_total || inv.total || 0)}</span></div>
@@ -1723,6 +1836,7 @@ function poRecalcLine(targetIdx: number = 0) {
   let subtotalSum = 0;
   let ivaSum = 0;
   let retSum = 0;
+  let totalDiscount = 0;
 
   const rows = document.querySelectorAll('#po-lines-body tr');
   rows.forEach((row: any) => {
@@ -1732,14 +1846,18 @@ function poRecalcLine(targetIdx: number = 0) {
     const qty = parseFloat((document.getElementById(`pol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
     const price = parseFloat((document.getElementById(`pol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
     const ivaRate = parseFloat((document.getElementById(`pol-iva-${idx}`) as HTMLSelectElement)?.value || '0') || 0;
+    const discPct = parseFloat((document.getElementById(`pol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
     const retRuleId = (window as any).__poRetMode === 'line' ? ((document.getElementById(`pol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '') : '';
 
-    const sub = qty * price;
+    const gross = qty * price;
+    const discAmt = gross * (discPct / 100);
+    const sub = gross - discAmt;
     const ivaVal = sub * (ivaRate / 100);
     const total = sub + ivaVal;
 
     subtotalSum += sub;
     ivaSum += ivaVal;
+    totalDiscount += discAmt;
 
     const totalEl = document.getElementById(`pol-total-${idx}`);
     if (totalEl) totalEl.textContent = (window as any).fmt(total);
@@ -1797,13 +1915,154 @@ function poRecalcLine(targetIdx: number = 0) {
   const netVal = subtotalSum + ivaSum - retSum;
 
   const subEl = document.getElementById('po-total-sub');
-  if (subEl) subEl.textContent = (window as any).fmt(subtotalSum);
+  if (subEl) subEl.textContent = (window as any).fmt(subtotalSum + totalDiscount);
+  const discEl = document.getElementById('po-total-discount');
+  if (discEl) discEl.textContent = `-${(window as any).fmt(totalDiscount)}`;
   const ivaEl = document.getElementById('po-total-iva');
   if (ivaEl) ivaEl.textContent = (window as any).fmt(ivaSum);
   const retEl = document.getElementById('po-total-ret');
   if (retEl) retEl.textContent = (window as any).fmt(retSum);
   const netEl = document.getElementById('po-total-net');
   if (netEl) netEl.textContent = (window as any).fmt(netVal);
+
+  if ((window as any).__poFormActive === true) {
+    poSaveTempState((window as any).__poCurrentInvoiceId);
+  }
+}
+
+function poSaveTempState(invoiceId: string | null) {
+  if (!(window as any).__poFormActive) return;
+
+  const supplierId = (document.getElementById('po-supplier') as HTMLInputElement)?.value || '';
+  const supplierSearch = (document.getElementById('po-supplier-search') as HTMLInputElement)?.value || '';
+  const date = (document.getElementById('po-date') as HTMLInputElement)?.value || '';
+  const due = (document.getElementById('po-due-date') as HTMLInputElement)?.value || '';
+  const payMethod = (document.getElementById('po-payment-method') as HTMLSelectElement)?.value || '';
+  const warehouseId = (document.getElementById('po-warehouse') as HTMLSelectElement)?.value || '';
+  const txTypeId = (document.getElementById('po-tx-type') as HTMLSelectElement)?.value || '';
+  const supplierRef = (document.getElementById('po-supplier-ref') as HTMLInputElement)?.value || '';
+  const notes = (document.getElementById('po-notes') as HTMLInputElement)?.value || '';
+
+  const retMode = (window as any).__poRetMode || 'header';
+  const retRuleRenta = (document.getElementById('po-hdr-ret-rule-renta') as HTMLSelectElement)?.value || '';
+  const retRuleIca = (document.getElementById('po-hdr-ret-rule-ica') as HTMLSelectElement)?.value || '';
+  const retRuleIva = (document.getElementById('po-hdr-ret-rule-iva') as HTMLSelectElement)?.value || '';
+
+  const tableRows = document.querySelectorAll('#po-lines-body tr');
+  const lines: any[] = [];
+
+  tableRows.forEach((row: any) => {
+    const idParts = row.id.split('-');
+    const idx = idParts[idParts.length - 1];
+
+    const prodId = (document.getElementById(`pol-prod-id-${idx}`) as HTMLInputElement)?.value;
+    const qty = parseFloat((document.getElementById(`pol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+    const price = parseFloat((document.getElementById(`pol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+    const ivaRate = parseFloat((document.getElementById(`pol-iva-${idx}`) as HTMLSelectElement)?.value || '0') || 0;
+    const discPct = parseFloat((document.getElementById(`pol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+    const retRuleId = (document.getElementById(`pol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '';
+    const desc = String(row.dataset.comment || '').trim();
+
+    if (prodId) {
+      const pObj = (window as any).__poProductsCache?.find((p: any) => p.id === prodId);
+      const name = pObj ? pObj.name : '(producto)';
+      lines.push({
+        product_id: prodId,
+        _name: name,
+        qty,
+        unit_price: price,
+        iva_rate: ivaRate,
+        discount_rate: discPct,
+        discount_pct: discPct,
+        ret_rule_id: retRuleId,
+        description: desc
+      });
+    }
+  });
+
+  const state = {
+    invoiceId,
+    supplier_id: supplierId,
+    supplier_search: supplierSearch,
+    date,
+    due_date: due,
+    payment_method: payMethod,
+    warehouse_id: warehouseId,
+    tx_type_id: txTypeId,
+    supplier_ref: supplierRef,
+    notes,
+    ret_mode: retMode,
+    ret_rule_renta_id: retRuleRenta,
+    ret_rule_ica_id: retRuleIca,
+    ret_rule_iva_id: retRuleIva,
+    lines
+  };
+
+  localStorage.setItem('temp_purchase_form_state', JSON.stringify(state));
+}
+
+function restorePurchaseFormState(state: any) {
+  if (!state) return;
+
+  const supplierHidden = document.getElementById('po-supplier') as HTMLInputElement;
+  const supplierSearch = document.getElementById('po-supplier-search') as HTMLInputElement;
+  if (supplierHidden && supplierSearch) {
+    supplierHidden.value = state.supplier_id || '';
+    supplierSearch.value = state.supplier_search || '';
+  }
+
+  const dateInput = document.getElementById('po-date') as HTMLInputElement;
+  if (dateInput && state.date) dateInput.value = state.date;
+
+  const dueInput = document.getElementById('po-due-date') as HTMLInputElement;
+  if (dueInput && state.due_date) dueInput.value = state.due_date;
+
+  const paySelect = document.getElementById('po-payment-method') as HTMLSelectElement;
+  if (paySelect && state.payment_method) paySelect.value = state.payment_method;
+
+  const whSelect = document.getElementById('po-warehouse') as HTMLSelectElement;
+  if (whSelect && state.warehouse_id) whSelect.value = state.warehouse_id;
+
+  const txSelect = document.getElementById('po-tx-type') as HTMLSelectElement;
+  if (txSelect && state.tx_type_id) {
+    txSelect.value = state.tx_type_id;
+    if ((window as any).poToggleSupplierRef) (window as any).poToggleSupplierRef(txSelect);
+  }
+
+  const refInput = document.getElementById('po-supplier-ref') as HTMLInputElement;
+  if (refInput && state.supplier_ref) refInput.value = state.supplier_ref;
+
+  const notesInput = document.getElementById('po-notes') as HTMLInputElement;
+  if (notesInput && state.notes) notesInput.value = state.notes;
+
+  const tbody = document.getElementById('po-lines-body');
+  if (tbody) tbody.innerHTML = '';
+
+  if (Array.isArray(state.lines)) {
+    state.lines.forEach((l: any) => {
+      const pObj = (window as any).__poProductsCache?.find((p: any) => p.id === l.product_id);
+      const prod = pObj ? { ...pObj } : { id: l.product_id, name: l._name };
+      (window as any).addPoLine(prod, l);
+    });
+  }
+
+  const retMode = state.ret_mode || 'header';
+  const isLineMode = retMode === 'line';
+  (window as any).__poRetMode = retMode;
+
+  const switchEl = document.getElementById('po-ret-mode-switch') as HTMLInputElement;
+  if (switchEl) switchEl.checked = isLineMode;
+
+  const ruleRenta = document.getElementById('po-hdr-ret-rule-renta') as HTMLSelectElement;
+  if (ruleRenta && state.ret_rule_renta_id) ruleRenta.value = state.ret_rule_renta_id;
+
+  const ruleIca = document.getElementById('po-hdr-ret-rule-ica') as HTMLSelectElement;
+  if (ruleIca && state.ret_rule_ica_id) ruleIca.value = state.ret_rule_ica_id;
+
+  const ruleIva = document.getElementById('po-hdr-ret-rule-iva') as HTMLSelectElement;
+  if (ruleIva && state.ret_rule_iva_id) ruleIva.value = state.ret_rule_iva_id;
+
+  (window as any).poSetRetMode(isLineMode);
 }
 
 function poSetRetMode(isPerLine: boolean) {
@@ -1850,3 +2109,5 @@ function poSetRetMode(isPerLine: boolean) {
 (window as any).poGlobalSelectProduct = poGlobalSelectProduct;
 (window as any).poRecalcLine = poRecalcLine;
 (window as any).poSetRetMode = poSetRetMode;
+(window as any).poSaveTempState = poSaveTempState;
+(window as any).restorePurchaseFormState = restorePurchaseFormState;

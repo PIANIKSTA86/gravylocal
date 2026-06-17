@@ -91,10 +91,11 @@ async function saveSignatureSettingsFromForm() {
 async function renderConfiguracion(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando configuración...</div>`;
   try {
-    const [settings, signatureValues, terceros] = await Promise.all([
+    const [settings, signatureValues, terceros, branches] = await Promise.all([
       pb.listAll('settings', { sort: 'key' }),
       loadSignatureSettings(),
       pb.listAll('third_parties', { sort: 'name' }),
+      pb.listAll('branches', { sort: 'code', ignoreBranch: true }),
     ]);
     const byKey = Object.fromEntries(settings.map((row) => [String(row.key || ''), row]));
     const canEdit = can('canWrite');
@@ -356,6 +357,32 @@ async function renderConfiguracion(c) {
         </div>
       </div>
 
+      <!-- SECCIÓN SUCURSALES -->
+      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-building-user mr-2" style="color:#1A4B8C"></i>Sucursales y Centros de Costo</h4>
+            <p class="text-sm" style="color:#6B7280">Administra las sucursales del sistema para segmentación de contabilidad e inventarios.</p>
+          </div>
+          ${canEdit ? '<button type="button" class="btn btn-primary btn-sm" id="btn-cfg-new-branch"><i class="fas fa-plus mr-1"></i> Nueva Sucursal</button>' : ''}
+        </div>
+        <div class="overflow-x-auto rounded-xl border" style="border-color:#F3F4F6">
+          <table class="data-table" id="cfg-branches-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Estado</th>
+                ${canEdit ? '<th style="width: 110px">Acciones</th>' : ''}
+              </tr>
+            </thead>
+            <tbody id="cfg-branches-tbody">
+              <!-- Cargado dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="bg-white rounded-2xl border overflow-hidden mt-4" style="border-color:#F0F0F0">
         <div class="p-4 border-b flex items-center justify-between" style="border-color:#F3F4F6">
           <h4 class="font-bold" style="color:#0D2137">Settings detectados</h4>
@@ -374,6 +401,129 @@ async function renderConfiguracion(c) {
           </table>
         </div>
       </div>`;
+
+    // Poblar tabla de sucursales
+    const bTbody = document.getElementById('cfg-branches-tbody');
+    if (bTbody) {
+      bTbody.innerHTML = branches.length ? branches.map(b => `
+        <tr>
+          <td><span class="font-mono font-semibold" style="color:#1A4B8C">${esc(b.code)}</span></td>
+          <td class="font-medium">${esc(b.name)}</td>
+          <td>${b.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+          ${canEdit ? `
+            <td>
+              <div class="flex gap-2">
+                <button type="button" class="btn btn-outline btn-sm" onclick="window.cfgEditBranch('${esc(b.id)}')"><i class="fas fa-pen"></i></button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="window.cfgToggleBranch('${esc(b.id)}', ${b.active ? 'false' : 'true'})"><i class="fas ${b.active ? 'fa-ban' : 'fa-rotate-left'}"></i></button>
+              </div>
+            </td>` : ''}
+        </tr>`).join('') : '<tr><td colspan="4" class="text-center py-6 text-gray-400">No hay sucursales registradas.</td></tr>';
+    }
+
+    // Eventos de sucursales
+    document.getElementById('btn-cfg-new-branch')?.addEventListener('click', () => {
+      (window as any).cfgOpenBranchForm();
+    });
+
+    (window as any).cfgOpenBranchForm = function(row = null) {
+      if (!canEdit) return showToast('No tienes permisos para gestionar sucursales', 'error');
+      openModal(
+        row ? 'Editar Sucursal' : 'Nueva Sucursal',
+        `<div class="space-y-4 text-sm" style="color:#374151">
+          <div class="form-group">
+            <label class="form-label">Código de la sucursal <span style="color:#EF4444">*</span></label>
+            <input id="bf-code" class="form-input" placeholder="Ej: 01" value="${esc(row?.code || '')}" ${row ? 'readonly style="background-color:#F3F4F6"' : ''}>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nombre de la sucursal <span style="color:#EF4444">*</span></label>
+            <input id="bf-name" class="form-input" placeholder="Ej: Norte / Principal" value="${esc(row?.name || '')}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Estado</label>
+            <select id="bf-active" class="form-input">
+              <option value="1" ${row?.active !== false ? 'selected' : ''}>Activa</option>
+              <option value="0" ${row?.active === false ? 'selected' : ''}>Inactiva</option>
+            </select>
+          </div>
+        </div>`,
+        `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+         <button class="btn btn-primary" id="btn-save-branch"><i class="fas fa-floppy-disk mr-1"></i> Guardar</button>`
+      );
+
+      document.getElementById('btn-save-branch')?.addEventListener('click', async () => {
+        const code = getInputVal('bf-code').trim();
+        const name = getInputVal('bf-name').trim();
+        const active = getSelectVal('bf-active') === '1';
+
+        if (!code || !name) {
+          return showToast('Código y nombre son obligatorios', 'warning');
+        }
+
+        const btn = document.getElementById('btn-save-branch') as HTMLButtonElement;
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
+        }
+
+        try {
+          if (row?.id) {
+            await pb.update('branches', row.id, { name, active });
+            showToast('Sucursal actualizada correctamente', 'success');
+          } else {
+            // Validar duplicado
+            const existing = await pb.listAll('branches', { filter: `code="${pb.escapeFilterValue(code)}"`, ignoreBranch: true });
+            if (existing.length > 0) {
+              throw new Error(`Ya existe una sucursal con el código ${code}`);
+            }
+            await pb.create('branches', { code, name, active });
+            showToast('Sucursal creada correctamente', 'success');
+          }
+          closeModal();
+          // Actualizar la pantalla
+          renderConfiguracion(c);
+          // Actualizar el selector global
+          if (typeof (window as any).initGlobalBranchSelector === 'function') {
+            await (window as any).initGlobalBranchSelector();
+          }
+        } catch (err: any) {
+          showToast(err.message || 'No se pudo guardar la sucursal', 'error');
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-floppy-disk mr-1"></i> Guardar';
+          }
+        }
+      });
+    };
+
+    (window as any).cfgEditBranch = async function(id: string) {
+      try {
+        const branch = await pb.get('branches', id);
+        (window as any).cfgOpenBranchForm(branch);
+      } catch (err: any) {
+        showToast(err.message || 'No se pudo cargar la sucursal', 'error');
+      }
+    };
+
+    (window as any).cfgToggleBranch = function(id: string, active: boolean) {
+      if (!canEdit) return showToast('Sin permisos para actualizar sucursal', 'error');
+      confirmDialog(
+        active ? 'Reactivar sucursal' : 'Inactivar sucursal',
+        active ? '¿Confirmas reactivar esta sucursal?' : '¿Confirmas inactivar esta sucursal?',
+        async () => {
+          try {
+            await pb.update('branches', id, { active });
+            showToast('Estado de sucursal actualizado', 'success');
+            renderConfiguracion(c);
+            if (typeof (window as any).initGlobalBranchSelector === 'function') {
+              await (window as any).initGlobalBranchSelector();
+            }
+          } catch (err: any) {
+            showToast(err.message || 'Error al cambiar estado de sucursal', 'error');
+          }
+        }
+      );
+    };
 
     $('#einvoice-method')?.addEventListener('change', (e) => {
       const val = (e.target as HTMLSelectElement).value;

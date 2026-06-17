@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 - usuarios.js
  */
 'use strict';
@@ -50,7 +50,7 @@ async function renderUsuarios(c) {
       </div>`;
 
     $('#users-q')?.addEventListener('input', debounce(() => filterTable('users-table', getInputVal('users-q')), 150));
-    $('#btn-new-user')?.addEventListener('click', () => openUserForm());
+    $('#btn-new-user')?.addEventListener('click', async () => await openUserForm());
   } catch (err) {
     c.innerHTML = `
       <div class="bg-white rounded-2xl border p-8 text-center" style="border-color:#F0F0F0">
@@ -62,16 +62,52 @@ async function renderUsuarios(c) {
   }
 }
 
-function openUserForm(row = null) {
+async function openUserForm(row = null) {
   if (!can('canManageUsers')) return showToast('No tienes permisos para gestionar usuarios', 'error');
+
+  // Cargar sucursales activas
+  let branches: any[] = [];
+  try {
+    branches = await pb.listAll('branches', { filter: 'active=true', ignoreBranch: true });
+  } catch (err) {
+    console.warn('Error al cargar sucursales:', err);
+  }
+
+  const defaultBranchId = row?.default_branch_id || '';
+  const allowedBranches = Array.isArray(row?.allowed_branches) ? row.allowed_branches : [];
+
+  const branchOptions = branches.map(b => `<option value="${esc(b.id)}" ${b.id === defaultBranchId ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('');
+  const allowedBranchChecks = branches.map(b => `
+    <label class="inline-flex items-center gap-1.5 text-xs select-none cursor-pointer">
+      <input type="checkbox" name="uf-allowed-branches" value="${esc(b.id)}" ${allowedBranches.includes(b.id) ? 'checked' : ''}>
+      <span>${esc(b.code)} - ${esc(b.name)}</span>
+    </label>
+  `).join('');
+
   openModal(
     row ? 'Editar Usuario' : 'Nuevo Usuario',
     `
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm" style="color:#374151">
       <div class="form-group"><label class="form-label">Nombre completo</label><input id="uf-name" class="form-input" value="${esc(row?.full_name || '')}"></div>
       <div class="form-group"><label class="form-label">Correo</label><input id="uf-email" type="email" class="form-input" value="${esc(row?.email || '')}" ${row ? 'readonly' : ''}></div>
       <div class="form-group"><label class="form-label">Rol</label><select id="uf-role" class="form-input">${Object.keys(ROLES).map(r => `<option value="${esc(r)}" ${(row?.role || 'viewer') === r ? 'selected' : ''}>${esc(roleLabel(r))}</option>`).join('')}</select></div>
       <div class="form-group"><label class="form-label">Estado</label><select id="uf-active" class="form-input"><option value="1" ${row?.active !== false ? 'selected' : ''}>Activo</option><option value="0" ${row?.active === false ? 'selected' : ''}>Inactivo</option></select></div>
+      
+      <!-- SUCURSALES -->
+      <div class="form-group">
+        <label class="form-label">Sucursal por defecto</label>
+        <select id="uf-default-branch" class="form-input">
+          <option value="">— Ninguna —</option>
+          ${branchOptions}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sucursales permitidas (vacío = todas)</label>
+        <div class="flex flex-col gap-1.5 border p-2.5 rounded-xl overflow-y-auto" style="border-color:#E5E7EB; max-height:110px; background:#FCFCFD">
+          ${allowedBranchChecks || '<span class="text-xs text-gray-400">No hay sucursales activas</span>'}
+        </div>
+      </div>
+
       ${row ? '' : '<div class="form-group"><label class="form-label">Contraseña</label><input id="uf-pass" type="password" class="form-input"></div><div class="form-group"><label class="form-label">Confirmar Contraseña</label><input id="uf-pass2" type="password" class="form-input"></div>'}
     </div>`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="btn-save-user"><i class="fas fa-floppy-disk"></i> Guardar</button>`
@@ -87,6 +123,8 @@ function openUserForm(row = null) {
       full_name: getInputVal('uf-name'),
       role: getSelectVal('uf-role'),
       active: getSelectVal('uf-active') === '1',
+      default_branch_id: getSelectVal('uf-default-branch') || null,
+      allowed_branches: Array.from(document.querySelectorAll('input[name="uf-allowed-branches"]:checked')).map((el: any) => el.value),
     };
     if (!payload.full_name) {
       if (btn) {
@@ -134,7 +172,7 @@ function openUserForm(row = null) {
 }
 
 async function editUser(id) {
-  try { openUserForm(await pb.get('users', id)); }
+  try { await openUserForm(await pb.get('users', id)); }
   catch (err) { showToast(err.message, 'error'); }
 }
 

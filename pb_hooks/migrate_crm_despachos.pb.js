@@ -2,6 +2,7 @@
 /**
  * GRAVY v2.0 — migrate_crm_despachos.pb.js
  * Crea las colecciones para CRM (crm_deals) y Logística (logistica_vehicles, logistica_deliveries).
+ * Asegura los campos created/updated en base a PocketBase v0.23+ y parcha la colección licenses local.
  */
 
 onBootstrap((e) => {
@@ -30,6 +31,47 @@ onBootstrap((e) => {
   const deleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin')";
 
   // ──────────────────────────────────────────────────────────
+  // A. PARCHE DE ESQUEMA: licenses.module_key
+  // ──────────────────────────────────────────────────────────
+  try {
+    const licensesCol = $app.findCollectionByNameOrId("licenses");
+    let moduleKeyField = null;
+    try {
+      moduleKeyField = licensesCol.fields.getByName("module_key");
+    } catch (_) {}
+    if (!moduleKeyField && licensesCol.fields) {
+      for (let i = 0; i < licensesCol.fields.length; i++) {
+        if (licensesCol.fields[i].name === "module_key") {
+          moduleKeyField = licensesCol.fields[i];
+          break;
+        }
+      }
+    }
+    if (moduleKeyField) {
+      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "conciliacion", "crm"];
+      let changed = false;
+      const currentVals = moduleKeyField.values || [];
+      const valsArray = [];
+      for (let j = 0; j < currentVals.length; j++) {
+        valsArray.push(currentVals[j]);
+      }
+      needed.forEach(v => {
+        if (valsArray.indexOf(v) === -1) {
+          valsArray.push(v);
+          changed = true;
+        }
+      });
+      if (changed) {
+        moduleKeyField.values = valsArray;
+        $app.save(licensesCol);
+        console.log("[GRAVY-CRM-LOGISTICA] Agregados módulos a licenses.module_key local.");
+      }
+    }
+  } catch (err) {
+    console.log("[GRAVY-CRM-LOGISTICA] Aviso al parchar licenses.module_key: " + err);
+  }
+
+  // ──────────────────────────────────────────────────────────
   // 1. COLECCIÓN: crm_deals (Oportunidades de Venta)
   // ──────────────────────────────────────────────────────────
   let crmDealsId = "";
@@ -52,7 +94,9 @@ onBootstrap((e) => {
           { name: "stage", type: "select", required: true, values: ["CONTACTO", "PROPUESTA", "NEGOCIACION", "GANADO", "PERDIDO"] },
           { name: "expected_close", type: "text", required: false },
           { name: "notes", type: "text", required: false },
-          { name: "active", type: "bool", required: false }
+          { name: "active", type: "bool", required: false },
+          { name: "created", type: "autodate", onCreate: true, onUpdate: false },
+          { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
         ]
       });
       $app.save(crmDeals);
@@ -85,7 +129,9 @@ onBootstrap((e) => {
           { name: "capacity", type: "number", required: true, min: 0 },
           { name: "status", type: "select", required: true, values: ["DISPONIBLE", "EN_RUTA", "MANTENIMIENTO"] },
           { name: "notes", type: "text", required: false },
-          { name: "active", type: "bool", required: false }
+          { name: "active", type: "bool", required: false },
+          { name: "created", type: "autodate", onCreate: true, onUpdate: false },
+          { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
         ],
         indexes: ["CREATE UNIQUE INDEX idx_log_veh_plate ON logistica_vehicles (plate)"]
       });
@@ -124,7 +170,9 @@ onBootstrap((e) => {
           { name: "notes", type: "text", required: false },
           { name: "items", type: "text", required: false },
           { name: "sales_order_id", type: "relation", required: false, collectionId: salesOrdersId, cascadeDelete: false },
-          { name: "invoice_id", type: "relation", required: false, collectionId: invoicesId, cascadeDelete: false }
+          { name: "invoice_id", type: "relation", required: false, collectionId: invoicesId, cascadeDelete: false },
+          { name: "created", type: "autodate", onCreate: true, onUpdate: false },
+          { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
         ],
         indexes: ["CREATE UNIQUE INDEX idx_log_del_number ON logistica_deliveries (number)"]
       });
@@ -135,6 +183,64 @@ onBootstrap((e) => {
       console.log("[GRAVY-LOGISTICA] Error al crear logistica_deliveries: " + err);
     }
   }
+
+  // ──────────────────────────────────────────────────────────
+  // B. PARCHE DE ESQUEMA: created/updated en colecciones existentes
+  // ──────────────────────────────────────────────────────────
+  const collectionsToPatch = ["crm_deals", "logistica_vehicles", "logistica_deliveries"];
+  collectionsToPatch.forEach(colName => {
+    try {
+      const col = $app.findCollectionByNameOrId(colName);
+      let changed = false;
+      let hasCreated = false;
+      let hasUpdated = false;
+
+      try {
+        hasCreated = !!col.fields.getByName("created");
+      } catch (_) {
+        if (col.fields && col.fields.length) {
+          for (let i = 0; i < col.fields.length; i++) {
+            if (col.fields[i].name === "created") { hasCreated = true; break; }
+          }
+        }
+      }
+      try {
+        hasUpdated = !!col.fields.getByName("updated");
+      } catch (_) {
+        if (col.fields && col.fields.length) {
+          for (let i = 0; i < col.fields.length; i++) {
+            if (col.fields[i].name === "updated") { hasUpdated = true; break; }
+          }
+        }
+      }
+
+      if (!hasCreated) {
+        col.fields.add(new AutodateField({
+          name: "created",
+          onCreate: true,
+          onUpdate: false
+        }));
+        changed = true;
+        console.log(`[GRAVY-MIGRATION] Campo 'created' agregado a la coleccion ${colName}`);
+      }
+      if (!hasUpdated) {
+        col.fields.add(new AutodateField({
+          name: "updated",
+          onCreate: true,
+          onUpdate: true
+        }));
+        changed = true;
+        console.log(`[GRAVY-MIGRATION] Campo 'updated' agregado a la coleccion ${colName}`);
+      }
+
+      if (changed) {
+        $app.save(col);
+        console.log(`[GRAVY-MIGRATION] Esquema de ${colName} guardado con campos autodate.`);
+      }
+    } catch (err) {
+      console.log(`[GRAVY-MIGRATION] Error al parchar created/updated en ${colName}: ` + err);
+    }
+  });
 
   // Sembrar número inicial consecutivo para entregas si no existe
   try {

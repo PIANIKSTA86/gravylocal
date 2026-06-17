@@ -839,6 +839,7 @@ async function postNominaPeriodAccounting(periodId) {
     date: period.date_to || todayStr(),
     description: `Nómina ${period.name}`,
     third_party_id: headerEmployeeId || undefined,
+    branch_id: period.branch_id || null,
   }, txLines);
 
   return tx.id;
@@ -2057,7 +2058,19 @@ function openPeriodForm() {
   );
   $('#btn-save-period')?.addEventListener('click', async () => {
     try {
-      const payload = { name: getInputVal('pp-name'), date_from: getInputVal('pp-from'), date_to: getInputVal('pp-to'), status: getSelectVal('pp-status') };
+      const activeBranchId = localStorage.getItem('active_branch_id');
+      const currentUser = pb.currentUser;
+      const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+        ? activeBranchId
+        : (currentUser?.default_branch_id || null);
+
+      const payload = {
+        name: getInputVal('pp-name'),
+        date_from: getInputVal('pp-from'),
+        date_to: getInputVal('pp-to'),
+        status: getSelectVal('pp-status'),
+        branch_id: targetBranchId || null,
+      };
       if (!payload.name || !payload.date_from || !payload.date_to) return showToast('Completa los campos obligatorios', 'warning');
       const r = await pb.create('payroll_periods', payload);
       closeModal();
@@ -2595,11 +2608,28 @@ async function savePayPlanilla() {
       line_order: lineOrder++
     });
 
+    // Resolver sucursal del período o sucursal activa/defecto del usuario
+    let planillaBranchId: string | null = null;
+    try {
+      if (data.periodId) {
+        const periodRec = await pb.get('payroll_periods', data.periodId);
+        planillaBranchId = periodRec?.branch_id || null;
+      }
+    } catch (_) {}
+    if (!planillaBranchId) {
+      const activeBranchId = localStorage.getItem('active_branch_id');
+      const currentUser = pb.currentUser;
+      planillaBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+        ? activeBranchId
+        : (currentUser?.default_branch_id || null);
+    }
+
     const txRecord = await (window as any).API.createTransaction({
       tx_type_id: txTypeId,
       date: date,
       description: obs || `Pago Planilla Aportes Nómina período ${data.periodName}`,
-      status: 'active'
+      status: 'active',
+      branch_id: planillaBranchId || null,
     }, txLines);
 
     closeModal();

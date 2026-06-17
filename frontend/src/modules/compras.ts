@@ -1484,6 +1484,13 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
     const isDianDoc = txCode === 'DS' || txCode === 'NDS';
     const txNumber = isDianDoc ? 'AUTO' : ((window as any).__poSuggestedTxNumber || 'AUTO');
 
+    // Resolver sucursal activa o por defecto del usuario
+    const activeBranchId = localStorage.getItem('active_branch_id');
+    const currentUser = (window as any).pb.currentUser;
+    const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+      ? activeBranchId
+      : (currentUser?.default_branch_id || null);
+
     const header = {
       number,
       date,
@@ -1503,6 +1510,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       ret_rule_renta_id: retRuleRenta,
       ret_rule_ica_id: retRuleIca,
       ret_rule_iva_id: retRuleIva,
+      branch_id: inv?.branch_id || targetBranchId || null,
       status: 'draft',
     };
 

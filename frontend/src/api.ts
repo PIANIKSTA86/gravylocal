@@ -452,13 +452,19 @@ const API = {
     const safeId = pb.escapeFilterValue(txId);
     const oldLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeId}"` });
     for (const l of oldLines) {
-      await pb.delete('tx_lines', l.id);
+      try {
+        await pb.delete('tx_lines', l.id);
+      } catch (err: any) {
+        // Ignorar 404: la línea ya fue eliminada (doble submit, edición concurrente, etc.)
+        if (err?.status !== 404 && err?.response?.code !== 404) throw err;
+      }
     }
     for (const line of lines) {
       await pb.create('tx_lines', { tx_id: txId, ...line });
     }
     await this.logAudit('UPDATE', 'transactions', txId, 'Modificación desde consulta de transacciones');
   },
+
 
   async checkTxDependencies(txId) {
     const safe = pb.escapeFilterValue(txId);
@@ -560,7 +566,7 @@ const API = {
   },
 
   /** Upsert de stock: si ya existe el registro producto+bodega lo actualiza; si no lo crea */
-  async upsertStock(productId, warehouseId, deltaQty, newAvgCost = null, date = '') {
+  async upsertStock(productId, warehouseId, deltaQty, newAvgCost = null, date = '', branchId = null) {
     const safeP = pb.escapeFilterValue(productId);
     const safeW = pb.escapeFilterValue(warehouseId);
     const existing = await pb.list('inventory_stock', {
@@ -647,7 +653,8 @@ const API = {
                     description: `Ajuste automático de costeo por stock negativo resuelto - Prod ${prod.name}`,
                     status: 'active',
                     payment_days: 0,
-                    cross_enabled: false
+                    cross_enabled: false,
+                    branch_id: branchId || null,
                   }, lines);
                 }
               })();
@@ -728,10 +735,10 @@ const API = {
         const sourceStock = await this.getInventoryStock({ warehouseId: mov.warehouse_id, productId: line.product_id }).catch(() => []);
         const sourceAvgCost = Number(sourceStock[0]?.avg_cost || 0);
 
-        await this.upsertStock(line.product_id, mov.warehouse_id, -line.qty, null, today);
-        await this.upsertStock(line.product_id, mov.dest_warehouse_id, line.qty, sourceAvgCost, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, -line.qty, null, today, mov.branch_id || null);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id, line.qty, sourceAvgCost, today, mov.branch_id || null);
       } else {
-        await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today, mov.branch_id || null);
       }
     }
 
@@ -754,10 +761,10 @@ const API = {
     for (const line of lines) {
       const delta = isIn ? -line.qty : isOut ? line.qty : 0;
       if (isTran) {
-        await this.upsertStock(line.product_id, mov.warehouse_id, line.qty, null, today);
-        await this.upsertStock(line.product_id, mov.dest_warehouse_id, -line.qty, null, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, line.qty, null, today, mov.branch_id || null);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id, -line.qty, null, today, mov.branch_id || null);
       } else {
-        await this.upsertStock(line.product_id, mov.warehouse_id, delta, null, today);
+        await this.upsertStock(line.product_id, mov.warehouse_id, delta, null, today, mov.branch_id || null);
       }
     }
 
@@ -1117,6 +1124,7 @@ const API = {
       payment_days: 0,
       cross_enabled: false,
       status: 'draft',
+      branch_id: inv.branch_id || null,
     }, txLines);
 
     // ── Movimiento de inventario para bienes ─────────────────────────────
@@ -1136,6 +1144,7 @@ const API = {
         notes: `${docLabel} ${inv.number}`,
         status: 'draft',
         tx_id: tx.id,
+        branch_id: inv.branch_id || null,
       });
       for (let i = 0; i < bienLines.length; i++) {
         await pb.create('inventory_movement_lines', { movement_id: mov.id, line_order: i + 1, ...bienLines[i] });
@@ -1976,6 +1985,7 @@ const API = {
         payment_days: 0,
         cross_enabled: false,
         status: immediatePosting ? 'active' : 'draft',
+        branch_id: inv.branch_id || null,
       }, txLines);
 
       // ── Movimiento de Inventario ─────────────────────────────
@@ -1995,6 +2005,7 @@ const API = {
           notes: `${docLabel} ${inv.number}`,
           status: 'draft',
           tx_id: txCreated.id,
+          branch_id: inv.branch_id || null,
         });
         invMovId = movCreated.id;
         for (let i = 0; i < movLines.length; i++) {
@@ -2228,9 +2239,13 @@ const API = {
       });
 
       if (paymentLines.length > 0) {
-        // Eliminar las líneas de pago viejas
+        // Eliminar las líneas de pago viejas (tolerante a 404 por edición concurrente)
         for (const pl of paymentLines) {
-          await pb.delete('tx_lines', pl.id);
+          try {
+            await pb.delete('tx_lines', pl.id);
+          } catch (err: any) {
+            if (err?.status !== 404 && err?.response?.code !== 404) throw err;
+          }
         }
 
         // Determinar si es nota de crédito
@@ -4729,6 +4744,7 @@ const API = {
       description: `Facturación Arriendo ${inv.number} - Inmueble: ${inv.expand?.contract_id?.expand?.property_id?.title || ''}`,
       third_party_id: tenantId,
       status: 'active',
+      branch_id: inv.branch_id || null,
     }, txLines);
 
     await pb.update('inmo_invoices', invoiceId, {

@@ -1072,6 +1072,22 @@ window.openPOSShift = async function() {
 
   try {
     const user = (window as any).pb.currentUser;
+
+    // Resolver sucursal: intentar desde la caja registradora, luego active_branch_id, luego default del usuario
+    let shiftBranchId: string | null = null;
+    if (registerId) {
+      try {
+        const reg = await (window as any).pb.get('pos_registers', registerId);
+        shiftBranchId = reg?.branch_id || null;
+      } catch (_) { }
+    }
+    if (!shiftBranchId) {
+      const activeBranchId = localStorage.getItem('active_branch_id');
+      shiftBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+        ? activeBranchId
+        : (user?.default_branch_id || null);
+    }
+
     const shift = await (window as any).pb.create('pos_shifts', {
       user_id: user.id,
       opened_at: (window as any).nowStr(),
@@ -1080,7 +1096,8 @@ window.openPOSShift = async function() {
       cash_expected: initialCash,
       status: 'open',
       notes: notes,
-      pos_register_id: registerId || null
+      pos_register_id: registerId || null,
+      branch_id: shiftBranchId || null,
     });
 
     if (registerId) {
@@ -2873,6 +2890,7 @@ window.confirmPOSPayment = async function() {
       ret_total: 0,
       status: 'draft', // Empieza en draft y se contabiliza de inmediato
       pos_shift_id: activeShift.id,
+      branch_id: activeShift.branch_id || null,
       discount_amount: discountAmount,
       freight_amount: freightAmount,
       payment_split: paymentSplit,

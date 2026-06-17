@@ -690,6 +690,18 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       console.error("Error precargando nota:", err);
       (window as any).showToast("Error al precargar la factura base: " + err.message, "error");
     }
+  } else {
+    // Restaurar borrador de nueva factura si existe
+    const savedState = localStorage.getItem('__soTempState');
+    if (savedState) {
+      try {
+        const state = JSON.parse(savedState);
+        inv = state.inv;
+        existingLines = state.lines;
+      } catch (err) {
+        console.error("Error al restaurar borrador temporal de factura:", err);
+      }
+    }
   }
 
   let lineCounter = 0;
@@ -725,7 +737,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     .filter((r: any) => String(r.account_code || '').trim() && Number(r.rate || 0) > 0);
   
   (window as any).__soRetRulesCache = withholdingRules;
-  (window as any).__soRetMode = inv?.ret_total > 0 ? 'header' : 'line'; // Inicializa modo retención
+  (window as any).__soRetMode = inv?.ret_mode || (inv?.ret_total > 0 && !(inv?.ret_rule_renta_id || inv?.ret_rule_ica_id) ? 'line' : 'header'); // Inicializa modo retención
 
   const retRuleLabel = (r: any) => `${r.concept} ${r.rate}% (${r.base_type}${Number(r.min_base || 0) > 0 ? `, >= ${(window as any).fmt(r.min_base || 0)}` : ''})`;
   const retRuleOptions = (rules = withholdingRules, selectedId = '') => `<option value="">— Sin retención —</option>${rules.map(r => `<option value="${(window as any).esc(r.id)}"${r.id === selectedId ? ' selected' : ''}>${(window as any).esc(retRuleLabel(r))}</option>`).join('')}`;
@@ -972,6 +984,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     if (inv && inv.customer_id) {
       const match = customers.find((c: any) => c.id === inv.customer_id);
       if (match) input.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
+    } else if (inv && inv.customer_search) {
+      input.value = inv.customer_search;
     }
 
     const performSearch = (val: string) => {
@@ -1184,8 +1198,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           data-prod-idx="${i}"
           class="w-full text-left px-4 py-2.5 text-xs border-none bg-white cursor-pointer block so-gsr-row"
           style="border-bottom:1px solid #F3F4F6;transition:background .1s"
-          onmouseenter="this.style.background='#F0FBFF'"
-          onmouseleave="this.style.background=''"
+          onmouseenter="window.soGlobalHighlightProduct(${i})"
           onclick="window.soGlobalSelectProduct(${i})">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center gap-2 min-w-0">
@@ -1211,18 +1224,30 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       }
     };
 
+    (window as any).soGlobalHighlightProduct = function(idx: number) {
+      highlighted = idx;
+      const items = dropdown.querySelectorAll('.so-gsr-row');
+      highlightItem(idx, items);
+    };
+
     input.addEventListener('input', () => {
       const q = input.value.trim().toLowerCase();
-      const filtered = !q
-        ? products.slice(0, 40)
-        : products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
+      if (!q) {
+        dropdown.style.display = 'none';
+        return;
+      }
+      const filtered = products.filter((p: any) => `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q)).slice(0, 40);
       renderResults(filtered);
       dropdown.style.display = 'block';
     });
 
     input.addEventListener('focus', () => {
       const q = input.value.trim().toLowerCase();
-      const filtered = !q ? products.slice(0, 40) : products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
+      if (!q) {
+        dropdown.style.display = 'none';
+        return;
+      }
+      const filtered = products.filter((p: any) => `${p.name} ${p.code}`.toLowerCase().includes(q)).slice(0, 40);
       renderResults(filtered);
       dropdown.style.display = 'block';
     });
@@ -1247,6 +1272,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     });
 
     input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
+
+    // Prevenir pérdida de foco al hacer click en el dropdown
+    dropdown.addEventListener('mousedown', (ev: MouseEvent) => {
+      ev.preventDefault();
+    });
   }
 
   (window as any).soGlobalSelectProduct = function(idx: number) {
@@ -1273,12 +1303,103 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     });
   }
 
+  // --- Persistencia Temporal (Borrador Autónomo) ---
+  function getSoFormCurrentState() {
+    const customerId = (document.getElementById('so-supplier') as HTMLInputElement)?.value || '';
+    const customerSearch = (document.getElementById('so-supplier-search') as HTMLInputElement)?.value || '';
+    const date = (document.getElementById('so-date') as HTMLInputElement)?.value || '';
+    const due = (document.getElementById('so-due-date') as HTMLInputElement)?.value || '';
+    const payMethod = (document.getElementById('so-payment-method') as HTMLSelectElement)?.value || '';
+    const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || '';
+    const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value || '';
+    const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || '';
+    const notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+    const salesOrderId = (document.getElementById('so-sales-order-id') as HTMLInputElement)?.value || '';
+    const dianConcept = (document.getElementById('so-dian-concept') as HTMLSelectElement)?.value || '';
+
+    const retMode = (window as any).__soRetMode || 'header';
+    const retRuleRenta = (document.getElementById('so-hdr-ret-rule-renta') as HTMLSelectElement)?.value || '';
+    const retRuleIca = (document.getElementById('so-hdr-ret-rule-ica') as HTMLSelectElement)?.value || '';
+
+    const tableRows = document.querySelectorAll('#so-lines-body tr');
+    const lines: any[] = [];
+    tableRows.forEach((row: any) => {
+      const idParts = row.id.split('-');
+      const idx = idParts[idParts.length - 1];
+
+      const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+      const nameEl = row.querySelector('span.truncate');
+      const prodName = nameEl ? nameEl.textContent || '' : '';
+
+      const qty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+      const price = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+      const ivaRate = parseFloat((document.getElementById(`sol-iva-${idx}`) as HTMLSelectElement)?.value || '0') || 0;
+      const discPct = parseFloat((document.getElementById(`sol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+      const retRuleId = (document.getElementById(`sol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '';
+
+      if (!prodId) return;
+
+      const soConfig = (window as any).__soConfig || {};
+      const isTaxIn = !!soConfig.operational?.prices_include_iva;
+      const unitPriceDb = isTaxIn ? (price / (1 + ivaRate / 100)) : price;
+
+      lines.push({
+        product_id: prodId,
+        _name: prodName,
+        qty,
+        unit_price: unitPriceDb,
+        iva_rate: ivaRate,
+        discount_pct: discPct,
+        ret_rule_id: retRuleId,
+      });
+    });
+
+    return {
+      inv: {
+        customer_id: customerId,
+        customer_search: customerSearch,
+        date,
+        due_date: due,
+        payment_method: payMethod,
+        warehouse_id: warehouseId,
+        tx_type_id: txTypeId,
+        seller_id: sellerId,
+        notes,
+        sales_order_id: salesOrderId,
+        dian_concept: dianConcept,
+        ret_rule_renta_id: retRuleRenta,
+        ret_rule_ica_id: retRuleIca,
+        ret_mode: retMode,
+      },
+      lines
+    };
+  }
+
+  (window as any).soSaveTempState = function() {
+    if (!invoiceId && !preloadedOrderId && !noteConfig) {
+      const state = getSoFormCurrentState();
+      localStorage.setItem('__soTempState', JSON.stringify(state));
+    }
+  };
+
+  // Delegar eventos para autoguardar en cambios dentro del modal
+  const formWrap = document.getElementById('so-supplier-search-wrap')?.closest('.space-y-4');
+  if (formWrap) {
+    const triggerSave = () => {
+      if (typeof (window as any).soSaveTempState === 'function') {
+        (window as any).soSaveTempState();
+      }
+    };
+    formWrap.addEventListener('input', triggerSave);
+    formWrap.addEventListener('change', triggerSave);
+  }
+
   // Configurar eventos del modal
   document.getElementById('btn-save-so')?.addEventListener('click', () => saveInvoiceDraftWrapper(invoiceId, onDone, inv));
 
   initSoGlobalProductSearch();
   window.soSuggestDueDate();
-  window.soSetRetMode(inv?.ret_total > 0 && !(inv?.ret_rule_renta_id || inv?.ret_rule_ica_id));
+  window.soSetRetMode((window as any).__soRetMode === 'line');
 }
 
 window.soSuggestDueDate = function() {
@@ -1405,6 +1526,10 @@ window.soRecalcLine = function(rowIdx: number) {
   if (document.getElementById('so-total-ret-ica'))  (document.getElementById('so-total-ret-ica') as any).textContent = (window as any).fmt(valIca);
   if (document.getElementById('so-total-ret'))      (document.getElementById('so-total-ret') as any).textContent = (window as any).fmt(retSum);
   if (document.getElementById('so-total-net'))      (document.getElementById('so-total-net') as any).textContent = (window as any).fmt(netTotal);
+
+  if (typeof (window as any).soSaveTempState === 'function') {
+    (window as any).soSaveTempState();
+  }
 };
 
 // --- Retention Mode Toggle Logic ---
@@ -1606,6 +1731,13 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       }
     }
 
+    // Resolver sucursal activa o por defecto del usuario
+    const activeBranchId = localStorage.getItem('active_branch_id');
+    const currentUser = (window as any).pb.currentUser;
+    const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+      ? activeBranchId
+      : (currentUser?.default_branch_id || null);
+
     const header = {
       number,
       customer_id: customerId,
@@ -1628,6 +1760,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       tx_type_id: txTypeId,
       sales_order_id: salesOrderId || null,
       cross_doc_ref: inv?.cross_doc_ref || null,
+      branch_id: inv?.branch_id || targetBranchId || null,
       status: 'draft',
     };
 
@@ -1661,6 +1794,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       }
     }
 
+    localStorage.removeItem('__soTempState');
+    (window as any).soSaveTempState = null;
     (window as any).closeModal();
     if (typeof onDone === 'function') onDone();
   } catch (err: any) {

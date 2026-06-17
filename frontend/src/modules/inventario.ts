@@ -1636,6 +1636,13 @@ async function _saveTomaFisica() {
       throw new Error('El valor total de los ajustes es de $0. No se requiere registro contable.');
     }
 
+    // Resolver sucursal activa o por defecto del usuario
+    const activeBranchId = localStorage.getItem('active_branch_id');
+    const currentUser = _pb().currentUser;
+    const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+      ? activeBranchId
+      : (currentUser?.default_branch_id || null);
+
     // 5. Registrar la transacción contable general en estado draft
     const tx = await API.createTransaction({
       tx_type_id: txTypeId,
@@ -1644,7 +1651,8 @@ async function _saveTomaFisica() {
       description: `Ajuste por Toma Física de Inventario en Bodega`,
       status: 'draft',
       payment_days: 0,
-      cross_enabled: false
+      cross_enabled: false,
+      branch_id: targetBranchId || null,
     }, txLines);
 
     // 6. Crear los movimientos de inventario asociados
@@ -1660,7 +1668,8 @@ async function _saveTomaFisica() {
         warehouse_id: whId,
         notes: `Ajuste sobrantes toma física - Ref Tx ${txNumber}`,
         status: 'draft',
-        tx_id: tx.id
+        tx_id: tx.id,
+        branch_id: targetBranchId || null,
       });
       for (let i = 0; i < positiveAdjs.length; i++) {
         const a = positiveAdjs[i];
@@ -1685,7 +1694,8 @@ async function _saveTomaFisica() {
         warehouse_id: whId,
         notes: `Ajuste faltantes toma física - Ref Tx ${txNumber}`,
         status: 'draft',
-        tx_id: tx.id
+        tx_id: tx.id,
+        branch_id: targetBranchId || null,
       });
       for (let i = 0; i < negativeAdjs.length; i++) {
         const a = negativeAdjs[i];

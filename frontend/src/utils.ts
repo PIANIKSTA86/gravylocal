@@ -64,6 +64,13 @@ function openModal(title, bodyHtml, footerHtml = '', wide = false) {
 }
 
 function closeModal() {
+  if ((window as any).__salesModalOpen && typeof (window as any).soSaveTempState === 'function') {
+    try {
+      (window as any).soSaveTempState();
+    } catch (e) {
+      console.error("Error saving temporary state on close:", e);
+    }
+  }
   $('#modal-overlay').classList.remove('show');
   $('#modal-body').innerHTML = '';
   $('#modal-footer').innerHTML = '';

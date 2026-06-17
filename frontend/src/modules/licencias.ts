@@ -94,6 +94,13 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
       description: 'Ciclo comercial completo: ventas, compras, inventario, POS y tesorería.',
       pages:       ['Ventas', 'Compras', 'Inventario', 'POS', 'Tesorería', 'Conciliación Bancaria'],
     },
+    crm: {
+      label:       'CRM (Ventas)',
+      icon:        'fa-funnel-dollar',
+      color:       '#EC4899',
+      description: 'Seguimiento dinámico del proceso de ventas por cliente.',
+      pages:       ['Seguimiento CRM'],
+    },
     nomina: {
       label:       'Nómina',
       icon:        'fa-id-card',
@@ -194,7 +201,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     if (grid)    grid.style.display    = 'grid';
     if (info)    info.style.display    = 'block';
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
+    const ORDER = ['core', 'contabilidad', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
     grid.innerHTML = ORDER.map(key => {
       const meta    = MODULE_META[key];
       if (!meta) return '';

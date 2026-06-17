@@ -37,5 +37,7 @@ import './modules/tesoreria.ts';
 import './modules/licencias.ts';
 import './modules/superadmin.ts';
 import './modules/inmobiliarias.ts';
+import './modules/crm.ts';
+import './modules/despachos.ts';
 
 import './app.ts';

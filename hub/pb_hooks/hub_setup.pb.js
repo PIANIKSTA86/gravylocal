@@ -98,7 +98,7 @@ onBootstrap((e) => {
       }
     }
     if (moduleKeyField) {
-      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "conciliacion"];
+      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "conciliacion", "crm"];
       let changed = false;
       const currentVals = moduleKeyField.values || [];
       const valsArray = [];
@@ -128,7 +128,7 @@ onBootstrap((e) => {
       deleteRule: "@request.auth.is_superadmin = true",
       fields: [
         { name: "company_id", type: "relation", required: true, collectionId: companies.id, maxSelect: 1 },
-        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","nomina","copropiedades","inmobiliarias","logistica","inventarios","tesoreria","tienda-virtual","spa","conciliacion","full"] },
+        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","crm","nomina","copropiedades","inmobiliarias","logistica","inventarios","tesoreria","tienda-virtual","spa","conciliacion","full"] },
         { name: "enabled",    type: "bool",     required: true },
         { name: "expires_at", type: "text",     required: false },
         { name: "plan",       type: "select",   required: false, values: ["trial","mensual","anual","perpetua"] },
@@ -191,7 +191,7 @@ onBootstrap((e) => {
   }
 
   // 4. Asegurar licencias para la Empresa Demo
-  const modules = ["core", "contabilidad", "comercial", "nomina", "copropiedades"];
+  const modules = ["core", "contabilidad", "comercial", "nomina", "copropiedades", "crm"];
   for (const mod of modules) {
     try {
       $app.findRecordsByFilter("licenses", `company_id = '${demoCompany.id}' && module_key = '${mod}'`, "", 1, 0);

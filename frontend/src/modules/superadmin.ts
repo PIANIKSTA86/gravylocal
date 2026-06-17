@@ -258,6 +258,7 @@ async function _loadSALicenses() {
     core:          { label: 'Core (Base)',   icon: 'fa-cube',       color: '#10B981' },
     contabilidad:  { label: 'Contabilidad',  icon: 'fa-calculator', color: '#2446B8' },
     comercial:     { label: 'Comercial',     icon: 'fa-store',      color: '#0C728F' },
+    crm:           { label: 'CRM (Ventas)',  icon: 'fa-funnel-dollar', color: '#EC4899' },
     nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7F7CFF' },
     copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B' },
     inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899' },
@@ -283,7 +284,7 @@ async function _loadSALicenses() {
     const licMap: Record<string, any> = {};
     (data.items || []).forEach((m: any) => licMap[m.module_key] = m);
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
+    const ORDER = ['core', 'contabilidad', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
     
     container.innerHTML = ORDER.map(key => {
       const meta = MODULE_META[key];

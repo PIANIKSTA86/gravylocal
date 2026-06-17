@@ -50,7 +50,7 @@ function applyModuleVisibility(): void {
     'exogena':          'contabilidad',
     'utilidades':       'contabilidad',
     'ventas':           'comercial',
-    'compras':          'comercial',
+    'compras':          'inventarios',
     'productos':        'inventarios',
     'inventario':       'inventarios',
     'pos':              'comercial',
@@ -67,6 +67,8 @@ function applyModuleVisibility(): void {
     'importaciones':     'logistica',
     'inmobiliarias':     'inmobiliarias',
     'tienda-virtual':   'tienda-virtual',
+    'crm':               'crm',
+    'despachos':         'logistica',
   };
 
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');

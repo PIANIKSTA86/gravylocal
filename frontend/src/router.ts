@@ -43,6 +43,8 @@ const PAGE_TITLES = {
   importaciones:     'Gestión de Importaciones',
   comisiones:        'Comisiones a Vendedores',
   inmobiliarias:     'Gestión Inmobiliaria',
+  crm:               'Seguimiento de Ventas (CRM)',
+  despachos:         'Gestión de Despachos y Entregas',
 };
 
 // Módulo de licencia requerido por cada página.
@@ -58,7 +60,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'ventas':           'comercial',
   'pedidos':          'comercial',
   'tienda-virtual':   'tienda-virtual',
-  'compras':          'comercial',
+  'compras':          'inventarios',
   'productos':        'inventarios',
   'inventario':       'inventarios',
   'pos':              'comercial',
@@ -75,6 +77,8 @@ const MODULE_LICENSE: Record<string, string> = {
   'importaciones':     'logistica',
   'comisiones':        'comercial',
   'inmobiliarias':     'inmobiliarias',
+  'crm':               'crm',
+  'despachos':         'logistica',
 };
 
 // Etiquetas visibles de los módulos para mensajes al usuario
@@ -132,6 +136,8 @@ const PAGE_RENDERERS = {
   importaciones:      () => typeof renderImportaciones     === 'function' && renderImportaciones($('#page-content')),
   comisiones:         () => typeof renderComisiones        === 'function' && renderComisiones($('#page-content')),
   inmobiliarias:      () => typeof renderInmobiliarias     === 'function' && renderInmobiliarias($('#page-content')),
+  crm:                () => typeof renderCRM              === 'function' && renderCRM($('#page-content')),
+  despachos:          () => typeof renderDespachos        === 'function' && renderDespachos($('#page-content')),
 };
 
 let currentPage = 'dashboard';

@@ -43,6 +43,7 @@ async function renderReportes(c) {
       ${reportCard('financial-analysis', 'Análisis Financiero', 'Análisis integrado de cartera, flujo de caja y ejecución presupuestal con gráficos SVG.')}
       ${reportCard('ventas-emision', 'Reporte de Ventas por Emisión', 'Consulta ventas detalladas agrupadas por POS, Factura Estándar o Pedidos.')}
       ${reportCard('budget-execution', 'Ejecución Presupuestal Detallada', 'Seguimiento mensual detallado y transacciones de la ejecución presupuestal.')}
+      ${reportCard('financial-notes', 'Notas a los Estados Financieros', 'Redacte y gestione las revelaciones vinculadas a cada número de nota del ESF y ER. Sugerencias automáticas basadas en movimientos contables.')}
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -61,6 +62,7 @@ async function renderReportes(c) {
   $('#btn-report-financial-analysis')?.addEventListener('click', () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()));
   $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
   $('#btn-report-budget-execution')?.addEventListener('click', () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()));
+  $('#btn-report-financial-notes')?.addEventListener('click', () => launchReportModal('Notas a los Estados Financieros', () => renderFinancialNotesManager()));
 }
 
 function getReportViewHost() {
@@ -1887,8 +1889,22 @@ async function renderIncomeStatement() {
             data.cell.styles.textColor = [13, 33, 55];
           }
         },
-        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
-      });
+      // Intentar incluir notas guardadas al final del PDF
+      try {
+        const pMonth = getInputVal('inc-month');
+        if (pMonth) {
+          const notasGuardadas = await loadFinancialNotes(pMonth, 'ER');
+          if (notasGuardadas.length > 0) {
+            drawNotesInPdf(doc, notasGuardadas, header.marginLeft, doc.internal.pageSize.getWidth());
+          }
+        }
+      } catch (_) { /* No interrumpir el PDF si las notas fallan */ }
+
+      const totalPagesER = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPagesER; p++) {
+        doc.setPage(p);
+        drawPdfFooter(doc, p);
+      }
 
       doc.save(`estado_resultados_${reportMonth}_vs_${compareMonth}.pdf`);
     } catch (err) {
@@ -2351,8 +2367,22 @@ async function renderFinancialPosition() {
             data.cell.styles.textColor = [13, 33, 55];
           }
         },
-        didDrawPage: (data) => drawPdfFooter(doc, data.pageNumber),
-      });
+      // Intentar incluir notas guardadas al final del PDF
+      try {
+        const pMonth = getInputVal('pos-month');
+        if (pMonth) {
+          const notasGuardadas = await loadFinancialNotes(pMonth, 'ESF');
+          if (notasGuardadas.length > 0) {
+            drawNotesInPdf(doc, notasGuardadas, header.marginLeft, doc.internal.pageSize.getWidth());
+          }
+        }
+      } catch (_) { /* No interrumpir el PDF si las notas fallan */ }
+
+      const totalPagesESF = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPagesESF; p++) {
+        doc.setPage(p);
+        drawPdfFooter(doc, p);
+      }
 
       doc.save(`estado_situacion_financiera_${reportMonth}_vs_${compareMonth}.pdf`);
     } catch (err) {
@@ -6864,3 +6894,735 @@ async function savePayIva() {
 (window as any)._savePayRetenciones = savePayRetenciones;
 (window as any)._openPayIvaModal = openPayIvaModal;
 (window as any)._savePayIva = savePayIva;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MÓDULO: Notas a los Estados Financieros (Revelaciones)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Motor de sugerencias deterministas.
+ * Genera un párrafo de revelación basándose en el código PUC raíz del rubro,
+ * su saldo actual, el saldo comparativo y los movimientos del periodo.
+ *
+ * @param cuentaCodigo  Código raíz PUC del rubro (ej: '11', '13', '41')
+ * @param titulo        Nombre del rubro
+ * @param saldoActual   Saldo al cierre del periodo
+ * @param saldoAnterior Saldo al cierre del periodo comparativo
+ * @param periodo       YYYY-MM del periodo
+ * @returns             Texto sugerido para la nota
+ */
+function buildNoteSuggestion(
+  cuentaCodigo: string,
+  titulo: string,
+  saldoActual: number,
+  saldoAnterior: number,
+  periodo: string
+): string {
+  const cod = String(cuentaCodigo || '').trim();
+  const now = Number(saldoActual || 0);
+  const prev = Number(saldoAnterior || 0);
+  const varPct = prev !== 0 ? Math.round(((now - prev) / Math.abs(prev)) * 100) : 0;
+  const fmtV = (n: number) => Math.abs(n).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
+  const varTexto = varPct === 0
+    ? 'sin variación significativa respecto al periodo anterior'
+    : varPct > 0
+      ? `con un incremento del ${varPct}% respecto al periodo anterior`
+      : `con una disminución del ${Math.abs(varPct)}% respecto al periodo anterior`;
+  const periodoTexto = periodo || 'el periodo actual';
+
+  // ── Clase 1: Activo ──────────────────────────────────────────────────────
+  if (cod.startsWith('11')) {
+    return `Al cierre de ${periodoTexto}, el rubro "${titulo}" presenta un saldo de ${fmtV(now)}, ` +
+      `${varTexto}. Corresponde a recursos disponibles en caja y cuentas bancarias de la empresa, ` +
+      `valorados al costo histórico. Los recursos en moneda extranjera, de existir, han sido ` +
+      `reexpresados a la tasa de cambio representativa del mercado vigente al cierre del periodo.`;
+  }
+  if (cod.startsWith('12')) {
+    return `El rubro "${titulo}" asciende a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Comprende inversiones en títulos valores y participaciones en otras entidades, ` +
+      `registradas al costo de adquisición ajustado por el método de participación o al valor razonable ` +
+      `según la política contable vigente.`;
+  }
+  if (cod.startsWith('13')) {
+    const alertaMora = now > 0 && prev > 0 && varPct > 20
+      ? ' Se recomienda revisar la política de provisiones de cartera dado el incremento observado.'
+      : '';
+    return `La cartera de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende las obligaciones de clientes y deudores por operaciones comerciales ` +
+      `normales. La empresa aplica una política de provisión individual y/o general conforme a las ` +
+      `normas contables vigentes.${alertaMora}`;
+  }
+  if (cod.startsWith('14')) {
+    return `Los inventarios de "${titulo}" presentan un saldo de ${fmtV(now)} al cierre de ` +
+      `${periodoTexto}, ${varTexto}. El costo se determina por el método de ` +
+      `promedio ponderado. El inventario se ha valorado al costo o al valor neto de realización, ` +
+      `el que resulte menor, conforme a las políticas contables de la empresa.`;
+  }
+  if (cod.startsWith('15') || cod.startsWith('16') || cod.startsWith('17')) {
+    return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Los activos se contabilizan al costo histórico menos la depreciación acumulada ` +
+      `y las pérdidas por deterioro. La depreciación se calcula por el método de línea recta ` +
+      `sobre la vida útil estimada de cada activo.`;
+  }
+  if (cod.startsWith('19')) {
+    return `El saldo de "${titulo}" al cierre de ${periodoTexto} asciende a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende activos diferidos, cargos diferidos u otros activos no clasificados ` +
+      `en las partidas anteriores. Se amortizan con cargo a resultados durante su vida útil estimada.`;
+  }
+  if (cod.startsWith('1')) {
+    return `El rubro de activos "${titulo}" presenta un saldo de ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}.`;
+  }
+
+  // ── Clase 2: Pasivo ──────────────────────────────────────────────────────
+  if (cod.startsWith('21')) {
+    return `Las obligaciones financieras de "${titulo}" ascienden a ${fmtV(now)} al cierre de ` +
+      `${periodoTexto}, ${varTexto}. Corresponden a créditos contratados con entidades financieras ` +
+      `para capital de trabajo y/o adquisición de activos. Las tasas de interés y vencimientos ` +
+      `están detallados en los documentos soporte de cada obligación.`;
+  }
+  if (cod.startsWith('22') || cod.startsWith('23')) {
+    return `Las obligaciones con proveedores y cuentas por pagar de "${titulo}" ascienden a ` +
+      `${fmtV(now)} al cierre de ${periodoTexto}, ${varTexto}. Corresponden a compromisos ` +
+      `con proveedores de bienes y servicios por operaciones normales de la empresa, ` +
+      `contabilizados al valor histórico de la obligación.`;
+  }
+  if (cod.startsWith('24') || cod.startsWith('25')) {
+    return `El rubro "${titulo}" presenta un pasivo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Comprende impuestos, contribuciones y obligaciones laborales causadas ` +
+      `y pendientes de pago conforme a la normativa vigente.`;
+  }
+  if (cod.startsWith('27')) {
+    return `Las diferidas e ingresos anticipados de "${titulo}" ascienden a ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. Corresponden a ingresos recibidos por anticipado ` +
+      `que se reconocerán en resultados en los periodos futuros conforme se presten los servicios ` +
+      `o se entreguen los bienes contratados.`;
+  }
+  if (cod.startsWith('2')) {
+    return `El pasivo "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}.`;
+  }
+
+  // ── Clase 3: Patrimonio ───────────────────────────────────────────────────
+  if (cod.startsWith('31')) {
+    return `El capital social suscrito y pagado de la empresa asciende a ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. ` +
+      `Representa los aportes efectuados por los socios conforme a los estatutos sociales vigentes.`;
+  }
+  if (cod.startsWith('33')) {
+    return `Las reservas de "${titulo}" ascienden a ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}. Se constituyen conforme a disposiciones legales y estatutarias, ` +
+      `y representan recursos apropiados de las utilidades para fines específicos.`;
+  }
+  if (cod.startsWith('36') || cod.startsWith('37')) {
+    return `Los resultados acumulados de "${titulo}" presentan un saldo de ${fmtV(now)} ` +
+      `al cierre de ${periodoTexto}, ${varTexto}. ` +
+      `Corresponden a utilidades o pérdidas de ejercicios anteriores pendientes de distribución o aplicación.`;
+  }
+  if (cod.startsWith('3')) {
+    return `El patrimonio "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+      `${varTexto}.`;
+  }
+
+  // ── Clase 4: Ingresos ─────────────────────────────────────────────────────
+  if (cod.startsWith('41')) {
+    return `Los ingresos operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
+      `${varTexto}. Provienen de la actividad principal del objeto social de la empresa ` +
+      `y se reconocen cuando es probable que los beneficios económicos fluyan hacia la entidad ` +
+      `y el importe puede medirse con fiabilidad.`;
+  }
+  if (cod.startsWith('42')) {
+    return `Los ingresos no operacionales de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(Math.abs(now))}, ` +
+      `${varTexto}. Corresponden a ingresos obtenidos fuera de la actividad principal, ` +
+      `tales como rendimientos financieros, arrendamientos u otros conceptos.`;
+  }
+  if (cod.startsWith('4')) {
+    return `El ingreso "${titulo}" en ${periodoTexto} ascendió a ${fmtV(Math.abs(now))}, ${varTexto}.`;
+  }
+
+  // ── Clase 5: Gastos ───────────────────────────────────────────────────────
+  if (cod.startsWith('51')) {
+    return `Los gastos de administración de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Comprenden todos los desembolsos necesarios para la administración y ` +
+      `operación general de la empresa, incluyendo personal, arrendamientos y servicios.`;
+  }
+  if (cod.startsWith('52')) {
+    return `Los gastos de ventas de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Corresponden a los costos directamente relacionados con la ` +
+      `comercialización de los productos o servicios de la empresa.`;
+  }
+  if (cod.startsWith('5')) {
+    return `El gasto "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ${varTexto}.`;
+  }
+
+  // ── Clase 6: Costos ───────────────────────────────────────────────────────
+  if (cod.startsWith('6')) {
+    return `El costo de ventas de "${titulo}" en ${periodoTexto} ascendió a ${fmtV(now)}, ` +
+      `${varTexto}. Comprende el valor de los inventarios vendidos y los costos directos ` +
+      `de producción o prestación del servicio durante el periodo.`;
+  }
+
+  // ── Clase 7: Otros gastos ─────────────────────────────────────────────────
+  if (cod.startsWith('7')) {
+    return `Los otros gastos de "${titulo}" en ${periodoTexto} ascendieron a ${fmtV(now)}, ` +
+      `${varTexto}. Corresponden a gastos no operacionales o de naturaleza especial ` +
+      `no clasificados en las categorías anteriores.`;
+  }
+
+  // ── Genérico ──────────────────────────────────────────────────────────────
+  return `El rubro "${titulo}" presenta un saldo de ${fmtV(now)} al cierre de ${periodoTexto}, ` +
+    `${varTexto}. Ver detalle en los soportes contables del periodo.`;
+}
+
+/**
+ * Dibuja las notas guardadas en un documento jsPDF ya generado (ESF o ER).
+ * Se llama justo antes de hacer doc.save().
+ *
+ * @param doc      Instancia de jsPDF activa
+ * @param notas    Array de registros de financial_notes
+ * @param marginLeft   Margen izquierdo (puntos)
+ * @param pageWidth    Ancho de página (puntos)
+ */
+function drawNotesInPdf(doc: any, notas: any[], marginLeft: number, pageWidth: number): void {
+  if (!notas || notas.length === 0) return;
+  const right = pageWidth - 24;
+
+  doc.addPage();
+  let y = 40;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(13, 33, 55);
+  doc.text('NOTAS A LOS ESTADOS FINANCIEROS', pageWidth / 2, y, { align: 'center' });
+  y += 8;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 100, 100);
+  doc.text('(Cifras expresadas en pesos colombianos)', pageWidth / 2, y, { align: 'center' });
+  y += 14;
+
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.4);
+  doc.line(marginLeft, y, right, y);
+  y += 12;
+
+  const maxWidth = right - marginLeft;
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  for (const nota of notas) {
+    const texto = (nota.contenido || nota.sugerido || '').trim();
+    if (!texto) continue;
+
+    // Encabezado de la nota
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(13, 33, 55);
+    const tituloLine = `Nota ${nota.nota_num}. ${nota.titulo || ''}`;
+
+    // Control de salto de página
+    if (y + 18 > pageHeight - 30) {
+      doc.addPage();
+      y = 40;
+    }
+    doc.text(tituloLine, marginLeft, y);
+    y += 10;
+
+    // Cuerpo de la nota
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(55, 55, 55);
+    const lines = doc.splitTextToSize(texto, maxWidth);
+    for (const line of lines) {
+      if (y + 9 > pageHeight - 30) {
+        doc.addPage();
+        y = 40;
+      }
+      doc.text(line, marginLeft, y);
+      y += 9;
+    }
+    y += 8;
+  }
+}
+
+/**
+ * Obtiene las notas guardadas en DB para un periodo y tipo de informe.
+ * Retorna array vacío si no hay ninguna o si falla la consulta.
+ */
+async function loadFinancialNotes(periodo: string, tipoInforme: 'ESF' | 'ER'): Promise<any[]> {
+  try {
+    const items = await pb.listAll('financial_notes', {
+      filter: `periodo="${periodo}" && tipo_informe="${tipoInforme}"`,
+      sort: 'nota_num',
+    });
+    return items || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/**
+ * Pantalla principal del gestor de Notas a los Estados Financieros.
+ * Permite sincronizar, redactar, obtener sugerencias automáticas e imprimir.
+ */
+async function renderFinancialNotesManager(): Promise<void> {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  const currentMonthDefault = todayStr().slice(0, 7);
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-1" style="color:#0D2137">
+        <i class="fas fa-file-lines mr-2" style="color:#1A4B8C"></i>Notas a los Estados Financieros
+      </h4>
+      <p class="text-xs mb-3" style="color:#6B7280">
+        Redacte las revelaciones de cada nota, sincronícelas desde el informe y obtenga sugerencias automáticas basadas en los movimientos contables.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <div class="form-group">
+          <label class="form-label">Tipo de informe</label>
+          <select id="fn-tipo" class="form-input">
+            <option value="ESF">Estado de Situación Financiera (ESF)</option>
+            <option value="ER">Estado de Resultados (ER)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Periodo (mes de corte)</label>
+          <input id="fn-periodo" type="month" class="form-input" value="${currentMonthDefault}">
+        </div>
+        <div class="form-group flex items-end gap-2">
+          <button class="btn btn-primary w-full" id="btn-fn-sync" title="Genera los registros de nota desde el informe del periodo seleccionado">
+            <i class="fas fa-rotate mr-1"></i>Sincronizar desde informe
+          </button>
+        </div>
+        <div class="form-group flex items-end gap-2">
+          <button class="btn btn-outline w-full" id="btn-fn-pdf" disabled>
+            <i class="fas fa-file-pdf mr-1"></i>Imprimir Notas PDF
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de acciones rápidas -->
+      <div class="flex flex-wrap gap-2 mb-2">
+        <button class="btn btn-sm" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0" id="btn-fn-suggest-all" disabled>
+          <i class="fas fa-wand-magic-sparkles mr-1"></i>Sugerir todas
+        </button>
+        <button class="btn btn-sm" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE" id="btn-fn-save-all" disabled>
+          <i class="fas fa-floppy-disk mr-1"></i>Guardar todas
+        </button>
+        <span id="fn-status-msg" class="text-xs self-center" style="color:#6B7280"></span>
+      </div>
+    </div>
+
+    <div id="fn-notes-area" class="p-4">
+      <div class="p-8 text-center" style="color:#9CA3AF">
+        <i class="fas fa-arrow-up-from-bracket mr-2"></i>
+        Selecciona el tipo de informe y el periodo, luego pulsa <strong>Sincronizar desde informe</strong>.
+      </div>
+    </div>`;
+
+  // Estado local de las notas en pantalla
+  let notasLocales: any[] = []; // { nota_num, titulo, cuenta_codigo, contenido, sugerido, revisado, _id?, _dirty }
+
+  const getStatusEl = () => $('#fn-status-msg') as HTMLElement | null;
+  const setStatus = (msg: string, color = '#6B7280') => {
+    const el = getStatusEl();
+    if (el) { el.textContent = msg; el.style.color = color; }
+  };
+
+  /** Renderiza la lista de notas en el área de edición */
+  const renderNotesList = (notas: any[]) => {
+    const area = $('#fn-notes-area');
+    if (!area) return;
+    if (!notas.length) {
+      area.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-file-circle-question mr-2"></i>No hay notas para este periodo. Pulsa <strong>Sincronizar desde informe</strong>.</div>';
+      return;
+    }
+
+    area.innerHTML = notas.map((n, idx) => {
+      const hasSugerido = (n.sugerido || '').trim().length > 0;
+      const isRevisado = n.revisado;
+      const badge = isRevisado
+        ? '<span class="ml-2 px-2 py-0.5 rounded text-xs font-semibold" style="background:#D1FAE5;color:#065F46">Revisada</span>'
+        : '<span class="ml-2 px-2 py-0.5 rounded text-xs font-semibold" style="background:#FEF3C7;color:#92400E">Pendiente</span>';
+
+      return `<div class="border rounded-xl mb-3 overflow-hidden" style="border-color:#E5E7EB" id="fn-card-${idx}">
+        <div class="flex items-center gap-3 px-4 py-2 cursor-pointer" style="background:#F9FAFB" onclick="document.getElementById('fn-body-${idx}').classList.toggle('hidden')">
+          <span class="flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm" style="background:#1A4B8C;color:#fff;min-width:2rem">${n.nota_num}</span>
+          <span class="font-semibold text-sm flex-1" style="color:#0D2137">${esc(n.titulo || 'Sin título')}</span>
+          ${badge}
+          <i class="fas fa-chevron-down text-xs" style="color:#9CA3AF"></i>
+        </div>
+        <div id="fn-body-${idx}" class="p-4">
+          ${hasSugerido ? `
+          <div class="mb-3 p-3 rounded-lg text-xs" style="background:#EFF6FF;border:1px solid #BFDBFE;color:#1E40AF">
+            <div class="font-semibold mb-1"><i class="fas fa-wand-magic-sparkles mr-1"></i>Sugerencia automática</div>
+            <p style="white-space:pre-line">${esc(n.sugerido)}</p>
+            <button class="btn btn-xs mt-2" style="background:#DBEAFE;color:#1E40AF;border:none;padding:3px 10px;font-size:11px" onclick="_fnAcceptSuggestion(${idx})">
+              <i class="fas fa-check mr-1"></i>Usar esta sugerencia
+            </button>
+          </div>` : ''}
+          <label class="form-label mb-1">Texto de la revelación (editable)</label>
+          <textarea
+            id="fn-txt-${idx}"
+            class="form-input w-full"
+            rows="5"
+            placeholder="Redacte aquí el texto completo de la nota ${n.nota_num}..."
+            oninput="_fnMarkDirty(${idx})"
+            style="font-size:13px;line-height:1.6;resize:vertical"
+          >${esc(n.contenido || '')}</textarea>
+          <div class="flex gap-2 mt-2 justify-end">
+            ${!hasSugerido ? `<button class="btn btn-xs" style="background:#F0FDF4;color:#166534;border:1px solid #BBF7D0" onclick="_fnSuggestOne(${idx})">
+              <i class="fas fa-wand-magic-sparkles mr-1"></i>Sugerir
+            </button>` : ''}
+            <button class="btn btn-xs" style="background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE" onclick="_fnSaveOne(${idx})">
+              <i class="fas fa-floppy-disk mr-1"></i>Guardar nota
+            </button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Habilitar botones de acciones globales
+    const btnSuggestAll = $('#btn-fn-suggest-all') as HTMLButtonElement | null;
+    const btnSaveAll = $('#btn-fn-save-all') as HTMLButtonElement | null;
+    const btnPdf = $('#btn-fn-pdf') as HTMLButtonElement | null;
+    if (btnSuggestAll) btnSuggestAll.disabled = false;
+    if (btnSaveAll) btnSaveAll.disabled = false;
+    if (btnPdf) btnPdf.disabled = false;
+  };
+
+  /** Sincronizar: ejecuta el informe y extrae los rubros con nota */
+  const syncFromReport = async () => {
+    const tipo = getSelectVal('fn-tipo') as 'ESF' | 'ER';
+    const periodo = getInputVal('fn-periodo');
+    if (!periodo) return showToast('Selecciona el periodo.', 'warning');
+
+    setStatus('Generando informe y extrayendo notas…', '#D97706');
+    const area = $('#fn-notes-area');
+    if (area) area.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Procesando informe...</div>';
+
+    try {
+      const { accounts } = await ensureAccountsSaldos();
+      const { transactions, txLines: allTxLines } = await ensureLedgerData();
+
+      // Calcular saldos al cierre del periodo y del mes anterior
+      const year = Number(periodo.slice(0, 4));
+      const month = Number(periodo.slice(5, 7));
+      const lastDayCurrent = new Date(year, month, 0);
+      const reportDate = `${lastDayCurrent.getFullYear()}-${String(lastDayCurrent.getMonth() + 1).padStart(2, '0')}-${String(lastDayCurrent.getDate()).padStart(2, '0')}`;
+      const prevMonth = month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, '0')}`;
+      const lastDayPrev = new Date(Number(prevMonth.slice(0, 4)), Number(prevMonth.slice(5, 7)), 0);
+      const compareDate = `${lastDayPrev.getFullYear()}-${String(lastDayPrev.getMonth() + 1).padStart(2, '0')}-${String(lastDayPrev.getDate()).padStart(2, '0')}`;
+
+      // buildBalancesAt está definida dentro de renderFinancialPosition — re-implementamos aquí
+      const computeBalances = (cutoff: string): Record<string, number> => {
+        const txById: Record<string, any> = Object.fromEntries(transactions.map((t: any) => [t.id, t]));
+        const byAcc: Record<string, number> = Object.fromEntries(accounts.map((a: any) => [a.id, 0]));
+        for (const line of allTxLines) {
+          const tx = txById[line.tx_id];
+          if (!tx || tx.status !== 'active' || !tx.date) continue;
+          if (String(tx.date) > cutoff) continue;
+          byAcc[line.account_id] = Number(byAcc[line.account_id] || 0) + Number(line.debit || 0) - Number(line.credit || 0);
+        }
+        return byAcc;
+      };
+
+      const balNow = computeBalances(reportDate);
+      const balCmp = computeBalances(compareDate);
+
+      // Determinar qué grupos de cuentas incluir según tipo de informe
+      const prefixes = tipo === 'ESF'
+        ? ['1', '2', '3']   // Activo, Pasivo, Patrimonio
+        : ['4', '5', '6', '7']; // Ingresos, Costos, Gastos, Otros
+
+      // Agrupamos por código raíz nivel-2 (2 dígitos) para extaer rubros significativos
+      const grupoMap: Map<string, { titulo: string; saldoNow: number; saldoCmp: number }> = new Map();
+      const EPS = 0.01;
+
+      for (const acc of accounts) {
+        const code = String(acc.code || '');
+        if (!prefixes.some(p => code.startsWith(p))) continue;
+        if (Number(acc.level || 1) !== 2) continue; // Solo nivel 2 para notas
+
+        const rawNow = Number(balNow[acc.id] || 0);
+        const rawCmp = Number(balCmp[acc.id] || 0);
+
+        // Calcular saldo consolidado incluyendo hijos
+        let sumNow = rawNow;
+        let sumCmp = rawCmp;
+        for (const child of accounts) {
+          if (String(child.parent_code || '') === code) {
+            sumNow += Number(balNow[child.id] || 0);
+            sumCmp += Number(balCmp[child.id] || 0);
+          }
+        }
+
+        if (Math.abs(sumNow) < EPS && Math.abs(sumCmp) < EPS) continue; // Sin actividad
+        grupoMap.set(code, { titulo: acc.name || code, saldoNow: sumNow, saldoCmp: sumCmp });
+      }
+
+      if (grupoMap.size === 0) {
+        setStatus('No se encontraron rubros con actividad en este periodo.', '#EF4444');
+        if (area) area.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No se encontraron rubros con movimiento en el periodo seleccionado.</div>';
+        return;
+      }
+
+      // Cargar notas ya guardadas en DB para este periodo
+      const existentes = await loadFinancialNotes(periodo, tipo);
+      const existentesByNum = new Map(existentes.map((n: any) => [Number(n.nota_num), n]));
+
+      // Construir array de notas ordenado por código de cuenta
+      const codesOrdenados = [...grupoMap.keys()].sort((a, b) => a.localeCompare(b));
+      notasLocales = codesOrdenados.map((code, idx) => {
+        const g = grupoMap.get(code)!;
+        const notaNum = idx + 1;
+        const existente = existentesByNum.get(notaNum);
+        return {
+          nota_num: notaNum,
+          titulo: g.titulo,
+          cuenta_codigo: code,
+          saldoNow: g.saldoNow,
+          saldoCmp: g.saldoCmp,
+          contenido: existente?.contenido || '',
+          sugerido: existente?.sugerido || '',
+          revisado: existente?.revisado || false,
+          _id: existente?.id || null,
+          _dirty: false,
+        };
+      });
+
+      renderNotesList(notasLocales);
+      setStatus(`${notasLocales.length} notas cargadas. Periodo: ${periodo} (${tipo})`, '#059669');
+    } catch (err: any) {
+      setStatus(`Error: ${err.message}`, '#EF4444');
+      if (area) area.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+    }
+  };
+
+  /** Guardar UNA nota en PocketBase */
+  const saveOneNote = async (idx: number) => {
+    const nota = notasLocales[idx];
+    if (!nota) return;
+    const tipo = getSelectVal('fn-tipo') as 'ESF' | 'ER';
+    const periodo = getInputVal('fn-periodo');
+    const txtEl = $(`#fn-txt-${idx}`) as HTMLTextAreaElement | null;
+    const contenidoActual = txtEl ? txtEl.value : nota.contenido;
+
+    try {
+      const payload: any = {
+        periodo,
+        nota_num: nota.nota_num,
+        tipo_informe: tipo,
+        titulo: nota.titulo,
+        cuenta_codigo: nota.cuenta_codigo || '',
+        contenido: contenidoActual,
+        sugerido: nota.sugerido || '',
+        revisado: true,
+      };
+
+      // Añadir usuario actual si está disponible
+      const userId = sessionStorage.getItem('user_id') || '';
+      if (userId) payload.updated_by = userId;
+
+      let savedRecord: any;
+      if (nota._id) {
+        savedRecord = await pb.update('financial_notes', nota._id, payload);
+      } else {
+        savedRecord = await pb.create('financial_notes', payload);
+        notasLocales[idx]._id = savedRecord.id;
+      }
+
+      notasLocales[idx].contenido = contenidoActual;
+      notasLocales[idx].revisado = true;
+      notasLocales[idx]._dirty = false;
+
+      // Actualizar el badge en el card sin re-renderizar todo
+      const card = $(`#fn-card-${idx}`);
+      if (card) {
+        const badge = card.querySelector('span.ml-2');
+        if (badge) {
+          badge.textContent = 'Revisada';
+          (badge as HTMLElement).style.background = '#D1FAE5';
+          (badge as HTMLElement).style.color = '#065F46';
+        }
+      }
+
+      showToast(`Nota ${nota.nota_num} guardada correctamente.`, 'success');
+      setStatus(`Nota ${nota.nota_num} guardada. ${new Date().toLocaleTimeString('es-CO')}`, '#059669');
+    } catch (err: any) {
+      showToast(`Error al guardar nota ${nota.nota_num}: ${err.message}`, 'error');
+    }
+  };
+
+  /** Generar sugerencia para UNA nota */
+  const suggestOne = (idx: number) => {
+    const nota = notasLocales[idx];
+    if (!nota) return;
+    const periodo = getInputVal('fn-periodo');
+    const sugerido = buildNoteSuggestion(
+      nota.cuenta_codigo || '',
+      nota.titulo,
+      nota.saldoNow || 0,
+      nota.saldoCmp || 0,
+      periodo
+    );
+    notasLocales[idx].sugerido = sugerido;
+    // Refrescar solo ese card
+    renderNotesList(notasLocales);
+  };
+
+  /** Generar sugerencias para TODAS las notas */
+  const suggestAll = () => {
+    const periodo = getInputVal('fn-periodo');
+    for (let i = 0; i < notasLocales.length; i++) {
+      const n = notasLocales[i];
+      notasLocales[i].sugerido = buildNoteSuggestion(
+        n.cuenta_codigo || '',
+        n.titulo,
+        n.saldoNow || 0,
+        n.saldoCmp || 0,
+        periodo
+      );
+      // Si el contador aún no ha redactado nada, pre-rellenar el campo de texto
+      if (!notasLocales[i].contenido) {
+        notasLocales[i].contenido = notasLocales[i].sugerido;
+      }
+    }
+    renderNotesList(notasLocales);
+    setStatus('Sugerencias generadas. Revise y ajuste cada nota antes de guardar.', '#D97706');
+  };
+
+  /** Guardar TODAS las notas de una vez */
+  const saveAllNotes = async () => {
+    if (!notasLocales.length) return showToast('No hay notas para guardar.', 'warning');
+    // Leer el estado actual de todos los textareas antes de guardar
+    for (let i = 0; i < notasLocales.length; i++) {
+      const txtEl = $(`#fn-txt-${i}`) as HTMLTextAreaElement | null;
+      if (txtEl) notasLocales[i].contenido = txtEl.value;
+    }
+    setStatus('Guardando todas las notas…', '#D97706');
+    let saved = 0;
+    let errors = 0;
+    for (let i = 0; i < notasLocales.length; i++) {
+      try {
+        await saveOneNote(i);
+        saved++;
+      } catch (_) {
+        errors++;
+      }
+    }
+    if (errors === 0) {
+      setStatus(`${saved} notas guardadas correctamente.`, '#059669');
+      showToast(`${saved} notas guardadas.`, 'success');
+    } else {
+      setStatus(`${saved} guardadas, ${errors} errores.`, '#EF4444');
+      showToast(`${errors} errores al guardar.`, 'error');
+    }
+  };
+
+  /** Imprimir PDF con todas las notas guardadas */
+  const printNotesPdf = async () => {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+    const tipo = getSelectVal('fn-tipo') as 'ESF' | 'ER';
+    const periodo = getInputVal('fn-periodo');
+    if (!periodo) return showToast('Selecciona el periodo.', 'warning');
+
+    const notas = await loadFinancialNotes(periodo, tipo);
+    if (!notas.length) return showToast('No hay notas guardadas para este periodo.', 'warning');
+
+    const headerCtx = await getPdfHeaderContext();
+    const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginLeft = 24;
+    const tipoLabel = tipo === 'ESF' ? 'Estado de Situacion Financiera' : 'Estado de Resultados';
+
+    drawPdfHeader(doc, headerCtx, {
+      title: `Notas a los Estados Financieros`,
+      subtitles: [`${tipoLabel} — Periodo: ${periodo}`],
+    });
+
+    // Empezamos las notas desde la primera página ya con el encabezado
+    let y = 72;
+    const right = pageWidth - 24;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const maxWidth = right - marginLeft;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(13, 33, 55);
+    doc.text('(Cifras expresadas en pesos colombianos)', pageWidth / 2, y, { align: 'center' });
+    y += 12;
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.4);
+    doc.line(marginLeft, y, right, y);
+    y += 14;
+
+    for (const nota of notas) {
+      const texto = (nota.contenido || nota.sugerido || '').trim();
+      if (!texto) continue;
+
+      if (y + 20 > pageHeight - 30) {
+        doc.addPage();
+        y = 40;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(13, 33, 55);
+      doc.text(`Nota ${nota.nota_num}. ${nota.titulo || ''}`, marginLeft, y);
+      y += 11;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(55, 55, 55);
+      const lines = doc.splitTextToSize(texto, maxWidth);
+      for (const line of lines) {
+        if (y + 9 > pageHeight - 30) {
+          doc.addPage();
+          y = 40;
+        }
+        doc.text(line, marginLeft, y);
+        y += 9;
+      }
+      y += 10;
+    }
+
+    // Footer en cada página
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+      drawPdfFooter(doc, p);
+    }
+
+    doc.save(`notas_${tipo.toLowerCase()}_${periodo}.pdf`);
+    showToast('PDF de notas generado correctamente.', 'success');
+  };
+
+  // ── Exponer callbacks globales para los botones inline del HTML generado ──
+  (window as any)._fnMarkDirty = (idx: number) => {
+    if (notasLocales[idx]) notasLocales[idx]._dirty = true;
+  };
+  (window as any)._fnAcceptSuggestion = (idx: number) => {
+    const nota = notasLocales[idx];
+    if (!nota) return;
+    const txtEl = $(`#fn-txt-${idx}`) as HTMLTextAreaElement | null;
+    if (txtEl) txtEl.value = nota.sugerido || '';
+    notasLocales[idx].contenido = nota.sugerido || '';
+    notasLocales[idx]._dirty = true;
+    showToast('Sugerencia aceptada. Recuerda guardar.', 'info');
+  };
+  (window as any)._fnSuggestOne = (idx: number) => suggestOne(idx);
+  (window as any)._fnSaveOne   = (idx: number) => saveOneNote(idx);
+
+  // ── Event listeners principales ───────────────────────────────────────────
+  $('#btn-fn-sync')?.addEventListener('click', syncFromReport);
+  $('#btn-fn-suggest-all')?.addEventListener('click', suggestAll);
+  $('#btn-fn-save-all')?.addEventListener('click', saveAllNotes);
+  $('#btn-fn-pdf')?.addEventListener('click', printNotesPdf);
+}
+
+// Exponer drawNotesInPdf para uso desde renderFinancialPosition y renderIncomeStatement
+(window as any)._drawNotesInPdf = drawNotesInPdf;
+(window as any)._loadFinancialNotes = loadFinancialNotes;

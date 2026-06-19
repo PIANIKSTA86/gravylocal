@@ -351,6 +351,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <select id="imp-proration-method" class="form-input font-semibold" style="color:#1E40AF" onchange="window.impRecalcTotals()">
               <option value="FOB_VALUE" ${imp?.proration_method === 'FOB_VALUE' ? 'selected' : (imp?.proration_method ? '' : 'selected')}>Prorrateo por Valor FOB</option>
               <option value="GROSS_WEIGHT" ${imp?.proration_method === 'GROSS_WEIGHT' ? 'selected' : ''}>Prorrateo por Peso Bruto (Kg)</option>
+              <option value="CUBIC_VOLUME" ${imp?.proration_method === 'CUBIC_VOLUME' ? 'selected' : ''}>Prorrateo por Cubicaje (m3)</option>
             </select>
           </div>
         </div>
@@ -407,14 +408,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         </div>
 
         <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
-          <table class="data-table" id="imp-lines-table" style="min-width:1050px">
+          <table class="data-table" id="imp-lines-table" style="min-width:1220px">
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
                 <th style="min-width:220px;background:#F4F8FF">Producto</th>
-                <th class="text-right" style="width:95px;background:#F4F8FF">Cant.</th>
-                <th class="text-right" style="width:135px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
-                <th class="text-right" style="width:95px;background:#F4F8FF">Arancel %</th>
-                <th class="text-right" style="width:95px;background:#F4F8FF">IVA %</th>
+                <th class="text-right" style="width:120px;background:#F4F8FF">Cant.</th>
+                <th class="text-right" style="width:160px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
+                <th class="text-right" style="width:120px;background:#F4F8FF">Arancel %</th>
+                <th class="text-right" style="width:120px;background:#F4F8FF">IVA %</th>
                 <th style="min-width:180px;background:#F4F8FF">Nro. Manifiesto</th>
                 <th style="width:170px;background:#F4F8FF">Archivo Manifiesto (PDF)</th>
                 <th class="text-right" style="width:115px;background:#F4F8FF">Costo Est. (COP)</th>
@@ -762,7 +763,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (lblFreightCurrency) lblFreightCurrency.textContent = `(${currency})`;
     if (lblInsuranceCurrency) lblInsuranceCurrency.textContent = `(${currency})`;
 
-    window.impRecalcTotals();
+    (window as any).impRecalcTotals();
   };
 
   // Agregar línea de artículo
@@ -800,12 +801,18 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
     const baseNetWeight = prod?.peso_neto ?? 0;
     const baseGrossWeight = prod?.peso_bruto ?? 0;
+    const baseLargoCm = preloadedLine?.largo_cm ?? prod?.largo_cm ?? 0;
+    const baseAnchoCm = preloadedLine?.ancho_cm ?? prod?.ancho_cm ?? 0;
+    const baseAltoCm = preloadedLine?.alto_cm ?? prod?.alto_cm ?? 0;
 
     const tr = document.createElement('tr');
     tr.id = `imp-row-${idx}`;
     tr.setAttribute('data-lineid', lineId);
     tr.setAttribute('data-base-peso-neto', String(baseNetWeight));
     tr.setAttribute('data-base-peso-bruto', String(baseGrossWeight));
+    tr.setAttribute('data-base-largo-cm', String(baseLargoCm));
+    tr.setAttribute('data-base-ancho-cm', String(baseAnchoCm));
+    tr.setAttribute('data-base-alto-cm', String(baseAltoCm));
     
     tr.innerHTML = `
       <td>
@@ -818,25 +825,23 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             ` : ''}
           </div>
           <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
-          
-          <!-- Detalles aduaneros y pesos -->
-          <div class="flex flex-col gap-1 mt-1 pl-1 text-[10px] text-gray-500 border-l-2 border-blue-200">
-            <div class="flex flex-wrap gap-2 items-center">
-              <span><strong>Arancel:</strong> <input type="text" id="impl-pos-arancel-${idx}" class="form-input py-0.5 px-1 font-mono text-[9px]" style="width:75px;height:18px;font-size:9px" placeholder="Arancel" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria || '')}"></span>
-              <span><strong>Orig:</strong> <input type="text" id="impl-pais-origen-${idx}" class="form-input py-0.5 px-1 text-[9px]" style="width:40px;height:18px;font-size:9px" placeholder="País" value="${(window as any).esc(preloadedLine?.pais_origen || prod?.pais_origen || '')}"></span>
-              <span><strong>Cert:</strong> <input type="text" id="impl-cert-origen-${idx}" class="form-input py-0.5 px-1 text-[9px]" style="width:55px;height:18px;font-size:9px" placeholder="Cert. Origen" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}"></span>
-            </div>
-            <div class="flex flex-wrap gap-2 items-center mt-0.5">
-              <span><strong>P. Neto (Kg):</strong> <input type="number" id="impl-peso-neto-${idx}" class="form-input py-0.5 px-1 text-[9px] text-right" style="width:50px;height:18px;font-size:9px" step="0.01" value="${preloadedLine?.peso_neto_total ?? (prod?.peso_neto ? (prod.peso_neto * initQty).toFixed(2) : '0.00')}" onchange="this.dataset.overridden='true'; window.impRecalcTotals()" oninput="window.impRecalcTotals()"></span>
-              <span><strong>P. Bruto (Kg):</strong> <input type="number" id="impl-peso-bruto-${idx}" class="form-input py-0.5 px-1 text-[9px] text-right font-semibold" style="width:50px;height:18px;font-size:9px" step="0.01" value="${preloadedLine?.peso_bruto_total ?? (prod?.peso_bruto ? (prod.peso_bruto * initQty).toFixed(2) : '0.00')}" onchange="this.dataset.overridden='true'; window.impRecalcTotals()" oninput="window.impRecalcTotals()"></span>
-            </div>
-          </div>
+
+          <!-- Campos técnicos ocultos (prorrateo/cumplimiento), ya definidos en maestro o carga masiva -->
+          <input type="hidden" id="impl-pos-arancel-${idx}" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria || '')}">
+          <input type="hidden" id="impl-pais-origen-${idx}" value="${(window as any).esc(preloadedLine?.pais_origen || prod?.pais_origen || '')}">
+          <input type="hidden" id="impl-cert-origen-${idx}" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}">
+          <input type="hidden" id="impl-peso-neto-${idx}" value="${preloadedLine?.peso_neto_total ?? (prod?.peso_neto ? (prod.peso_neto * initQty).toFixed(2) : '0.00')}">
+          <input type="hidden" id="impl-peso-bruto-${idx}" value="${preloadedLine?.peso_bruto_total ?? (prod?.peso_bruto ? (prod.peso_bruto * initQty).toFixed(2) : '0.00')}">
+          <input type="hidden" id="impl-largo-cm-${idx}" value="${baseLargoCm}">
+          <input type="hidden" id="impl-ancho-cm-${idx}" value="${baseAnchoCm}">
+          <input type="hidden" id="impl-alto-cm-${idx}" value="${baseAltoCm}">
+          <input type="hidden" id="impl-cbm-${idx}" value="${preloadedLine?.cubic_meters_total ?? '0.0000'}">
         </div>
       </td>
-      <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="1" value="${initIva}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()"></td>
+      <td><input type="number" id="impl-iva-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="1" value="${initIva}" oninput="window.impRecalcTotals()"></td>
       <td><input type="text" id="impl-manifest-num-${idx}" class="form-input w-full font-mono text-xs" style="height:32px" placeholder="Ej: 260500..." value="${(window as any).esc(manifestNum)}"></td>
       <td>
         <div class="flex items-center gap-1.5">
@@ -859,7 +864,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     `;
     tbody.appendChild(tr);
 
-    window.impRecalcTotals();
+    (window as any).impRecalcTotals();
   };
 
   (window as any).impRecalcTotals = function() {
@@ -878,6 +883,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
     let totalFOB = 0;
     let totalWeight = 0;
+    let totalVolume = 0;
     
     // First pass: update weights if not overridden, and calculate totals
     const rows = document.querySelectorAll('#imp-lines-body tr');
@@ -885,6 +891,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const idx = tr.id.split('-').pop();
       const qty = parseFloat((document.getElementById(`impl-qty-${idx}`) as HTMLInputElement)?.value || '0');
       const price = parseFloat((document.getElementById(`impl-price-${idx}`) as HTMLInputElement)?.value || '0');
+      const largoCm = parseFloat((document.getElementById(`impl-largo-cm-${idx}`) as HTMLInputElement)?.value || '0');
+      const anchoCm = parseFloat((document.getElementById(`impl-ancho-cm-${idx}`) as HTMLInputElement)?.value || '0');
+      const altoCm = parseFloat((document.getElementById(`impl-alto-cm-${idx}`) as HTMLInputElement)?.value || '0');
       
       // Update weights dynamically if not overridden
       const baseNet = parseFloat(tr.getAttribute('data-base-peso-neto') || '0');
@@ -900,8 +909,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       }
 
       const pesoBrutoLine = parseFloat(grossInput?.value || '0');
+      const lineCbm = (largoCm > 0 && anchoCm > 0 && altoCm > 0 && qty > 0)
+        ? ((largoCm * anchoCm * altoCm * qty) / 1000000)
+        : 0;
+
+      const cbmInput = document.getElementById(`impl-cbm-${idx}`) as HTMLInputElement;
+      if (cbmInput) cbmInput.value = lineCbm.toFixed(4);
+
       totalFOB += (qty * price);
       totalWeight += pesoBrutoLine;
+      totalVolume += lineCbm;
     });
 
     const totalFOBCop = totalFOB * exchangeRate;
@@ -915,12 +932,15 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const arancelRate = parseFloat((document.getElementById(`impl-arancel-${idx}`) as HTMLInputElement)?.value || '0');
       const grossInput = document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement;
       const pesoBrutoLine = parseFloat(grossInput?.value || '0');
+      const lineCbm = parseFloat((document.getElementById(`impl-cbm-${idx}`) as HTMLInputElement)?.value || '0');
 
       const lineFOBCop = qty * price * exchangeRate;
       
       let factor = 0;
       if (prorationMethod === 'GROSS_WEIGHT' && totalWeight > 0) {
         factor = pesoBrutoLine / totalWeight;
+      } else if (prorationMethod === 'CUBIC_VOLUME' && totalVolume > 0) {
+        factor = lineCbm / totalVolume;
       } else if (totalFOBCop > 0) {
         factor = lineFOBCop / totalFOBCop;
       }
@@ -1051,7 +1071,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       else if (ev.key === 'Enter') {
         ev.preventDefault();
         const selIdx = highlighted >= 0 ? highlighted : 0;
-        window.impGlobalSelectProduct(selIdx);
+        (window as any).impGlobalSelectProduct(selIdx);
       } else if (ev.key === 'Escape') {
         dropdown.style.display = 'none';
       }
@@ -1331,6 +1351,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const rows = document.querySelectorAll('#imp-lines-body tr');
       let totalFOB = 0;
       let arancelTotalCOP = 0;
+      let totalVolume = 0;
 
       rows.forEach((row, i) => {
         const idx = row.id.split('-').pop();
@@ -1346,6 +1367,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const posArancelaria = (document.getElementById(`impl-pos-arancel-${idx}`) as HTMLInputElement)?.value.trim() || null;
         const pesoNeto = parseFloat((document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement)?.value || '0');
         const pesoBruto = parseFloat((document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement)?.value || '0');
+        const largoCm = parseFloat((document.getElementById(`impl-largo-cm-${idx}`) as HTMLInputElement)?.value || '0');
+        const anchoCm = parseFloat((document.getElementById(`impl-ancho-cm-${idx}`) as HTMLInputElement)?.value || '0');
+        const altoCm = parseFloat((document.getElementById(`impl-alto-cm-${idx}`) as HTMLInputElement)?.value || '0');
 
         if (!productId) {
           throw new Error(`Por favor selecciona un producto válido en la línea ${i + 1}.`);
@@ -1358,7 +1382,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         }
 
         const lineFOBCop = qty * fobPrice * exchangeRate;
+        const lineCbm = (largoCm > 0 && anchoCm > 0 && altoCm > 0 && qty > 0)
+          ? ((largoCm * anchoCm * altoCm * qty) / 1000000)
+          : 0;
         totalFOB += (qty * fobPrice);
+        totalVolume += lineCbm;
 
         lines.push({
           id: lineId,
@@ -1373,6 +1401,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           posicion_arancelaria: posArancelaria,
           peso_neto_total: pesoNeto,
           peso_bruto_total: pesoBruto,
+          largo_cm: largoCm,
+          ancho_cm: anchoCm,
+          alto_cm: altoCm,
+          cubic_meters_total: lineCbm,
           lineFOBCop,
         });
       });
@@ -1387,6 +1419,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         let factor = 0;
         if (prorationMethod === 'GROSS_WEIGHT' && totalWeight > 0) {
           factor = (l.peso_bruto_total || 0) / totalWeight;
+        } else if (prorationMethod === 'CUBIC_VOLUME' && totalVolume > 0) {
+          factor = (l.cubic_meters_total || 0) / totalVolume;
         } else if (totalFOBCop > 0) {
           factor = l.lineFOBCop / totalFOBCop;
         }
@@ -1553,7 +1587,7 @@ async function viewImportDetail(importId: string) {
               <div class="flex justify-between"><span>Declaración Nro:</span> <span class="font-mono font-semibold">${(window as any).esc(imp.dian_declaracion_num || '—')}</span></div>
               <div class="flex justify-between"><span>Levante Fecha:</span> <span class="font-semibold text-green-700">${(window as any).esc(imp.dian_levante_date || '—')}</span></div>
               <div class="flex justify-between"><span>TRM DIAN:</span> <span class="font-semibold">${imp.dian_trm ? (window as any).fmt(imp.dian_trm).replace('COP', '') + ' COP' : '—'}</span></div>
-              <div class="flex justify-between"><span>Prorrateo:</span> <span class="font-semibold text-blue-700">${imp.proration_method === 'GROSS_WEIGHT' ? 'Peso Bruto' : 'Valor FOB'}</span></div>
+              <div class="flex justify-between"><span>Prorrateo:</span> <span class="font-semibold text-blue-700">${imp.proration_method === 'GROSS_WEIGHT' ? 'Peso Bruto' : (imp.proration_method === 'CUBIC_VOLUME' ? 'Cubicaje' : 'Valor FOB')}</span></div>
             </div>
           </div>
 

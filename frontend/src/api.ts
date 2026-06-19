@@ -3834,6 +3834,18 @@ const API = {
       if (l.peso_bruto_total !== undefined && l.peso_bruto_total !== null) {
         lineData.append('peso_bruto_total', String(l.peso_bruto_total));
       }
+      if (l.largo_cm !== undefined && l.largo_cm !== null) {
+        lineData.append('largo_cm', String(l.largo_cm));
+      }
+      if (l.ancho_cm !== undefined && l.ancho_cm !== null) {
+        lineData.append('ancho_cm', String(l.ancho_cm));
+      }
+      if (l.alto_cm !== undefined && l.alto_cm !== null) {
+        lineData.append('alto_cm', String(l.alto_cm));
+      }
+      if (l.cubic_meters_total !== undefined && l.cubic_meters_total !== null) {
+        lineData.append('cubic_meters_total', String(l.cubic_meters_total));
+      }
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);
       }
@@ -3887,6 +3899,10 @@ const API = {
       lineData.append('posicion_arancelaria', l.posicion_arancelaria || '');
       lineData.append('peso_neto_total', String(l.peso_neto_total || 0));
       lineData.append('peso_bruto_total', String(l.peso_bruto_total || 0));
+      lineData.append('largo_cm', String(l.largo_cm || 0));
+      lineData.append('ancho_cm', String(l.ancho_cm || 0));
+      lineData.append('alto_cm', String(l.alto_cm || 0));
+      lineData.append('cubic_meters_total', String(l.cubic_meters_total || 0));
 
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);

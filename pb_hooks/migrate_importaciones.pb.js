@@ -334,6 +334,18 @@ onBootstrap((e) => {
       prodCol.fields.add(new NumberField({ name: "peso_bruto", required: false, min: 0 }));
       needsSaveProd = true;
     }
+    if (!prodFields.has("largo_cm")) {
+      prodCol.fields.add(new NumberField({ name: "largo_cm", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("ancho_cm")) {
+      prodCol.fields.add(new NumberField({ name: "ancho_cm", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
+    if (!prodFields.has("alto_cm")) {
+      prodCol.fields.add(new NumberField({ name: "alto_cm", required: false, min: 0 }));
+      needsSaveProd = true;
+    }
 
     if (needsSaveProd) {
       $app.save(prodCol);
@@ -391,7 +403,7 @@ onBootstrap((e) => {
       impCol.fields.add(new SelectField({
         name: "proration_method",
         required: false,
-        values: ["FOB_VALUE", "GROSS_WEIGHT"]
+        values: ["FOB_VALUE", "GROSS_WEIGHT", "CUBIC_VOLUME"]
       }));
       needsSaveImp2 = true;
     }
@@ -432,10 +444,26 @@ onBootstrap((e) => {
       lineCol.fields.add(new NumberField({ name: "peso_bruto_total", required: false, min: 0 }));
       needsSaveLine = true;
     }
+    if (!lineFields.has("largo_cm")) {
+      lineCol.fields.add(new NumberField({ name: "largo_cm", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("ancho_cm")) {
+      lineCol.fields.add(new NumberField({ name: "ancho_cm", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("alto_cm")) {
+      lineCol.fields.add(new NumberField({ name: "alto_cm", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
+    if (!lineFields.has("cubic_meters_total")) {
+      lineCol.fields.add(new NumberField({ name: "cubic_meters_total", required: false, min: 0 }));
+      needsSaveLine = true;
+    }
 
     if (needsSaveLine) {
       $app.save(lineCol);
-      console.log("[GRAVY-IMPORTACIONES] Campos aduaneros y de peso agregados a import_lines.");
+      console.log("[GRAVY-IMPORTACIONES] Campos aduaneros, peso y cubicaje agregados a import_lines.");
     }
   } catch (err) {
     console.log("[GRAVY-IMPORTACIONES] Error al extender import_lines: " + err);

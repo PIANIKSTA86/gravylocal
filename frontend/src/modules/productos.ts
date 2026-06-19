@@ -38,6 +38,9 @@ function specialConditionsSummary(sc) {
   if (sc.peso !== null) items.push(`Peso: ${fmtN(sc.peso)}`);
   if (sc.peso_neto !== null) items.push(`Neto: ${fmtN(sc.peso_neto)}`);
   if (sc.peso_bruto !== null) items.push(`Bruto: ${fmtN(sc.peso_bruto)}`);
+  if (sc.largo_cm !== null) items.push(`L: ${fmtN(sc.largo_cm)} cm`);
+  if (sc.ancho_cm !== null) items.push(`A: ${fmtN(sc.ancho_cm)} cm`);
+  if (sc.alto_cm !== null) items.push(`H: ${fmtN(sc.alto_cm)} cm`);
   return items.length ? items.join(' | ') : 'Sin condiciones especiales registradas';
 }
 
@@ -97,6 +100,18 @@ function openSpecialConditionsModal(current, onApply) {
             <label class="form-label text-xs">Peso Bruto (Kg) <small style="color:#9CA3AF">(con empaque/pallet)</small></label>
             <input id="sc-peso-bruto" type="number" min="0" step="0.0001" class="form-input text-right font-semibold" value="${current.peso_bruto ?? ''}" placeholder="0">
           </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Largo (cm)</label>
+            <input id="sc-largo-cm" type="number" min="0" step="0.1" class="form-input text-right font-semibold" value="${current.largo_cm ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Ancho (cm)</label>
+            <input id="sc-ancho-cm" type="number" min="0" step="0.1" class="form-input text-right font-semibold" value="${current.ancho_cm ?? ''}" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label class="form-label text-xs">Alto (cm)</label>
+            <input id="sc-alto-cm" type="number" min="0" step="0.1" class="form-input text-right font-semibold" value="${current.alto_cm ?? ''}" placeholder="0">
+          </div>
         </div>
 
         <!-- Pestaña 2: Clasificación y VUCE -->
@@ -140,6 +155,12 @@ function openSpecialConditionsModal(current, onApply) {
         </div>
       </div>
       
+      <p id="sc-dims-validation" class="text-xs font-semibold mt-2 hidden"></p>
+      <p id="sc-cbm-preview" class="text-xs font-semibold mt-1 hidden"></p>
+      <p class="text-[11px] mt-1" style="color:#6B7280">
+        Guia de calculo: CBM por unidad = (Largo cm x Ancho cm x Alto cm) / 1,000,000.
+      </p>
+
       <div class="flex justify-end gap-2 mt-5">
         <button class="btn btn-outline" id="sc-cancel-btn">Cancelar</button>
         <button class="btn btn-primary" id="sc-apply-btn"><i class="fas fa-check"></i> Aplicar</button>
@@ -176,6 +197,62 @@ function openSpecialConditionsModal(current, onApply) {
   const checkVb = overlay.querySelector('#sc-visto-bueno-required') as HTMLInputElement;
   const selectEntidad = overlay.querySelector('#sc-visto-bueno-entidad') as HTMLSelectElement;
   const inputRegistro = overlay.querySelector('#sc-registro-sanitario') as HTMLInputElement;
+  const applyBtn = overlay.querySelector('#sc-apply-btn') as HTMLButtonElement;
+  const dimsValidationMsg = overlay.querySelector('#sc-dims-validation') as HTMLElement;
+  const cbmPreviewMsg = overlay.querySelector('#sc-cbm-preview') as HTMLElement;
+  const dimInputs = [
+    overlay.querySelector('#sc-largo-cm') as HTMLInputElement,
+    overlay.querySelector('#sc-ancho-cm') as HTMLInputElement,
+    overlay.querySelector('#sc-alto-cm') as HTMLInputElement,
+  ];
+
+  const validateDimensionInputs = () => {
+    const dimValues = dimInputs.map((inp) => toNullableNumber(inp?.value));
+    const filledCount = dimValues.filter((v) => v !== null).length;
+
+    let invalid = false;
+    let msg = '';
+
+    if (filledCount > 0 && filledCount < 3) {
+      invalid = true;
+      msg = 'Para cubicaje diligencia Largo, Ancho y Alto completos; o deja los tres vacios.';
+    } else if (filledCount === 3 && dimValues.some((v) => Number(v) <= 0)) {
+      invalid = true;
+      msg = 'Largo, Ancho y Alto deben ser mayores a cero.';
+    }
+
+    if (applyBtn) {
+      applyBtn.disabled = invalid;
+      applyBtn.style.opacity = invalid ? '0.6' : '';
+      applyBtn.style.cursor = invalid ? 'not-allowed' : '';
+    }
+
+    if (dimsValidationMsg) {
+      if (invalid) {
+        dimsValidationMsg.textContent = msg;
+        dimsValidationMsg.classList.remove('hidden');
+        dimsValidationMsg.style.color = '#B91C1C';
+      } else {
+        dimsValidationMsg.textContent = '';
+        dimsValidationMsg.classList.add('hidden');
+      }
+    }
+
+    if (cbmPreviewMsg) {
+      if (!invalid && filledCount === 3) {
+        const largo = Number(dimValues[0]);
+        const ancho = Number(dimValues[1]);
+        const alto = Number(dimValues[2]);
+        const cbm = (largo * ancho * alto) / 1000000;
+        cbmPreviewMsg.textContent = `CBM estimado por unidad: ${cbm.toFixed(6)} m3`;
+        cbmPreviewMsg.classList.remove('hidden');
+        cbmPreviewMsg.style.color = '#1D4ED8';
+      } else {
+        cbmPreviewMsg.textContent = '';
+        cbmPreviewMsg.classList.add('hidden');
+      }
+    }
+  };
 
   const toggleVbFields = () => {
     const isChecked = checkVb?.checked || false;
@@ -192,12 +269,19 @@ function openSpecialConditionsModal(current, onApply) {
   checkVb?.addEventListener('change', toggleVbFields);
   toggleVbFields(); // Sincronización inicial al abrir
 
+  dimInputs.forEach((inp) => {
+    inp?.addEventListener('input', validateDimensionInputs);
+  });
+  validateDimensionInputs();
+
   overlay.querySelector('#sc-close-btn')?.addEventListener('click', close);
   overlay.querySelector('#sc-cancel-btn')?.addEventListener('click', close);
   overlay.addEventListener('click', (ev) => {
     if (ev.target === overlay) close();
   });
   overlay.querySelector('#sc-apply-btn')?.addEventListener('click', () => {
+    if (applyBtn?.disabled) return;
+
     const isVbReq = (document.getElementById('sc-visto-bueno-required') as HTMLInputElement)?.checked || false;
     onApply({
       peso: toNullableNumber(getInputVal('sc-peso')),
@@ -206,6 +290,9 @@ function openSpecialConditionsModal(current, onApply) {
       peso_x_und_empaque: toNullableNumber(getInputVal('sc-peso-x-und-empaque')),
       peso_neto: toNullableNumber(getInputVal('sc-peso-neto')),
       peso_bruto: toNullableNumber(getInputVal('sc-peso-bruto')),
+      largo_cm: toNullableNumber(getInputVal('sc-largo-cm')),
+      ancho_cm: toNullableNumber(getInputVal('sc-ancho-cm')),
+      alto_cm: toNullableNumber(getInputVal('sc-alto-cm')),
       posicion_arancelaria: getInputVal('sc-posicion-arancelaria').trim(),
       arancel_rate_default: toNullableNumber(getInputVal('sc-arancel-rate-default')),
       pais_origen: getInputVal('sc-pais-origen').trim(),
@@ -640,6 +727,10 @@ async function viewProductDetail(id) {
               <div><p class="text-xs text-gray-500 mb-1">Peso Neto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_neto != null ? esc(String(p.peso_neto)) : '—'}</p></div>
               <div><p class="text-xs text-gray-500 mb-1">Peso Bruto (Kg)</p><p class="font-mono text-xs font-semibold">${p.peso_bruto != null ? esc(String(p.peso_bruto)) : '—'}</p></div>
               <div><p class="text-xs text-gray-500 mb-1">Caja en Pallet</p><p class="font-mono text-xs">${p.cajas_en_pallet != null ? esc(String(p.cajas_en_pallet)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Largo (cm)</p><p class="font-mono text-xs font-semibold">${p.largo_cm != null ? esc(String(p.largo_cm)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Ancho (cm)</p><p class="font-mono text-xs font-semibold">${p.ancho_cm != null ? esc(String(p.ancho_cm)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">Alto (cm)</p><p class="font-mono text-xs font-semibold">${p.alto_cm != null ? esc(String(p.alto_cm)) : '—'}</p></div>
+              <div><p class="text-xs text-gray-500 mb-1">CBM por unidad</p><p class="font-mono text-xs font-semibold">${(p.largo_cm != null && p.ancho_cm != null && p.alto_cm != null) ? esc((((Number(p.largo_cm) * Number(p.ancho_cm) * Number(p.alto_cm)) / 1000000).toFixed(6))) : '—'}</p></div>
               
               <div><p class="text-xs text-gray-500 mb-1">UndEmpaque</p><p class="font-mono text-xs">${p.und_empaque != null ? esc(String(p.und_empaque)) : '—'}</p></div>
               <div><p class="text-xs text-gray-500 mb-1">Peso x UndEmpaque</p><p class="font-mono text-xs">${p.peso_x_und_empaque != null ? esc(String(p.peso_x_und_empaque)) : '—'}</p></div>
@@ -676,14 +767,22 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     accounts = await API.getAccounts(false).catch(() => []);
   }
 
-  // Opciones de cuentas agrupadas por clase
-  const acctOptions = (selectedId = '') => {
-    const opts = accounts
-      .filter(a => a.active && Number(a.level) >= 3)
-      .sort((a, b) => a.code.localeCompare(b.code))
-      .map(a => `<option value="${esc(a.id)}" ${a.id === selectedId ? 'selected' : ''}>${esc(a.code)} — ${esc(a.name)}</option>`)
-      .join('');
-    return `<option value="">— Sin asignar —</option>${opts}`;
+  const accountList = (Array.isArray(accounts) ? accounts : [])
+    .filter(a => a.active && Number(a.level) >= 3)
+    .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
+  const accountMap = new Map(accountList.map(a => [a.id, a]));
+
+  const pickAccountByPrefix = (prefix = '', query = '') => {
+    const q = String(query || '').trim().toLowerCase();
+    return accountList
+      .filter((a: any) => Number(a.level) === 5)
+      .filter((a: any) => String(a.code || '').startsWith(prefix))
+      .filter((a: any) => {
+        if (!q) return true;
+        const hay = `${a.code || ''} ${a.name || ''}`.toLowerCase();
+        return q.split(/\s+/).every((term: string) => hay.includes(term));
+      })
+      .slice(0, 30);
   };
 
   const specialConditions = {
@@ -693,6 +792,9 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     peso_x_und_empaque: row?.peso_x_und_empaque ?? null,
     peso_neto: row?.peso_neto ?? null,
     peso_bruto: row?.peso_bruto ?? null,
+    largo_cm: row?.largo_cm ?? null,
+    ancho_cm: row?.ancho_cm ?? null,
+    alto_cm: row?.alto_cm ?? null,
     posicion_arancelaria: row?.posicion_arancelaria ?? '',
     arancel_rate_default: row?.arancel_rate_default ?? null,
     pais_origen: row?.pais_origen ?? '',
@@ -819,15 +921,27 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta de ingresos</label>
-        <select id="pf-income-acct" class="form-input">${acctOptions(row?.income_account_id)}</select>
+        <input type="hidden" id="pf-income-acct" value="${esc(row?.income_account_id || '')}">
+        <div class="relative">
+          <input id="pf-income-acct-search" class="form-input" autocomplete="off" placeholder="Buscar cuenta 41...">
+          <div id="pf-income-acct-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:60"></div>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta de costo / gasto</label>
-        <select id="pf-cost-acct" class="form-input">${acctOptions(row?.cost_account_id)}</select>
+        <input type="hidden" id="pf-cost-acct" value="${esc(row?.cost_account_id || '')}">
+        <div class="relative">
+          <input id="pf-cost-acct-search" class="form-input" autocomplete="off" placeholder="Buscar cuenta 61...">
+          <div id="pf-cost-acct-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:60"></div>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Cuenta de inventario <small style="color:#9CA3AF">(solo bienes)</small></label>
-        <select id="pf-inv-acct" class="form-input">${acctOptions(row?.inventory_account_id)}</select>
+        <input type="hidden" id="pf-inv-acct" value="${esc(row?.inventory_account_id || '')}">
+        <div class="relative">
+          <input id="pf-inv-acct-search" class="form-input" autocomplete="off" placeholder="Buscar cuenta 14...">
+          <div id="pf-inv-acct-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:60"></div>
+        </div>
       </div>
 
       <!-- Fila 6: descripción -->
@@ -917,6 +1031,120 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
      <button class="btn btn-primary" id="btn-save-product"><i class="fas fa-floppy-disk"></i> Guardar</button>`,
     true
   );
+
+  const legacyInvalidFields: string[] = [];
+
+  const initProductAccountPicker = ({ hiddenId, inputId, resultsId, prefix, label }) => {
+    const hidden = document.getElementById(hiddenId) as HTMLInputElement;
+    const input = document.getElementById(inputId) as HTMLInputElement;
+    const results = document.getElementById(resultsId);
+    if (!hidden || !input || !results) return;
+
+    const paint = (query = '') => {
+      const found = pickAccountByPrefix(prefix, query);
+      if (!found.length) {
+        results.innerHTML = '<div class="px-3 py-2 text-xs" style="color:#9CA3AF">Sin resultados</div>';
+        return;
+      }
+      results.innerHTML = found.map((a: any) => `
+        <button type="button" data-account-id="${esc(a.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+          <div style="font-weight:600">${esc(a.code || '')}</div>
+          <div style="font-size:12px;color:#6B7280">${esc(a.name || '')}</div>
+        </button>
+      `).join('');
+    };
+
+    const syncInputFromHidden = () => {
+      const acc = accountMap.get(hidden.value);
+      if (!acc) {
+        if (hidden.value) legacyInvalidFields.push(label);
+        hidden.value = '';
+        input.value = '';
+        return;
+      }
+      if (Number(acc.level) !== 5) {
+        legacyInvalidFields.push(label);
+        hidden.value = '';
+        input.value = '';
+        return;
+      }
+      input.value = `${acc.code} - ${acc.name}`;
+    };
+
+    syncInputFromHidden();
+    input.onfocus = () => {
+      paint(input.value);
+      results.style.display = 'block';
+      input.select();
+    };
+    input.oninput = () => {
+      if (hidden.value) hidden.value = '';
+      paint(input.value);
+      results.style.display = 'block';
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Escape') results.style.display = 'none';
+    };
+    input.onblur = () => setTimeout(() => { results.style.display = 'none'; }, 120);
+    results.onmousedown = (ev) => ev.preventDefault();
+    results.onclick = (ev: any) => {
+      const btn = ev.target.closest('[data-account-id]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-account-id') || '';
+      hidden.value = id;
+      const acc = accountMap.get(id);
+      input.value = acc ? `${acc.code} - ${acc.name}` : '';
+      results.style.display = 'none';
+    };
+
+    (window as any).initKeyboardAutocomplete({
+      input,
+      results,
+      itemSelector: '[data-account-id]',
+    });
+  };
+
+  initProductAccountPicker({ hiddenId: 'pf-income-acct', inputId: 'pf-income-acct-search', resultsId: 'pf-income-acct-results', prefix: '41', label: 'Cuenta de ingresos' });
+  initProductAccountPicker({ hiddenId: 'pf-cost-acct', inputId: 'pf-cost-acct-search', resultsId: 'pf-cost-acct-results', prefix: '61', label: 'Cuenta de costo / gasto' });
+  initProductAccountPicker({ hiddenId: 'pf-inv-acct', inputId: 'pf-inv-acct-search', resultsId: 'pf-inv-acct-results', prefix: '14', label: 'Cuenta de inventario' });
+
+  if (legacyInvalidFields.length) {
+    const unique = [...new Set(legacyInvalidFields)];
+    showToast(`Se limpiaron cuentas heredadas no válidas (nivel distinto de 5): ${unique.join(', ')}.`, 'warning');
+  }
+
+  const syncInventoryAccountByType = () => {
+    const typeSel = document.getElementById('pf-type') as HTMLSelectElement;
+    const invInput = document.getElementById('pf-inv-acct-search') as HTMLInputElement;
+    const invHidden = document.getElementById('pf-inv-acct') as HTMLInputElement;
+    if (!typeSel || !invInput || !invHidden) return;
+
+    const isBien = typeSel.value === 'BIEN';
+    invInput.disabled = !isBien;
+    invInput.placeholder = isBien ? 'Buscar cuenta 14...' : 'Solo aplica para BIEN';
+    invInput.style.backgroundColor = isBien ? '' : '#F3F4F6';
+    if (!isBien) {
+      invHidden.value = '';
+      invInput.value = '';
+    }
+  };
+  document.getElementById('pf-type')?.addEventListener('change', syncInventoryAccountByType);
+  syncInventoryAccountByType();
+
+  const validateLevel5Account = (accountId: string, label: string) => {
+    const id = String(accountId || '').trim();
+    if (!id) return true;
+    const acc = accountMap.get(id);
+    if (!acc) {
+      showToast(`${label}: la cuenta seleccionada no existe o no está disponible.`, 'warning');
+      return false;
+    }
+    if (Number(acc.level) !== 5) {
+      showToast(`${label}: solo se permiten cuentas de nivel 5.`, 'warning');
+      return false;
+    }
+    return true;
+  };
 
   let compCounter = 0;
   function addCompLine(comp = null) {
@@ -1029,6 +1257,27 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       }
 
       const isCombo = getCheckVal('pf-is-combo');
+      const incomeAccountId = (document.getElementById('pf-income-acct') as HTMLInputElement)?.value || '';
+      const costAccountId = (document.getElementById('pf-cost-acct') as HTMLInputElement)?.value || '';
+      const inventoryAccountId = (document.getElementById('pf-inv-acct') as HTMLInputElement)?.value || '';
+
+      if (!validateLevel5Account(incomeAccountId, 'Cuenta de ingresos')) return;
+      if (!validateLevel5Account(costAccountId, 'Cuenta de costo / gasto')) return;
+      if (!validateLevel5Account(inventoryAccountId, 'Cuenta de inventario')) return;
+
+      // Validación de cubicaje: o se diligencian las 3 dimensiones o ninguna.
+      const dimsRaw = [specialConditions.largo_cm, specialConditions.ancho_cm, specialConditions.alto_cm];
+      const dimsFilledCount = dimsRaw.filter(v => v !== null).length;
+      if (dimsFilledCount > 0 && dimsFilledCount < 3) {
+        return showToast('Para cubicaje debes diligenciar Largo, Ancho y Alto completos; o dejar los tres vacíos.', 'warning');
+      }
+      if (dimsFilledCount === 3) {
+        const hasInvalidDim = dimsRaw.some(v => Number(v) <= 0);
+        if (hasInvalidDim) {
+          return showToast('Largo, Ancho y Alto deben ser mayores a cero para calcular cubicaje.', 'warning');
+        }
+      }
+
       const componentsData = [];
       if (isCombo) {
         let lineIdx = 1;
@@ -1085,6 +1334,9 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       formData.append('peso_x_und_empaque', specialConditions.peso_x_und_empaque !== null ? String(specialConditions.peso_x_und_empaque) : '');
       formData.append('peso_neto', specialConditions.peso_neto !== null ? String(specialConditions.peso_neto) : '');
       formData.append('peso_bruto', specialConditions.peso_bruto !== null ? String(specialConditions.peso_bruto) : '');
+      formData.append('largo_cm', specialConditions.largo_cm !== null ? String(specialConditions.largo_cm) : '');
+      formData.append('ancho_cm', specialConditions.ancho_cm !== null ? String(specialConditions.ancho_cm) : '');
+      formData.append('alto_cm', specialConditions.alto_cm !== null ? String(specialConditions.alto_cm) : '');
       
       formData.append('posicion_arancelaria', specialConditions.posicion_arancelaria || '');
       formData.append('arancel_rate_default', specialConditions.arancel_rate_default !== null ? String(specialConditions.arancel_rate_default) : '');
@@ -1095,9 +1347,9 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       formData.append('visto_bueno_entidad', specialConditions.visto_bueno_entidad || '');
       formData.append('registro_sanitario', specialConditions.registro_sanitario || '');
       
-      formData.append('income_account_id', getSelectVal('pf-income-acct') || '');
-      formData.append('cost_account_id', getSelectVal('pf-cost-acct') || '');
-      formData.append('inventory_account_id', getSelectVal('pf-inv-acct') || '');
+      formData.append('income_account_id', incomeAccountId);
+      formData.append('cost_account_id', costAccountId);
+      formData.append('inventory_account_id', inventoryAccountId);
       formData.append('is_combo', String(isCombo));
 
       const filePdf = (document.getElementById('pf-manifest-pdf') as HTMLInputElement)?.files?.[0];

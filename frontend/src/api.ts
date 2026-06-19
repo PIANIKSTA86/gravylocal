@@ -1,12 +1,12 @@
-/**
- * GRAVY v2.0 � api.js
+﻿/**
+ * GRAVY v2.0 ï¿½ api.js
  * Capa de acceso a PocketBase REST API.
  * Reemplaza completamente a SQL.js / localStorage.
  */
 
 'use strict';
 
-/* -- URL base � detecta automaticamente el servidor ------- */
+/* -- URL base ï¿½ detecta automaticamente el servidor ------- */
 const PB_URL = window.location.origin;  // http://192.168.x.x:8090 o localhost:8090
 
 /* -- Cliente minimo PocketBase (sin SDK externo) ----------- */
@@ -137,7 +137,7 @@ const pb = {
     return true;
   },
 
-  /** Autenticaci�n de usuario */
+  /** Autenticaciï¿½n de usuario */
   async authWithPassword(email, password) {
     const res = await fetch(`${PB_URL}/api/collections/users/auth-with-password`, {
       method: 'POST',
@@ -169,7 +169,7 @@ const pb = {
     return data;
   },
 
-  /** Cerrar sesi�n */
+  /** Cerrar sesiï¿½n */
   logout() {
     this.authToken = null;
     this.currentUser = null;
@@ -187,17 +187,25 @@ const pb = {
   async _err(res) {
     let body = {};
     try { body = await res.json(); } catch { body = { message: res.statusText }; }
-    const fieldMessages = body?.data && typeof body.data === 'object'
-      ? Object.values(body.data).map(v => v?.message).filter(Boolean)
-      : [];
-    const msg = body?.message ?? body?.data?.identity?.message ?? fieldMessages[0] ?? 'Error desconocido';
+    // Extraer errores por campo de la respuesta de validacion de PocketBase
+    const fieldErrors = [];
+    if (body && body.data && typeof body.data === 'object') {
+      for (const [field, detail] of Object.entries(body.data)) {
+        const fieldMsg = detail && detail.message;
+        if (fieldMsg) fieldErrors.push('[' + field + '] ' + fieldMsg);
+      }
+    }
+    // Si hay errores de campo especificos, mostrarlos; si no, usar el mensaje generico
+    const msg = fieldErrors.length > 0
+      ? fieldErrors.join(' | ')
+      : (body && body.message) || 'Error desconocido';
     const err = new Error(msg);
     err.status = res.status;
     err.data = body;
     return err;
   },
 
-  /** Enviar solicitud HTTP genérica */
+  /** Enviar solicitud HTTP genÃ©rica */
   async send(path, options = {}) {
     const url = path.startsWith('http') ? path : `${PB_URL}${path}`;
     const headers = { ...this.headers(), ...options.headers };
@@ -211,11 +219,11 @@ const pb = {
   },
 };
 
-/* -- Helpers internos de resolución de cuentas ---------------- */
+/* -- Helpers internos de resoluciÃ³n de cuentas ---------------- */
 const _apiAccountCache = {};
 async function _apiFindAccByCode(code) {
   const key = String(code || '').trim();
-  if (!key) throw new Error('Se requiere un código de cuenta válido.');
+  if (!key) throw new Error('Se requiere un cÃ³digo de cuenta vÃ¡lido.');
   if (_apiAccountCache[key]) return _apiAccountCache[key];
   const safeCode = pb.escapeFilterValue(key);
   const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
@@ -267,7 +275,7 @@ const API = {
     } catch (err) {
       const msg = String(err?.message || '').toLowerCase();
       if (err?.status === 400 || err?.status === 403 || msg.includes('allowed') || msg.includes('permission')) {
-        throw new Error('No tienes permisos para modificar configuración global.');
+        throw new Error('No tienes permisos para modificar configuraciÃ³n global.');
       }
       throw err;
     }
@@ -288,7 +296,7 @@ const API = {
         }),
       });
     } catch (_) {
-      // Nunca romper flujos de negocio por falla de auditoría.
+      // Nunca romper flujos de negocio por falla de auditorÃ­a.
     }
   },
 
@@ -326,7 +334,7 @@ const API = {
 
   async getAccountSaldos() {
     // Trae Debitos y Creditos agrupados por cuenta en una sola consulta
-    // PocketBase no soporta GROUP BY nativo, as� que traemos las lineas y agrupamos en JS
+    // PocketBase no soporta GROUP BY nativo, asï¿½ que traemos las lineas y agrupamos en JS
     const lines = await pb.listAll('tx_lines', {
       expand: 'tx_id',
       filter: 'tx_id.status="active"',
@@ -373,7 +381,7 @@ const API = {
     const txBranchId = txData.branch_id || null;
     const tx = await pb.create('transactions', {
       ...txData,
-      // El número se asigna en hook server-side al crear transactions.
+      // El nÃºmero se asigna en hook server-side al crear transactions.
       number: txData.number || 'AUTO',
       status: txData.status || 'active',
       branch_id: txBranchId,
@@ -426,7 +434,7 @@ const API = {
     const tx = await pb.get('transactions', txId);
     if (tx.status === 'voided') return tx;
     await pb.update('transactions', txId, { status: 'voided' });
-    await this.logAudit('VOID', 'transactions', txId, description || `Transacción ${tx.number} anulada`);
+    await this.logAudit('VOID', 'transactions', txId, description || `TransacciÃ³n ${tx.number} anulada`);
     return tx;
   },
 
@@ -434,7 +442,7 @@ const API = {
     const tx = await pb.get('transactions', txId);
     if (tx.status !== 'draft') throw new Error('Solo se pueden aprobar transacciones en estado Borrador.');
     await pb.update('transactions', txId, { status: 'active' });
-    await this.logAudit('APPROVE', 'transactions', txId, `Transacción ${tx.number} aprobada`);
+    await this.logAudit('APPROVE', 'transactions', txId, `TransacciÃ³n ${tx.number} aprobada`);
     return tx;
   },
 
@@ -442,27 +450,27 @@ const API = {
     const tx = await pb.get('transactions', txId);
     if (tx.status !== 'active') throw new Error('Solo se pueden revertir transacciones Activas a Borrador.');
     await pb.update('transactions', txId, { status: 'draft' });
-    await this.logAudit('REVERT_DRAFT', 'transactions', txId, `Transacción ${tx.number} revertida a Borrador`);
+    await this.logAudit('REVERT_DRAFT', 'transactions', txId, `TransacciÃ³n ${tx.number} revertida a Borrador`);
     return tx;
   },
 
   async updateTransaction(txId, txData, lines) {
     await pb.update('transactions', txId, txData);
-    // Reemplazar líneas: eliminar las existentes y crear las nuevas
+    // Reemplazar lÃ­neas: eliminar las existentes y crear las nuevas
     const safeId = pb.escapeFilterValue(txId);
     const oldLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeId}"` });
     for (const l of oldLines) {
       try {
         await pb.delete('tx_lines', l.id);
       } catch (err: any) {
-        // Ignorar 404: la línea ya fue eliminada (doble submit, edición concurrente, etc.)
+        // Ignorar 404: la lÃ­nea ya fue eliminada (doble submit, ediciÃ³n concurrente, etc.)
         if (err?.status !== 404 && err?.response?.code !== 404) throw err;
       }
     }
     for (const line of lines) {
       await pb.create('tx_lines', { tx_id: txId, ...line });
     }
-    await this.logAudit('UPDATE', 'transactions', txId, 'Modificación desde consulta de transacciones');
+    await this.logAudit('UPDATE', 'transactions', txId, 'ModificaciÃ³n desde consulta de transacciones');
   },
 
 
@@ -471,8 +479,8 @@ const API = {
     const blocks = [];
     const warnings = [];
 
-    // BLOQUEO: Solo documentos electrónicos ya enviados o aceptados por la DIAN (firmados = inmutables)
-    // Los estados "pendiente" y "rechazada" NO bloquean porque aún no tienen validez fiscal.
+    // BLOQUEO: Solo documentos electrÃ³nicos ya enviados o aceptados por la DIAN (firmados = inmutables)
+    // Los estados "pendiente" y "rechazada" NO bloquean porque aÃºn no tienen validez fiscal.
     const einv = await pb.list('einvoice_docs', {
       filter: `tx_id="${safe}" && (status="enviada" || status="aceptada")`,
       perPage: 1,
@@ -480,18 +488,18 @@ const API = {
     if (einv.totalItems > 0) {
       const doc = einv.items[0];
       const estado = doc.status === 'aceptada' ? 'Aceptada por DIAN' : 'Enviada a DIAN';
-      blocks.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Los documentos fiscales ya transmitidos son inalterables por normativa tributaria.`);
+      blocks.push(`Este comprobante tiene un documento electrÃ³nico DIAN con estado "${estado}". Los documentos fiscales ya transmitidos son inalterables por normativa tributaria.`);
     }
 
-    // ADVERTENCIA: Período de nómina vinculado (informativo — no bloquea)
+    // ADVERTENCIA: PerÃ­odo de nÃ³mina vinculado (informativo â€” no bloquea)
     const payP = await pb.list('payroll_periods', { filter: `tx_id="${safe}"`, perPage: 1 });
     if (payP.totalItems > 0) {
       const period = payP.items[0];
       const estadoLabel = { draft: 'Borrador', approved: 'Aprobado', paid: 'Pagado' }[period.status] || period.status;
-      warnings.push(`Este comprobante es el asiento de nómina del período "${period.name}" (${estadoLabel}). Si lo modificas, el asiento contable de nómina quedará desincronizado con las liquidaciones.`);
+      warnings.push(`Este comprobante es el asiento de nÃ³mina del perÃ­odo "${period.name}" (${estadoLabel}). Si lo modificas, el asiento contable de nÃ³mina quedarÃ¡ desincronizado con las liquidaciones.`);
     }
 
-    // ADVERTENCIA: Movimientos bancarios conciliados (informativo — no bloquea)
+    // ADVERTENCIA: Movimientos bancarios conciliados (informativo â€” no bloquea)
     const txLines = await pb.listAll('tx_lines', { filter: `tx_id="${safe}"` });
     let reconCount = 0;
     if (txLines.length > 0) {
@@ -505,7 +513,7 @@ const API = {
       reconCount = bm.totalItems;
     }
     if (reconCount > 0) {
-      warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliación bancaria después de modificar.`);
+      warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliaciÃ³n bancaria despuÃ©s de modificar.`);
     }
 
     return { blocks, warnings };
@@ -596,7 +604,7 @@ const API = {
         const totalNewQty = currentQty + deltaQty;
 
         if (currentQty < 0) {
-          // Opción B: Stock negativo resuelto por compra/entrada positiva
+          // OpciÃ³n B: Stock negativo resuelto por compra/entrada positiva
           const resolvedQty = Math.min(deltaQty, Math.abs(currentQty));
           const costDiff = newAvgCost - currentCost;
           const totalAdjustment = Math.round((resolvedQty * costDiff) * 100) / 100;
@@ -650,7 +658,7 @@ const API = {
                     tx_type_id: txTypeId,
                     number: txNumber,
                     date: today,
-                    description: `Ajuste automático de costeo por stock negativo resuelto - Prod ${prod.name}`,
+                    description: `Ajuste automÃ¡tico de costeo por stock negativo resuelto - Prod ${prod.name}`,
                     status: 'active',
                     payment_days: 0,
                     cross_enabled: false,
@@ -688,7 +696,7 @@ const API = {
         finalAvgCostForProductUpdate = initialCost;
       }
     }
-    // Actualizar último costo en el producto cuando viene de una entrada con costo
+    // Actualizar Ãºltimo costo en el producto cuando viene de una entrada con costo
     if (finalAvgCostForProductUpdate !== null && finalAvgCostForProductUpdate > 0) {
       await pb.update('products', productId, { cost_price: finalAvgCostForProductUpdate });
     }
@@ -704,7 +712,7 @@ const API = {
     });
   },
 
-  /** Líneas de un movimiento */
+  /** LÃ­neas de un movimiento */
   async getInventoryMovementLines(movementId) {
     const safe = pb.escapeFilterValue(movementId);
     return pb.listAll('inventory_movement_lines', {
@@ -718,10 +726,10 @@ const API = {
   async applyInventoryMovement(movId) {
     const mov = await pb.get('inventory_movements', movId, { expand: 'warehouse_id,dest_warehouse_id' });
     if (mov.status === 'applied') throw new Error('El movimiento ya fue aplicado.');
-    if (mov.status === 'voided') throw new Error('El movimiento está anulado.');
+    if (mov.status === 'voided') throw new Error('El movimiento estÃ¡ anulado.');
 
     const lines = await this.getInventoryMovementLines(movId);
-    if (!lines.length) throw new Error('El movimiento no tiene líneas.');
+    if (!lines.length) throw new Error('El movimiento no tiene lÃ­neas.');
 
     const today = mov.date || new Date().toISOString().slice(0, 10);
     const isIn = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
@@ -743,7 +751,7 @@ const API = {
     }
 
     await pb.update('inventory_movements', movId, { status: 'applied' });
-    await this.logAudit('APPLY', 'InventoryMovement', movId, `${mov.mov_type} — ${mov.number}`);
+    await this.logAudit('APPLY', 'InventoryMovement', movId, `${mov.mov_type} â€” ${mov.number}`);
     return mov;
   },
 
@@ -769,10 +777,10 @@ const API = {
     }
 
     await pb.update('inventory_movements', movId, { status: 'voided' });
-    await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} — ${mov.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+    await this.logAudit('VOID', 'InventoryMovement', movId, `AnulaciÃ³n ${mov.mov_type} â€” ${mov.number}${reason ? ` | Motivo: ${reason}` : ''}`);
   },
 
-  // ── Compras ───────────────────────────────────────────────
+  // â”€â”€ Compras â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de facturas de compra */
   async getPurchaseInvoices(opts = {}) {
@@ -783,7 +791,7 @@ const API = {
     });
   },
 
-  /** Líneas de una factura de compra con expand de producto y cuenta */
+  /** LÃ­neas de una factura de compra con expand de producto y cuenta */
   async getPurchaseInvoiceLines(invoiceId) {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('purchase_invoice_lines', {
@@ -793,14 +801,14 @@ const API = {
     });
   },
 
-  /** Crea cabecera + líneas de factura de compra en estado borrador */
+  /** Crea cabecera + lÃ­neas de factura de compra en estado borrador */
   async createPurchaseInvoice(header, lines) {
     const txTypeId = String(header?.tx_type_id || '').trim();
     const txNumber = String(header?.tx_number || '').trim();
     if (!txTypeId) throw new Error('Debes seleccionar el tipo de comprobante contable en la compra.');
-    if (!txNumber) throw new Error('Debes definir la numeración del comprobante contable en la compra.');
+    if (!txNumber) throw new Error('Debes definir la numeraciÃ³n del comprobante contable en la compra.');
 
-    // Calcular totales desde las líneas
+    // Calcular totales desde las lÃ­neas
     let subtotal = 0, ivaTot = 0, retTot = 0;
     for (const l of lines) {
       subtotal += l.subtotal || 0;
@@ -843,18 +851,18 @@ const API = {
   },
 
   /**
-   * Contabiliza una factura de compra (draft → posted):
+   * Contabiliza una factura de compra (draft â†’ posted):
    * 1. Genera asiento FC en transactions (status: draft, listo para aprobar)
-   * 2. Para líneas de BIEN: crea movimiento ENTRADA y lo aplica al stock
+   * 2. Para lÃ­neas de BIEN: crea movimiento ENTRADA y lo aplica al stock
    * 3. Actualiza la factura con tx_id, inv_movement_id, status=posted
    */
   async postPurchaseInvoice(invoiceId) {
     const inv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
     if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
 
     const lines = await this.getPurchaseInvoiceLines(invoiceId);
-    if (!lines.length) throw new Error('La factura no tiene líneas.');
+    if (!lines.length) throw new Error('La factura no tiene lÃ­neas.');
 
     const txTypeCode = inv.expand?.tx_type_id?.code;
     const isCreditNote = txTypeCode === 'NDS' || txTypeCode === 'NC';
@@ -882,14 +890,14 @@ const API = {
 
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable inválida en la compra.');
+      if (!key) throw new Error('Cuenta contable invÃ¡lida en la compra.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
 
-    // ── Buscar cuentas clave por código ──────────────────────────────────
+    // â”€â”€ Buscar cuentas clave por cÃ³digo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const findAccByCode = async (code) => {
-      if (!String(code || '').trim()) throw new Error('Hay una cuenta sin código en la configuración de compras.');
+      if (!String(code || '').trim()) throw new Error('Hay una cuenta sin cÃ³digo en la configuraciÃ³n de compras.');
       const key = String(code).trim();
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
@@ -920,7 +928,7 @@ const API = {
     const accExpFallback = await findAccByCode(codeExpFallback);
     const ivaAccountCache = {};
 
-    // ── Construir líneas del asiento contable ────────────────────────────
+    // â”€â”€ Construir lÃ­neas del asiento contable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const txLines = [];
     const bienLines = [];
     const ivaByRate = {};
@@ -937,7 +945,7 @@ const API = {
           throw new Error(`El producto ${prod.code || ''} ${prod.name || ''} no tiene cuenta de inventario asignada.`.trim());
         }
       } else {
-        if (!line.account_id) throw new Error(`Línea sin cuenta contable: "${line.description || '?'}"`);
+        if (!line.account_id) throw new Error(`LÃ­nea sin cuenta contable: "${line.description || '?'}"`);
         accountId = line.account_id;
       }
       txLines.push(await buildTxLine({
@@ -978,16 +986,16 @@ const API = {
       }
       if (retAmt > 0) {
         if (!retAccountCode) {
-          throw new Error(`La línea "${line.description || '?'}" tiene retención sin cuenta contable configurada.`);
+          throw new Error(`La lÃ­nea "${line.description || '?'}" tiene retenciÃ³n sin cuenta contable configurada.`);
         }
         retByAccount[retAccountCode] = (retByAccount[retAccountCode] || 0) + retAmt;
       }
     }
 
-    // ── Retenciones de encabezado (modo global) ──────────────────────────
-    // Cuando las retenciones se capturan a nivel de encabezado (no por línea),
+    // â”€â”€ Retenciones de encabezado (modo global) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Cuando las retenciones se capturan a nivel de encabezado (no por lÃ­nea),
     // el invoice guarda ret_rule_renta_id / ret_rule_ica_id / ret_rule_iva_id.
-    // Computamos esos montos aquí para que queden en retByAccount.
+    // Computamos esos montos aquÃ­ para que queden en retByAccount.
     {
       const aggSub = lines.reduce((s, l) => s + Number(l.subtotal || 0), 0);
       const aggIva = lines.reduce((s, l) => s + Number(l.iva_amount || 0), 0);
@@ -1002,7 +1010,7 @@ const API = {
         const rule = cfgRetRules.find(r => String(r.id || '') === id);
         if (!rule) continue;
         const minBase = Number(rule.min_base || 0) || 0;
-        // ReteIVA siempre usa IVA como base; los demás respetan base_type de la regla
+        // ReteIVA siempre usa IVA como base; los demÃ¡s respetan base_type de la regla
         let base;
         if (kind === 'iva') {
           base = aggIva;
@@ -1015,7 +1023,7 @@ const API = {
         if (rate <= 0) continue;
         const amt = base * rate / 100;
         const code = String(rule.account_code || '').trim();
-        if (!code) throw new Error(`La regla de retención "${rule.concept}" no tiene cuenta contable configurada.`);
+        if (!code) throw new Error(`La regla de retenciÃ³n "${rule.concept}" no tiene cuenta contable configurada.`);
         retByAccount[code] = (retByAccount[code] || 0) + amt;
       }
     }
@@ -1040,7 +1048,7 @@ const API = {
       }));
     }
 
-    // Retenciones por cuenta (crédito)
+    // Retenciones por cuenta (crÃ©dito)
     let retTotal = 0;
     for (const accCode of Object.keys(retByAccount)) {
       const amount = Number(retByAccount[accCode] || 0);
@@ -1056,7 +1064,7 @@ const API = {
         crossDocRef: inv.supplier_ref || '',
       }));
     }
-    // Crédito a Proveedores
+    // CrÃ©dito a Proveedores
     const grossTotal = Number(inv.subtotal || 0) + Number(inv.iva_total || 0);
     const storedPayable = Number(inv.payable_total || 0);
     const storedTotal = Number(inv.total || 0);
@@ -1068,7 +1076,7 @@ const API = {
       thirdPartyId: inv.supplier_id,
       debit: 0,
       credit: payableCredit,
-      description: `${inv.supplier_ref ? `Ref: ${inv.supplier_ref} — ` : ''}${inv.expand?.supplier_id?.name || ''}`,
+      description: `${inv.supplier_ref ? `Ref: ${inv.supplier_ref} â€” ` : ''}${inv.expand?.supplier_id?.name || ''}`,
       crossDocRef: inv.supplier_ref || '',
     }));
 
@@ -1080,11 +1088,11 @@ const API = {
       }
     }
 
-    // ── Crear transacción contable ───────────────────────────────────────
+    // â”€â”€ Crear transacciÃ³n contable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     let effectiveTxNumber = String(inv.tx_number || '').trim();
 
-    // Fallback para facturas históricas con datos incompletos de comprobante.
+    // Fallback para facturas histÃ³ricas con datos incompletos de comprobante.
     if (!effectiveTxTypeId) {
       const candidates = [];
       const fromTxNumber = effectiveTxNumber.split('-')[0] || '';
@@ -1105,7 +1113,7 @@ const API = {
       }
     }
 
-    if (!effectiveTxTypeId) throw new Error('La factura no tiene tipo de comprobante contable. Edítala y selecciónalo.');
+    if (!effectiveTxTypeId) throw new Error('La factura no tiene tipo de comprobante contable. EdÃ­tala y selecciÃ³nalo.');
     if (!effectiveTxNumber) effectiveTxNumber = 'AUTO';
 
     if (!inv.tx_type_id || !inv.tx_number) {
@@ -1119,7 +1127,7 @@ const API = {
       tx_type_id: effectiveTxTypeId,
       number: effectiveTxNumber,
       date: inv.date,
-      description: `${docLabel} ${inv.number} — ${inv.expand?.supplier_id?.name || ''}`,
+      description: `${docLabel} ${inv.number} â€” ${inv.expand?.supplier_id?.name || ''}`,
       third_party_id: inv.supplier_id,
       payment_days: 0,
       cross_enabled: false,
@@ -1127,7 +1135,7 @@ const API = {
       branch_id: inv.branch_id || null,
     }, txLines);
 
-    // ── Movimiento de inventario para bienes ─────────────────────────────
+    // â”€â”€ Movimiento de inventario para bienes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let invMovId = null;
     if (bienLines.length && inv.warehouse_id) {
       const today = inv.date || new Date().toISOString().slice(0, 10);
@@ -1153,7 +1161,7 @@ const API = {
       invMovId = mov.id;
     }
 
-    // ── Actualizar factura ───────────────────────────────────────────────
+    // â”€â”€ Actualizar factura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     await pb.update('purchase_invoices', invoiceId, {
       status: 'posted',
       tx_id: tx.id,
@@ -1161,7 +1169,7 @@ const API = {
       ret_total: retTotal,
       payable_total: payableCredit,
     });
-    await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
+    await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${tx.number}`);
     return { inv, tx };
   },
 
@@ -1215,7 +1223,7 @@ const API = {
         const sample = details.downstreamTx.slice(0, 3)
           .map(item => `${item.txNumber}${item.txDate ? ` (${item.txDate})` : ''}`)
           .join(', ');
-        blocks.push(`La compra ya tiene pagos o cruces posteriores sobre el documento ${details.crossRefs.join(', ')}. Transacciones detectadas: ${sample}${details.downstreamTx.length > 3 ? '…' : ''}.`);
+        blocks.push(`La compra ya tiene pagos o cruces posteriores sobre el documento ${details.crossRefs.join(', ')}. Transacciones detectadas: ${sample}${details.downstreamTx.length > 3 ? 'â€¦' : ''}.`);
       }
     }
 
@@ -1242,7 +1250,7 @@ const API = {
           .slice(0, 3)
           .map(item => `${item.product} (disp. ${fmtN(item.qtyOnHand)} / compra ${fmtN(item.requiredQty)})`)
           .join(', ');
-        blocks.push(`La entrada de inventario ya tuvo efectos posteriores y no se puede revertir sin descuadrar stock. Productos afectados: ${sample}${details.stockShortages.length > 3 ? '…' : ''}.`);
+        blocks.push(`La entrada de inventario ya tuvo efectos posteriores y no se puede revertir sin descuadrar stock. Productos afectados: ${sample}${details.stockShortages.length > 3 ? 'â€¦' : ''}.`);
       }
     }
 
@@ -1261,7 +1269,7 @@ const API = {
 
     if (typeof isPeriodClosed === 'function') {
       const closed = await isPeriodClosed(inv.date);
-      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede ${actionLabel} la compra.`);
+      if (closed) throw new Error(`El perÃ­odo ${(inv.date || '').slice(0, 7)} estÃ¡ cerrado. No se puede ${actionLabel} la compra.`);
     }
 
     const mutationCheck = await this.getPurchaseMutationBlocks(invoiceId);
@@ -1280,7 +1288,7 @@ const API = {
         await this.voidInventoryMovement(inv.inv_movement_id, reason);
       } else if (mov && mov.status !== 'voided') {
         await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
-        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} — ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `AnulaciÃ³n ${mov.mov_type || 'MOV'} â€” ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
       }
     }
 
@@ -1296,24 +1304,24 @@ const API = {
     if (!safeReason) throw new Error('Debes indicar el motivo de reapertura.');
     const result = await this.rollbackPurchasePosting(invoiceId, 'reabrir', safeReason);
     const inv = result.inv;
-    if (inv.status === 'voided') throw new Error('La factura está anulada y no se puede reabrir.');
-    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada y no se puede reabrir.');
+    if (inv.status === 'draft') throw new Error('La factura ya estÃ¡ en borrador.');
 
     await pb.update('purchase_invoices', invoiceId, {
       status: 'draft',
       tx_id: null,
       inv_movement_id: null,
     });
-    await this.logAudit('REOPEN', 'PurchaseInvoice', invoiceId, `Reabierta ${inv.number} para corrección | Motivo: ${safeReason}`);
+    await this.logAudit('REOPEN', 'PurchaseInvoice', invoiceId, `Reabierta ${inv.number} para correcciÃ³n | Motivo: ${safeReason}`);
     return pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
   },
 
   /** Anula una factura de compra manteniendo trazabilidad y revirtiendo efectos si ya fue contabilizada. */
   async voidPurchaseInvoice(invoiceId, reason = '') {
     const safeReason = String(reason || '').trim();
-    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulaciÃ³n.');
     const inv = await pb.get('purchase_invoices', invoiceId);
-    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura ya estÃ¡ anulada.');
     if (inv.status === 'posted') {
       await this.rollbackPurchasePosting(invoiceId, 'anular', safeReason);
     }
@@ -1321,7 +1329,7 @@ const API = {
     await this.logAudit('VOID', 'PurchaseInvoice', invoiceId, `Anulada ${inv.number} | Motivo: ${safeReason}`);
   },
 
-  // ── Ventas y POS (Comercial) ──────────────────────────────
+  // â”€â”€ Ventas y POS (Comercial) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de facturas de venta / recibos POS */
   async getInvoices(opts = {}) {
@@ -1332,7 +1340,7 @@ const API = {
     });
   },
 
-  /** Líneas de una factura de venta con expand de producto y cuenta */
+  /** LÃ­neas de una factura de venta con expand de producto y cuenta */
   async getInvoiceLines(invoiceId) {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('invoice_lines', {
@@ -1342,7 +1350,7 @@ const API = {
     });
   },
 
-  /** Crea cabecera + líneas de factura de venta en estado borrador */
+  /** Crea cabecera + lÃ­neas de factura de venta en estado borrador */
   async createInvoice(header, lines) {
     let subtotal = 0, ivaTot = 0;
     for (const l of lines) {
@@ -1381,25 +1389,25 @@ const API = {
   },
 
   /**
-   * Contabiliza una factura de venta (draft → posted):
+   * Contabiliza una factura de venta (draft â†’ posted):
    * 1. Valida existencias en tiempo real para bienes.
-   * 2. Genera asiento FV/POS en transactions (debitos CxC/Caja ↔ ingresos + iva).
-   * 3. Registra el costo de ventas (COGS) para bienes físicos.
-   * 4. Para líneas de BIEN: crea movimiento SALIDA y lo aplica al stock.
+   * 2. Genera asiento FV/POS en transactions (debitos CxC/Caja â†” ingresos + iva).
+   * 3. Registra el costo de ventas (COGS) para bienes fÃ­sicos.
+   * 4. Para lÃ­neas de BIEN: crea movimiento SALIDA y lo aplica al stock.
    * 5. Actualiza la factura con tx_id, inv_movement_id, status=posted.
    */
   async postInvoice(invoiceId) {
     const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_type_id' });
     if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
 
     const txTypeCode = String(inv.expand?.tx_type_id?.code || '').toUpperCase();
     const txTypeName = String(inv.expand?.tx_type_id?.name || '').toUpperCase();
-    const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÉDITO') || txTypeName.includes('CREDITO');
-    const docLabel = isCreditNote ? 'Nota Crédito' : (inv.pos_shift_id ? 'Venta POS' : 'Venta');
+    const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÃ‰DITO') || txTypeName.includes('CREDITO');
+    const docLabel = isCreditNote ? 'Nota CrÃ©dito' : (inv.pos_shift_id ? 'Venta POS' : 'Venta');
 
     const lines = await this.getInvoiceLines(invoiceId);
-    if (!lines.length) throw new Error('La factura no tiene líneas.');
+    if (!lines.length) throw new Error('La factura no tiene lÃ­neas.');
 
     // Cargar productos para expandir
     const products = await this.getProducts({ activeOnly: false });
@@ -1423,7 +1431,7 @@ const API = {
       : !!salesConfig?.operational?.allow_negative_stock;
     const immediatePosting = isPOS || !!salesConfig?.operational?.immediate_posting;
 
-    // ── Validar stock en tiempo real y preparar COGS ───────────────────
+    // â”€â”€ Validar stock en tiempo real y preparar COGS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const movLines = [];
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
@@ -1479,14 +1487,14 @@ const API = {
 
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable inválida en la venta.');
+      if (!key) throw new Error('Cuenta contable invÃ¡lida en la venta.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
 
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('Se requiere un código de cuenta válido.');
+      if (!key) throw new Error('Se requiere un cÃ³digo de cuenta vÃ¡lido.');
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
@@ -1518,7 +1526,7 @@ const API = {
 
     const txLines = [];
 
-    // Helper para resolver la cuenta contable según forma de pago y jerarquía (POS -> Tesorería -> Fallback)
+    // Helper para resolver la cuenta contable segÃºn forma de pago y jerarquÃ­a (POS -> TesorerÃ­a -> Fallback)
     const resolvePaymentAccount = async (method) => {
       if (isPOS && posConfig?.accounting?.accounts) {
         const accs = posConfig.accounting.accounts;
@@ -1598,7 +1606,7 @@ const API = {
           if (acc) return acc.id;
         } catch (_) { }
       }
-      throw new Error('No se pudo determinar una cuenta contable para el Descuento. Por favor configure "discount_code" en los parámetros del POS o Ventas.');
+      throw new Error('No se pudo determinar una cuenta contable para el Descuento. Por favor configure "discount_code" en los parÃ¡metros del POS o Ventas.');
     };
 
     const resolveFreightAccount = async () => {
@@ -1629,10 +1637,10 @@ const API = {
           if (acc) return acc.id;
         } catch (_) { }
       }
-      throw new Error('No se pudo determinar una cuenta contable para el Flete. Por favor configure "freight_code" en los parámetros del POS o Ventas.');
+      throw new Error('No se pudo determinar una cuenta contable para el Flete. Por favor configure "freight_code" en los parÃ¡metros del POS o Ventas.');
     };
 
-    // ── Registrar débito por recaudo/CxC (Soportando Pago Mixto) ───────────
+    // â”€â”€ Registrar dÃ©bito por recaudo/CxC (Soportando Pago Mixto) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (inv.payment_method === 'MIXTO') {
       let split = {};
       try {
@@ -1665,7 +1673,7 @@ const API = {
       }));
     }
 
-    // ── Debito de Descuento (si existe discount_amount) ─────────────────────
+    // â”€â”€ Debito de Descuento (si existe discount_amount) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (Number(inv.discount_amount || 0) > 0) {
       const discountAccId = await resolveDiscountAccount();
       txLines.push(await buildTxLine({
@@ -1678,7 +1686,7 @@ const API = {
       }));
     }
 
-    // ── Crédito de Flete (si existe freight_amount) ───────────────────────
+    // â”€â”€ CrÃ©dito de Flete (si existe freight_amount) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (Number(inv.freight_amount || 0) > 0) {
       const freightAccId = await resolveFreightAccount();
       txLines.push(await buildTxLine({
@@ -1691,7 +1699,7 @@ const API = {
       }));
     }
 
-    // ── Construir créditos de ingresos e IVA ─────────────────────────────
+    // â”€â”€ Construir crÃ©ditos de ingresos e IVA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let fallbackIncomeCode = '413505';
     if (isPOS && posConfig?.accounting?.accounts?.sales_code) {
       fallbackIncomeCode = posConfig.accounting.accounts.sales_code;
@@ -1732,7 +1740,7 @@ const API = {
       return acc.id;
     };
 
-    // ── Registro de Ingresos e IVA Consolidados ──────────────────────────
+    // â”€â”€ Registro de Ingresos e IVA Consolidados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const incomeGroups: { [accId: string]: number } = {};
     const ivaGroups: { [key: string]: { ivaAccId: string, rate: number, amount: number } } = {};
     let totalLineDiscount = 0;
@@ -1773,7 +1781,7 @@ const API = {
       }
     }
 
-    // ── Debito de Descuento en Líneas (si existe totalLineDiscount) ─────────
+    // â”€â”€ Debito de Descuento en LÃ­neas (si existe totalLineDiscount) â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (totalLineDiscount > 0) {
       const discountAccId = await resolveDiscountAccount();
       txLines.push(await buildTxLine({
@@ -1781,12 +1789,12 @@ const API = {
         thirdPartyId: inv.customer_id,
         debit: totalLineDiscount,
         credit: 0,
-        description: `Descuentos en líneas venta ${inv.number}`,
+        description: `Descuentos en lÃ­neas venta ${inv.number}`,
         crossDocRef: inv.number,
       }));
     }
 
-    // 1. Agregar créditos consolidados de ingresos
+    // 1. Agregar crÃ©ditos consolidados de ingresos
     for (const incomeAccId of Object.keys(incomeGroups)) {
       const amount = incomeGroups[incomeAccId];
       if (amount > 0) {
@@ -1795,13 +1803,13 @@ const API = {
           thirdPartyId: inv.customer_id,
           debit: 0,
           credit: amount,
-          description: `Ingresos por ventas consolidados — ${inv.number}`,
+          description: `Ingresos por ventas consolidados â€” ${inv.number}`,
           crossDocRef: inv.number,
         }));
       }
     }
 
-    // 2. Agregar créditos consolidados de IVA
+    // 2. Agregar crÃ©ditos consolidados de IVA
     for (const key of Object.keys(ivaGroups)) {
       const { ivaAccId, rate, amount } = ivaGroups[key];
       if (amount > 0) {
@@ -1816,7 +1824,7 @@ const API = {
       }
     }
 
-    // ── Desglose de retenciones aplicadas (Débito - Activo) ────────────
+    // â”€â”€ Desglose de retenciones aplicadas (DÃ©bito - Activo) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Nota: El cliente nos retiene, lo cual representa un activo de retenciones a favor (1355) para nosotros.
     if (Number(inv.ret_total || 0) > 0) {
       // Mapea la cuenta de pasivo de la regla (2365) a la cuenta de activo de ventas (1355)
@@ -1825,7 +1833,7 @@ const API = {
         if (c.startsWith('2365')) return c.replace('2365', '1355');
         if (c.startsWith('2368')) return c.replace('2368', '1355');
         if (c.startsWith('2367')) return c.replace('2367', '1355');
-        return '135515'; // Cuenta por defecto de Retención en la Fuente Ventas
+        return '135515'; // Cuenta por defecto de RetenciÃ³n en la Fuente Ventas
       };
 
       // Si hay desglose en la cabecera
@@ -1863,17 +1871,17 @@ const API = {
           thirdPartyId: inv.customer_id,
           debit: amt,
           credit: 0,
-          description: `Retención ${rule.concept} a favor`,
+          description: `RetenciÃ³n ${rule.concept} a favor`,
           crossDocRef: inv.number,
         }));
       }
     }
 
-    // ── Registro de Costo de Ventas (COGS) Consolidado ──────────────────
-    const defaultCogsAcc = await findAccByCode('613505'); // Costo de Mercancía por defecto
+    // â”€â”€ Registro de Costo de Ventas (COGS) Consolidado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const defaultCogsAcc = await findAccByCode('613505'); // Costo de MercancÃ­a por defecto
     const defaultInvAcc = await findAccByCode('143005');  // Inventario por defecto
     
-    // Agrupamos por la combinación de cuenta de costo (débito) y cuenta de inventario (crédito)
+    // Agrupamos por la combinaciÃ³n de cuenta de costo (dÃ©bito) y cuenta de inventario (crÃ©dito)
     // Clave: `cogsAccId_invAccId`
     const cogsGroups: { [key: string]: { cogsAccId: string, invAccId: string, amount: number } } = {};
 
@@ -1884,9 +1892,9 @@ const API = {
         const cogsAccId = prod?.cost_account_id || defaultCogsAcc.id;
         const invAccId = prod?.inventory_account_id || defaultInvAcc.id;
 
-        // Si por alguna razón la cuenta de costo y la de inventario son iguales, no genera movimiento (se anulan)
+        // Si por alguna razÃ³n la cuenta de costo y la de inventario son iguales, no genera movimiento (se anulan)
         if (cogsAccId === invAccId) {
-          console.log(`[GRAVY] Omitida línea de COGS ya que la cuenta de costo e inventario son idénticas: ${cogsAccId}`);
+          console.log(`[GRAVY] Omitida lÃ­nea de COGS ya que la cuenta de costo e inventario son idÃ©nticas: ${cogsAccId}`);
           continue;
         }
 
@@ -1906,29 +1914,29 @@ const API = {
     for (const groupKey of Object.keys(cogsGroups)) {
       const { cogsAccId, invAccId, amount } = cogsGroups[groupKey];
       if (amount > 0) {
-        // 1. Débito consolidado al Costo de Ventas correspondiente
+        // 1. DÃ©bito consolidado al Costo de Ventas correspondiente
         txLines.push(await buildTxLine({
           accountId: cogsAccId,
           thirdPartyId: inv.customer_id,
           debit: amount,
           credit: 0,
-          description: `Costo de Ventas consolidado — ${inv.number}`,
+          description: `Costo de Ventas consolidado â€” ${inv.number}`,
           crossDocRef: inv.number,
         }));
 
-        // 2. Crédito consolidado a la cuenta de Inventario correspondiente
+        // 2. CrÃ©dito consolidado a la cuenta de Inventario correspondiente
         txLines.push(await buildTxLine({
           accountId: invAccId,
           thirdPartyId: inv.customer_id,
           debit: 0,
           credit: amount,
-          description: `Baja Inventario COGS consolidada — ${inv.number}`,
+          description: `Baja Inventario COGS consolidada â€” ${inv.number}`,
           crossDocRef: inv.number,
         }));
       }
     }
 
-    // Invertir naturaleza contable si es Nota Crédito
+    // Invertir naturaleza contable si es Nota CrÃ©dito
     if (isCreditNote) {
       for (const ln of txLines) {
         const temp = ln.debit;
@@ -1937,12 +1945,12 @@ const API = {
       }
     }
 
-    // ── Crear Transacción Contable ─────────────────────────────────────
+    // â”€â”€ Crear TransacciÃ³n Contable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     let effectiveTxTypeId = String(inv.tx_type_id || '').trim();
     if (!effectiveTxTypeId) {
       const code = inv.pos_shift_id ? 'POS' : 'FV';
 
-      // Intentar buscar por el prefijo del número de factura para asociarla a la serie contable correspondiente
+      // Intentar buscar por el prefijo del nÃºmero de factura para asociarla a la serie contable correspondiente
       const invNum = String(inv.number || "").trim();
       const prefixCandidate = invNum.includes("-") ? invNum.split("-")[0].toUpperCase() : "";
 
@@ -1957,7 +1965,7 @@ const API = {
         } catch (_) { }
       }
 
-      // Fallback si no se encontró serie específica con ese prefijo
+      // Fallback si no se encontrÃ³ serie especÃ­fica con ese prefijo
       if (!found || !found.items.length) {
         found = await pb.list('transaction_types', {
           filter: `active=true && code="${code}"`,
@@ -1969,7 +1977,7 @@ const API = {
         effectiveTxTypeId = found.items[0].id;
       }
     }
-    if (!effectiveTxTypeId) throw new Error('No se encontró el tipo de transacción contable (FV/POS) en el sistema.');
+    if (!effectiveTxTypeId) throw new Error('No se encontrÃ³ el tipo de transacciÃ³n contable (FV/POS) en el sistema.');
 
     const txNumber = String(inv.tx_number || inv.number || 'AUTO').trim();
 
@@ -1980,7 +1988,7 @@ const API = {
         tx_type_id: effectiveTxTypeId,
         number: txNumber,
         date: inv.date,
-        description: `${docLabel} ${inv.number} — ${inv.expand?.customer_id?.name || ''}`,
+        description: `${docLabel} ${inv.number} â€” ${inv.expand?.customer_id?.name || ''}`,
         third_party_id: inv.customer_id,
         payment_days: 0,
         cross_enabled: false,
@@ -1988,7 +1996,7 @@ const API = {
         branch_id: inv.branch_id || null,
       }, txLines);
 
-      // ── Movimiento de Inventario ─────────────────────────────
+      // â”€â”€ Movimiento de Inventario â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       let invMovId = null;
       if (movLines.length && inv.warehouse_id) {
         const today = inv.date || new Date().toISOString().slice(0, 10);
@@ -2014,7 +2022,7 @@ const API = {
         await this.applyInventoryMovement(movCreated.id);
       }
 
-      // ── Actualizar Factura Comercial ────────────────────────────────────
+      // â”€â”€ Actualizar Factura Comercial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       await pb.update('invoices', invoiceId, {
         status: 'posted',
         tx_id: txCreated.id,
@@ -2029,15 +2037,15 @@ const API = {
         });
         await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido marcado como facturado por factura ${inv.number}`);
       }
-      await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} → TX ${txCreated.number}`);
+      await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${txCreated.number}`);
       return { inv, tx: txCreated };
     } catch (postErr) {
-      // ROLLBACK atómico en caso de fallo intermedio
+      // ROLLBACK atÃ³mico en caso de fallo intermedio
       if (movCreated) {
         try {
           const currentMov = await pb.get('inventory_movements', movCreated.id).catch(() => null);
           if (currentMov && currentMov.status === 'applied') {
-            await this.voidInventoryMovement(movCreated.id, 'Rollback por fallo de contabilización');
+            await this.voidInventoryMovement(movCreated.id, 'Rollback por fallo de contabilizaciÃ³n');
           }
           const mLines = await pb.listAll('inventory_movement_lines', { filter: `movement_id="${pb.escapeFilterValue(movCreated.id)}"` }).catch(() => []);
           for (const ml of mLines) {
@@ -2068,7 +2076,7 @@ const API = {
 
     if (typeof isPeriodClosed === 'function') {
       const closed = await isPeriodClosed(inv.date);
-      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede ${actionLabel} la venta.`);
+      if (closed) throw new Error(`El perÃ­odo ${(inv.date || '').slice(0, 7)} estÃ¡ cerrado. No se puede ${actionLabel} la venta.`);
     }
 
     if (inv.tx_id) {
@@ -2080,7 +2088,7 @@ const API = {
             await pb.delete('tx_lines', tl.id).catch(() => {});
           }
           await pb.delete('transactions', tx.id).catch(() => {});
-          console.log(`[GRAVY] Eliminada transacción borrador vinculada a la factura anulada: ${inv.number}`);
+          console.log(`[GRAVY] Eliminada transacciÃ³n borrador vinculada a la factura anulada: ${inv.number}`);
         } else {
           await this.voidTransaction(inv.tx_id, `${actionLabel} venta ${inv.number}${reason ? ` | Motivo: ${reason}` : ''}`);
         }
@@ -2093,7 +2101,7 @@ const API = {
         await this.voidInventoryMovement(inv.inv_movement_id, reason);
       } else if (mov && mov.status !== 'voided') {
         await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
-        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} — ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `AnulaciÃ³n ${mov.mov_type || 'MOV'} â€” ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
       }
     }
 
@@ -2102,7 +2110,7 @@ const API = {
         status: 'pending',
         invoice_id: null
       });
-      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulación/reapertura de factura ${inv.number}`);
+      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulaciÃ³n/reapertura de factura ${inv.number}`);
     }
 
     return {
@@ -2115,9 +2123,9 @@ const API = {
   /** Anula una factura de venta */
   async voidInvoice(invoiceId, reason = '') {
     const safeReason = String(reason || '').trim();
-    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulaciÃ³n.');
     const inv = await pb.get('invoices', invoiceId);
-    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura ya estÃ¡ anulada.');
     if (inv.status === 'posted') {
       await this.rollbackInvoicePosting(invoiceId, 'anular', safeReason);
     }
@@ -2125,11 +2133,11 @@ const API = {
     await this.logAudit('VOID', 'Invoice', invoiceId, `Anulada factura ${inv.number} | Motivo: ${safeReason}`);
   },
 
-  /** Cambia el método de pago de una factura contabilizada y actualiza el asiento contable */
+  /** Cambia el mÃ©todo de pago de una factura contabilizada y actualiza el asiento contable */
   async changeInvoicePaymentMethod(invoiceId, newMethod, newSplit = null, reason = '') {
     const safeReason = String(reason || '').trim();
     if (!safeReason) throw new Error('Debes indicar el motivo del cambio de forma de pago.');
-    if (safeReason.length < 8) throw new Error('El motivo debe ser más descriptivo (mínimo 8 caracteres).');
+    if (safeReason.length < 8) throw new Error('El motivo debe ser mÃ¡s descriptivo (mÃ­nimo 8 caracteres).');
 
     const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,tx_type_id' });
     if (inv.status !== 'posted') {
@@ -2138,7 +2146,7 @@ const API = {
 
     if (typeof isPeriodClosed === 'function') {
       const closed = await isPeriodClosed(inv.date);
-      if (closed) throw new Error(`El período ${(inv.date || '').slice(0, 7)} está cerrado. No se puede modificar la forma de pago.`);
+      if (closed) throw new Error(`El perÃ­odo ${(inv.date || '').slice(0, 7)} estÃ¡ cerrado. No se puede modificar la forma de pago.`);
     }
 
     const oldMethod = inv.payment_method;
@@ -2154,7 +2162,7 @@ const API = {
 
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('Se requiere un código de cuenta válido.');
+      if (!key) throw new Error('Se requiere un cÃ³digo de cuenta vÃ¡lido.');
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
       if (!res.items.length) throw new Error(`Cuenta ${key} no encontrada en el plan de cuentas.`);
@@ -2219,12 +2227,12 @@ const API = {
       payment_split: parsedSplit
     });
 
-    // Si tiene transacción contable asociada, actualizar las líneas de pago
+    // Si tiene transacciÃ³n contable asociada, actualizar las lÃ­neas de pago
     if (inv.tx_id) {
       const tx = await pb.get('transactions', inv.tx_id);
       const lines = await pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}"` });
 
-      // Identificar líneas de pago existentes
+      // Identificar lÃ­neas de pago existentes
       const numUpper = inv.number.toUpperCase();
       const paymentLines = lines.filter(l => {
         const d = (l.description || '').toUpperCase();
@@ -2232,14 +2240,14 @@ const API = {
           d.includes('EFECTIVO') ||
           d.includes('TRANSFERENCIA') ||
           d.includes('CREDITO') ||
-          d.includes('CRÉDITO') ||
+          d.includes('CRÃ‰DITO') ||
           d.includes('MIXTO') ||
           d.includes('PAGO MIXTO')
         );
       });
 
       if (paymentLines.length > 0) {
-        // Eliminar las líneas de pago viejas (tolerante a 404 por edición concurrente)
+        // Eliminar las lÃ­neas de pago viejas (tolerante a 404 por ediciÃ³n concurrente)
         for (const pl of paymentLines) {
           try {
             await pb.delete('tx_lines', pl.id);
@@ -2248,17 +2256,17 @@ const API = {
           }
         }
 
-        // Determinar si es nota de crédito
+        // Determinar si es nota de crÃ©dito
         const txTypeCode = String(inv.expand?.tx_type_id?.code || '').toUpperCase();
         const txTypeName = String(inv.expand?.tx_type_id?.name || '').toUpperCase();
-        const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÉDITO') || txTypeName.includes('CREDITO');
-        const docLabel = isCreditNote ? 'Nota Crédito' : (isPOS ? 'Venta POS' : 'Venta');
+        const isCreditNote = txTypeCode === 'NC' || txTypeName.includes('CRÃ‰DITO') || txTypeName.includes('CREDITO');
+        const docLabel = isCreditNote ? 'Nota CrÃ©dito' : (isPOS ? 'Venta POS' : 'Venta');
 
         // Determinar un line_order base
         let maxOrder = lines.reduce((max, l) => l.line_order > max ? l.line_order : max, 0);
         let nextLineOrder = maxOrder + 1;
 
-        // Crear las nuevas líneas de pago
+        // Crear las nuevas lÃ­neas de pago
         if (newMethod === 'MIXTO') {
           const splitObj = typeof newSplit === 'string' ? JSON.parse(newSplit) : (newSplit || {});
           for (const method of Object.keys(splitObj)) {
@@ -2301,7 +2309,7 @@ const API = {
       }
     }
 
-    // Registrar en auditoría
+    // Registrar en auditorÃ­a
     await this.logAudit('CHANGE_PAYMENT_METHOD', 'Invoice', invoiceId, 
       `Forma de pago corregida: ${oldMethod} -> ${newMethod}. Motivo: ${safeReason}`
     );
@@ -2309,7 +2317,7 @@ const API = {
     return { success: true };
   },
 
-  // ── Copropiedades (F8) ────────────────────────────────────
+  // â”€â”€ Copropiedades (F8) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista todas las unidades habitacionales */
   async getPhProperties(activeOnly = true) {
@@ -2327,7 +2335,7 @@ const API = {
     return pb.listAll('ph_common_areas', { filter, sort: 'code' });
   },
 
-  /** Conceptos de facturación PH */
+  /** Conceptos de facturaciÃ³n PH */
   async getPhBillingConcepts(activeOnly = true) {
     const filter = activeOnly ? 'active=true' : '';
     return pb.listAll('ph_billing_concepts', {
@@ -2346,7 +2354,7 @@ const API = {
     });
   },
 
-  /** Líneas de una factura PH */
+  /** LÃ­neas de una factura PH */
   async getPhInvoiceLines(invoiceId) {
     const safe = pb.escapeFilterValue(invoiceId);
     return pb.listAll('ph_invoice_lines', {
@@ -2357,8 +2365,8 @@ const API = {
   },
 
   /**
-   * Genera facturas en borrador para todas las unidades activas en un período YYYY-MM.
-   * Omite unidades que ya tienen factura para ese período.
+   * Genera facturas en borrador para todas las unidades activas en un perÃ­odo YYYY-MM.
+   * Omite unidades que ya tienen factura para ese perÃ­odo.
    */
   async generatePhInvoices(period, dueDate = '') {
     const safePeriod = pb.escapeFilterValue(period);
@@ -2368,7 +2376,7 @@ const API = {
       this.getSetting('ph_config_v1'),
     ]);
     if (!properties.length) throw new Error('No hay unidades activas registradas.');
-    if (!concepts.length) throw new Error('No hay conceptos de facturación activos.');
+    if (!concepts.length) throw new Error('No hay conceptos de facturaciÃ³n activos.');
 
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
@@ -2385,25 +2393,25 @@ const API = {
         .filter(Boolean)
     );
 
-    // Calcular número de secuencia base CF para este batch
+    // Calcular nÃºmero de secuencia base CF para este batch
     const existingFilter = `period="${safePeriod}"`;
     const existing = await pb.listAll('ph_invoices', { filter: existingFilter, perPage: 200 });
     const existingPropIds = new Set(existing.map(i => i.property_id));
 
     const toCreate = properties.filter(p => !existingPropIds.has(p.id));
-    if (!toCreate.length) throw new Error(`Todas las unidades ya tienen factura para el período ${period}.`);
+    if (!toCreate.length) throw new Error(`Todas las unidades ya tienen factura para el perÃ­odo ${period}.`);
 
     const dateStr = period + '-01';
     const dueDateStr = dueDate || (period + '-10');
     let created = 0;
 
     for (const prop of toCreate) {
-      // Fecha de corte de mora: inicio del período que se está liquidando.
-      // Así la mora no depende del día real de ejecución del proceso.
+      // Fecha de corte de mora: inicio del perÃ­odo que se estÃ¡ liquidando.
+      // AsÃ­ la mora no depende del dÃ­a real de ejecuciÃ³n del proceso.
       const asOfStr = `${period}-01`;
       const asOf = new Date(`${asOfStr}T00:00:00`);
 
-      // Calcular líneas y total para esta unidad
+      // Calcular lÃ­neas y total para esta unidad
       const lines = [];
       let total = 0;
       let order = 1;
@@ -2422,7 +2430,7 @@ const API = {
         });
       }
 
-      // Interés de mora por conceptos configurados (sobre facturas vencidas no pagadas).
+      // InterÃ©s de mora por conceptos configurados (sobre facturas vencidas no pagadas).
       if (lateFeeRate > 0 && lateConceptSet.size) {
         const safeProp = pb.escapeFilterValue(prop.id);
         const overdueInvoices = await pb.listAll('ph_invoices', {
@@ -2452,7 +2460,7 @@ const API = {
             const principal = Number(oldLn.amount || 0);
             if (principal <= 0) continue;
             // lateFeeRate se almacena como entero (ej: 2 = 2% mensual).
-            // Se aplica una vez sobre el saldo vencido, sin multiplicar por días.
+            // Se aplica una vez sobre el saldo vencido, sin multiplicar por dÃ­as.
             lateAmount += principal * (lateFeeRate / 100);
           }
         }
@@ -2462,7 +2470,7 @@ const API = {
           total += roundedLate;
           lines.push({
             concept_id: null,
-            description: `Interés de mora a ${asOfStr}`,
+            description: `InterÃ©s de mora a ${asOfStr}`,
             amount: roundedLate,
             line_order: order++,
           });
@@ -2471,8 +2479,8 @@ const API = {
 
       if (!lines.length) continue;
 
-      // Crear cabecera (número AUTO — el hook de PocketBase no aplica aquí,
-      // ph_invoices no es "transactions"; generamos número en cliente con timestamp)
+      // Crear cabecera (nÃºmero AUTO â€” el hook de PocketBase no aplica aquÃ­,
+      // ph_invoices no es "transactions"; generamos nÃºmero en cliente con timestamp)
       const seq = String(created + 1).padStart(6, '0');
       const number = `CF-${period.replace('-', '')}-${seq}`;
 
@@ -2547,13 +2555,13 @@ const API = {
   },
 
   /**
-   * Contabiliza en lote la liquidación de un período PH.
+   * Contabiliza en lote la liquidaciÃ³n de un perÃ­odo PH.
    * Solo procesa facturas en draft; omite posted/paid/voided.
    */
   async postPhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let posted = 0;
     let skipped = 0;
@@ -2578,7 +2586,7 @@ const API = {
       'POST_PERIOD',
       'PhInvoices',
       period,
-      `Período ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
+      `PerÃ­odo ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
     );
 
     return { period, total: invoices.length, posted, skipped, failed, failures };
@@ -2590,8 +2598,8 @@ const API = {
    */
   async unpostPhInvoice(invoiceId) {
     const inv = await pb.get('ph_invoices', invoiceId);
-    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada y no se puede descontabilizar.');
+    if (inv.status === 'draft') throw new Error('La factura ya estÃ¡ en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada y no se puede descontabilizar.');
 
     let txAction = 'none';
     if (inv.tx_id) {
@@ -2610,14 +2618,14 @@ const API = {
   },
 
   /**
-   * Descontabiliza completamente la liquidación de un período PH.
+   * Descontabiliza completamente la liquidaciÃ³n de un perÃ­odo PH.
    * - Facturas posted/paid pasan a draft y se desvinculan del asiento (tx_id = null).
    * - El asiento asociado se intenta pasar a borrador; si falla, se anula.
    */
   async unpostPhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let reverted = 0;
     let skipped = 0;
@@ -2652,21 +2660,21 @@ const API = {
       'UNPOST_PERIOD',
       'PhInvoices',
       period,
-      `Período ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
+      `PerÃ­odo ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
     );
 
     return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
   },
 
   /**
-   * Elimina toda la liquidación de un período PH.
+   * Elimina toda la liquidaciÃ³n de un perÃ­odo PH.
    * - Intenta eliminar transacciones asociadas.
    * - Si no puede eliminarlas, las anula para no dejar efecto contable.
    */
   async deletePhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let deleted = 0;
     let txDeleted = 0;
@@ -2691,27 +2699,27 @@ const API = {
       'DELETE_PERIOD',
       'PhInvoices',
       period,
-      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+      `PerÃ­odo ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
     );
 
     return { period, total: invoices.length, deleted, txDeleted, txVoided };
   },
 
   /**
-   * Contabiliza una factura PH (draft → posted).
-   * Genera un asiento: Débito CxC propietario / Crédito ingresos por concepto.
+   * Contabiliza una factura PH (draft â†’ posted).
+   * Genera un asiento: DÃ©bito CxC propietario / CrÃ©dito ingresos por concepto.
    */
   async postPhInvoice(invoiceId) {
     const inv = await pb.get('ph_invoices', invoiceId, {
       expand: 'property_id,property_id.owner_id',
     });
     if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
 
     const lines = await this.getPhInvoiceLines(invoiceId);
-    if (!lines.length) throw new Error('La factura no tiene líneas.');
+    if (!lines.length) throw new Error('La factura no tiene lÃ­neas.');
 
-    // Leer configuración contable PH
+    // Leer configuraciÃ³n contable PH
     let phCfg = {};
     try {
       const raw = await this.getSetting('ph_config_v1');
@@ -2723,12 +2731,12 @@ const API = {
     const lateFeeIncomeCode = String(phCfg.late_fee_income_code || incomeCode).trim();
     const crossRef = String(inv.number || '').trim();
 
-    // Buscar tipo de transacción CF
+    // Buscar tipo de transacciÃ³n CF
     const cfTypes = await pb.list('transaction_types', {
       filter: 'code="CF" && active=true',
       perPage: 1,
     });
-    if (!cfTypes.items.length) throw new Error('Tipo de transacción CF no encontrado. Reinicia PocketBase para aplicar la migración.');
+    if (!cfTypes.items.length) throw new Error('Tipo de transacciÃ³n CF no encontrado. Reinicia PocketBase para aplicar la migraciÃ³n.');
     const txType = cfTypes.items[0];
 
     // Propietario de la unidad (para third_party en asiento)
@@ -2739,13 +2747,13 @@ const API = {
     const accountByCodeCache = {};
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable inválida.');
+      if (!key) throw new Error('Cuenta contable invÃ¡lida.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('Código de cuenta inválido.');
+      if (!key) throw new Error('CÃ³digo de cuenta invÃ¡lido.');
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
@@ -2756,7 +2764,7 @@ const API = {
       return acc;
     };
 
-    // Buscar cuentas base por código
+    // Buscar cuentas base por cÃ³digo
     const cxcAccount = await findAccByCode(cxcCode);
     const incomeDefaultAccount = await findAccByCode(incomeCode);
 
@@ -2791,15 +2799,15 @@ const API = {
       return line;
     };
 
-    // Construir líneas del asiento contable
+    // Construir lÃ­neas del asiento contable
     const txLines = [];
 
-    // Líneas de ingreso por concepto (crédito)
+    // LÃ­neas de ingreso por concepto (crÃ©dito)
     for (const ln of lines) {
       const concept = ln.expand?.concept_id;
       let conceptCode = concept?.code || 'GEN';
       if (!concept) {
-        if (/inter[eé]s de mora/i.test(String(ln.description || ''))) {
+        if (/inter[eÃ©]s de mora/i.test(String(ln.description || ''))) {
           conceptCode = 'MORA';
         } else {
           const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
@@ -2810,7 +2818,7 @@ const API = {
 
       let incomeAccountId = incomeDefaultAccount.id;
       if (ln.account_code) {
-        // Override directo en la línea (conceptos individuales manuales)
+        // Override directo en la lÃ­nea (conceptos individuales manuales)
         const overrideAcc = await findAccByCode(ln.account_code);
         incomeAccountId = overrideAcc.id;
       } else if (concept?.account_id) {
@@ -2829,12 +2837,12 @@ const API = {
       }));
     }
 
-    // Línea de débito a CxC (una línea por cada concepto para permitir trazabilidad en recaudo)
+    // LÃ­nea de dÃ©bito a CxC (una lÃ­nea por cada concepto para permitir trazabilidad en recaudo)
     for (const ln of lines) {
       const concept = ln.expand?.concept_id;
       let conceptCode = concept?.code || 'GEN';
       if (!concept) {
-        if (/inter[eé]s de mora/i.test(String(ln.description || ''))) {
+        if (/inter[eÃ©]s de mora/i.test(String(ln.description || ''))) {
           conceptCode = 'MORA';
         } else {
           const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
@@ -2855,13 +2863,13 @@ const API = {
     // Reordenar
     txLines.forEach((l, i) => { l.line_order = i + 1; });
 
-    // Crear transacción contable
+    // Crear transacciÃ³n contable
     const userId = pb.currentUser?.id || '';
     const tx = await pb.create('transactions', {
       tx_type_id: txType.id,
       number: 'AUTO',
       date: inv.date,
-      description: `Factura PH ${inv.number} — ${property?.name || inv.property_id} — ${inv.period}`,
+      description: `Factura PH ${inv.number} â€” ${property?.name || inv.property_id} â€” ${inv.period}`,
       third_party_id: ownerId || null,
       cross_enabled: txLines.some(l => !!l.cross_doc_ref),
       status: 'active',
@@ -2873,19 +2881,19 @@ const API = {
 
     // Actualizar factura
     await pb.update('ph_invoices', invoiceId, { status: 'posted', tx_id: tx.id });
-    await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} → TX ${tx.number}`);
+    await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${tx.number}`);
     return pb.get('ph_invoices', invoiceId, { expand: 'property_id' });
   },
 
   /** Anula una factura PH: revierte el asiento si existe */
   async voidPhInvoice(invoiceId, reason = '') {
     const safeReason = String(reason || '').trim();
-    if (!safeReason) throw new Error('Debes indicar el motivo de anulación.');
+    if (!safeReason) throw new Error('Debes indicar el motivo de anulaciÃ³n.');
     const inv = await pb.get('ph_invoices', invoiceId);
-    if (inv.status === 'voided') throw new Error('La factura ya está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura ya estÃ¡ anulada.');
 
     if (inv.status === 'posted' && inv.tx_id) {
-      // Anular la transacción contable
+      // Anular la transacciÃ³n contable
       await pb.update('transactions', inv.tx_id, { status: 'voided' });
     }
     await pb.update('ph_invoices', invoiceId, { status: 'voided', tx_id: null });
@@ -2911,7 +2919,7 @@ const API = {
     return res.json();
   },
 
-  /** Envia correos masivos de facturación PH para un período */
+  /** Envia correos masivos de facturaciÃ³n PH para un perÃ­odo */
   async sendPhBulkEmails(period, type = 'invoice', subject = '', message = '') {
     const res = await fetch(`${PB_URL}/api/ph/send-bulk-emails`, {
       method: 'POST',
@@ -2951,7 +2959,7 @@ const API = {
     }
   },
 
-  /** Genera número de PQR con prefijo PQR-YYYYMMDD-NNNN */
+  /** Genera nÃºmero de PQR con prefijo PQR-YYYYMMDD-NNNN */
   async nextPhPqrNumber() {
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const res = await pb.list('ph_pqrs', { perPage: 1 });
@@ -2961,7 +2969,7 @@ const API = {
 
   /** Cobros individuales paginados */
   /**
-   * Añade líneas de conceptos individuales a una factura en borrador.
+   * AÃ±ade lÃ­neas de conceptos individuales a una factura en borrador.
    * lines: [{ description, amount, account_code }]
    * Recalcula el total de la factura.
    */
@@ -2988,12 +2996,12 @@ const API = {
   },
 
   /**
-   * Edita una línea manual de factura PH en borrador y recalcula total.
+   * Edita una lÃ­nea manual de factura PH en borrador y recalcula total.
    */
   async updatePhDraftInvoiceLine(lineId, { description = '', amount = 0, account_code = '' } = {}) {
     const line = await pb.get('ph_invoice_lines', lineId);
     const inv = await pb.get('ph_invoices', line.invoice_id);
-    if (inv.status !== 'draft') throw new Error('Solo se pueden editar líneas de facturas en borrador.');
+    if (inv.status !== 'draft') throw new Error('Solo se pueden editar lÃ­neas de facturas en borrador.');
     await pb.update('ph_invoice_lines', lineId, {
       description: String(description || '').trim(),
       amount: Math.round(Number(amount || 0)),
@@ -3006,12 +3014,12 @@ const API = {
   },
 
   /**
-   * Elimina una línea manual de factura PH en borrador y recalcula total.
+   * Elimina una lÃ­nea manual de factura PH en borrador y recalcula total.
    */
   async deletePhDraftInvoiceLine(lineId) {
     const line = await pb.get('ph_invoice_lines', lineId);
     const inv = await pb.get('ph_invoices', line.invoice_id);
-    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar líneas de facturas en borrador.');
+    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar lÃ­neas de facturas en borrador.');
     await pb.delete('ph_invoice_lines', lineId);
     const allLines = await this.getPhInvoiceLines(inv.id);
     const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
@@ -3030,7 +3038,7 @@ const API = {
         return await pb.list('ph_individual_charges', { page, perPage, filter });
       } catch (_2) {
         try {
-          // Fallback para esquemas legacy donde el filtro/campo aún no existe.
+          // Fallback para esquemas legacy donde el filtro/campo aÃºn no existe.
           return await pb.list('ph_individual_charges', { page, perPage });
         } catch (_3) {
           return { items: [], totalItems: 0, page, perPage };
@@ -3065,8 +3073,8 @@ const API = {
     if (!txt) return 'Concepto';
 
     // Unifica variantes de interes de mora con fecha de corte incrustada.
-    const moraDatePattern = /^inter[eé]s\s+de\s+mora\s+a\s+\d{4}-\d{2}-\d{2}$/i;
-    if (moraDatePattern.test(txt)) return 'Interés de mora';
+    const moraDatePattern = /^inter[eÃ©]s\s+de\s+mora\s+a\s+\d{4}-\d{2}-\d{2}$/i;
+    if (moraDatePattern.test(txt)) return 'InterÃ©s de mora';
 
     return txt;
   },
@@ -3079,7 +3087,7 @@ const API = {
     // Filtro base: facturas no anuladas
     let filter = `status!="voided"`;
     if (propertyId) filter += ` && property_id="${safePropertyId}"`;
-    // El período es una cadena YYYY-MM, sirve para filtrar lotes de facturación
+    // El perÃ­odo es una cadena YYYY-MM, sirve para filtrar lotes de facturaciÃ³n
     if (fromPeriod) filter += ` && period>="${safeFrom}"`;
     if (toPeriod) filter += ` && period<="${safeTo}"`;
 
@@ -3092,7 +3100,7 @@ const API = {
       invoices = Array.from(uniqueMap.values());
     } catch (_) { invoices = []; }
 
-    // Determinar fecha de corte real (cutoffDate) para cálculos de mora y saldos
+    // Determinar fecha de corte real (cutoffDate) para cÃ¡lculos de mora y saldos
     let cutoffDate = null;
     if (toPeriod) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(toPeriod)) {
@@ -3105,7 +3113,7 @@ const API = {
     }
     const refDate = cutoffDate || new Date().toISOString().slice(0, 10);
 
-    // Filtrar facturas que fueron emitidas después de la fecha de corte si se especificó
+    // Filtrar facturas que fueron emitidas despuÃ©s de la fecha de corte si se especificÃ³
     if (cutoffDate) {
       invoices = invoices.filter(inv => {
         const invDate = (inv.date || inv.created || '').slice(0, 10);
@@ -3114,7 +3122,7 @@ const API = {
     }
 
     if (invoices.length === 0) return { invoices: [], rows: [] };
-    // 1. Obtener todas las líneas de las facturas
+    // 1. Obtener todas las lÃ­neas de las facturas
     const allInvLines = [];
     for (const inv of invoices) {
       try {
@@ -3123,16 +3131,16 @@ const API = {
       } catch (_) { }
     }
 
-    // 2. Obtener ABONOS de Tesorería (tx_lines que cruzan estas facturas)
-    // Buscamos líneas contables de tipo Recibo de Caja o ajustes que afecten el saldo
-    // CUADRE CRÍTICO: Buscamos tx_lines donde cross_doc_ref coincida con el número de factura
-    // o empiece por el número de factura (para casos de desglose por concepto CF-001-ADMIN)
+    // 2. Obtener ABONOS de TesorerÃ­a (tx_lines que cruzan estas facturas)
+    // Buscamos lÃ­neas contables de tipo Recibo de Caja o ajustes que afecten el saldo
+    // CUADRE CRÃTICO: Buscamos tx_lines donde cross_doc_ref coincida con el nÃºmero de factura
+    // o empiece por el nÃºmero de factura (para casos de desglose por concepto CF-001-ADMIN)
     const invNumbers = invoices.map(i => String(i.number || '').toUpperCase()).filter(Boolean);
     const causalityTxIds = new Set(invoices.map(i => i.tx_id).filter(Boolean));
     const abonosMap = new Map(); // key: cross_doc_ref, value: total_abono
 
     if (invNumbers.length > 0) {
-      // Optimizamos: traemos líneas contables que tengan un cross_doc_ref en el set de facturas
+      // Optimizamos: traemos lÃ­neas contables que tengan un cross_doc_ref en el set de facturas
       // y cuya fecha sea <= fecha de corte
       const txLines = await pb.listAll('tx_lines', {
         filter: `cross_doc_ref!="" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
@@ -3140,7 +3148,7 @@ const API = {
       });
 
       for (const tl of txLines) {
-        // IGNORAR la causación original de la factura
+        // IGNORAR la causaciÃ³n original de la factura
         if (causalityTxIds.has(tl.tx_id)) continue;
 
         const ref = String(tl.cross_doc_ref || '').trim().toUpperCase();
@@ -3169,18 +3177,18 @@ const API = {
       const venc = String(inv.due_date || '').slice(0, 10);
       const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
 
-      // Control de abono general para distribuir entre líneas
+      // Control de abono general para distribuir entre lÃ­neas
       let generalAbono = abonosMap.get(invNumber) || 0;
 
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
 
-        // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
-        const conceptCode = (line.expand?.concept_id?.code || (/inter[eé]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
+        // 1. Intentar abono especÃ­fico por concepto (ej: CF-001-ADMIN)
+        const conceptCode = (line.expand?.concept_id?.code || (/inter[eÃ©]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
         const specificRef = `${invNumber}-${conceptCode}`;
         let abonoAplicado = abonosMap.get(specificRef) || 0;
 
-        // 2. Si hay abono general remanente, aplicarlo a esta línea
+        // 2. Si hay abono general remanente, aplicarlo a esta lÃ­nea
         if (generalAbono > 0) {
           const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
           abonoAplicado += porAplicar;
@@ -3320,7 +3328,7 @@ const API = {
       if (r.estado === 'cancelado') totals.totalCancelado += Number(r.abono || 0);
       else totals.totalPendiente += Number(r.amount || 0);
     }
-    // La integridad se chequea contra el valor ORIGINAL de las líneas
+    // La integridad se chequea contra el valor ORIGINAL de las lÃ­neas
     totals.diferenciaGlobal = Math.round((totals.totalFacturas - totals.totalOriginalLines) * 100) / 100;
 
     const byInvoice = {};
@@ -3546,7 +3554,7 @@ const API = {
     return { budgetLines, txLines };
   },
 
-  // -- Información Exógena (DIAN) ----------------------------
+  // -- InformaciÃ³n ExÃ³gena (DIAN) ----------------------------
   async getExogenaConcepts(format = '1001') {
     return pb.listAll('exogena_concepts', { filter: `format_type="${format}"`, sort: 'code' });
   },
@@ -3607,7 +3615,7 @@ const API = {
     return Object.values(results);
   },
 
-  // ── Pedidos y Cotizaciones ──────────────────────────────────
+  // â”€â”€ Pedidos y Cotizaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de pedidos de venta */
   async getSalesOrders(opts = {}) {
@@ -3618,7 +3626,7 @@ const API = {
     });
   },
 
-  /** Líneas de un pedido de venta con expand de producto y cuenta */
+  /** LÃ­neas de un pedido de venta con expand de producto y cuenta */
   async getSalesOrderLines(orderId) {
     const safe = pb.escapeFilterValue(orderId);
     return pb.listAll('sales_order_lines', {
@@ -3628,7 +3636,7 @@ const API = {
     });
   },
 
-  /** Crea cabecera + líneas de pedido de venta en estado pendiente */
+  /** Crea cabecera + lÃ­neas de pedido de venta en estado pendiente */
   async createSalesOrder(header, lines) {
     let subtotal = 0, ivaTot = 0;
     for (const l of lines) {
@@ -3665,7 +3673,7 @@ const API = {
     return order;
   },
 
-  /** Actualiza cabecera + líneas de un pedido de venta pendiente */
+  /** Actualiza cabecera + lÃ­neas de un pedido de venta pendiente */
   async updateSalesOrder(orderId, header, lines) {
     let subtotal = 0, ivaTot = 0;
     for (const l of lines) {
@@ -3682,13 +3690,13 @@ const API = {
       total,
     });
 
-    // Eliminar líneas viejas
+    // Eliminar lÃ­neas viejas
     const oldLines = await pb.listAll('sales_order_lines', { filter: `sales_order_id="${pb.escapeFilterValue(orderId)}"` });
     for (const l of oldLines) {
       await pb.delete('sales_order_lines', l.id);
     }
 
-    // Crear líneas nuevas
+    // Crear lÃ­neas nuevas
     for (let i = 0; i < lines.length; i++) {
       await pb.create('sales_order_lines', {
         sales_order_id: orderId,
@@ -3745,9 +3753,9 @@ const API = {
         status: 'pending',
         invoice_id: null
       });
-      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por eliminación de borrador de factura`);
+      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por eliminaciÃ³n de borrador de factura`);
     }
-    // Eliminar líneas de factura
+    // Eliminar lÃ­neas de factura
     const lines = await this.getInvoiceLines(invoiceId);
     for (const l of lines) {
       await pb.delete('invoice_lines', l.id);
@@ -3757,7 +3765,7 @@ const API = {
     await this.logAudit('DELETE', 'Invoice', invoiceId, `Eliminado borrador de factura ${inv.number}`);
   },
 
-  // ── Importaciones ──────────────────────────────────────────
+  // â”€â”€ Importaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de importaciones */
   async getImports(opts: any = {}) {
@@ -3768,7 +3776,7 @@ const API = {
     });
   },
 
-  /** Líneas de una importación */
+  /** LÃ­neas de una importaciÃ³n */
   async getImportLines(importId: string) {
     const safe = pb.escapeFilterValue(importId);
     return pb.listAll('import_lines', {
@@ -3778,13 +3786,15 @@ const API = {
     });
   },
 
-  /** Crea una importación con FormData para soporte de archivos */
+  /** Crea una importaciÃ³n con FormData para soporte de archivos */
   async createImport(header: any, lines: any[], files: any = {}) {
     const formData = new FormData();
+    // Incluir header; filtrar null, undefined y NaN para evitar valores invalidos en PocketBase
     for (const key of Object.keys(header)) {
-      if (header[key] !== undefined && header[key] !== null) {
-        formData.append(key, String(header[key]));
-      }
+      const val = header[key];
+      if (val === undefined || val === null) continue;
+      if (typeof val === 'number' && isNaN(val)) continue;
+      formData.append(key, String(val));
     }
     if (files.bl_document) {
       formData.append('bl_document', files.bl_document);
@@ -3792,12 +3802,7 @@ const API = {
     const tStr = typeof (window as any).todayStr === 'function' ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
     formData.append('date_created', tStr);
     formData.append('user_id', pb.currentUser?.id || '');
-
-    let fobTotal = 0;
-    for (const l of lines) {
-      fobTotal += (l.qty || 0) * (l.fob_price || 0);
-    }
-    formData.append('fob_total', String(fobTotal));
+    // fob_total ya viene en el header; no se re-appende para evitar duplicados en FormData
 
     const record = await pb.create('imports', formData);
 
@@ -3852,11 +3857,11 @@ const API = {
       await pb.create('import_lines', lineData);
     }
 
-    await this.logAudit('CREATE', 'Import', record.id, `Importación creada ${record.number}`);
+    await this.logAudit('CREATE', 'Import', record.id, `ImportaciÃ³n creada ${record.number}`);
     return record;
   },
 
-  /** Actualiza cabecera, líneas e incorpora nuevos adjuntos subidos */
+  /** Actualiza cabecera, lÃ­neas e incorpora nuevos adjuntos subidos */
   async updateImport(importId: string, header: any, lines: any[], files: any = {}) {
     const formData = new FormData();
     for (const key of Object.keys(header)) {
@@ -3925,18 +3930,18 @@ const API = {
       }
     }
 
-    await this.logAudit('UPDATE', 'Import', importId, `Importación actualizada ${record.number}`);
+    await this.logAudit('UPDATE', 'Import', importId, `ImportaciÃ³n actualizada ${record.number}`);
     return pb.get('imports', importId);
   },
 
-  /** Anula una importación en estado borrador/transito */
+  /** Anula una importaciÃ³n en estado borrador/transito */
   async cancelImport(importId: string, reason: string = '') {
     const imp = await pb.get('imports', importId);
     if (imp.status === 'recibido') {
-      throw new Error('No se puede anular una importación ya finalizada.');
+      throw new Error('No se puede anular una importaciÃ³n ya finalizada.');
     }
     await pb.update('imports', importId, { status: 'anulado' });
-    await this.logAudit('VOID', 'Import', importId, `Importación anulada ${imp.number} | Motivo: ${reason}`);
+    await this.logAudit('VOID', 'Import', importId, `ImportaciÃ³n anulada ${imp.number} | Motivo: ${reason}`);
     return pb.get('imports', importId);
   },
 
@@ -3973,7 +3978,7 @@ const API = {
     });
   },
 
-  /** Obtener la configuración del módulo de importaciones */
+  /** Obtener la configuraciÃ³n del mÃ³dulo de importaciones */
   async getImportConfig() {
     const defaultCfg = {
       accounting: {
@@ -4018,14 +4023,14 @@ const API = {
     }
   },
 
-  /** Guardar la configuración del módulo de importaciones */
+  /** Guardar la configuraciÃ³n del mÃ³dulo de importaciones */
   async saveImportConfig(cfg) {
     await this.setSetting('import_config_v1', JSON.stringify(cfg));
-    await this.logAudit('CONFIG', 'ImportConfig', null, 'Configuración de importaciones actualizada');
+    await this.logAudit('CONFIG', 'ImportConfig', null, 'ConfiguraciÃ³n de importaciones actualizada');
     return cfg;
   },
 
-  /** Obtiene todos los datos para armar el reporte de trazabilidad de una importación */
+  /** Obtiene todos los datos para armar el reporte de trazabilidad de una importaciÃ³n */
   async getImportTraceabilityData(importId: string) {
     const [imp, lines] = await Promise.all([
       pb.get('imports', importId, { expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id' }),
@@ -4106,18 +4111,18 @@ const API = {
     };
   },
 
-  /** Causa contabilidad individual de una etapa de importación */
+  /** Causa contabilidad individual de una etapa de importaciÃ³n */
   async postImportStage(importId: string, stageName: string, supplierId: string, invoiceNum: string, amount: number) {
-    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!importId) throw new Error('Se requiere el ID de la importaciÃ³n.');
     if (!stageName) throw new Error('Se requiere el nombre de la etapa.');
     if (!supplierId) throw new Error('Se requiere el ID del proveedor.');
-    if (!invoiceNum) throw new Error('Se requiere el número de factura/soporte.');
+    if (!invoiceNum) throw new Error('Se requiere el nÃºmero de factura/soporte.');
     if (amount <= 0) throw new Error('El monto a causar debe ser mayor a cero.');
 
     const imp = await pb.get('imports', importId);
     
     const mappings: Record<string, { txField: string; supplierField: string; invoiceField: string; label: string }> = {
-      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB Mercancía' },
+      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB MercancÃ­a' },
       freight: { txField: 'tx_freight_id', supplierField: 'freight_supplier_id', invoiceField: 'freight_invoice_num', label: 'Flete Internacional' },
       insurance: { txField: 'tx_insurance_id', supplierField: 'insurance_supplier_id', invoiceField: 'insurance_invoice_num', label: 'Seguro Internacional' },
       customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
@@ -4126,10 +4131,10 @@ const API = {
     };
 
     const map = mappings[stageName];
-    if (!map) throw new Error(`Etapa '${stageName}' no es válida.`);
+    if (!map) throw new Error(`Etapa '${stageName}' no es vÃ¡lida.`);
 
     if (imp[map.txField]) {
-      throw new Error(`La etapa ${map.label} ya tiene una causación contable registrada.`);
+      throw new Error(`La etapa ${map.label} ya tiene una causaciÃ³n contable registrada.`);
     }
 
     const cfg = await this.getImportConfig();
@@ -4153,7 +4158,7 @@ const API = {
     });
 
     const txTypes = await pb.listAll('transaction_types', { filter: 'code="FC"', perPage: 1 });
-    if (!txTypes.length) throw new Error('Tipo de transacción FC (Factura de Compra) no encontrado en el sistema.');
+    if (!txTypes.length) throw new Error('Tipo de transacciÃ³n FC (Factura de Compra) no encontrado en el sistema.');
     const txTypeId = txTypes[0].id;
 
     let lines: any[] = [];
@@ -4172,7 +4177,7 @@ const API = {
             third_party_id: supplierId,
             debit: amount,
             credit: 0,
-            description: `Causación Aduana/DIAN - Importación ${imp.number}`,
+            description: `CausaciÃ³n Aduana/DIAN - ImportaciÃ³n ${imp.number}`,
             line_order: 1
           },
           {
@@ -4180,7 +4185,7 @@ const API = {
             third_party_id: supplierId,
             debit: 0,
             credit: customsAmt,
-            description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}`,
+            description: `Gastos Nac. - ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}`,
             line_order: 2,
             cross_doc_ref: invoiceNum
           },
@@ -4189,7 +4194,7 @@ const API = {
             third_party_id: supplierId,
             debit: 0,
             credit: arancelAmt,
-            description: `Aranceles DIAN - Importación ${imp.number}`,
+            description: `Aranceles DIAN - ImportaciÃ³n ${imp.number}`,
             line_order: 3,
             cross_doc_ref: invoiceNum
           }
@@ -4204,7 +4209,7 @@ const API = {
           third_party_id: supplierId,
           debit: amount,
           credit: 0,
-          description: `Causación ${map.label} - Importación ${imp.number}`,
+          description: `CausaciÃ³n ${map.label} - ImportaciÃ³n ${imp.number}`,
           line_order: 1
         },
         {
@@ -4212,7 +4217,7 @@ const API = {
           third_party_id: supplierId,
           debit: 0,
           credit: amount,
-          description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}`,
+          description: `CausaciÃ³n ${map.label} - ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}`,
           line_order: 2,
           cross_doc_ref: invoiceNum
         }
@@ -4223,7 +4228,7 @@ const API = {
       tx_type_id: txTypeId,
       number: 'AUTO',
       date: new Date().toISOString().slice(0, 10),
-      description: `Causación ${map.label} Importación ${imp.number}`,
+      description: `CausaciÃ³n ${map.label} ImportaciÃ³n ${imp.number}`,
       third_party_id: supplierId,
       status: 'active'
     };
@@ -4236,21 +4241,21 @@ const API = {
     updateData[map.invoiceField] = invoiceNum;
 
     await pb.update('imports', importId, updateData);
-    await this.logAudit('POST_STAGE', 'imports', importId, `Causación contable etapa ${map.label} realizada. Transacción: ${tx.number}`);
+    await this.logAudit('POST_STAGE', 'imports', importId, `CausaciÃ³n contable etapa ${map.label} realizada. TransacciÃ³n: ${tx.number}`);
 
     return tx;
   },
 
   /** Registra nota de ajuste contable por diferencia en costo */
   async postImportAdjustment(importId: string, stageName: string, deltaAmount: number, invoiceNum: string, reason: string = '') {
-    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!importId) throw new Error('Se requiere el ID de la importaciÃ³n.');
     if (!stageName) throw new Error('Se requiere el nombre de la etapa.');
     if (deltaAmount === 0) throw new Error('El monto de ajuste no puede ser cero.');
 
     const imp = await pb.get('imports', importId);
 
     const mappings: Record<string, { txField: string; supplierField: string; invoiceField: string; label: string }> = {
-      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB Mercancía' },
+      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB MercancÃ­a' },
       freight: { txField: 'tx_freight_id', supplierField: 'freight_supplier_id', invoiceField: 'freight_invoice_num', label: 'Flete Internacional' },
       insurance: { txField: 'tx_insurance_id', supplierField: 'insurance_supplier_id', invoiceField: 'insurance_invoice_num', label: 'Seguro Internacional' },
       customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
@@ -4259,14 +4264,14 @@ const API = {
     };
 
     const map = mappings[stageName];
-    if (!map) throw new Error(`Etapa '${stageName}' no es válida.`);
+    if (!map) throw new Error(`Etapa '${stageName}' no es vÃ¡lida.`);
 
     if (!imp[map.txField]) {
-      throw new Error(`No se puede realizar un ajuste en ${map.label} porque aún no ha sido causada.`);
+      throw new Error(`No se puede realizar un ajuste en ${map.label} porque aÃºn no ha sido causada.`);
     }
 
     const supplierId = imp[map.supplierField];
-    if (!supplierId) throw new Error(`No se encontró un proveedor asociado a la etapa ${map.label}.`);
+    if (!supplierId) throw new Error(`No se encontrÃ³ un proveedor asociado a la etapa ${map.label}.`);
 
     const cfg = await this.getImportConfig();
     const transitoCode = cfg.accounting?.accounts?.transito_account_code || '143505';
@@ -4297,7 +4302,7 @@ const API = {
       if (txTypesFC.length) txTypeId = txTypesFC[0].id;
     }
 
-    if (!txTypeId) throw new Error('No se encontró ningún tipo de transacción contable válido para el ajuste (NC o FC).');
+    if (!txTypeId) throw new Error('No se encontrÃ³ ningÃºn tipo de transacciÃ³n contable vÃ¡lido para el ajuste (NC o FC).');
 
     const absDelta = Math.abs(deltaAmount);
     const isIncrease = deltaAmount > 0;
@@ -4308,7 +4313,7 @@ const API = {
         third_party_id: supplierId,
         debit: isIncrease ? absDelta : 0,
         credit: isIncrease ? 0 : absDelta,
-        description: `Nota de Ajuste ${map.label} - Importación ${imp.number}. Motivo: ${reason}`,
+        description: `Nota de Ajuste ${map.label} - ImportaciÃ³n ${imp.number}. Motivo: ${reason}`,
         line_order: 1
       },
       {
@@ -4316,7 +4321,7 @@ const API = {
         third_party_id: supplierId,
         debit: isIncrease ? 0 : absDelta,
         credit: isIncrease ? absDelta : 0,
-        description: `Nota de Ajuste ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}. Motivo: ${reason}`,
+        description: `Nota de Ajuste ${map.label} - ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}. Motivo: ${reason}`,
         line_order: 2,
         cross_doc_ref: invoiceNum
       }
@@ -4326,31 +4331,31 @@ const API = {
       tx_type_id: txTypeId,
       number: 'AUTO',
       date: new Date().toISOString().slice(0, 10),
-      description: `Ajuste Contable ${map.label} Importación ${imp.number} | Factura ${invoiceNum}`,
+      description: `Ajuste Contable ${map.label} ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}`,
       third_party_id: supplierId,
       status: 'active'
     };
 
     const tx = await this.createTransaction(txData, lines);
-    await this.logAudit('POST_ADJUSTMENT', 'imports', importId, `Ajuste contable realizado en etapa ${map.label}. Diferencia: ${deltaAmount}. Transacción: ${tx.number}`);
+    await this.logAudit('POST_ADJUSTMENT', 'imports', importId, `Ajuste contable realizado en etapa ${map.label}. Diferencia: ${deltaAmount}. TransacciÃ³n: ${tx.number}`);
 
     return tx;
   },
 
-  /** Finaliza la importación, traslada costo de Tránsito a Inventario y registra stock */
+  /** Finaliza la importaciÃ³n, traslada costo de TrÃ¡nsito a Inventario y registra stock */
   async capitalizeImport(importId: string, warehouseId: string, txTypeId: string, txNumber: string) {
-    if (!importId) throw new Error('Se requiere el ID de la importación.');
+    if (!importId) throw new Error('Se requiere el ID de la importaciÃ³n.');
     if (!warehouseId) throw new Error('Se requiere la bodega de destino.');
-    if (!txTypeId) throw new Error('Se requiere el tipo de transacción contable.');
-    if (!txNumber) throw new Error('Se requiere el número del comprobante contable.');
+    if (!txTypeId) throw new Error('Se requiere el tipo de transacciÃ³n contable.');
+    if (!txNumber) throw new Error('Se requiere el nÃºmero del comprobante contable.');
 
     const imp = await pb.get('imports', importId);
     if (imp.status === 'recibido') {
-      throw new Error('Esta importación ya ha sido finalizada y capitalizada.');
+      throw new Error('Esta importaciÃ³n ya ha sido finalizada y capitalizada.');
     }
     const lines = await this.getImportLines(importId);
     if (!lines.length) {
-      throw new Error('La importación no contiene productos para capitalizar.');
+      throw new Error('La importaciÃ³n no contiene productos para capitalizar.');
     }
 
     const cfg = await this.getImportConfig();
@@ -4362,7 +4367,7 @@ const API = {
 
     const totalAmount = imp.total || 0;
     if (totalAmount <= 0) {
-      throw new Error('El valor total acumulado de la importación debe ser mayor a cero para capitalizar.');
+      throw new Error('El valor total acumulado de la importaciÃ³n debe ser mayor a cero para capitalizar.');
     }
 
     const txLines = [
@@ -4371,7 +4376,7 @@ const API = {
         third_party_id: imp.supplier_id,
         debit: totalAmount,
         credit: 0,
-        description: `Capitalización Importación ${imp.number} - Ingreso a Bodega`,
+        description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number} - Ingreso a Bodega`,
         line_order: 1
       },
       {
@@ -4379,7 +4384,7 @@ const API = {
         third_party_id: imp.supplier_id,
         debit: 0,
         credit: totalAmount,
-        description: `Capitalización Importación ${imp.number} - Cierre Cuenta Tránsito`,
+        description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number} - Cierre Cuenta TrÃ¡nsito`,
         line_order: 2
       }
     ];
@@ -4388,7 +4393,7 @@ const API = {
       tx_type_id: txTypeId,
       number: txNumber,
       date: new Date().toISOString().slice(0, 10),
-      description: `Capitalización Importación ${imp.number}`,
+      description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number}`,
       third_party_id: imp.supplier_id,
       status: 'active'
     };
@@ -4402,7 +4407,7 @@ const API = {
       date: new Date().toISOString().slice(0, 10),
       warehouse_id: warehouseId,
       third_party_id: imp.supplier_id,
-      notes: `Ingreso físico por capitalización de Importación ${imp.number}. Transacción contable: ${tx.number}`,
+      notes: `Ingreso fÃ­sico por capitalizaciÃ³n de ImportaciÃ³n ${imp.number}. TransacciÃ³n contable: ${tx.number}`,
       status: 'draft',
       tx_id: tx.id
     };
@@ -4416,7 +4421,7 @@ const API = {
         product_id: l.product_id,
         qty: l.qty,
         unit_cost: l.unit_cost_cop || 0,
-        notes: `Importación ${imp.number} - Línea ${i + 1}`,
+        notes: `ImportaciÃ³n ${imp.number} - LÃ­nea ${i + 1}`,
         line_order: i + 1
       });
     }
@@ -4427,12 +4432,12 @@ const API = {
       status: 'recibido'
     });
 
-    await this.logAudit('CAPITALIZE', 'imports', importId, `Importación capitalizada y trasladada a bodega. Transacción: ${tx.number}. Movimiento: ${mov.number}`);
+    await this.logAudit('CAPITALIZE', 'imports', importId, `ImportaciÃ³n capitalizada y trasladada a bodega. TransacciÃ³n: ${tx.number}. Movimiento: ${mov.number}`);
 
     return { tx, mov };
   },
 
-  // ── Inmobiliarias (F9) ────────────────────────────────────
+  // â”€â”€ Inmobiliarias (F9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async getInmoProperties(activeOnly = true) {
     const filter = activeOnly ? 'active=true' : '';
@@ -4473,7 +4478,7 @@ const API = {
     const contracts = await this.getInmoContracts(true);
     if (!contracts.length) throw new Error('No hay contratos activos registrados.');
 
-    // Validar facturas ya existentes para este período
+    // Validar facturas ya existentes para este perÃ­odo
     const existing = await pb.listAll('inmo_invoices', {
       filter: `period="${safePeriod}"`,
       perPage: 200,
@@ -4481,7 +4486,7 @@ const API = {
     const existingContractIds = new Set(existing.map(i => i.contract_id));
 
     const toCreate = contracts.filter(c => c.status === 'VIGENTE' && !existingContractIds.has(c.id));
-    if (!toCreate.length) throw new Error(`Todos los contratos vigentes ya tienen factura para el período ${period}.`);
+    if (!toCreate.length) throw new Error(`Todos los contratos vigentes ya tienen factura para el perÃ­odo ${period}.`);
 
     const dateStr = period + '-01';
     const dueDateStr = dueDate || (period + '-10');
@@ -4510,10 +4515,10 @@ const API = {
         net_to_owner: netToOwner,
         total: rentAmount,
         status: 'draft',
-        notes: `Facturación canon de arrendamiento período ${period}. Inmueble: ${prop?.title || ''}.`,
+        notes: `FacturaciÃ³n canon de arrendamiento perÃ­odo ${period}. Inmueble: ${prop?.title || ''}.`,
       });
 
-      // Crear línea de factura
+      // Crear lÃ­nea de factura
       await pb.create('inmo_invoice_lines', {
         invoice_id: inv.id,
         description: 'Canon de arrendamiento',
@@ -4530,7 +4535,7 @@ const API = {
   async postInmoInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let posted = 0;
     let skipped = 0;
@@ -4555,7 +4560,7 @@ const API = {
       'POST_PERIOD',
       'InmoInvoices',
       period,
-      `Período ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
+      `PerÃ­odo ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
     );
 
     return { period, total: invoices.length, posted, skipped, failed, failures };
@@ -4563,8 +4568,8 @@ const API = {
 
   async unpostInmoInvoice(invoiceId) {
     const inv = await pb.get('inmo_invoices', invoiceId);
-    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+    if (inv.status === 'draft') throw new Error('La factura ya estÃ¡ en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
 
     let txAction = 'none';
     if (inv.tx_id) {
@@ -4585,7 +4590,7 @@ const API = {
   async unpostInmoInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let reverted = 0;
     let skipped = 0;
@@ -4616,7 +4621,7 @@ const API = {
       'UNPOST_PERIOD',
       'InmoInvoices',
       period,
-      `Período ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
+      `PerÃ­odo ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
     );
 
     return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
@@ -4625,7 +4630,7 @@ const API = {
   async deleteInmoInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('inmo_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
 
     let deleted = 0;
     let txDeleted = 0;
@@ -4650,7 +4655,7 @@ const API = {
       'DELETE_PERIOD',
       'InmoInvoices',
       period,
-      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+      `PerÃ­odo ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
     );
 
     return { period, total: invoices.length, deleted, txDeleted, txVoided };
@@ -4661,12 +4666,12 @@ const API = {
       expand: 'contract_id,contract_id.property_id,contract_id.property_id.owner_id,contract_id.tenant_id',
     });
     if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided') throw new Error('La factura está anulada.');
+    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
 
     const lines = await this.getInmoInvoiceLines(invoiceId);
-    if (!lines.length) throw new Error('La factura no tiene líneas.');
+    if (!lines.length) throw new Error('La factura no tiene lÃ­neas.');
 
-    // Leer configuración contable Inmobiliarias
+    // Leer configuraciÃ³n contable Inmobiliarias
     let inmoCfg = {};
     try {
       const raw = await this.getSetting('inmo_config_v1');
@@ -4677,12 +4682,12 @@ const API = {
     const commissionIncomeCode = String(inmoCfg.commission_income_code || '413505').trim();
     const cxpOwnerCode = String(inmoCfg.cxp_owner_code || '220505').trim();
 
-    // Buscar tipo de transacción IA
+    // Buscar tipo de transacciÃ³n IA
     const iaTypes = await pb.list('transaction_types', {
       filter: 'code="IA" && active=true',
       perPage: 1,
     });
-    if (!iaTypes.items.length) throw new Error('Tipo de transacción IA no encontrado. Reinicia PocketBase para aplicar la migración.');
+    if (!iaTypes.items.length) throw new Error('Tipo de transacciÃ³n IA no encontrado. Reinicia PocketBase para aplicar la migraciÃ³n.');
     const txType = iaTypes.items[0];
 
     // Terceros involucrados
@@ -4693,13 +4698,13 @@ const API = {
     const accountByCodeCache = {};
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable inválida.');
+      if (!key) throw new Error('Cuenta contable invÃ¡lida.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('Código de cuenta inválido.');
+      if (!key) throw new Error('CÃ³digo de cuenta invÃ¡lido.');
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
@@ -4716,27 +4721,27 @@ const API = {
 
     const txLines = [];
     
-    // 1. Débito a Cuentas por cobrar inquilino (por el total)
+    // 1. DÃ©bito a Cuentas por cobrar inquilino (por el total)
     txLines.push({
       account_id: cxcTenantAcc.id,
       third_party_id: tenantId,
       debit: inv.total || 0,
       credit: 0,
-      description: `Canon Inmueble ${inv.expand?.contract_id?.expand?.property_id?.title || ''} período ${inv.period}`,
+      description: `Canon Inmueble ${inv.expand?.contract_id?.expand?.property_id?.title || ''} perÃ­odo ${inv.period}`,
       line_order: 1,
     });
 
-    // 2. Crédito a Ingresos por comisión (por el commission_amount)
+    // 2. CrÃ©dito a Ingresos por comisiÃ³n (por el commission_amount)
     txLines.push({
       account_id: commissionIncomeAcc.id,
-      third_party_id: ownerId, // La comisión se le cobra al propietario
+      third_party_id: ownerId, // La comisiÃ³n se le cobra al propietario
       debit: 0,
       credit: inv.commission_amount || 0,
-      description: `Comisión Administración Inmobiliaria - Factura ${inv.number}`,
+      description: `ComisiÃ³n AdministraciÃ³n Inmobiliaria - Factura ${inv.number}`,
       line_order: 2,
     });
 
-    // 3. Crédito a Cuentas por pagar propietario (por el net_to_owner)
+    // 3. CrÃ©dito a Cuentas por pagar propietario (por el net_to_owner)
     txLines.push({
       account_id: cxpOwnerAcc.id,
       third_party_id: ownerId,
@@ -4750,14 +4755,14 @@ const API = {
     const totalDebit = txLines.reduce((sum, l) => sum + (l.debit || 0), 0);
     const totalCredit = txLines.reduce((sum, l) => sum + (l.credit || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 1.0) {
-      throw new Error(`Descuadre contable detectado. Débito: ${totalDebit}, Crédito: ${totalCredit}.`);
+      throw new Error(`Descuadre contable detectado. DÃ©bito: ${totalDebit}, CrÃ©dito: ${totalCredit}.`);
     }
 
     const tx = await this.createTransaction({
       tx_type_id: txType.id,
       number: 'AUTO',
       date: inv.date,
-      description: `Facturación Arriendo ${inv.number} - Inmueble: ${inv.expand?.contract_id?.expand?.property_id?.title || ''}`,
+      description: `FacturaciÃ³n Arriendo ${inv.number} - Inmueble: ${inv.expand?.contract_id?.expand?.property_id?.title || ''}`,
       third_party_id: tenantId,
       status: 'active',
       branch_id: inv.branch_id || null,

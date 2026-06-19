@@ -406,6 +406,13 @@ onBootstrap((e) => {
         values: ["FOB_VALUE", "GROSS_WEIGHT", "CUBIC_VOLUME"]
       }));
       needsSaveImp2 = true;
+      } else {
+        // Actualizar opciones si ya existe pero le falta CUBIC_VOLUME
+        const prorField = impCol.fields.getByName("proration_method");
+        if (prorField && !prorField.values.includes("CUBIC_VOLUME")) {
+          prorField.values = [...prorField.values, "CUBIC_VOLUME"];
+          needsSaveImp2 = true;
+        }
     }
 
     if (needsSaveImp2) {

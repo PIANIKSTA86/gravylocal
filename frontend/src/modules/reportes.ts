@@ -1889,6 +1889,7 @@ async function renderIncomeStatement() {
             data.cell.styles.textColor = [13, 33, 55];
           }
         },
+      });
       // Intentar incluir notas guardadas al final del PDF
       try {
         const pMonth = getInputVal('inc-month');
@@ -2367,6 +2368,7 @@ async function renderFinancialPosition() {
             data.cell.styles.textColor = [13, 33, 55];
           }
         },
+      });
       // Intentar incluir notas guardadas al final del PDF
       try {
         const pMonth = getInputVal('pos-month');

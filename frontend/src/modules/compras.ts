@@ -789,15 +789,20 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       </div>
 
       <!-- ══ BUSCADOR GLOBAL DE PRODUCTOS ══ -->
-      <div class="relative">
-        <i class="fas fa-search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
-        <input id="po-prod-search-global" class="form-input"
-               style="padding-left:38px;font-size:14px;border-color:#FDBA74"
-               autocomplete="off"
-               placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
-        <div id="po-prod-results-global"
-             style="display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);max-height:300px;overflow:auto;background:#fff;border:1.5px solid #FDBA74;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
+      <div class="flex gap-2 items-center">
+        <div class="relative flex-1">
+          <i class="fas fa-search" style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#9CA3AF;font-size:13px;pointer-events:none"></i>
+          <input id="po-prod-search-global" class="form-input"
+                 style="padding-left:38px;font-size:14px;border-color:#FDBA74"
+                 autocomplete="off"
+                 placeholder="Buscar producto o servicio por nombre o código... (↑↓ para navegar · Enter o clic para agregar)">
+          <div id="po-prod-results-global"
+               style="display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);max-height:300px;overflow:auto;background:#fff;border:1.5px solid #FDBA74;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
+          </div>
         </div>
+        <button type="button" class="btn btn-outline flex-shrink-0" onclick="window.poQuickAddProduct()" title="Crear nuevo producto o servicio sin cerrar este formulario" style="border-color:#FDBA74;color:#C46516;white-space:nowrap">
+          <i class="fas fa-plus mr-1"></i> Nuevo producto
+        </button>
       </div>
 
       <!-- ══ TABLA DE LÍNEAS ══ -->
@@ -1033,6 +1038,162 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     } else {
       (window as any).showToast('Módulo de terceros no disponible.', 'warning');
     }
+  };
+
+  // ── Quick Add Product Overlay ──────────────────────────────────────────────
+  // Abre un overlay secundario (z-index alto) encima del modal de compra,
+  // sin destruir ni perder ningún dato ya ingresado en el formulario.
+  (window as any).poQuickAddProduct = function() {
+    const PO_UNITS_LOCAL = ['UND', 'KG', 'L', 'M', 'M2', 'M3', 'PAQ', 'CJ', 'HORA', 'MES'];
+
+    let overlay = document.getElementById('po-quick-prod-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'po-quick-prod-overlay';
+      overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(5,8,20,.65);backdrop-filter:blur(4px);z-index:230;align-items:center;justify-content:center;padding:16px';
+      document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `
+      <div style="background:#fff;border-radius:18px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(0,0,0,.22);overflow:hidden;animation:poQAPfadeIn .15s ease">
+        <style>@keyframes poQAPfadeIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}</style>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F0F0F0;background:#FFF8F0">
+          <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-box-open mr-2" style="color:#C46516"></i>Nuevo Producto / Servicio rápido</h4>
+          <button type="button" id="po-qap-close" style="background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer;line-height:1"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div style="padding:20px;display:grid;grid-template-columns:140px 1fr;gap:12px">
+          <!-- Código -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Código <span style="color:#EF4444">*</span></label>
+            <input id="po-qap-code" class="form-input" placeholder="P-001" autocomplete="off"
+              style="text-transform:uppercase;font-family:monospace"
+              oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <!-- Nombre -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Nombre <span style="color:#EF4444">*</span></label>
+            <input id="po-qap-name" class="form-input" placeholder="Nombre del producto o servicio" autocomplete="off">
+          </div>
+          <!-- Tipo -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Tipo <span style="color:#EF4444">*</span></label>
+            <select id="po-qap-type" class="form-input">
+              <option value="BIEN">Bien (Inventariable)</option>
+              <option value="SERVICIO" selected>Servicio</option>
+            </select>
+          </div>
+          <!-- Unidad -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Unidad</label>
+            <select id="po-qap-unit" class="form-input">
+              ${PO_UNITS_LOCAL.map(u => `<option value="${u}"${u === 'UND' ? ' selected' : ''}>${u}</option>`).join('')}
+            </select>
+          </div>
+          <!-- Costo unitario -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">Costo unitario</label>
+            <input id="po-qap-cost" type="number" min="0" step="0.01" class="form-input text-right" placeholder="0.00">
+          </div>
+          <!-- IVA -->
+          <div>
+            <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">IVA %</label>
+            <select id="po-qap-iva" class="form-input">
+              <option value="0" selected>0 %</option>
+              <option value="5">5 %</option>
+              <option value="19">19 %</option>
+            </select>
+          </div>
+        </div>
+        <p style="margin:0 20px 12px;font-size:11px;color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>El producto se creará con los campos mínimos. Puedes completar cuentas contables y datos adicionales desde el módulo de Productos.</p>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid #F0F0F0;background:#F9FAFB">
+          <div id="po-qap-error" style="font-size:12px;color:#DC2626;display:none"></div>
+          <div class="flex gap-2" style="margin-left:auto">
+            <button type="button" class="btn btn-outline" id="po-qap-cancel">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="po-qap-save" style="background:#C46516;border-color:#C46516">
+              <i class="fas fa-plus mr-1"></i> Crear y agregar a la compra
+            </button>
+          </div>
+        </div>
+      </div>`;
+
+    overlay.style.display = 'flex';
+
+    const closeOverlay = () => { overlay!.style.display = 'none'; };
+    const showQapError = (msg: string) => {
+      const el = document.getElementById('po-qap-error');
+      if (el) { el.textContent = msg; el.style.display = msg ? 'block' : 'none'; }
+    };
+
+    document.getElementById('po-qap-close')!.onclick = closeOverlay;
+    document.getElementById('po-qap-cancel')!.onclick = closeOverlay;
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) closeOverlay(); }, { once: false });
+
+    // Focus en código al abrir
+    setTimeout(() => (document.getElementById('po-qap-code') as HTMLInputElement)?.focus(), 60);
+
+    // Escape para cerrar
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeOverlay(); document.removeEventListener('keydown', escHandler); }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    document.getElementById('po-qap-save')!.onclick = async () => {
+      const saveBtn = document.getElementById('po-qap-save') as HTMLButtonElement;
+      const code = ((document.getElementById('po-qap-code') as HTMLInputElement)?.value || '').trim().toUpperCase();
+      const name = ((document.getElementById('po-qap-name') as HTMLInputElement)?.value || '').trim();
+      const type = (document.getElementById('po-qap-type') as HTMLSelectElement)?.value || 'SERVICIO';
+      const unit = (document.getElementById('po-qap-unit') as HTMLSelectElement)?.value || 'UND';
+      const costPrice = parseFloat((document.getElementById('po-qap-cost') as HTMLInputElement)?.value || '0') || 0;
+      const ivaRate = parseFloat((document.getElementById('po-qap-iva') as HTMLSelectElement)?.value || '0') || 0;
+
+      showQapError('');
+      if (!code) { showQapError('El código es obligatorio.'); (document.getElementById('po-qap-code') as HTMLInputElement)?.focus(); return; }
+      if (!name) { showQapError('El nombre es obligatorio.'); (document.getElementById('po-qap-name') as HTMLInputElement)?.focus(); return; }
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Creando...';
+
+      try {
+        // Verificar código duplicado
+        const safeCode = (window as any).pb.escapeFilterValue(code);
+        const dup = await (window as any).pb.list('products', { filter: `code="${safeCode}"`, perPage: 1 });
+        if (dup.items && dup.items.length) {
+          showQapError(`Ya existe un producto con el código ${code}.`);
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-plus mr-1"></i> Crear y agregar a la compra';
+          return;
+        }
+
+        const newProduct = await (window as any).pb.create('products', {
+          code,
+          name,
+          type,
+          unit,
+          cost_price: costPrice,
+          sale_price: costPrice,
+          iva_rate: ivaRate,
+          active: true,
+        });
+
+        // Actualizar el caché en memoria del formulario
+        const cache: any[] = (window as any).__poProductsCache || [];
+        cache.push(newProduct);
+        (window as any).__poProductsCache = cache;
+
+        // Agregar directamente como línea a la compra
+        (window as any).addPoLine(newProduct, null);
+
+        (window as any).showToast(`Producto "${name}" creado y agregado a la compra.`, 'success');
+        closeOverlay();
+
+        // Re-enfocar el buscador para continuar agregando
+        setTimeout(() => (document.getElementById('po-prod-search-global') as HTMLInputElement)?.focus(), 80);
+      } catch (err: any) {
+        showQapError(err?.response?.message || err?.message || 'Error al crear el producto.');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="fas fa-plus mr-1"></i> Crear y agregar a la compra';
+      }
+    };
   };
 
   initPoSupplierSearch();
@@ -1524,8 +1685,13 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       await (window as any).API.logAudit('UPDATE', 'PurchaseInvoice', invoiceId, `Actualizada compra borrador ${number}`);
 
       if (poConfig.operational.immediate_posting) {
-        await (window as any).API.postPurchaseInvoice(invoiceId);
-        (window as any).showToast(`Compra ${number} guardada y contabilizada exitosamente`, 'success');
+        const isReadyToPost = await validatePurchasePostingAccounts(invoiceId, number);
+        if (isReadyToPost) {
+          await (window as any).API.postPurchaseInvoice(invoiceId);
+          (window as any).showToast(`Compra ${number} guardada y contabilizada exitosamente`, 'success');
+        } else {
+          (window as any).showToast(`Compra ${number} guardada en borrador. Completa las cuentas contables faltantes para contabilizar.`, 'warning');
+        }
       } else {
         (window as any).showToast('Compra borrador actualizada', 'success');
       }
@@ -1537,8 +1703,13 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       const newInv = await (window as any).API.createPurchaseInvoice(payload, lines);
 
       if (poConfig.operational.immediate_posting) {
-        await (window as any).API.postPurchaseInvoice(newInv.id);
-        (window as any).showToast(`Nueva compra ${newInv.number || number} guardada y contabilizada exitosamente`, 'success');
+        const isReadyToPost = await validatePurchasePostingAccounts(newInv.id, newInv.number || number);
+        if (isReadyToPost) {
+          await (window as any).API.postPurchaseInvoice(newInv.id);
+          (window as any).showToast(`Nueva compra ${newInv.number || number} guardada y contabilizada exitosamente`, 'success');
+        } else {
+          (window as any).showToast(`Nueva compra ${newInv.number || number} guardada en borrador. Completa las cuentas contables faltantes para contabilizar.`, 'warning');
+        }
       } else {
         (window as any).showToast('Nueva compra guardada en borrador', 'success');
       }
@@ -1556,6 +1727,50 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       btn.innerHTML = poConfig.operational.immediate_posting ? '<i class="fas fa-check-double mr-1"></i> Guardar y Contabilizar' : '<i class="fas fa-floppy-disk mr-1"></i> Guardar Borrador';
     }
   }
+}
+
+async function validatePurchasePostingAccounts(invoiceId: string, invoiceNumber = '') {
+  const [lines, poConfig] = await Promise.all([
+    (window as any).API.getPurchaseInvoiceLines(invoiceId),
+    getPurchaseConfig(),
+  ]);
+
+  const fallbackExpenseCode = String(poConfig?.accounting?.accounts?.expense_fallback_code || '').trim();
+  const issues: string[] = [];
+
+  lines.forEach((line: any, idx: number) => {
+    const prod = line.expand?.product_id;
+    if (prod) {
+      const pCode = String(prod.code || '').trim();
+      const pName = String(prod.name || '').trim() || `Producto línea ${idx + 1}`;
+      const pLabel = `${pCode ? `[${pCode}] ` : ''}${pName}`;
+      const pType = String(prod.type || '').toUpperCase();
+
+      if (pType === 'BIEN' && !String(prod.inventory_account_id || '').trim()) {
+        issues.push(`${pLabel}: falta cuenta de inventario.`);
+        return;
+      }
+
+      if (pType !== 'BIEN' && !String(prod.cost_account_id || '').trim() && !fallbackExpenseCode) {
+        issues.push(`${pLabel}: falta cuenta de costo/gasto (y tampoco hay cuenta fallback configurada en Compras).`);
+      }
+      return;
+    }
+
+    const hasAccount = String(line.account_id || line.expand?.account_id?.id || '').trim();
+    if (!hasAccount) {
+      issues.push(`Línea ${idx + 1}: falta cuenta contable manual.`);
+    }
+  });
+
+  if (!issues.length) return true;
+
+  const docRef = String(invoiceNumber || '').trim();
+  const intro = docRef ? `No se puede contabilizar ${docRef}.` : 'No se puede contabilizar la compra.';
+  const visible = issues.slice(0, 2).join(' ');
+  const extraCount = issues.length > 2 ? ` (+${issues.length - 2} más)` : '';
+  (window as any).showToast(`${intro} ${visible}${extraCount}`, 'error');
+  return false;
 }
 
 // ── Acciones Globales del Módulo ──────────────────────────────────────
@@ -1675,6 +1890,8 @@ function contabilizarCompra(id: string, number: string) {
      • Un movimiento de inventario <em>ENTRADA</em> para los bienes físicos`,
     async () => {
       try {
+        const isReadyToPost = await validatePurchasePostingAccounts(id, number);
+        if (!isReadyToPost) return;
         const { inv, tx } = await (window as any).API.postPurchaseInvoice(id);
         (window as any).showToast(`Factura ${inv.number} contabilizada exitosamente. Asiento ${tx.number} generado (borrador).`, 'success');
         renderCompras(document.getElementById('page-content')!);

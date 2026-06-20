@@ -8,11 +8,15 @@
 interface Vehicle {
   id: string;
   plate: string;
+  transportista_id?: string;
   driver: string;
   capacity: number;
   status: 'DISPONIBLE' | 'EN_RUTA' | 'MANTENIMIENTO';
   notes: string;
   active: boolean;
+  expand?: {
+    transportista_id?: { name: string; doc_number?: string; nit?: string };
+  };
 }
 
 interface Delivery {
@@ -50,6 +54,31 @@ const VEHICLE_STATUS = {
   MANTENIMIENTO: { label: 'Mantenimiento', badge: 'badge-orange' },
 };
 
+function _normType(val: any) {
+  return String(val || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function _isTransportistaType(typeVal: any) {
+  if (Array.isArray(typeVal)) {
+    return typeVal.some((v: any) => _isTransportistaType(v));
+  }
+  const t = _normType(typeVal);
+  return t === 'TRANSPORTISTA' || t === 'TRANPORTISTA';
+}
+
+function _isClientOrSupplierType(typeVal: any) {
+  if (Array.isArray(typeVal)) {
+    return typeVal.some((v: any) => _isClientOrSupplierType(v));
+  }
+  const t = _normType(typeVal);
+  return t === 'CLIENTE' || t === 'PROVEEDOR';
+}
+
 let activeTab: 'deliveries' | 'vehicles' = 'deliveries';
 
 export async function renderDespachos(container: HTMLElement) {
@@ -66,7 +95,7 @@ async function _loadDespachosData(c: HTMLElement) {
   // 1. Cargar datos del backend
   const [deliveries, vehicles, clients] = await Promise.all([
     (window as any).pb.listAll('logistica_deliveries', { expand: 'client_id,vehicle_id,sales_order_id,invoice_id', sort: '-date,-number' }),
-    (window as any).pb.listAll('logistica_vehicles', { sort: 'plate' }),
+    (window as any).pb.listAll('logistica_vehicles', { sort: 'plate', expand: 'transportista_id' }),
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
   ]);
 
@@ -92,6 +121,7 @@ function _repaintDespachosScreen(c: HTMLElement, deliveries: Delivery[], vehicle
         <p class="text-sm" style="color:#6B7280">Planificación de rutas, vehículos asignados y seguimiento de entregas físicas.</p>
       </div>
       <div class="flex gap-2">
+        ${(window as any).can('canWrite') ? `<button class="btn btn-outline" id="btn-pending-sale" title="Abrir facturación con reserva"><i class="fas fa-file-invoice"></i> Facturar con Reserva</button>` : ''}
         ${activeTab === 'deliveries' 
           ? '<button class="btn btn-primary" id="btn-new-delivery"><i class="fas fa-plus"></i> Programar Entrega</button>'
           : '<button class="btn btn-primary" id="btn-new-vehicle"><i class="fas fa-plus"></i> Registrar Vehículo</button>'
@@ -125,6 +155,14 @@ function _repaintDespachosScreen(c: HTMLElement, deliveries: Delivery[], vehicle
   // Asignar listeners
   document.getElementById('tab-btn-deliveries')?.addEventListener('click', () => { activeTab = 'deliveries'; _repaintDespachosScreen(c, deliveries, vehicles); });
   document.getElementById('tab-btn-vehicles')?.addEventListener('click', () => { activeTab = 'vehicles'; _repaintDespachosScreen(c, deliveries, vehicles); });
+
+  document.getElementById('btn-pending-sale')?.addEventListener('click', () => {
+    if (typeof (window as any).openPendingDeliverySaleForm === 'function') {
+      (window as any).openPendingDeliverySaleForm(() => _loadDespachosData(c));
+    } else {
+      (window as any).showToast('La acción de facturar con reserva aún no está disponible.', 'warning');
+    }
+  });
 
   document.getElementById('btn-new-delivery')?.addEventListener('click', () => _openDeliveryForm(null, () => _loadDespachosData(c)));
   document.getElementById('btn-new-vehicle')?.addEventListener('click', () => _openVehicleForm(null, () => _loadDespachosData(c)));
@@ -182,7 +220,7 @@ function _renderDeliveriesTab(deliveries: Delivery[], vehicles: Vehicle[]) {
       </select>
       <select id="del-vehicle-f" class="form-input" style="max-width:200px">
         <option value="">Todos los vehículos</option>
-        ${vehicles.map(v => `<option value="${v.id}">${(window as any).esc(v.plate)} — ${(window as any).esc(v.driver)}</option>`).join('')}
+        ${vehicles.map(v => `<option value="${v.id}">${(window as any).esc(v.plate)} — ${(window as any).esc(v.expand?.transportista_id?.name || v.driver)}</option>`).join('')}
       </select>
     </div>
 
@@ -212,7 +250,7 @@ function _renderDeliveriesTab(deliveries: Delivery[], vehicles: Vehicle[]) {
                   <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(d.number)}</span></td>
                   <td>${(window as any).esc(d.date)}</td>
                   <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
-                  <td>${veh ? `<span class="font-semibold text-xs text-gray-700">${(window as any).esc(veh.plate)}</span> <span class="text-[10px] text-gray-500">(${(window as any).esc(veh.driver)})</span>` : '<span class="text-orange-600 font-semibold italic text-xs">Sin asignar</span>'}</td>
+                  <td>${veh ? `<span class="font-semibold text-xs text-gray-700">${(window as any).esc(veh.plate)}</span> <span class="text-[10px] text-gray-500">(${(window as any).esc(veh.expand?.transportista_id?.name || veh.driver)})</span>` : '<span class="text-orange-600 font-semibold italic text-xs">Sin asignar</span>'}</td>
                   <td class="text-xs truncate max-w-xs" title="${(window as any).esc(d.address)}">${(window as any).esc(d.address)}</td>
                   <td class="text-right font-mono text-xs">${d.weight ? (window as any).fmtN(d.weight) : '—'}</td>
                   <td><span class="badge ${meta.badge}">${meta.label}</span></td>
@@ -257,7 +295,7 @@ function _renderVehiclesTab(vehicles: Vehicle[]) {
               return `
                 <tr>
                   <td><span class="font-mono font-bold text-gray-800" style="font-size:13px">${(window as any).esc(v.plate)}</span></td>
-                  <td class="font-medium">${(window as any).esc(v.driver)}</td>
+                  <td class="font-medium">${(window as any).esc(v.expand?.transportista_id?.name || v.driver)}</td>
                   <td class="text-right font-mono text-xs font-semibold text-blue-700">${(window as any).fmtN(v.capacity)} Kg</td>
                   <td><span class="badge ${meta.badge}">${meta.label}</span></td>
                   <td>${v.active !== false ? '<span class="badge badge-green">Sí</span>' : '<span class="badge badge-gray">No</span>'}</td>
@@ -283,6 +321,11 @@ function _renderVehiclesTab(vehicles: Vehicle[]) {
 // VEHICULOS ACCIONES
 // ==========================================
 async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) {
+  const transportistas = await (window as any).pb.listAll('third_parties', {
+    filter: 'active=true',
+    sort: 'name',
+  }).then((list: any[]) => list.filter((item: any) => _isTransportistaType(item.type))).catch(() => []);
+
   const formHtml = `
     <div class="space-y-4 text-sm" style="color:#374151">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -291,8 +334,15 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
           <input id="veh-plate" class="form-input font-mono" placeholder="Ej: AAA-123" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()" value="${(window as any).esc(veh?.plate || '')}">
         </div>
         <div class="form-group">
-          <label class="form-label font-bold">Nombre del Conductor <span style="color:#EF4444">*</span></label>
-          <input id="veh-driver" class="form-input" placeholder="Nombre completo" value="${(window as any).esc(veh?.driver || '')}">
+          <label class="form-label font-bold">Transportista <span style="color:#EF4444">*</span></label>
+          <div id="veh-transportista-search-wrap" class="relative flex gap-1 items-center">
+            <input id="veh-transportista-search" class="form-input flex-1" autocomplete="off" placeholder="NIT o nombre del transportista...">
+            <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window._despQuickAddTransportista()" title="Nuevo Transportista" style="border-color:#D1D5DB; background:#fff;">
+              <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
+            </button>
+            <input id="veh-transportista-id" type="hidden" value="${(window as any).esc(veh?.transportista_id || '')}">
+            <div id="veh-transportista-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
+          </div>
         </div>
       </div>
 
@@ -330,20 +380,153 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
 
   (window as any).openModal(veh ? `Editar Vehículo: ${veh.plate}` : 'Registrar Nuevo Vehículo', formHtml, footer, false);
 
+  function initVehTransportistaSearch() {
+    const input = document.getElementById('veh-transportista-search') as HTMLInputElement;
+    const hidden = document.getElementById('veh-transportista-id') as HTMLInputElement;
+    const results = document.getElementById('veh-transportista-results') as HTMLElement;
+    if (!input || !hidden || !results) return;
+
+    const current = veh?.transportista_id ? transportistas.find((t: any) => t.id === veh.transportista_id) : transportistas.find((t: any) => String(t.name || '').toLowerCase() === String(veh?.driver || '').toLowerCase());
+    if (current) {
+      hidden.value = current.id;
+      input.value = `${current.doc_number || current.nit || ''} - ${current.name}`;
+    } else if (veh?.driver) {
+      input.value = veh.driver;
+    }
+
+    let highlighted = -1;
+
+    const highlightItem = (idx: number, items: NodeListOf<Element>) => {
+      items.forEach((el: any) => { el.style.background = ''; });
+      if (idx >= 0 && idx < items.length) {
+        (items[idx] as any).style.background = '#EEF4FF';
+        (items[idx] as any).scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    const performSearch = (val: string) => {
+      const query = val.toLowerCase().trim();
+      const filtered = !query
+        ? transportistas.slice(0, 30)
+        : transportistas.filter((t: any) => `${t.name} ${t.doc_number} ${t.nit}`.toLowerCase().includes(query)).slice(0, 30);
+
+      if (!filtered.length) {
+        results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+        highlighted = -1;
+        return;
+      }
+
+      results.innerHTML = filtered.map((t: any, i: number) => `
+        <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
+                onclick="window._despSelectTransportista('${(window as any).esc(t.id)}', '${(window as any).esc(t.doc_number || t.nit || '')} - ${(window as any).esc(t.name)}')">
+          <div class="font-bold text-gray-800">${(window as any).esc(t.name)}</div>
+          <div class="text-[10px] text-gray-500">Doc: ${t.doc_number || t.nit || 'S/N'}</div>
+        </button>
+      `).join('');
+      highlighted = -1;
+    };
+
+    input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
+    input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
+    input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
+
+    input.addEventListener('keydown', (ev: KeyboardEvent) => {
+      const items = results.querySelectorAll('button');
+      if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        highlighted = Math.min(highlighted + 1, items.length - 1);
+        highlightItem(highlighted, items);
+      } else if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        highlighted = Math.max(highlighted - 1, 0);
+        highlightItem(highlighted, items);
+      } else if (ev.key === 'Enter') {
+        ev.preventDefault();
+        if (!input.value.trim()) return;
+        const query = input.value.toLowerCase().trim();
+        const filtered = transportistas.filter((t: any) => `${t.name} ${t.doc_number} ${t.nit}`.toLowerCase().includes(query)).slice(0, 30);
+        const selected = highlighted >= 0 ? filtered[highlighted] : filtered[0];
+        if (selected) {
+          (window as any)._despSelectTransportista(selected.id, `${selected.doc_number || selected.nit || ''} - ${selected.name}`);
+        }
+      } else if (ev.key === 'Escape') {
+        results.style.display = 'none';
+      }
+    });
+
+    results.addEventListener('mousedown', (ev) => ev.preventDefault());
+  }
+
+  (window as any)._despSelectTransportista = function(id: string, text: string) {
+    const hidden = document.getElementById('veh-transportista-id') as HTMLInputElement;
+    const input = document.getElementById('veh-transportista-search') as HTMLInputElement;
+    const results = document.getElementById('veh-transportista-results') as HTMLElement;
+    if (hidden && input) {
+      hidden.value = id;
+      input.value = text;
+      if (results) results.style.display = 'none';
+    }
+  };
+
+  (window as any)._despQuickAddTransportista = function() {
+    if (typeof (window as any).openTerceroForm === 'function') {
+      (window as any).openTerceroForm(null, async (createdRecord: any) => {
+        try {
+          const thirds = await (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
+          const latestTransportistas = thirds.filter((item: any) => _isTransportistaType(item.type));
+          transportistas.length = 0;
+          transportistas.push(...latestTransportistas);
+          const currentInput = document.getElementById('veh-transportista-search') as HTMLInputElement;
+          (window as any)._despTransportistasCache = latestTransportistas;
+          const docNum = createdRecord.doc_number || createdRecord.nit || '';
+          const selectText = docNum ? `${docNum} - ${createdRecord.name}` : createdRecord.name;
+          (window as any)._despSelectTransportista(createdRecord.id, selectText);
+          if (currentInput) currentInput.focus();
+          (window as any).showToast('Transportista creado y seleccionado.', 'success');
+        } catch (err: any) {
+          (window as any).showToast('Error al recargar transportistas: ' + err.message, 'error');
+        }
+      });
+    } else {
+      (window as any).showToast('Módulo de terceros no disponible.', 'warning');
+    }
+  };
+
+  initVehTransportistaSearch();
+
+  setTimeout(() => {
+    const input = document.getElementById('veh-transportista-search') as HTMLInputElement | null;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 80);
+
   document.getElementById('btn-save-vehicle')?.addEventListener('click', async () => {
     try {
       const plate = (document.getElementById('veh-plate') as HTMLInputElement)?.value.trim();
-      const driver = (document.getElementById('veh-driver') as HTMLInputElement)?.value.trim();
+      const transportistaId = (document.getElementById('veh-transportista-id') as HTMLInputElement)?.value.trim();
+      const transportistaText = (document.getElementById('veh-transportista-search') as HTMLInputElement)?.value.trim();
       const capacity = parseFloat((document.getElementById('veh-capacity') as HTMLInputElement)?.value || '0');
       const status = (document.getElementById('veh-status') as HTMLSelectElement)?.value;
       const active = (document.getElementById('veh-active') as HTMLSelectElement)?.value === 'true';
       const notes = (document.getElementById('veh-notes') as HTMLTextAreaElement)?.value.trim();
 
       if (!plate) throw new Error('Por favor ingresa la placa del vehículo.');
-      if (!driver) throw new Error('Por favor ingresa el nombre del conductor.');
+      if (!transportistaText) throw new Error('Por favor selecciona un transportista.');
       if (isNaN(capacity) || capacity <= 0) throw new Error('La capacidad de carga debe ser mayor a cero.');
 
-      const data = { plate, driver, capacity, status, active, notes };
+      const selectedTransportista = transportistas.find((t: any) => t.id === transportistaId) || transportistas.find((t: any) => {
+        const normalizedText = transportistaText.toLowerCase().replace(/\s+/g, ' ').trim();
+        const normalizedName = String(t.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const normalizedDoc = String(t.doc_number || t.nit || '').toLowerCase().replace(/\s+/g, ' ').trim();
+        return normalizedText === normalizedName || (normalizedDoc && normalizedText.includes(normalizedDoc));
+      }) || null;
+      if (!selectedTransportista) {
+        throw new Error('Debes seleccionar un transportista de la lista o crearlo antes de guardar.');
+      }
+      const driver = selectedTransportista.name;
+      const data = { plate, driver, transportista_id: selectedTransportista.id, capacity, status, active, notes };
 
       if (veh) {
         await (window as any).pb.update('logistica_vehicles', veh.id, data);
@@ -352,7 +535,7 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
       } else {
         const created = await (window as any).pb.create('logistica_vehicles', data);
         (window as any).showToast('Vehículo registrado correctamente', 'success');
-        await (window as any).API.logAudit('CREATE', 'logistica_vehicles', created.id, `Vehículo con placa "${plate}" y conductor "${driver}" registrado`);
+        await (window as any).API.logAudit('CREATE', 'logistica_vehicles', created.id, `Vehículo con placa "${plate}" y transportista "${driver}" registrado`);
       }
 
       (window as any).closeModal();
@@ -394,6 +577,7 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
 // ==========================================
 async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null) {
   const clients = (window as any)._desp_clients || [];
+  const deliveryThirdParties = clients.filter((c: any) => _isClientOrSupplierType(c.type));
   const vehicles = (window as any)._desp_vehicles || [];
   const activeVehicles = vehicles.filter((v: any) => v.active && v.status === 'DISPONIBLE');
 
@@ -405,8 +589,54 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     }
   }
 
-  const salesOrders = await (window as any).pb.listAll('sales_orders', { filter: 'status="pending"', sort: '-number' }).catch(() => []);
-  const invoices = await (window as any).pb.listAll('invoices', { sort: '-number' }).catch(() => []);
+  const invoices = await (window as any).pb.listAll('invoices', { sort: '-number', expand: 'customer_id' }).catch(() => []);
+  const originalVehicleOptionLabel: Record<string, string> = {};
+
+  const toNum = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const isPendingDeliveryInvoice = (inv: any) => {
+    const status = String(inv?.status || '').toLowerCase();
+    const hasPending = !!inv?.has_pending_delivery;
+    const fulfillment = String(inv?.delivery_fulfillment_status || '').toUpperCase().trim();
+    const pendingByStatus = fulfillment === 'PENDIENTE' || fulfillment === 'PARCIAL' || fulfillment === '';
+    return status === 'posted' && hasPending && pendingByStatus;
+  };
+
+  const invoiceWeightCache: Record<string, number> = {};
+  const invoiceLinesCache: Record<string, any[]> = {};
+  const invoiceLabelCache: Record<string, string> = {};
+
+  const getInvoiceLabel = (inv: any) => `${inv.number} (${(window as any).fmt(inv.total || 0)})`;
+
+  const calcInvoiceWeightKg = async (invoiceId: string) => {
+    if (!invoiceId) return 0;
+    if (invoiceWeightCache[invoiceId] !== undefined) return invoiceWeightCache[invoiceId];
+
+    const lines = await (window as any).API.getInvoiceLines(invoiceId).catch(() => []);
+    const total = (lines || []).reduce((sum: number, l: any) => {
+      const qty = Math.max(0, toNum(l.qty));
+      const byLineBruto = toNum(l.peso_bruto_total);
+      const byLineNeto = toNum(l.peso_neto_total);
+      const prod = l.expand?.product_id || {};
+      const unitWeight = toNum(prod.peso_bruto) || toNum(prod.peso_neto) || toNum(prod.weight) || toNum(prod.unit_weight);
+      const lineWeight = byLineBruto > 0 ? byLineBruto : (byLineNeto > 0 ? byLineNeto : (qty * unitWeight));
+      return sum + Math.max(0, lineWeight);
+    }, 0);
+
+    invoiceWeightCache[invoiceId] = total;
+    return total;
+  };
+
+  const getInvoiceLinesCached = async (invoiceId: string) => {
+    if (!invoiceId) return [];
+    if (invoiceLinesCache[invoiceId]) return invoiceLinesCache[invoiceId];
+    const lines = await (window as any).API.getInvoiceLines(invoiceId).catch(() => []);
+    invoiceLinesCache[invoiceId] = Array.isArray(lines) ? lines : [];
+    return invoiceLinesCache[invoiceId];
+  };
 
   const formHtml = `
     <div class="space-y-4 text-sm" style="color:#374151">
@@ -424,8 +654,8 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       <div class="form-group relative">
         <label class="form-label font-bold">Cliente <span style="color:#EF4444">*</span></label>
         <div id="del-client-search-wrap" class="relative flex gap-1 items-center">
-          <input id="del-client-search" class="form-input" autocomplete="off" placeholder="Escribe NIT o nombre del cliente...">
-          <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window._despQuickAddCustomer()" title="Nuevo Cliente" style="border-color:#D1D5DB; background:#fff;">
+          <input id="del-client-search" class="form-input" autocomplete="off" placeholder="Escribe NIT o nombre del tercero...">
+          <button type="button" class="btn btn-outline p-2 h-[34px] flex items-center justify-center flex-shrink-0" onclick="window._despQuickAddCustomer()" title="Nuevo Tercero" style="border-color:#D1D5DB; background:#fff;">
             <i class="fas fa-user-plus text-xs" style="color:#4B5563"></i>
           </button>
           <input id="del-client-id" type="hidden" value="${(window as any).esc(del?.client_id || '')}">
@@ -443,12 +673,14 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
           <label class="form-label font-bold">Vehículo / Conductor</label>
           <select id="del-vehicle" class="form-input">
             <option value="">— Sin asignar —</option>
-            ${activeVehicles.map((v: any) => `<option value="${(window as any).esc(v.id)}"${del?.vehicle_id === v.id ? ' selected' : ''}>${(window as any).esc(v.plate)} — ${(window as any).esc(v.driver)}</option>`).join('')}
+            ${activeVehicles.map((v: any) => `<option value="${(window as any).esc(v.id)}"${del?.vehicle_id === v.id ? ' selected' : ''}>${(window as any).esc(v.plate)} — ${(window as any).esc(v.expand?.transportista_id?.name || v.driver)}</option>`).join('')}
           </select>
+          <div id="del-vehicle-capacity-hint" class="text-xs mt-1" style="color:#6B7280">Selecciona factura(s) para validar capacidad mínima de carga.</div>
         </div>
         <div class="form-group">
           <label class="form-label font-bold">Peso Carga (Kg)</label>
-          <input id="del-weight" type="number" min="0" step="0.01" class="form-input text-right font-semibold" placeholder="0" value="${del?.weight ?? ''}">
+          <input id="del-weight" type="number" min="0" step="0.01" class="form-input text-right font-semibold" placeholder="0" value="${del?.weight ?? ''}" readonly style="background:#F9FAFB">
+          <div class="text-xs mt-1" style="color:#6B7280">Cálculo automático según los productos de las facturas vinculadas.</div>
         </div>
         <div class="form-group">
           <label class="form-label font-bold">Estado Despacho <span style="color:#EF4444">*</span></label>
@@ -458,31 +690,31 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-3" style="border-color:#F0F0F0">
+      <div class="border-t pt-3" style="border-color:#F0F0F0">
         <div class="form-group">
-          <label class="form-label font-bold">Vincular a Pedido (Pendiente)</label>
-          <select id="del-order" class="form-input">
-            <option value="">— Ninguno —</option>
-            ${salesOrders.map((o: any) => `<option value="${(window as any).esc(o.id)}"${del?.sales_order_id === o.id ? ' selected' : ''}>${(window as any).esc(o.number)} (${(window as any).fmt(o.total)})</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label font-bold">Vincular a Factura de Venta</label>
-          <select id="del-invoice" class="form-input">
-            <option value="">— Ninguna —</option>
-            ${invoices.map((i: any) => `<option value="${(window as any).esc(i.id)}"${del?.invoice_id === i.id ? ' selected' : ''}>${(window as any).esc(i.number)} (${(window as any).fmt(i.total)})</option>`).join('')}
-          </select>
+          <label class="form-label font-bold">Vincular a Factura(s) de Venta (Pendientes)</label>
+          <div id="del-invoice-list" class="rounded-xl border p-2" style="border-color:#E5E7EB; max-height:220px; overflow:auto; background:#fff"></div>
+          <input id="del-invoice-ids" type="hidden" value="${(window as any).esc(del?.invoice_id || '')}">
+          <div class="text-xs mt-1" style="color:#6B7280">Solo se muestran facturas vigentes del cliente con entrega pendiente. Puedes seleccionar una o varias.</div>
         </div>
       </div>
 
       <div class="form-group">
         <label class="form-label font-bold">Ítems / Detalles de la Carga <span style="color:#EF4444">*</span></label>
         <textarea id="del-items" class="form-input" rows="3" placeholder="Ej: 10 Cajas de Producto A, 5 Bolsas de Producto B...">${(window as any).esc(del?.items || '')}</textarea>
+        <div class="flex items-center justify-between mt-1 gap-2">
+          <div class="text-xs" style="color:#6B7280">Se autocompleta con el consolidado de productos de las facturas seleccionadas.</div>
+          <button type="button" id="btn-del-items-autofill" class="btn btn-outline btn-sm">Autocompletar</button>
+        </div>
       </div>
 
       <div class="form-group">
         <label class="form-label font-bold">Observaciones de Entrega</label>
         <input id="del-notes" class="form-input" placeholder="Ej: llamar al cliente al llegar, ingresar por portería trasera..." value="${(window as any).esc(del?.notes || '')}">
+        <div class="flex items-center justify-between mt-1 gap-2">
+          <div class="text-xs" style="color:#6B7280">Puedes autogenerar una observación base y luego editarla.</div>
+          <button type="button" id="btn-del-notes-autofill" class="btn btn-outline btn-sm">Autocompletar</button>
+        </div>
       </div>
     </div>
   `;
@@ -494,22 +726,22 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
 
   (window as any).openModal(del ? `Editar Entrega: ${del.number}` : 'Programar Nueva Entrega', formHtml, footer, true);
 
-  // Inicializar buscador autocompletable de clientes
+  // Inicializar buscador autocompletable de terceros (clientes/proveedores)
   const input = document.getElementById('del-client-search') as HTMLInputElement;
   const hidden = document.getElementById('del-client-id') as HTMLInputElement;
   const results = document.getElementById('del-client-results');
 
   if (input && hidden && results) {
     if (del && del.client_id) {
-      const match = clients.find((c: any) => c.id === del.client_id);
+      const match = deliveryThirdParties.find((c: any) => c.id === del.client_id) || clients.find((c: any) => c.id === del.client_id);
       if (match) input.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
     }
 
     const performSearch = (val: string) => {
       const query = val.toLowerCase().trim();
       const filtered = !query 
-        ? clients.slice(0, 20) 
-        : clients.filter((c: any) => `${c.name} ${c.doc_number} ${c.nit}`.toLowerCase().includes(query)).slice(0, 20);
+        ? deliveryThirdParties.slice(0, 20)
+        : deliveryThirdParties.filter((c: any) => `${c.name} ${c.doc_number} ${c.nit}`.toLowerCase().includes(query)).slice(0, 20);
 
       if (!filtered.length) {
         results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
@@ -529,11 +761,253 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
     input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
     input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
 
+    results.addEventListener('mousedown', (ev) => ev.preventDefault());
+
+    if (typeof (window as any).initKeyboardAutocomplete === 'function') {
+      (window as any).initKeyboardAutocomplete({
+        input,
+        results,
+        itemSelector: 'button',
+      });
+    }
+
     (window as any)._selectDelClient = function(id: string, text: string) {
       hidden.value = id;
       input.value = text;
+      results.style.display = 'none';
+      void refreshInvoiceSelectorAndCapacity();
     };
   }
+
+  const invoiceList = document.getElementById('del-invoice-list') as HTMLElement | null;
+  const invoiceIdsHidden = document.getElementById('del-invoice-ids') as HTMLInputElement | null;
+  const vehicleSelect = document.getElementById('del-vehicle') as HTMLSelectElement | null;
+  const weightInput = document.getElementById('del-weight') as HTMLInputElement | null;
+  const vehicleHint = document.getElementById('del-vehicle-capacity-hint') as HTMLElement | null;
+  const itemsInput = document.getElementById('del-items') as HTMLTextAreaElement | null;
+  const autofillItemsBtn = document.getElementById('btn-del-items-autofill') as HTMLButtonElement | null;
+  const notesInput = document.getElementById('del-notes') as HTMLInputElement | null;
+  const autofillNotesBtn = document.getElementById('btn-del-notes-autofill') as HTMLButtonElement | null;
+
+  let itemsDirtyByUser = !!(del?.items || '').trim();
+  let lastAutoItemsValue = '';
+  let notesDirtyByUser = !!(del?.notes || '').trim();
+  let lastAutoNotesValue = '';
+
+  const parseSelectedInvoiceIds = () => {
+    if (!invoiceList) return [] as string[];
+    const ids = Array.from(invoiceList.querySelectorAll('input[type="checkbox"][data-invoice-id]:checked'))
+      .map((el: any) => String(el.getAttribute('data-invoice-id') || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(ids));
+  };
+
+  const setSelectedInvoiceIdsHidden = (ids: string[]) => {
+    if (invoiceIdsHidden) invoiceIdsHidden.value = ids.join(',');
+  };
+
+  const getClientId = () => ((document.getElementById('del-client-id') as HTMLInputElement)?.value || '').trim();
+
+  const renderInvoiceSelector = (selectedIds: string[]) => {
+    if (!invoiceList) return;
+    const clientId = getClientId();
+    if (!clientId) {
+      invoiceList.innerHTML = '<div class="px-2 py-3 text-xs text-gray-500">Selecciona primero un cliente/proveedor para cargar sus facturas pendientes.</div>';
+      return;
+    }
+
+    const pendingForClient = invoices.filter((inv: any) => inv.customer_id === clientId && isPendingDeliveryInvoice(inv));
+
+    // En edición, mantener visible la factura previamente vinculada aunque no esté pendiente.
+    if (del?.invoice_id && !pendingForClient.find((x: any) => x.id === del.invoice_id)) {
+      const oldInv = invoices.find((x: any) => x.id === del.invoice_id && x.customer_id === clientId);
+      if (oldInv) pendingForClient.push(oldInv);
+    }
+
+    if (!pendingForClient.length) {
+      invoiceList.innerHTML = '<div class="px-2 py-3 text-xs text-gray-500">No hay facturas vigentes con entrega pendiente para este cliente.</div>';
+      return;
+    }
+
+    pendingForClient.forEach((inv: any) => {
+      invoiceLabelCache[inv.id] = getInvoiceLabel(inv);
+    });
+
+    invoiceList.innerHTML = pendingForClient.map((inv: any) => {
+      const checked = selectedIds.includes(inv.id);
+      const deliveryStatus = String(inv.delivery_fulfillment_status || '').toUpperCase().trim() || 'PENDIENTE';
+      const amount = (window as any).fmt(inv.total || 0);
+      return `
+        <label class="flex items-center justify-between gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 cursor-pointer" style="border:1px solid #F3F4F6">
+          <span class="flex items-center gap-2 min-w-0">
+            <input type="checkbox" data-invoice-id="${(window as any).esc(inv.id)}" ${checked ? 'checked' : ''}>
+            <span class="text-xs min-w-0">
+              <strong class="font-mono">${(window as any).esc(inv.number)}</strong>
+              <span style="color:#6B7280"> - ${amount}</span>
+            </span>
+          </span>
+          <span class="badge ${deliveryStatus === 'PARCIAL' ? 'badge-blue' : 'badge-orange'}">${deliveryStatus}</span>
+        </label>
+      `;
+    }).join('');
+  };
+
+  const buildItemsSummaryFromLines = (lines: any[]) => {
+    const grouped = new Map<string, { qty: number; name: string }>();
+
+    for (const ln of lines || []) {
+      const qty = Math.max(0, toNum(ln?.qty));
+      if (qty <= 0) continue;
+      const prod = ln?.expand?.product_id;
+      const name = String(prod?.name || ln?.description || ln?.product_name || ln?.product_id || 'Producto').trim();
+      const key = String(ln?.product_id || name).trim() || name;
+      const current = grouped.get(key) || { qty: 0, name };
+      current.qty += qty;
+      if (!current.name && name) current.name = name;
+      grouped.set(key, current);
+    }
+
+    if (!grouped.size) return '';
+
+    return Array.from(grouped.values())
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      .map((it) => `${(window as any).fmtN(it.qty)} x ${it.name}`)
+      .join('\n');
+  };
+
+  const refreshItemsFromSelectedInvoices = async (force = false) => {
+    if (!itemsInput) return;
+    if (itemsDirtyByUser && !force) return;
+
+    const selectedIds = parseSelectedInvoiceIds();
+    if (!selectedIds.length) {
+      if (force) {
+        itemsInput.value = '';
+        lastAutoItemsValue = '';
+        itemsDirtyByUser = false;
+      }
+      return;
+    }
+
+    const allLines = (await Promise.all(selectedIds.map((id) => getInvoiceLinesCached(id)))).flat();
+    const summary = buildItemsSummaryFromLines(allLines);
+    if (summary) {
+      itemsInput.value = summary;
+      lastAutoItemsValue = summary;
+      itemsDirtyByUser = false;
+    }
+  };
+
+  const buildAutoNotesText = () => {
+    const selectedIds = parseSelectedInvoiceIds();
+    const invoiceNumbers = selectedIds
+      .map((id) => {
+        const inv = invoices.find((x: any) => x.id === id);
+        return inv?.number || '';
+      })
+      .filter(Boolean);
+    const weightVal = toNum(weightInput?.value || 0);
+    const addressVal = ((document.getElementById('del-address') as HTMLInputElement)?.value || '').trim();
+
+    const parts: string[] = [];
+    if (invoiceNumbers.length) parts.push(`Entrega asociada a factura(s): ${invoiceNumbers.join(', ')}`);
+    if (weightVal > 0) parts.push(`Peso estimado de carga: ${(window as any).fmtN(weightVal)} Kg`);
+    if (addressVal) parts.push(`Destino: ${addressVal}`);
+    return parts.join(' | ');
+  };
+
+  const refreshNotesFromSelectedInvoices = (force = false) => {
+    if (!notesInput) return;
+    if (notesDirtyByUser && !force) return;
+
+    const autoText = buildAutoNotesText();
+    if (!autoText && !force) return;
+
+    notesInput.value = autoText;
+    lastAutoNotesValue = autoText;
+    notesDirtyByUser = false;
+  };
+
+  const enforceVehicleCapacity = async () => {
+    const selectedIds = parseSelectedInvoiceIds();
+    setSelectedInvoiceIdsHidden(selectedIds);
+
+    const weights = await Promise.all(selectedIds.map((id) => calcInvoiceWeightKg(id).catch(() => 0)));
+    const requiredWeight = weights.reduce((s, w) => s + toNum(w), 0);
+
+    if (weightInput) {
+      weightInput.value = requiredWeight > 0 ? requiredWeight.toFixed(2) : '';
+    }
+
+    if (!vehicleSelect) return;
+
+    Array.from(vehicleSelect.options).forEach((opt: any) => {
+      const vId = String(opt.value || '');
+      if (!vId) return;
+      const veh = activeVehicles.find((v: any) => v.id === vId);
+      const baseLabel = originalVehicleOptionLabel[vId] || opt.textContent || '';
+      if (!originalVehicleOptionLabel[vId]) originalVehicleOptionLabel[vId] = baseLabel;
+      const cap = toNum(veh?.capacity);
+      const blocked = requiredWeight > 0 && cap < requiredWeight;
+      opt.disabled = blocked;
+      opt.textContent = blocked ? `${baseLabel} (capacidad insuficiente)` : baseLabel;
+    });
+
+    const selectedVehicleId = vehicleSelect.value;
+    if (selectedVehicleId) {
+      const selectedVehicle = activeVehicles.find((v: any) => v.id === selectedVehicleId);
+      const selectedCap = toNum(selectedVehicle?.capacity);
+      if (requiredWeight > 0 && selectedCap < requiredWeight) {
+        vehicleSelect.value = '';
+        (window as any).showToast('El vehículo seleccionado no cumple la capacidad mínima para las facturas elegidas.', 'warning');
+      }
+    }
+
+    if (vehicleHint) {
+      const ton = requiredWeight / 1000;
+      vehicleHint.textContent = requiredWeight > 0
+        ? `Carga requerida: ${(window as any).fmtN(requiredWeight)} Kg (${ton.toFixed(2)} Ton). Solo se habilitan vehículos con capacidad igual o superior.`
+        : 'Selecciona factura(s) para validar capacidad mínima de carga.';
+    }
+
+    await refreshItemsFromSelectedInvoices(false);
+    refreshNotesFromSelectedInvoices(false);
+  };
+
+  const refreshInvoiceSelectorAndCapacity = async () => {
+    const selectedNow = parseSelectedInvoiceIds();
+    renderInvoiceSelector(selectedNow.length ? selectedNow : (invoiceIdsHidden?.value || '').split(',').map(s => s.trim()).filter(Boolean));
+    if (invoiceList) {
+      invoiceList.querySelectorAll('input[type="checkbox"][data-invoice-id]').forEach((el: any) => {
+        el.addEventListener('change', () => { void enforceVehicleCapacity(); });
+      });
+    }
+    await enforceVehicleCapacity();
+  };
+
+  await refreshInvoiceSelectorAndCapacity();
+
+  if (itemsInput) {
+    itemsInput.addEventListener('input', () => {
+      const current = String(itemsInput.value || '').trim();
+      itemsDirtyByUser = current !== String(lastAutoItemsValue || '').trim();
+    });
+  }
+
+  autofillItemsBtn?.addEventListener('click', async () => {
+    await refreshItemsFromSelectedInvoices(true);
+  });
+
+  if (notesInput) {
+    notesInput.addEventListener('input', () => {
+      const current = String(notesInput.value || '').trim();
+      notesDirtyByUser = current !== String(lastAutoNotesValue || '').trim();
+    });
+  }
+
+  autofillNotesBtn?.addEventListener('click', () => {
+    refreshNotesFromSelectedInvoices(true);
+  });
 
   (window as any)._despQuickAddCustomer = function() {
     if (typeof (window as any).openTerceroForm === 'function') {
@@ -543,12 +1017,16 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
           (window as any)._desp_clients = thirds;
           clients.length = 0;
           clients.push(...thirds);
+          if (!_isClientOrSupplierType(createdRecord.type)) {
+            (window as any).showToast('Tercero creado, pero su tipo no es CLIENTE ni PROVEEDOR. No aparecerá en este selector.', 'warning');
+            return;
+          }
           const docNum = createdRecord.doc_number || createdRecord.nit || '';
           const selectText = docNum ? `${docNum} - ${createdRecord.name}` : createdRecord.name;
           (window as any)._selectDelClient(createdRecord.id, selectText);
-          (window as any).showToast('Cliente creado y seleccionado en Despachos.', 'success');
+          (window as any).showToast('Tercero creado y seleccionado en Despachos.', 'success');
         } catch (err: any) {
-          (window as any).showToast('Error al recargar clientes: ' + err.message, 'error');
+          (window as any).showToast('Error al recargar terceros: ' + err.message, 'error');
         }
       });
     } else {
@@ -566,15 +1044,41 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
       const vehicleId = (document.getElementById('del-vehicle') as HTMLSelectElement)?.value || null;
       const weight = parseFloat((document.getElementById('del-weight') as HTMLInputElement)?.value || '0');
       const status = (document.getElementById('del-status') as HTMLSelectElement)?.value;
-      const salesOrderId = (document.getElementById('del-order') as HTMLSelectElement)?.value || null;
-      const invoiceId = (document.getElementById('del-invoice') as HTMLSelectElement)?.value || null;
+      const selectedInvoiceIds = ((document.getElementById('del-invoice-ids') as HTMLInputElement)?.value || '')
+        .split(',')
+        .map(x => x.trim())
+        .filter(Boolean);
+      const invoiceId = selectedInvoiceIds[0] || null;
       const items = (document.getElementById('del-items') as HTMLTextAreaElement)?.value.trim();
       const notes = (document.getElementById('del-notes') as HTMLInputElement)?.value.trim();
 
       if (!date) throw new Error('Por favor selecciona una fecha de entrega.');
-      if (!clientId) throw new Error('Por favor selecciona un cliente de la lista.');
+      if (!clientId) throw new Error('Por favor selecciona un tercero (cliente/proveedor) de la lista.');
       if (!address) throw new Error('Por favor ingresa la dirección de entrega.');
+      if (!selectedInvoiceIds.length) throw new Error('Debes vincular al menos una factura vigente con entrega pendiente.');
       if (!items) throw new Error('Por favor detalla los ítems a entregar.');
+
+      if (vehicleId) {
+        const selectedVehicle = activeVehicles.find((v: any) => v.id === vehicleId);
+        const selectedVehicleCapacity = toNum(selectedVehicle?.capacity);
+        const requiredWeight = isNaN(weight) ? 0 : weight;
+        if (requiredWeight > 0 && selectedVehicleCapacity < requiredWeight) {
+          throw new Error(`El vehículo seleccionado no cumple con la capacidad mínima requerida (${(window as any).fmtN(requiredWeight)} Kg).`);
+        }
+      }
+
+      const selectedInvoiceNumbers = selectedInvoiceIds
+        .map((id) => {
+          const inv = invoices.find((x: any) => x.id === id);
+          return inv?.number || id;
+        })
+        .filter(Boolean);
+
+      const notesClean = String(notes || '')
+        .replace(/^Facturas vinculadas:\s*.*?(\s*\|\s*)?/i, '')
+        .trim();
+      const linkedInvoicesNote = `Facturas vinculadas: ${selectedInvoiceNumbers.join(', ')}`;
+      const finalNotes = [linkedInvoicesNote, notesClean].filter(Boolean).join(' | ');
 
       const data = {
         number,
@@ -584,10 +1088,10 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
         vehicle_id: vehicleId,
         weight: isNaN(weight) ? null : weight,
         status,
-        sales_order_id: salesOrderId,
+        sales_order_id: del?.sales_order_id || null,
         invoice_id: invoiceId,
         items,
-        notes,
+        notes: finalNotes,
       };
 
       // Si es un nuevo despacho en 'AUTO', obtenemos consecutivo incremental

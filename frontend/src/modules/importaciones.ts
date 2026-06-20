@@ -56,6 +56,7 @@ async function _loadImportacionesPage(c: HTMLElement) {
         <p class="text-sm" style="color:#6B7280">Planifica compras internacionales, controla el tránsito, nacionaliza aduanas y liquida costos de importación.</p>
       </div>
       <div class="flex gap-2">
+        ${(window as any).can('canWrite') ? `<button class="btn btn-outline" id="btn-import-pending-sale" title="Crear factura pendiente por entrega"><i class="fas fa-truck-ramp-box"></i> Facturar con Reserva</button>` : ''}
         ${(window as any).can('canWrite') ? `<button class="btn btn-outline" id="btn-import-config" title="Configuración de importaciones"><i class="fas fa-gear"></i></button><button class="btn btn-primary" id="btn-new-import"><i class="fas fa-plus"></i> Nueva Importación</button>` : ''}
       </div>
     </div>
@@ -106,6 +107,13 @@ async function _loadImportacionesPage(c: HTMLElement) {
   `;
 
   document.getElementById('btn-new-import')?.addEventListener('click', () => openImportForm(null, () => _loadImportacionesPage(c)));
+  document.getElementById('btn-import-pending-sale')?.addEventListener('click', () => {
+    if (typeof (window as any).openPendingDeliverySaleForm === 'function') {
+      (window as any).openPendingDeliverySaleForm(() => _loadImportacionesPage(c));
+    } else {
+      (window as any).showToast('La acción de facturar con reserva aún no está disponible.', 'warning');
+    }
+  });
   document.getElementById('btn-import-config')?.addEventListener('click', () => openImportSettingsModal(() => _loadImportacionesPage(c)));
 
   const applyFilter = () => filterImportTable();

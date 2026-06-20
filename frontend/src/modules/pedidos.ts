@@ -520,12 +520,15 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null) 
           return etaA.localeCompare(etaB);
         });
 
-        const totalQty = incoming.reduce((sum: number, item: any) => sum + (item.qty || 0), 0);
+        const totalQty = incoming.reduce((sum: number, item: any) => {
+          const available = Number(item.qty_available ?? item.qty ?? 0);
+          return sum + available;
+        }, 0);
         const earliest = incoming[0];
         const imp = earliest.expand?.import_id;
         const eta = imp?.estimated_arrival ? (window as any).fmtDate(imp.estimated_arrival) : 'Sin fecha';
 
-        container.innerHTML = `<i class="fas fa-ship text-[9px] mr-1"></i>En camino: <strong>${(window as any).fmtN(totalQty)}</strong> unds (ETA: ${eta} en ${imp?.number || 'IMP'})`;
+        container.innerHTML = `<i class="fas fa-ship text-[9px] mr-1"></i>En camino disponible: <strong>${(window as any).fmtN(totalQty)}</strong> unds (ETA: ${eta} en ${imp?.number || 'IMP'})`;
         container.classList.remove('hidden');
       } else {
         container.classList.add('hidden');

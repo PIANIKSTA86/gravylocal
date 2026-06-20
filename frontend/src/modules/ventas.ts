@@ -488,6 +488,12 @@ function renderSoRow(inv: any) {
   const wh = inv.expand?.warehouse_id;
   const num = String(inv.number || '').trim();
   const prefix = num.includes('-') ? num.split('-')[0].toUpperCase() : 'SIN_PREFIJO';
+  const deliveryStatus = String(inv.delivery_fulfillment_status || '').trim().toUpperCase();
+  const deliveryBadge = deliveryStatus === 'ENTREGADO'
+    ? '<span class="badge badge-green">Entrega: Completada</span>'
+    : deliveryStatus === 'PARCIAL'
+      ? '<span class="badge badge-blue">Entrega: Parcial</span>'
+      : (inv.has_pending_delivery ? '<span class="badge badge-orange">Entrega: Pendiente</span>' : '');
   return `
     <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}" data-soprefix="${(window as any).esc(prefix)}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(inv.number)}</span></td>
@@ -498,7 +504,12 @@ function renderSoRow(inv: any) {
       <td class="text-right">${(window as any).fmt(inv.subtotal || 0)}</td>
       <td class="text-right">${inv.iva_total ? (window as any).fmt(inv.iva_total) : '—'}</td>
       <td class="text-right font-semibold">${(window as any).fmt(inv.payable_total ?? inv.total ?? 0)}</td>
-      <td><span class="badge ${meta.badge}">${meta.label}</span></td>
+      <td>
+        <div class="flex flex-col gap-1">
+          <span class="badge ${meta.badge}">${meta.label}</span>
+          ${deliveryBadge}
+        </div>
+      </td>
       <td>
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesInvoiceDetail('${(window as any).esc(inv.id)}')"><i class="fas fa-eye"></i></button>
@@ -646,6 +657,10 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         payment_method: 'CREDITO',
         sales_order_id: preloadedOrder.id
       };
+      if (preloadedOrder?.has_pending_delivery || preloadedOrder?.fulfillment_status === 'RESERVADO_IMPORTACION') {
+        inv.has_pending_delivery = true;
+        inv.delivery_fulfillment_status = 'PENDIENTE';
+      }
       existingLines = lines.map((l: any) => ({
         product_id: l.product_id,
         qty: l.qty,
@@ -849,6 +864,16 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <input id="so-notes" class="form-input so-compact-inp" placeholder="Observaciones, condiciones de entrega..." value="${(window as any).esc(inv?.notes || '')}">
           </div>
         </div>
+      </div>
+
+      <div class="rounded-xl p-3" style="background:#FFF8F0;border:1px solid #FED7AA">
+        <label class="inline-flex items-center gap-2 cursor-pointer" style="font-size:13px;font-weight:600;color:#9A3412">
+          <input id="so-pending-delivery" type="checkbox" ${inv?.has_pending_delivery ? 'checked' : ''}>
+          Facturar pendiente por entrega (reserva en importacion)
+        </label>
+        <p style="margin:6px 0 0 0;font-size:11px;color:#7C2D12">
+          Al contabilizar, el sistema reservara unidades en importaciones activas y programara un despacho pendiente automaticamente.
+        </p>
       </div>
 
       <!-- ══ BUSCADOR GLOBAL DE PRODUCTOS ══ -->
@@ -1574,6 +1599,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value;
     const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value;
     const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || null;
+    const pendingDelivery = !!(document.getElementById('so-pending-delivery') as HTMLInputElement)?.checked;
     let notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
 
     const dianConcept = document.getElementById('so-dian-concept') as HTMLSelectElement;
@@ -1761,6 +1787,8 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       sales_order_id: salesOrderId || null,
       cross_doc_ref: inv?.cross_doc_ref || null,
       branch_id: inv?.branch_id || targetBranchId || null,
+      has_pending_delivery: pendingDelivery,
+      delivery_fulfillment_status: pendingDelivery ? 'PENDIENTE' : 'NO_REQUIERE',
       status: 'draft',
     };
 
@@ -1809,6 +1837,21 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     }
   }
 }
+
+(window as any).openPendingDeliverySaleForm = function(onDone: any = null) {
+  navigate('ventas');
+  setTimeout(() => {
+    openSalesForm(null, onDone || (() => renderVentas(document.getElementById('page-content')!)));
+    setTimeout(() => {
+      const pending = document.getElementById('so-pending-delivery') as HTMLInputElement | null;
+      if (pending) {
+        pending.checked = true;
+        pending.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      (window as any).showToast('Factura preparada para reserva en importación y entrega pendiente', 'info');
+    }, 150);
+  }, 250);
+};
 
 // --- Impresión Carta Premium ---
 window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: string) {

@@ -65,6 +65,7 @@ function applyModuleVisibility(): void {
     'copro-reservas':    'copropiedades',
     'copro-pqrs':        'copropiedades',
     'importaciones':     'logistica',
+    'reservas-logistica':'logistica',
     'inmobiliarias':     'inmobiliarias',
     'tienda-virtual':   'tienda-virtual',
     'crm':               'crm',

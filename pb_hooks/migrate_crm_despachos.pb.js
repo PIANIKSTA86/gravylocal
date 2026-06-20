@@ -125,6 +125,7 @@ onBootstrap((e) => {
         deleteRule: deleteRule,
         fields: [
           { name: "plate", type: "text", required: true },
+          { name: "transportista_id", type: "relation", required: false, collectionId: thirdPartiesId, cascadeDelete: false, maxSelect: 1 },
           { name: "driver", type: "text", required: true },
           { name: "capacity", type: "number", required: true, min: 0 },
           { name: "status", type: "select", required: true, values: ["DISPONIBLE", "EN_RUTA", "MANTENIMIENTO"] },
@@ -231,6 +232,31 @@ onBootstrap((e) => {
         }));
         changed = true;
         console.log(`[GRAVY-MIGRATION] Campo 'updated' agregado a la coleccion ${colName}`);
+      }
+
+      if (colName === "logistica_vehicles") {
+        let hasTransportista = false;
+        try {
+          hasTransportista = !!col.fields.getByName("transportista_id");
+        } catch (_) {
+          if (col.fields && col.fields.length) {
+            for (let i = 0; i < col.fields.length; i++) {
+              if (col.fields[i].name === "transportista_id") { hasTransportista = true; break; }
+            }
+          }
+        }
+
+        if (!hasTransportista) {
+          col.fields.add(new RelationField({
+            name: "transportista_id",
+            collectionId: thirdPartiesId,
+            cascadeDelete: false,
+            maxSelect: 1,
+            required: false
+          }));
+          changed = true;
+          console.log(`[GRAVY-MIGRATION] Campo 'transportista_id' agregado a la coleccion ${colName}`);
+        }
       }
 
       if (changed) {

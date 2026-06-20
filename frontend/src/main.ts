@@ -25,6 +25,7 @@ import './modules/productos.ts';
 import './modules/inventario.ts';
 import './modules/compras.ts';
 import './modules/pedidos.ts';
+import './modules/reservas-logistica.ts';
 import './modules/importaciones.ts';
 import './modules/ventas.ts';
 import './modules/pos.ts';

@@ -1430,12 +1430,20 @@ const API = {
       ? !!posConfig?.operational?.allow_negative_stock 
       : !!salesConfig?.operational?.allow_negative_stock;
     const immediatePosting = isPOS || !!salesConfig?.operational?.immediate_posting;
+    const pendingDeliveryMode = !!inv.has_pending_delivery;
+
+    if (pendingDeliveryMode) {
+      await this.createImportReservationForInvoice(invoiceId, { createDelivery: true, allowExisting: true });
+    }
 
     // â”€â”€ Validar stock en tiempo real y preparar COGS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     const movLines = [];
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       if (prod && prod.type === 'BIEN') {
+        if (pendingDeliveryMode) {
+          continue;
+        }
         if (prod.is_combo) {
           const comps = await pb.listAll('product_components', { filter: `parent_id="${pb.escapeFilterValue(prod.id)}"`, expand: 'component_id' });
           if (!comps.length) {
@@ -2031,10 +2039,15 @@ const API = {
         tx_number: txNumber,
       });
       if (inv.sales_order_id) {
-        await pb.update('sales_orders', inv.sales_order_id, {
+        const soPatch: any = {
           status: 'invoiced',
           invoice_id: invoiceId
-        });
+        };
+        if (pendingDeliveryMode) {
+          soPatch.has_pending_delivery = true;
+          soPatch.fulfillment_status = 'PENDIENTE_ENTREGA';
+        }
+        await pb.update('sales_orders', inv.sales_order_id, soPatch);
         await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido marcado como facturado por factura ${inv.number}`);
       }
       await this.logAudit('POST', 'Invoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${txCreated.number}`);
@@ -2062,6 +2075,9 @@ const API = {
           }
           await pb.delete('transactions', txCreated.id).catch(() => {});
         } catch (_) {}
+      }
+      if (pendingDeliveryMode) {
+        await this.releaseReservationsByInvoice(invoiceId, 'Rollback por error de contabilizacion').catch(() => {});
       }
       throw postErr;
     }
@@ -2108,10 +2124,14 @@ const API = {
     if (inv.sales_order_id) {
       await pb.update('sales_orders', inv.sales_order_id, {
         status: 'pending',
-        invoice_id: null
+        invoice_id: null,
+        has_pending_delivery: false,
+        fulfillment_status: 'SIN_GESTION',
       });
       await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulaciÃ³n/reapertura de factura ${inv.number}`);
     }
+
+    await this.releaseReservationsByInvoice(invoiceId, `${actionLabel} venta ${inv.number}${reason ? ` | ${reason}` : ''}`).catch(() => {});
 
     return {
       inv,
@@ -2128,6 +2148,8 @@ const API = {
     if (inv.status === 'voided') throw new Error('La factura ya estÃ¡ anulada.');
     if (inv.status === 'posted') {
       await this.rollbackInvoicePosting(invoiceId, 'anular', safeReason);
+    } else {
+      await this.releaseReservationsByInvoice(invoiceId, `anular venta ${inv.number} | ${safeReason}`).catch(() => {});
     }
     await pb.update('invoices', invoiceId, { status: 'voided' });
     await this.logAudit('VOID', 'Invoice', invoiceId, `Anulada factura ${inv.number} | Motivo: ${safeReason}`);
@@ -3748,10 +3770,13 @@ const API = {
   async deleteInvoiceDraft(invoiceId) {
     const inv = await pb.get('invoices', invoiceId);
     if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar facturas en estado Borrador.');
+    await this.releaseReservationsByInvoice(invoiceId, `eliminar borrador de factura ${inv.number}`).catch(() => {});
     if (inv.sales_order_id) {
       await pb.update('sales_orders', inv.sales_order_id, {
         status: 'pending',
-        invoice_id: null
+        invoice_id: null,
+        has_pending_delivery: false,
+        fulfillment_status: 'SIN_GESTION',
       });
       await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por eliminaciÃ³n de borrador de factura`);
     }
@@ -3969,13 +3994,269 @@ const API = {
     return `IMP-${String(next).padStart(6, '0')}`;
   },
 
+  /** Genera consecutivo RES-XXXXXX para reservas de importacion */
+  async nextSalesReservationConsecutive() {
+    let currentConsecutive = 0;
+    let recordId = "";
+    try {
+      const res = await pb.list('settings', { filter: 'key="sales_reservation_consecutive"', perPage: 1 });
+      if (res.items.length) {
+        currentConsecutive = parseInt(res.items[0].value || '0', 10);
+        recordId = res.items[0].id;
+      }
+    } catch (_) {}
+
+    const next = currentConsecutive + 1;
+    const nextStr = String(next);
+    if (recordId) {
+      await pb.update('settings', recordId, { value: nextStr });
+    } else {
+      await pb.create('settings', { key: 'sales_reservation_consecutive', value: nextStr });
+    }
+
+    return `RES-${String(next).padStart(6, '0')}`;
+  },
+
+  /** Genera consecutivo DESP-XXXXX para entregas programadas desde facturacion */
+  async nextDeliveryConsecutive() {
+    let currentConsecutive = 0;
+    let recordId = "";
+    try {
+      const res = await pb.list('settings', { filter: 'key="delivery_consecutive"', perPage: 1 });
+      if (res.items.length) {
+        currentConsecutive = parseInt(res.items[0].value || '0', 10);
+        recordId = res.items[0].id;
+      }
+    } catch (_) {}
+
+    const next = currentConsecutive + 1;
+    const nextStr = String(next);
+    if (recordId) {
+      await pb.update('settings', recordId, { value: nextStr });
+    } else {
+      await pb.create('settings', { key: 'delivery_consecutive', value: nextStr });
+    }
+
+    return `DESP-${String(next).padStart(5, '0')}`;
+  },
+
   /** Consulta el stock en camino por producto en importaciones activas */
   async getIncomingStockForProduct(productId) {
     const safe = pb.escapeFilterValue(productId);
-    return pb.listAll('import_lines', {
+    const incoming = await pb.listAll('import_lines', {
       filter: `product_id="${safe}" && (import_id.status="transito" || import_id.status="nacionalizacion")`,
       expand: 'import_id',
     });
+
+    if (!incoming.length) return incoming;
+
+    const reservationLines = await pb.listAll('sales_reservation_lines', {
+      filter: `import_line_id!="" && (status="active" || status="partial") && (reservation_id.status="active" || reservation_id.status="partial")`,
+      expand: 'reservation_id',
+    }).catch(() => []);
+
+    const committedByImportLine: any = {};
+    for (const r of reservationLines) {
+      const il = String(r.import_line_id || '').trim();
+      if (!il) continue;
+      const committed = Math.max(0, Number(r.qty_reserved || 0) - Number(r.qty_dispatched || 0) - Number(r.qty_released || 0));
+      committedByImportLine[il] = (committedByImportLine[il] || 0) + committed;
+    }
+
+    return incoming.map((line: any) => {
+      const qty = Number(line.qty || 0);
+      const committed = Number(committedByImportLine[line.id] || 0);
+      return {
+        ...line,
+        qty_committed: committed,
+        qty_available: Math.max(0, qty - committed),
+      };
+    });
+  },
+
+  /** Crea reserva de importacion para una factura marcada como pendiente por entrega. */
+  async createImportReservationForInvoice(invoiceId, opts = {}) {
+    const options = {
+      createDelivery: opts.createDelivery !== false,
+      allowExisting: opts.allowExisting !== false,
+    };
+
+    const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id' });
+    if (!inv.has_pending_delivery) return null;
+
+    const existing = await pb.listAll('sales_reservations', {
+      filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}" && status!="released" && status!="cancelled"`,
+      sort: '-created',
+    }).catch(() => []);
+
+    if (existing.length && options.allowExisting) {
+      return existing[0];
+    }
+
+    const [invLines, products] = await Promise.all([
+      this.getInvoiceLines(invoiceId),
+      this.getProducts({ activeOnly: false }),
+    ]);
+
+    const goodsLines = invLines
+      .map((l: any) => {
+        const p = products.find((x: any) => x.id === l.product_id);
+        return { line: l, product: p };
+      })
+      .filter((x: any) => x.product && x.product.type === 'BIEN' && Number(x.line.qty || 0) > 0);
+
+    if (!goodsLines.length) {
+      return null;
+    }
+
+    const allocations: any[] = [];
+
+    for (const item of goodsLines) {
+      const line = item.line;
+      const product = item.product;
+      let needed = Number(line.qty || 0);
+      const incoming = await this.getIncomingStockForProduct(product.id);
+      const sorted = [...incoming].sort((a: any, b: any) => {
+        const etaA = String(a.expand?.import_id?.estimated_arrival || '9999-99-99');
+        const etaB = String(b.expand?.import_id?.estimated_arrival || '9999-99-99');
+        return etaA.localeCompare(etaB);
+      });
+
+      for (const lot of sorted) {
+        if (needed <= 0) break;
+        const available = Number(lot.qty_available ?? lot.qty ?? 0);
+        if (available <= 0) continue;
+        const take = Math.min(needed, available);
+        allocations.push({
+          invoice_line_id: line.id,
+          product_id: product.id,
+          import_id: lot.import_id,
+          import_line_id: lot.id,
+          qty: take,
+          eta: lot.expand?.import_id?.estimated_arrival || '',
+          product_name: product.name,
+        });
+        needed -= take;
+      }
+
+      if (needed > 0) {
+        throw new Error(`No hay disponibilidad en importacion suficiente para ${product.name}. Faltan ${fmtN(needed)} unidades por reservar.`);
+      }
+    }
+
+    const number = await this.nextSalesReservationConsecutive();
+    const reservation = await pb.create('sales_reservations', {
+      number,
+      customer_id: inv.customer_id,
+      sales_order_id: inv.sales_order_id || null,
+      invoice_id: invoiceId,
+      status: 'active',
+      notes: `Reserva auto por factura ${inv.number}`,
+    });
+
+    let lineOrder = 1;
+    const createdReservationLines: any[] = [];
+    for (const a of allocations) {
+      const rl = await pb.create('sales_reservation_lines', {
+        reservation_id: reservation.id,
+        line_order: lineOrder++,
+        product_id: a.product_id,
+        import_id: a.import_id,
+        import_line_id: a.import_line_id,
+        qty_reserved: a.qty,
+        qty_dispatched: 0,
+        qty_released: 0,
+        eta_snapshot: a.eta || null,
+        status: 'active',
+        notes: `Factura ${inv.number}`,
+      });
+      createdReservationLines.push({ ...rl, invoice_line_id: a.invoice_line_id, product_name: a.product_name });
+    }
+
+    await pb.update('invoices', invoiceId, {
+      has_pending_delivery: true,
+      delivery_fulfillment_status: 'PENDIENTE',
+    });
+
+    if (inv.sales_order_id) {
+      await pb.update('sales_orders', inv.sales_order_id, {
+        has_pending_delivery: true,
+        fulfillment_status: 'RESERVADO_IMPORTACION',
+      }).catch(() => {});
+    }
+
+    if (options.createDelivery) {
+      const existingDelivery = await pb.listAll('logistica_deliveries', {
+        filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}" && status!="CANCELADO"`,
+        sort: '-created',
+      }).catch(() => []);
+
+      if (!existingDelivery.length) {
+        const dNumber = await this.nextDeliveryConsecutive();
+        const customer = inv.expand?.customer_id || null;
+        const del = await pb.create('logistica_deliveries', {
+          number: dNumber,
+          date: inv.due_date || inv.date,
+          client_id: inv.customer_id,
+          vehicle_id: null,
+          address: customer?.address || 'Pendiente definir con cliente',
+          status: 'PENDIENTE',
+          weight: null,
+          notes: `Generado automatico por factura ${inv.number}`,
+          items: createdReservationLines.map((x: any) => `${fmtN(x.qty_reserved)} x ${x.product_name || x.product_id}`).join(' | '),
+          sales_order_id: inv.sales_order_id || null,
+          invoice_id: invoiceId,
+        });
+
+        let dLineOrder = 1;
+        for (const x of createdReservationLines) {
+          await pb.create('logistica_delivery_lines', {
+            delivery_id: del.id,
+            line_order: dLineOrder++,
+            product_id: x.product_id,
+            invoice_line_id: x.invoice_line_id || null,
+            reservation_line_id: x.id,
+            qty_planned: x.qty_reserved,
+            qty_delivered: 0,
+            notes: `Reserva ${reservation.number}`,
+          }).catch(() => {});
+        }
+      }
+    }
+
+    await this.logAudit('CREATE', 'SalesReservation', reservation.id, `Reserva ${number} creada para factura ${inv.number}`);
+    return reservation;
+  },
+
+  /** Libera reservas activas de una factura (anulacion, rollback o eliminacion). */
+  async releaseReservationsByInvoice(invoiceId, reason = '') {
+    const reservations = await pb.listAll('sales_reservations', {
+      filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}" && (status="active" || status="partial" || status="completed")`,
+    }).catch(() => []);
+
+    for (const r of reservations) {
+      const lines = await pb.listAll('sales_reservation_lines', {
+        filter: `reservation_id="${pb.escapeFilterValue(r.id)}"`,
+      }).catch(() => []);
+
+      for (const l of lines) {
+        const remaining = Math.max(0, Number(l.qty_reserved || 0) - Number(l.qty_dispatched || 0) - Number(l.qty_released || 0));
+        const newReleased = Number(l.qty_released || 0) + remaining;
+        const isCompleted = Number(l.qty_dispatched || 0) >= Number(l.qty_reserved || 0);
+        await pb.update('sales_reservation_lines', l.id, {
+          qty_released: newReleased,
+          status: isCompleted ? 'completed' : 'released',
+          notes: reason ? `${l.notes || ''} | ${reason}` : l.notes,
+        });
+      }
+
+      await pb.update('sales_reservations', r.id, {
+        status: 'released',
+        notes: reason ? `${r.notes || ''} | ${reason}` : r.notes,
+      });
+
+      await this.logAudit('RELEASE', 'SalesReservation', r.id, `Reserva ${r.number} liberada${reason ? ` | ${reason}` : ''}`);
+    }
   },
 
   /** Obtener la configuraciÃ³n del mÃ³dulo de importaciones */

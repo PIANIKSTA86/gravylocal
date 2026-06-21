@@ -56,7 +56,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
   subtotal,
   ivaTotal,
   total,
-  softwareId
+  softwareId,
+  mandante
 }) {
   const dec = (val) => Number(val || 0).toFixed(2);
   const escXml = (val) => String(val || '')
@@ -70,6 +71,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
   const custDv = custDIANDocType === '31' ? calcularDV(custDocNum) : '0';
     
   const typeCode = documentType === 'Invoice' ? '01' : (documentType === 'CreditNote' ? '91' : '92');
+  const customizationValue = mandante ? '11' : '10';
   
   let xml = '';
   
@@ -90,7 +92,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     </ext:UBLExtension>
   </ext:UBLExtensions>
   <cbc:UBLVersionID>UBL 2.1</cbc:UBLVersionID>
-  <cbc:CustomizationID schemeAgencyID="195" schemeID="${dianEnvironment}">10</cbc:CustomizationID>
+  <cbc:CustomizationID schemeAgencyID="195" schemeID="${dianEnvironment}">${customizationValue}</cbc:CustomizationID>
   <cbc:ProfileID>DIAN 2.1: Factura Electrónica de Venta</cbc:ProfileID>
   <cbc:ID>${escXml(documentNumber)}</cbc:ID>
   <cbc:UUID schemeName="CUFE-SHA384" schemeID="${dianEnvironment}"><!-- CUFE_PLACEHOLDER --></cbc:UUID>
@@ -242,6 +244,17 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     </cac:TaxTotal>
     <cac:Item>
       <cbc:Description>${escXml(item.description)}</cbc:Description>
+      ${mandante ? `
+      <cac:InformationContentProviderParty>
+        <cac:PowerOfAttorney>
+          <cac:AgentParty>
+            <cac:PartyIdentification>
+              <cbc:ID schemeAgencyID="195" schemeID="${mandante.dv}" schemeName="${mandante.docType}">${escXml(mandante.docNum)}</cbc:ID>
+            </cac:PartyIdentification>
+          </cac:AgentParty>
+        </cac:PowerOfAttorney>
+      </cac:InformationContentProviderParty>
+      ` : ''}
     </cac:Item>
     <cac:Price>
       <cbc:PriceAmount currencyID="COP">${dec(item.price)}</cbc:PriceAmount>
@@ -269,6 +282,17 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     </cac:TaxTotal>
     <cac:Item>
       <cbc:Description>${escXml(item.description)}</cbc:Description>
+      ${mandante ? `
+      <cac:InformationContentProviderParty>
+        <cac:PowerOfAttorney>
+          <cac:AgentParty>
+            <cac:PartyIdentification>
+              <cbc:ID schemeAgencyID="195" schemeID="${mandante.dv}" schemeName="${mandante.docType}">${escXml(mandante.docNum)}</cbc:ID>
+            </cac:PartyIdentification>
+          </cac:AgentParty>
+        </cac:PowerOfAttorney>
+      </cac:InformationContentProviderParty>
+      ` : ''}
     </cac:Item>
     <cac:Price>
       <cbc:PriceAmount currencyID="COP">${dec(item.price)}</cbc:PriceAmount>
@@ -296,6 +320,17 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     </cac:TaxTotal>
     <cac:Item>
       <cbc:Description>${escXml(item.description)}</cbc:Description>
+      ${mandante ? `
+      <cac:InformationContentProviderParty>
+        <cac:PowerOfAttorney>
+          <cac:AgentParty>
+            <cac:PartyIdentification>
+              <cbc:ID schemeAgencyID="195" schemeID="${mandante.dv}" schemeName="${mandante.docType}">${escXml(mandante.docNum)}</cbc:ID>
+            </cac:PartyIdentification>
+          </cac:AgentParty>
+        </cac:PowerOfAttorney>
+      </cac:InformationContentProviderParty>
+      ` : ''}
     </cac:Item>
     <cac:Price>
       <cbc:PriceAmount currencyID="COP">${dec(item.price)}</cbc:PriceAmount>
@@ -343,7 +378,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     customer,
     crossDocRef,
     clTec,
-    cajaName
+    cajaName,
+    mandante
   }) {
     const dec = (val) => Number(val || 0).toFixed(2);
     const escXml = (val) => String(val || '')
@@ -372,7 +408,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     const enc15 = String(items.length);
     const enc16 = issueDate;
     const enc20 = escXml(ftechEnvironment || '2'); // 1 = Prod, 2 = Test
-    const enc21 = isNC ? '20' : (isND ? '30' : '10');
+    const enc21 = isNC ? '20' : (isND ? '30' : (mandante ? '11' : '10'));
 
     let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <${rootTag}>
@@ -731,8 +767,9 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     const isNC = (txTypeCode === "NC");
     const isND = (txTypeCode === "ND");
     const isFV = (txTypeCode === "FV");
+    const isIA = (txTypeCode === "IA");
     
-    if (!isPOS && !isNC && !isND && !isFV) {
+    if (!isPOS && !isNC && !isND && !isFV && !isIA) {
       e.json(400, { message: "El tipo de transacción '" + txTypeCode + "' no es válido para facturación DIAN." });
       return;
     }
@@ -812,49 +849,93 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     let items = [];
     
     let invoice = null;
+    let isInmoInvoice = false;
     try {
       invoice = $app.findFirstRecordByFilter("invoices", "tx_id = '" + txId + "'");
     } catch (_) {
       try {
         invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + txId + "'");
-      } catch (_) {}
+      } catch (_) {
+        try {
+          invoice = $app.findFirstRecordByFilter("inmo_invoices", "tx_id = '" + txId + "'");
+          isInmoInvoice = true;
+        } catch (_) {}
+      }
     }
     
+    let mandanteInfo = null;
     if (invoice) {
-      subtotal = invoice.getFloat("subtotal");
-      ivaTotal = invoice.getFloat("iva_total");
-      total = invoice.getFloat("total");
-      
-      const lines = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invoice.id + "'", "line_order");
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+      if (isInmoInvoice) {
+        subtotal = invoice.getFloat("rent_amount") + (invoice.getFloat("other_amount") || 0);
+        ivaTotal = 0;
+        total = invoice.getFloat("total");
         
-        let desc = line.getString("description");
-        if (!desc) {
-          const prodId = line.getString("product_id");
-          if (prodId) {
-            try {
-              const product = $app.findRecordById("products", prodId);
-              if (product) {
-                desc = product.getString("name") || product.getString("description");
-              }
-            } catch (_) {}
+        try {
+          const contract = $app.findRecordById("inmo_contracts", invoice.getString("contract_id"));
+          const property = $app.findRecordById("inmo_properties", contract.getString("property_id"));
+          const owner = $app.findRecordById("third_parties", property.getString("owner_id"));
+          if (owner) {
+            mandanteInfo = {
+              docNum: owner.getString("doc_number"),
+              docType: mapDocType(owner.getString("doc_type")),
+              dv: owner.getString("dv") || calcularDV(owner.getString("doc_number")),
+              name: owner.getString("name")
+            };
           }
-        }
-        if (!desc) {
-          desc = "Producto/Servicio";
+        } catch (err) {
+          console.warn("[GRAVY] Error al cargar mandante para factura electrónica:", err);
         }
 
-        items.push({
-          id: String(i + 1),
-          description: desc,
-          qty: line.getFloat("qty") || 1,
-          price: line.getFloat("unit_price") || 0,
-          ivaRate: line.getFloat("iva_rate") || 0,
-          ivaAmount: line.getFloat("iva_amount") || 0,
-          subtotal: line.getFloat("subtotal") || 0,
-          total: line.getFloat("total") || 0
-        });
+        const lines = $app.findRecordsByFilter("inmo_invoice_lines", "invoice_id = '" + invoice.id + "'", "line_order");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          items.push({
+            id: String(i + 1),
+            description: line.getString("description") || "Canon de arrendamiento",
+            qty: 1,
+            price: line.getFloat("amount") || 0,
+            ivaRate: 0,
+            ivaAmount: 0,
+            subtotal: line.getFloat("amount") || 0,
+            total: line.getFloat("amount") || 0
+          });
+        }
+      } else {
+        subtotal = invoice.getFloat("subtotal");
+        ivaTotal = invoice.getFloat("iva_total");
+        total = invoice.getFloat("total");
+        
+        const lines = $app.findRecordsByFilter("invoice_lines", "invoice_id = '" + invoice.id + "'", "line_order");
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          
+          let desc = line.getString("description");
+          if (!desc) {
+            const prodId = line.getString("product_id");
+            if (prodId) {
+              try {
+                const product = $app.findRecordById("products", prodId);
+                if (product) {
+                  desc = product.getString("name") || product.getString("description");
+                }
+              } catch (_) {}
+            }
+          }
+          if (!desc) {
+            desc = "Producto/Servicio";
+          }
+
+          items.push({
+            id: String(i + 1),
+            description: desc,
+            qty: line.getFloat("qty") || 1,
+            price: line.getFloat("unit_price") || 0,
+            ivaRate: line.getFloat("iva_rate") || 0,
+            ivaAmount: line.getFloat("iva_amount") || 0,
+            subtotal: line.getFloat("subtotal") || 0,
+            total: line.getFloat("total") || 0
+          });
+        }
       }
     } else {
       const lines = $app.findRecordsByFilter("tx_lines", "tx_id = '" + txId + "'", "line_order");
@@ -902,6 +983,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
     if (isNC) docTypeForRes = "NC";
     else if (isND) docTypeForRes = "ND";
     else if (isPOS) docTypeForRes = "POS";
+    else if (isIA) docTypeForRes = "FV";
 
     let resolution = null;
     try {
@@ -967,6 +1049,7 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         customer,
         clTec,
         cajaName,
+        mandante: mandanteInfo,
         crossDocRef: (() => {
           if (!invoice) return "";
           const notesStr = invoice.getString("notes") || "";
@@ -996,7 +1079,8 @@ routerAdd('POST', '/api/dian/emit', (e) => {
         subtotal,
         ivaTotal,
         total,
-        softwareId
+        softwareId,
+        mandante: mandanteInfo
       });
     }
 

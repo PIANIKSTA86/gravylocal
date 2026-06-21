@@ -639,7 +639,12 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   const sellers = customers.filter((c: any) => c.type === 'VENDEDOR');
 
-  if (invoiceId) {
+  const preserved = (window as any).__soPreservedState;
+  if (preserved) {
+    inv = preserved.inv;
+    existingLines = preserved.lines;
+    (window as any).__soPreservedState = null;
+  } else if (invoiceId) {
     [inv, existingLines] = await Promise.all([
       (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id' }),
       (window as any).API.getInvoiceLines(invoiceId),
@@ -1055,19 +1060,27 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   (window as any).soQuickAddCustomer = function() {
     if (typeof (window as any).openTerceroForm === 'function') {
-      (window as any).openTerceroForm(null, async (createdRecord: any) => {
-        try {
-          const thirds = await (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
-          customers.length = 0;
-          customers.push(...thirds);
-          const docNum = createdRecord.doc_number || createdRecord.nit || '';
-          const nameText = createdRecord.name || '';
-          const selectText = docNum ? `${docNum} - ${nameText}` : nameText;
-          (window as any).selectSoSupplier(createdRecord.id, selectText);
-          (window as any).showToast('Cliente creado y seleccionado en la venta.', 'success');
-        } catch (err: any) {
-          (window as any).showToast('Error al recargar clientes: ' + err.message, 'error');
+      const currentState = getSoFormCurrentState();
+      (window as any).__soPreservedState = {
+        invoiceId,
+        onDone,
+        noteConfig,
+        inv: currentState.inv,
+        lines: currentState.lines
+      };
+
+      (window as any).__modalCloseCallback = async () => {
+        const preserved = (window as any).__soPreservedState;
+        if (preserved) {
+          await openSalesForm(preserved.invoiceId, preserved.onDone, null, preserved.noteConfig);
         }
+      };
+
+      (window as any).openTerceroForm(null, async (createdRecord: any) => {
+        const docNum = createdRecord.doc_number || createdRecord.nit || '';
+        const nameText = createdRecord.name || '';
+        const selectText = docNum ? `${docNum} - ${nameText}` : nameText;
+        (window as any).__soSelectCustomerAfterLoad = { id: createdRecord.id, text: selectText };
       });
     } else {
       (window as any).showToast('Módulo de terceros no disponible.', 'warning');
@@ -1075,6 +1088,22 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   };
 
   (window as any).soLoadPendingOrderModal = async function() {
+    const currentState = getSoFormCurrentState();
+    (window as any).__soPreservedState = {
+      invoiceId,
+      onDone,
+      noteConfig,
+      inv: currentState.inv,
+      lines: currentState.lines
+    };
+
+    (window as any).__modalCloseCallback = async () => {
+      const preserved = (window as any).__soPreservedState;
+      if (preserved) {
+        await openSalesForm(preserved.invoiceId, preserved.onDone, null, preserved.noteConfig);
+      }
+    };
+
     const selectedCust = (document.getElementById('so-supplier') as HTMLInputElement)?.value;
     let filter = 'status="pending"';
     if (selectedCust) {
@@ -1122,10 +1151,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       (window as any).openModal('Cargar Pedido Pendiente', html, `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`, false);
       
       (window as any).soApplyOrderToForm = function(orderId: string) {
+        (window as any).__soPreservedState = null;
+        (window as any).__modalCloseCallback = null;
         (window as any).closeModal();
         openSalesForm(invoiceId, onDone, orderId);
       };
     } catch (err: any) {
+      (window as any).__soPreservedState = null;
+      (window as any).__modalCloseCallback = null;
       (window as any).showToast('Error al cargar pedidos: ' + err.message, 'error');
     }
   };
@@ -1401,6 +1434,9 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   }
 
   (window as any).soSaveTempState = function() {
+    if (!document.getElementById('so-supplier-search')) {
+      return; // El formulario de ventas no está en el DOM (se abrió otro modal)
+    }
     if (!invoiceId && !preloadedOrderId && !noteConfig) {
       const state = getSoFormCurrentState();
       localStorage.setItem('__soTempState', JSON.stringify(state));
@@ -1425,6 +1461,13 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   initSoGlobalProductSearch();
   window.soSuggestDueDate();
   window.soSetRetMode((window as any).__soRetMode === 'line');
+
+  if ((window as any).__soSelectCustomerAfterLoad) {
+    const sel = (window as any).__soSelectCustomerAfterLoad;
+    (window as any).__soSelectCustomerAfterLoad = null;
+    (window as any).selectSoSupplier(sel.id, sel.text);
+    (window as any).showToast('Cliente creado y seleccionado en la venta.', 'success');
+  }
 }
 
 window.soSuggestDueDate = function() {

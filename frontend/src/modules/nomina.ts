@@ -1676,7 +1676,10 @@ async function renderNomina(c) {
 }
 
 async function setPeriodStatus(id, newStatus) {
-  const labels = { approved: 'Aprobar', paid: 'Marcar como Pagada' };
+  if (newStatus === 'paid') {
+    return openPayPayrollNominaModal(id);
+  }
+  const labels = { approved: 'Aprobar' };
   confirmDialog(`${labels[newStatus] || 'Cambiar estado'}`, `¿Confirmas cambiar el estado del período?`, async () => {
     try {
       const updatePayload = { status: newStatus };
@@ -2454,6 +2457,233 @@ async function openPayrollLineForm(periods, employees) {
 (window as any).openPeriodForm = openPeriodForm;
 (window as any).getNominaDevengadoTotal = getNominaDevengadoTotal;
 
+async function openPayPayrollNominaModal(periodId: string) {
+  try {
+    const period = await pb.get('payroll_periods', periodId);
+
+    const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+    if (!metodosPago.length) {
+      return showToast('No hay métodos de pago o cuentas bancarias activas registradas.', 'warning');
+    }
+
+    const payLines = await pb.listAll('payroll_lines', {
+      filter: `period_id="${pb.escapeFilterValue(periodId)}"`,
+      expand: 'employee_id'
+    });
+    if (!payLines.length) {
+      return showToast('El período no tiene liquidaciones registradas.', 'warning');
+    }
+
+    const { config } = await getNominaConfigWithRow();
+    
+    const grouped = [];
+    let grandTotal = 0;
+    const periodYYYYMM = (period.date_from || period.date_to || '').slice(0, 7).replace('-', '');
+
+    for (const line of payLines) {
+      const netPayAmount = line.net_pay || 0;
+      if (netPayAmount <= 0.01) continue;
+
+      const effectiveRule = getEmployeePayrollRule(config, line.employee_id);
+      const mappingList = resolveAllNominaMappings(config.mappings, 'net_pay', line.employee_id, effectiveRule.group_id || '');
+      const creditMapping = mappingList.find((m: any) => m.side === 'credit');
+      if (!creditMapping) {
+        throw new Error(`Falta mapeo de pasivo (Crédito) para el concepto Neto a pagar de ${line.expand?.employee_id?.name || 'empleado'}. Configúralo en el engranaje de nómina.`);
+      }
+
+      const empDoc = line.expand?.employee_id?.doc_number || line.employee_id || '';
+      const crossDocRef = `NOM-${periodYYYYMM}-EMP-${empDoc}`;
+
+      grouped.push({
+        accountId: creditMapping.account_id,
+        thirdPartyId: line.employee_id,
+        employeeName: line.expand?.employee_id?.name || 'Empleado',
+        crossDocRef: crossDocRef,
+        amount: netPayAmount
+      });
+      
+      grandTotal = round2(grandTotal + netPayAmount);
+    }
+
+    if (grandTotal <= 0.01) {
+      return showToast('El total neto a pagar para este período es cero.', 'warning');
+    }
+
+    (window as any)._payPayrollData = {
+      periodId,
+      periodName: period.name,
+      grouped,
+      grandTotal
+    };
+
+    const bodyHtml = `
+      <div class="space-y-4 text-sm text-left">
+        <div class="p-3 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-100">
+          <strong>Período:</strong> ${esc(period.name)}<br>
+          <strong>Total Neto a Pagar (Salarios):</strong> ${fmt(grandTotal)}
+        </div>
+        <div class="form-group">
+          <label class="form-label">Método / Banco / Caja</label>
+          <select id="modal-pay-payroll-cuenta" class="form-input">
+            <option value="">— Seleccionar —</option>
+            ${metodosPago.map((c: any) => `<option value="${c.id}" data-account="${c.account_id}">${esc(c.name)} (${esc(c.bank)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Fecha de Pago</label>
+          <input type="date" id="modal-pay-payroll-date" class="form-input" value="${todayStr()}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Observaciones</label>
+          <input type="text" id="modal-pay-payroll-obs" class="form-input" value="Pago Salarios Nómina período ${period.name}">
+        </div>
+      </div>
+    `;
+
+    openModal(
+      'Registrar Pago de Nómina (Salarios)',
+      bodyHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="btn-confirm-pay-payroll" onclick="window._savePayPayroll()"><i class="fas fa-check mr-2"></i>Registrar Pago</button>`,
+      false
+    );
+  } catch (err: any) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function resolveCompanyThirdPartyId(fallbackEmpId: string): Promise<string> {
+  try {
+    const linked = await (window as any).API.getSetting('company_third_party_id').catch(() => '') || '';
+    if (linked) return linked;
+
+    const companyNit = await (window as any).API.getSetting('company_nit').catch(() => '') || '';
+    if (companyNit) {
+      const cleanNit = companyNit.replace(/[^0-9]/g, '');
+      const filterExpr = cleanNit
+        ? `doc_number="${pb.escapeFilterValue(cleanNit)}" || doc_number="${pb.escapeFilterValue(companyNit)}"`
+        : `doc_number="${pb.escapeFilterValue(companyNit)}"`;
+      const matchingTp = await pb.listAll('third_parties', { filter: filterExpr });
+      if (matchingTp.length > 0) return matchingTp[0].id;
+    }
+  } catch (_) {}
+  return fallbackEmpId;
+}
+
+async function savePayPayroll() {
+  const ctaSelect = $('#modal-pay-payroll-cuenta') as HTMLSelectElement;
+  const dateInput = $('#modal-pay-payroll-date') as HTMLInputElement;
+  const obsInput = $('#modal-pay-payroll-obs') as HTMLInputElement;
+
+  const bankAccountId = ctaSelect?.value || '';
+  const accountId = ctaSelect?.options[ctaSelect.selectedIndex]?.dataset?.account || '';
+  const date = dateInput?.value || todayStr();
+  const obs = obsInput?.value?.trim() || '';
+
+  if (!bankAccountId || !accountId) {
+    return showToast('Selecciona un método de pago válido.', 'warning');
+  }
+
+  const data = (window as any)._payPayrollData;
+  if (!data) return;
+
+  const btn = $('#btn-confirm-pay-payroll') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
+  }
+
+  try {
+    const typeRes = await pb.listAll('transaction_types', { filter: 'code="CE"' });
+    if (!typeRes.length) throw new Error('No se encontró el tipo de transacción CE.');
+    const txTypeId = typeRes[0].id;
+
+    const txLines = [];
+    let lineOrder = 1;
+
+    for (const item of data.grouped) {
+      txLines.push({
+        account_id: item.accountId,
+        third_party_id: item.thirdPartyId || undefined,
+        cross_doc_ref: item.crossDocRef || undefined,
+        debit: item.amount,
+        credit: 0,
+        description: `Pago Nómina ${data.periodName} - ${item.employeeName}`,
+        line_order: lineOrder++
+      });
+    }
+
+    const fallbackEmpId = data.grouped[0]?.thirdPartyId || '';
+    const bankThirdPartyId = await resolveCompanyThirdPartyId(fallbackEmpId);
+
+    txLines.push({
+      account_id: accountId,
+      third_party_id: bankThirdPartyId || undefined,
+      debit: 0,
+      credit: data.grandTotal,
+      description: `Salida de Caja/Bancos por Pago Nómina período ${data.periodName}`,
+      line_order: lineOrder++
+    });
+
+    let payrollBranchId: string | null = null;
+    try {
+      if (data.periodId) {
+        const periodRec = await pb.get('payroll_periods', data.periodId);
+        payrollBranchId = periodRec?.branch_id || null;
+      }
+    } catch (_) {}
+    if (!payrollBranchId) {
+      const activeBranchId = localStorage.getItem('active_branch_id');
+      const currentUser = pb.currentUser;
+      payrollBranchId = (activeBranchId && activeBranchId !== 'TODAS')
+        ? activeBranchId
+        : (currentUser?.default_branch_id || null);
+    }
+
+    const uniqueAccountIds = [...new Set(txLines.map((l) => l.account_id).filter(Boolean))];
+    const accountsUsed = await pb.listAll('accounts', {
+      filter: uniqueAccountIds.map((id) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+    }).catch(() => []);
+    const accountMetaById = {};
+    accountsUsed.forEach((a) => { accountMetaById[a.id] = a; });
+
+    const validationErrors = [];
+    txLines.forEach((l) => {
+      const meta = accountMetaById[l.account_id];
+      if (!meta) return;
+      if (meta.requires_third_party && !l.third_party_id) {
+        validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere tercero pero no está asignado.`);
+      }
+      if (meta.maneja_cruce && !l.cross_doc_ref) {
+        validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere cruce pero no tiene referencia.`);
+      }
+    });
+    if (validationErrors.length) {
+      throw new Error(`Errores de validación contable:\n${validationErrors.slice(0, 5).join('\n')}`);
+    }
+
+    const txRecord = await (window as any).API.createTransaction({
+      tx_type_id: txTypeId,
+      date: date,
+      description: obs || `Pago Nómina período ${data.periodName}`,
+      status: 'active',
+      branch_id: payrollBranchId || null,
+    }, txLines);
+
+    await pb.update('payroll_periods', data.periodId, { status: 'paid' });
+
+    closeModal();
+    showToast(`Comprobante de Egreso ${txRecord.number} creado y nómina marcada como pagada.`, 'success');
+    renderNomina($('#page-content'));
+  } catch (err: any) {
+    showToast(`Error al registrar pago: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
+    }
+  }
+}
+
 async function openPayPlanillaModal(periodId: string, periodName: string) {
   try {
     const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
@@ -2600,8 +2830,12 @@ async function savePayPlanilla() {
       });
     }
 
+    const fallbackEmpId = data.grouped[0]?.thirdPartyId || '';
+    const bankThirdPartyId = await resolveCompanyThirdPartyId(fallbackEmpId);
+
     txLines.push({
       account_id: accountId,
+      third_party_id: bankThirdPartyId || undefined,
       debit: 0,
       credit: data.grandTotal,
       description: `Salida de Caja/Bancos por Pago Planilla Aportes Nómina`,
@@ -2646,3 +2880,5 @@ async function savePayPlanilla() {
 
 (window as any)._openPayPlanillaModal = openPayPlanillaModal;
 (window as any)._savePayPlanilla = savePayPlanilla;
+(window as any)._openPayPayrollModal = openPayPayrollNominaModal;
+(window as any)._savePayPayroll = savePayPayroll;

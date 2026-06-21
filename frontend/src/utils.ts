@@ -64,6 +64,13 @@ function openModal(title, bodyHtml, footerHtml = '', wide = false) {
 }
 
 function closeModal() {
+  const cb = (window as any).__modalCloseCallback;
+  if (cb) {
+    (window as any).__modalCloseCallback = null;
+    cb();
+    return;
+  }
+
   if ((window as any).__salesModalOpen && typeof (window as any).soSaveTempState === 'function') {
     try {
       (window as any).soSaveTempState();

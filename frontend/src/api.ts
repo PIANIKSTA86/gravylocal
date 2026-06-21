@@ -1,4 +1,4 @@
-﻿/**
+/**
  * GRAVY v2.0 ï¿½ api.js
  * Capa de acceso a PocketBase REST API.
  * Reemplaza completamente a SQL.js / localStorage.
@@ -4972,8 +4972,8 @@ const API = {
     const txType = iaTypes.items[0];
 
     // Terceros involucrados
-    const tenantId = inv.expand?.contract_id?.tenant_id?.id || null;
-    const ownerId = inv.expand?.contract_id?.property_id?.expand?.owner_id?.id || null;
+    const tenantId = inv.expand?.contract_id?.expand?.tenant_id?.id || null;
+    const ownerId = inv.expand?.contract_id?.expand?.property_id?.expand?.owner_id?.id || null;
 
     const accountByIdCache = {};
     const accountByCodeCache = {};
@@ -4996,40 +4996,68 @@ const API = {
       return acc;
     };
 
+    const commissionHasIva = !!inmoCfg.commission_has_iva;
+    const ivaCommissionCode = String(inmoCfg.iva_commission_code || '240810').trim();
+
     const cxcTenantAcc = await findAccByCode(cxcTenantCode);
     const commissionIncomeAcc = await findAccByCode(commissionIncomeCode);
     const cxpOwnerAcc = await findAccByCode(cxpOwnerCode);
 
     const txLines = [];
     
-    // 1. DÃ©bito a Cuentas por cobrar inquilino (por el total)
+    // 1. Débito a Cuentas por cobrar inquilino (por el total)
     txLines.push({
       account_id: cxcTenantAcc.id,
       third_party_id: tenantId,
       debit: inv.total || 0,
       credit: 0,
-      description: `Canon Inmueble ${inv.expand?.contract_id?.expand?.property_id?.title || ''} perÃ­odo ${inv.period}`,
+      description: `Canon Inmueble ${inv.expand?.contract_id?.expand?.property_id?.title || ''} período ${inv.period}`,
       line_order: 1,
+      cross_doc_ref: inv.number,
     });
 
-    // 2. CrÃ©dito a Ingresos por comisiÃ³n (por el commission_amount)
+    let ownerPayout = inv.net_to_owner || 0;
+    let commissionIvaAmount = 0;
+
+    if (commissionHasIva && inv.commission_amount > 0) {
+      commissionIvaAmount = Math.round(inv.commission_amount * 0.19);
+      ownerPayout = Math.max(0, ownerPayout - commissionIvaAmount);
+    }
+
+    // 2. Crédito a Ingresos por comisión (por el commission_amount)
     txLines.push({
       account_id: commissionIncomeAcc.id,
-      third_party_id: ownerId, // La comisiÃ³n se le cobra al propietario
+      third_party_id: ownerId, // La comisión se cobra al propietario
       debit: 0,
       credit: inv.commission_amount || 0,
-      description: `ComisiÃ³n AdministraciÃ³n Inmobiliaria - Factura ${inv.number}`,
+      description: `Comisión Administración Inmobiliaria - Factura ${inv.number}`,
       line_order: 2,
     });
 
-    // 3. CrÃ©dito a Cuentas por pagar propietario (por el net_to_owner)
+    let currentLineOrder = 3;
+
+    // 3. Crédito a Impuestos (IVA Comisión, si aplica)
+    if (commissionIvaAmount > 0) {
+      const ivaCommissionAcc = await findAccByCode(ivaCommissionCode);
+      txLines.push({
+        account_id: ivaCommissionAcc.id,
+        third_party_id: ownerId, // El impuesto de la comisión lo asume el propietario
+        debit: 0,
+        credit: commissionIvaAmount,
+        description: `IVA Comisión Administración 19% - Factura ${inv.number}`,
+        line_order: currentLineOrder++,
+      });
+    }
+
+    // 4. Crédito a Cuentas por pagar propietario (por el neto)
     txLines.push({
       account_id: cxpOwnerAcc.id,
       third_party_id: ownerId,
       debit: 0,
-      credit: inv.net_to_owner || 0,
+      credit: ownerPayout,
       description: `Neto Propietario por Canon - Factura ${inv.number}`,
-      line_order: 3,
+      line_order: currentLineOrder++,
+      cross_doc_ref: inv.number,
     });
 
     // Validar sumas de partida doble
@@ -5047,6 +5075,11 @@ const API = {
       third_party_id: tenantId,
       status: 'active',
       branch_id: inv.branch_id || null,
+      cross_enabled: true,
+      cross_type: 'inmo_invoices',
+      cross_number: inv.number,
+      cross_amount: inv.total || 0,
+      cross_purpose: 'Causar',
     }, txLines);
 
     await pb.update('inmo_invoices', invoiceId, {

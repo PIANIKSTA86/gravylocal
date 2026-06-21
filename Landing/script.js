@@ -320,4 +320,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { passive: true });
   }
 
+  /* ==========================================================================
+     10. FAQ ACCORDION TOGGLE
+     ========================================================================== */
+  const faqItems = document.querySelectorAll('.faq-item');
+
+  faqItems.forEach(item => {
+    const question = item.querySelector('.faq-question');
+    const answer = item.querySelector('.faq-answer');
+
+    if (question && answer) {
+      question.addEventListener('click', () => {
+        const isOpen = answer.classList.contains('open');
+
+        // Close other items for accordion behavior
+        faqItems.forEach(otherItem => {
+          if (otherItem !== item) {
+            otherItem.classList.remove('active');
+            const otherQuestion = otherItem.querySelector('.faq-question');
+            const otherAnswer = otherItem.querySelector('.faq-answer');
+            if (otherQuestion) otherQuestion.setAttribute('aria-expanded', 'false');
+            if (otherAnswer) otherAnswer.classList.remove('open');
+          }
+        });
+
+        // Toggle current item
+        item.classList.toggle('active', !isOpen);
+        answer.classList.toggle('open', !isOpen);
+        question.setAttribute('aria-expanded', !isOpen ? 'true' : 'false');
+      });
+    }
+  });
+
 });

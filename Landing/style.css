@@ -504,7 +504,14 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .mockup-browser-screen {
   position: relative;
   background: #0f1d38;
-  min-height: 380px;
+  min-height: auto;
+}
+
+.mockup-real-screen {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
 }
 
 .mockup-layout {
@@ -838,6 +845,26 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   color: var(--accent-amber);
   border: 1px solid rgba(217,119,6,0.2);
 }
+.feature-split-tag.inmobiliaria {
+  background: rgba(236,72,153,0.08);
+  color: #db2777;
+  border: 1px solid rgba(236,72,153,0.2);
+}
+.feature-split-tag.spa {
+  background: rgba(37,99,235,0.08);
+  color: #2563eb;
+  border: 1px solid rgba(37,99,235,0.2);
+}
+.feature-split-tag.tienda {
+  background: rgba(124,58,237,0.08);
+  color: #7c3aed;
+  border: 1px solid rgba(124,58,237,0.2);
+}
+.feature-split-tag.logistica {
+  background: rgba(16,185,129,0.08);
+  color: #059669;
+  border: 1px solid rgba(16,185,129,0.2);
+}
 
 .feature-split-title {
   font-size: 30px; font-weight: 900;
@@ -875,6 +902,9 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 .feature-img-frame:hover { transform: translateY(-8px) scale(1.01); box-shadow: 0 40px 90px rgba(11,22,53,0.2), var(--shadow-glow); }
 .feature-img-frame img { width: 100%; height: auto; display: block; }
 .feature-img-frame.amber-frame:hover { box-shadow: 0 40px 90px rgba(11,22,53,0.15), 0 8px 25px rgba(217,119,6,0.2); }
+.feature-img-frame.pink-frame:hover { box-shadow: 0 40px 90px rgba(11,22,53,0.15), 0 8px 25px rgba(236,72,153,0.2); }
+.feature-img-frame.blue-frame:hover { box-shadow: 0 40px 90px rgba(11,22,53,0.15), 0 8px 25px rgba(37,99,235,0.2); }
+.feature-img-frame.violet-frame:hover { box-shadow: 0 40px 90px rgba(11,22,53,0.15), 0 8px 25px rgba(124,58,237,0.2); }
 
 .feature-img-badge {
   position: absolute;
@@ -895,6 +925,22 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
 }
 .copropiedad-badge {
   background: rgba(217,119,6,0.85);
+  color: #ffffff;
+}
+.inmobiliaria-badge {
+  background: rgba(236,72,153,0.85);
+  color: #ffffff;
+}
+.spa-badge {
+  background: rgba(37,99,235,0.85);
+  color: #ffffff;
+}
+.tienda-badge {
+  background: rgba(124,58,237,0.85);
+  color: #ffffff;
+}
+.logistica-badge {
+  background: rgba(16,185,129,0.85);
   color: #ffffff;
 }
 
@@ -998,6 +1044,11 @@ button { cursor: pointer; border: none; background: none; font-family: inherit; 
   display: grid;
   grid-template-columns: repeat(4,1fr);
   gap: 28px;
+}
+.stats-grid-two {
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  max-width: 640px;
+  margin: 0 auto;
 }
 .stat-item {
   text-align: center;

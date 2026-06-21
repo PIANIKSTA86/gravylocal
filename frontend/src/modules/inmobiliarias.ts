@@ -121,59 +121,60 @@ async function renderAccountSelect(selectId, defaultCode) {
 // RENDER PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
 async function renderInmobiliarias(c: HTMLElement) {
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">
-    <i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo Inmobiliaria...</div>`;
-  _renderInmoPage(c, 'dashboard');
-}
-
-function _renderInmoPage(c: HTMLElement, activeTab: string) {
-  const tabs = [
-    { id: 'dashboard',   label: 'Dashboard',      icon: 'fa-chart-pie'            },
-    { id: 'inmuebles',   label: 'Inmuebles',      icon: 'fa-house-chimney'        },
-    { id: 'contratos',   label: 'Contratos',      icon: 'fa-file-signature'       },
-    { id: 'liquidacion', label: 'Liquidación',    icon: 'fa-file-invoice-dollar'  },
-    { id: 'config',      label: 'Configuración',  icon: 'fa-sliders'              },
-  ];
-
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-house-chimney-window mr-2" style="color:#EC4899"></i>Gestión Inmobiliaria
+          <i class="fas fa-house-chimney-window mr-2" style="color:#EC4899"></i>Gestión de Inmuebles
         </h3>
-        <p class="text-sm" style="color:#6B7280">Administración de inmuebles, arrendamientos e intermediación.</p>
+        <p class="text-sm" style="color:#6B7280">Administración de inmuebles, registros de características y ficha técnica.</p>
       </div>
     </div>
-    <div class="flex gap-1 mb-5 border-b flex-wrap" style="border-color:#E5E7EB">
-      ${tabs.map(t => `
-        <button class="tab-btn${t.id === activeTab ? ' active' : ''}" data-tab="${t.id}">
-          <i class="fas ${t.icon} mr-2"></i>${t.label}
-        </button>`).join('')}
-    </div>
-    <div id="inmo-tab-content"></div>`;
-
-  const tabContent = c.querySelector('#inmo-tab-content') as HTMLElement;
-
-  function switchTab(tabId) {
-    c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.tab === tabId));
-    if (tabId === 'dashboard')   renderInmoDashboard(tabContent);
-    if (tabId === 'inmuebles')   renderInmoInmuebles(tabContent);
-    if (tabId === 'contratos')   renderInmoContratos(tabContent);
-    if (tabId === 'liquidacion') renderInmoLiquidacion(tabContent);
-    if (tabId === 'config')      renderInmoConfig(tabContent);
-  }
-
-  c.querySelectorAll('.tab-btn').forEach(btn =>
-    btn.addEventListener('click', () => switchTab((btn as HTMLElement).dataset.tab))
-  );
-  switchTab(activeTab);
+    <div id="inmo-inmuebles-content"></div>`;
+  const content = c.querySelector('#inmo-inmuebles-content') as HTMLElement;
+  await renderInmoInmuebles(content);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TAB: DASHBOARD
-// ══════════════════════════════════════════════════════════════════════════════
-async function renderInmoDashboard(c: HTMLElement) {
-  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando resumen...</div>`;
+async function renderInmoContratosPage(c: HTMLElement) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-file-signature mr-2" style="color:#EC4899"></i>Contratos de Arrendamiento
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Gestión y control de contratos de arrendamiento con inquilino y propietario.</p>
+      </div>
+    </div>
+    <div id="inmo-contratos-content"></div>`;
+  const content = c.querySelector('#inmo-contratos-content') as HTMLElement;
+  await renderInmoContratos(content);
+}
+
+async function renderInmoLiquidacionPage(c: HTMLElement) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-file-invoice-dollar mr-2" style="color:#EC4899"></i>Liquidación de Arrendamiento
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Procesar causación y liquidación mensual de cánones de arriendo.</p>
+      </div>
+      <div>
+        <button class="btn btn-outline" id="btn-inmo-config" title="Configuración Contable">
+          <i class="fas fa-cog text-base"></i>
+        </button>
+      </div>
+    </div>
+    <div id="inmo-liquidacion-content"></div>`;
+  
+  document.getElementById('btn-inmo-config')?.addEventListener('click', () => (window as any).openInmoConfigModal());
+
+  const content = c.querySelector('#inmo-liquidacion-content') as HTMLElement;
+  await renderInmoLiquidacion(content);
+}
+
+async function renderInmoInmuebles(c: HTMLElement) {
+  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando inmuebles...</div>`;
   try {
     const [props, contracts, invoices] = await Promise.all([
       (window as any).API.getInmoProperties(false),
@@ -183,7 +184,6 @@ async function renderInmoDashboard(c: HTMLElement) {
 
     const activeContracts = contracts.filter(c => c.status === 'VIGENTE' && c.active).length;
     const totalProperties = props.length;
-    const rentedProperties = props.filter(p => p.status === 'ARRENDADO').length;
 
     // Calcular comisiones del mes actual
     const currentPeriodStr = (window as any).currentPeriod();
@@ -195,63 +195,14 @@ async function renderInmoDashboard(c: HTMLElement) {
     const outstandingPortfolio = unpaidInvoices.reduce((s, i) => s + (i.total || 0), 0);
 
     c.innerHTML = `
+      <!-- Tarjetas KPI Unificadas -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         ${inmoKpi('Total Inmuebles', totalProperties, 'fas fa-building', '#3B82F6', '#EFF6FF')}
         ${inmoKpi('Contratos Activos', activeContracts, 'fas fa-file-signature', '#10B981', '#ECFDF5')}
         ${inmoKpi('Comisiones del Mes', (window as any).fmt(commissionsThisMonth), 'fas fa-percent', '#EC4899', '#FDF2F8')}
         ${inmoKpi('Cartera Pendiente', (window as any).fmt(outstandingPortfolio), 'fas fa-wallet', '#F59E0B', '#FFFBEB')}
       </div>
-      
-      <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
-        <h4 class="font-bold text-sm mb-4" style="color:#0D2137"><i class="fas fa-history mr-2"></i>Facturas de Arriendo Recientes</h4>
-        <div class="overflow-x-auto">
-          <table class="data-table text-sm">
-            <thead>
-              <tr>
-                <th>Factura N°</th>
-                <th>Inmueble</th>
-                <th>Inquilino</th>
-                <th>Período</th>
-                <th class="text-right">Monto</th>
-                <th class="text-right">Comisión</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(invoices.items || []).slice(0, 5).map(inv => {
-                const con = inv.expand?.contract_id;
-                const prop = con?.expand?.property_id;
-                const tenant = con?.expand?.tenant_id;
-                const meta = INVOICE_STATUS_META[inv.status] || INVOICE_STATUS_META.draft;
-                return `<tr>
-                  <td class="font-mono text-xs">${inv.number}</td>
-                  <td class="font-semibold">${(window as any).esc(prop?.title || prop?.code || '')}</td>
-                  <td>${(window as any).esc(tenant?.name || '')}</td>
-                  <td>${(window as any).fmtPeriod(inv.period)}</td>
-                  <td class="text-right font-semibold">${(window as any).fmt(inv.total || 0)}</td>
-                  <td class="text-right font-semibold text-gray-500">${(window as any).fmt(inv.commission_amount || 0)}</td>
-                  <td><span class="badge ${meta.badge}">${meta.label}</span></td>
-                </tr>`;
-              }).join('')}
-              ${!(invoices.items || []).length ? '<tr><td colspan="7" class="text-center py-6 text-gray-400">Sin facturas generadas aún</td></tr>' : ''}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-  } catch (err: any) {
-    c.innerHTML = `<div class="p-6 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
-  }
-}
 
-// ══════════════════════════════════════════════════════════════════════════════
-// TAB: INMUEBLES
-// ══════════════════════════════════════════════════════════════════════════════
-async function renderInmoInmuebles(c: HTMLElement) {
-  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando inmuebles...</div>`;
-  try {
-    const list = await (window as any).API.getInmoProperties(false);
-
-    c.innerHTML = `
       <div class="bg-white rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3 justify-between" style="border-color:#F0F0F0">
         <input id="inmo-search" class="form-input text-sm" placeholder="Buscar inmueble por código o nombre..." style="max-width:300px">
         <button class="btn btn-primary" id="btn-new-inmueble">
@@ -274,7 +225,7 @@ async function renderInmoInmuebles(c: HTMLElement) {
               </tr>
             </thead>
             <tbody>
-              ${list.map(p => {
+              ${props.map(p => {
                 const owner = p.expand?.owner_id;
                 const statusMeta = INMO_STATUS[p.status] || { label: p.status, badge: 'badge-gray' };
                 return `<tr data-id="${p.id}">
@@ -292,11 +243,12 @@ async function renderInmoInmuebles(c: HTMLElement) {
                     <div class="flex items-center gap-1">
                       <button class="btn btn-outline btn-sm inmo-edit-btn" data-id="${p.id}" title="Editar Inmueble"><i class="fas fa-pen text-xs"></i></button>
                       <button class="btn btn-outline btn-sm inmo-history-btn text-purple-600 border-purple-200 hover:bg-purple-50" data-id="${p.id}" title="Ver Historial"><i class="fas fa-clock text-xs"></i></button>
+                      ${(p.sale_price || 0) > 1 ? `<button class="btn btn-outline btn-sm inmo-sell-btn text-emerald-600 border-emerald-200 hover:bg-emerald-50" data-id="${p.id}" title="Vender / Facturar"><i class="fas fa-receipt text-xs"></i></button>` : ''}
                     </div>
                   </td>
                 </tr>`;
               }).join('')}
-              ${!list.length ? '<tr><td colspan="8" class="text-center py-8 text-gray-400">No hay inmuebles registrados</td></tr>' : ''}
+              ${!props.length ? '<tr><td colspan="8" class="text-center py-8 text-gray-400">No hay inmuebles registrados</td></tr>' : ''}
             </tbody>
           </table>
         </div>
@@ -317,6 +269,12 @@ async function renderInmoInmuebles(c: HTMLElement) {
     });
     document.querySelectorAll('.inmo-history-btn').forEach(btn => {
       btn.addEventListener('click', () => (window as any).openPropertyHistoryModal((btn as HTMLElement).dataset.id));
+    });
+    document.querySelectorAll('.inmo-sell-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = (btn as HTMLElement).dataset.id || '';
+        (window as any).openPropertySellModal(id, c);
+      });
     });
 
   } catch (err: any) {
@@ -546,7 +504,10 @@ async function openInmuebleModal(id = '') {
         (window as any).showToast('Inmueble creado exitosamente.', 'success');
       }
       (window as any).closeModal();
-      renderInmoInmuebles(document.getElementById('inmo-tab-content') as HTMLElement);
+      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-inmuebles-content') || document.getElementById('page-content');
+      if (contentContainer) {
+        renderInmoInmuebles(contentContainer);
+      }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error al guardar inmueble', 'error');
       btn.disabled = false;
@@ -995,7 +956,10 @@ async function openContractModal(id = '') {
         (window as any).showToast('Contrato creado exitosamente.', 'success');
       }
       (window as any).closeModal();
-      renderInmoContratos(document.getElementById('inmo-tab-content') as HTMLElement);
+      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-contratos-content') || document.getElementById('page-content');
+      if (contentContainer) {
+        renderInmoContratos(contentContainer);
+      }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error al guardar contrato', 'error');
       btn.disabled = false;
@@ -1166,7 +1130,10 @@ function attachInmoInvActions() {
       try {
         await (window as any).API.unpostInmoInvoice(id);
         (window as any).showToast('Factura revertida a borrador.', 'success');
-        renderInmoLiquidacion(document.getElementById('page-content') as HTMLElement);
+        const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || document.getElementById('page-content');
+        if (contentContainer) {
+          renderInmoLiquidacion(contentContainer);
+        }
       } catch (err: any) {
         (window as any).showToast(err.message, 'error');
       }
@@ -1257,8 +1224,19 @@ async function deleteInmoPeriod(c: HTMLElement) {
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB: CONFIGURACIÓN
 // ══════════════════════════════════════════════════════════════════════════════
-async function renderInmoConfig(c: HTMLElement) {
-  c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando configuración...</div>`;
+async function openInmoConfigModal() {
+  const modalBodyId = 'inmo-config-modal-body';
+  (window as any).openModal(
+    'Configuración Contable del Módulo',
+    `<div id="${modalBodyId}" class="p-1"></div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+     <button class="btn btn-primary" id="btn-save-cfg-modal"><i class="fas fa-save mr-1"></i>Guardar Configuración</button>`,
+    false
+  );
+  
+  const modalContainer = document.getElementById(modalBodyId);
+  if (!modalContainer) return;
+  
   try {
     const raw = await (window as any).API.getSetting('inmo_config_v1');
     let cfg = { cxc_tenant_code: '130505', commission_income_code: '413505', cxp_owner_code: '220505', commission_has_iva: false, iva_commission_code: '240810' };
@@ -1266,40 +1244,31 @@ async function renderInmoConfig(c: HTMLElement) {
       try { cfg = { ...cfg, ...JSON.parse(raw) }; } catch (_) {}
     }
 
-    c.innerHTML = `
-      <div class="bg-white rounded-2xl border p-6 max-w-2xl mx-auto" style="border-color:#F0F0F0; text-align: left;">
-        <h4 class="font-bold text-base mb-4 text-gray-800"><i class="fas fa-cog mr-2 text-pink-500"></i>Configuración Contable del Módulo</h4>
-        <p class="text-xs text-gray-500 mb-5">Define las cuentas PUC predeterminadas para las transacciones automáticas del módulo de Inmobiliaria.</p>
+    modalContainer.innerHTML = `
+      <div class="space-y-4 text-sm" style="text-align: left;">
+        <p class="text-xs text-gray-500 mb-2">Define las cuentas PUC predeterminadas para las transacciones automáticas del módulo de Inmobiliaria.</p>
 
-        <div class="space-y-4">
-          <div class="form-group">
-            <label class="form-label font-bold text-gray-700">Cuenta CxC Inquilinos (Débito)</label>
-            <select id="cfg-cxc-tenant" class="form-input"></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label font-bold text-gray-700">Cuenta Ingresos por Comisión (Crédito)</label>
-            <select id="cfg-comm-income" class="form-input"></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label font-bold text-gray-700">Cuenta CxP Propietarios (Crédito)</label>
-            <select id="cfg-cxp-owner" class="form-input"></select>
-          </div>
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700">Cuenta CxC Inquilinos (Débito)</label>
+          <select id="cfg-cxc-tenant" class="form-input"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700">Cuenta Ingresos por Comisión (Crédito)</label>
+          <select id="cfg-comm-income" class="form-input"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700">Cuenta CxP Propietarios (Crédito)</label>
+          <select id="cfg-cxp-owner" class="form-input"></select>
+        </div>
 
-          <div class="form-group flex items-center gap-2 py-2">
-            <input type="checkbox" id="cfg-comm-has-iva" ${cfg.commission_has_iva ? 'checked' : ''} class="w-4 h-4 rounded text-pink-600 border-gray-300 focus:ring-pink-500" style="width:16px;height:16px;">
-            <label for="cfg-comm-has-iva" class="text-sm font-bold text-gray-700 select-none cursor-pointer">Calcular IVA sobre Comisión (19%)</label>
-          </div>
+        <div class="form-group flex items-center gap-2 py-2">
+          <input type="checkbox" id="cfg-comm-has-iva" ${cfg.commission_has_iva ? 'checked' : ''} class="w-4 h-4 rounded text-pink-600 border-gray-300 focus:ring-pink-500" style="width:16px;height:16px;">
+          <label for="cfg-comm-has-iva" class="text-sm font-bold text-gray-700 select-none cursor-pointer">Calcular IVA sobre Comisión (19%)</label>
+        </div>
 
-          <div class="form-group" id="cfg-iva-comm-sec" style="display: ${cfg.commission_has_iva ? 'block' : 'none'}">
-            <label class="form-label font-bold text-gray-700">Cuenta Impuesto IVA sobre Comisión (Crédito)</label>
-            <select id="cfg-iva-commission" class="form-input"></select>
-          </div>
-
-          <div class="pt-3">
-            <button class="btn btn-primary w-full justify-center py-2.5 text-sm" id="btn-save-cfg">
-              <i class="fas fa-save mr-1"></i>Guardar Configuración
-            </button>
-          </div>
+        <div class="form-group" id="cfg-iva-comm-sec" style="display: ${cfg.commission_has_iva ? 'block' : 'none'}">
+          <label class="form-label font-bold text-gray-700">Cuenta Impuesto IVA sobre Comisión (Crédito)</label>
+          <select id="cfg-iva-commission" class="form-input"></select>
         </div>
       </div>`;
 
@@ -1316,7 +1285,7 @@ async function renderInmoConfig(c: HTMLElement) {
       if (ivaSec) ivaSec.style.display = hasIvaCheckbox.checked ? 'block' : 'none';
     });
 
-    document.getElementById('btn-save-cfg')?.addEventListener('click', async () => {
+    document.getElementById('btn-save-cfg-modal')?.addEventListener('click', async () => {
       const cxc = (document.getElementById('cfg-cxc-tenant') as HTMLSelectElement).value;
       const income = (document.getElementById('cfg-comm-income') as HTMLSelectElement).value;
       const cxp = (document.getElementById('cfg-cxp-owner') as HTMLSelectElement).value;
@@ -1330,33 +1299,203 @@ async function renderInmoConfig(c: HTMLElement) {
         commission_has_iva: hasIva,
         iva_commission_code: ivaCode
       };
-      const btn = document.getElementById('btn-save-cfg') as HTMLButtonElement;
+      const btn = document.getElementById('btn-save-cfg-modal') as HTMLButtonElement;
       btn.disabled = true;
       btn.textContent = 'Guardando...';
 
       try {
         await (window as any).API.setSetting('inmo_config_v1', JSON.stringify(payload));
         (window as any).showToast('Configuración guardada exitosamente.', 'success');
+        (window as any).closeModal();
       } catch (err: any) {
         (window as any).showToast(err.message, 'error');
-      } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Configuración';
       }
     });
 
   } catch (err: any) {
-    c.innerHTML = `<div class="p-6 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+    modalContainer.innerHTML = `<div class="p-6 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+  }
+}
+
+async function openPropertySellModal(propertyId: string, container: HTMLElement) {
+  try {
+    const prop = await (window as any).pb.get('inmo_properties', propertyId, { expand: 'owner_id' });
+    const ownerName = prop.expand?.owner_id?.name || 'Propietario Desconocido';
+    const salePrice = prop.sale_price || 0;
+    const rate = prop.commission_rate || 8;
+
+    const modalBody = `
+      <div class="space-y-4 text-sm" style="text-align: left;">
+        <div class="p-3.5 rounded-xl bg-gray-50 border border-gray-100 mb-4 shadow-sm">
+          <span class="text-[10px] text-gray-400 font-extrabold uppercase tracking-wider block">Inmueble a Facturar</span>
+          <h4 class="font-bold text-gray-800 text-sm">${(window as any).esc(prop.title)} <span class="font-mono text-pink-600">(${prop.code})</span></h4>
+          <p class="text-xs text-gray-500 mt-1">Propietario actual: <strong>${(window as any).esc(ownerName)}</strong></p>
+          <p class="text-xs text-gray-500">Precio Venta Ref: <strong>${(window as any).fmt(salePrice)}</strong> | % Comisión: <strong>${rate}%</strong></p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold text-gray-700">Tipo de Facturación</label>
+          <select id="sell-type" class="form-input">
+            <option value="MANDATO">Factura por Mandato (Venta total del inmueble)</option>
+            <option value="COMISION">Factura por Comisión (Honorarios de Intermediación)</option>
+          </select>
+        </div>
+
+        <!-- Autocomplete Comprador -->
+        <div class="form-group relative">
+          <label class="form-label font-bold text-gray-700">Cliente / Adquirente <span class="text-red-500">*</span></label>
+          <input id="sell-buyer-search" class="form-input" autocomplete="off" placeholder="Escribe NIT o nombre del cliente...">
+          <input id="sell-buyer-id" type="hidden">
+          <div id="sell-buyer-results" class="absolute left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto hidden z-50"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="form-group mb-0">
+            <label class="form-label font-bold text-gray-700" id="lbl-sell-amount">Valor Venta Inmueble <span class="text-red-500">*</span></label>
+            <input id="sell-amount" type="number" class="form-input" value="${salePrice}" min="0">
+          </div>
+          <div class="form-group mb-0" id="sec-sell-rate" style="display: none;">
+            <label class="form-label font-bold text-gray-700">Comisión Pactada (%)</label>
+            <input id="sell-rate" type="number" class="form-input" value="${rate}" min="0" max="100" step="0.1">
+          </div>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirm-sell"><i class="fas fa-arrow-right-to-bracket mr-1"></i> Ir a Facturación</button>
+    `;
+
+    (window as any).openModal(`Facturar Venta de Inmueble`, modalBody, modalFooter, false);
+
+    setupThirdPartyAutocomplete('sell-buyer-search', 'sell-buyer-id', 'sell-buyer-results', 'CLIENTE');
+
+    const sellTypeSelect = document.getElementById('sell-type') as HTMLSelectElement;
+    const sellAmountInput = document.getElementById('sell-amount') as HTMLInputElement;
+    const sellRateSec = document.getElementById('sec-sell-rate') as HTMLElement;
+    const sellRateInput = document.getElementById('sell-rate') as HTMLInputElement;
+    const lblSellAmount = document.getElementById('lbl-sell-amount') as HTMLElement;
+
+    const updateAmountField = () => {
+      const type = sellTypeSelect.value;
+      if (type === 'MANDATO') {
+        sellRateSec.style.display = 'none';
+        lblSellAmount.textContent = 'Valor Venta Inmueble *';
+        sellAmountInput.value = String(salePrice);
+      } else {
+        sellRateSec.style.display = 'block';
+        lblSellAmount.textContent = 'Monto Comisión de Venta *';
+        const commValue = salePrice * (parseFloat(sellRateInput.value || '0') / 100);
+        sellAmountInput.value = String(commValue);
+      }
+    };
+
+    sellTypeSelect.addEventListener('change', updateAmountField);
+    sellRateInput.addEventListener('input', updateAmountField);
+
+    document.getElementById('btn-confirm-sell')?.addEventListener('click', async () => {
+      const buyerId = (document.getElementById('sell-buyer-id') as HTMLInputElement).value;
+      const type = sellTypeSelect.value;
+      const amount = parseFloat(sellAmountInput.value) || 0;
+
+      if (!buyerId) {
+        (window as any).showToast('Debes seleccionar un cliente/adquirente.', 'warning');
+        return;
+      }
+      if (amount <= 0) {
+        (window as any).showToast('El monto a facturar debe ser mayor a cero.', 'warning');
+        return;
+      }
+
+      // Cerrar modal de confirmación
+      (window as any).closeModal();
+
+      try {
+        (window as any).showToast('Preparando factura de venta...', 'info');
+        
+        // Obtener productos para emparejar
+        const products = await (window as any).API.getProducts({ activeOnly: true });
+        
+        let matchedProduct;
+        let lineDescription = '';
+        
+        if (type === 'MANDATO') {
+          // Factura por Mandato (Venta total de inmueble)
+          matchedProduct = products.find((p: any) => p.type === 'SERVICIO' && (p.name.toLowerCase().includes('venta') || p.name.toLowerCase().includes('inmueble')));
+          if (!matchedProduct) matchedProduct = products.find((p: any) => p.type === 'SERVICIO');
+          lineDescription = `Venta por mandato de inmueble ${prop.code} - ${prop.title}. Propietario: ${ownerName}`;
+        } else {
+          // Comisión por Intermediación
+          matchedProduct = products.find((p: any) => p.type === 'SERVICIO' && (p.name.toLowerCase().includes('comisi') || p.name.toLowerCase().includes('honorario')));
+          if (!matchedProduct) matchedProduct = products.find((p: any) => p.type === 'SERVICIO');
+          lineDescription = `Comisión por intermediación venta de inmueble ${prop.code} - ${prop.title}`;
+        }
+
+        if (!matchedProduct) {
+          (window as any).showToast('No se encontró ningún producto de tipo SERVICIO en el catálogo para facturar.', 'error');
+          return;
+        }
+
+        const ivaRate = matchedProduct.iva_rate || 0;
+        const ivaAmount = amount * (ivaRate / 100);
+        
+        // Cargar estado en localStorage
+        localStorage.setItem('__soTempState', JSON.stringify({
+          inv: {
+            customer_id: buyerId,
+            notes: lineDescription,
+            date: (window as any).todayStr()
+          },
+          lines: [
+            {
+              product_id: matchedProduct.id,
+              qty: 1,
+              unit_price: amount,
+              iva_rate: ivaRate,
+              iva_amount: ivaAmount,
+              subtotal: amount,
+              total: amount + ivaAmount
+            }
+          ]
+        }));
+
+        // Abrir formulario comercial
+        if (typeof (window as any).openSalesForm === 'function') {
+          await (window as any).openSalesForm(null, () => {
+            // Al terminar la factura comercial, refrescar inmuebles
+            renderInmoInmuebles(container);
+          });
+          
+          // Borrar borrador temporal inmediatamente después de que se cargó
+          setTimeout(() => {
+            localStorage.removeItem('__soTempState');
+          }, 800);
+        } else {
+          (window as any).showToast('Módulo de facturación de ventas no disponible.', 'error');
+        }
+
+      } catch (err: any) {
+        (window as any).showToast('Error preparando facturación: ' + err.message, 'error');
+      }
+    });
+
+  } catch (err: any) {
+    (window as any).showToast('Error al abrir la venta: ' + err.message, 'error');
   }
 }
 
 // --- VITE MIGRATION GLOBALS ---
 (window as any).renderInmobiliarias = renderInmobiliarias;
-(window as any).renderInmoDashboard = renderInmoDashboard;
 (window as any).renderInmoInmuebles = renderInmoInmuebles;
 (window as any).renderInmoContratos = renderInmoContratos;
 (window as any).renderInmoLiquidacion = renderInmoLiquidacion;
-(window as any).renderInmoConfig = renderInmoConfig;
+(window as any).openInmoConfigModal = openInmoConfigModal;
+(window as any).openPropertySellModal = openPropertySellModal;
+(window as any).renderInmoContratosPage = renderInmoContratosPage;
+(window as any).renderInmoLiquidacionPage = renderInmoLiquidacionPage;
 
 (window as any).openInmoPostingChoicesModal = async function(id: string) {
   let inv: any;
@@ -1423,7 +1562,10 @@ async function renderInmoConfig(c: HTMLElement) {
         await (window as any).API.postInmoInvoice(id);
         (window as any).showToast('Factura contabilizada exitosamente.', 'success');
         (window as any).closeModal();
-        renderInmoLiquidacion(document.getElementById('page-content') as HTMLElement);
+        const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || document.getElementById('page-content');
+        if (contentContainer) {
+          renderInmoLiquidacion(contentContainer);
+        }
       } else {
         btn.textContent = 'Procesando Contabilidad...';
         const resPost = await (window as any).API.postInmoInvoice(id);
@@ -1445,7 +1587,10 @@ async function renderInmoConfig(c: HTMLElement) {
         }
         
         (window as any).closeModal();
-        renderInmoLiquidacion(document.getElementById('page-content') as HTMLElement);
+        const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || document.getElementById('page-content');
+        if (contentContainer) {
+          renderInmoLiquidacion(contentContainer);
+        }
       }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error en la operación', 'error');
@@ -1666,7 +1811,10 @@ async function renderInmoConfig(c: HTMLElement) {
         
         if (res && res.success) {
           (window as any).showToast(`Factura ${docNumber} emitida correctamente. Estado: ${res.status}.`, 'success');
-          renderInmoLiquidacion(document.getElementById('page-content') as HTMLElement);
+          const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || document.getElementById('page-content');
+          if (contentContainer) {
+            renderInmoLiquidacion(contentContainer);
+          }
         } else {
           (window as any).showToast(`Error al emitir: ${res.dianResponse || 'Respuesta rechazada'}`, 'error');
         }

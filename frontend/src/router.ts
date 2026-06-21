@@ -44,6 +44,8 @@ const PAGE_TITLES = {
   importaciones:     'Gestión de Importaciones',
   comisiones:        'Comisiones a Vendedores',
   inmobiliarias:     'Gestión Inmobiliaria',
+  'inmo-contratos':   'Contratos de Arrendamiento',
+  'inmo-liquidacion': 'Liquidación de Arrendamiento',
   crm:               'Seguimiento de Ventas (CRM)',
   despachos:         'Gestión de Despachos y Entregas',
 };
@@ -79,6 +81,8 @@ const MODULE_LICENSE: Record<string, string> = {
   'importaciones':     'logistica',
   'comisiones':        'comercial',
   'inmobiliarias':     'inmobiliarias',
+  'inmo-contratos':    'inmobiliarias',
+  'inmo-liquidacion':  'inmobiliarias',
   'crm':               'crm',
   'despachos':         'logistica',
 };
@@ -139,6 +143,8 @@ const PAGE_RENDERERS = {
   importaciones:      () => typeof renderImportaciones     === 'function' && renderImportaciones($('#page-content')),
   comisiones:         () => typeof renderComisiones        === 'function' && renderComisiones($('#page-content')),
   inmobiliarias:      () => typeof renderInmobiliarias     === 'function' && renderInmobiliarias($('#page-content')),
+  'inmo-contratos':   () => typeof (window as any).renderInmoContratosPage === 'function' && (window as any).renderInmoContratosPage($('#page-content')),
+  'inmo-liquidacion': () => typeof (window as any).renderInmoLiquidacionPage === 'function' && (window as any).renderInmoLiquidacionPage($('#page-content')),
   crm:                () => typeof renderCRM              === 'function' && renderCRM($('#page-content')),
   despachos:          () => typeof renderDespachos        === 'function' && renderDespachos($('#page-content')),
 };

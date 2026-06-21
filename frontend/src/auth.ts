@@ -67,6 +67,8 @@ function applyModuleVisibility(): void {
     'importaciones':     'logistica',
     'reservas-logistica':'logistica',
     'inmobiliarias':     'inmobiliarias',
+    'inmo-contratos':    'inmobiliarias',
+    'inmo-liquidacion':  'inmobiliarias',
     'tienda-virtual':   'tienda-virtual',
     'crm':               'crm',
     'despachos':         'logistica',

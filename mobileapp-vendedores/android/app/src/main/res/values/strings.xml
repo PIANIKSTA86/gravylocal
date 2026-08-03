@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GRAVY Vendedores</string>
+    <string name="title_activity_main">GRAVY Vendedores</string>
+    <string name="package_name">co.com.gravy.vendedores</string>
+    <string name="custom_url_scheme">co.com.gravy.vendedores</string>
+</resources>

@@ -1,0 +1,79 @@
+╔══════════════════════════════════════════════════════════════╗
+║              GRAVY v2.0 - GUÍA DE INSTALACIÓN              ║
+╚══════════════════════════════════════════════════════════════╝
+
+REQUISITOS:
+  - Windows 10 o Windows 11
+  - NO necesita instalar nada más (Node.js y PocketBase van incluidos)
+
+══════════════════════════════════════════════════════════════
+ MÉTODO 1 — INSTALACIÓN DESDE ZIP (Recomendado)
+══════════════════════════════════════════════════════════════
+
+PASO 1: Copia el archivo ZIP a la PC destino
+   - Usa USB, red local, Google Drive, etc.
+   - Archivo: GravyLocal-CLON-YYYY-MM-DD.zip
+
+PASO 2: Extrae el ZIP en una carpeta fija
+   - RECOMENDADO: C:\GravyLocal\
+   - EVITA: el Escritorio o la carpeta de Descargas
+   - Clic derecho → "Extraer todo..." → elige C:\GravyLocal
+
+PASO 3: Ejecuta el instalador
+   - Abre la carpeta C:\GravyLocal\
+   - Doble clic en: instalar.bat
+   - Si Windows pide permiso, haz clic en "Más información" → "Ejecutar de todas formas"
+
+PASO 4: ¡Listo!
+   - Se abrirá el navegador con Gravy en http://localhost:8090
+   - Se creará un acceso directo "GRAVY v2.0" en el Escritorio
+
+══════════════════════════════════════════════════════════════
+ MÉTODO 2 — COPIA DIRECTA DE CARPETA (USB o red local)
+══════════════════════════════════════════════════════════════
+
+Si tienes acceso directo (USB o red), simplemente:
+  1. Copia TODA la carpeta GravyLocal2.0 a la PC destino
+     (Ej: C:\GravyLocal\)
+  2. Doble clic en: instalar.bat
+
+══════════════════════════════════════════════════════════════
+ USO DIARIO
+══════════════════════════════════════════════════════════════
+
+INICIAR Gravy:
+   Doble clic en el acceso directo "GRAVY v2.0" del Escritorio
+   O ejecuta: start-portable-silent.vbs
+
+ABRIR en el navegador:
+   http://localhost:8090
+
+DETENER Gravy:
+   Doble clic en: stop.bat
+
+══════════════════════════════════════════════════════════════
+ SOLUCIÓN DE PROBLEMAS
+══════════════════════════════════════════════════════════════
+
+¿La página no carga?
+  → Espera 10 segundos y recarga (Gravy tarda en iniciar)
+  → Verifica que stop.bat no dejó procesos colgados
+  → Ejecuta start-portable-silent.vbs nuevamente
+
+¿Windows bloquea los archivos .bat o .vbs?
+  → Clic derecho en el archivo → Propiedades → "Desbloquear"
+  → O ejecuta como Administrador
+
+¿Puerto en uso?
+  → Ejecuta stop.bat y vuelve a iniciar
+
+══════════════════════════════════════════════════════════════
+ ARCHIVOS IMPORTANTES
+══════════════════════════════════════════════════════════════
+
+  instalar.bat              → Instalador inicial (una sola vez)
+  start-portable-silent.vbs → Iniciar Gravy (uso diario)
+  stop.bat                  → Detener todos los servicios
+  clonar.bat                → Crear un nuevo clon para otra PC
+
+══════════════════════════════════════════════════════════════

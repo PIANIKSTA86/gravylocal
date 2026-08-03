@@ -1,0 +1,436 @@
+===================================================================
+         REPORTE DE FACTURAS Y VENTAS RECUPERADAS (FORENSE)         
+===================================================================
+
+Este reporte contiene la información recuperada directamente de los
+bloques de datos eliminados en la base de datos de la empresa 8091.
+Puedes usar estos datos para redigitar las facturas manualmente en
+la copia funcional.
+
+-------------------------------------------------------------------
+
+📌 FACTURA NÚMERO: 4P1C-00000170
+📅 Fecha Creación:  2026-07-05 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $4,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | GALLETAS CHUNKY GATO (Ref/Cod: 0382) | Precio Unit: $3,809.52 | Total: $4,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000171
+📅 Fecha Creación:  2026-07-05 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $4,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 4.0 | CREMOSO CALABAZA PERRO Y GATO (Ref/Cod: 0333) | Precio Unit: $952.38 | Total: $4,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000172
+📅 Fecha Creación:  2026-07-05 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $20,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 2.0 | ARNES TIPO PECHERA REF:ZJ232102 GATO HUELLAS S (Ref/Cod: 0086) | Precio Unit: $8,403.36 | Total: $20,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000173
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $6,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | GALLETA CHUNKYPERRO (Ref/Cod: 0383) | Precio Unit: $5,714.29 | Total: $6,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000174
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $10,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | JUGUETE PARA MASCOTA REF.MA-181 (Ref/Cod: 0001) | Precio Unit: $8,403.36 | Total: $10,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000175
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $28,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | ARENA CALABAZA SURTIDAS REF 10 KILOS (Ref/Cod: 0330) | Precio Unit: $23,529.41 | Total: $28,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000176
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $57,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | BR COMIDA BOLA PELO X 1 KILO (Ref/Cod: 0376) | Precio Unit: $28,571.43 | Total: $30,000.00
+   [x] Cant: 1.0 | MONELO GATOS ADULTOS REF:1KG (Ref/Cod: 0270) | Precio Unit: $25,714.29 | Total: $27,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000177
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $180,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | TRANSPORTADOR REJILLA GUACAL REF:HPJ01 (Ref/Cod: 0413) | Precio Unit: $25,210.08 | Total: $30,000.00
+   [x] Cant: 1.0 | NIDOS REF:CON RASCADOR (Ref/Cod: 0106) | Precio Unit: $126,050.42 | Total: $150,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000178
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $82,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | DERMAPLUS 60 ML (Ref/Cod: 0393) | Precio Unit: $12,000.00 | Total: $12,000.00
+   [x] Cant: 1.0 | BAÑO FRENCH POODLE (Ref/Cod: 0417) | Precio Unit: $58,823.53 | Total: $70,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000179
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $139,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | CAMA DONA REF ANTISTRES XL (Ref/Cod: 0233) | Precio Unit: $116,806.72 | Total: $139,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000180
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $90,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | CHUNKY ADULTO REF:2KILOS (Ref/Cod: 0143) | Precio Unit: $19,047.62 | Total: $20,000.00
+   [x] Cant: 1.0 | IGLU DE DISE O REF DISE O TALLA L (Ref/Cod: 0227) | Precio Unit: $58,823.53 | Total: $70,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000181
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $38,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | BUSO DE COLECION REF 2XS (Ref/Cod: 0247) | Precio Unit: $21,008.40 | Total: $25,000.00
+   [x] Cant: 1.0 | ARENA CALABAZA REF:4.5 SURTIDAS (Ref/Cod: 0133) | Precio Unit: $10,924.37 | Total: $13,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000182
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $6,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | LATA FELIX (Ref/Cod: 0384) | Precio Unit: $5,714.29 | Total: $6,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000183
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $211,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | CREDELIO CAT 48MG 2-8 KG (Ref/Cod: 0392) | Precio Unit: $36,000.00 | Total: $36,000.00
+   [x] Cant: 1.0 | FUENTE INALAMBRICA REF:LS-141 CON SENZOR (Ref/Cod: 0370) | Precio Unit: $58,823.53 | Total: $70,000.00
+   [x] Cant: 1.0 | MAX GATO CASTRADO REF: 1KG (Ref/Cod: 0308) | Precio Unit: $29,523.81 | Total: $31,000.00
+   [x] Cant: 1.0 | MAX GATO ADULTO REF:3KG (Ref/Cod: 0307) | Precio Unit: $70,476.19 | Total: $74,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000184
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $4,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 4.0 | CREMOSO CALABAZA PERRO Y GATO (Ref/Cod: 0333) | Precio Unit: $952.38 | Total: $4,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000185
+📅 Fecha Creación:  2026-07-07 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $45,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | HUESO CHILLON REF:910053 ANTI SARRO (Ref/Cod: 0200) | Precio Unit: $8,403.36 | Total: $10,000.00
+   [x] Cant: 1.0 | PELOTA REF:ZJ231459 DE FUTBOL AMERICANO (Ref/Cod: 0069) | Precio Unit: $4,201.68 | Total: $5,000.00
+   [x] Cant: 1.0 | PELOTA DE TENIS DE CUERDA REF:910095 (Ref/Cod: 0261) | Precio Unit: $8,403.36 | Total: $10,000.00
+   [x] Cant: 1.0 | MONELO RAZA PEQUEÑA REF: 1KG (Ref/Cod: 0304) | Precio Unit: $19,047.62 | Total: $20,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000186
+📅 Fecha Creación:  2026-07-07 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $30,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | CAMISETA HOMBRE SELECION COLOMBIA (Ref/Cod: 0351) | Precio Unit: $25,210.08 | Total: $30,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000187
+📅 Fecha Creación:  2026-07-08 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $8,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | DISPENSADOR DE BOLSA REF:C-113 MR PO (Ref/Cod: 0042) | Precio Unit: $6,722.69 | Total: $8,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000188
+📅 Fecha Creación:  2026-07-08 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  TRANSFERENCIA
+💰 Total Facturado: $110,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | CAMA DONA REF ANTISTRES TALLA M (Ref/Cod: 0231) | Precio Unit: $92,436.97 | Total: $110,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000189
+📅 Fecha Creación:  2026-07-08 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $13,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | ARENA CALABAZA REF:4.5 SURTIDAS (Ref/Cod: 0133) | Precio Unit: $10,924.37 | Total: $13,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: 4P1C-00000190
+📅 Fecha Creación:  2026-07-08 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  EFECTIVO
+💰 Total Facturado: $13,000.00
+🛒 Detalles de los Ítems Vendidos:
+   [x] Cant: 1.0 | ARENA CALABAZA REF:4.5 SURTIDAS (Ref/Cod: 0133) | Precio Unit: $10,924.37 | Total: $13,000.00
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-!+!!++9'+
+📅 Fecha Creación:  2026-07-06 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL (Doc: 222222222222)
+💳 Método de Pago:  hlrhris8
+💰 Total Facturado: $5,198,624.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-0000:0000:0001y
+📅 Fecha Creación:  atmpxi5a05ecaeq (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  0000:0000:0000:0000:0000:0
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-000:0000:0001yl
+📅 Fecha Creación:  qcf58j5jy3hq64h (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  0:0000:0000:0000:0000:0000
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-003SalesOrder47
+📅 Fecha Creación:  o por factura 4 (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  3Invoice5mt67293gm8v6jubs8
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-00:0001ylho2ezd
+📅 Fecha Creación:  5jy3hq6h09x4puo (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  f93r9ydiw0000:0000:0000:00
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-0:0000:0000:000
+📅 Fecha Creación:  -00000007transa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:   corrección | Motivo: pureb
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-0igfpjsk   G!+!
+📅 Fecha Creación:  6paidlmb (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  6-04-012026-04-3
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-2j6iigsaacj96ox
+📅 Fecha Creación:  accionestransac (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  00000046Invoicexli6ausrd58
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-4pfk6gcdredllb9
+📅 Fecha Creación:   PED-00000010Sa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  b'5Invoice3pfesp8z1g1rcuosj32w'
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-5yp3qxv127.0.0.
+📅 Fecha Creación:  r22f373gh0q4lrp (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  oicedhx0um2g2uhcso60y1hdzh
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-67parkhan96ziss
+📅 Fecha Creación:  SIBERIANOziqzde (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  !+++2025-08-01HUSKY SIBERIANOe5xxkn48qpl
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-7sza127.0.0.1g7
+📅 Fecha Creación:  qcf58j5jy3hq67w (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  7.0.0.1g75s4kw5c24i1ffjuli
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-b3v2q8i127.0.0.
+📅 Fecha Creación:  rx4pfk6gcdredll (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  3xtlwewau2127.0.0.1kx1bh9a
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-b46gm535hxw1549
+📅 Fecha Creación:  accionestransac (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  onestransactionsjfzl2j6iig
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-bczrnd8cqth0000
+📅 Fecha Creación:  o por factura F (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  oice1vpstpgbena0c9rbwlglyi
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-bm8vh3bbjur4kb1
+📅 Fecha Creación:  -00000002transa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  TX IA-00000003InmoInvoicen33
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-ctionstrpkvr0jj
+📅 Fecha Creación:  -00000003transa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  ante NM-00000002transactions
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-ctionsw6toui147
+📅 Fecha Creación:  -00000002transa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  gistros exportadossistemacs2
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-d=!!+!2026
+📅 Fecha Creación:  mtj7eaeMay (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:                       
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-hny6c1k127.0.0.
+📅 Fecha Creación:  rl24hqbepbi5e5o (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  mowj3yvzkykwr127.0.0.1kx1b
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-ib65127.0.0.1g7
+📅 Fecha Creación:  qcf58j5jy3hq6bz (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  7.0.0.1g75s4kw5c24i1ffjuli
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-obij1sw127.0.0.
+📅 Fecha Creación:  r47xqcrhw3aw1ch (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  z3hq4vgtd127.0.0.1kx1bh9ay
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-qzkns4w4nfuxe00
+📅 Fecha Creación:  o por factura P (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  3InventoryMovement1ui8amdh
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-sscd7ytrzb4fnzq
+📅 Fecha Creación:  -00000001transa (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  TX IA-00000002InmoInvoicen33
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+
+📌 FACTURA NÚMERO: TEMP-x7dj127.0.0.1g7
+📅 Fecha Creación:  qcf58j5jy3hq66o (UTC)
+👤 Cliente:         CONSUMIDOR FINAL
+💳 Método de Pago:  10vl7ly192.168.1.9ylho2ezd
+💰 Total Facturado: $0.00
+🛒 Detalles de los Ítems Vendidos:
+   [ ] (No se pudieron extraer los detalles de los productos para esta factura)
+===================================================================
+

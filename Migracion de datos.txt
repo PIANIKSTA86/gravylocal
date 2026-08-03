@@ -1,0 +1,3 @@
+/pb_data (Base de datos del entorno principal)
+/hub/pb_data (Base de datos del orquestador del sistema)
+/empresas/empresa_XXXX/pb_data (La base de datos de cada empresa específica)

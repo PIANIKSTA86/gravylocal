@@ -1,0 +1,1183 @@
+===================================================================
+       REPORT OF RECOVERED DELETED INVOICES FROM BINARY RAW DATA    
+===================================================================
+
+Below is the list of invoices created since July 5th reconstructed
+from raw data structures in the database file.
+
+INVOICE: 4P1C-00000158
+ID:      cwokx06xn4qoeo1
+DATE:    2026-07-05 00:26:10 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - vi9ed0fj3z9dmz6
+  - d3cip9dol1czjly
+  - j9z9qeo7yt11zgl
+  - ~dyqnk53rnnajxwn
+  - ioe8s6ycod94ozx9
+  - 0g9dnhr@
+  - oybanyhwpaknibgwapbhdbb2j5zr3a@W
+  - pdgkndznt1z4mow
+  - xd5vxg5luilayepcwokx06xn4qoeo1@
+  - i8v4qtb330ky2t2@
+  - jo8p9pz4u689vd6fgbc7yu0ggyunlm@t
+  - l5uj38ls1dpthy4
+  - !+!!++
+  - Venta POS turno #nywmj4P1C-00000158
+  - TRANSFERENCIAglrn0ct3gqnywmjposted@
+  - 82fgcrgi9qw9t614P1C-00000158s
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 00:29:02
+  - O/++[+13APPLYSALIDA
+  - tuw6l0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 00:26:10
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000159
+ID:      wapbhdbb2j5zr3a
+DATE:    2026-07-05 00:29:02 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - vi9ed0fj3z9dmz6
+  - d3cip9dol1czjly
+  - j9z9qeo7yt11zgl
+  - ~dyqnk53rnnajxwn
+  - 9sxeqhb8@
+  - w0ump6u4qti9cjw2dltv5ds7nhybua@
+  - v0key5id0g9dnhr@
+  - oybanyhwpaknibgwapbhdbb2j5zr3a@W
+  - pdgkndznt1z4mow
+  - xd5vxg5luilayepcwokx06xn4qoeo1@
+  - i8v4qtb330ky2t2@
+  - !+!!++
+  - Venta POS turno #nywmj4P1C-00000159
+  - EFECTIVOglrn0ct3gqnywmjposted@
+  - m81dxvcmjb7kf3w4P1C-00000159s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 01:06:36
+  - O/++[+13APPLYSALIDA
+  - ffk7e0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 00:29:02
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000160
+ID:      2dltv5ds7nhybua
+DATE:    2026-07-05 20:12:54 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - vi9ed0fj3z9dmz6
+  - d3cip9dol1czjly
+  - j9z9qeo7yt11zgl
+  - 9sxeqhb8
+  - gpjv8a4a18h964004di2e78mfhfz11@}
+  - 6toh58r9sxeqhb8@
+  - w0ump6u4qti9cjw2dltv5ds7nhybua@
+  - v0key5id0g9dnhr@
+  - oybanyhwpaknibgwapbhdbb2j5zr3a@W
+  - pdgkndznt1z4mow
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000160
+  - TRANSFERENCIAp0eax4fooojzs6gposted@
+  - o48miyszbyn5lu74P1C-00000160s
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:13:11
+  - O/++[+13APPLYSALIDA
+  - e8sx00000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:12:54
+  - ++[+13CHANGE_PAYMENT
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000161
+ID:      04di2e78mfhfz11
+DATE:    2026-07-05 20:13:11 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - vi9ed0fj3z9dmz6
+  - d3cip9dol1czjly
+  - wpqq64su@
+  - 269wnezo2y3ejtq71sa8p0z1flbxrc@
+  - 6toh58r9sxeqhb8
+  - gpjv8a4a18h964004di2e78mfhfz11@}
+  - 6toh58r9sxeqhb8@
+  - w0ump6u4qti9cjw2dltv5ds7nhybua@
+  - v0key5id0g9dnhr@
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000161
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - 35fj2rg7rtvs5t34P1C-00000161s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:13:32
+  - O/++[+13APPLYSALIDA
+  - 6clij0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:13:12
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000162
+ID:      71sa8p0z1flbxrc
+DATE:    2026-07-05 20:13:32 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - vi9ed0fj3z9dmz6
+  - wisgp05
+  - s5x5hy1mcr0z5qjlkstafraf4rn0g2@
+  - /33333
+  - kuclpmqwpqq64su@
+  - 269wnezo2y3ejtq71sa8p0z1flbxrc@
+  - 6toh58r9sxeqhb8
+  - gpjv8a4a18h964004di2e78mfhfz11@}
+  - 6toh58r9sxeqhb8@
+  - !+!!++
+  - {Venta POS turno #jzs6g4P1C-00000162#(EFECTIVOp0eax4fooojzs6gposted@
+  - #(7trxy1td6349qxp4P1C-00000162s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:14:20
+  - O/++[+13APPLYSALIDA
+  - 9s08n0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:13:33
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000163
+ID:      lkstafraf4rn0g2
+DATE:    2026-07-05 20:14:20 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - fgbc7yu0ggyunlm
+  - 000072
+  - TRANSFERENCIA869ke8jh3c2t9ewposted@
+  - w9tgk46po75awmn4P1C-0000
+  - !+!!++
+  - /33333Venta POS turno #jzs6g4P1C-00000163a
+  - TRANSFERENCIAp0eax4fooojzs6gposted@
+  - sxtvtuqwsn7onk34P1C-00000163s1q
+  - kjwwe7e4sayoqec6fhbvdkehdgaqaw@
+  - 5636r2aqwisgp05
+  - s5x5hy1mcr0z5qjlkstafraf4rn0g2@
+  - /33333
+  - kuclpmqwpqq64su@
+  - 269wnezo2y3W
+  - 880entwuw7yfr2npkhmaudmhlrhris@
+  - yte4jcj
+  - 269wnezo2y3ejtq71sa8p0z1flbxrc@
+  - 6toh58r9sxeqhb8
+  - O/++[+13APPLYSALIDA
+  - sl1qu0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:14:21
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000164
+ID:      6fhbvdkehdgaqaw
+DATE:    2026-07-05 20:15:10 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - cwokx06xn4qoeo1
+  - 1sga5547nzizie1yxm01nnmvvywgo8@s
+  - sgjrf0h50apkevk
+  - kjwwe7e4sayoqec6fhbvdkehdgaqaw@
+  - 5636r2aqwisgp05
+  - s5x5hy1mcr0z5qjlkstafraf4rn0g2@
+  - /33333
+  - kuclpmqwpqq64su@
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000164
+  - pTRANSFERENCIAp0eax4fooojzs6gposted@
+  - pq2pzjhfmgbk57m84P1C-00000164s
+  - znt1z4mow@
+  - dkmojaoe56jif3h429wvfee93zm8jr@
+  - 9c0yv4f04ypuptr@
+  - b278bmfpf10co096fhbvdkehdgaqaw@W
+  - pdgkndznt1z4mow
+  - x7bjgjq2b8ghfob6fhbvdkehdgaqaw
+  - s3ouu7c2nu7hemj
+  - 4ypuptr@
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:15:40
+  - O/++[+13APPLYSALIDA
+  - gfjsa0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:15:11
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000165
+ID:      429wvfee93zm8jr
+DATE:    2026-07-05 20:15:40 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - wapbhdbb2j5zr3a
+  - nt1z4mow
+  - 676pp13ubjml5obh0abj5ikra8hdy0@
+  - g2989cy9yeatv1o@
+  - yb4e0vs1nion2pt429wvfee93zm8jr@G
+  - pdgkndznt1z4mow@
+  - !+!!++
+  - \)Venta POS turno #jzs6g4P1C-00000165N EFECTIVOp0eax4fooojzs6gposted@
+  - {N c5nu31mjzstdnkg4P1C-00000165s1qm70mj
+  - dkmojaoe56jif3h429wvfee93zm8jr@
+  - 9c0yv4f04ypuptr@
+  - 9yeatv1o@
+  - b278bmfpf10co096fhbvdkehdgaqaw@W
+  - pdgkndznt1z4mow
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:17:23
+  - O/++[+13APPLYSALIDA
+  - 9dot60000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:15:41
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000166
+ID:      h0abj5ikra8hdy0
+DATE:    2026-07-05 20:17:23 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - 2dltv5ds7nhybua
+  - 9z8k1mnipwklncw2tc1k
+  - 8e0bor02pfcj9b8y5azzwqsb2pipso@
+  - flvpksdx4dqd190
+  - f399jbbsybxwm08h0abj5ikra8hdy0@m
+  - pdgkndznt1z4mow
+  - 676pp13ubjml5obh0abj5ikra8hdy0@
+  - g2989cy9yeatv1o@
+  - dqd190
+  - yb4e0vs1nion2pt429wvfee93zm8jr@G
+  - pdgkndznt1z4mow@
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000166@
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - r682ez8chdfq22o4P1C-0000
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:18:09
+  - O/++[+13APPLYSALIDA
+  - giph20000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:17:23
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000167
+ID:      y5azzwqsb2pipso
+DATE:    2026-07-05 20:18:09 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - &04di2e78mfhfz11
+  - xjaom9@
+  - r6isb0jx660tnvg@
+  - b82k7oeo1949o0l7i87y6wmqe9z8k1mnipwklncw2tc1k
+  - 8e0bor02pfcj9b8y5azzwqsb2pipso@
+  - flvpksdx4dqd190
+  - f399jbbsybxwm08h0abj5ikra8hdy0@m
+  - pdgkndznt1z4mow
+  - qv1o6@
+  - 4r0m964z17y0gz0@
+  - 4zckffl3f1cu4suoka5zr4ewtqv1o6
+  - xhk0555680nvc23
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000167.
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - 1per31athhj0ms54P1C-00000167s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:18:34
+  - O/++[+13APPLYSALIDA
+  - l5hvs0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:18:09
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000168
+ID:      7i87y6wmqe9z8k1
+DATE:    2026-07-05 20:18:34 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - ;71sa8p0z1flbxrc
+  - hy12gzuzb@
+  - x3osy25hzu57425pxulal2evxjaom9@
+  - r6isb0jx660tnvg@
+  - b82k7oeo1949o0l7i87y6wmqe9z8k1mnipwklncw2tc1k
+  - 8e0bor02pfcj9b8y5azzwqsb2pipso@
+  - flvpksdx4dqd190
+  - 0p2g3flk@
+  - gnvxguj4xnqdatwoka5zr4ewtqv1o6@
+  - 4r0m964z17y0gz0@
+  - '!+!!++
+  - TRANSFERENCIAp0eax4fooojzs6gposted
+  - r186qvt194abt5a4P1C-00000168s1qm70mjdmr532xfc
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:19:11
+  - O/++[+13APPLYSALIDA
+  - obug10000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:18:34
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000169
+ID:      pxulal2evxjaom9
+DATE:    2026-07-05 20:19:11 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - Plkstafraf4rn0g2
+  - nt1z4mow
+  - ri9ddkpzbm27q1r3jhvrchz86uph75@g
+  - 2295f9hy12gzuzb@
+  - x3osy25hzu57425pxulal2evxjaom9@
+  - r6isb0jx660tnvg@
+  - b82k7oeo1949o0l7i87y6wmqe9z8k1mnipwklncw2tc1k
+  - 8e0bor
+  - !+!!++
+  - {Venta POS turno #jzs6g4P1C-00000169.
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - kqip7fp3tmqhsyw4P1C-00000169s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:19:34
+  - O/++[+13APPLYSALIDA
+  - sndud0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:19:11
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000170
+ID:      3jhvrchz86uph75
+DATE:    2026-07-05 20:19:34 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - e6fhbvdkehdgaqaw
+  - 7d34bl3
+  - fm1j9v7juqq3hown5rdklzw2j841n8@g
+  - pdgkndznt1z4mow
+  - ri9ddkpzbm27q1r3jhvrchz86uph75@g
+  - 2295f9hy12gzuzb@
+  - x3osy25hzu57425pxulal2evxjaom9@
+  - r6isb0jx660tnvg@
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000170
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - 2ijtk1d9yufhb644P1C-00000170s1qm70mj
+  - O/++[+13APPLYSALIDA
+  - myv9d0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:19:35
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000171
+ID:      n5rdklzw2j841n8
+DATE:    2026-07-05 20:20:11 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - z429wvfee93zm8jr
+  - 77uw44q5@
+  - 53xrdldw9bc8pnk355gtobfowne5kp@
+  - 522s7dcm7d34bl3
+  - fm1j9v7juqq3hown5rdklzw2j841n8@g
+  - pdgkndznt1z4mow
+  - ri9ddkpzbm27q1r3jhvrchz86uph75@g
+  - 2295f9hy12gzuzb@
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000171
+  - EFECTIVOp0eax4fooojzs6gposted@
+  - yvrp7zx1by922p94P1C-00000171s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:27:57
+  - O/++[+13APPLYSALIDA
+  - 002m70000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:20:11
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000172
+ID:      355gtobfowne5kp
+DATE:    2026-07-05 20:27:57 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - h0abj5ikra8hdy0
+  - 6s8szt7hr@
+  - luh5qa6q62nsr6368lucza3vny6izn@q
+  - bnmsbtu77uw44q5@
+  - 53xrdldw9bc8pnk355gtobfowne5kp@
+  - 522s7dcm7d34bl3
+  - fm1j9v7juqq3hown5rdklzw2j841n8@g
+  - pdgkndznt1z4mow
+  - !+!!++
+  - Venta POS turno #jzs6g4P1C-00000172N EFECTIVOp0eax4fooojzs6gposted@
+  - HN g7vj7b191t0jgx64P1C-00000172s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 14:46:24
+  - O/++[+13APPLYSALIDA
+  - 4ble00000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-05 20:27:57
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000173
+ID:      68lucza3vny6izn
+DATE:    2026-07-06 14:46:24 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - y5azzwqsb2pipso
+  - 08dbifnco@
+  - ycxzz9r6ys6x397pgfyqb7t4rs01nl@
+  - xll6h96s8szt7hr@
+  - luh5qa6q62nsr6368lucza3vny6izn@q
+  - bnmsbtu77uw44q5@
+  - 53xrdldw9bc8pnk355gtobfowne5kp@
+  - 522s7dcm7d34bl3
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000173
+  - pEFECTIVO8et91k04znnsqyxposted@
+  - pxtq5a9ysoo3g48s4P1C-00000173s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 14:46:49
+  - A/++[+13APPLYSALIDA - S
+  - h0xfi0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 14:46:25
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000174
+ID:      pgfyqb7t4rs01nl
+DATE:    2026-07-06 14:46:49 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - 7i87y6wmqe9z8k1
+  - poiqe66ef@
+  - 3fwl6tas51fh3o5yb7ijrg4p8ueaw0@
+  - qxvujd08dbifnco@
+  - ycxzz9r6ys6x397pgfyqb7t4rs01nl@
+  - xll6h96s8szt7hr@
+  - luh5qa6q62nsr6368lucza3vny6izn@q
+  - bnmsbtu77uw44q5@
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000174'
+  - EFECTIVO8et91k04znnsqyxposted@
+  - cv3d42o4ex3vuze4P1C-00000174s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 15:31:03
+  - A/++[+13APPLYSALIDA - S
+  - ozeah0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 14:46:49
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000175
+ID:      yb7ijrg4p8ueaw0
+DATE:    2026-07-06 15:31:03 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - pxulal2evxjaom9
+  - gey40ff2c@
+  - xqtgkejrdpdo9rj8s1qglejvy0o927@
+  - m0p8cipoiqe66ef@
+  - 3fwl6tas51fh3o5yb7ijrg4p8ueaw0@
+  - qxvujd08dbifnco@
+  - ycxzz9r6ys6x397pgfyqb7t4rs01nl@
+  - xll6h96s8szt7hr@
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000175m`EFECTIVO8et91k04znnsqyxposted@
+  - m`jv96nen7e9rlwq04P1C-00000175s1qm70mj
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 15:37:19
+  - A/++[+13APPLYSALIDA - S
+  - hp0nr0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 15:31:03
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000176
+ID:      8s1qglejvy0o927
+DATE:    2026-07-06 15:37:19 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - 3jhvrchz86uph75
+  - s4doj6ph@
+  - gr12og1yxnrrpkdmwe6xcfoayq9qyr@
+  - zt64x6pk6kvuzd3@
+  - u6w2yzxm26z77bm8s1qglejvy0o927@
+  - zfk2rdgey40ff2c@
+  - xqtgkejrdpdo9rj8s1qglejvy0o927@
+  - m0p8cipoiqe66ef@
+  - 6kvuzd3@
+  - 3fwl6tas51fh3o5yb7ijrg4p8ueaw0@
+  - qxvujd08dbifnco@
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000176
+  - EFECTIVO8et91k04znnsqyxposted@
+  - 4iv6m08t2of2mu54P1C-00000176s1qm70
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 17:29:29
+  - A/++[+13APPLYSALIDA - S
+  - x1z7o0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 15:37:19
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000177
+ID:      mwe6xcfoayq9qyr
+DATE:    2026-07-06 17:29:29 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - n5rdklzw2j841n8
+  - fjvg0ow2hhv2hr2.
+  - rnna5dh4fuq7fvf9bsu2ib3nsxwkwh@
+  - p7q81v3cnbt56ov@
+  - j8zj1u713rmgz24mwe6xcfoayq9qyr@
+  - w06h2lqs4doj6ph@
+  - gr12og1yxnrrpkdmwe6xcfoayq9qyr@
+  - zt64x6pk6kvuzd3@
+  - nbt56ov@
+  - u6w2yzxm26z77bm8s1qglejvy0o927@
+  - zfk2rdgey40ff2c@
+  - A/++[+13APPLYSALIDA - S
+  - e3h650000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 17:29:29
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000177
+  - TRANSFERENCIA8et91k04znnsqyxpostedA
+  - 7phpg6vz2ansubm4P1C-00000177s
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000178
+ID:      9bsu2ib3nsxwkwh
+DATE:    2026-07-06 18:12:31 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - 355gtobfowne5kp
+  - za43k29@
+  - x9q00vcdc2anjbqjk33t5ofnsd3bcc@
+  - v0key5id0g9dnhr@
+  - jndsvxrmxpsqxi09bsu2ib3nsxwkwh
+  - fjvg0ow2hhv2hr2.
+  - rnna5dh4fuq7fvf9bsu2ib3nsxwkwh@
+  - p7q81v3cnbt56ov@
+  - j8zj1u713rmgz24mwe6xcfoayq9qyr@
+  - w06h2lqs4doj6ph@
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000178
+  - @PTRANSFERENCIA8et91k04znnsqyxposted@
+  - @Pvz73q51xcnaldh74P1C-00000178s
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 19:13:48
+  - A/++[+13APPLYSALIDA - S
+  - hw7970000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 18:12:31
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000179
+ID:      jk33t5ofnsd3bcc
+DATE:    2026-07-06 19:13:48 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - "68lucza3vny6izn
+  - nb9n4wgn@
+  - d3qbj8jtfomkswazkcs89cldxhnrcg@
+  - hf3y8bbpza43k29@
+  - x9q00vcdc2anjbqjk33t5ofnsd3bcc@
+  - v0key5id0g9dnhr@
+  - jndsvxrmxpsqxi09bsu2ib3nsxwkwh
+  - fjvg0ow2hhv2hr2.
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000179
+  - TRANSFERENCIA8et91k04znnsqyxposted@
+  - qv6q6dn05bqgf1j4P1C-00000179s
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:00:25
+  - A/++[+13APPLYSALIDA - S
+  - h8px40000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 19:13:48
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000180
+ID:      zkcs89cldxhnrcg
+DATE:    2026-07-06 23:00:25 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - I!+!!++
+  - Venta POS turno #nsqyx4P1C-00000180
+  - TRANSFERENCIA8et91k04znnsqyxposted@
+  - sxb51jxmoi9oz4u4P1C-00000180s
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - 7pgfyqb7t4rs01nl
+  - twvy6jbtj@
+  - e4c1n9xwz8xgje8ds1uzmxvy7vjqqn@
+  - yte4jcjew64yje3@
+  - q2zghfw1sn5st5vzkcs89cldxhnrcg@
+  - 57jfv3qnb9n4wgn@
+  - d3qbj8jtfomkswazkcs89cldxhnrcg@
+  - hf3y8bbpza43k29@
+  - ew64yje3@
+  - x9q00vcdc2anjbqjk33t5ofnsd3bcc@
+  - v0key5id0g9dnhr@
+  - !!+!!++
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:05:52
+  - A/++[+13APPLYSALIDA - S
+  - 2uewd0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:00:25
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000181
+ID:      ds1uzmxvy7vjqqn
+DATE:    2026-07-06 23:05:52 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - ~!+!!++
+  - Venta POS turno #nsqyx4P1C-00000181
+  - pEFECTIVO8et91k04znnsqyxposted@
+  - pywkc2311fel5u6b4P1C-00000181s1qm70
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - Lyb7ijrg4p8ueaw0
+  - z17y0gz0@
+  - 7l0vlugcd4f4eztbhi7vzpvm2r0706@q
+  - flvpksdx4dqd190@
+  - v3zqgcik5qhjwb4ds1uzmxvy7vjqqn@
+  - /33333
+  - mapbgptwvy6jbtj@
+  - e4c1n9xwz8xgje8ds1uzmxvy7vjqqn@
+  - yte4jcjew64yje3@
+  - x4dqd190@
+  - q2zghfw1sn5st5vzkcs89cldxhnrcg@
+  - 57jfv3qnb9n4wgn@
+  - "!+!!++
+  - xhk0555680nvc23
+  - Y!+!!++
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:08:36
+  - A/++[+13APPLYSALIDA - S
+  - vvz6c0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:05:53
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000182
+ID:      bhi7vzpvm2r0706
+DATE:    2026-07-06 23:08:36 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000182
+  - pEFECTIVO8et91k04znnsqyxposted@
+  - pc2aw0ttjj7oada14P1C-00000182s1qm70mj
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - a8s1qglejvy0o927
+  - 0p2g3flk@
+  - gnvxguj4xnqdatwoka5zr4ewtqv1o6@
+  - 4r0m964z17y0gz0@
+  - 7l0vlugcd4f4eztbhi7vzpvm2r0706@q
+  - flvpksdx4dqd190@
+  - v3zqgcik5qhjwb4ds1uzmxvy7vjqqn@
+  - /33333
+  - mapbgptwvy6jbtj@
+  - #!+!!++
+  - flvpksdx4dqd190
+  - 4zckffl3f1cu4suoka5zr4ewtqv1o6
+  - xhk0555680nvc23
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:24:08
+  - A/++[+13APPLYSALIDA - S
+  - 7rb120000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:08:36
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000183
+ID:      oka5zr4ewtqv1o6
+DATE:    2026-07-06 23:24:08 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - !+!!++
+  - Venta POS turno #nsqyx4P1C-00000183
+  - 88TRANSFERENCIA8et91k04znnsqyxpostedA
+  - 88q23ttkl3hxr1vwj4P1C-00000183s
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - vmwe6xcfoayq9qyr
+  - rdtojims@
+  - w36qz9anj00e98a27tk6hn2tpzxdi8@g
+  - pdgkndznt1z4mow
+  - 4zckffl3f1cu4suoka5zr4ewtqv1o6
+  - xhk0555680nvc23
+  - yp1la0utdhf48eaoka5zr4ewtqv1o6@
+  - w92cni2apnnurt5@
+  - 6zd9i6laefiwlcaoka5zr4ewtqv1o6@
+  - lat828w0p2g3flk@
+  - gnvxguj4xnqdatwoka5zr4ewtqv1o6@
+  - 4r0m964z17y0gz0@
+  - pnnurt5@
+  - 7l0vlugcd4f4eztbhi7vzpvm2r0706@q
+  - flvpksdx4dqd190@
+  - $!+!!++
+  - |!+!!++
+  - 1z4mow
+  - b82k7oeo1949o0l7i87y6wmqe9z8k1mnipwklncw2tc1k
+  - 9z8k1mnipwklncw2tc1k
+  - 8e0bor02pfcj9b8y5azzwqsb2pipso@
+  - flvpksdx4dqd190
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-07 00:05:17
+  - A/++[+13APPLYSALIDA - S
+  - ipy8x0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-06 23:24:08
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000184
+ID:      27tk6hn2tpzxdi8
+DATE:    2026-07-07 00:05:17 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - -!+!!++
+  - Venta POS turno #nsqyx4P1C-00000184
+  - EFECTIVO8et91k04znnsqyxposted@
+  - yexkkfiyqa6stlu4P1C-00000184s1qm70mj
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - 9bsu2ib3nsxwkwh
+  - quy9nru2m@
+  - 72fc7lk8nc9x3kisvq7c9qsdjm48ca@
+  - zbtqg0qrdtojims@
+  - w36qz9anj00e98a27tk6hn2tpzxdi8@g
+  - pdgkndznt1z4mow
+  - 4zckffl3f1cu4suoka5zr4ewtqv1o6
+  - xhk0555680nvc23
+  - %!+!!++
+  - yp1la0utdhf48eaoka5zr4ewtqv1o6@
+  - w92cni2apnnurt5@
+  - A/++[+13APPLYSALIDA - S
+  - lpmz10000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-07 00:05:18
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000185
+ID:      svq7c9qsdjm48ca
+DATE:    2026-07-07 15:04:56 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-07 15:44:51
+  - l!+!!++
+  - Venta POS turno #johzg4P1C-00000185@
+  - EFECTIVOge9c4p9rl9johzgposted@
+  - bq4k8r3v1mok2a84P1C-0000
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - jk33t5ofnsd3bcc
+  - s7i2tmo2p@
+  - 83oliwm73fva38wkvcwh6z7aekktis@
+  - zd3l62ogr74y3qu@
+  - wi0o9vrpqrcmnopsvq7c9qsdjm48ca@
+  - lxhcyqvtfwaklgq@
+  - s60z38v1rjm4r61svq7c9qsdjm48ca@
+  - 9rr1lmgkq2eogpi@
+  - gr74y3qu@
+  - 8pot3agda72bfbmsvq7c9qsdjm48ca@
+  - z82m2uquy9nru2m@
+  - tfwaklgq@
+  - 72fc7lk8nc9x3kisvq7c9qsdjm48ca@
+  - zbtqg0qrdtojims@
+  - kq2eogpi@
+  - w36qz9anj00e98a27tk6hn2tpzxdi8@g
+  - pdgkndznt1z4mow
+  - &!+!!++
+  - A/++[+13APPLYSALIDA - S
+  - f1aw10000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-07 15:04:57
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000186
+ID:      kvcwh6z7aekktis
+DATE:    2026-07-07 15:44:51 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 16:10:22
+  - A/++[+13APPLYSALIDA - S
+  - egntw0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-07 15:44:51
+  - !+!!++
+  - RVenta POS turno #johzg4P1C-00000186u0EFECTIVOge9c4p9rl9johzgposted@
+  - u0p3wobtl7edq5rot4P1C-00000186s1qm70mj
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - zkcs89cldxhnrcg
+  - uorn6f5d@
+  - vr0jbjcyw1nie98awycp2drndlm4t1@
+  - gk28vts7i2tmo2p@
+  - 83oliwm73fva38wkvcwh6z7aekktis@
+  - zd3l62ogr74y3qu@
+  - wi0o9vrpqrcmnopsvq7c9qsdjm48ca@
+  - lxhcyqvtfwaklgq@
+  - '!+!!++
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000187
+ID:      awycp2drndlm4t1
+DATE:    2026-07-08 16:10:22 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 17:30:26
+  - A/++[+13APPLYSALIDA - S
+  - kquxj0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 16:10:22
+  - !+!!++
+  - Venta POS turno #kpqxu4P1C-00000187
+  - @EFECTIVObp0wtix76ikpqxuposted@
+  - @i1pvi3awm5k2vtn4P1C-00000187s1qm70mj
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - ds1uzmxvy7vjqqn
+  - ew64yje3@
+  - 9nqzicw07p99odt60f0829wqmsdbes@
+  - n13wqqxuorn6f5d@
+  - vr0jbjcyw1nie98awycp2drndlm4t1@
+  - gk28vts7i2tmo2p@
+  - 83oliwm73fva38wkvcwh6z7aekktis@
+  - zd3l62ogr74y3qu@
+  - (!+!!++
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000188
+ID:      60f0829wqmsdbes
+DATE:    2026-07-08 17:30:26 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - :0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 20:05:11
+  - A/++[+13APPLYSALIDA - S
+  - k0mxl0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 17:30:26
+  - !+!!++
+  - Venta POS turno #kpqxu4P1C-00000188
+  - TRANSFERENCIAbp0wtix76ikpqxuposted@
+  - 8l8du9vd89jfnj44P1C-00000188s
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - bhi7vzpvm2r0706
+  - jew64yje3@
+  - te51pgiauuoyzdrvz9pibng77dygnl@
+  - yte4jcjew64yje3@
+  - 9nqzicw07p99odt60f0829wqmsdbes@
+  - n13wqqxuorn6f5d@
+  - vr0jbjcyw1nie98awycp2drndlm4t1@
+  - gk28vts7i2tmo2p@
+  - )!+!!++
+  - m`EFECTIVO8et91k04znnsqyxposted@
+  - m`jv96nen7e9rlwq04P1C-00000175s1qm70mjd
+  - Domains":null,"help":"","hidden":false,"id":"email3885137012","name":"email","
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000189
+ID:      vz9pibng77dygnl
+DATE:    2026-07-08 20:05:11 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - hkolr8gf79t127.0.0.1kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 21:56:56
+  - A/++[+13APPLYSALIDA - S
+  - r5fef0000:0000:0000:0000:0000:0000:0000:0001kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 20:05:11
+  - N!+!!++
+  - Venta POS turno #kpqxu4P1C-000001892
+  - EFECTIVObp0wtix76ikpqxuposted@
+  - p9kst4r4ypf9yfk4P1C-00000189s1qm70mj
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - oka5zr4ewtqv1o6
+  - 880entwuw7yfr2npkhmaudmhlrhris@
+  - yte4jcjew64yje3@
+  - te51pgiauuoyzdrvz9pibng77dygnl@
+  - 9nqzicw07p99odt60f0829wqmsdbes@
+  - n13wqqxuorn6f5d@
+  - *!+!!++
+  - 269wnezo2y3W
+-------------------------------------------------------------------
+
+INVOICE: 4P1C-00000190
+ID:      pkhmaudmhlrhris
+DATE:    2026-07-08 21:56:56 (UTC)
+LINES / RAW CONTEXT DETAILS:
+  - 0krlko9bp4f127.0.0.1kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 22:03:35
+  - +13APPLYSALIDA - SAL-20260708-6324InventoryMovem
+  - ement8kzziwmu1pqvd7ts8i66gz1ihqmv9o127.0.0.1kx1bh9ayffytq4ocaja2bog@gravy.com2026-07-08 21:56:56
+  - cojmtj9vt2026-06-262026-06-26z6pdpupwnjo96q1r7qlxcu42um3bfq@
+  - Venta POS t
+  - +!+!!++
+  - Venta POS turno #kpqxu4P1C-000001902
+  - EFECTIVObp0wtix76ikpqxuposted@
+  - 0kmb3usgxt71ts14P1C-00000190s1qm70mj
+  - pkhmaudmhlrhris
+  - rvz9pibng77dygnl
+  - ]60f0829wqmsdbes
+  - Hawycp2drndlm4t1
+  - 3kvcwh6z7aekktis
+  - svq7c9qsdjm48ca
+  - 27tk6hn2tpzxdi8
+  - tqv5qbgc3257trj0l25e6u6vuq91mp@
+  - v0key5id0g9dnhr@
+  - 880entwuw7yfr2npkhmaudmhlrhris@
+  - yte4jcjew64yje3@
+  - te51pgiauuoyzdrvz9pibng77dygnl@
+  - 04:57.137Z
+  - D!+!!++
+  - s5x5hy1mcr0z5qjlkstafraf4rn0g2@
+  - /33333
+  - kuclpmqwpqq64su@
+  - 269wnezo2y3W
+  - presentable":false,"required":false,"system":false,"type":"relation"}]["CREATE
+-------------------------------------------------------------------
+

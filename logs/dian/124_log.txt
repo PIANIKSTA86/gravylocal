@@ -1,0 +1,54 @@
+
+==================================================
+TIMESTAMP: 2026-07-17T03:38:10.657Z
+ACTION: DIAN SIGN-AND-SEND (EXCEPTION)
+==================================================
+error: Error al firmar XML: Too few bytes to parse DER.
+stack: Error: Error al firmar XML: Too few bytes to parse DER.
+    at signXmlXades (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:481:11)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:701:23
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:117:3)
+    at handle (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:295:15
+    at processParams (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:582:12)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:291:5)
+
+
+==================================================
+TIMESTAMP: 2026-07-17T03:47:05.194Z
+ACTION: DIAN SIGN-AND-SEND (EXCEPTION)
+==================================================
+error: Error al firmar XML: Too few bytes to parse DER.
+stack: Error: Error al firmar XML: Too few bytes to parse DER.
+    at signXmlXades (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:481:11)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:701:23
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:117:3)
+    at handle (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:295:15
+    at processParams (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:582:12)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:291:5)
+
+
+==================================================
+TIMESTAMP: 2026-07-18T03:20:39.078Z
+ACTION: DIAN SIGN-AND-SEND (EXCEPTION)
+==================================================
+error: Error al firmar XML: Too few bytes to parse DER.
+stack: Error: Error al firmar XML: Too few bytes to parse DER.
+    at signXmlXades (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:556:11)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\orchestrator.js:779:23
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\route.js:117:3)
+    at handle (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\lib\layer.js:152:17)
+    at C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:295:15
+    at processParams (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:582:12)
+    at next (C:\Users\JULIAN\Desktop\GravyLocal2.0\hub\node_modules\router\index.js:291:5)
+

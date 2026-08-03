@@ -1,0 +1,48 @@
+
+==================================================
+TIMESTAMP: 2026-07-17T03:38:10.621Z
+ACTION: DIAN SIGN-AND-SEND (SIMULATED)
+==================================================
+emitterNit: 900123456
+adquirerNit: undefined
+documentType: Invoice
+dianEnvironment: 2
+simulated: true
+xmlDocumentKey: 95bb9da912a3835afa5db8b53e8565745c1f3f0ffac4b9647a9777dc127dfb1eca12a49593aad4110a10787b3adc1190
+isValid: true
+statusCode: 0
+statusMessage: Procesado Correctamente. (Modo Simulado Activo)
+xmlContent: <?xml version="1.0" encoding="UTF-8"?><Invoice><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignatureValue>MOCK_SIGNATURE_VALUE_FOR_TESTING</ds:SignatureValue></ds:Signature></Invoice>
+
+
+==================================================
+TIMESTAMP: 2026-07-17T03:47:05.107Z
+ACTION: DIAN SIGN-AND-SEND (SIMULATED)
+==================================================
+emitterNit: 900123456
+adquirerNit: undefined
+documentType: Invoice
+dianEnvironment: 2
+simulated: true
+xmlDocumentKey: 95bb9da912a3835afa5db8b53e8565745c1f3f0ffac4b9647a9777dc127dfb1eca12a49593aad4110a10787b3adc1190
+isValid: true
+statusCode: 0
+statusMessage: Procesado Correctamente. (Modo Simulado Activo)
+xmlContent: <?xml version="1.0" encoding="UTF-8"?><Invoice><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignatureValue>MOCK_SIGNATURE_VALUE_FOR_TESTING</ds:SignatureValue></ds:Signature></Invoice>
+
+
+==================================================
+TIMESTAMP: 2026-07-18T03:20:38.992Z
+ACTION: DIAN SIGN-AND-SEND (SIMULATED)
+==================================================
+emitterNit: 900123456
+adquirerNit: undefined
+documentType: Invoice
+dianEnvironment: 2
+simulated: true
+xmlDocumentKey: 95bb9da912a3835afa5db8b53e8565745c1f3f0ffac4b9647a9777dc127dfb1eca12a49593aad4110a10787b3adc1190
+isValid: true
+statusCode: 0
+statusMessage: Procesado Correctamente. (Modo Simulado Activo)
+xmlContent: <?xml version="1.0" encoding="UTF-8"?><Invoice><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignatureValue>MOCK_SIGNATURE_VALUE_FOR_TESTING</ds:SignatureValue></ds:Signature></Invoice>
+

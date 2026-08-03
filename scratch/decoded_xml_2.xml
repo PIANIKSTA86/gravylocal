@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FACTURA>
+  <ENC>
+    <ENC_1>INVOIC</ENC_1>
+    <ENC_2>901428834</ENC_2>
+    <ENC_3>222222222222</ENC_3>
+    <ENC_4>UBL 2.1</ENC_4>
+    <ENC_5>DIAN 2.1</ENC_5>
+    <ENC_6>FV3748</ENC_6>
+    <ENC_7>2026-07-17</ENC_7>
+    <ENC_8>00:43:07-05:00</ENC_8>
+    <ENC_9>01</ENC_9>
+    <ENC_10>COP</ENC_10>
+    <ENC_15>1</ENC_15>
+    <ENC_16>2026-07-17</ENC_16>
+    <ENC_20>1</ENC_20>
+    <ENC_21>10</ENC_21>
+  </ENC>
+  <IPV>
+    <IPV_1>00331-10000-00001-AA962</IPV_1>
+    <IPV_2>Caja1</IPV_2>
+    <IPV_3>CATALINA MARTINES</IPV_3>
+    <IPV_4>CAJA1</IPV_4>
+    <IPV_5>FV</IPV_5>
+    <IPV_6>362304.00</IPV_6>
+  </IPV>
+  <EMI>
+    <EMI_1>1</EMI_1>
+    <EMI_2>901428834</EMI_2>
+    <EMI_3>31</EMI_3>
+    <EMI_6>DOMESTIKO SAS</EMI_6>
+    <EMI_7>DOMESTIKO SAS</EMI_7>
+    <EMI_10>CL 29 5 50</EMI_10>
+    <EMI_11>76</EMI_11>
+    <EMI_13>VALLE DEL CAUCA</EMI_13>
+    <EMI_14>76001</EMI_14>
+    <EMI_15>CO</EMI_15>
+    <EMI_19>CALI</EMI_19>
+    <EMI_22>2</EMI_22>
+    <EMI_23>76001</EMI_23>
+    <EMI_24>CATALINA MARTINES</EMI_24>
+    <TAC>
+      <TAC_1>R-99-PN</TAC_1>
+    </TAC>
+    <DFE>
+      <DFE_1>76001</DFE_1>
+      <DFE_2>76</DFE_2>
+      <DFE_3>CO</DFE_3>
+      <DFE_4>76001</DFE_4>
+      <DFE_5>Colombia</DFE_5>
+      <DFE_6>CALI</DFE_6>
+      <DFE_7>VALLE DEL CAUCA</DFE_7>
+      <DFE_8>CL 29 5 50</DFE_8>
+    </DFE>
+    <ICC>
+      <ICC_1>000000</ICC_1>
+      <ICC_9>FV</ICC_9>
+    </ICC>
+    <CDE>
+      <CDE_2>CATALINA MARTINES</CDE_2>
+      <CDE_3>3004205403</CDE_3>
+      <CDE_4>tesoreria@domestiko.co</CDE_4>
+    </CDE>
+    <GTE>
+      <GTE_1>01</GTE_1>
+      <GTE_2>IVA</GTE_2>
+    </GTE>
+  </EMI>
+  <ADQ>
+    <ADQ_1>2</ADQ_1>
+    <ADQ_2>222222222222</ADQ_2>
+    <ADQ_3>13</ADQ_3>
+    
+    <ADQ_6>FINAL</ADQ_6>
+    <ADQ_7></ADQ_7>
+    <ADQ_8>CONSUMIDOR</ADQ_8>
+    <ADQ_9></ADQ_9>
+    <ADQ_11>76</ADQ_11>
+    <ADQ_12>VALLE DEL CAUCA</ADQ_12>
+    <ADQ_13>CALI</ADQ_13>
+    <ADQ_14>76001</ADQ_14>
+    <ADQ_15>CO</ADQ_15>
+    <ADQ_22>0</ADQ_22>
+    <ADQ_23>76001</ADQ_23>
+    <TCR>
+      <TCR_1>R-99-PN</TCR_1>
+    </TCR>
+    <CDA>
+      <CDA_2>CONSUMIDOR FINAL</CDA_2>
+      <CDA_3>6022222222</CDA_3>
+      <CDA_4>na@gmail.com</CDA_4>
+    </CDA>
+    <GTA>
+      <GTA_1>01</GTA_1>
+      <GTA_2>IVA</GTA_2>
+    </GTA>
+  </ADQ>
+  <TOT>
+    <TOT_1>304457.14</TOT_1>
+    <TOT_2>COP</TOT_2>
+    <TOT_3>304457.14</TOT_3>
+    <TOT_4>COP</TOT_4>
+    <TOT_5>362304.00</TOT_5>
+    <TOT_6>COP</TOT_6>
+    <TOT_7>362304.00</TOT_7>
+    <TOT_8>COP</TOT_8>
+  </TOT>
+  <TIM>
+    <TIM_1>false</TIM_1>
+    <TIM_2>57846.86</TIM_2>
+    <TIM_3>COP</TIM_3>
+    <IMP>
+      <IMP_1>01</IMP_1>
+      <IMP_2>304457.14</IMP_2>
+      <IMP_3>COP</IMP_3>
+      <IMP_4>57846.86</IMP_4>
+      <IMP_5>COP</IMP_5>
+      <IMP_6>19.0</IMP_6>
+    </IMP>
+  </TIM>
+  <DRF>
+    <DRF_1>18764110175297</DRF_1>
+    <DRF_2>2026-05-25</DRF_2>
+    <DRF_3>2028-05-25</DRF_3>
+    <DRF_4>FV</DRF_4>
+    <DRF_5>3661</DRF_5>
+    <DRF_6>5000</DRF_6>
+  </DRF>
+  <MEP>
+    <MEP_1>10</MEP_1>
+    <MEP_2>1</MEP_2>
+  </MEP>
+  <ITE>
+    <ITE_1>1</ITE_1>
+    <ITE_3>5.76</ITE_3>
+    <ITE_4>ZZ</ITE_4>
+    <ITE_5>304457.14</ITE_5>
+    <ITE_6>COP</ITE_6>
+    <ITE_7>52857.14</ITE_7>
+    <ITE_8>COP</ITE_8>
+    <ITE_11>PORCELANATO SUPER NEGRO JADE /1,44MT2/ 60X120 /2F</ITE_11>
+    <ITE_19>304457.14</ITE_19>
+    <ITE_20>COP</ITE_20>
+    <ITE_27>5.76</ITE_27>
+    <ITE_28>ZZ</ITE_28>
+    <IAE>
+      <IAE_1>99999999</IAE_1>
+      <IAE_2>999</IAE_2>
+    </IAE>
+    <TII>
+      <TII_1>57846.86</TII_1>
+      <TII_2>COP</TII_2>
+      <TII_3>false</TII_3>
+      <IIM>
+        <IIM_1>01</IIM_1>
+        <IIM_2>57846.86</IIM_2>
+        <IIM_3>COP</IIM_3>
+        <IIM_4>304457.14</IIM_4>
+        <IIM_5>COP</IIM_5>
+        <IIM_6>19.00</IIM_6>
+      </IIM>
+    </TII>
+  </ITE>
+</FACTURA>

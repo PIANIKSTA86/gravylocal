@@ -1,0 +1,318 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [ 3 0 R ] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /MediaBox [ 0 0 612 792 ] /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 3008 >>
+stream
+q
+0.95 0.96 0.98 rg
+0.8 0.85 0.9 RG
+36 720 540 45 re B
+Q
+BT
+/F2 12 Tf
+0.05 0.15 0.3 rg
+46 750 Td
+(GRAVY ERP S.A.S.) Tj
+ET
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+46 736 Td
+(NIT: 901.234.567-8 | Tel: 3001234567) Tj
+ET
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+46 725 Td
+(Direccion: Calle 100 # 15-20, Bogota) Tj
+ET
+BT
+/F2 11 Tf
+0.05 0.15 0.3 rg
+405.84 750 Td
+(FACTURA DE VENTA ELECTRONICA) Tj
+ET
+BT
+/F2 12 Tf
+0.8 0.1 0.1 rg
+484.88 736 Td
+(No. FE-000123) Tj
+ET
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+495.28 725 Td
+(Fecha: 2026-07-26) Tj
+ET
+q
+0.85 0.85 0.85 RG
+36 650 540 58 re S
+Q
+BT
+/F2 8 Tf
+0.2 0.3 0.5 rg
+44 696 Td
+(TERCERO / CLIENTE / PROVEEDOR) Tj
+ET
+BT
+/F1 9 Tf
+0 0 0 rg
+44 683 Td
+(Nombre: COMERCIALIZADORA DE LOS ANDES S.A.S) Tj
+ET
+BT
+/F1 8.5 Tf
+0.3 0.3 0.3 rg
+44 671 Td
+(Doc / NIT: 800.999.888-2) Tj
+ET
+BT
+/F1 8.5 Tf
+0.3 0.3 0.3 rg
+44 659 Td
+(Telefono / Email: 6012223344 facturacion@losandes.com) Tj
+ET
+BT
+/F2 8 Tf
+0.2 0.3 0.5 rg
+340 696 Td
+(DETALLES DEL REGISTRO) Tj
+ET
+BT
+/F2 8.5 Tf
+0.1 0.6 0.2 rg
+340 683 Td
+(Estado: ACTIVE) Tj
+ET
+BT
+/F1 8.5 Tf
+0.2 0.2 0.2 rg
+340 671 Td
+(Concepto: Venta de mercancias al contado) Tj
+ET
+q
+0.1 0.25 0.45 rg
+36 617 540 18 re f
+Q
+BT
+/F2 8 Tf
+1 1 1 rg
+44 622 Td
+(CUENTA) Tj
+ET
+BT
+/F2 8 Tf
+1 1 1 rg
+115 622 Td
+(NOMBRE CUENTA) Tj
+ET
+BT
+/F2 8 Tf
+1 1 1 rg
+280 622 Td
+(TERCERO) Tj
+ET
+BT
+/F2 8 Tf
+1 1 1 rg
+445.04 622 Td
+(DEBITO) Tj
+ET
+BT
+/F2 8 Tf
+1 1 1 rg
+536.88 622 Td
+(CREDITO) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+44 603 Td
+(110505) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+115 603 Td
+(Caja General) Tj
+ET
+BT
+/F1 7.5 Tf
+0.3 0.3 0.3 rg
+280 603 Td
+(COMERCIALIZADORA DE LOS ANDES) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+411.76 603 Td
+($ 1,190,000.00) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+541.04 603 Td
+($ 0.00) Tj
+ET
+q
+0.97 0.98 1 rg
+36 585 540 15 re f
+Q
+BT
+/F1 8 Tf
+0 0 0 rg
+44 588 Td
+(413505) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+115 588 Td
+(Venta de Productos Comercio) Tj
+ET
+BT
+/F1 7.5 Tf
+0.3 0.3 0.3 rg
+280 588 Td
+(COMERCIALIZADORA DE LOS ANDES) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+445.04 588 Td
+($ 0.00) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+507.76 588 Td
+($ 1,000,000.00) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+44 573 Td
+(240805) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+115 573 Td
+(IVA Generado 19%) Tj
+ET
+BT
+/F1 7.5 Tf
+0.3 0.3 0.3 rg
+280 573 Td
+(COMERCIALIZADORA DE LOS ANDES) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+445.04 573 Td
+($ 0.00) Tj
+ET
+BT
+/F1 8 Tf
+0 0 0 rg
+516.08 573 Td
+($ 190,000.00) Tj
+ET
+q
+1 w
+0.8 0.8 0.8 RG
+36 570 m 576 570 l S
+Q
+q
+0.93 0.94 0.96 rg
+0.75 0.8 0.85 RG
+36 550 540 18 re B
+Q
+BT
+/F2 8.5 Tf
+0 0 0 rg
+280 555 Td
+(TOTALES) Tj
+ET
+BT
+/F2 8.5 Tf
+0 0 0 rg
+408.12 555 Td
+($ 1,190,000.00) Tj
+ET
+BT
+/F2 8.5 Tf
+0 0 0 rg
+504.12 555 Td
+($ 1,190,000.00) Tj
+ET
+q
+1 w
+0.5 0.5 0.5 RG
+46 140 m 180 140 l S
+Q
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+46 128 Td
+(Elaborado por) Tj
+ET
+q
+1 w
+0.5 0.5 0.5 RG
+230 140 m 360 140 l S
+Q
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+230 128 Td
+(Revisado / Contabilidad) Tj
+ET
+q
+1 w
+0.5 0.5 0.5 RG
+410 140 m 540 140 l S
+Q
+BT
+/F1 8 Tf
+0.3 0.3 0.3 rg
+410 128 Td
+(Firma / Sello Recibido) Tj
+ET
+BT
+/F1 7.5 Tf
+0.5 0.5 0.5 rg
+103.19999999999999 30 Td
+(GRAVY ERP v2.0 - Sistema de Archivado Fisico Digital) Tj
+ET
+
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 0000 n 
+0000000058 0000 n 
+0000000117 0000 n 
+0000000255 0000 n 
+0000000325 0000 n 
+0000000400 0000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3460
+%%EOF

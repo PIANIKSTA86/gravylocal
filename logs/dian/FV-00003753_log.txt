@@ -1,0 +1,79 @@
+
+==================================================
+TIMESTAMP: 2026-07-18T05:45:50.931Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: Invoice
+isPOS: false
+endpointUrl: https://ws.facturatech.co/v2/pro/index.php
+soapAction: urn:https://ws.facturatech.co/v2/pro/#FtechAction.uploadInvoiceFile
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadInvoiceFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPEZBQ1RVUkE+CiAgPEVOQz4KICAgIDxFTkNfMT5JTlZPSUM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICA8RU5DXzM+MTE0Mzg1MzkxNDwvRU5DXzM+CiAgICA8RU5DXzQ+VUJMIDIuMTwvRU5DXzQ+CiAgICA8RU5DXzU+RElBTiAyLjE8L0VOQ181PgogICAgPEVOQ182PkZWMzc1MzwvRU5DXzY+CiAgICA8RU5DXzc+MjAyNi0wNy0xNzwvRU5DXzc+CiAgICA8RU5DXzg+MDA6NDU6NDUtMDU6MDA8L0VOQ184PgogICAgPEVOQ185PjAxPC9FTkNfOT4KICAgIDxFTkNfMTA+Q09QPC9FTkNfMTA+CiAgICA8RU5DXzE1PjE8L0VOQ18xNT4KICAgIDxFTkNfMTY+MjAyNi0wNy0xNzwvRU5DXzE2PgogICAgPEVOQ18yMD4xPC9FTkNfMjA+CiAgICA8RU5DXzIxPjEwPC9FTkNfMjE+CiAgPC9FTkM+CiAgPElQVj4KICAgIDxJUFZfMT4wMDMzMS0xMDAwMC0wMDAwMS1BQTk2MjwvSVBWXzE+CiAgICA8SVBWXzI+Q2FqYTE8L0lQVl8yPgogICAgPElQVl8zPkNBVEFMSU5BIE1BUlRJTkVTPC9JUFZfMz4KICAgIDxJUFZfND5DQUpBMTwvSVBWXzQ+CiAgICA8SVBWXzU+RlY8L0lQVl81PgogICAgPElQVl82Pjc1MDAwLjAwPC9JUFZfNj4KICA8L0lQVj4KICA8RU1JPgogICAgPEVNSV8xPjE8L0VNSV8xPgogICAgPEVNSV8yPjkwMTQyODgzNDwvRU1JXzI+CiAgICA8RU1JXzM+MzE8L0VNSV8zPgogICAgPEVNSV82PkRPTUVTVElLTyBTQVM8L0VNSV82PgogICAgPEVNSV83PkRPTUVTVElLTyBTQVM8L0VNSV83PgogICAgPEVNSV8xMD5DTCAyOSA1IDUwPC9FTUlfMTA+CiAgICA8RU1JXzExPjc2PC9FTUlfMTE+CiAgICA8RU1JXzEzPlZBTExFIERFTCBDQVVDQTwvRU1JXzEzPgogICAgPEVNSV8xND43NjAwMTwvRU1JXzE0PgogICAgPEVNSV8xNT5DTzwvRU1JXzE1PgogICAgPEVNSV8xOT5DQUxJPC9FTUlfMTk+CiAgICA8RU1JXzIyPjI8L0VNSV8yMj4KICAgIDxFTUlfMjM+NzYwMDE8L0VNSV8yMz4KICAgIDxFTUlfMjQ+Q0FUQUxJTkEgTUFSVElORVM8L0VNSV8yND4KICAgIDxUQUM+CiAgICAgIDxUQUNfMT5SLTk5LVBOPC9UQUNfMT4KICAgIDwvVEFDPgogICAgPERGRT4KICAgICAgPERGRV8xPjc2MDAxPC9ERkVfMT4KICAgICAgPERGRV8yPjc2PC9ERkVfMj4KICAgICAgPERGRV8zPkNPPC9ERkVfMz4KICAgICAgPERGRV80Pjc2MDAxPC9ERkVfND4KICAgICAgPERGRV81PkNvbG9tYmlhPC9ERkVfNT4KICAgICAgPERGRV82PkNBTEk8L0RGRV82PgogICAgICA8REZFXzc+VkFMTEUgREVMIENBVUNBPC9ERkVfNz4KICAgICAgPERGRV84PkNMIDI5IDUgNTA8L0RGRV84PgogICAgPC9ERkU+CiAgICA8SUNDPgogICAgICA8SUNDXzE+MDAwMDAwPC9JQ0NfMT4KICAgICAgPElDQ185PkZWPC9JQ0NfOT4KICAgIDwvSUNDPgogICAgPENERT4KICAgICAgPENERV8yPkNBVEFMSU5BIE1BUlRJTkVTPC9DREVfMj4KICAgICAgPENERV8zPjMwMDQyMDU0MDM8L0NERV8zPgogICAgICA8Q0RFXzQ+dGVzb3JlcmlhQGRvbWVzdGlrby5jbzwvQ0RFXzQ+CiAgICA8L0NERT4KICAgIDxHVEU+CiAgICAgIDxHVEVfMT4wMTwvR1RFXzE+CiAgICAgIDxHVEVfMj5JVkE8L0dURV8yPgogICAgPC9HVEU+CiAgPC9FTUk+CiAgPEFEUT4KICAgIDxBRFFfMT4yPC9BRFFfMT4KICAgIDxBRFFfMj4xMTQzODUzOTE0PC9BRFFfMj4KICAgIDxBRFFfMz4xMzwvQURRXzM+CiAgICAKICAgIDxBRFFfNj5MT1BFWjwvQURRXzY+CiAgICA8QURRXzc+VkFRVUVSTzwvQURRXzc+CiAgICA8QURRXzg+QU5EUkVBPC9BRFFfOD4KICAgIDxBRFFfOT5FU1RFRkFOSUE8L0FEUV85PgogICAgPEFEUV8xMT43NjwvQURRXzExPgogICAgPEFEUV8xMj5WQUxMRSBERUwgQ0FVQ0E8L0FEUV8xMj4KICAgIDxBRFFfMTM+Q0FMSTwvQURRXzEzPgogICAgPEFEUV8xND43NjAwMTwvQURRXzE0PgogICAgPEFEUV8xNT5DTzwvQURRXzE1PgogICAgPEFEUV8yMj4wPC9BRFFfMjI+CiAgICA8QURRXzIzPjc2MDAxPC9BRFFfMjM+CiAgICA8VENSPgogICAgICA8VENSXzE+Ui05OS1QTjwvVENSXzE+CiAgICA8L1RDUj4KICAgIDxDREE+CiAgICAgIDxDREFfMj5BTkRSRUEgRVNURUZBTklBIExPUEVaICBWQVFVRVJPPC9DREFfMj4KICAgICAgPENEQV8zPjMxNjY3MjA0MDk8L0NEQV8zPgogICAgICA8Q0RBXzQ+YXN0aGVmYW5pYWxiQGdtYWlsLmNvbTwvQ0RBXzQ+CiAgICA8L0NEQT4KICAgIDxHVEE+CiAgICAgIDxHVEFfMT4wMTwvR1RBXzE+CiAgICAgIDxHVEFfMj5JVkE8L0dUQV8yPgogICAgPC9HVEE+CiAgPC9BRFE+CiAgPFRPVD4KICAgIDxUT1RfMT42MzAyNS4yMTwvVE9UXzE+CiAgICA8VE9UXzI+Q09QPC9UT1RfMj4KICAgIDxUT1RfMz42MzAyNS4yMTwvVE9UXzM+CiAgICA8VE9UXzQ+Q09QPC9UT1RfND4KICAgIDxUT1RfNT43NTAwMC4wMDwvVE9UXzU+CiAgICA8VE9UXzY+Q09QPC9UT1RfNj4KICAgIDxUT1RfNz43NTAwMC4wMDwvVE9UXzc+CiAgICA8VE9UXzg+Q09QPC9UT1RfOD4KICA8L1RPVD4KICA8VElNPgogICAgPFRJTV8xPmZhbHNlPC9USU1fMT4KICAgIDxUSU1fMj4xMTk3NC43OTwvVElNXzI+CiAgICA8VElNXzM+Q09QPC9USU1fMz4KICAgIDxJTVA+CiAgICAgIDxJTVBfMT4wMTwvSU1QXzE+CiAgICAgIDxJTVBfMj42MzAyNS4yMTwvSU1QXzI+CiAgICAgIDxJTVBfMz5DT1A8L0lNUF8zPgogICAgICA8SU1QXzQ+MTE5NzQuNzk8L0lNUF80PgogICAgICA8SU1QXzU+Q09QPC9JTVBfNT4KICAgICAgPElNUF82PjE5LjA8L0lNUF82PgogICAgPC9JTVA+CiAgPC9USU0+CiAgPERSRj4KICAgIDxEUkZfMT4xODc2NDExMDE3NTI5NzwvRFJGXzE+CiAgICA8RFJGXzI+MjAyNi0wNS0yNTwvRFJGXzI+CiAgICA8RFJGXzM+MjAyOC0wNS0yNTwvRFJGXzM+CiAgICA8RFJGXzQ+RlY8L0RSRl80PgogICAgPERSRl81PjM2NjE8L0RSRl81PgogICAgPERSRl82PjUwMDA8L0RSRl82PgogIDwvRFJGPgogIDxNRVA+CiAgICA8TUVQXzE+MTA8L01FUF8xPgogICAgPE1FUF8yPjE8L01FUF8yPgogIDwvTUVQPgogIDxJVEU+CiAgICA8SVRFXzE+MTwvSVRFXzE+CiAgICA8SVRFXzM+MS4wMDwvSVRFXzM+CiAgICA8SVRFXzQ+Wlo8L0lURV80PgogICAgPElURV81PjYzMDI1LjIxPC9JVEVfNT4KICAgIDxJVEVfNj5DT1A8L0lURV82PgogICAgPElURV83PjYzMDI1LjIxPC9JVEVfNz4KICAgIDxJVEVfOD5DT1A8L0lURV84PgogICAgPElURV8xMT5CQVJBTkRBIERFIENBTUEgTEFURVJBTCBST1NBIFBMQU5PIC8xQ0FKQS8gMS44IE1UPC9JVEVfMTE+CiAgICA8SVRFXzE5PjYzMDI1LjIxPC9JVEVfMTk+CiAgICA8SVRFXzIwPkNPUDwvSVRFXzIwPgogICAgPElURV8yNz4xLjAwPC9JVEVfMjc+CiAgICA8SVRFXzI4PlpaPC9JVEVfMjg+CiAgICA8SUFFPgogICAgICA8SUFFXzE+OTk5OTk5OTk8L0lBRV8xPgogICAgICA8SUFFXzI+OTk5PC9JQUVfMj4KICAgIDwvSUFFPgogICAgPFRJST4KICAgICAgPFRJSV8xPjExOTc0Ljc5PC9USUlfMT4KICAgICAgPFRJSV8yPkNPUDwvVElJXzI+CiAgICAgIDxUSUlfMz5mYWxzZTwvVElJXzM+CiAgICAgIDxJSU0+CiAgICAgICAgPElJTV8xPjAxPC9JSU1fMT4KICAgICAgICA8SUlNXzI+MTE5NzQuNzk8L0lJTV8yPgogICAgICAgIDxJSU1fMz5DT1A8L0lJTV8zPgogICAgICAgIDxJSU1fND42MzAyNS4yMTwvSUlNXzQ+CiAgICAgICAgPElJTV81PkNPUDwvSUlNXzU+CiAgICAgICAgPElJTV82PjE5LjAwPC9JSU1fNj4KICAgICAgPC9JSU0+CiAgICA8L1RJST4KICA8L0lURT4KPC9GQUNUVVJBPg==</xmlBase64>
+      </urn:FtechAction.uploadInvoiceFile>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws.facturatech.co/v2/pro/"><SOAP-ENV:Body><ns1:FtechAction.uploadInvoiceFileResponse xmlns:ns1="urn:https://ws.facturatech.co/v2/pro/"><return xsi:type="tns:response_ws"><code xsi:type="xsd:string">201</code><success xsi:type="xsd:string">La Factura electrónica FV3753, ha sido autorizada. Regla: FAJ17, Notificación: Nombre del país del emisor del documento NO corresponde al literal  “Colombia”,Regla: RUT01, Notificación: La validación del estado del RUT próximamente estará disponible.,Regla: RUT01, Notificación: La validación del estado del RUT próximamente estará disponible.</success><transaccionID xsi:type="xsd:string">10cc0f474a6f007bcf88df771c8a1276</transaccionID><error xsi:type="xsd:string"></error></return></ns1:FtechAction.uploadInvoiceFileResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 201
+parsedTransactionID: 10cc0f474a6f007bcf88df771c8a1276
+parsedMessage: 
+
+
+==================================================
+TIMESTAMP: 2026-07-18T05:45:54.639Z
+ACTION: FACTURATECH CHECK-STATUS (ACCEPTED & DOWNLOADED)
+==================================================
+provider: Facturatech
+transId: 10cc0f474a6f007bcf88df771c8a1276
+prefix: FV
+folio: 3753
+endpointUrl: https://ws.facturatech.co/v2/pro/index.php
+statusAction: urn:https://ws.facturatech.co/v2/pro/#FtechAction.documentStatusFile
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatusFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">10cc0f474a6f007bcf88df771c8a1276</transaccionID>
+      </urn:FtechAction.documentStatusFile>
+   </soapenv:Body>
+</soapenv:Envelope>
+statusResponseXml: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws.facturatech.co/v2/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusFileResponse xmlns:ns1="urn:https://ws.facturatech.co/v2/pro/"><return xsi:type="tns:response_docs"><code xsi:type="xsd:string">201</code><success xsi:type="xsd:string">Documento firmado</success><status xsi:type="xsd:string">SIGNED_XML</status><error xsi:type="xsd:string"></error></return></ns1:FtechAction.documentStatusFileResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 201
+parsedStatus: SIGNED_XML
+parsedMessage: 
+cufeAction: urn:https://ws.facturatech.co/v2/pro/#FtechAction.getCUFEFile
+cufeEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.getCUFEFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <prefijo xsi:type="xsd:string">FV</prefijo>
+         <folio xsi:type="xsd:string">3753</folio>
+      </urn:FtechAction.getCUFEFile>
+   </soapenv:Body>
+</soapenv:Envelope>
+extractedCufe: 12bf4b2ee7ea6f948aab5a1407139a663552afba493c090cc1689ccea226fe7e77400705175a164d04de4fa97fb8f95a
+xmlAction: urn:https://ws.facturatech.co/v2/pro/#FtechAction.downloadXMLFile
+xmlEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.downloadXMLFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <prefijo xsi:type="xsd:string">FV</prefijo>
+         <folio xsi:type="xsd:string">3753</folio>
+      </urn:FtechAction.downloadXMLFile>
+   </soapenv:Body>
+</soapenv:Envelope>
+extractedXmlLength: 37033
+

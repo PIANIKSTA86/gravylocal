@@ -1,0 +1,38 @@
+# Runtime data
+pb_data/storage/
+pb_data/logs/
+pb_data/*.db
+pb_data/*.db-shm
+pb_data/*.db-wal
+_tmp/
+
+# Local binaries
+pocketbase.exe
+*.zip
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+*.local
+
+# Hub Runtime & Node modules
+hub/node_modules/
+hub/pb_data/
+
+# Archivos de datos grandes (LFS)
+DatosReferencia/
+versiones/
+empresas/
+
+# General ignores for node modules, build, and temporary directories
+node_modules/
+**/node_modules/
+.expo/
+**/.expo/
+web-build/
+**/web-build/

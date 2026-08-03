@@ -1,0 +1,1277 @@
+/**
+ * GRAVY v2.0 — utils.js
+ * Funciones utilitarias globales. Sin dependencias externas.
+ */
+
+'use strict';
+
+/* ── Selectores Escopados y Protección de Contenedor de Pestaña ── */
+function getActivePane(): HTMLElement | Document {
+  if (typeof document === 'undefined') return {} as any;
+  const active = document.querySelector('#page-content .tab-pane.active');
+  return (active as HTMLElement) || document.getElementById('page-content') || document;
+}
+
+function getPageContainer(container?: HTMLElement | null): HTMLElement {
+  if (typeof document === 'undefined') return {} as any;
+  if (container && container.id && container.id !== 'page-content' && !container.id.startsWith('page-content')) {
+    return container;
+  }
+  const active = document.querySelector('#page-content .tab-pane.active') as HTMLElement;
+  if (active) return active;
+  return (container || document.getElementById('page-content') || document.body) as HTMLElement;
+}
+
+const $ = (s: string, context?: HTMLElement | Document): HTMLElement | null => {
+  if (!s) return null;
+  const root = context || getActivePane();
+  let el = root.querySelector(s);
+  if (!el && root !== document) {
+    el = document.querySelector(s);
+  }
+  return el as HTMLElement | null;
+};
+
+const $$ = (s: string, context?: HTMLElement | Document): HTMLElement[] => {
+  if (!s) return [];
+  const root = context || getActivePane();
+  const list = root.querySelectorAll(s);
+  if (list.length > 0) return [...list] as HTMLElement[];
+  return root !== document ? ([...document.querySelectorAll(s)] as HTMLElement[]) : [];
+};
+
+/* ── Sanitización HTML (previene XSS) ────────────────────── */
+const _escDiv = document.createElement('div');
+function esc(str) {
+  _escDiv.textContent = String(str ?? '');
+  return _escDiv.innerHTML;
+}
+
+/* ── Formato numérico colombiano ─────────────────────────── */
+let _decimalPlaces = 2;
+let _fmtCOP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: _decimalPlaces, maximumFractionDigits: _decimalPlaces });
+let _fmtNum = new Intl.NumberFormat('es-CO', { minimumFractionDigits: _decimalPlaces, maximumFractionDigits: _decimalPlaces });
+
+function setDecimalPlaces(n: any) {
+  const parsed = parseInt(String(n ?? ''), 10);
+  const d = Number.isNaN(parsed) ? 2 : Math.max(0, Math.min(6, parsed));
+  _decimalPlaces = d;
+  _fmtCOP = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: d, maximumFractionDigits: d });
+  _fmtNum = new Intl.NumberFormat('es-CO', { minimumFractionDigits: d, maximumFractionDigits: d });
+  if (typeof window !== 'undefined') {
+    (window as any).APP_DECIMAL_PLACES = d;
+  }
+}
+
+function getDecimalPlaces(): number {
+  return _decimalPlaces;
+}
+
+function roundDecimals(val: number, decimals: number = _decimalPlaces): number {
+  const factor = Math.pow(10, decimals);
+  return Math.round((Number(val || 0) + Number.EPSILON) * factor) / factor;
+}
+
+function fmt(n)   { return _fmtCOP.format(n ?? 0); }
+function fmtN(n)  { return _fmtNum.format(n ?? 0); }
+function parseNum(s) { return parseFloat(String(s ?? '').replace(/[^0-9.\-]/g, '')) || 0; }
+
+if (typeof window !== 'undefined') {
+  (window as any).setDecimalPlaces = setDecimalPlaces;
+  (window as any).getDecimalPlaces = getDecimalPlaces;
+  (window as any).roundDecimals = roundDecimals;
+  (window as any).fmt = fmt;
+  (window as any).fmtN = fmtN;
+}
+
+/* ── Fechas (Colombia America/Bogota / UTC-5) ─────────────── */
+function getColombiaDateStr(d?: Date | string | number): string {
+  const dt = d ? (d instanceof Date ? d : new Date(d)) : new Date();
+  if (isNaN(dt.getTime())) return '';
+  const cot = new Date(dt.getTime() - 5 * 3600 * 1000);
+  return cot.toISOString().slice(0, 10);
+}
+
+function getColombiaDateTimeStr(d?: Date | string | number): string {
+  const dt = d ? (d instanceof Date ? d : new Date(d)) : new Date();
+  if (isNaN(dt.getTime())) return '';
+  const cot = new Date(dt.getTime() - 5 * 3600 * 1000);
+  return cot.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function getColombiaFirstDayOfMonth(d?: Date | string | number): string {
+  const dateStr = getColombiaDateStr(d);
+  if (!dateStr) return '';
+  return `${dateStr.slice(0, 7)}-01`;
+}
+
+function getColombiaLastDayOfMonth(d?: Date | string | number): string {
+  const dateStr = getColombiaDateStr(d);
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${parts[0]}-${parts[1]}-${String(lastDay).padStart(2, '0')}`;
+}
+
+function todayStr(d?: Date | string | number): string {
+  return getColombiaDateStr(d);
+}
+
+function nowStr(d?: Date | string | number): string {
+  return getColombiaDateTimeStr(d);
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const dateStr = getColombiaDateStr(d);
+  if (!dateStr) return '—';
+  const parts = dateStr.split('-');
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+/* ── Traducción de Estados y Eventos (Inglés a Español) ───── */
+function translateText(text: string): string {
+  if (!text) return '';
+  let res = text;
+  
+  const translations = [
+    { eng: 'drafts', esp: 'borradores' },
+    { eng: 'draft', esp: 'borrador' },
+    { eng: 'approved', esp: 'aprobado' },
+    { eng: 'active', esp: 'activo' },
+    { eng: 'voided', esp: 'anulado' },
+    { eng: 'posted', esp: 'contabilizado' },
+    { eng: 'paid', esp: 'pagado' },
+    { eng: 'applied', esp: 'aplicado' },
+    { eng: 'processed', esp: 'procesado' },
+    { eng: 'void', esp: 'anulado' }
+  ];
+
+  for (const item of translations) {
+    const reLower = new RegExp('\\\\b' + item.eng + '\\\\b', 'g');
+    res = res.replace(reLower, item.esp);
+
+    const capEng = item.eng.charAt(0).toUpperCase() + item.eng.slice(1);
+    const capEsp = item.esp.charAt(0).toUpperCase() + item.esp.slice(1);
+    const reCap = new RegExp('\\\\b' + capEng + '\\\\b', 'g');
+    res = res.replace(reCap, capEsp);
+
+    const upperEng = item.eng.toUpperCase();
+    const upperEsp = item.esp.toUpperCase();
+    const reUpper = new RegExp('\\\\b' + upperEng + '\\\\b', 'g');
+    res = res.replace(reUpper, upperEsp);
+  }
+
+  return res;
+}
+
+/* ── Toasts ───────────────────────────────────────────────── */
+const TOAST_ICONS = {
+  success: 'fa-check-circle',
+  error:   'fa-times-circle',
+  warning: 'fa-exclamation-triangle',
+  info:    'fa-info-circle',
+};
+
+function showToast(msg, type = 'success', duration = 3500) {
+  const container = $('#toast-container');
+  if (!container) return;
+  const translatedMsg = translateText(msg);
+  const t = document.createElement('div');
+  t.className = `toast toast-${type} toast-enter`;
+  t.innerHTML = `<i class="fas ${TOAST_ICONS[type] ?? TOAST_ICONS.info}"></i><span>${esc(translatedMsg)}</span>`;
+  container.appendChild(t);
+  setTimeout(() => {
+    t.style.cssText = 'opacity:0;transform:translateX(100%);transition:all .3s';
+    setTimeout(() => t.remove(), 300);
+  }, duration);
+}
+
+function getIconForDocumentTitle(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes('factura') || t.includes('venta')) return 'fa-receipt';
+  if (t.includes('compra')) return 'fa-cart-flatbed';
+  if (t.includes('tercero') || t.includes('cliente') || t.includes('proveedor')) return 'fa-user-plus';
+  if (t.includes('centro')) return 'fa-sitemap';
+  if (t.includes('cuenta')) return 'fa-list-tree';
+  if (t.includes('serie') || t.includes('tipo')) return 'fa-tags';
+  if (t.includes('transaccion') || t.includes('comprobante') || t.includes('asiento')) return 'fa-plus-circle';
+  if (t.includes('soporte')) return 'fa-file-signature';
+  if (t.includes('producto') || t.includes('servicio')) return 'fa-box-open';
+  if (t.includes('bodega')) return 'fa-warehouse';
+  if (t.includes('consignacion') || t.includes('consignación')) return 'fa-boxes-packing';
+  if (t.includes('toma') || t.includes('fisica') || t.includes('física')) return 'fa-clipboard-check';
+  if (t.includes('recalculo') || t.includes('recálculo')) return 'fa-calculator';
+  if (t.includes('recibo') || t.includes('recaudo')) return 'fa-receipt';
+  if (t.includes('ingreso')) return 'fa-hand-holding-dollar';
+  if (t.includes('egreso') || t.includes('pago')) return 'fa-money-bill-transfer';
+  if (t.includes('importacion') || t.includes('importación')) return 'fa-ship';
+  if (t.includes('reserva')) return 'fa-calendar-check';
+  if (t.includes('entrega') || t.includes('despacho')) return 'fa-truck-fast';
+  if (t.includes('empleado')) return 'fa-user-gear';
+  if (t.includes('configuracion') || t.includes('configuración')) return 'fa-sliders';
+  if (t.includes('periodo') || t.includes('período')) return 'fa-calendar-days';
+  if (t.includes('novedad')) return 'fa-notes-medical';
+  if (t.includes('liquidacion') || t.includes('liquidación')) return 'fa-calculator';
+  if (t.includes('inventario') || t.includes('kardex') || t.includes('movimiento')) return 'fa-boxes-stacked';
+  return 'fa-file-lines';
+}
+
+/* ── Modal genérico — Adaptador Inteligente Tab vs Overlay ─── */
+function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide = false) {
+  const titleClean = String(title || '').replace(/<[^>]*>/g, '').trim();
+
+  let compiledFooterHtml = '';
+  const pendingClickHandlers: Array<{ id: string; action: Function }> = [];
+
+  if (typeof footerHtml === 'string') {
+    compiledFooterHtml = footerHtml;
+  } else if (Array.isArray(footerHtml)) {
+    compiledFooterHtml = footerHtml.map((item, idx) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        const btnId = `modal-act-btn-${Date.now()}-${idx}`;
+        if (typeof item.action === 'function') {
+          pendingClickHandlers.push({ id: btnId, action: item.action });
+        }
+        const cls = item.class || 'btn-outline';
+        const label = item.label || 'Aceptar';
+        return `<button type="button" id="${btnId}" class="btn ${cls}">${esc(label)}</button>`;
+      }
+      return '';
+    }).join(' ');
+  } else if (footerHtml && typeof footerHtml === 'object') {
+    const btnId = `modal-act-btn-${Date.now()}-0`;
+    if (typeof footerHtml.action === 'function') {
+      pendingClickHandlers.push({ id: btnId, action: footerHtml.action });
+    }
+    const cls = footerHtml.class || 'btn-outline';
+    const label = footerHtml.label || 'Aceptar';
+    compiledFooterHtml = `<button type="button" id="${btnId}" class="btn ${cls}">${esc(label)}</button>`;
+  }
+
+  const titleLower = titleClean.toLowerCase();
+  const isDocumentForm = wide || 
+    titleLower.includes('factura') || 
+    titleLower.includes('tercero') || 
+    titleLower.includes('producto') || 
+    titleLower.includes('compra') || 
+    titleLower.includes('pedido') || 
+    titleLower.includes('transaccion') || 
+    titleLower.includes('transacción') || 
+    titleLower.includes('recaudo') || 
+    titleLower.includes('egreso') || 
+    titleLower.includes('nomina') || 
+    titleLower.includes('nómina') || 
+    titleLower.includes('toma de inventario') || 
+    titleLower.includes('reserva') || 
+    titleLower.includes('cotizacion') || 
+    titleLower.includes('cotización') || 
+    titleLower.includes('crear') || 
+    titleLower.includes('nuevo') || 
+    titleLower.includes('nueva');
+
+  if (isDocumentForm && typeof (window as any).openDocumentTab === 'function') {
+    const slug = titleClean.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const tabKey = `doc-${slug || Date.now()}`;
+    const icon = getIconForDocumentTitle(titleClean);
+
+    (window as any).openDocumentTab(tabKey, titleClean, icon, bodyHtml, compiledFooterHtml, () => {
+      pendingClickHandlers.forEach(({ id, action }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+          btn.addEventListener('click', (e) => {
+            try { action(e); } catch (err) { console.error("Modal action error:", err); }
+          });
+        }
+      });
+    });
+    return;
+  }
+
+  // Diálogo liviano en overlay dentro del pane activo
+  const activePane = (getActivePane() as HTMLElement) || document.body;
+  let overlay = activePane.querySelector('.tab-modal-overlay') as HTMLElement;
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'tab-modal-overlay modal-overlay show';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.background = 'rgba(5,8,20,.6)';
+    overlay.style.backdropFilter = 'blur(4px)';
+    overlay.style.zIndex = '300';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.padding = '16px';
+    activePane.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div class="modal-box bg-white rounded-2xl p-6 shadow-2xl ${wide ? 'wide max-w-4xl' : 'max-w-xl'} w-full border border-gray-200 anim-fade" style="border-color:#E2E8F0">
+      <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-200">
+        <h4 class="text-base font-bold text-gray-900">${esc(titleClean)}</h4>
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      <div class="modal-body max-h-[70vh] overflow-y-auto py-2">
+        ${bodyHtml}
+      </div>
+      <div class="modal-footer pt-4 mt-4 border-t border-gray-200 flex items-center justify-end gap-2">
+        ${compiledFooterHtml}
+      </div>
+    </div>
+  `;
+  overlay.classList.add('show');
+  overlay.style.display = 'flex';
+
+  pendingClickHandlers.forEach(({ id, action }) => {
+    const btn = overlay.querySelector(`#${id}`);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        try { action(e); } catch (err) { console.error("Modal action error:", err); }
+      });
+    }
+  });
+}
+
+function closeModal() {
+  try {
+    const cb = (window as any).__modalCloseCallback;
+    if (cb) {
+      (window as any).__modalCloseCallback = null;
+      try { cb(); } catch (e) { console.error(e); }
+      return;
+    }
+
+    if ((window as any).__salesModalOpen && typeof (window as any).soSaveTempState === 'function') {
+      try {
+        (window as any).soSaveTempState();
+      } catch (e) {
+        console.error("Error saving temporary state on close:", e);
+      }
+    }
+
+    // 1. Si hay un overlay modal en el pane activo, cerrar solo el overlay
+    const activePane = (getActivePane() as HTMLElement);
+    const overlay = activePane ? (activePane.querySelector('.tab-modal-overlay') as HTMLElement) : null;
+    if (overlay && (overlay.classList.contains('show') || overlay.style.display !== 'none')) {
+      overlay.classList.remove('show');
+      overlay.style.display = 'none';
+      overlay.remove();
+      return;
+    }
+
+    // 2. Si es una pestaña de documento (doc-*), cerrar la pestaña activa
+    const curPage = (window as any).currentPage;
+    if (typeof curPage === 'string' && typeof (window as any).closeTab === 'function' && 
+       (curPage.startsWith('doc-') || curPage.startsWith('nueva-') || curPage.startsWith('editar-') || curPage.startsWith('nuevo-') || curPage.startsWith('iniciar-') || curPage.startsWith('programar-') || curPage.startsWith('registrar-') || curPage.startsWith('configuracion-'))) {
+      try {
+        (window as any).closeTab(curPage);
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+
+    const globalOverlay = $('#modal-overlay');
+    if (globalOverlay) {
+      globalOverlay.classList.remove('show');
+      const globalBody = $('#modal-body');
+      if (globalBody) globalBody.innerHTML = '';
+      const globalFooter = $('#modal-footer');
+      if (globalFooter) globalFooter.innerHTML = '';
+    }
+  } catch (err) {
+    console.error("[closeModal] Error caught safely:", err);
+  } finally {
+    (window as any).__salesModalOpen = false;
+    (window as any).__txModalOpen = false;
+    (window as any).__poModalOpen = false;
+    (window as any).__poFormActive = false;
+  }
+}
+
+// ── Mini-overlay de comentario de línea (no reemplaza el modal padre) ────────
+let _lineCommentState = null; // { lineIdx, ctx: 'new'|'edit' }
+
+function openLineComment(lineIdx: number, ctx: string) {
+  const state = ctx === 'edit'
+    ? (window as any).TX_EDIT_STATE
+    : (window as any).TX_STATE;
+  if (!state || !state.lines) return;
+  const current = state.lines[lineIdx]?.description || '';
+  _lineCommentState = { lineIdx, ctx };
+  const ta = document.getElementById('line-comment-textarea') as HTMLTextAreaElement;
+  if (ta) ta.value = current;
+  const overlay = document.getElementById('line-comment-overlay');
+  if (overlay) { overlay.style.display = 'flex'; setTimeout(() => ta?.focus(), 50); }
+}
+
+function closeLineComment() {
+  _lineCommentState = null;
+  const overlay = document.getElementById('line-comment-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function saveLineComment() {
+  if (!_lineCommentState) return closeLineComment();
+  const { lineIdx, ctx } = _lineCommentState;
+  const val = ((document.getElementById('line-comment-textarea') as HTMLTextAreaElement)?.value || '').trim();
+  const state = ctx === 'edit'
+    ? (window as any).TX_EDIT_STATE
+    : (window as any).TX_STATE;
+  if (state && state.lines && state.lines[lineIdx] !== undefined) {
+    state.lines[lineIdx].description = val;
+    closeLineComment();
+    if (ctx === 'edit' && typeof (window as any).renderEditTxLines === 'function') (window as any).renderEditTxLines(true);
+    else if (typeof (window as any).renderTxLines === 'function') (window as any).renderTxLines(true);
+  } else {
+    closeLineComment();
+  }
+}
+
+function confirmDialog(title: string, message: string, onConfirm: () => void, danger = true) {
+  const overlay = document.getElementById('confirm-dialog-overlay');
+  const titleEl = document.getElementById('confirm-dialog-title');
+  const bodyEl = document.getElementById('confirm-dialog-body');
+  const btnOk = document.getElementById('confirm-dialog-ok');
+  const btnCancel = document.getElementById('confirm-dialog-cancel');
+
+  if (overlay && titleEl && bodyEl && btnOk && btnCancel) {
+    titleEl.innerHTML = title;
+    bodyEl.innerHTML = message;
+    btnOk.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+    overlay.style.display = 'flex';
+
+    const close = () => { overlay.style.display = 'none'; };
+    btnCancel.onclick = close;
+    btnOk.onclick = () => { close(); onConfirm(); };
+  } else {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+  }
+}
+
+/* ── Tabla filtrable ──────────────────────────────────────── */
+function filterTable(tableId, query, filterField = null, filterValue = '') {
+  const q = query.toLowerCase();
+  $$(`#${tableId} tbody tr`).forEach(tr => {
+    const textMatch = !q || tr.textContent.toLowerCase().includes(q);
+    const fieldMatch = !filterValue || (tr.dataset[filterField] ?? '') === filterValue;
+    tr.style.display = textMatch && fieldMatch ? '' : 'none';
+  });
+}
+
+/* ── Paginación simple ────────────────────────────────────── */
+function renderPagination(containerId, totalPages, currentPage, onPageChange) {
+  const c = $(`#${containerId}`);
+  if (!c || totalPages <= 1) { if (c) c.innerHTML = ''; return; }
+  let html = `<div class="pagination justify-end mt-4">`;
+  html += `<button class="page-btn" onclick="(${onPageChange.toString()})(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}><i class="fas fa-chevron-left text-xs"></i></button>`;
+  const range = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) range.push(i);
+    else if (range[range.length - 1] !== '…') range.push('…');
+  }
+  range.forEach(p => {
+    if (p === '…') html += `<span class="page-btn" style="cursor:default">…</span>`;
+    else html += `<button class="page-btn ${p === currentPage ? 'active' : ''}" onclick="(${onPageChange.toString()})(${p})">${p}</button>`;
+  });
+  html += `<button class="page-btn" onclick="(${onPageChange.toString()})(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}><i class="fas fa-chevron-right text-xs"></i></button>`;
+  html += '</div>';
+  c.innerHTML = html;
+}
+
+/* ── Debounce ─────────────────────────────────────────────── */
+function debounce(fn, ms = 300) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+/* ── Constantes del dominio colombiano ───────────────────── */
+const DOC_TYPES = [
+  { code: 'NIT', name: 'NIT' },
+  { code: 'CC',  name: 'Cédula de Ciudadanía' },
+  { code: 'CE',  name: 'Cédula de Extranjería' },
+  { code: 'TI',  name: 'Tarjeta de Identidad' },
+  { code: 'PAS', name: 'Pasaporte' },
+  { code: 'RC',  name: 'Registro Civil' },
+];
+
+/** Tipos de documento ampliados para terceros (incluye NITPE para extranjeros) */
+const LOCAL_DOC_TYPES = [
+  { code: 'NIT',   name: 'NIT — Número de Identificación Tributaria' },
+  { code: 'NITPE', name: 'NITPE — NIT Persona Extranjera (DIAN)' },
+  { code: 'CC',    name: 'CC — Cédula de Ciudadanía' },
+  { code: 'CE',    name: 'CE — Cédula de Extranjería' },
+  { code: 'TI',    name: 'TI — Tarjeta de Identidad' },
+  { code: 'PAS',   name: 'PAS — Pasaporte' },
+  { code: 'RC',    name: 'RC — Registro Civil' },
+];
+
+/** Responsabilidades fiscales DIAN (catálogo oficial) */
+const DIAN_RESP = [
+  { c: '01', l: 'Aporte especial para la administración de justicia' },
+  { c: '02', l: 'Gravamen a los Movimientos Financieros (GMF)' },
+  { c: '03', l: 'Impuesto al Patrimonio' },
+  { c: '04', l: 'Impuesto Sobre la Renta y Complementarios Régimen Tributario Especial' },
+  { c: '05', l: 'Impuesto Sobre la Renta y Complementarios Régimen Ordinario' },
+  { c: '06', l: 'Ingresos y patrimonio' },
+  { c: '07', l: 'Retención en la Fuente a título de renta' },
+  { c: '08', l: 'Retención Timbre Nacional' },
+  { c: '09', l: 'Retención en la Fuente en el Impuesto Sobre las Ventas' },
+  { c: '10', l: 'Obligado aduanero' },
+  { c: '13', l: 'Gran contribuyente' },
+  { c: '14', l: 'Informante de Exógena' },
+  { c: '15', l: 'Autorretenedor' },
+  { c: '16', l: 'Obligación de facturar por ingresos de bienes y/o servicios excluidos' },
+  { c: '17', l: 'Profesionales de compra y venta de divisas' },
+  { c: '18', l: 'Precios de Transferencia' },
+  { c: '19', l: 'Productor y/o exportador de bienes exentos' },
+  { c: '20', l: 'Obtención NIT' },
+  { c: '21', l: 'Declarar el ingreso o salida del país de divisas o moneda legal colombiana' },
+  { c: '22', l: 'Obligado a cumplir deberes formales a nombre de terceros' },
+  { c: '23', l: 'Agente de retención en el impuesto sobre las ventas' },
+  { c: '26', l: 'Declaración Informativa Individual Precios de transferencia' },
+  { c: '32', l: 'Impuesto Nacional a la Gasolina y al ACPM' },
+  { c: '33', l: 'Impuesto Nacional al Consumo' },
+  { c: '36', l: 'Establecimiento Permanente' },
+  { c: '39', l: 'Proveedor de Servicios Tecnológicos (PST)' },
+  { c: '41', l: 'Declaración anual de activos en el exterior' },
+  { c: '42', l: 'Obligado a llevar contabilidad' },
+  { c: '45', l: 'Autorretenedor de rendimientos financieros' },
+  { c: '46', l: 'IVA Prestadores de Servicios desde el Exterior' },
+  { c: '47', l: 'Régimen Simple de Tributación (SIMPLE)' },
+  { c: '48', l: 'Impuesto sobre las ventas (IVA)' },
+  { c: '49', l: 'No responsable de IVA' },
+  { c: '50', l: 'No responsable de Consumo restaurantes y bares' },
+  { c: '52', l: 'Facturador Electrónico' },
+  { c: '53', l: 'Persona Jurídica No Responsable de IVA' },
+  { c: '54', l: 'Intercambio Automático de Información CRS' },
+  { c: '55', l: 'Informante de Beneficiarios Finales' },
+  { c: '56', l: 'Impuesto Nacional al Carbono' },
+  { c: '58', l: 'Intercambio Automático de Información FATCA' },
+  { c: '59', l: 'Autorretención especial renta' },
+  { c: '60', l: 'Autorretención por concepto de intereses y rendimientos financieros de entidades vigiladas por la Superintendencia Financiera' },
+  { c: '61', l: 'Autorretención por concepto de comisiones de entidades vigiladas por la Superintendencia Financiera' },
+  { c: '62', l: 'Impuesto nacional sobre productos plásticos un solo uso' },
+  { c: '63', l: 'Impuestos a las bebidas ultraprocesada azucaradas' },
+  { c: 'R-99-PN', l: 'No aplica — Otros' }
+];
+
+/** Actividades económicas CIIU — selección de actividades comunes Colombia */
+const DIAN_CIIU = [
+  { c: '0111', l: 'Cultivo de cereales (excepto arroz), leguminosas y semillas oleaginosas' },
+  { c: '0112', l: 'Cultivo de arroz' },
+  { c: '0113', l: 'Cultivo de hortalizas, raíces y tubérculos' },
+  { c: '0121', l: 'Cultivo de frutas tropicales y subtropicales' },
+  { c: '0122', l: 'Cultivo de plátano y banano' },
+  { c: '0141', l: 'Cría de ganado bovino y bufalino' },
+  { c: '0150', l: 'Cría de animales domésticos' },
+  { c: '0161', l: 'Actividades de apoyo a la agricultura' },
+  { c: '1011', l: 'Procesamiento y conservación de carne y productos cárnicos' },
+  { c: '1020', l: 'Procesamiento y conservación de frutas, legumbres, hortalizas y tubérculos' },
+  { c: '1040', l: 'Elaboración de productos lácteos' },
+  { c: '1052', l: 'Elaboración de helados y paletas' },
+  { c: '1061', l: 'Procesamiento de café' },
+  { c: '1071', l: 'Elaboración y refinación de azúcar' },
+  { c: '1081', l: 'Elaboración de productos de panadería' },
+  { c: '1089', l: 'Elaboración de otros productos alimenticios n.c.p.' },
+  { c: '1311', l: 'Preparación e hilatura de fibras textiles' },
+  { c: '1410', l: 'Confección de prendas de vestir, excepto prendas de piel' },
+  { c: '1511', l: 'Curtido y recurtido de cueros; recurtido y teñido de pieles' },
+  { c: '1610', l: 'Aserrado, acepillado e impregnación de la madera' },
+  { c: '1620', l: 'Fabricación de hojas de madera para enchapado y tableros a base de madera' },
+  { c: '1721', l: 'Fabricación de papel y cartón ondulado, envases y empaques de papel y cartón' },
+  { c: '1811', l: 'Actividades de impresión' },
+  { c: '2011', l: 'Fabricación de sustancias y productos químicos básicos' },
+  { c: '2090', l: 'Fabricación de otros productos químicos n.c.p.' },
+  { c: '2100', l: 'Fabricación de productos farmacéuticos, sustancias químicas medicinales' },
+  { c: '2211', l: 'Fabricación de llantas y neumáticos de caucho' },
+  { c: '2221', l: 'Fabricación de formas básicas de plástico' },
+  { c: '2310', l: 'Fabricación de vidrio y productos de vidrio' },
+  { c: '2391', l: 'Fabricación de productos refractarios' },
+  { c: '2395', l: 'Fabricación de artículos de hormigón, cemento y yeso' },
+  { c: '2410', l: 'Industrias básicas de hierro y de acero' },
+  { c: '2511', l: 'Fabricación de productos metálicos para uso estructural' },
+  { c: '2592', l: 'Tratamiento y revestimiento de metales; mecanizado' },
+  { c: '2610', l: 'Fabricación de componentes y tableros electrónicos' },
+  { c: '2710', l: 'Fabricación de motores, generadores y transformadores eléctricos' },
+  { c: '2790', l: 'Fabricación de otros tipos de equipo eléctrico n.c.p.' },
+  { c: '2811', l: 'Fabricación de motores y turbinas' },
+  { c: '2910', l: 'Fabricación de vehículos automotores y sus motores' },
+  { c: '3011', l: 'Construcción de barcos y de estructuras flotantes' },
+  { c: '3100', l: 'Fabricación de muebles' },
+  { c: '3290', l: 'Otras industrias manufactureras n.c.p.' },
+  { c: '3511', l: 'Generación de energía eléctrica' },
+  { c: '3600', l: 'Captación, tratamiento y distribución de agua' },
+  { c: '4111', l: 'Construcción de edificios residenciales' },
+  { c: '4112', l: 'Construcción de edificios no residenciales' },
+  { c: '4210', l: 'Construcción de carreteras y líneas de ferrocarril' },
+  { c: '4311', l: 'Demolición' },
+  { c: '4321', l: 'Instalaciones eléctricas' },
+  { c: '4329', l: 'Otras instalaciones especializadas' },
+  { c: '4331', l: 'Instalación de pisos' },
+  { c: '4390', l: 'Otras actividades especializadas para la construcción de edificios y estructuras' },
+  { c: '4511', l: 'Comercio de vehículos automotores nuevos' },
+  { c: '4521', l: 'Mantenimiento y reparación de vehículos automotores' },
+  { c: '4610', l: 'Comercio al por mayor a cambio de una retribución o por contrata' },
+  { c: '4620', l: 'Comercio al por mayor de materias primas agropecuarias' },
+  { c: '4631', l: 'Comercio al por mayor de productos alimenticios' },
+  { c: '4641', l: 'Comercio al por mayor de productos textiles, prendas de vestir y calzado' },
+  { c: '4649', l: 'Comercio al por mayor de otros enseres domésticos' },
+  { c: '4651', l: 'Comercio al por mayor de computadores, equipos periféricos y programas de informática' },
+  { c: '4659', l: 'Comercio al por mayor de otros tipos de maquinaria y equipo' },
+  { c: '4661', l: 'Comercio al por mayor de combustibles sólidos, líquidos, gaseosos y productos conexos' },
+  { c: '4663', l: 'Comercio al por mayor de materiales de construcción, ferretería, plomería y calefacción' },
+  { c: '4669', l: 'Comercio al por mayor de otros productos n.c.p.' },
+  { c: '4690', l: 'Comercio al por mayor no especializado' },
+  { c: '4711', l: 'Comercio al por menor en establecimientos no especializados con surtido compuesto principalmente por alimentos' },
+  { c: '4719', l: 'Comercio al por menor en establecimientos no especializados, con surtido compuesto principalmente por productos diferentes de alimentos' },
+  { c: '4721', l: 'Comercio al por menor de productos agrícolas para el consumo en establecimientos especializados' },
+  { c: '4722', l: 'Comercio al por menor de leche, productos lácteos y huevos, en establecimientos especializados' },
+  { c: '4723', l: 'Comercio al por menor de cárnicos (incluye aves de corral), en establecimientos especializados' },
+  { c: '4724', l: 'Comercio al por menor de bebidas y productos del tabaco, en establecimientos especializados' },
+  { c: '4725', l: 'Comercio al por menor de productos de confitería' },
+  { c: '4729', l: 'Comercio al por menor de otros productos alimenticios n.c.p., en establecimientos especializados' },
+  { c: '4731', l: 'Comercio al por menor de combustible para automotores' },
+  { c: '4741', l: 'Comercio al por menor de computadores, equipos periféricos, programas de informática y equipos de telecomunicaciones' },
+  { c: '4742', l: 'Comercio al por menor de equipos y aparatos de sonido y de video' },
+  { c: '4751', l: 'Comercio al por menor de productos textiles en establecimientos especializados' },
+  { c: '4752', l: 'Comercio al por menor de artículos de ferretería, pinturas y productos de vidrio en establecimientos especializados' },
+  { c: '4753', l: 'Comercio al por menor de tapices, alfombras y cubrimientos para paredes y pisos en establecimientos especializados' },
+  { c: '4754', l: 'Comercio al por menor de electrodomésticos y gasodomésticos de uso doméstico, muebles y equipos de iluminación' },
+  { c: '4755', l: 'Comercio al por menor de artículos y utensilios de uso doméstico' },
+  { c: '4759', l: 'Comercio al por menor de otros artículos domésticos en establecimientos especializados' },
+  { c: '4761', l: 'Comercio al por menor de libros, periódicos, materiales y artículos de papelería y escritorio' },
+  { c: '4762', l: 'Comercio al por menor de artículos deportivos, en establecimientos especializados' },
+  { c: '4763', l: 'Comercio al por menor de juegos, juguetes y rompecabezas' },
+  { c: '4764', l: 'Comercio al por menor de artículos de cuero, artículos de viaje, bolsos de mano y artículos similares' },
+  { c: '4765', l: 'Comercio al por menor de instrumentos musicales' },
+  { c: '4771', l: 'Comercio al por menor de prendas de vestir y sus accesorios (incluidas las de piel) en establecimientos especializados' },
+  { c: '4772', l: 'Comercio al por menor de todo tipo de calzado y artículos de cuero y sucedáneos del cuero' },
+  { c: '4773', l: 'Comercio al por menor de productos farmacéuticos y medicinales, cosméticos y artículos de tocador' },
+  { c: '4774', l: 'Comercio al por menor de otros productos nuevos en establecimientos especializados' },
+  { c: '4781', l: 'Comercio al por menor de alimentos, bebidas y tabaco, en puestos de venta móviles' },
+  { c: '4789', l: 'Comercio al por menor de otros productos en puestos de venta móviles' },
+  { c: '4791', l: 'Comercio al por menor realizado a través de internet' },
+  { c: '4911', l: 'Transporte férreo interurbano de pasajeros' },
+  { c: '4921', l: 'Transporte de pasajeros' },
+  { c: '4923', l: 'Transporte de carga por carretera' },
+  { c: '4930', l: 'Transporte por tuberías' },
+  { c: '5111', l: 'Transporte aéreo nacional de pasajeros' },
+  { c: '5210', l: 'Almacenamiento y depósito' },
+  { c: '5221', l: 'Actividades de servicios vinculadas al transporte terrestre' },
+  { c: '5310', l: 'Actividades postales nacionales' },
+  { c: '5510', l: 'Alojamiento en hoteles' },
+  { c: '5590', l: 'Otros tipos de alojamiento n.c.p.' },
+  { c: '5611', l: 'Expendio a la mesa de comidas preparadas' },
+  { c: '5612', l: 'Expendio por autoservicio de comidas preparadas' },
+  { c: '5619', l: 'Otros tipos de expendio de comidas preparadas n.c.p.' },
+  { c: '5621', l: 'Catering para eventos' },
+  { c: '5630', l: 'Expendio de bebidas alcohólicas para el consumo dentro del establecimiento' },
+  { c: '5811', l: 'Edición de libros' },
+  { c: '5813', l: 'Edición de periódicos, revistas y otras publicaciones periódicas' },
+  { c: '5912', l: 'Actividades de posproducción de películas cinematográficas, videos, programas, anuncios y comerciales de televisión' },
+  { c: '6010', l: 'Actividades de programación y transmisión en el servicio de radiodifusión sonora' },
+  { c: '6110', l: 'Actividades de telecomunicaciones alámbricas' },
+  { c: '6120', l: 'Actividades de telecomunicaciones inalámbricas' },
+  { c: '6201', l: 'Actividades de desarrollo de sistemas informáticos (planificación, análisis, diseño, programación, pruebas)' },
+  { c: '6202', l: 'Actividades de consultoría informática y actividades de administración de instalaciones informáticas' },
+  { c: '6311', l: 'Procesamiento de datos, alojamiento (hosting) y actividades relacionadas' },
+  { c: '6411', l: 'Banco central' },
+  { c: '6412', l: 'Bancos comerciales' },
+  { c: '6491', l: 'Leasing financiero (arrendamiento financiero)' },
+  { c: '6499', l: 'Otras actividades de servicio financiero, excepto las de seguros y pensiones n.c.p.' },
+  { c: '6512', l: 'Seguros generales' },
+  { c: '6513', l: 'Seguros de vida' },
+  { c: '6531', l: 'Fondos de pensiones' },
+  { c: '6810', l: 'Actividades inmobiliarias realizadas con bienes propios o arrendados' },
+  { c: '6820', l: 'Actividades inmobiliarias realizadas a cambio de una retribución o por contrata' },
+  { c: '6910', l: 'Actividades jurídicas' },
+  { c: '6920', l: 'Actividades de contabilidad, teneduría de libros, auditoría financiera y asesoría tributaria' },
+  { c: '7010', l: 'Actividades de administración empresarial' },
+  { c: '7020', l: 'Actividades de consultoría de gestión empresarial' },
+  { c: '7110', l: 'Actividades de arquitectura e ingeniería y otras actividades conexas de consultoría técnica' },
+  { c: '7120', l: 'Ensayos y análisis técnicos' },
+  { c: '7210', l: 'Investigaciones y desarrollo experimental en el campo de las ciencias naturales y la ingeniería' },
+  { c: '7310', l: 'Publicidad' },
+  { c: '7411', l: 'Actividades especializadas de diseño' },
+  { c: '7490', l: 'Otras actividades profesionales, científicas y técnicas n.c.p.' },
+  { c: '7500', l: 'Actividades veterinarias' },
+  { c: '7710', l: 'Alquiler y arrendamiento de vehículos automotores' },
+  { c: '7730', l: 'Alquiler y arrendamiento de otros tipos de maquinaria, equipo y bienes tangibles n.c.p.' },
+  { c: '7740', l: 'Arrendamiento de propiedad intelectual y productos similares, excepto obras protegidas por derechos de autor' },
+  { c: '7810', l: 'Actividades de agencias de empleo' },
+  { c: '7820', l: 'Actividades de empresas de trabajo temporal' },
+  { c: '7830', l: 'Otras actividades de suministro de recurso humano' },
+  { c: '7911', l: 'Actividades de las agencias de viaje' },
+  { c: '8010', l: 'Actividades de seguridad privada' },
+  { c: '8020', l: 'Actividades de servicios de sistemas de seguridad' },
+  { c: '8030', l: 'Actividades de investigación' },
+  { c: '8110', l: 'Actividades combinadas de apoyo a instalaciones' },
+  { c: '8121', l: 'Limpieza general interior de edificios' },
+  { c: '8130', l: 'Actividades de paisajismo y servicios de mantenimiento conexos' },
+  { c: '8210', l: 'Actividades administrativas y de apoyo de oficina' },
+  { c: '8292', l: 'Actividades de envase y empaque' },
+  { c: '8299', l: 'Otras actividades de servicio de apoyo a las empresas n.c.p.' },
+  { c: '8411', l: 'Actividades legislativas de la administración pública en general' },
+  { c: '8510', l: 'Educación de la primera infancia' },
+  { c: '8521', l: 'Educación básica primaria' },
+  { c: '8522', l: 'Educación básica secundaria' },
+  { c: '8531', l: 'Educación técnica y tecnológica' },
+  { c: '8541', l: 'Educación de instituciones universitarias o de escuelas tecnológicas' },
+  { c: '8542', l: 'Educación de universidades' },
+  { c: '8549', l: 'Otros tipos de educación n.c.p.' },
+  { c: '8551', l: 'Formación para el trabajo' },
+  { c: '8610', l: 'Actividades de hospitales y clínicas, con internación' },
+  { c: '8621', l: 'Actividades de la práctica médica, sin internación' },
+  { c: '8622', l: 'Actividades de la práctica odontológica' },
+  { c: '8630', l: 'Actividades de apoyo diagnóstico' },
+  { c: '8690', l: 'Otras actividades de atención de la salud humana' },
+  { c: '8710', l: 'Actividades de atención residencial medicalizada de tipo general' },
+  { c: '8810', l: 'Actividades de asistencia social sin alojamiento para personas mayores y discapacitadas' },
+  { c: '9001', l: 'Creación literaria' },
+  { c: '9003', l: 'Creación artística y literaria' },
+  { c: '9321', l: 'Actividades de parques de atracciones y parques temáticos' },
+  { c: '9329', l: 'Otras actividades recreativas y de esparcimiento n.c.p.' },
+  { c: '9411', l: 'Actividades de asociaciones empresariales y de empleadores' },
+  { c: '9412', l: 'Actividades de asociaciones profesionales' },
+  { c: '9491', l: 'Actividades de asociaciones religiosas' },
+  { c: '9499', l: 'Actividades de otras asociaciones n.c.p.' },
+  { c: '9511', l: 'Mantenimiento y reparación de computadores y de equipo periférico' },
+  { c: '9521', l: 'Mantenimiento y reparación de aparatos electrónicos de consumo' },
+  { c: '9523', l: 'Mantenimiento y reparación de calzado y artículos de cuero' },
+  { c: '9524', l: 'Mantenimiento y reparación de muebles y accesorios para el hogar' },
+  { c: '9529', l: 'Mantenimiento y reparación de otros efectos personales y enseres domésticos' },
+  { c: '9601', l: 'Lavado y limpieza, incluso la limpieza en seco, de productos textiles y de piel' },
+  { c: '9602', l: 'Peluquería y otros tratamientos de belleza' },
+  { c: '9609', l: 'Otras actividades de servicios personales n.c.p.' },
+  { c: '9700', l: 'Actividades de los hogares individuales como empleadores de personal doméstico' },
+];
+
+const TAX_REGIMES = [
+  { code: 'COMUN',        name: 'Responsable de IVA' },
+  { code: 'NO_RESP',      name: 'No Responsable de IVA' },
+  { code: 'SIMPLIFICADO', name: 'Régimen Simple de Tributación / Simplificado' },
+  { code: 'GRAN_CONTR',   name: 'Gran Contribuyente' },
+];
+
+const PERSON_TYPES = [
+  { code: 'NATURAL',  name: 'Persona Natural' },
+  { code: 'JURIDICA', name: 'Persona Jurídica' },
+];
+
+const TP_TYPES = [
+  { code: 'CLIENTE',     name: 'Cliente' },
+  { code: 'PROVEEDOR',   name: 'Proveedor' },
+  { code: 'EMPLEADO',    name: 'Empleado' },
+  { code: 'PROPIETARIO', name: 'Propietario' },
+  { code: 'OTRO',        name: 'Otro' },
+];
+
+/* Departamentos de Colombia (DANE) */
+/* Departamentos de Colombia — fuente: geodata.js (GEO_DEPTS) */
+/* COL_DEPTS mantenido como alias de compatibilidad */
+const COL_DEPTS = typeof GEO_DEPTS !== 'undefined' ? GEO_DEPTS : [];
+
+/* Cálculo dígito de verificación DIAN (NIT) */
+const _NIT_FACTORS = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+function calcDV(nit) {
+  const d = String(nit).replace(/\D/g, '');
+  if (!d) return '';
+  let s = 0;
+  for (let i = 0; i < d.length; i++) s += +d[d.length - 1 - i] * _NIT_FACTORS[i];
+  const r = s % 11;
+  return String(r < 2 ? r : 11 - r);
+}
+
+const CROSS_DOC_TYPES = [
+  'Factura de Venta','Factura de Compra','Recibo de Caja',
+  'Comprobante de Egreso','Nota Crédito','Nota Débito',
+  'Orden de Compra','Contrato','Otro',
+];
+
+const CROSS_PURPOSES = ['Causar','Recaudar','Reportar Cartera'];
+
+const ROLES = {
+  admin:    { label: 'Administrador',  badge: 'badge-orange'  },
+  contador: { label: 'Contador',       badge: 'badge-blue'    },
+  auxiliar: { label: 'Auxiliar',       badge: 'badge-green'   },
+  cajero:   { label: 'Cajero POS',     badge: 'badge-purple'  },
+  vendedor: { label: 'Vendedor',       badge: 'badge-teal'    },
+  auditor:  { label: 'Auditor',        badge: 'badge-gray'    },
+  viewer:   { label: 'Visualizador',   badge: 'badge-gray'    },
+  propietario: { label: 'Propietario PH', badge: 'badge-pink' },
+};
+
+function roleLabel(role) { return ROLES[role]?.label ?? role; }
+function roleBadge(role) {
+  return `<span class="badge ${ROLES[role]?.badge ?? 'badge-gray'}">${esc(roleLabel(role))}</span>`;
+}
+
+/* ── Exportar a Excel ────────────────────────────────────── */
+function exportToExcel(data, headers, filename, options?: any) {
+  let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
+  html += `<head><meta charset="utf-8"/><style>
+    table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10pt; }
+    th { background-color: #E6E6E6; font-weight: bold; border: 0.5pt solid #CCCCCC; padding: 5px; text-align: left; }
+    td { border: 0.5pt solid #E5E7EB; padding: 4px; vertical-align: middle; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .bold { font-weight: bold; }
+  </style></head><body><table>`;
+
+  const colCount = headers?.length || 1;
+
+  if (options) {
+    const optObj = typeof options === 'string' ? { title: options } : options;
+    
+    if (optObj.companyName) {
+      html += `<tr><td colspan="${colCount}" style="font-size:12pt;font-weight:bold;color:#0D2137;border:none;padding:2px 4px;">${esc(optObj.companyName)}</td></tr>`;
+    }
+    if (optObj.companyNit) {
+      html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#4B5563;border:none;padding:2px 4px;">${esc(optObj.companyNit)}</td></tr>`;
+    }
+    if (optObj.companyAddress) {
+      html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#4B5563;border:none;padding:2px 4px;">${esc(optObj.companyAddress)}</td></tr>`;
+    }
+    if (optObj.title) {
+      html += `<tr><td colspan="${colCount}" style="font-size:13pt;font-weight:bold;color:#0D2137;text-align:center;padding:6px;border:none;">${esc(optObj.title)}</td></tr>`;
+    }
+    if (Array.isArray(optObj.subtitles)) {
+      optObj.subtitles.forEach(sub => {
+        if (sub) {
+          html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#374151;border:none;padding:2px 4px;">${esc(sub)}</td></tr>`;
+        }
+      });
+    }
+    html += `<tr><td colspan="${colCount}" style="border:none;height:10px;"></td></tr>`;
+  }
+
+  // Headers
+  html += '<tr>';
+  headers.forEach(h => {
+    html += `<th>${esc(h.label)}</th>`;
+  });
+  html += '</tr>';
+
+  // Data rows
+  data.forEach(row => {
+    let isBold = !!row.isBold;
+    const firstColKey = headers[0]?.key;
+    const firstColVal = String(row[firstColKey] || '').trim();
+
+    if (
+      firstColVal.startsWith('Total') ||
+      firstColVal.toLowerCase().includes('resultado neto') ||
+      firstColVal === 'Activos' ||
+      firstColVal === 'Pasivos' ||
+      firstColVal === 'Patrimonio' ||
+      firstColVal === 'TOTAL GENERAL' ||
+      (row.level && Number(row.level) <= 3)
+    ) {
+      isBold = true;
+    }
+
+    html += '<tr>';
+    headers.forEach((h, idx) => {
+      let val = row[h.key] ?? '';
+      let cls = [];
+      if (isBold) cls.push('bold');
+
+      let styleAttr = '';
+      let isNumericValue = typeof val === 'number';
+
+      if (isNumericValue) {
+        cls.push('text-right');
+        val = val.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      } else {
+        val = String(val);
+        if (h.key === 'nota') cls.push('text-center');
+      }
+
+      // If it is the first column and level is present, add padding
+      let styleParts = [];
+      if (idx === 0 && row.level) {
+        const padding = (Number(row.level) - 1) * 15;
+        if (padding > 0) {
+          styleParts.push(`padding-left: ${padding}px`);
+        }
+      }
+
+      // Force text format for non-numeric fields in Excel to preserve leading zeros
+      if (!isNumericValue) {
+        styleParts.push('mso-number-format:\\@');
+      }
+
+      if (styleParts.length > 0) {
+        styleAttr = ` style="${styleParts.join(';')}"`;
+      }
+
+      html += `<td class="${cls.join(' ')}"${styleAttr}>${esc(val)}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</table></body></html>';
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}_${todayStr()}.xls`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ── Helpers de formulario ───────────────────────────────── */
+function getInputVal(id)   { return ($(`#${id}`)?.value ?? '').trim(); }
+function getCheckVal(id)   { return !!$(`#${id}`)?.checked; }
+function getSelectVal(id)  { return $(`#${id}`)?.value ?? ''; }
+function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? ''; }
+
+// --- VITE MIGRATION GLOBALS ---
+(window as any).getCheckVal = getCheckVal;
+(window as any)._lineCommentState = _lineCommentState;
+(window as any).fmt = fmt;
+(window as any).exportToExcel = exportToExcel;
+(window as any).getSelectVal = getSelectVal;
+(window as any)._fmtCOP = _fmtCOP;
+(window as any).esc = esc;
+(window as any).$ = $;
+(window as any).fmtDate = fmtDate;
+(window as any).calcDV = calcDV;
+(window as any).nowStr = nowStr;
+(window as any).closeModal = closeModal;
+(window as any).renderPagination = renderPagination;
+(window as any).debounce = debounce;
+(window as any).CROSS_PURPOSES = CROSS_PURPOSES;
+(window as any).confirmDialog = confirmDialog;
+(window as any).DOC_TYPES = DOC_TYPES;
+(window as any).LOCAL_DOC_TYPES = LOCAL_DOC_TYPES;
+(window as any).DIAN_RESP = DIAN_RESP;
+(window as any).DIAN_CIIU = DIAN_CIIU;
+(window as any).$$ = $$;
+(window as any).CROSS_DOC_TYPES = CROSS_DOC_TYPES;
+(window as any).COL_DEPTS = COL_DEPTS;
+(window as any).getInputVal = getInputVal;
+(window as any).openModal = openModal;
+(window as any).TOAST_ICONS = TOAST_ICONS;
+(window as any).TAX_REGIMES = TAX_REGIMES;
+(window as any).filterTable = filterTable;
+(window as any).openLineComment = openLineComment;
+(window as any).PERSON_TYPES = PERSON_TYPES;
+(window as any)._NIT_FACTORS = _NIT_FACTORS;
+(window as any).roleLabel = roleLabel;
+(window as any).saveLineComment = saveLineComment;
+(window as any).fmtN = fmtN;
+(window as any).closeLineComment = closeLineComment;
+(window as any).TP_TYPES = TP_TYPES;
+(window as any).showToast = showToast;
+(window as any).translateText = translateText;
+(window as any).setInputVal = setInputVal;
+(window as any).ROLES = ROLES;
+(window as any).todayStr = todayStr;
+(window as any).nowStr = nowStr;
+(window as any).getColombiaDateStr = getColombiaDateStr;
+(window as any).getColombiaDateTimeStr = getColombiaDateTimeStr;
+(window as any).getColombiaFirstDayOfMonth = getColombiaFirstDayOfMonth;
+(window as any).getColombiaLastDayOfMonth = getColombiaLastDayOfMonth;
+(window as any).fmtDate = fmtDate;
+(window as any).roleBadge = roleBadge;
+(window as any).parseNum = parseNum;
+(window as any)._escDiv = _escDiv;
+(window as any)._fmtNum = _fmtNum;
+
+async function showStockBreakdownModal(productId: string, productName: string) {
+  (window as any).showToast('Consultando existencias de: ' + productName, 'info');
+  try {
+    const [stocks, incoming] = await Promise.all([
+      (window as any).API.getInventoryStock({ productId }),
+      (window as any).API.getIncomingStockForProduct(productId)
+    ]);
+    
+    let overlay = document.getElementById('stock-details-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'stock-details-overlay';
+      overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:250;align-items:center;justify-content:center;padding:16px';
+      document.body.appendChild(overlay);
+    }
+    
+    let whRowsHtml = '';
+    if (!stocks.length) {
+      whRowsHtml = `<tr><td colspan="2" class="text-center py-4 text-gray-400 font-medium"><i class="fas fa-warehouse mr-1"></i>Sin inventario en ninguna bodega.</td></tr>`;
+    } else {
+      whRowsHtml = stocks.map((s: any) => {
+        const qty = Number(s.qty_on_hand || 0);
+        const qtyClass = qty > 0 ? 'text-green-600 font-bold' : 'text-gray-400';
+        return `
+          <tr class="border-b" style="border-color:#F3F4F6">
+            <td class="py-2.5 px-3 font-semibold text-gray-700">${(window as any).esc(s.expand?.warehouse_id?.name || 'Bodega')}</td>
+            <td class="py-2.5 px-3 text-right font-mono text-xs ${qtyClass}">${(window as any).fmtN(qty)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    let transitRowsHtml = '';
+    const incomingAvailable = incoming.filter((i: any) => Number(i.qty_available ?? i.qty ?? 0) > 0);
+    if (!incomingAvailable.length) {
+      transitRowsHtml = `<tr><td colspan="4" class="text-center py-4 text-gray-400 font-medium"><i class="fas fa-ship mr-1"></i>No hay unidades en tránsito.</td></tr>`;
+    } else {
+      transitRowsHtml = incomingAvailable.map((i: any) => {
+        const qty = Number(i.qty_available ?? i.qty ?? 0);
+        const eta = i.expand?.import_id?.estimated_arrival ? (window as any).fmtDate(i.expand.import_id.estimated_arrival) : '—';
+        const impNumber = i.expand?.import_id?.number || 'IMP';
+        const impStatus = i.expand?.import_id?.status === 'transito' ? 'En Tránsito' : 'Nacionalización';
+        const badgeClass = i.expand?.import_id?.status === 'transito' ? 'badge-blue' : 'badge-orange';
+        return `
+          <tr class="border-b text-xs" style="border-color:#F3F4F6">
+            <td class="py-2.5 px-3 font-semibold text-gray-700 font-mono">${(window as any).esc(impNumber)}</td>
+            <td class="py-2.5 px-3"><span class="badge ${badgeClass} text-[10px] px-1.5 py-0.5 rounded font-bold">${impStatus}</span></td>
+            <td class="py-2.5 px-3 text-gray-600 font-semibold">${eta}</td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-blue-600">${(window as any).fmtN(qty)}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    overlay.innerHTML = `
+      <div class="anim-slide-up" style="background:#fff;border-radius:20px;width:100%;max-width:680px;box-shadow:0 25px 60px rgba(0,0,0,.22);overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #F0F0F0">
+          <h4 style="font-weight:800;color:#0D2137;font-size:15px;margin:0"><i class="fas fa-boxes-stacked mr-2" style="color:#1A4B8C"></i>Existencias detalladas: ${(window as any).esc(productName)}</h4>
+          <button onclick="document.getElementById('stock-details-overlay').style.display='none'" style="background:none;border:none;font-size:20px;color:#9CA3AF;cursor:pointer"><i class="fas fa-xmark"></i></button>
+        </div>
+        <div style="padding:24px;max-height:70vh;overflow-y:auto">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Existencias por Bodega -->
+            <div class="border rounded-xl p-3 bg-white" style="border-color:#E5E7EB">
+              <h5 class="font-bold mb-2 text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5" style="margin-top:0"><i class="fas fa-warehouse text-blue-600"></i> Físico por Bodega</h5>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="border-b text-gray-400 text-[10px] font-bold uppercase" style="border-color:#E5E7EB">
+                      <th class="pb-1.5 px-3">Bodega</th>
+                      <th class="pb-1.5 px-3 text-right">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${whRowsHtml}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <!-- Mercancía en Tránsito -->
+            <div class="border rounded-xl p-3 bg-white" style="border-color:#E5E7EB">
+              <h5 class="font-bold mb-2 text-xs text-gray-800 uppercase tracking-wider flex items-center gap-1.5" style="margin-top:0"><i class="fas fa-ship text-sky-600"></i> Tránsito (Importaciones)</h5>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="border-b text-gray-400 text-[10px] font-bold uppercase" style="border-color:#E5E7EB">
+                      <th class="pb-1.5 px-3">IMP</th>
+                      <th class="pb-1.5 px-3">Estado</th>
+                      <th class="pb-1.5 px-3">ETA</th>
+                      <th class="pb-1.5 px-3 text-right">Cant.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${transitRowsHtml}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid #F0F0F0;background:#F9FAFB">
+          <button class="btn btn-outline" onclick="document.getElementById('stock-details-overlay').style.display='none'">Cerrar</button>
+        </div>
+      </div>
+    `;
+    
+    overlay.style.display = 'flex';
+  } catch (err: any) {
+    (window as any).showToast(err.message || 'Error al obtener inventario', 'error');
+  }
+}
+
+(window as any).showStockBreakdownModal = showStockBreakdownModal;
+
+/* ── ORDENAMIENTO DE TABLAS ────────────────────────────────── */
+function parseTableValue(text: string): any {
+  let s = String(text ?? '').trim();
+  if (!s) return '';
+
+  if (s.endsWith('%')) {
+    const val = parseFloat(s.replace('%', '').trim());
+    return isNaN(val) ? s : val;
+  }
+
+  let cleaned = s.replace(/[\$\%\s]/g, '');
+
+  if (/^-?[\d.,]+$/.test(cleaned)) {
+    const hasComma = cleaned.includes(',');
+    const hasDot = cleaned.includes('.');
+    
+    if (hasComma && hasDot) {
+      cleaned = cleaned.replace(/\./g, '').replace(/,/g, '.');
+    } else if (hasComma) {
+      cleaned = cleaned.replace(/,/g, '.');
+    } else if (hasDot) {
+      const parts = cleaned.split('.');
+      if (parts.length > 2) {
+        cleaned = cleaned.replace(/\./g, '');
+      } else {
+        const decimals = parts[1];
+        if (decimals.length === 3) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      }
+    }
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? s : num;
+  }
+
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const parts = s.split('/');
+    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])).getTime();
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return new Date(s).getTime();
+  }
+
+  return s;
+}
+
+function sortTableRows(tableElement: HTMLTableElement, columnIndex: number, ascending: boolean) {
+  const tbody = tableElement.querySelector('tbody');
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const dataRows = rows.filter(row => {
+    const cells = row.cells;
+    if (!cells || cells.length === 0) return false;
+    if (cells[0]?.hasAttribute('colspan')) return false;
+    return true;
+  });
+
+  if (dataRows.length === 0) return;
+
+  const parsedValues = dataRows.map(row => {
+    const cell = row.cells[columnIndex];
+    const text = cell ? cell.textContent?.trim() || '' : '';
+    return { row, val: parseTableValue(text), text };
+  });
+
+  parsedValues.sort((a, b) => {
+    let cmp = 0;
+    if (typeof a.val === 'number' && typeof b.val === 'number') {
+      cmp = a.val - b.val;
+    } else {
+      cmp = String(a.val).localeCompare(String(b.val), 'es', { sensitivity: 'base', numeric: true });
+    }
+    return ascending ? cmp : -cmp;
+  });
+
+  parsedValues.forEach(item => {
+    tbody.appendChild(item.row);
+  });
+}
+
+function makeTableSortable(table: HTMLTableElement, onSort?: () => void) {
+  if (!table) return;
+  const thead = table.querySelector('thead');
+  if (!thead) return;
+  const headers = thead.querySelectorAll('th');
+
+  headers.forEach((th, index) => {
+    const cleanText = th.textContent?.trim().toLowerCase() || '';
+    if (
+      th.classList.contains('no-sort') || 
+      cleanText === 'acciones' || 
+      cleanText === 'acción' || 
+      cleanText === ''
+    ) {
+      return;
+    }
+
+    th.classList.add('sortable-th');
+
+    if (!th.querySelector('.sort-icon')) {
+      const icon = document.createElement('i');
+      icon.className = 'fas fa-sort text-gray-300 ml-1 text-xs sort-icon';
+      th.appendChild(icon);
+    }
+
+    (th as any).onclick = () => {
+      const currentDir = th.getAttribute('data-sort-dir') || 'none';
+      const nextDir = currentDir === 'asc' ? 'desc' : 'asc';
+
+      headers.forEach(h => {
+        h.removeAttribute('data-sort-dir');
+        const icon = h.querySelector('.sort-icon');
+        if (icon) {
+          icon.className = 'fas fa-sort text-gray-300 ml-1 text-xs sort-icon';
+        }
+      });
+
+      th.setAttribute('data-sort-dir', nextDir);
+      const icon = th.querySelector('.sort-icon');
+      if (icon) {
+        icon.className = nextDir === 'asc' 
+          ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon' 
+          : 'fas fa-sort-down text-blue-600 ml-1 text-xs sort-icon';
+      }
+
+      table.setAttribute('data-sort-col', String(index));
+      table.setAttribute('data-sort-dir', nextDir);
+
+      sortTableRows(table, index, nextDir === 'asc');
+      if (onSort) onSort();
+    };
+  });
+}
+
+function reapplyTableSort(table: HTMLTableElement) {
+  if (!table) return;
+  const colStr = table.getAttribute('data-sort-col');
+  const dirStr = table.getAttribute('data-sort-dir');
+  if (colStr !== null && dirStr !== null) {
+    const colIndex = parseInt(colStr, 10);
+    const ascending = dirStr === 'asc';
+    sortTableRows(table, colIndex, ascending);
+
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach((h, index) => {
+      const icon = h.querySelector('.sort-icon');
+      if (icon) {
+        if (index === colIndex) {
+          h.setAttribute('data-sort-dir', dirStr);
+          icon.className = dirStr === 'asc' 
+            ? 'fas fa-sort-up text-blue-600 ml-1 text-xs sort-icon' 
+            : 'fas fa-sort-down text-blue-600 ml-1 text-xs sort-icon';
+        } else {
+          h.removeAttribute('data-sort-dir');
+          icon.className = 'fas fa-sort text-gray-300 ml-1 text-xs sort-icon';
+        }
+      }
+    });
+  }
+}
+
+(window as any).makeTableSortable = makeTableSortable;
+(window as any).reapplyTableSort = reapplyTableSort;
+(window as any).getPageContainer = getPageContainer;
+
+

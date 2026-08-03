@@ -1,0 +1,7 @@
+{
+  "name": "GRAVY Mobile Sales",
+  "description": "Aplicación móvil de ventas de campo con gestión de Pedidos y Reservas, control de cupo de crédito, edades de cartera y facturación en Pesos Colombianos (COP).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

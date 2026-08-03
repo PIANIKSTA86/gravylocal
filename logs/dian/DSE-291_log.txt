@@ -1,0 +1,132 @@
+
+==================================================
+TIMESTAMP: 2026-07-27T01:33:34.186Z
+ACTION: FACTURATECH UPLOAD-AND-SEND (HTTP ERROR)
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://webservice.facturatech.co/v2/WSDOCSOPORTEPRO.asmx
+soapAction: 
+soapEnvelope: <?xml version="1.0" encoding="utf-8"?>
+<soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  <soap12:Body>
+    <uploadInvoiceFile xmlns="http://webservice.facturatech.co/">
+      <username>90142883cuatro</username>
+      <password>8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+      <xmlBase64>PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMjkxPC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA3LTI3PC9FTkNfNz4KICAgIDxFTkNfOD4yMDozMzozMy0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIDxFTkNfMTU+MTwvRU5DXzE1PgogICAgPEVOQ18xNj4yMDI2LTA3LTI3PC9FTkNfMTY+CiAgICA8RU5DXzIwPjE8L0VOQ18yMD4KICAgIDxFTkNfMjE+MTA8L0VOQ18yMT4KICA8L0VOQz4KICA8UFJPPgogICAgPFBST18xPjI8L1BST18xPgogICAgPFBST18yPjI5MTEzMjg4PC9QUk9fMj4KICAgIDxQUk9fMz4zMTwvUFJPXzM+CiAgICA8UFJPXzY+U09MTEFOR0UgRVNNRVJBTERBIFpBUEFUQTwvUFJPXzY+CiAgICA8UFJPXzEwPkNMIDkwIDI4IEUgMzQ8L1BST18xMD4KICAgIDxQUk9fMTE+NzY8L1BST18xMT4KICAgIDxQUk9fMTM+Q0FMSSAtIDc2MDAxPC9QUk9fMTM+CiAgICA8UFJPXzE0Pjc2MDAwMTwvUFJPXzE0PgogICAgPFBST18xNT5DTzwvUFJPXzE1PgogICAgPFBST18xOT5WQUxMRSBERUwgQ0FVQ0EgLSA3NjwvUFJPXzE5PgogICAgPFBST18yMT5Db2xvbWJpYTwvUFJPXzIxPgogICAgPFBST18yMj41PC9QUk9fMjI+CiAgICA8UFJPXzIzPjc2MDAxPC9QUk9fMjM+CiAgICA8VEFDPgogICAgICA8VEFDXzE+Ui05OS1QTjwvVEFDXzE+CiAgICA8L1RBQz4KICAgIDxHVEU+CiAgICAgIDxHVEVfMT4wMTwvR1RFXzE+CiAgICAgIDxHVEVfMj5JVkE8L0dURV8yPgogICAgPC9HVEU+CiAgPC9QUk8+CiAgPEFEUT4KICAgIDxBRFFfMT4xPC9BRFFfMT4KICAgIDxBRFFfMj45MDE0Mjg4MzQ8L0FEUV8yPgogICAgPEFEUV8zPjMxPC9BRFFfMz4KICAgIAogICAgPEFEUV82PkRPTUVTVElLTyBTQVM8L0FEUV82PgogICAgPEFEUV8yMj4yPC9BRFFfMjI+CiAgICA8VENSPgogICAgICA8VENSXzE+Ui05OS1QTjwvVENSXzE+CiAgICA8L1RDUj4KICAgIDxHVEE+CiAgICAgIDxHVEFfMT5aWjwvR1RBXzE+CiAgICAgIDxHVEFfMj5JVkE8L0dUQV8yPgogICAgPC9HVEE+CiAgPC9BRFE+CiAgPFRPVD4KICAgIDxUT1RfMT43NTAwMC4wMDwvVE9UXzE+CiAgICA8VE9UXzI+Q09QPC9UT1RfMj4KICAgIDxUT1RfMz4wLjAwPC9UT1RfMz4KICAgIDxUT1RfND5DT1A8L1RPVF80PgogICAgPFRPVF81Pjc1MDAwLjAwPC9UT1RfNT4KICAgIDxUT1RfNj5DT1A8L1RPVF82PgogICAgPFRPVF83Pjc1MDAwLjAwPC9UT1RfNz4KICAgIDxUT1RfOD5DT1A8L1RPVF84PgogIDwvVE9UPgogIDxEUkY+CiAgICA8RFJGXzE+MTg3NjQwOTk3NzM0NzQ8L0RSRl8xPgogICAgPERSRl8yPjIwMjUtMTAtMDY8L0RSRl8yPgogICAgPERSRl8zPjIwMjYtMTAtMDY8L0RSRl8zPgogICAgPERSRl80PkRTRTwvRFJGXzQ+CiAgICA8RFJGXzU+MTk1PC9EUkZfNT4KICAgIDxEUkZfNj4xMDAwPC9EUkZfNj4KICA8L0RSRj4KICA8TUVQPgogICAgPE1FUF8xPjEwPC9NRVBfMT4KICAgIDxNRVBfMj4xPC9NRVBfMj4KICAgIDxNRVBfMz4yMDI2LTA3LTI3PC9NRVBfMz4KICA8L01FUD4KICA8SVRFPgogICAgPElURV8xPjE8L0lURV8xPgogICAgPElURV8zPjEuMDA8L0lURV8zPgogICAgPElURV80PlpaPC9JVEVfND4KICAgIDxJVEVfNT43NTAwMC4wMDwvSVRFXzU+CiAgICA8SVRFXzY+Q09QPC9JVEVfNj4KICAgIDxJVEVfNz43NTAwMC4wMDwvSVRFXzc+CiAgICA8SVRFXzg+Q09QPC9JVEVfOD4KICAgIDxJVEVfMTE+QVNFTyBZIFZJR0lMQU5DSUE8L0lURV8xMT4KICAgIDxJVEVfMjc+MS4wMDwvSVRFXzI3PgogICAgPElURV8yOD5aWjwvSVRFXzI4PgogICAgPElBRT4KICAgICAgPElBRV8xPlIwMDE8L0lBRV8xPgogICAgICA8SUFFXzI+OTk5PC9JQUVfMj4KICAgIDwvSUFFPgogICAgPElCUz4KICAgICAgPElCU18xPjIwMjYtMDctMjc8L0lCU18xPgogICAgICA8SUJTXzI+MTwvSUJTXzI+CiAgICAgIDxJQlNfMz5Qb3Igb3BlcmFjacOzbjwvSUJTXzM+CiAgICA8L0lCUz4KICA8L0lURT4KPC9ET0NVTUVOVE9fU09QT1JURT4=</xmlBase64>
+    </uploadInvoiceFile>
+  </soap12:Body>
+</soap12:Envelope>
+httpStatusCode: 500
+rawResponse: <!DOCTYPE html>
+<html>
+    <head>
+        <title>Error en runtime</title>
+        <meta name="viewport" content="width=device-width" />
+        <style>
+         body {font-family:"Verdana";font-weight:normal;font-size: .7em;color:black;} 
+         p {font-family:"Verdana";font-weight:normal;color:black;margin-top: -5px}
+         b {font-family:"Verdana";font-weight:bold;color:black;margin-top: -5px}
+         H1 { font-family:"Verdana";font-weight:normal;font-size:18pt;color:red }
+         H2 { font-family:"Verdana";font-weight:normal;font-size:14pt;color:maroon }
+         pre {font-family:"Consolas","Lucida Console",Monospace;font-size:11pt;margin:0;padding:0.5em;line-height:14pt}
+         .marker {font-weight: bold; color: black;text-decoration: none;}
+         .version {color: gray;}
+         .error {margin-bottom: 10px;}
+         .expandable { text-decoration:underline; font-weight:bold; color:navy; cursor:pointer; }
+         @media screen and (max-width: 639px) {
+          pre { width: 440px; overflow: auto; white-space: pre-wrap; word-wrap: break-word; }
+         }
+         @media screen and (max-width: 479px) {
+          pre { width: 280px; }
+         }
+        </style>
+    </head>
+
+    <body bgcolor="white">
+
+            <span><H1>Error de servidor en la aplicación '/'.<hr width=100% size=1 color=silver></H1>
+
+            <h2> <i>Error en runtime</i> </h2></span>
+
+            <font face="Arial, Helvetica, Geneva, SunSans-Regular, sans-serif ">
+
+            <b> Descripción: </b>Error de aplicación en el servidor. La configuración actual de errores personalizados de esta aplicación evita que se muestren los detalles del error de la aplicación de manera remota (por razones de seguridad). Sin embargo, se pueden ver los detalles en los exploradores que se ejecuten localmente en el servidor.
+            <br><br>
+
+            <b>Detalles:</b> Para habilitar los detalles de este mensaje de error espec&#237;fico de forma que sean visibles en equipos remotos, cree una etiqueta &lt;customErrors&gt; en el archivo de configuraci&#243;n &quot;web.config&quot; ubicado en el directorio ra&#237;z de la aplicaci&#243;n Web actual. La etiqueta &lt;customErrors&gt; debe tener el atributo &quot;mode&quot; establecido como &quot;Off&quot;.<br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+&lt;!-- Web.Config Configuration File --&gt;
+
+&lt;configuration&gt;
+    &lt;system.web&gt;
+        &lt;customErrors mode=&quot;Off&quot;/&gt;
+    &lt;/system.web&gt;
+&lt;/configuration&gt;</pre>                      </code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            <b>Notas:</b> La p&#225;gina de errores que est&#225; viendo actualmente se puede reemplazar por una p&#225;gina de errores personalizada si se modifica el atributo &quot;defaultRedirect&quot; de la etiqueta de configuraci&#243;n &lt;customErrors&gt; de la aplicaci&#243;n para que se&#241;ale una direcci&#243;n URL de p&#225;ginas de errores personalizadas.<br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+&lt;!-- Web.Config Configuration File --&gt;
+
+&lt;configuration&gt;
+    &lt;system.web&gt;
+        &lt;customErrors mode=&quot;RemoteOnly&quot; defaultRedirect=&quot;mycustompage.htm&quot;/&gt;
+    &lt;/system.web&gt;
+&lt;/configuration&gt;</pre>                      </code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            </font>
+
+    </body>
+</html>
+
+
+
+==================================================
+TIMESTAMP: 2026-07-27T02:00:41.876Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://ws.facturatech.co/v2/pro/index.php
+soapAction: urn:https://ws.facturatech.co/v2/pro/#FtechAction.uploadInvoiceFile
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadInvoiceFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">90142883cuatro</username>
+         <password>8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMjkxPC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA3LTI3PC9FTkNfNz4KICAgIDxFTkNfOD4yMTowMDo0MS0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIDxFTkNfMTU+MTwvRU5DXzE1PgogICAgPEVOQ18xNj4yMDI2LTA3LTI3PC9FTkNfMTY+CiAgICA8RU5DXzIwPjE8L0VOQ18yMD4KICAgIDxFTkNfMjE+MTA8L0VOQ18yMT4KICA8L0VOQz4KICA8UFJPPgogICAgPFBST18xPjI8L1BST18xPgogICAgPFBST18yPjI5MTEzMjg4PC9QUk9fMj4KICAgIDxQUk9fMz4zMTwvUFJPXzM+CiAgICA8UFJPXzY+U09MTEFOR0UgRVNNRVJBTERBIFpBUEFUQTwvUFJPXzY+CiAgICA8UFJPXzEwPkNMIDkwIDI4IEUgMzQ8L1BST18xMD4KICAgIDxQUk9fMTE+NzY8L1BST18xMT4KICAgIDxQUk9fMTM+Q0FMSSAtIDc2MDAxPC9QUk9fMTM+CiAgICA8UFJPXzE0Pjc2MDAwMTwvUFJPXzE0PgogICAgPFBST18xNT5DTzwvUFJPXzE1PgogICAgPFBST18xOT5WQUxMRSBERUwgQ0FVQ0EgLSA3NjwvUFJPXzE5PgogICAgPFBST18yMT5Db2xvbWJpYTwvUFJPXzIxPgogICAgPFBST18yMj41PC9QUk9fMjI+CiAgICA8UFJPXzIzPjc2MDAxPC9QUk9fMjM+CiAgICA8VEFDPgogICAgICA8VEFDXzE+Ui05OS1QTjwvVEFDXzE+CiAgICA8L1RBQz4KICAgIDxHVEU+CiAgICAgIDxHVEVfMT4wMTwvR1RFXzE+CiAgICAgIDxHVEVfMj5JVkE8L0dURV8yPgogICAgPC9HVEU+CiAgPC9QUk8+CiAgPEFEUT4KICAgIDxBRFFfMT4xPC9BRFFfMT4KICAgIDxBRFFfMj45MDE0Mjg4MzQ8L0FEUV8yPgogICAgPEFEUV8zPjMxPC9BRFFfMz4KICAgIAogICAgPEFEUV82PkRPTUVTVElLTyBTQVM8L0FEUV82PgogICAgPEFEUV8yMj4yPC9BRFFfMjI+CiAgICA8VENSPgogICAgICA8VENSXzE+Ui05OS1QTjwvVENSXzE+CiAgICA8L1RDUj4KICAgIDxHVEE+CiAgICAgIDxHVEFfMT5aWjwvR1RBXzE+CiAgICAgIDxHVEFfMj5JVkE8L0dUQV8yPgogICAgPC9HVEE+CiAgPC9BRFE+CiAgPFRPVD4KICAgIDxUT1RfMT43NTAwMC4wMDwvVE9UXzE+CiAgICA8VE9UXzI+Q09QPC9UT1RfMj4KICAgIDxUT1RfMz4wLjAwPC9UT1RfMz4KICAgIDxUT1RfND5DT1A8L1RPVF80PgogICAgPFRPVF81Pjc1MDAwLjAwPC9UT1RfNT4KICAgIDxUT1RfNj5DT1A8L1RPVF82PgogICAgPFRPVF83Pjc1MDAwLjAwPC9UT1RfNz4KICAgIDxUT1RfOD5DT1A8L1RPVF84PgogIDwvVE9UPgogIDxEUkY+CiAgICA8RFJGXzE+MTg3NjQwOTk3NzM0NzQ8L0RSRl8xPgogICAgPERSRl8yPjIwMjUtMTAtMDY8L0RSRl8yPgogICAgPERSRl8zPjIwMjYtMTAtMDY8L0RSRl8zPgogICAgPERSRl80PkRTRTwvRFJGXzQ+CiAgICA8RFJGXzU+MTk1PC9EUkZfNT4KICAgIDxEUkZfNj4xMDAwPC9EUkZfNj4KICA8L0RSRj4KICA8TUVQPgogICAgPE1FUF8xPjEwPC9NRVBfMT4KICAgIDxNRVBfMj4xPC9NRVBfMj4KICAgIDxNRVBfMz4yMDI2LTA3LTI3PC9NRVBfMz4KICA8L01FUD4KICA8SVRFPgogICAgPElURV8xPjE8L0lURV8xPgogICAgPElURV8zPjEuMDA8L0lURV8zPgogICAgPElURV80PlpaPC9JVEVfND4KICAgIDxJVEVfNT43NTAwMC4wMDwvSVRFXzU+CiAgICA8SVRFXzY+Q09QPC9JVEVfNj4KICAgIDxJVEVfNz43NTAwMC4wMDwvSVRFXzc+CiAgICA8SVRFXzg+Q09QPC9JVEVfOD4KICAgIDxJVEVfMTE+QVNFTyBZIFZJR0lMQU5DSUE8L0lURV8xMT4KICAgIDxJVEVfMjc+MS4wMDwvSVRFXzI3PgogICAgPElURV8yOD5aWjwvSVRFXzI4PgogICAgPElBRT4KICAgICAgPElBRV8xPlIwMDE8L0lBRV8xPgogICAgICA8SUFFXzI+OTk5PC9JQUVfMj4KICAgIDwvSUFFPgogICAgPElCUz4KICAgICAgPElCU18xPjIwMjYtMDctMjc8L0lCU18xPgogICAgICA8SUJTXzI+MTwvSUJTXzI+CiAgICAgIDxJQlNfMz5Qb3Igb3BlcmFjacOzbjwvSUJTXzM+CiAgICA8L0lCUz4KICA8L0lURT4KPC9ET0NVTUVOVE9fU09QT1JURT4=</xmlBase64>
+      </urn:FtechAction.uploadInvoiceFile>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws.facturatech.co/v2/pro/"><SOAP-ENV:Body><ns1:FtechAction.uploadInvoiceFileResponse xmlns:ns1="urn:https://ws.facturatech.co/v2/pro/"><return xsi:type="tns:response_ws"><code xsi:type="xsd:string">404</code><success xsi:type="xsd:string"></success><transaccionID xsi:type="xsd:string"></transaccionID><error xsi:type="xsd:string">El nombre de usuario no está registrado</error></return></ns1:FtechAction.uploadInvoiceFileResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 404
+parsedTransactionID: 
+parsedMessage: El nombre de usuario no está registrado
+

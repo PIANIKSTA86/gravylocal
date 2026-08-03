@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="es-CO">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="GRAVY - Software ERP y POS local y offline-first para Colombia. Factura electrónica DIAN, inventarios PEPS, copropiedades y más, sin depender de internet.">
+  <meta name="keywords" content="ERP local, POS offline, facturacion electronica DIAN, copropiedades propiedad horizontal, inventario PEPS, importaciones, software administrativo colombia">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://gravy-ms.com/">
+  <meta property="og:title" content="GRAVY - ERP Local, POS e Inventario Offline-First para Colombia">
+  <meta property="og:description" content="Software ERP y POS local que no se detiene si internet falla. Factura electrónica DIAN, inventarios, copropiedades e importaciones.">
+  <meta property="og:image" content="https://gravy-ms.com/img/og-image.png">
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:title" content="GRAVY - ERP Local, POS e Inventario Offline-First">
+  <meta property="twitter:description" content="Software ERP y POS local que no se detiene si internet falla.">
+
+  <title>GRAVY · ERP y POS Offline-First para Colombia | Sin depender del internet</title>
+
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2364E1FF'/%3E%3Cstop offset='100%25' stop-color='%237F7CFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ctext x='96' y='135' font-size='110' font-weight='800' text-anchor='middle' fill='%23050814' font-family='sans-serif'%3EG%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+
+  <!-- ======================= HEADER & NAVBAR ======================= -->
+  <header class="header" id="header">
+    <div class="container nav-container">
+      <a href="#inicio" class="brand">
+        <div class="logo-container">
+          <img src="./gravy-logo.png" alt="Logo GRAVY" class="logo-img">
+        </div>
+        <span class="brand-name">GRAVY<span class="brand-dot">.</span></span>
+      </a>
+
+      <nav class="nav-menu" id="nav-menu">
+        <a href="#inicio"        class="nav-link active">Inicio</a>
+        <a href="#beneficios"    class="nav-link">Beneficios</a>
+        <a href="#caracteristicas" class="nav-link">Funciones</a>
+        <a href="#modulos"       class="nav-link">Módulos</a>
+        <a href="#faq"           class="nav-link">FAQ</a>
+        <a href="#contacto"      class="nav-link">Contacto</a>
+      </nav>
+
+      <div class="nav-cta">
+        <a href="#contacto" class="btn btn-primary btn-sm">Solicitar Demo</a>
+      </div>
+
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle Navigation Menu">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- =====================================================================
+         1. HERO — Dark conversion hero (Estilo Alegra)
+         ===================================================================== -->
+    <section class="hero-v2" id="inicio">
+      <!-- Animated background orbs -->
+      <div class="hero-orb hero-orb-1" aria-hidden="true"></div>
+      <div class="hero-orb hero-orb-2" aria-hidden="true"></div>
+      <div class="hero-orb hero-orb-3" aria-hidden="true"></div>
+      <div class="hero-particles" id="hero-particles" aria-hidden="true"></div>
+
+      <div class="container hero-v2-inner">
+        <div class="hero-v2-badge reveal-up">
+          <i class="fas fa-circle-dot"></i>&nbsp; Versión 2.0 — Ahora con Cloudflare Tunnel
+        </div>
+
+        <h1 class="hero-v2-title reveal-up">
+          Gestiona tu empresa <span class="gradient-text">sin depender</span><br>del internet
+        </h1>
+
+        <p class="hero-v2-desc reveal-up">
+          GRAVY es el ERP y POS local <strong>offline-first</strong> diseñado para Colombia. Factura en la DIAN, controla inventarios, copropiedades e importaciones — todo desde tu red LAN, sin interrupciones.
+        </p>
+
+        <!-- CTA inline (estilo Alegra) -->
+        <form class="hero-cta-form reveal-up" id="hero-cta-form" novalidate>
+          <div class="hero-cta-input-wrap">
+            <i class="fas fa-envelope hero-cta-icon"></i>
+            <input type="email" id="hero-email" class="hero-cta-input" placeholder="tucorreo@empresa.com" autocomplete="email">
+          </div>
+          <button type="submit" class="btn btn-hero-cta">
+            Solicitar Demo Gratis <i class="fas fa-arrow-right"></i>
+          </button>
+        </form>
+
+        <!-- Trust badges -->
+        <div class="hero-trust-badges reveal-up">
+          <span class="trust-badge-item"><i class="fas fa-check-circle"></i> Sin tarjeta de crédito</span>
+          <span class="trust-badge-item"><i class="fas fa-bolt"></i> Instalación en 1 día</span>
+          <span class="trust-badge-item"><i class="fas fa-headset"></i> Soporte incluido</span>
+          <span class="trust-badge-item"><i class="fas fa-shield-halved"></i> Datos 100% en tu red</span>
+        </div>
+
+        <!-- Full-width mockup below -->
+        <div class="hero-v2-mockup reveal-up">
+          <div class="hero-mockup-browser">
+            <div class="mockup-browser-bar">
+              <div class="mockup-browser-dots">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+              </div>
+              <div class="mockup-browser-url">
+                <i class="fas fa-lock" style="color:#10b981; font-size:10px;"></i>
+                &nbsp;gravy-ms.com &nbsp;·&nbsp; <span style="color:#00b4d8;">Offline Activo</span>
+              </div>
+              <div class="mockup-browser-actions">
+                <div class="mockup-sidebar-item" style="width: 80px; height: 8px; border-radius: 4px;"></div>
+              </div>
+            </div>
+            <div class="mockup-browser-screen">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20003845.png" alt="Dashboard Principal GRAVY v2.0" class="mockup-real-screen" loading="eager">
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         2. TRUST MARQUEE — Sectores atendidos
+         ===================================================================== -->
+    <section class="trust-marquee-section" aria-label="Sectores que usan GRAVY">
+      <div class="trust-marquee-label">Diseñado para múltiples sectores en Colombia</div>
+      <div class="trust-marquee-wrapper">
+        <div class="trust-marquee-track" id="trust-marquee">
+          <div class="trust-marquee-item"><i class="fas fa-store"></i> Tiendas al por Mayor</div>
+          <div class="trust-marquee-item"><i class="fas fa-building"></i> Copropiedades y PH</div>
+          <div class="trust-marquee-item"><i class="fas fa-truck"></i> Distribuidoras</div>
+          <div class="trust-marquee-item"><i class="fas fa-ship"></i> Importadoras</div>
+          <div class="trust-marquee-item"><i class="fas fa-utensils"></i> Restaurantes</div>
+          <div class="trust-marquee-item"><i class="fas fa-hammer"></i> Ferreterías</div>
+          <div class="trust-marquee-item"><i class="fas fa-tshirt"></i> Boutiques y Moda</div>
+          <div class="trust-marquee-item"><i class="fas fa-pills"></i> Droguerías</div>
+          <div class="trust-marquee-item"><i class="fas fa-car"></i> Repuestos Automotriz</div>
+          <div class="trust-marquee-item"><i class="fas fa-seedling"></i> Agropecuarias</div>
+          <!-- Duplicate for infinite loop -->
+          <div class="trust-marquee-item"><i class="fas fa-store"></i> Tiendas al por Mayor</div>
+          <div class="trust-marquee-item"><i class="fas fa-building"></i> Copropiedades y PH</div>
+          <div class="trust-marquee-item"><i class="fas fa-truck"></i> Distribuidoras</div>
+          <div class="trust-marquee-item"><i class="fas fa-ship"></i> Importadoras</div>
+          <div class="trust-marquee-item"><i class="fas fa-utensils"></i> Restaurantes</div>
+          <div class="trust-marquee-item"><i class="fas fa-hammer"></i> Ferreterías</div>
+          <div class="trust-marquee-item"><i class="fas fa-tshirt"></i> Boutiques y Moda</div>
+          <div class="trust-marquee-item"><i class="fas fa-pills"></i> Droguerías</div>
+          <div class="trust-marquee-item"><i class="fas fa-car"></i> Repuestos Automotriz</div>
+          <div class="trust-marquee-item"><i class="fas fa-seedling"></i> Agropecuarias</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         3. BENEFITS — ¿Por qué GRAVY?
+         ===================================================================== -->
+    <section class="benefits" id="beneficios">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag reveal-up">¿Por qué GRAVY?</span>
+          <h2 class="section-title reveal-up">Tu negocio, tus reglas, tu data</h2>
+          <p class="section-subtitle reveal-up">Supera las limitaciones de los sistemas en la nube con una arquitectura diseñada para la realidad colombiana.</p>
+        </div>
+        <div class="benefits-grid">
+          <div class="benefit-card reveal-up" style="--delay:0ms">
+            <div class="benefit-icon-wrap">
+              <i class="fas fa-wifi-slash"></i>
+            </div>
+            <h3>Offline-First, siempre</h3>
+            <p>Factura, vende y controla inventarios aunque el internet falle. GRAVY opera 100% en tu red local y sincroniza cuando la conexión regresa.</p>
+            <ul class="benefit-list">
+              <li><i class="fas fa-check"></i> Sin cortes en caja por falla de internet</li>
+              <li><i class="fas fa-check"></i> Velocidad de red LAN sin latencia</li>
+              <li><i class="fas fa-check"></i> Sincronización automática al reconectarse</li>
+            </ul>
+          </div>
+          <div class="benefit-card reveal-up" style="--delay:100ms">
+            <div class="benefit-icon-wrap violet">
+              <i class="fas fa-vault"></i>
+            </div>
+            <h3>Tus datos, bajo tu control</h3>
+            <p>La base de datos vive en tu servidor local. Nadie más tiene acceso a tu información financiera, tus clientes o tu inventario.</p>
+            <ul class="benefit-list">
+              <li><i class="fas fa-check"></i> Base de datos local con PocketBase</li>
+              <li><i class="fas fa-check"></i> Sin subscripción a servidores externos</li>
+              <li><i class="fas fa-check"></i> Acceso remoto seguro con Cloudflare Tunnel</li>
+            </ul>
+          </div>
+          <div class="benefit-card reveal-up" style="--delay:200ms">
+            <div class="benefit-icon-wrap amber">
+              <i class="fas fa-puzzle-piece"></i>
+            </div>
+            <h3>Modular: paga solo lo que usas</h3>
+            <p>Adquiere el núcleo base y activa los módulos que tu negocio necesita. No pagas por funciones que no usas.</p>
+            <ul class="benefit-list">
+              <li><i class="fas fa-check"></i> 12+ módulos especializados disponibles</li>
+              <li><i class="fas fa-check"></i> Escalable a medida que crece tu empresa</li>
+              <li><i class="fas fa-check"></i> Sin contratos de largo plazo</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         4. FEATURE SPLITS — Características clave con mockups
+         ===================================================================== -->
+    <section class="features-showcase" id="caracteristicas">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag reveal-up">Funcionalidades Clave</span>
+          <h2 class="section-title reveal-up">Todo lo que tu operación necesita</h2>
+          <p class="section-subtitle reveal-up">Desde el punto de venta hasta la contabilidad completa, cada módulo es potente y está integrado.</p>
+        </div>
+
+        <!-- Feature 1: POS — Texto izquierda, imagen derecha -->
+        <div class="feature-split">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag comercial">
+              <i class="fas fa-cash-register"></i> Punto de Venta POS
+            </div>
+            <h3 class="feature-split-title">Vende más rápido, sin interrupciones</h3>
+            <p class="feature-split-desc">El POS de GRAVY está optimizado para velocidad. Cobra en efectivo, tarjeta o transferencia, emite tickets y facturas electrónicas DIAN, todo en segundos — incluso sin internet.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Búsqueda de productos por código de barras o nombre</li>
+              <li><i class="fas fa-circle-check"></i> Gestión de múltiples cajas y terminales simultáneas</li>
+              <li><i class="fas fa-circle-check"></i> Apertura y cierre de turno con cuadre de caja</li>
+              <li><i class="fas fa-circle-check"></i> Descuentos, devoluciones y notas crédito</li>
+              <li><i class="fas fa-circle-check"></i> Documento Equivalente Electrónico (DEE) DIAN automático</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Ver demo del POS <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20011748.png" alt="Pantalla del Punto de Venta POS de GRAVY" loading="lazy">
+              <div class="feature-img-badge pos-badge">
+                <i class="fas fa-wifi-slash"></i> Offline Activo
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 2: DIAN — Imagen izquierda, texto derecha -->
+        <div class="feature-split reverse">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag dian">
+              <i class="fas fa-stamp"></i> Facturación Electrónica DIAN
+            </div>
+            <h3 class="feature-split-title">Cumplimiento fiscal automático</h3>
+            <p class="feature-split-desc">GRAVY genera, firma y transmite tus facturas electrónicas y documentos equivalentes a la DIAN en UBL 2.1. Las actualizaciones normativas se aplican automáticamente sin que tengas que hacer nada.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Factura de Venta Electrónica (FVE) UBL 2.1</li>
+              <li><i class="fas fa-circle-check"></i> Nómina Electrónica DIAN integrada</li>
+              <li><i class="fas fa-circle-check"></i> Notas Crédito y Débito electrónicas</li>
+              <li><i class="fas fa-circle-check"></i> Medios Magnéticos y Exógena DIAN</li>
+              <li><i class="fas fa-circle-check"></i> Reporte de retenciones (RteICA, RteFuente, IVA)</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Conocer módulo DIAN <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20004920.png" alt="Pantalla de Facturación y Asiento Contable de GRAVY" loading="lazy">
+              <div class="feature-img-badge dian-badge">
+                <i class="fas fa-check-double"></i> Validado DIAN
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 3: Copropiedades — Texto izquierda, imagen derecha -->
+        <div class="feature-split">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag copropiedad">
+              <i class="fas fa-building-user"></i> Gestión de Copropiedades
+            </div>
+            <h3 class="feature-split-title">Administración de Propiedad Horizontal sin estrés</h3>
+            <p class="feature-split-desc">El módulo de Copropiedades de GRAVY centraliza la gestión de residentes, expensas, cartera, PQRS y zonas comunes en una sola plataforma diseñada para el mercado colombiano.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Facturación masiva de expensas ordinarias y extraordinarias</li>
+              <li><i class="fas fa-circle-check"></i> Cartera y conciliación de pagos por unidad</li>
+              <li><i class="fas fa-circle-check"></i> Gestión de PQRSD con seguimiento de estado</li>
+              <li><i class="fas fa-circle-check"></i> Reserva de zonas comunes con calendario</li>
+              <li><i class="fas fa-circle-check"></i> App móvil para propietarios (consultas y reservas)</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Ver módulo Copropiedades <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame amber-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20004325.png" alt="Pantalla de Gestión de Copropiedades de GRAVY" loading="lazy">
+              <div class="feature-img-badge copropiedad-badge">
+                <i class="fas fa-building-user"></i> Propiedad Horizontal
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 4: Gestión Inmobiliaria — Imagen izquierda, texto derecha -->
+        <div class="feature-split reverse">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag inmobiliaria">
+              <i class="fas fa-house-chimney-window"></i> Gestión Inmobiliaria y Arriendos
+            </div>
+            <h3 class="feature-split-title">Administración integral de Arrendamientos</h3>
+            <p class="feature-split-desc">El módulo de Gestión Inmobiliaria de GRAVY centraliza el control de tus propiedades en arriendo, agilizando la facturación y intermediación de comisiones con vinculación contable automática.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Ficha técnica del inmueble con comodidades (ascensor, piscina, mascotas) y estrato</li>
+              <li><i class="fas fa-circle-check"></i> Contratos de arriendo vinculando inquilino y propietario</li>
+              <li><i class="fas fa-circle-check"></i> Liquidación y causación mensual automática de cánones y comisiones</li>
+              <li><i class="fas fa-circle-check"></i> Bitácora detallada de novedades, reparaciones y mantenimientos con registro de costos</li>
+              <li><i class="fas fa-circle-check"></i> Módulo de facturación directa para venta de propiedades</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Ver módulo Inmobiliarias <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame pink-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20004353.png" alt="Ficha y Lista de Inmuebles de GRAVY" loading="lazy">
+              <div class="feature-img-badge inmobiliaria-badge">
+                <i class="fas fa-house-chimney-window"></i> Gestión Inmobiliaria
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 5: Spa de Mascotas — Texto izquierda, imagen derecha -->
+        <div class="feature-split">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag spa">
+              <i class="fas fa-spa"></i> Spa y Estética de Mascotas
+            </div>
+            <h3 class="feature-split-title">Agenda y expediente clínico estético</h3>
+            <p class="feature-split-desc">Diseñado para veterinarias y spas de mascotas. Permite coordinar agendas de peluquería y baño, llevando el control de expedientes y alertas críticas en pantalla para la protección de cada mascota.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Agenda de citas interactivas filtrada por estilista y colaborador</li>
+              <li><i class="fas fa-circle-check"></i> Expediente completo de mascotas (especie, raza, edad, dueño)</li>
+              <li><i class="fas fa-circle-check"></i> Alertas visuales destacadas de conducta (nerviosismo, agresividad) y alergias en ficha</li>
+              <li><i class="fas fa-circle-check"></i> Generación automatizada de pedidos de venta vinculados a la cita</li>
+              <li><i class="fas fa-circle-check"></i> Historial completo de servicios y estilistas anteriores</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Ver módulo Spa <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame blue-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20004249.png" alt="Módulo de Spa de Mascotas de GRAVY" loading="lazy">
+              <div class="feature-img-badge spa-badge">
+                <i class="fas fa-spa"></i> Spa & Peluquería
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Feature 6: Tienda Virtual — Imagen izquierda, texto derecha -->
+        <div class="feature-split reverse">
+          <div class="feature-split-content reveal-up">
+            <div class="feature-split-tag tienda">
+              <i class="fas fa-store"></i> Tienda Virtual Integrada
+            </div>
+            <h3 class="feature-split-title">Venta en línea enlazada con tu stock local</h3>
+            <p class="feature-split-desc">Permite habilitar un canal de ventas por internet sin configuraciones complejas. La tienda en línea se conecta en tiempo real con el inventario físico de tus bodegas locales.</p>
+            <ul class="feature-split-list">
+              <li><i class="fas fa-circle-check"></i> Catálogo e-commerce dinámico autoadministrado desde tu panel</li>
+              <li><i class="fas fa-circle-check"></i> Control de disponibilidad instantánea de stock (evita ventas cruzadas)</li>
+              <li><i class="fas fa-circle-check"></i> Búsqueda rápida, filtros avanzados por categoría y marca</li>
+              <li><i class="fas fa-circle-check"></i> Generación directa de pedidos que ingresan directo a tu panel de despacho</li>
+              <li><i class="fas fa-circle-check"></i> Acceso público seguro y cifrado mediante Cloudflare Tunnel</li>
+            </ul>
+            <a href="#contacto" class="btn btn-secondary feature-cta">Ver Tienda Virtual <i class="fas fa-arrow-right"></i></a>
+          </div>
+          <div class="feature-split-image reveal-up" style="--delay:150ms">
+            <div class="feature-img-frame violet-frame">
+              <img src="./screenshots/Captura%20de%20pantalla%202026-06-21%20012118.png" alt="Catálogo de Tienda Virtual de GRAVY" loading="lazy">
+              <div class="feature-img-badge tienda-badge">
+                <i class="fas fa-store"></i> E-commerce Catalog
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         5. HOW IT WORKS — Cómo funciona en 4 pasos
+         ===================================================================== -->
+    <section class="how-it-works">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag reveal-up">Proceso Simple</span>
+          <h2 class="section-title reveal-up">Empieza a operar en 1 día</h2>
+          <p class="section-subtitle reveal-up">No necesitas un departamento de TI. GRAVY está diseñado para que cualquier empresa lo tenga funcionando rápidamente.</p>
+        </div>
+        <div class="steps-grid">
+          <div class="step-card reveal-up" style="--delay:0ms">
+            <div class="step-number">01</div>
+            <div class="step-icon"><i class="fas fa-download"></i></div>
+            <h3 class="step-title">Instala GRAVY</h3>
+            <p class="step-desc">Descarga e instala el servidor GRAVY en cualquier equipo Windows de tu red. Sin configuraciones complejas, listo en minutos.</p>
+          </div>
+          <div class="step-connector" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>
+          <div class="step-card reveal-up" style="--delay:100ms">
+            <div class="step-number">02</div>
+            <div class="step-icon"><i class="fas fa-sliders"></i></div>
+            <h3 class="step-title">Configura tu empresa</h3>
+            <p class="step-desc">Ingresa tus datos del RUT, activa los módulos que necesitas y crea tus usuarios. El asistente te guía paso a paso.</p>
+          </div>
+          <div class="step-connector" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>
+          <div class="step-card reveal-up" style="--delay:200ms">
+            <div class="step-number">03</div>
+            <div class="step-icon"><i class="fas fa-rocket"></i></div>
+            <h3 class="step-title">Comienza a operar</h3>
+            <p class="step-desc">Vende, factura y controla tu inventario desde cualquier equipo en tu red LAN. Sin internet requerido para las operaciones diarias.</p>
+          </div>
+          <div class="step-connector" aria-hidden="true"><i class="fas fa-chevron-right"></i></div>
+          <div class="step-card reveal-up" style="--delay:300ms">
+            <div class="step-number">04</div>
+            <div class="step-icon"><i class="fas fa-cloud-arrow-up"></i></div>
+            <h3 class="step-title">Accede desde cualquier lugar</h3>
+            <p class="step-desc">Activa Cloudflare Tunnel para acceder a GRAVY de forma segura desde tu celular o laptop, desde donde estés.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         6. STATS / COUNTERS
+         ===================================================================== -->
+    <section class="stats-section">
+      <div class="stats-glow-bg" aria-hidden="true"></div>
+      <div class="container">
+        <div class="stats-grid stats-grid-two">
+          <div class="stat-item reveal-up" style="--delay:0ms">
+            <div class="stat-icon"><i class="fas fa-bolt"></i></div>
+            <div class="stat-number" data-target="99.9" data-suffix="%" data-decimals="1">0</div>
+            <div class="stat-label">Uptime en red LAN</div>
+          </div>
+          <div class="stat-item reveal-up" style="--delay:80ms">
+            <div class="stat-icon"><i class="fas fa-cubes"></i></div>
+            <div class="stat-number" data-target="12" data-suffix=" Módulos">0</div>
+            <div class="stat-label">Módulos disponibles</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         7. MODULES CATALOGUE — Compact grid
+         ===================================================================== -->
+    <section class="modules" id="modulos">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag reveal-up">Catálogo de Módulos</span>
+          <h2 class="section-title reveal-up">Construye tu ERP a la medida</h2>
+          <p class="section-subtitle reveal-up">Activa solo los módulos que necesitas. Cada módulo está profundamente integrado con el core contable y entre sí.</p>
+        </div>
+
+        <!-- Filter tabs -->
+        <div class="modules-filter reveal-up">
+          <button class="filter-btn active" data-filter="all">Todos</button>
+          <button class="filter-btn" data-filter="comercial">Comercial</button>
+          <button class="filter-btn" data-filter="contable">Contable</button>
+          <button class="filter-btn" data-filter="copropiedades">Copropiedades</button>
+        </div>
+
+        <div class="modules-grid">
+
+          <!-- POS -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-cash-register"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Punto de Venta POS</h3>
+            <p class="module-desc">Terminal de venta rápida, multi-caja y multi-terminal. Opera offline con sincronización automática.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Códigos de barras y búsqueda rápida</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Múltiples métodos de pago</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cierre de turno y arqueo de caja</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Documento Equivalente Electrónico DIAN</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Devoluciones y notas crédito</div>
+            </div>
+          </div>
+
+          <!-- Inventarios -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-boxes-stacked"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Inventarios PEPS</h3>
+            <p class="module-desc">Control de stock con método PEPS (FIFO), múltiples bodegas, trazabilidad de lotes y vencimientos.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Kárdex PEPS automático por referencia</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Gestión de bodegas y ubicaciones</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Alertas de stock mínimo</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Toma de inventario físico asistida</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Traslados inter-bodega trazables</div>
+            </div>
+          </div>
+
+          <!-- DIAN -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Factura y Nómina Electrónica</h3>
+            <p class="module-desc">Emisión de documentos electrónicos en UBL 2.1 conforme a la resolución DIAN vigente.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Factura de Venta Electrónica UBL 2.1</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Nómina electrónica de empleados</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Notas crédito y débito electrónicas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Exógena y Medios Magnéticos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Retenciones RteICA, RteFuente, IVA</div>
+            </div>
+          </div>
+
+          <!-- Copropiedades -->
+          <div class="module-card copropiedades" data-category="copropiedades">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-building-user"></i></div>
+              <span class="module-category">Copropiedades</span>
+            </div>
+            <h3 class="module-title">Propiedad Horizontal</h3>
+            <p class="module-desc">Administración integral de conjuntos residenciales, comerciales y mixtos bajo la Ley 675.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Facturación masiva de expensas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cartera y recaudo por unidad</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Gestión de PQRSD con trazabilidad</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Reserva de zonas comunes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Actas y comunicados digitales</div>
+            </div>
+          </div>
+
+          <!-- Tesorería -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-money-bill-transfer"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Tesorería y Flujo de Caja</h3>
+            <p class="module-desc">Control de cuentas por cobrar, cuentas por pagar, conciliación bancaria y flujo de efectivo.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cuentas por cobrar con aging report</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cuentas por pagar y programación de pagos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Conciliación bancaria asistida</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Gestión de cheques y transferencias</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Flujo de caja proyectado</div>
+            </div>
+          </div>
+
+          <!-- Importaciones -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-ship"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Gestión de Importaciones</h3>
+            <p class="module-desc">Registro y costeo completo de importaciones desde la factura del proveedor hasta la nacionalización.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Registro de facturas en USD/EUR con TRM</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Costeo de fletes, seguros y aduanas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cálculo automático de costo CIF</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Vinculación con declaración de importación</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Integración directa con inventario PEPS</div>
+            </div>
+          </div>
+
+          <!-- Comisiones -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-users-gear"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Comisiones a Vendedores</h3>
+            <p class="module-desc">Liquidación automática de comisiones por ventas, cumplimiento de cuota y margen de rentabilidad.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Esquemas de comisión configurables</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Liquidación por período (quincenal/mensual)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Dashboard individual por vendedor</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Ranking y metas de equipo</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Integración con nómina electrónica</div>
+            </div>
+          </div>
+
+          <!-- PUC Contabilidad -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-book-open"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Contabilidad PUC</h3>
+            <p class="module-desc">Plan Único de Cuentas completo con asientos automáticos, estados financieros y auditoría de transacciones.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> PUC colombiano preconfigurado</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Balance General y P&amp;G automáticos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Libro diario y mayor con pista de auditoría</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Centros de costo y proyectos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> NIIF-Pymes y Estándar CTCP</div>
+            </div>
+          </div>
+
+          <!-- Pedidos y Compras -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-cart-flatbed"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Pedidos, Compras y Cotizaciones</h3>
+            <p class="module-desc">Flujo completo de compras: cotización → orden de compra → recepción → factura de proveedor.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Generación de órdenes de compra</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Seguimiento de pedidos a proveedores</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Cotizaciones a clientes con validez</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Comparativo de precios de proveedores</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Recepción parcial y control de calidad</div>
+            </div>
+          </div>
+
+          <!-- BI / Reportes -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-chart-pie"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Reportes e Inteligencia de Negocio</h3>
+            <p class="module-desc">Dashboards en tiempo real, análisis de rentabilidad y exportación de datos para decisiones informadas.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Dashboard gerencial en tiempo real</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Top productos y clientes más rentables</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Análisis de márgenes por referencia</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Exportación a Excel y PDF</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Comparativo de períodos y presupuesto</div>
+            </div>
+          </div>
+
+          <!-- Nómina -->
+          <div class="module-card contable" data-category="contable">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-id-card"></i></div>
+              <span class="module-category">Contable</span>
+            </div>
+            <h3 class="module-title">Gestión de Nómina</h3>
+            <p class="module-desc">Liquidación de nómina colombiana con prestaciones, seguridad social y nómina electrónica DIAN.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Liquidación quincenal y mensual</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Prestaciones: primas, cesantías, vacaciones</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Aportes a seguridad social (PILA)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Nómina electrónica UBL DIAN</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Colilla de pago digital para empleados</div>
+            </div>
+          </div>
+
+          <!-- App Móvil -->
+          <div class="module-card copropiedades" data-category="copropiedades">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-mobile-screen-button"></i></div>
+              <span class="module-category">Copropiedades</span>
+            </div>
+            <h3 class="module-title">App Móvil para Propietarios</h3>
+            <p class="module-desc">Aplicación Android nativa que conecta a residentes con la administración en tiempo real vía Cloudflare.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Consulta de extracto y cuotas pendientes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Radicación de PQRSD desde el celular</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Reserva de zonas comunes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Notificaciones push de comunicados</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Sincronización vía Cloudflare Tunnel</div>
+            </div>
+          </div>
+
+          <!-- Gestión Inmobiliaria -->
+          <div class="module-card copropiedades" data-category="copropiedades">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-house-chimney-window"></i></div>
+              <span class="module-category">Copropiedades</span>
+            </div>
+            <h3 class="module-title">Gestión Inmobiliaria</h3>
+            <p class="module-desc">Administración de inmuebles, contratos de arriendo y causación mensual automática de cánones y comisiones.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Ficha técnica con amenities (ascensor, piscina)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Contratos de arriendo inquilino-propietario</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Causación y liquidación automática mensual</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Bitácora de novedades y mantenimientos</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Reporte contable de intermediación</div>
+            </div>
+          </div>
+
+          <!-- Logística y Despachos -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-truck-ramp-box"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Logística y Despachos</h3>
+            <p class="module-desc">Programación de rutas, asignación de fletes y vehículos con validación de capacidad de carga.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Control de flota (placa, chofer, capacidad Kg)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Ruteo de entregas vinculando facturas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Hoja de ruta imprimible para conductor</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Consolidado automático de ítems y notas</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Control de entrega (entregado, devuelto)</div>
+            </div>
+          </div>
+
+          <!-- Reservas de Importación -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-clipboard-list"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Reservas de Importación</h3>
+            <p class="module-desc">Reserva de mercancías en tránsito antes de nacionalización y posterior facturación directa del pedido.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Separación de stock entrante por cliente</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Monitoreo de fecha de arribo ETA</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Conversión automática de reserva a factura</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Asignación a bodegas y vendedores</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Trazabilidad integral de estados</div>
+            </div>
+          </div>
+
+          <!-- CRM Ventas -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-funnel-dollar"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">CRM y Pipeline Comercial</h3>
+            <p class="module-desc">Tablero Kanban interactivo para el control del embudo de ventas y seguimiento de oportunidades.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Embudo dinámico (Contacto, Propuesta, Cierre)</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Valor estimado de negocio y fecha de cierre</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Dashboard con KPIs de pipeline y tasa de éxito</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Creación y vinculación rápida de clientes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Registro e historial de comentarios y notas</div>
+            </div>
+          </div>
+
+          <!-- Spa Mascotas -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-spa"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Spa y Peluquería Canina</h3>
+            <p class="module-desc">Agenda de citas y expediente de mascotas con alertas críticas de comportamiento y alergias.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Citas dinámicas por estilista y colaborador</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Alertas en pantalla de conducta y salud</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Expediente completo de mascotas y dueños</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Integración y generación de pedido de venta</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Registro de historial de visitas y servicios</div>
+            </div>
+          </div>
+
+          <!-- Tienda Virtual -->
+          <div class="module-card comercial" data-category="comercial">
+            <div class="module-card-header">
+              <div class="module-icon"><i class="fas fa-store"></i></div>
+              <span class="module-category">Comercial</span>
+            </div>
+            <h3 class="module-title">Tienda Virtual Integrada</h3>
+            <p class="module-desc">Catálogo de ventas web sincronizado en tiempo real con el stock físico de tus bodegas.</p>
+            <div class="module-features-list">
+              <div class="module-feature-item"><i class="fas fa-check"></i> Sincronización instantánea de stock</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Recepción directa de pedidos en despacho</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Búsqueda rápida y filtros avanzados de catálogo</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Pasarela de cotización ágil para clientes</div>
+              <div class="module-feature-item"><i class="fas fa-check"></i> Exposición pública vía Cloudflare Tunnel</div>
+            </div>
+          </div>
+
+        </div><!-- /modules-grid -->
+      </div>
+    </section>
+
+
+    <!-- =====================================================================
+         10. FAQ — Preguntas frecuentes
+         ===================================================================== -->
+    <section class="faq-section" id="faq">
+      <div class="container">
+        <div class="text-center">
+          <span class="section-tag reveal-up">Preguntas Frecuentes</span>
+          <h2 class="section-title reveal-up">¿Tienes dudas? Las resolvemos aquí</h2>
+          <p class="section-subtitle reveal-up">Las preguntas más comunes sobre GRAVY respondidas con claridad.</p>
+        </div>
+        <div class="faq-list">
+
+          <div class="faq-item reveal-up" style="--delay:0ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Qué pasa si se va el internet en mi negocio?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Absolutamente nada. GRAVY está diseñado con arquitectura <strong>offline-first</strong>: la base de datos vive en tu servidor local y todas las operaciones (ventas, facturación, inventario) funcionan en tu red LAN sin necesitar internet. Cuando la conexión regresa, el sistema sincroniza automáticamente con Cloudflare si tienes el tunnel activo.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:50ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Puedo usar GRAVY en varios computadores al mismo tiempo?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Sí. El plan base soporta hasta <strong>10 usuarios simultáneos</strong> en la misma red local. El servidor GRAVY se instala en un equipo central (que actúa como servidor) y los demás equipos de la red acceden vía navegador web, sin instalar nada adicional.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:100ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿GRAVY cumple con la normativa de facturación electrónica de la DIAN?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Sí. GRAVY genera, firma y transmite facturas electrónicas, documentos equivalentes (DEE para POS), nómina electrónica y notas crédito/débito en formato UBL 2.1 conforme a las resoluciones vigentes de la DIAN. Las actualizaciones normativas se incluyen en el plan sin costo adicional.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:150ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Cuál es la diferencia entre GRAVY y un software ERP en la nube?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>La diferencia principal es el <strong>control y la disponibilidad</strong>. Con GRAVY: tu base de datos está en tu red (no en servidores de un tercero), funciona sin internet, tiene velocidad de red local (LAN), no tienes riesgo de que el proveedor suba precios o cierre el servicio, y puedes optar por acceso remoto seguro cuando lo necesitas vía Cloudflare Tunnel.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:200ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Puedo acceder a GRAVY desde fuera de la oficina o mi casa?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Sí. Con la función de <strong>Cloudflare Tunnel</strong>, tu GRAVY local queda accesible de forma segura desde cualquier lugar con internet: celular, laptop, tableta. El acceso usa tu dominio propio (ej. <code>gravy-ms.com</code>) con HTTPS, sin exponer puertos de tu red.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:250ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Cómo se actualizan los módulos y la normativa DIAN?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Las actualizaciones de versión están incluidas en el plan. Cuando hay una nueva versión o un cambio normativo de la DIAN, recibes la actualización y nuestro equipo te guía en el proceso de actualización vía WhatsApp. No hay costos ocultos por actualizaciones.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:300ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Qué hardware necesito para instalar GRAVY?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Un computador con <strong>Windows 10/11</strong> (mínimo 8GB RAM, 100GB de espacio) que actuará como servidor. Los demás equipos acceden vía navegador web sin requisitos especiales. Para el POS, una impresora térmica Bluetooth/USB y un lector de códigos de barras USB son suficientes para empezar.</p>
+            </div>
+          </div>
+
+          <div class="faq-item reveal-up" style="--delay:350ms">
+            <button class="faq-question" aria-expanded="false">
+              ¿Hay soporte técnico incluido?
+              <i class="fas fa-chevron-down faq-icon"></i>
+            </button>
+            <div class="faq-answer">
+              <p>Sí. El plan incluye soporte de implementación por WhatsApp. Nuestro equipo te acompaña en la instalación, configuración inicial, carga de datos maestra (productos, clientes, proveedores) y capacitación básica. Para soporte avanzado y SLA empresarial, contáctanos para conocer los planes de servicio adicionales.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         11. CTA FINAL — Franja oscura de conversión
+         ===================================================================== -->
+    <section class="cta-final">
+      <div class="cta-final-glow" aria-hidden="true"></div>
+      <div class="container cta-final-inner">
+        <div class="cta-final-icon" aria-hidden="true">
+          <i class="fas fa-rocket"></i>
+        </div>
+        <h2 class="cta-final-title reveal-up">¿Listo para digitalizar tu empresa?</h2>
+        <p class="cta-final-desc reveal-up">Comienza con el plan base y agrega los módulos que necesitas a medida que creces. Sin contratos largos, sin servidores costosos.</p>
+        <div class="cta-final-actions reveal-up">
+          <a href="#contacto" class="btn btn-hero-cta">Hablar con un asesor ahora <i class="fas fa-arrow-right"></i></a>
+          <a href="https://wa.me/573233273136?text=Hola,%20quiero%20una%20demo%20de%20GRAVY" target="_blank" rel="noopener" class="btn btn-ghost-white">
+            <i class="fab fa-whatsapp"></i> WhatsApp directo
+          </a>
+        </div>
+        <div class="cta-final-trust">
+          <span><i class="fas fa-check-circle"></i> Sin tarjeta de crédito</span>
+          <span><i class="fas fa-check-circle"></i> Demo guiada gratis</span>
+          <span><i class="fas fa-check-circle"></i> Instalación incluida</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         12. CONTACT FORM
+         ===================================================================== -->
+    <section class="contact" id="contacto">
+      <div class="container contact-grid">
+        <div class="contact-info">
+          <span class="section-tag">Contacto y Soporte</span>
+          <h2 class="section-title">¿Listo para transformar tu gestión?</h2>
+          <p class="section-subtitle" style="margin-left:0; text-align:left;">Agenda una demo personalizada con nuestro equipo. Te mostramos GRAVY en vivo con tu tipo de negocio y resolvemos todas tus dudas sobre módulos y despliegue.</p>
+
+          <div class="contact-details">
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fas fa-envelope"></i></div>
+              <div class="contact-text">
+                <h4>Correo Electrónico</h4>
+                <p><a href="mailto:ventas.gravy@gmail.com">ventas.gravy@gmail.com</a></p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fab fa-whatsapp"></i></div>
+              <div class="contact-text">
+                <h4>Ventas y Soporte WhatsApp</h4>
+                <p><a href="https://wa.me/573233273136?text=Hola,%20deseo%20m%C3%A1s%20informaci%C3%B3n%20sobre%20GRAVY" target="_blank" rel="noopener">+57 323 327 3136</a></p>
+              </div>
+            </div>
+            <div class="contact-item">
+              <div class="contact-icon"><i class="fas fa-location-dot"></i></div>
+              <div class="contact-text">
+                <h4>Cobertura y Despliegue</h4>
+                <p>Instalación en red local para toda Colombia.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-form-wrapper">
+          <div class="form-alert success" id="form-success">
+            <i class="fas fa-circle-check"></i> ¡Mensaje enviado! Un asesor se contactará por WhatsApp pronto.
+          </div>
+          <div class="form-alert error" id="form-error">
+            <i class="fas fa-circle-xmark"></i> Por favor completa todos los campos del formulario.
+          </div>
+
+          <form class="contact-form" id="contact-form" action="#" method="POST">
+            <div class="form-group">
+              <label for="form-name" class="form-label">Nombre Completo</label>
+              <input type="text" id="form-name" class="form-input" placeholder="Ej. Juan Pérez" required>
+            </div>
+            <div class="form-group">
+              <label for="form-phone" class="form-label">Teléfono / WhatsApp</label>
+              <input type="tel" id="form-phone" class="form-input" placeholder="Ej. 300 123 4567" required>
+            </div>
+            <div class="form-group">
+              <label for="form-email" class="form-label">Correo Electrónico</label>
+              <input type="email" id="form-email" class="form-input" placeholder="Ej. juan@empresa.com" required>
+            </div>
+            <div class="form-group">
+              <label for="form-plan" class="form-label">Módulos de interés</label>
+              <select id="form-plan" class="form-input">
+                <option value="general">Consulta general / Demo</option>
+                <option value="pos">Punto de Venta POS</option>
+                <option value="inventario">Inventarios PEPS</option>
+                <option value="dian">Facturación Electrónica DIAN</option>
+                <option value="copropiedades">Copropiedades / PH</option>
+                <option value="inmobiliaria">Gestión Inmobiliaria y Arrendamientos</option>
+                <option value="logistica">Logística y Despachos</option>
+                <option value="reservas">Reservas de Importación</option>
+                <option value="crm">CRM y Ventas</option>
+                <option value="spa">Spa y Peluquería Canina</option>
+                <option value="tienda">Tienda Virtual Integrada</option>
+                <option value="importaciones">Importaciones</option>
+                <option value="nomina">Nómina Electrónica</option>
+                <option value="full">ERP Completo</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="form-msg" class="form-label">Cuéntanos sobre tu negocio</label>
+              <textarea id="form-msg" class="form-input" placeholder="Tipo de empresa, número de usuarios, módulos que necesitas..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-paper-plane"></i> Enviar y Agendar Demo
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- WhatsApp float -->
+  <a href="https://wa.me/573233273136?text=Hola,%20deseo%20m%C3%A1s%20informaci%C3%B3n%20sobre%20GRAVY" target="_blank" rel="noopener" class="whatsapp-float" aria-label="Chatea por WhatsApp">
+    <i class="fab fa-whatsapp"></i>
+  </a>
+
+  <!-- ======================= FOOTER ======================= -->
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div class="footer-brand">
+        <a href="#inicio" class="brand">
+          <div class="logo-container" style="width:36px;height:36px;padding:4px;">
+            <img src="./gravy-logo.png" alt="Logo GRAVY" class="logo-img">
+          </div>
+          <span class="brand-name" style="font-size:18px;">GRAVY<span class="brand-dot">.</span></span>
+        </a>
+        <p class="footer-desc">Software ERP y POS local offline-first diseñado para el mercado colombiano. Estabilidad e independencia del internet para tu operación comercial y de copropiedades.</p>
+      </div>
+      <div class="footer-nav">
+        <h4>Plataforma</h4>
+        <div class="footer-links">
+          <a href="#inicio"           class="footer-link">Inicio</a>
+          <a href="#beneficios"       class="footer-link">Beneficios</a>
+          <a href="#caracteristicas"  class="footer-link">Funciones</a>
+          <a href="#modulos"          class="footer-link">Módulos</a>
+          <a href="#faq"              class="footer-link">FAQ</a>
+        </div>
+      </div>
+      <div class="footer-nav">
+        <h4>Soporte y Ventas</h4>
+        <div class="footer-links">
+          <a href="https://wa.me/573233273136?text=Hola,%20soporte%20GRAVY" class="footer-link"><i class="fab fa-whatsapp"></i> Soporte de Implementación</a>
+          <a href="https://wa.me/573233273136?text=Hola,%20cotizar%20GRAVY" class="footer-link"><i class="fab fa-whatsapp"></i> Ventas Corporativas</a>
+          <a href="mailto:ventas.gravy@gmail.com" class="footer-link"><i class="fas fa-envelope"></i> ventas.gravy@gmail.com</a>
+        </div>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <p class="copyright">&copy; 2026 GRAVY Software. Todos los derechos reservados.</p>
+      <div class="footer-legal">
+        <a href="#inicio" class="footer-legal-link">Términos de Licencia</a>
+        <a href="#inicio" class="footer-legal-link">Política de Datos</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>

@@ -1273,5 +1273,6 @@ function reapplyTableSort(table: HTMLTableElement) {
 (window as any).makeTableSortable = makeTableSortable;
 (window as any).reapplyTableSort = reapplyTableSort;
 (window as any).getPageContainer = getPageContainer;
+(window as any).getActivePane = getActivePane;
 
 

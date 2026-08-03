@@ -57,7 +57,7 @@ onBootstrap((e) => {
     console.error("[GRAVY] Error al migrar la colección payroll_novelties:", err);
   }
 
-  // 2. Crear colección electronic_payrolls si no existe
+  // 2. Crear o actualizar colección electronic_payrolls
   try {
     try {
       const col = $app.findCollectionByNameOrId("electronic_payrolls");
@@ -71,12 +71,38 @@ onBootstrap((e) => {
         col.fields.add(new Field({ name: "updated", type: "autodate", onCreate: true, onUpdate: true }));
         changed = true;
       }
+      if (!col.fields.getByName("employee_id")) {
+        const thirdPartiesCol = $app.findCollectionByNameOrId("third_parties");
+        col.fields.add(new Field({ name: "employee_id", type: "relation", required: false, collectionId: thirdPartiesCol.id, cascadeDelete: false }));
+        changed = true;
+      }
+      if (!col.fields.getByName("consecutivo")) {
+        col.fields.add(new Field({ name: "consecutivo", type: "number", required: false }));
+        changed = true;
+      }
+      if (!col.fields.getByName("prefijo")) {
+        col.fields.add(new Field({ name: "prefijo", type: "text", required: false }));
+        changed = true;
+      }
+      if (!col.fields.getByName("ftech_transaction_id")) {
+        col.fields.add(new Field({ name: "ftech_transaction_id", type: "text", required: false }));
+        changed = true;
+      }
+      if (!col.fields.getByName("dian_response")) {
+        col.fields.add(new Field({ name: "dian_response", type: "text", required: false }));
+        changed = true;
+      }
+      if (!col.fields.getByName("pdf_base64")) {
+        col.fields.add(new Field({ name: "pdf_base64", type: "text", required: false }));
+        changed = true;
+      }
       if (changed) {
         $app.save(col);
-        console.log("[GRAVY] Campos created y updated agregados a electronic_payrolls.");
+        console.log("[GRAVY] Campos individuales agregados a electronic_payrolls.");
       }
     } catch (_) {
       const periodsCol = $app.findCollectionByNameOrId("payroll_periods");
+      const thirdPartiesCol = $app.findCollectionByNameOrId("third_parties");
 
       const electronicCol = new Collection({
         name: "electronic_payrolls",
@@ -88,14 +114,20 @@ onBootstrap((e) => {
         deleteRule: "@request.auth.collectionName = 'users' && @request.auth.role = 'admin'",
         fields: [
           { name: "periodo_id",      type: "relation", required: false, collectionId: periodsCol.id, cascadeDelete: false },
+          { name: "employee_id",     type: "relation", required: false, collectionId: thirdPartiesCol.id, cascadeDelete: false },
           { name: "ano",             type: "number",   required: true },
           { name: "mes",             type: "number",   required: true },
+          { name: "consecutivo",     type: "number",   required: false },
+          { name: "prefijo",         type: "text",     required: false },
           { name: "tipo_ambiente",   type: "text",     required: false },
           { name: "numero_envio",    type: "number",   required: false },
           { name: "fecha_envio",     type: "text",     required: false },
           { name: "xml_generado",    type: "text",     required: false },
           { name: "estado_dian",     type: "text",     required: false },
           { name: "cufe",            type: "text",     required: false },
+          { name: "ftech_transaction_id", type: "text", required: false },
+          { name: "dian_response",   type: "text",     required: false },
+          { name: "pdf_base64",      type: "text",     required: false },
           { name: "total_devengos",  type: "number",   required: false },
           { name: "total_deducciones", type: "number", required: false },
           { name: "total_neto",      type: "number",   required: false },

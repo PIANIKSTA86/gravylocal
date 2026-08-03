@@ -205,7 +205,6 @@ function _initTesoTerceroAutocomplete(
       _tesoCurrentOpenItems = [];
       const container = document.getElementById('teso-modal-items-container');
       if (container) {
-        container.removeAttribute('data-cartera-neta');
         const isCliente = list.some(t => t.type === 'CLIENTE');
         const iconClass = isCliente ? 'fa-search-dollar' : 'fa-file-invoice-dollar';
         const labelText = isCliente
@@ -1107,21 +1106,14 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
 
     const anticipoItems = cruzarAnticipos ? allDocs.filter(d => d.isAnticipo && d.saldo > 0.01) : [];
 
-    // Detectar saldos a favor / notas crédito propios de la cartera (cuentas 13 / 22):
-    const creditItems = allDocs.filter(d => !d.isAnticipo && d.saldo < -0.01);
-    const totalCreditos = creditItems.reduce((s, i) => s + Math.abs(i.saldo), 0);
-
     _tesoCurrentOpenItems = allDocs
-      .filter(d => !d.isAnticipo && d.saldo > 0.01)
+      .filter(d => !d.isAnticipo && Math.abs(d.saldo) > 0.01)
       .sort((a, b) => a.firstDate.localeCompare(b.firstDate));
 
     const totalAnticipo = anticipoItems.reduce((s, i) => s + i.saldo, 0);
+    const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
 
-    // Cartera neta real = deudas pendientes − créditos disponibles (notas crédito / sobrepagos)
-    const totalCarteraBruta = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
-    const totalCarteraNeta = Math.max(0, totalCarteraBruta - totalCreditos);
-
-    if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01 && totalCreditos <= 0.01) {
+    if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
       c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El tercero no presenta saldos pendientes para esta operación.</div>`;
       return;
     }
@@ -1154,32 +1146,15 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
       </div>
     ` : '';
 
-    // Banner de notas crédito / sobrepagos detectados (saldos negativos en cartera)
-    const creditBanner = totalCreditos > 0.01 ? `
-      <div class="flex items-center gap-3 p-3 rounded-xl mb-2" style="background:#FFFBEB;border:1.5px solid #FCD34D">
-        <div class="bg-amber-500 text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0">
-          <i class="fas fa-file-invoice text-sm"></i>
-        </div>
-        <div class="flex-1">
-          <p class="font-bold text-amber-800 text-sm">Notas crédito / Saldos a favor en cartera</p>
-          <p class="text-xs text-amber-700">Se detectaron <strong>${creditItems.length}</strong> documento(s) con saldo acreedor de <strong>${_fmt(totalCreditos)}</strong> que reducen la deuda bruta. La cartera neta efectiva es <strong>${_fmt(totalCarteraNeta)}</strong>.</p>
-        </div>
-        <div class="font-bold text-amber-700 text-lg">-${_fmt(totalCreditos)}</div>
-      </div>
-    ` : '';
-
     const noCartera = _tesoCurrentOpenItems.length === 0 ? `
       <div class="p-3 text-center text-gray-500 text-sm">
         <i class="fas fa-check-circle text-green-500 mr-2"></i>Cartera al día. El pago se registrará como anticipo.
       </div>
     ` : '';
 
-
     const isRecaudoCtx = isRecaudo;
-    c.setAttribute('data-cartera-neta', String(totalCarteraNeta));
     c.innerHTML = `
       ${anticipoBanner}
-      ${creditBanner}
       ${noCartera}
       ${_tesoCurrentOpenItems.length > 0 ? `
       <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs" style="max-height:280px;display:flex;flex-direction:column;background:#fff;">
@@ -1229,7 +1204,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
                   </div>
                 </td>
                 <td style="padding:5px 10px;text-align:right;vertical-align:middle;white-space:nowrap;">
-                  <span style="font-size:12.5px;font-weight:900;color:${isRecaudoCtx ? '#DC2626' : '#2563EB'};">${_fmt(i.saldo)}</span>
+                  <span style="font-size:12.5px;font-weight:900;color:${i.saldo < 0 ? '#D97706' : (isRecaudoCtx ? '#DC2626' : '#2563EB')};">${_fmt(i.saldo)}</span>
                 </td>
                 <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
                   <input type="text" class="teso-abono-input"
@@ -1243,12 +1218,10 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
           <tfoot style="background:#F8FAFC;border-top:2px solid #E2E8F0;">
             <tr>
               <td colspan="2" style="padding:6px 10px;text-align:right;font-weight:800;font-size:11px;color:#334155;">
-                ${totalCreditos > 0.01 ? `CARTERA BRUTA / CARTERA NETA:` : `TOTAL CARTERA PENDIENTE:`}
+                TOTAL CARTERA PENDIENTE:
               </td>
-              <td style="padding:6px 10px;text-align:right;font-weight:900;font-size:12.5px;color:#DC2626;">
-                ${totalCreditos > 0.01
-                  ? `<span style="text-decoration:line-through;opacity:.6;font-size:10px;">${_fmt(totalCarteraBruta)}</span><br><span style="color:#D97706;">${_fmt(totalCarteraNeta)}</span>`
-                  : _fmt(totalCarteraBruta)}
+              <td style="padding:6px 10px;text-align:right;font-weight:900;font-size:12.5px;color:${totalCartera < 0 ? '#D97706' : '#DC2626'};">
+                ${_fmt(totalCartera)}
               </td>
               <td style="padding:6px 10px;text-align:right;font-weight:900;font-size:12.5px;color:#1E40AF;" id="teso-modal-total-abonos">$0</td>
             </tr>
@@ -1284,12 +1257,7 @@ function _updateMontoIndicator() {
 
   const monto = parseFormattedNumber(montoEl.value || '0');
 
-  // Prefer the neta total (already netted against credit items/notas crédito)
-  const container = document.getElementById('teso-modal-items-container');
-  const netaAttr = container?.getAttribute('data-cartera-neta');
-  const totalCartera = netaAttr !== null
-    ? parseFloat(netaAttr)
-    : _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+  const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
 
   if (monto <= 0 || totalCartera <= 0) {
     indicatorEl.innerHTML = '';
@@ -1352,7 +1320,14 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     }
   }
   const fecha = dateInput?.value || (window as any).todayStr();
-  const branchId = branchSelect?.value || '';
+  let branchId = branchSelect?.value || '';
+  if (!branchId) {
+    const pb = _pb();
+    const userModel = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
+    const userDefaultBranchId = userModel?.default_branch_id || userModel?.branch_id || '';
+    const activeBranchId = (window as any).CURRENT_BRANCH_ID || localStorage.getItem('active_branch_id') || 'TODAS';
+    branchId = userDefaultBranchId || ((activeBranchId !== 'TODAS' && activeBranchId) ? activeBranchId : '');
+  }
   const costCenterId = costCenterSelect?.value || '';
 
   // ── Validación reforzada ──────────────────────────────────────
@@ -1386,13 +1361,8 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       montoInput?.focus();
       return;
     }
-    // Use cartera neta (already netted against notas crédito) for validation
-    const container = document.getElementById('teso-modal-items-container');
-    const netaAttr = container?.getAttribute('data-cartera-neta');
-    const totalCarteraNeta = netaAttr !== null
-      ? parseFloat(netaAttr)
-      : _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
-    if (totalCarteraNeta <= 0 && monto > 0) {
+    const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+    if (totalCartera <= 0 && monto > 0) {
       const ok = window.confirm(`Este tercero no tiene cartera abierta.\nSe registrará un anticipo de ${_fmt(monto)} a su favor.\n\n¿Continuar?`);
       if (!ok) return;
     }
@@ -1544,6 +1514,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
         const autoDist: any[] = [];
         for (const item of _tesoCurrentOpenItems) {
           if (saldoRestante <= 0) break;
+          if (item.saldo <= 0) continue;
           const valorAbono = Math.min(saldoRestante, item.saldo);
           autoDist.push({ 
             key: item.key, 
@@ -2179,7 +2150,19 @@ async function openRecaudoModal() {
 
   _tesoCurrentTxTypes = txTypes;
 
-  const branchOptions = branches.map((b: any) => `<option value="${b.id}">${_esc(b.name)}</option>`).join('');
+  const userModel = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
+  const userDefaultBranchId = userModel?.default_branch_id || userModel?.branch_id || '';
+  const activeBranchId = (window as any).CURRENT_BRANCH_ID || localStorage.getItem('active_branch_id') || 'TODAS';
+
+  const defaultBranchId = (userDefaultBranchId && branches.some((b: any) => b.id === userDefaultBranchId))
+    ? userDefaultBranchId
+    : ((activeBranchId !== 'TODAS' && activeBranchId && branches.some((b: any) => b.id === activeBranchId))
+        ? activeBranchId
+        : (branches[0]?.id || ''));
+
+  const branchOptions = branches.map((b: any) =>
+    `<option value="${b.id}" ${b.id === defaultBranchId ? 'selected' : ''}>${_esc(b.code ? b.code + ' - ' + b.name : b.name)}</option>`
+  ).join('');
   const ccOptions = costCenters.map((c: any) => `<option value="${c.id}">${_esc(c.code)} — ${_esc(c.name)}</option>`).join('');
   const txTypeOptions = txTypes.map((t: any) => `<option value="${t.id}">${_esc(t.prefix || t.code)} — ${_esc(t.name)}</option>`).join('');
 
@@ -2455,7 +2438,19 @@ async function openPagoModal() {
 
   _tesoCurrentTxTypes = txTypes;
 
-  const branchOptions = branches.map((b: any) => `<option value="${b.id}">${_esc(b.name)}</option>`).join('');
+  const userModel = pb?.authStore?.model || pb?.currentUser || (window as any).API?.currentUser;
+  const userDefaultBranchId = userModel?.default_branch_id || userModel?.branch_id || '';
+  const activeBranchId = (window as any).CURRENT_BRANCH_ID || localStorage.getItem('active_branch_id') || 'TODAS';
+
+  const defaultBranchId = (userDefaultBranchId && branches.some((b: any) => b.id === userDefaultBranchId))
+    ? userDefaultBranchId
+    : ((activeBranchId !== 'TODAS' && activeBranchId && branches.some((b: any) => b.id === activeBranchId))
+        ? activeBranchId
+        : (branches[0]?.id || ''));
+
+  const branchOptions = branches.map((b: any) =>
+    `<option value="${b.id}" ${b.id === defaultBranchId ? 'selected' : ''}>${_esc(b.code ? b.code + ' - ' + b.name : b.name)}</option>`
+  ).join('');
   const ccOptions = costCenters.map((c: any) => `<option value="${c.id}">${_esc(c.code)} — ${_esc(c.name)}</option>`).join('');
   const txTypeOptions = txTypes.map((t: any) => `<option value="${t.id}">${_esc(t.prefix || t.code)} — ${_esc(t.name)}</option>`).join('');
 

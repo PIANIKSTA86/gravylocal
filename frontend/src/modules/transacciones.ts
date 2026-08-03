@@ -390,7 +390,7 @@ async function openNuevaTxModal() {
             </button>
           </div>
         </div>
-        <div class="form-group md:col-span-2"><label class="form-label">Descripci\u00f3n</label><input id="tx-desc" class="form-input" placeholder="Descripci\u00f3n del comprobante"></div>
+        <div class="form-group md:col-span-2"><label class="form-label">Descripción <span style="color:#EF4444">*</span></label><input id="tx-desc" class="form-input" placeholder="Descripción o comentario del comprobante (requerido)"></div>
         <div class="form-group"><label class="form-label">Sucursal</label><select id="tx-branch" class="form-input">${allowedBranches.map(b => `<option value="${esc(b.id)}" ${b.id === defaultBranchId ? 'selected' : ''}>${esc(b.code)} - ${esc(b.name)}</option>`).join('')}</select></div>
         <div class="form-group">
           <label class="form-label">Libro Contable</label>
@@ -504,14 +504,6 @@ function bindNewTxModalEvents() {
     resultsId: 'tx-third-results',
     onSelected: (thirdId) => {
       if (carteraBtn) carteraBtn.disabled = !thirdId;
-      const dueDateInput = $('#tx-due-date') as HTMLInputElement;
-      const txDateInput = $('#tx-date') as HTMLInputElement;
-      if (dueDateInput && thirdId) {
-        const third = TX_STATE.terceros?.find(t => t.id === thirdId);
-        const payDays = Number(third?.payment_days || 0);
-        const baseDate = txDateInput?.value || todayStr();
-        dueDateInput.value = addDaysToDate(baseDate, payDays);
-      }
       if (thirdId) $('#tx-desc')?.focus();
     }
   });
@@ -519,11 +511,8 @@ function bindNewTxModalEvents() {
   $('#tx-date')?.addEventListener('change', () => {
     const dateVal = ($('#tx-date') as HTMLInputElement)?.value;
     const dueDateEl = $('#tx-due-date') as HTMLInputElement;
-    const thirdId = getSelectVal('tx-third');
-    const third = TX_STATE.terceros?.find(t => t.id === thirdId);
-    const payDays = Number(third?.payment_days || 0);
-    if (dueDateEl && dateVal) {
-      dueDateEl.value = addDaysToDate(dateVal, payDays);
+    if (dueDateEl && dateVal && !dueDateEl.value) {
+      dueDateEl.value = dateVal;
     }
   });
 
@@ -728,7 +717,7 @@ async function renderNuevaTx(c) {
               </button>
             </div>
           </div>
-          <div class="form-group md:col-span-2"><label class="form-label">Descripción</label><input id="tx-desc" class="form-input" placeholder="Descripción del comprobante"></div>
+          <div class="form-group md:col-span-2"><label class="form-label">Descripción <span style="color:#EF4444">*</span></label><input id="tx-desc" class="form-input" placeholder="Descripción o comentario del comprobante (requerido)"></div>
           <div class="form-group">
             <label class="form-label">Libro Contable</label>
             <select id="tx-book-type" class="form-input">
@@ -1077,12 +1066,23 @@ async function showCarteraModal(thirdId, opts = {}) {
       CARTERA_CONTEXT = (returnToPrevious || usingEdit) ? 'edit' : 'new';
     }
     const state = usingEdit ? TX_EDIT_STATE : TX_STATE;
-    const tercero = (state.terceros || []).find(t => t.id === thirdId);
-    const cruceAccountIds = new Set(
+    let tercero = (state.terceros || []).find(t => t.id === thirdId);
+    if (!tercero) {
+      try {
+        tercero = await pb.getOne('third_parties', thirdId);
+      } catch (_) {}
+    }
+    let cruceAccountIds = new Set(
       [...(state.accountMap?.values?.() || [])]
         .filter(a => a.maneja_cruce)
         .map(a => a.id)
     );
+    if (!cruceAccountIds.size) {
+      try {
+        const accounts = await API.getAccounts(true);
+        cruceAccountIds = new Set(accounts.filter(a => a.maneja_cruce).map(a => a.id));
+      } catch (_) {}
+    }
 
     if (returnToPrevious && $('#modal-overlay')?.classList.contains('show')) {
       CARTERA_MODAL_PREV = {
@@ -1119,9 +1119,7 @@ async function showCarteraModal(thirdId, opts = {}) {
 
     try {
       if (!cruceAccountIds.size) {
-        document.querySelector('#modal-body, .modal-body, [id*="modal"] .p-6') &&
-          (document.querySelector('#modal-body, .modal-body, [id*="modal"] .p-6').innerHTML =
-            '<p class="text-center py-6" style="color:#9CA3AF">No hay cuentas configuradas con documento de cruce.</p>');
+        _carteraSetContent('<p class="text-center py-6" style="color:#9CA3AF">No hay cuentas configuradas con documento de cruce.</p>');
         return;
       }
 
@@ -1147,14 +1145,17 @@ async function showCarteraModal(thirdId, opts = {}) {
       const items = lines.items ?? lines;
 
       // Aggregate by cross_doc_ref
-      const docs = new Map(); // cross_doc_ref → { ref, account, date, debit, credit, txNumbers }
+      const docs = new Map(); // cross_doc_ref → { ref, account, accountCode, accountNat, firstDate, debit, credit, txNumbers }
       for (const l of items) {
         const ref = (l.cross_doc_ref || '').trim();
         if (!ref) continue;
         if (!docs.has(ref)) {
+          const acct = l.expand?.account_id;
           docs.set(ref, {
             ref,
-            account: l.expand?.account_id?.name || l.account_id,
+            account: acct?.name || l.account_id,
+            accountCode: acct?.code || '',
+            accountNat: acct?.naturaleza || '',
             firstDate: l.expand?.tx_id?.date || '',
             debit: 0,
             credit: 0,
@@ -1172,40 +1173,71 @@ async function showCarteraModal(thirdId, opts = {}) {
         return;
       }
 
-      // Build table rows with signed open amount
+      // Determinar si la cuenta es de naturaleza crédito (Pasivo 2xx, etc.)
+      const isCreditNature = (code = '', nat = '') => {
+        const n = String(nat || '').trim().toLowerCase();
+        if (n === 'c' || n === 'credito' || n === 'crédito') return true;
+        if (n === 'd' || n === 'debito' || n === 'débito') return false;
+        const firstChar = String(code || '').trim()[0];
+        return firstChar === '2' || firstChar === '3' || firstChar === '4';
+      };
+
+      // Build table rows considering account nature for net balance
       const rows = [...docs.values()].map(d => {
-        const netOpen = Number(d.credit || 0) - Number(d.debit || 0);
-        const saldo = Math.abs(netOpen);
-        const esCancelado = saldo < 0.0001;
-        return { ...d, saldo, esCancelado, netOpen };
+        const isCred = isCreditNature(d.accountCode, d.accountNat);
+        // netVal según naturaleza normal:
+        // Si Crédito (Pasivo / CxP): Crédito - Débito
+        // Si Débito (Activo / CxC): Débito - Crédito
+        const netVal = isCred ? (d.credit - d.debit) : (d.debit - d.credit);
+        const absSaldo = Math.abs(netVal);
+        const esCancelado = absSaldo < 0.0001;
+        const esAFavor = !esCancelado && netVal < 0; // Negativo = a favor
+
+        return { ...d, netVal, absSaldo, esCancelado, esAFavor };
       });
 
       const pendientes = rows.filter(r => !r.esCancelado);
       const cancelados = rows.filter(r => r.esCancelado);
 
-      const rowHtml = (r, dimmed) => `
+      const rowHtml = (r, dimmed) => {
+        let saldoCellHtml = '';
+        if (r.esCancelado) {
+          saldoCellHtml = `<span style="color:#16A34A"><i class="fas fa-check"></i> Cancelado</span>`;
+        } else if (r.esAFavor) {
+          saldoCellHtml = `<span class="font-bold" style="color:#DC2626">-${fmt(r.absSaldo)}</span>`;
+        } else {
+          saldoCellHtml = `<span class="font-bold" style="color:#16A34A">${fmt(r.absSaldo)}</span>`;
+        }
+
+        return `
         <tr style="${dimmed ? 'opacity:0.45' : ''}">
           <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(r.ref)}</span></td>
           <td class="text-xs" style="color:#6B7280">${esc(r.firstDate)}</td>
           <td class="text-xs">${esc(r.account)}</td>
           <td class="text-right">${fmt(r.debit)}</td>
           <td class="text-right">${fmt(r.credit)}</td>
-          <td class="text-right font-bold" style="color:${r.esCancelado ? '#22C55E' : '#EF4444'}">
-            ${r.esCancelado ? '<i class="fas fa-check"></i> Cancelado' : fmt(r.saldo)}
+          <td class="text-right font-bold">
+            ${saldoCellHtml}
           </td>
           <td>
-            ${!r.esCancelado ? `<button class="btn btn-outline btn-sm" style="border-color:#1A4B8C;color:#1A4B8C;font-size:11px" onclick="useCrossDoc('${esc(r.ref)}', ${Number(r.netOpen || 0)})">
+            ${!r.esCancelado ? `<button class="btn btn-outline btn-sm" style="border-color:#1A4B8C;color:#1A4B8C;font-size:11px" onclick="useCrossDoc('${esc(r.ref)}', ${Number(r.netVal || 0)})">
               <i class="fas fa-arrow-down-to-line"></i> Usar
             </button>` : ''}
           </td>
         </tr>`;
+      };
 
-      const totalPendiente = pendientes.reduce((s, r) => s + r.saldo, 0);
+      // Sumar saldos netos con signo para el total
+      const totalNetoAbierto = pendientes.reduce((sum, r) => sum + r.netVal, 0);
+      const totalAbs = Math.abs(totalNetoAbierto);
+      const totalAFavor = totalNetoAbierto < -0.0001;
+      const totalFormatted = totalAFavor ? `-${fmt(totalAbs)}` : fmt(totalAbs);
+      const totalColor = totalAFavor ? '#DC2626' : '#16A34A';
 
       _carteraSetContent(`
-        <div class="mb-3 flex items-center gap-3 flex-wrap">
-          <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#EF4444">${pendientes.length}</span></span>
-          <span class="text-sm font-semibold" style="color:#0D2137">Saldo total abierto: <span style="color:#EF4444">${fmt(totalPendiente)}</span></span>
+        <div class="mb-3 flex items-center gap-4 flex-wrap">
+          <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#1A4B8C">${pendientes.length}</span></span>
+          <span class="text-sm font-semibold" style="color:#0D2137">Saldo total abierto: <span style="color:${totalColor}">${totalFormatted}</span></span>
         </div>
         <div class="overflow-x-auto">
           <table class="data-table">
@@ -1224,7 +1256,10 @@ async function showCarteraModal(thirdId, opts = {}) {
   }
 
 function _carteraSetContent(html) {
-  const body = $('#modal-body');
+  const getPane = (window as any).getActivePane;
+  const activePane = (typeof getPane === 'function' ? getPane() : document.querySelector('#page-content .tab-pane.active')) || document;
+  const body = activePane.querySelector('#modal-body, .modal-body, .form-body-area') || 
+               document.querySelector('#modal-body, .modal-body, .form-body-area');
   if (body) body.innerHTML = html;
 }
 
@@ -1354,6 +1389,7 @@ async function saveTransaction(approve = false) {
 
     if (!txTypeId) return showToast('Por favor, seleccione un tipo de transacción', 'warning');
     if (!txDate) return showToast('La fecha es obligatoria', 'warning');
+    if (!txDesc || !txDesc.trim()) return showToast('La descripción o comentario de la transacción es obligatorio', 'warning');
 
     // Cierre: verify period is not closed
     if (typeof isPeriodClosed === 'function') {

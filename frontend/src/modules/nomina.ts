@@ -3323,6 +3323,10 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
           name: empObj.name || (empObj.first_name ? `${empObj.first_name} ${empObj.last_name || ''}` : 'Empleado'),
           noveltySet: new Set<string>(),
           novedad: 'NO',
+          horasExtrasHoras: 0,
+          horasExtrasMonto: 0,
+          otDetalleParts: [] as string[],
+          comisionesMonto: 0,
           diasLaborados: 0,
           diasCotizados: 0,
           diasAfp: 0,
@@ -3351,25 +3355,41 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
 
       const acc = empMap.get(empId);
 
-      // Collect novelties from payroll_novelties
+      // Collect novelties from payroll_novelties for PILA badge display
       const empNovs = empNoveltiesMap.get(empId) || [];
       empNovs.forEach((nov: any) => {
         const abbr = mapNoveltyToPilaAbbr(nov.type);
         if (abbr) acc.noveltySet.add(abbr);
       });
 
-      // Collect novelties from line meta / overtime
-      if ((line.overtime || 0) > 0) acc.noveltySet.add('VST');
-      try {
-        const meta = getNominaLineMeta(line);
-        if (meta.concept_amounts) {
-          const ca = meta.concept_amounts;
-          if ((ca.incapacidades || 0) > 0) acc.noveltySet.add('IGE');
-          if ((ca.licencias || 0) > 0) acc.noveltySet.add('SLN');
-          if ((ca.vacaciones || 0) > 0) acc.noveltySet.add('VAC');
-          if ((ca.comisiones || 0) > 0 || (ca.bonificacion || 0) > 0 || (ca.ajuste_salarial || 0) > 0) acc.noveltySet.add('VST');
-        }
-      } catch (_) {}
+      // Overtime & concept amounts for this line
+      const otMeta = getNominaOvertimeMetaFromLine(line);
+      const lineOtAmount = otMeta.total_amount || round2(Number(line.overtime || 0));
+      let lineOtHours = 0;
+      if (otMeta.breakdown && Array.isArray(otMeta.breakdown)) {
+        otMeta.breakdown.forEach((b: any) => {
+          if (b.hours > 0 || b.amount > 0) {
+            lineOtHours += b.hours || 0;
+            acc.otDetalleParts.push(`${b.hours}h ${b.key.toUpperCase()} ($${fmt(b.amount || 0)})`);
+          }
+        });
+      }
+      if (lineOtAmount > 0) acc.noveltySet.add('VST');
+
+      const conceptAmounts = getNominaConceptAmountsFromLine(line);
+      const lineComisiones = round2(Number(conceptAmounts.comisiones || 0));
+      if (lineComisiones > 0) acc.noveltySet.add('VST');
+
+      const lineIncap = round2(Number(conceptAmounts.incapacidades || 0));
+      const lineLic = round2(Number(conceptAmounts.licencias || 0));
+      const lineVac = round2(Number(conceptAmounts.vacaciones_disfrutadas || 0));
+      const lineAjuste = round2(Number(conceptAmounts.ajuste_salarial || 0));
+      const lineBonif = round2(Number(conceptAmounts.bonificacion || 0));
+
+      if (lineIncap > 0) acc.noveltySet.add('IGE');
+      if (lineLic > 0) acc.noveltySet.add('SLN');
+      if (lineVac > 0) acc.noveltySet.add('VAC');
+      if (lineBonif > 0 || lineAjuste > 0) acc.noveltySet.add('VST');
 
       // Collect ING / RET from contract dates
       const startDate = effectiveRule.start_date || empObj.hire_date || '';
@@ -3378,7 +3398,12 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       if (endDate && endDate.startsWith(ymPrefix)) acc.noveltySet.add('RET');
 
       const days = line.days_worked || 30;
-      const ibc = line.salary_base || 0;
+
+      // Base salary proportional to days worked in this period
+      const proportionalSalary = round2(((line.salary_base || 0) / 30) * days);
+
+      // Real IBC for PILA = Base Salario + Horas Extras + Comisiones + Incapacidades + Licencias + Vacaciones + Ajustes Salariales
+      const lineIbc = round2(proportionalSalary + lineOtAmount + lineComisiones + lineIncap + lineLic + lineVac + lineAjuste + lineBonif);
 
       const saludTrab = line.deduction_health || 0;
       const saludEmp = line.employer_health || 0;
@@ -3390,6 +3415,10 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const sena = line.sena || 0;
       const icbf = line.icbf || 0;
 
+      acc.horasExtrasMonto += lineOtAmount;
+      acc.horasExtrasHoras += lineOtHours;
+      acc.comisionesMonto += lineComisiones;
+
       acc.diasLaborados += days;
       acc.diasCotizados += days;
       acc.diasAfp += effectiveRule.is_pensioner ? 0 : days;
@@ -3397,16 +3426,16 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.diasArp += days;
       acc.diasCcf += days;
 
-      acc.ibcPension += ibc;
+      acc.ibcPension += lineIbc;
       acc.aportePension += round2(penTrab + penEmp + fsp);
 
-      acc.ibcSalud += ibc;
+      acc.ibcSalud += lineIbc;
       acc.aporteSalud += round2(saludTrab + saludEmp);
 
-      acc.ibcCajas += ibc;
+      acc.ibcCajas += lineIbc;
       acc.aporteCajas += caja;
 
-      acc.ibcRiesgos += ibc;
+      acc.ibcRiesgos += lineIbc;
       acc.aporteRiesgos += arlVal;
 
       acc.aporteSena += sena;
@@ -3418,6 +3447,15 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
     const rowItems = Array.from(empMap.values()).map(acc => {
       const novArray = Array.from(acc.noveltySet as Set<string>);
       acc.novedad = novArray.length > 0 ? novArray.join(', ') : 'NO';
+
+      acc.horasExtrasMonto = round2(acc.horasExtrasMonto);
+      acc.horasExtrasHoras = round2(acc.horasExtrasHoras);
+      acc.comisionesMonto = round2(acc.comisionesMonto);
+
+      const uniqueOt = Array.from(new Set(acc.otDetalleParts as string[]));
+      acc.horasExtrasDetalle = uniqueOt.length > 0 
+        ? uniqueOt.join(' | ') 
+        : (acc.horasExtrasHoras > 0 ? `${acc.horasExtrasHoras} hrs ($${fmt(acc.horasExtrasMonto)})` : '—');
 
       acc.diasLaborados = Math.min(30, acc.diasLaborados);
       acc.diasCotizados = Math.min(30, acc.diasCotizados);
@@ -3448,9 +3486,14 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
     let totIbcCajas = 0, totAporteCajas = 0;
     let totIbcRiesgos = 0, totAporteRiesgos = 0;
     let totSena = 0, totIcbf = 0, totEsap = 0, totMinisterio = 0;
+    let totHorasExtrasMonto = 0, totHorasExtrasHoras = 0, totComisionesMonto = 0;
     let totPilaGlobal = 0;
 
     rowItems.forEach(r => {
+      totHorasExtrasMonto += r.horasExtrasMonto;
+      totHorasExtrasHoras += r.horasExtrasHoras;
+      totComisionesMonto += r.comisionesMonto;
+
       totIbcPension += r.ibcPension;
       totAportePension += r.aportePension;
       totIbcSalud += r.ibcSalud;
@@ -3490,17 +3533,17 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
             <p class="text-gray-500">Período Acumulado: <strong>${monthLabel} / ${year}</strong> — Empleados Consolidados: <strong>${rowItems.length}</strong></p>
           </div>
           <div class="flex gap-2">
-            <button class="btn btn-outline btn-sm text-emerald-700 font-bold" id="btn-export-pila-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel (25 Campos)</button>
+            <button class="btn btn-outline btn-sm text-emerald-700 font-bold" id="btn-export-pila-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel (25+ Campos)</button>
             <button class="btn btn-primary btn-sm font-bold" id="btn-export-pila-pdf"><i class="fas fa-file-pdf mr-1"></i>Imprimir / Exportar a PDF</button>
           </div>
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-center font-semibold">
           <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><div class="text-gray-400 text-3xs">TOTAL IBC</div><div class="text-blue-900 text-xs font-bold">${fmt(totIbcSalud)}</div></div>
+          <div class="bg-indigo-50 p-2 rounded-lg border border-indigo-100"><div class="text-gray-400 text-3xs">HORAS EXTRAS / COMIS.</div><div class="text-indigo-900 text-xs font-bold">${fmt(totHorasExtrasMonto + totComisionesMonto)}</div></div>
           <div class="bg-emerald-50 p-2 rounded-lg border border-emerald-100"><div class="text-gray-400 text-3xs">TOTAL SALUD</div><div class="text-emerald-900 text-xs font-bold">${fmt(totAporteSalud)}</div></div>
           <div class="bg-purple-50 p-2 rounded-lg border border-purple-100"><div class="text-gray-400 text-3xs">TOTAL PENSIÓN</div><div class="text-purple-900 text-xs font-bold">${fmt(totAportePension)}</div></div>
           <div class="bg-amber-50 p-2 rounded-lg border border-amber-100"><div class="text-gray-400 text-3xs">TOTAL ARL</div><div class="text-amber-900 text-xs font-bold">${fmt(totAporteRiesgos)}</div></div>
-          <div class="bg-indigo-50 p-2 rounded-lg border border-indigo-100"><div class="text-gray-400 text-3xs">PARAFISCALES</div><div class="text-indigo-900 text-xs font-bold">${fmt(totAporteCajas + totSena + totIcbf + totEsap + totMinisterio)}</div></div>
           <div class="bg-emerald-100 p-2 rounded-lg border border-emerald-300"><div class="text-emerald-800 text-3xs">TOTAL PLANILLA PILA</div><div class="text-emerald-950 text-sm font-bold">${fmt(totPilaGlobal)}</div></div>
         </div>
 
@@ -3510,6 +3553,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
               <tr class="bg-gray-100 text-gray-700">
                 <th class="sticky left-0 bg-gray-100 z-10">Empleado / Cédula</th>
                 <th class="text-center">Novedad</th>
+                <th class="text-right">Horas Extras / Recargos</th>
+                <th class="text-right">Comisiones</th>
                 <th class="text-center">Días (Lab/Cot)</th>
                 <th class="text-center">Días (AFP/EPS/ARP/CCF)</th>
                 <th>Administrador Pensión</th>
@@ -3541,6 +3586,13 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                   <td class="text-center">
                     <span class="badge ${r.novedad !== 'NO' && r.novedad !== 'No' ? 'badge-amber font-bold' : 'badge-gray'}">${esc(r.novedad)}</span>
                   </td>
+                  <td class="text-right">
+                    <div class="font-semibold ${r.horasExtrasMonto > 0 ? 'text-indigo-900' : 'text-gray-400'}">${fmt(r.horasExtrasMonto)}</div>
+                    <div class="text-gray-400 text-3xs" title="${esc(r.horasExtrasDetalle)}">${esc(r.horasExtrasDetalle)}</div>
+                  </td>
+                  <td class="text-right font-semibold ${r.comisionesMonto > 0 ? 'text-blue-900' : 'text-gray-400'}">
+                    ${fmt(r.comisionesMonto)}
+                  </td>
                   <td class="text-center font-mono">${r.diasLaborados} / ${r.diasCotizados}</td>
                   <td class="text-center font-mono text-3xs text-gray-600">${r.diasAfp} / ${r.diasEps} / ${r.diasArp} / ${r.diasCcf}</td>
                   <td>${esc(r.adminPension)}</td>
@@ -3565,7 +3617,10 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
             </tbody>
             <tfoot>
               <tr class="bg-gray-100 font-bold border-t">
-                <td colspan="4" class="sticky left-0 bg-gray-100 z-10">TOTALES CONSOLIDADOS (${rowItems.length} Empleados)</td>
+                <td colspan="2" class="sticky left-0 bg-gray-100 z-10">TOTALES CONSOLIDADOS (${rowItems.length} Empleados)</td>
+                <td class="text-right text-indigo-900">${fmt(totHorasExtrasMonto)}</td>
+                <td class="text-right text-blue-900">${fmt(totComisionesMonto)}</td>
+                <td colspan="2">—</td>
                 <td>—</td>
                 <td class="text-right">${fmt(totIbcPension)}</td>
                 <td class="text-right text-purple-900">${fmt(totAportePension)}</td>
@@ -3610,6 +3665,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         totIcbf,
         totEsap,
         totMinisterio,
+        totHorasExtrasMonto,
+        totHorasExtrasHoras,
+        totComisionesMonto,
         totParafiscales: totAporteCajas + totSena + totIcbf + totEsap + totMinisterio,
         totPilaGlobal
       };
@@ -3621,6 +3679,10 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         identificacion_empleado: r.doc,
         nombre_empleado: r.name,
         novedad: r.novedad,
+        horas_extras_cant: r.horasExtrasHoras,
+        horas_extras_monto: r.horasExtrasMonto,
+        horas_extras_detalle: r.horasExtrasDetalle,
+        comisiones_monto: r.comisionesMonto,
         dias_laborados: r.diasLaborados,
         dias_cotizados: r.diasCotizados,
         dias_afp: r.diasAfp,
@@ -3649,6 +3711,10 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         identificacion_empleado: 'TOTALES',
         nombre_empleado: 'TOTAL CONSOLIDADO',
         novedad: '',
+        horas_extras_cant: totHorasExtrasHoras,
+        horas_extras_monto: totHorasExtrasMonto,
+        horas_extras_detalle: '',
+        comisiones_monto: totComisionesMonto,
         dias_laborados: rowItems.reduce((s: number, r: any) => s + r.diasLaborados, 0),
         dias_cotizados: rowItems.reduce((s: number, r: any) => s + r.diasCotizados, 0),
         dias_afp: rowItems.reduce((s: number, r: any) => s + r.diasAfp, 0),
@@ -3676,7 +3742,11 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const headers = [
         { key: 'identificacion_empleado', label: 'Identificación Empleado' },
         { key: 'nombre_empleado', label: 'Nombre Completo Empleado' },
-        { key: 'novedad', label: 'Novedad (Si/No)' },
+        { key: 'novedad', label: 'Novedad PILA' },
+        { key: 'horas_extras_cant', label: 'Horas Extras (Cant. Horas)' },
+        { key: 'horas_extras_monto', label: 'Horas Extras ($)' },
+        { key: 'horas_extras_detalle', label: 'Detalle Horas Extras' },
+        { key: 'comisiones_monto', label: 'Comisiones ($)' },
         { key: 'dias_laborados', label: 'Días Laborados' },
         { key: 'dias_cotizados', label: 'Días Cotizados' },
         { key: 'dias_afp', label: 'Días a Pagar AFP' },
@@ -3882,34 +3952,36 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
 
   <div class="kpi-grid">
     <div class="kpi-card"><div class="kpi-label">TOTAL IBC</div><div class="kpi-value">${fmt(totals.totIbcSalud)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">HORAS EXTRAS / COMIS.</div><div class="kpi-value" style="color:#3730a3;">${fmt((totals.totHorasExtrasMonto || 0) + (totals.totComisionesMonto || 0))}</div></div>
     <div class="kpi-card"><div class="kpi-label">TOTAL SALUD</div><div class="kpi-value">${fmt(totals.totAporteSalud)}</div></div>
     <div class="kpi-card"><div class="kpi-label">TOTAL PENSIÓN</div><div class="kpi-value">${fmt(totals.totAportePension)}</div></div>
     <div class="kpi-card"><div class="kpi-label">TOTAL ARL</div><div class="kpi-value">${fmt(totals.totAporteRiesgos)}</div></div>
-    <div class="kpi-card"><div class="kpi-label">PARAFISCALES</div><div class="kpi-value">${fmt(totals.totParafiscales)}</div></div>
     <div class="kpi-card highlight"><div class="kpi-label">TOTAL PLANILLA PILA</div><div class="kpi-value">${fmt(totals.totPilaGlobal)}</div></div>
   </div>
 
   <table class="pila-pdf-table">
     <thead>
       <tr>
-        <th style="width:11%;">Empleado / Cédula</th>
-        <th style="width:5%;">Nov.</th>
-        <th style="width:4%;">Días</th>
-        <th style="width:5%;">Entidades</th>
-        <th style="width:8%;">Fondo Pensión</th>
-        <th style="width:6%;">IBC Pensión</th>
-        <th style="width:6%;">Aporte Pensión</th>
-        <th style="width:8%;">EPS Salud</th>
-        <th style="width:6%;">IBC Salud</th>
-        <th style="width:6%;">Aporte Salud</th>
-        <th style="width:7%;">Caja CCF</th>
-        <th style="width:5%;">IBC Cajas</th>
-        <th style="width:5%;">Aporte Cajas</th>
-        <th style="width:4%;">ARL %</th>
-        <th style="width:5%;">Aporte ARL</th>
-        <th style="width:4%;">SENA</th>
-        <th style="width:4%;">ICBF</th>
-        <th style="width:6%;">Total PILA</th>
+        <th style="width:10%;">Empleado / Cédula</th>
+        <th style="width:4%;">Nov.</th>
+        <th style="width:7%;">Horas Extras / Recargos</th>
+        <th style="width:5%;">Comisiones</th>
+        <th style="width:3.5%;">Días</th>
+        <th style="width:4%;">Entidades</th>
+        <th style="width:7%;">Fondo Pensión</th>
+        <th style="width:5%;">IBC Pensión</th>
+        <th style="width:5%;">Aporte Pensión</th>
+        <th style="width:7%;">EPS Salud</th>
+        <th style="width:5%;">IBC Salud</th>
+        <th style="width:5%;">Aporte Salud</th>
+        <th style="width:6%;">Caja CCF</th>
+        <th style="width:4.5%;">IBC Cajas</th>
+        <th style="width:4%;">Aporte Cajas</th>
+        <th style="width:3%;">ARL %</th>
+        <th style="width:4.5%;">Aporte ARL</th>
+        <th style="width:3.5%;">SENA</th>
+        <th style="width:3.5%;">ICBF</th>
+        <th style="width:5.5%;">Total PILA</th>
       </tr>
     </thead>
     <tbody>
@@ -3921,6 +3993,13 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
           </td>
           <td class="text-center">
             <span class="badge-pdf ${r.novedad !== 'NO' && r.novedad !== 'No' ? 'badge-pdf-amber' : 'badge-pdf-gray'}">${esc(r.novedad)}</span>
+          </td>
+          <td class="text-right font-mono">
+            <div style="font-weight:bold; color:${r.horasExtrasMonto > 0 ? '#3730a3' : '#64748b'};">${fmt(r.horasExtrasMonto)}</div>
+            <div style="font-size:5.5pt; color:#64748b;">${esc(r.horasExtrasDetalle)}</div>
+          </td>
+          <td class="text-right font-mono font-bold" style="color:${r.comisionesMonto > 0 ? '#1e3a8a' : '#64748b'};">
+            ${fmt(r.comisionesMonto)}
           </td>
           <td class="text-center font-mono">${r.diasLaborados}/${r.diasCotizados}</td>
           <td class="text-center font-mono" style="font-size:6pt;">${r.diasAfp}/${r.diasEps}/${r.diasArp}/${r.diasCcf}</td>
@@ -3943,7 +4022,10 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
     </tbody>
     <tfoot>
       <tr class="tfoot-row">
-        <td colspan="4" class="text-left">TOTALES CONSOLIDADOS (${rowItems.length} EMPLEADOS)</td>
+        <td colspan="2" class="text-left">TOTALES CONSOLIDADOS (${rowItems.length} EMPLEADOS)</td>
+        <td class="text-right font-mono" style="color:#3730a3;">${fmt(totals.totHorasExtrasMonto || 0)}</td>
+        <td class="text-right font-mono" style="color:#1e3a8a;">${fmt(totals.totComisionesMonto || 0)}</td>
+        <td colspan="2" class="text-center">—</td>
         <td class="text-center">—</td>
         <td class="text-right font-mono">${fmt(totals.totIbcPension)}</td>
         <td class="text-right font-mono" style="color:#581c87;">${fmt(totals.totAportePension)}</td>
@@ -4003,10 +4085,23 @@ function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: nu
   const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
   const numSec = `NOM${consecutivo}`;
   const docNum = emp.numeroDocumento || '00000000';
-  const sueldo = (emp.ibc || emp.totalDevengos || 0).toFixed(2);
-  const devengos = (emp.totalDevengos || 0).toFixed(2);
-  const deducciones = (emp.totalDeducciones || 0).toFixed(2);
-  const neto = (emp.netoPagar || 0).toFixed(2);
+  const sueldoBasico = round2(emp.sueldoBasico || 0).toFixed(2);
+  const devengos = round2(emp.totalDevengos || 0).toFixed(2);
+  const deducciones = round2(emp.totalDeducciones || 0).toFixed(2);
+  const neto = round2(emp.netoPagar || 0).toFixed(2);
+
+  let otNodesXml = '';
+  if (emp.otBreakdownMap && Object.keys(emp.otBreakdownMap).length > 0) {
+    const map = emp.otBreakdownMap;
+    if (map.hed && map.hed.amount > 0) otNodesXml += `<HEDs><HED HoraInicio="${ymPrefix}-01T08:00:00" HoraFin="${ymPrefix}-01T10:00:00" Cantidad="${map.hed.hours}" Porcentaje="25.00" Pago="${round2(map.hed.amount).toFixed(2)}" /></HEDs>\n`;
+    if (map.hen && map.hen.amount > 0) otNodesXml += `<HENs><HEN HoraInicio="${ymPrefix}-01T21:00:00" HoraFin="${ymPrefix}-01T23:00:00" Cantidad="${map.hen.hours}" Porcentaje="75.00" Pago="${round2(map.hen.amount).toFixed(2)}" /></HENs>\n`;
+    if (map.rno && map.rno.amount > 0) otNodesXml += `<HRNs><HRN HoraInicio="${ymPrefix}-01T21:00:00" HoraFin="${ymPrefix}-01T23:00:00" Cantidad="${map.rno.hours}" Porcentaje="35.00" Pago="${round2(map.rno.amount).toFixed(2)}" /></HRNs>\n`;
+    if (map.heddf && map.heddf.amount > 0) otNodesXml += `<HEDDFs><HEDDF HoraInicio="${ymPrefix}-01T08:00:00" HoraFin="${ymPrefix}-01T10:00:00" Cantidad="${map.heddf.hours}" Porcentaje="100.00" Pago="${round2(map.heddf.amount).toFixed(2)}" /></HEDDFs>\n`;
+    if (map.hendf && map.hendf.amount > 0) otNodesXml += `<HENDFs><HENDF HoraInicio="${ymPrefix}-01T21:00:00" HoraFin="${ymPrefix}-01T23:00:00" Cantidad="${map.hendf.hours}" Porcentaje="150.00" Pago="${round2(map.hendf.amount).toFixed(2)}" /></HENDFs>\n`;
+    if (map.rdfd && map.rdfd.amount > 0) otNodesXml += `<HRDDFs><HRDDF HoraInicio="${ymPrefix}-01T08:00:00" HoraFin="${ymPrefix}-01T10:00:00" Cantidad="${map.rdfd.hours}" Porcentaje="75.00" Pago="${round2(map.rdfd.amount).toFixed(2)}" /></HRDDFs>\n`;
+  } else if ((emp.horasExtrasMonto || 0) > 0) {
+    otNodesXml = `<HEDs><HED Cantidad="1" Porcentaje="25.00" Pago="${round2(emp.horasExtrasMonto).toFixed(2)}" /></HEDs>\n`;
+  }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!--Version #1.0-->
@@ -4026,32 +4121,33 @@ function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: nu
 <LugarGeneracionXML Pais="CO" DepartamentoEstado="76" MunicipioCiudad="76001" Idioma="es" />
 <InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="1" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
 <Empleador RazonSocial="${esc(company.companyName)}" PrimerApellido="" SegundoApellido="" PrimerNombre="" NIT="${esc(company.companyNit)}" DV="${esc(company.companyDv)}" Pais="CO" DepartamentoEstado="76" MunicipioCiudad="76001" Direccion="${esc(company.companyDir)}" />
-<Trabajador TipoTrabajador="01" SubTipoTrabajador="00" AltoRiesgoPension="false" TipoDocumento="${esc(emp.tipoDocumentoCode || '13')}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}" SegundoApellido="${esc(emp.segundoApellido)}" PrimerNombre="${esc(emp.primerNombre)}" OtrosNombres="${esc(emp.otrosNombres)}" LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="76" LugarTrabajoMunicipioCiudad="76001" LugarTrabajoDireccion="${esc(company.companyDir)}" SalarioIntegral="false" TipoContrato="2" Sueldo="${sueldo}" CodigoTrabajador="${esc(docNum)}" />
+<Trabajador TipoTrabajador="01" SubTipoTrabajador="00" AltoRiesgoPension="false" TipoDocumento="${esc(emp.tipoDocumentoCode || '13')}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}" SegundoApellido="${esc(emp.segundoApellido)}" PrimerNombre="${esc(emp.primerNombre)}" OtrosNombres="${esc(emp.otrosNombres)}" LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="76" LugarTrabajoMunicipioCiudad="76001" LugarTrabajoDireccion="${esc(company.companyDir)}" SalarioIntegral="false" TipoContrato="2" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
 <Pago Forma="1" Metodo="30" Banco="Bancolombia" TipoCuenta="Ahorros" NumeroCuenta="00000000000" />
 <FechasPagos>
 <FechaPago>${ymPrefix}-30</FechaPago>
 </FechasPagos>
 <Devengados>
-<Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldo}" />
-<Transporte AuxilioTransporte="${(emp.auxilioTransporte || 0).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />
-</Devengados>
+<Basico DiasTrabajados="${emp.diasLaborados || 30}" SueldoTrabajado="${sueldoBasico}" />
+${(emp.auxilioTransporte || 0) > 0 ? `<Transporte AuxilioTransporte="${round2(emp.auxilioTransporte).toFixed(2)}" ViaticoManuAlojS="0.00" ViaticoManuAlojNS="0.00" />` : ''}
+${otNodesXml}${(emp.comisionesMonto || 0) > 0 ? `<Comisiones><Comision>${round2(emp.comisionesMonto).toFixed(2)}</Comision></Comisiones>\n` : ''}${(emp.bonificacionesMonto || 0) > 0 ? `<Bonificaciones><Bonificacion BonificacionS="${round2(emp.bonificacionesMonto).toFixed(2)}" BonificacionNS="0.00" /></Bonificaciones>\n` : ''}${(emp.incapacidadesMonto || 0) > 0 ? `<Incapacidades><Incapacidad Tipo="1" Cantidad="1" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n` : ''}${(emp.licenciasMonto || 0) > 0 ? `<Licencias><LicenciaR Cantidad="1" Pago="${round2(emp.licenciasMonto).toFixed(2)}" /></Licencias>\n` : ''}${(emp.vacacionesMonto || 0) > 0 ? `<Vacaciones><VacacionesComunes Cantidad="1" Pago="${round2(emp.vacacionesMonto).toFixed(2)}" /></Vacaciones>\n` : ''}${(emp.otrosIngresosMonto || 0) > 0 ? `<OtrosConceptos><OtroConcepto ConceptoS="${round2(emp.otrosIngresosMonto).toFixed(2)}" ConceptoNS="0.00" /></OtrosConceptos>\n` : ''}</Devengados>
 <Deducciones>
-<Salud Porcentaje="4" Deduccion="${(emp.saludDeduccion || 0).toFixed(2)}" />
-<FondoPension Porcentaje="4" Deduccion="${(emp.pensionDeduccion || 0).toFixed(2)}" />
-</Deducciones>
+<Salud Porcentaje="4.00" Deduccion="${round2(emp.saludDeduccion || 0).toFixed(2)}" />
+<FondoPension Porcentaje="4.00" Deduccion="${round2(emp.pensionDeduccion || 0).toFixed(2)}" />
+${(emp.solidaridadDeduccion || 0) > 0 ? `<FondoSP Porcentaje="1.00" DeduccionSP="${round2(emp.solidaridadDeduccion).toFixed(2)}" DeduccionSub="0.00" />\n` : ''}${(emp.retencionDeduccion || 0) > 0 ? `<RetencionFuente Deduccion="${round2(emp.retencionDeduccion).toFixed(2)}" />\n` : ''}${(emp.otrasDeducciones || 0) > 0 ? `<OtrasDeducciones><OtraDeduccion>${round2(emp.otrasDeducciones).toFixed(2)}</OtraDeduccion></OtrasDeducciones>\n` : ''}</Deducciones>
 <DevengadosTotal>${devengos}</DevengadosTotal>
 <DeduccionesTotal>${deducciones}</DeduccionesTotal>
 <ComprobanteTotal>${neto}</ComprobanteTotal>
 </NominaIndividual>`;
 }
 
-async function renderNominaElectronica(c, periods) {
+async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
+  if (!c) return;
   c.innerHTML = `<div class="p-4 text-center text-sm text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando nómina electrónica...</div>`;
   try {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
 
-    const years = [];
+    const years: number[] = [];
     for (let y = currentYear; y >= currentYear - 4; y--) years.push(y);
 
     const months = [
@@ -4090,8 +4186,8 @@ async function renderNominaElectronica(c, periods) {
       if (!container) return;
       container.innerHTML = '<div class="p-4 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando comprobantes de nómina...</div>';
 
-      const year = parseInt($('#ne-filter-year')?.value || '0');
-      const month = parseInt($('#ne-filter-month')?.value || '0');
+      const year = parseInt(($('#ne-filter-year') as HTMLSelectElement)?.value || '0');
+      const month = parseInt(($('#ne-filter-month') as HTMLSelectElement)?.value || '0');
 
       try {
         const records = await pb.listAll('electronic_payrolls', {
@@ -4216,53 +4312,48 @@ async function renderNominaElectronica(c, periods) {
           renderPlanillaPilaRevision(year, month);
         });
 
-      } catch (err) {
+      } catch (err: any) {
         container.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
       }
     };
 
     $('#ne-filter-year')?.addEventListener('change', loadReport);
     $('#ne-filter-month')?.addEventListener('change', loadReport);
-    $('#btn-generate-ne')?.addEventListener('click', () => generarNominaElectronica());
+    $('#btn-generate-ne')?.addEventListener('click', () => {
+      const year = parseInt(($('#ne-filter-year') as HTMLSelectElement)?.value || '0');
+      const month = parseInt(($('#ne-filter-month') as HTMLSelectElement)?.value || '0');
+      generateNominaElectronica(year, month, $('#btn-generate-ne') as HTMLButtonElement);
+    });
     $('#btn-view-pila-report')?.addEventListener('click', () => {
-      const year = parseInt($('#ne-filter-year')?.value || '0');
-      const month = parseInt($('#ne-filter-month')?.value || '0');
+      const year = parseInt(($('#ne-filter-year') as HTMLSelectElement)?.value || '0');
+      const month = parseInt(($('#ne-filter-month') as HTMLSelectElement)?.value || '0');
       renderPlanillaPilaRevision(year, month);
     });
 
-    loadReport();
-  } catch (err) {
+    await loadReport();
+  } catch (err: any) {
     c.innerHTML = `<div class="p-4 text-red-500">${esc(err.message)}</div>`;
   }
 }
 
-async function generarNominaElectronica() {
-  const btn = $('#btn-generate-ne');
+async function generateNominaElectronica(year: number, month: number, btn?: HTMLButtonElement) {
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generando Volantes...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generando XML UBL 2.1...';
   }
+
   try {
-    const year = parseInt($('#ne-filter-year')?.value || '0');
-    const month = parseInt($('#ne-filter-month')?.value || '0');
-    if (!year || !month) return showToast('Selecciona Año y Mes válidos', 'warning');
+    const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
+    const periods = await pb.listAll('payroll_periods', { filter: `start_date ~ "${ymPrefix}" || end_date ~ "${ymPrefix}"` });
+    const periodIds = periods.map((p: any) => p.id);
 
-    // 1. Buscar los periodos que correspondan a este año y mes.
-    const allPeriods = await pb.listAll('payroll_periods');
-    const matchingPeriods = allPeriods.filter(p => {
-      const fromStr = p.date_from || '';
-      const [y, m] = fromStr.split('-');
-      return parseInt(y) === year && parseInt(m) === month;
-    });
-
-    if (!matchingPeriods.length) {
-      return showToast('No se encontraron períodos de nómina para el Año/Mes seleccionado.', 'warning');
+    if (!periodIds.length) {
+      return showToast(`No se encontraron períodos de nómina para ${ymPrefix}.`, 'warning');
     }
 
-    // 2. Buscar todas las liquidaciones (payroll_lines) asociadas a esos periodos
-    const periodIdsFilter = matchingPeriods.map(p => `period_id="${p.id}"`).join(' || ');
+    const filterExpr = periodIds.map((id: string) => `period_id = "${id}"`).join(' || ');
     const lines = await pb.listAll('payroll_lines', {
-      filter: periodIdsFilter,
+      filter: filterExpr,
       expand: 'employee_id,period_id'
     });
 
@@ -4270,8 +4361,7 @@ async function generarNominaElectronica() {
       return showToast('No hay liquidaciones registradas en los períodos de este mes.', 'warning');
     }
 
-    // 3. Obtener configuración/empresa de settings para NIT/Razón Social.
-    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit"' });
+    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit"' }).catch(() => []);
     let companyName = 'Mi Empresa S.A.S.';
     let companyNit = '900123456';
     let companyDv = '7';
@@ -4280,7 +4370,7 @@ async function generarNominaElectronica() {
     let companyDept = 'Cundinamarca';
     let companyEmail = 'contacto@miempresa.com';
 
-    const companySetting = settingsList.find(s => s.key === 'company');
+    const companySetting = settingsList.find((s: any) => s.key === 'company');
     if (companySetting) {
       try {
         const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
@@ -4294,33 +4384,90 @@ async function generarNominaElectronica() {
       } catch(_) {}
     }
 
-    // 4. Consolidar por empleado
     const acumuladosPorEmpleado = new Map();
 
     lines.forEach(l => {
       const emp = l.expand?.employee_id;
       if (!emp) return;
       const empId = emp.id;
+
+      const days = l.days_worked || 30;
+      const proportionalSalary = round2(((l.salary_base || 0) / 30) * days);
+
+      const otMeta = getNominaOvertimeMetaFromLine(l);
+      const otAmount = otMeta.total_amount || round2(l.overtime || 0);
+
+      const ca = getNominaConceptAmountsFromLine(l);
+      const comisiones = round2(Number(ca.comisiones || 0));
+      const bonificaciones = round2(Number(ca.bonificacion || 0));
+      const incapacidades = round2(Number(ca.incapacidades || 0));
+      const licencias = round2(Number(ca.licencias || 0));
+      const vacaciones = round2(Number(ca.vacaciones_disfrutadas || 0));
+      const ajusteSalarial = round2(Number(ca.ajuste_salarial || 0));
+      const otrosIngresos = round2(Number(ca.otros_ingresos || 0));
+
+      const saludDeduccion = l.deduction_health || 0;
+      const pensionDeduccion = l.deduction_pension || 0;
+      const solidaridad = l.solidarity_fund || 0;
+      const retencion = l.withholding_tax || 0;
+      const extraDed = getExtraDeductionsFromLine(l);
+      const otrasDeducciones = (l.deduction_other || 0) + extraDed.total;
+
       const dev = getNominaDevengadoTotal(l);
       const ded = getNominaDeduccionesTotal(l);
-      const net = l.net_pay || 0;
+      const net = round2(dev - ded);
       const para = (l.employer_health || 0) + (l.employer_pension || 0) + (l.employer_arl || 0) + (l.sena || 0) + (l.icbf || 0) + (l.caja_comp || 0);
       const prov = (l.cesantias || 0) + (l.intereses_ces || 0) + (l.prima || 0) + (l.vacaciones || 0);
       const costEmp = dev + para + prov;
 
+      const ibc = round2(proportionalSalary + otAmount + comisiones + incapacidades + licencias + vacaciones + ajusteSalarial + bonificaciones);
+
       const existing = acumuladosPorEmpleado.get(empId);
       if (existing) {
+        existing.sueldoBasico += proportionalSalary;
         existing.totalDevengos += dev;
         existing.totalDeducciones += ded;
         existing.netoPagar += net;
         existing.totalEmpleador += costEmp;
-        existing.diasLaborados += (l.days_worked || 30);
-        existing.ibc += (l.salary_base || 0);
+        existing.diasLaborados += days;
+        existing.ibc += ibc;
         existing.auxilioTransporte += (l.transport_allowance || 0);
-        existing.saludDeduccion += (l.deduction_health || 0);
-        existing.pensionDeduccion += (l.deduction_pension || 0);
+        existing.horasExtrasMonto += otAmount;
+        existing.comisionesMonto += comisiones;
+        existing.bonificacionesMonto += bonificaciones;
+        existing.incapacidadesMonto += incapacidades;
+        existing.licenciasMonto += licencias;
+        existing.vacacionesMonto += vacaciones;
+        existing.otrosIngresosMonto += otrosIngresos;
+
+        existing.saludDeduccion += saludDeduccion;
+        existing.pensionDeduccion += pensionDeduccion;
+        existing.solidaridadDeduccion += solidaridad;
+        existing.retencionDeduccion += retencion;
+        existing.otrasDeducciones += otrasDeducciones;
+
+        if (otMeta.breakdown && Array.isArray(otMeta.breakdown)) {
+          otMeta.breakdown.forEach((b: any) => {
+            if (b.hours > 0 || b.amount > 0) {
+              if (!existing.otBreakdownMap[b.key]) {
+                existing.otBreakdownMap[b.key] = { key: b.key, label: b.label, factor: b.factor, hours: 0, amount: 0 };
+              }
+              existing.otBreakdownMap[b.key].hours += (b.hours || 0);
+              existing.otBreakdownMap[b.key].amount += (b.amount || 0);
+            }
+          });
+        }
       } else {
         const nameParts = (emp.name || 'Empleado').trim().split(/\s+/);
+        const otMap: any = {};
+        if (otMeta.breakdown && Array.isArray(otMeta.breakdown)) {
+          otMeta.breakdown.forEach((b: any) => {
+            if (b.hours > 0 || b.amount > 0) {
+              otMap[b.key] = { key: b.key, label: b.label, factor: b.factor, hours: b.hours || 0, amount: b.amount || 0 };
+            }
+          });
+        }
+
         acumuladosPorEmpleado.set(empId, {
           empId: empId,
           nombreCompleto: emp.name || 'Empleado',
@@ -4333,15 +4480,28 @@ async function generarNominaElectronica() {
           numeroDocumento: emp.doc_number || '00000000',
           cargo: emp.notes || 'Colaborador',
           email: emp.email || '',
+          fechaIngreso: emp.hire_date || '2020-01-01',
+          sueldoBasico: proportionalSalary,
           totalDevengos: dev,
           totalDeducciones: ded,
           netoPagar: net,
           totalEmpleador: costEmp,
-          diasLaborados: l.days_worked || 30,
-          ibc: l.salary_base || 0,
+          diasLaborados: days,
+          ibc: ibc,
           auxilioTransporte: l.transport_allowance || 0,
-          saludDeduccion: l.deduction_health || 0,
-          pensionDeduccion: l.deduction_pension || 0
+          horasExtrasMonto: otAmount,
+          otBreakdownMap: otMap,
+          comisionesMonto: comisiones,
+          bonificacionesMonto: bonificaciones,
+          incapacidadesMonto: incapacidades,
+          licenciasMonto: licencias,
+          vacacionesMonto: vacaciones,
+          otrosIngresosMonto: otrosIngresos,
+          saludDeduccion: saludDeduccion,
+          pensionDeduccion: pensionDeduccion,
+          solidaridadDeduccion: solidaridad,
+          retencionDeduccion: retencion,
+          otrasDeducciones: otrasDeducciones
         });
       }
     });
@@ -4350,7 +4510,6 @@ async function generarNominaElectronica() {
     const companyData = { companyName, companyNit, companyDv, companyDir, companyCity, companyDept, companyEmail };
     let startConsecutive = 980;
 
-    // 5. Crear o actualizar un registro e XML UBL 2.1 INDIVIDUAL por cada empleado
     for (let i = 0; i < empleadosList.length; i++) {
       const e = empleadosList[i];
       const consecutivo = startConsecutive + i + 1;
@@ -4362,7 +4521,7 @@ async function generarNominaElectronica() {
       });
 
       const payload = {
-        periodo_id: matchingPeriods[0]?.id || undefined,
+        periodo_id: periods[0]?.id || undefined,
         employee_id: e.empId,
         ano: year,
         mes: month,
@@ -4389,7 +4548,7 @@ async function generarNominaElectronica() {
 
     showToast(`Nómina Electrónica UBL 2.1 generada exitosamente. ${empleadosList.length} volantes individuales creados con CUNE independiente.`, 'success');
     renderNomina($('#page-content'));
-  } catch (err) {
+  } catch (err: any) {
     showToast(err.message, 'error');
   } finally {
     if (btn) {
@@ -6513,7 +6672,8 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 (window as any).renderNominaNovedades = renderNominaNovedades;
 (window as any).openNoveltyForm = openNoveltyForm;
 (window as any).renderNominaElectronica = renderNominaElectronica;
-(window as any).generarNominaElectronica = generarNominaElectronica;
+(window as any).generateNominaElectronica = generateNominaElectronica;
+(window as any).generarNominaElectronica = generateNominaElectronica;
 (window as any).verXmlNominaElectronica = verXmlNominaElectronica;
 (window as any).enviarDianNominaElectronica = enviarDianNominaElectronica;
 (window as any).renderNominaEmpleados = renderNominaEmpleados;

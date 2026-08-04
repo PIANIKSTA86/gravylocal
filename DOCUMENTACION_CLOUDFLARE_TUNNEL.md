@@ -94,8 +94,8 @@ setup-cloudflare.bat
 * **Solución**: Ejecute `setup-cloudflare.bat` -> Opción **2** para regenerar `config.yml` con la ruta dinámica del usuario actual.
 
 ### Error 3: El dominio responde `502 Bad Gateway`
-* **Causa**: El túnel está conectado a Cloudflare pero los servicios de PocketBase local no han terminado de iniciar.
-* **Solución**: Verifique en `setup-cloudflare.bat` (opción 3) que los puertos `8090` y `8089` se encuentren en estado `Escuchando`.
+* **Causa**: El túnel está conectado a Cloudflare pero los servicios de PocketBase u Orquestador (Firma DIAN) local no han terminado de iniciar.
+* **Solución**: Verifique en `setup-cloudflare.bat` (opción 3) que los puertos `8090` (Empresa), `8089` (HUB) y `8088` (Orquestador / Firma DIAN) se encuentren en estado `Escuchando`.
 
 ---
 

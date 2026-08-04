@@ -236,6 +236,14 @@ function Test-Diagnostics {
         Log-Warn 'Puerto 8089 (GRAVY HUB Central): Inactivo (inicie GRAVY primero con start-cloud.bat)'
     }
 
+    $conn8088 = Get-NetTCPConnection -LocalPort 8088 -State Listen -ErrorAction SilentlyContinue
+    if ($conn8088) {
+        $pid8088 = ($conn8088 | Select-Object -ExpandProperty OwningProcess -Unique) -join ', '
+        Log-Success "Puerto 8088 (GRAVY Orquestador / Firma DIAN): Escuchando (PID $pid8088)"
+    } else {
+        Log-Warn 'Puerto 8088 (GRAVY Orquestador / Firma DIAN): Inactivo (verifique el servicio PM2 o start-cloud.bat)'
+    }
+
     # 4. Prueba rápida de versión
     if ($exe) {
         Write-Host ''

@@ -29,6 +29,9 @@ WshShell.Run nodeExe & " """ & currentDir & "\hub\orchestrator.js""", 0, False
 ' ─── 6. Iniciar Empresa Demo (localhost:8090) — sin ventana ───────────────
 WshShell.Run "pocketbase.exe serve --http=127.0.0.1:8090 --dir=""" & currentDir & "\pb_data"" --publicDir=""" & currentDir & "\pb_public"" --hooksDir=""" & currentDir & "\pb_hooks""", 0, False
 
+' 6b. Iniciar Empresa 4PATAS (localhost:8091) sin ventana
+WshShell.Run "pocketbase.exe serve --http=127.0.0.1:8091 --dir=""" & currentDir & "\empresas\empresa_8091\pb_data"" --publicDir=""" & currentDir & "\pb_public"" --hooksDir=""" & currentDir & "\empresas\empresa_8091\pb_hooks"" --migrationsDir=""" & currentDir & "\pb_migrations""", 0, False
+
 ' ─── 7. Esperar que PocketBase levante antes de abrir el túnel ─────────────
 WshShell.Run "cmd /c timeout /t 4 /nobreak", 0, True
 

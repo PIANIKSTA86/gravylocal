@@ -471,6 +471,30 @@ onRecordCreateRequest((e) => {
       lineDesc.set("description", "Descuento comercial condicionado");
       saveLine(lineDesc);
     }
+
+    // 8. Línea de Ajuste al Peso (Sobrante o Faltante)
+    const ajustePesoAmt = Number(params.ajuste_peso_amount || 0);
+    const ajustePesoAcc = params.ajuste_peso_account_id;
+    const ajustePesoType = params.ajuste_peso_type || 'faltante';
+    if (ajustePesoAmt > 0.001 && ajustePesoAcc) {
+      const lineAjuste = new Record(txLinesCollection);
+      lineAjuste.set("tx_id", e.record.id);
+      lineAjuste.set("account_id", ajustePesoAcc);
+      lineAjuste.set("third_party_id", third_party_id);
+      lineAjuste.set("cross_doc_ref", anticipoRef);
+      if (ajustePesoType === 'sobrante') {
+        // Sobrante -> Ingreso/Aprovechamiento -> Crédito
+        lineAjuste.set("debit", 0);
+        lineAjuste.set("credit", ajustePesoAmt);
+        lineAjuste.set("description", "Ajuste al peso (Sobrante)");
+      } else {
+        // Faltante -> Gasto/Pérdida -> Débito
+        lineAjuste.set("debit", ajustePesoAmt);
+        lineAjuste.set("credit", 0);
+        lineAjuste.set("description", "Ajuste al peso (Faltante)");
+      }
+      saveLine(lineAjuste);
+    }
   }
 
   try {

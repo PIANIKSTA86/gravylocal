@@ -182,6 +182,7 @@ async function renderReportes(c) {
         ${reportCard('ap-bal', 'Saldos Cuentas por Pagar', 'Pendientes por tercero y cuenta por pagar.')}
         ${reportCard('aging', 'Cartera por Edades', 'Tramos 0-30-60-90+ para clientes o proveedores.')}
         ${reportCard('historial-pagos', 'Historial de Pagos de Cartera', 'Detalle cronológico de abonos y pagos recibidos de un cliente en un rango de fechas.')}
+        ${reportCard('estado-cuenta-tercero', 'Estado de Cuenta por Tercero', 'Consulta detallada de saldos iniciales, movimientos del período y saldo acumulado por tercero y lapso de tiempo.')}
       </div>
     </div>
 
@@ -231,6 +232,7 @@ async function renderReportes(c) {
   $('#btn-report-budget-execution')?.addEventListener('click', () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()));
   $('#btn-report-financial-notes')?.addEventListener('click', () => launchReportModal('Notas a los Estados Financieros', () => renderFinancialNotesManager()));
   $('#btn-report-consecutive-audit')?.addEventListener('click', () => launchReportModal('Auditoría de Consecutivos de Comprobantes', () => renderConsecutiveAuditReport()));
+  $('#btn-report-estado-cuenta-tercero')?.addEventListener('click', () => launchReportModal('Estado de Cuenta por Tercero', () => renderAccountStatementReport()));
 }
 
 function getReportViewHost() {
@@ -5182,50 +5184,46 @@ async function renderClientPaymentsHistory() {
     results.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial de pagos...</div>';
 
     try {
-      const [{ accounts }, { transactions, txLines }] = await Promise.all([
+      const [{ accounts }, thirdParties] = await Promise.all([
         ensureAccountsSaldos(),
-        ensureLedgerData(),
+        ensureThirdParties(),
       ]);
 
-      const txById = new Map(transactions.map(t => [t.id, t]));
-      const accountById = new Map(accounts.map(a => [a.id, a]));
-      selectedThird = thirds.find(t => t.id === thirdId);
+      selectedThird = thirdParties.find((t: any) => t.id === thirdId);
       dateFrom = start;
       dateTo = end;
 
-      const payments = [];
-      for (const line of txLines) {
-        const tx = txById.get(line.tx_id);
-        if (!tx || tx.status !== 'active') continue;
-        if (tx.date < start || tx.date > end) continue;
+      // Cuentas de Cartera / Cuentas por Cobrar (Clase 13)
+      const cxcAccIds = accounts
+        .filter((a: any) => String(a.code || '').startsWith('13'))
+        .map((a: any) => a.id)
+        .join(',');
 
-        const lineThirdId = line.third_party_id || tx.third_party_id || 'NO_TERCERO';
-        if (lineThirdId !== thirdId) continue;
+      // Endpoint de consulta indexada ultrarrápido (del lado del servidor)
+      const res: any = await pb.send(
+        `/api/gravy/report-auxiliary?fromDate=${start}&toDate=${end}&thirdId=${thirdId}&accountIds=${cxcAccIds}`,
+        { method: 'GET' }
+      );
 
-        const acc = line.expand?.account_id || accountById.get(line.account_id);
-        if (!acc || !acc.maneja_cruce) continue;
+      const periodLines = res?.periodLines || [];
 
-        const nature = String(acc.nature || '').toLowerCase();
-        if (nature !== 'debit') continue; // Cuenta de cobrar / Cartera es débito
+      // Filtrar líneas de abono o crédito recibidas en la cuenta de cartera
+      const payments = periodLines
+        .filter((l: any) => Number(l.credito || 0) > 0.0001)
+        .map((l: any) => ({
+          id: l.txId || l.id,
+          date: l.fecha || '',
+          number: l.comprobante || 'S/N',
+          tx_type_name: l.accountName || 'Recibo de Caja',
+          tx_type_prefix: l.comprobante ? l.comprobante.split('-')[0] : 'RC',
+          account_code: l.accountCode || '',
+          account_name: l.accountName || '',
+          cross_doc_ref: l.doc_cruce || '',
+          description: l.descripcion || 'Abono de cartera',
+          amount: Number(l.credito || 0)
+        }))
+        .sort((a: any, b: any) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
 
-        // El abono o pago reduce la deuda (crédito)
-        if (Number(line.credit || 0) <= 0.0001) continue;
-
-        payments.push({
-          id: line.id,
-          date: tx.date,
-          number: tx.number || 'S/N',
-          tx_type_name: tx.expand?.tx_type_id?.name || tx.expand?.tx_type_id?.prefix || 'Recibo de Caja',
-          tx_type_prefix: tx.expand?.tx_type_id?.prefix || 'RC',
-          account_code: acc.code || '',
-          account_name: acc.name || '',
-          cross_doc_ref: line.cross_doc_ref || '',
-          description: line.description || tx.concept || 'Abono de cartera',
-          amount: Number(line.credit || 0)
-        });
-      }
-
-      payments.sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
       lastGeneratedPayments = payments;
 
       if (!payments.length) {
@@ -12789,5 +12787,470 @@ function exportCostCentersPDF(rows, fromDate, toDate) {
   }
 }
 
+// ── REPORTE ESTADO DE CUENTA POR TERCERO ──
+async function renderAccountStatementReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+  view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Estado de Cuenta por Tercero...</div>';
+
+  try {
+    const [{ accounts }, thirdParties] = await Promise.all([
+      ensureAccountsSaldos(),
+      ensureThirdParties(),
+    ]);
+
+    const firstDayOfMonth = todayStr().slice(0, 8) + '01';
+    const today = todayStr();
+
+    view.innerHTML = `
+      <div class="p-4 border-b" style="border-color:#F3F4F6">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h4 class="font-bold text-base flex items-center" style="color:#0D2137"><i class="fas fa-file-invoice mr-2" style="color:#1A4B8C"></i>Estado de Cuenta por Tercero</h4>
+            <p class="text-xs" style="color:#6B7280">Consulta saldos iniciales, débitos, créditos y saldo final acumulado de un tercero en un lapso de tiempo.</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+          <div class="relative md:col-span-2">
+            <label class="text-xs font-semibold" style="color:#6B7280">Tercero <span class="text-red-500">*</span></label>
+            <input type="text" id="stmt-third-search" class="form-input w-full mt-1" placeholder="Buscar por Nit, Cédula o Nombre..." autocomplete="off" />
+            <input type="hidden" id="stmt-third" value="" />
+            <div id="stmt-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:#6B7280">Filtrar por Cuentas</label>
+            <select id="stmt-acct-type" class="form-input mt-1 w-full">
+              <option value="all" selected>Todas las Cuentas</option>
+              <option value="cxc">Cuentas por Cobrar (Clase 13 - Cartera)</option>
+              <option value="cxp">Cuentas por Pagar (Clase 22 / 23 - Proveedores)</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div>
+            <label class="text-xs font-semibold" style="color:#6B7280">Fecha desde</label>
+            <input type="date" id="stmt-date-from" class="form-input mt-1" value="${firstDayOfMonth}" />
+          </div>
+          <div>
+            <label class="text-xs font-semibold" style="color:#6B7280">Fecha hasta</label>
+            <input type="date" id="stmt-date-to" class="form-input mt-1" value="${today}" />
+          </div>
+          <div class="flex gap-1">
+            <button type="button" class="btn btn-xs btn-outline" id="stmt-quick-month" style="font-size:11px">Mes actual</button>
+            <button type="button" class="btn btn-xs btn-outline" id="stmt-quick-prev" style="font-size:11px">Mes anterior</button>
+            <button type="button" class="btn btn-xs btn-outline" id="stmt-quick-year" style="font-size:11px">Año actual</button>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary flex-1" id="btn-gen-account-statement"><i class="fas fa-filter"></i> Generar</button>
+            <button class="btn btn-outline" id="btn-pdf-account-statement" disabled><i class="fas fa-file-pdf"></i> PDF</button>
+            ${can('canExport') ? '<button class="btn btn-outline" id="btn-exp-account-statement" disabled><i class="fas fa-file-excel"></i> Excel</button>' : ''}
+          </div>
+        </div>
+      </div>
+      <div id="account-statement-results" class="p-6 text-sm text-center" style="color:#6B7280">
+        <i class="fas fa-user-tag text-2xl mb-2" style="color:#9CA3AF"></i><br>
+        Selecciona un tercero y rango de fechas para generar el Estado de Cuenta.
+      </div>`;
+
+    initThirdSearch(
+      document.getElementById('stmt-third-search') as HTMLInputElement,
+      document.getElementById('stmt-third') as HTMLInputElement,
+      document.getElementById('stmt-third-results') as HTMLElement,
+      thirdParties
+    );
+
+    $('#stmt-quick-month')?.addEventListener('click', () => {
+      const d = todayStr();
+      (document.getElementById('stmt-date-from') as HTMLInputElement).value = d.slice(0, 8) + '01';
+      (document.getElementById('stmt-date-to') as HTMLInputElement).value = d;
+    });
+
+    $('#stmt-quick-prev')?.addEventListener('click', () => {
+      const now = new Date();
+      const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDayPrev = new Date(now.getFullYear(), now.getMonth(), 0);
+      const y = prevMonth.getFullYear();
+      const m = String(prevMonth.getMonth() + 1).padStart(2, '0');
+      const ld = String(lastDayPrev.getDate()).padStart(2, '0');
+      (document.getElementById('stmt-date-from') as HTMLInputElement).value = `${y}-${m}-01`;
+      (document.getElementById('stmt-date-to') as HTMLInputElement).value = `${y}-${m}-${ld}`;
+    });
+
+    $('#stmt-quick-year')?.addEventListener('click', () => {
+      const y = todayStr().slice(0, 4);
+      (document.getElementById('stmt-date-from') as HTMLInputElement).value = `${y}-01-01`;
+      (document.getElementById('stmt-date-to') as HTMLInputElement).value = todayStr();
+    });
+
+    $('#btn-gen-account-statement')?.addEventListener('click', generateAccountStatementRows);
+
+  } catch (err: any) {
+    view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+async function generateAccountStatementRows() {
+  const results = $('#account-statement-results');
+  if (!results) return;
+
+  let thirdId = getSelectVal('stmt-third');
+  const acctType = getSelectVal('stmt-acct-type') || 'all';
+  const dateFrom = ($('#stmt-date-from')?.value || '').trim();
+  const dateTo = ($('#stmt-date-to')?.value || '').trim();
+
+  if (!dateFrom || !dateTo) {
+    showToast('Selecciona ambas fechas (desde y hasta).', 'warning');
+    return;
+  }
+
+  const [{ accounts }, thirdParties] = await Promise.all([
+    ensureAccountsSaldos(),
+    ensureThirdParties(),
+  ]);
+
+  const thirdSearchVal = ($('#stmt-third-search') as HTMLInputElement)?.value.trim();
+  if (thirdSearchVal && !thirdId) {
+    const exactMatch = thirdParties.find(t =>
+      String(t.doc_number || '').trim() === thirdSearchVal ||
+      `${t.doc_number || ''} - ${t.name}` === thirdSearchVal ||
+      String(t.name || '').trim().toLowerCase() === thirdSearchVal.toLowerCase()
+    );
+    if (exactMatch) {
+      thirdId = exactMatch.id;
+      const hiddenEl = document.getElementById('stmt-third') as HTMLInputElement;
+      if (hiddenEl) hiddenEl.value = exactMatch.id;
+    }
+  }
+
+  if (!thirdId) {
+    results.innerHTML = '<div class="p-4 text-center text-orange-500 font-semibold"><i class="fas fa-exclamation-triangle mr-2"></i>Por favor selecciona un tercero válido de la lista sugerida.</div>';
+    showToast('Selecciona un tercero de la lista.', 'warning');
+    return;
+  }
+
+  const third = thirdParties.find(t => t.id === thirdId);
+  if (!third) {
+    showToast('Tercero no encontrado.', 'error');
+    return;
+  }
+
+  results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos contables...</div>';
+
+  try {
+    let allowedAccIdsStr = '';
+    if (acctType === 'cxc') {
+      const cxcAccs = accounts.filter(a => String(a.code || '').startsWith('13')).map(a => a.id);
+      allowedAccIdsStr = cxcAccs.join(',');
+    } else if (acctType === 'cxp') {
+      const cxpAccs = accounts.filter(a => String(a.code || '').startsWith('22') || String(a.code || '').startsWith('23')).map(a => a.id);
+      allowedAccIdsStr = cxpAccs.join(',');
+    }
+
+    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&thirdId=${thirdId}&accountIds=${allowedAccIdsStr}`, { method: 'GET' });
+    const { openingBalances, periodLines } = res;
+
+    let initialBalance = 0;
+    if (openingBalances && openingBalances.length) {
+      for (const ob of openingBalances) {
+        initialBalance += Number(ob.balance || 0);
+      }
+    }
+
+    const lines = (periodLines || []).map((l: any) => ({
+      fecha: l.fecha || '',
+      comprobante: l.comprobante || '',
+      txId: l.txId || '',
+      accountCode: l.accountCode || '',
+      accountName: l.accountName || '',
+      cuenta: `${l.accountCode} - ${l.accountName}`.trim(),
+      doc_cruce: l.doc_cruce || '—',
+      descripcion: l.descripcion || '',
+      debito: Number(l.debito || 0),
+      credito: Number(l.credito || 0),
+    })).sort((a, b) => `${a.fecha}|${a.comprobante}`.localeCompare(`${b.fecha}|${b.comprobante}`));
+
+    let runningBalance = initialBalance;
+    const processedLines = lines.map(l => {
+      runningBalance += (l.debito - l.credito);
+      return {
+        ...l,
+        saldo: runningBalance
+      };
+    });
+
+    const totalDebits = lines.reduce((sum, l) => sum + l.debito, 0);
+    const totalCredits = lines.reduce((sum, l) => sum + l.credito, 0);
+    const finalBalance = runningBalance;
+
+    const btnPdf = $('#btn-pdf-account-statement') as HTMLButtonElement;
+    const btnExp = $('#btn-exp-account-statement') as HTMLButtonElement;
+    if (btnPdf) btnPdf.disabled = false;
+    if (btnExp) btnExp.disabled = false;
+
+    (window as any).lastAccountStatementData = {
+      third,
+      dateFrom,
+      dateTo,
+      acctType,
+      initialBalance,
+      processedLines,
+      totalDebits,
+      totalCredits,
+      finalBalance,
+    };
+
+    const initialPolarity = fmtPolarityAmount(initialBalance);
+    const finalPolarity = fmtPolarityAmount(finalBalance);
+
+    results.innerHTML = `
+      <div class="bg-white border rounded-2xl p-4 mb-4 text-left" style="border-color:#E5E7EB; background:#F8FAFC">
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b" style="border-color:#E2E8F0">
+          <div>
+            <span class="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded" style="background:#E0E7FF;color:#3730A3">${esc(third.type || 'TERCERO')}</span>
+            <h3 class="text-lg font-bold mt-1" style="color:#0D2137">${esc(third.name || 'Sin Nombre')}</h3>
+            <p class="text-xs" style="color:#6B7280">NIT / Cédula: <strong style="color:#0D2137">${esc(third.doc_number || 'S.N.')}</strong></p>
+          </div>
+          <div class="text-right text-xs" style="color:#4B5563">
+            <div><i class="fas fa-map-marker-alt mr-1"></i> ${esc(third.address || 'Sin dirección')} ${third.city ? ` - ${esc(third.city)}` : ''}</div>
+            <div><i class="fas fa-phone mr-1"></i> ${esc(third.phone || 'Sin teléfono')}</div>
+            <div><i class="fas fa-envelope mr-1"></i> ${esc(third.email || 'Sin correo')}</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-center">
+          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#E5E7EB">
+            <span class="text-xs font-semibold block" style="color:#6B7280">Saldo Anterior</span>
+            <span class="text-sm font-bold block" style="color:${initialPolarity.color}">${initialPolarity.text}</span>
+          </div>
+          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#E5E7EB">
+            <span class="text-xs font-semibold block" style="color:#6B7280">Movimientos Débito</span>
+            <span class="text-sm font-bold block text-emerald-700">$ ${fmt(totalDebits)}</span>
+          </div>
+          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#E5E7EB">
+            <span class="text-xs font-semibold block" style="color:#6B7280">Movimientos Crédito</span>
+            <span class="text-sm font-bold block text-rose-700">$ ${fmt(totalCredits)}</span>
+          </div>
+          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#1A4B8C; background:#EFF6FF">
+            <span class="text-xs font-semibold block" style="color:#1A4B8C">Saldo Final (Corte)</span>
+            <span class="text-sm font-bold block" style="color:${finalPolarity.color}">${finalPolarity.text}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto" style="max-height:480px">
+        <table class="data-table text-left w-full">
+          <thead>
+            <tr>
+              <th style="width:90px">Fecha</th>
+              <th style="width:120px">Comprobante</th>
+              <th style="width:110px">Doc. Cruce</th>
+              <th>Cuenta Contable</th>
+              <th>Descripción</th>
+              <th class="text-right" style="width:110px">Débito ($)</th>
+              <th class="text-right" style="width:110px">Crédito ($)</th>
+              <th class="text-right" style="width:120px">Saldo Acum. ($)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:#F9FAFB; font-weight:600">
+              <td colspan="5" class="text-right italic" style="color:#4B5563">SALDO ANTERIOR (A ${esc(dateFrom)})</td>
+              <td class="text-right">—</td>
+              <td class="text-right">—</td>
+              <td class="text-right" style="color:${initialPolarity.color}">${initialPolarity.text}</td>
+            </tr>
+
+            ${processedLines.length ? processedLines.map(l => {
+              const lineSaldoPolarity = fmtPolarityAmount(l.saldo);
+              return `
+              <tr>
+                <td class="font-mono text-xs">${esc(l.fecha)}</td>
+                <td>
+                  <button type="button" class="hover:underline font-semibold" style="color:#1A4B8C;background:none;border:none;padding:0;cursor:pointer" onclick="openAuxTxDetailInReport('${esc(l.txId)}')">
+                    ${esc(l.comprobante)}
+                  </button>
+                </td>
+                <td class="font-mono text-xs">${esc(l.doc_cruce)}</td>
+                <td class="text-xs">${esc(l.cuenta)}</td>
+                <td class="text-xs">${esc(l.descripcion)}</td>
+                <td class="text-right font-mono ${l.debito > 0 ? 'text-emerald-700 font-semibold' : 'text-gray-400'}">${l.debito > 0 ? fmt(l.debito) : '0.00'}</td>
+                <td class="text-right font-mono ${l.credito > 0 ? 'text-rose-700 font-semibold' : 'text-gray-400'}">${l.credito > 0 ? fmt(l.credito) : '0.00'}</td>
+                <td class="text-right font-mono font-bold" style="color:${lineSaldoPolarity.color}">${lineSaldoPolarity.text}</td>
+              </tr>`;
+            }).join('') : `
+              <tr>
+                <td colspan="8" class="text-center py-6 text-gray-400">No se registraron movimientos contables en este período.</td>
+              </tr>
+            `}
+          </tbody>
+          <tfoot>
+            <tr class="font-bold" style="background:#F1F5F9; color:#0D2137; border-top:2px solid #CBD5E1">
+              <td colspan="5" class="text-right">TOTALES DEL PERÍODO:</td>
+              <td class="text-right text-emerald-700">${fmt(totalDebits)}</td>
+              <td class="text-right text-rose-700">${fmt(totalCredits)}</td>
+              <td class="text-right" style="color:${finalPolarity.color}">${finalPolarity.text}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>`;
+
+    $('#btn-pdf-account-statement')?.addEventListener('click', exportAccountStatementPDF);
+    $('#btn-exp-account-statement')?.addEventListener('click', exportAccountStatementExcel);
+
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-6 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Error al consultar estado de cuenta: ${esc(err.message)}</div>`;
+  }
+}
+
+async function exportAccountStatementPDF() {
+  const data = (window as any).lastAccountStatementData;
+  if (!data) return showToast('Genera primero el estado de cuenta.', 'warning');
+
+  try {
+    const jsPdfCtor = getPdfCtorOrWarn();
+    if (!jsPdfCtor) return;
+
+    const doc = new jsPdfCtor('p', 'pt', 'letter');
+    const headerCtx = await getPdfHeaderContext();
+    const header = drawPdfHeader(doc, headerCtx, {
+      title: 'ESTADO DE CUENTA POR TERCERO',
+      subtitles: [
+        `TERCERO: ${data.third.name || ''} (${data.third.doc_number || ''})`,
+        `PERÍODO: DEL ${data.dateFrom} AL ${data.dateTo}`,
+      ]
+    });
+
+    let currentY = header.startY;
+    const left = header.marginLeft;
+    const right = header.marginRight;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(left, currentY, right - left, 45, 4, 4, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(13, 33, 55);
+    doc.text(`Tercero: ${data.third.name || 'S.N.'}`, left + 10, currentY + 15);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`NIT / Doc: ${data.third.doc_number || 'N/A'}  |  Teléfono: ${data.third.phone || 'N/A'}`, left + 10, currentY + 28);
+    doc.text(`Dirección: ${data.third.address || 'N/A'} ${data.third.city ? `- ${data.third.city}` : ''}  |  Correo: ${data.third.email || 'N/A'}`, left + 10, currentY + 39);
+
+    currentY += 55;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(13, 33, 55);
+    doc.text(`Saldo Anterior: ${fmtPdfSignedNum(data.initialBalance)} COP`, left, currentY);
+    doc.text(`Total Débitos: $ ${fmtPdfNum(data.totalDebits)}`, left + 160, currentY);
+    doc.text(`Total Créditos: $ ${fmtPdfNum(data.totalCredits)}`, left + 310, currentY);
+    doc.text(`Saldo Final: ${fmtPdfSignedNum(data.finalBalance)} COP`, left + 440, currentY);
+
+    currentY += 15;
+
+    const body: any[] = [];
+    body.push([
+      data.dateFrom,
+      '—',
+      '—',
+      '—',
+      'SALDO ANTERIOR',
+      '—',
+      '—',
+      fmtPdfSignedNum(data.initialBalance)
+    ]);
+
+    for (const l of data.processedLines) {
+      body.push([
+        l.fecha,
+        l.comprobante,
+        l.doc_cruce,
+        l.cuenta,
+        l.descripcion,
+        l.debito > 0 ? fmtPdfNum(l.debito) : '0.00',
+        l.credito > 0 ? fmtPdfNum(l.credito) : '0.00',
+        fmtPdfSignedNum(l.saldo)
+      ]);
+    }
+
+    body.push([
+      { content: 'TOTALES PERÍODO', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } },
+      { content: fmtPdfNum(data.totalDebits), styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } },
+      { content: fmtPdfNum(data.totalCredits), styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } },
+      { content: fmtPdfSignedNum(data.finalBalance), styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } }
+    ]);
+
+    doc.autoTable({
+      startY: currentY,
+      head: [['Fecha', 'Comprobante', 'Doc. Cruce', 'Cuenta', 'Descripción', 'Débito', 'Crédito', 'Saldo Acum.']],
+      body,
+      theme: 'plain',
+      margin: { top: currentY, left: header.marginLeft, right: 24, bottom: 35 },
+      styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0, overflow: 'linebreak' },
+      headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.0, lineWidth: { bottom: 0.25 } },
+      columnStyles: {
+        0: { cellWidth: 48 },
+        1: { cellWidth: 65 },
+        2: { cellWidth: 55 },
+        3: { cellWidth: 100 },
+        4: { cellWidth: 140 },
+        5: { cellWidth: 52, halign: 'right' },
+        6: { cellWidth: 52, halign: 'right' },
+        7: { cellWidth: 52, halign: 'right' },
+      },
+      didDrawPage: (pageData: any) => drawPdfFooter(doc, pageData.pageNumber),
+    });
+
+    doc.save(`estado_cuenta_${data.third.doc_number || 'tercero'}_${data.dateFrom}_${data.dateTo}.pdf`);
+  } catch (err: any) {
+    showToast(`Error al generar PDF: ${err.message}`, 'error');
+  }
+}
+
+function exportAccountStatementExcel() {
+  const data = (window as any).lastAccountStatementData;
+  if (!data) return showToast('Genera primero el estado de cuenta.', 'warning');
+
+  try {
+    const sheetRows = [
+      ['REPORTE: ESTADO DE CUENTA POR TERCERO'],
+      [`Tercero: ${data.third.name || ''} (NIT/Doc: ${data.third.doc_number || ''})`],
+      [`Período: Del ${data.dateFrom} al ${data.dateTo}`],
+      [`Fecha de Generación: ${todayStr()}`],
+      [],
+      ['FECHA', 'COMPROBANTE', 'DOC. CRUCE', 'CUENTA', 'DESCRIPCIÓN', 'DÉBITO ($)', 'CRÉDITO ($)', 'SALDO ACUMULADO ($)'],
+      [data.dateFrom, '—', '—', '—', 'SALDO ANTERIOR', 0, 0, data.initialBalance]
+    ];
+
+    for (const l of data.processedLines) {
+      sheetRows.push([
+        l.fecha,
+        l.comprobante,
+        l.doc_cruce,
+        l.cuenta,
+        l.descripcion,
+        l.debito,
+        l.credito,
+        l.saldo
+      ]);
+    }
+
+    sheetRows.push([
+      'TOTALES PERÍODO', '', '', '', '', data.totalDebits, data.totalCredits, data.finalBalance
+    ]);
+
+    const ws = (window as any).XLSX.utils.aoa_to_sheet(sheetRows);
+    const wb = (window as any).XLSX.utils.book_new();
+    (window as any).XLSX.utils.book_append_sheet(wb, ws, 'Estado de Cuenta');
+    (window as any).XLSX.writeFile(wb, `Estado_Cuenta_${data.third.doc_number || 'tercero'}_${data.dateFrom}_${data.dateTo}.xlsx`);
+  } catch (err: any) {
+    showToast(`Error al exportar Excel: ${err.message}`, 'error');
+  }
+}
+
 // --- VITE MIGRATION GLOBALS ---
 (window as any).renderCostCentersReport = renderCostCentersReport;
+(window as any).renderAccountStatementReport = renderAccountStatementReport;
+

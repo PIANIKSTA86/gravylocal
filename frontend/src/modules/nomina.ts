@@ -3256,61 +3256,228 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       return showToast(`No se encontraron liquidaciones de nómina registradas para los períodos de ${month}/${year}.`, 'warning');
     }
 
-    let totIbc = 0;
-    let totSaludEmp = 0, totSaludPat = 0;
-    let totPenEmp = 0, totPenPat = 0, totFsp = 0;
-    let totArl = 0;
-    let totCaja = 0, totSena = 0, totIcbf = 0;
+    // Config & Third Parties for fund names
+    const { config } = await getNominaConfigWithRow();
+    const thirdParties = await pb.listAll('third_parties', { filter: 'active=true' }).catch(() => []);
+    const thirdPartiesMap = new Map<string, any>(thirdParties.map((tp: any) => [tp.id, tp]));
+
+    // Query novelties for matching periods
+    const novelties = await pb.listAll('payroll_novelties', {
+      filter: filterExpr
+    }).catch(() => []);
+    const empNoveltiesMap = new Map<string, any[]>();
+    novelties.forEach((nov: any) => {
+      if (nov.employee_id) {
+        if (!empNoveltiesMap.has(nov.employee_id)) empNoveltiesMap.set(nov.employee_id, []);
+        empNoveltiesMap.get(nov.employee_id)!.push(nov);
+      }
+    });
+
+    const mapNoveltyToPilaAbbr = (typeStr: string): string => {
+      const t = (typeStr || '').toUpperCase().trim();
+      if (!t) return '';
+      if (t === 'INGRESO' || t === 'ING') return 'ING';
+      if (t === 'RETIRO' || t === 'RET') return 'RET';
+      if (t === 'TRASLADO_DESDE_EPS' || t === 'TDE') return 'TDE';
+      if (t === 'TRASLADO_A_EPS' || t === 'TAE') return 'TAE';
+      if (t === 'TRASLADO_DESDE_AFP' || t === 'TDP') return 'TDP';
+      if (t === 'TRASLADO_A_AFP' || t === 'TAP') return 'TAP';
+      if (t === 'AJUSTE_SALARIAL' || t === 'VSP' || t === 'VARIACION_SALARIO') return 'VSP';
+      if (t.startsWith('HORA_EXTRA') || t.startsWith('RECARGO') || t === 'COMISION' || t === 'BONIFICACION' || t === 'VST') return 'VST';
+      if (t === 'VCT' || t === 'VARIACION_CENTRO_TRABAJO') return 'VCT';
+      if (t === 'LICENCIA_NO_REMUNERADA' || t === 'PERMISO_NO_REMUNERADO' || t === 'SUSPENSION' || t === 'SLN') return 'SLN';
+      if (t === 'INCAPACIDAD_ENFERMEDAD_GENERAL' || t === 'INCAPACIDAD' || t === 'IGE') return 'IGE';
+      if (t === 'LICENCIA_MATERNIDAD' || t === 'LICENCIA_PATERNIDAD' || t === 'LMA') return 'LMA';
+      if (t === 'VACACIONES' || t === 'VAC') return 'VAC';
+      if (t === 'AVP' || t === 'APORTE_VOLUNTARIO_PENSION') return 'AVP';
+      if (t === 'INCAPACIDAD_ACCIDENTE_TRABAJO' || t === 'INCAPACIDAD_ENFERMEDAD_PROFESION' || t === 'IRL') return 'IRL';
+      return t;
+    };
+
+    // Accumulate by employee (monthly consolidation)
+    const empMap = new Map<string, any>();
+
+    for (const line of lines) {
+      const empId = line.employee_id || line.expand?.employee_id?.id || '';
+      if (!empId) continue;
+
+      const empObj = line.expand?.employee_id || {};
+      const effectiveRule = getEmployeePayrollRule(config, empId);
+
+      if (!empMap.has(empId)) {
+        const pensionFundId = effectiveRule.tercero_pension_id || '';
+        const saludFundId = effectiveRule.tercero_salud_id || '';
+        const cajaFundId = effectiveRule.tercero_caja_id || '';
+
+        const pensionFundName = thirdPartiesMap.get(pensionFundId)?.name || (pensionFundId ? 'Fondo Pensión' : 'NO ASIGNADO');
+        const saludFundName = thirdPartiesMap.get(saludFundId)?.name || (saludFundId ? 'EPS' : 'NO ASIGNADO');
+        const cajaFundName = thirdPartiesMap.get(cajaFundId)?.name || (cajaFundId ? 'CCF' : 'NO ASIGNADO');
+
+        const arlLevel = effectiveRule.arl_risk_level || line.arl_risk_level || 1;
+        const arlRate = ARL_RISK_RATES[arlLevel] || 0.00522;
+        const arlTarifaStr = `${round2(arlRate * 100)}%`;
+
+        empMap.set(empId, {
+          empId,
+          doc: empObj.doc_number || empObj.numeroDocumento || line.employee_id || '—',
+          name: empObj.name || (empObj.first_name ? `${empObj.first_name} ${empObj.last_name || ''}` : 'Empleado'),
+          noveltySet: new Set<string>(),
+          novedad: 'NO',
+          diasLaborados: 0,
+          diasCotizados: 0,
+          diasAfp: 0,
+          diasEps: 0,
+          diasArp: 0,
+          diasCcf: 0,
+          adminPension: pensionFundName,
+          ibcPension: 0,
+          aportePension: 0,
+          adminSalud: saludFundName,
+          ibcSalud: 0,
+          aporteSalud: 0,
+          adminCajas: cajaFundName,
+          ibcCajas: 0,
+          aporteCajas: 0,
+          tarifaRiesgos: arlTarifaStr,
+          ibcRiesgos: 0,
+          aporteRiesgos: 0,
+          aporteSena: 0,
+          aporteIcbf: 0,
+          esap: 0,
+          aporteMinisterio: 0,
+          totalEmpPila: 0
+        });
+      }
+
+      const acc = empMap.get(empId);
+
+      // Collect novelties from payroll_novelties
+      const empNovs = empNoveltiesMap.get(empId) || [];
+      empNovs.forEach((nov: any) => {
+        const abbr = mapNoveltyToPilaAbbr(nov.type);
+        if (abbr) acc.noveltySet.add(abbr);
+      });
+
+      // Collect novelties from line meta / overtime
+      if ((line.overtime || 0) > 0) acc.noveltySet.add('VST');
+      try {
+        const meta = getNominaLineMeta(line);
+        if (meta.concept_amounts) {
+          const ca = meta.concept_amounts;
+          if ((ca.incapacidades || 0) > 0) acc.noveltySet.add('IGE');
+          if ((ca.licencias || 0) > 0) acc.noveltySet.add('SLN');
+          if ((ca.vacaciones || 0) > 0) acc.noveltySet.add('VAC');
+          if ((ca.comisiones || 0) > 0 || (ca.bonificacion || 0) > 0 || (ca.ajuste_salarial || 0) > 0) acc.noveltySet.add('VST');
+        }
+      } catch (_) {}
+
+      // Collect ING / RET from contract dates
+      const startDate = effectiveRule.start_date || empObj.hire_date || '';
+      const endDate = effectiveRule.end_date || empObj.termination_date || '';
+      if (startDate && startDate.startsWith(ymPrefix)) acc.noveltySet.add('ING');
+      if (endDate && endDate.startsWith(ymPrefix)) acc.noveltySet.add('RET');
+
+      const days = line.days_worked || 30;
+      const ibc = line.salary_base || 0;
+
+      const saludTrab = line.deduction_health || 0;
+      const saludEmp = line.employer_health || 0;
+      const penTrab = line.deduction_pension || 0;
+      const penEmp = line.employer_pension || 0;
+      const fsp = line.solidarity_fund || 0;
+      const arlVal = line.employer_arl || 0;
+      const caja = line.caja_comp || 0;
+      const sena = line.sena || 0;
+      const icbf = line.icbf || 0;
+
+      acc.diasLaborados += days;
+      acc.diasCotizados += days;
+      acc.diasAfp += effectiveRule.is_pensioner ? 0 : days;
+      acc.diasEps += days;
+      acc.diasArp += days;
+      acc.diasCcf += days;
+
+      acc.ibcPension += ibc;
+      acc.aportePension += round2(penTrab + penEmp + fsp);
+
+      acc.ibcSalud += ibc;
+      acc.aporteSalud += round2(saludTrab + saludEmp);
+
+      acc.ibcCajas += ibc;
+      acc.aporteCajas += caja;
+
+      acc.ibcRiesgos += ibc;
+      acc.aporteRiesgos += arlVal;
+
+      acc.aporteSena += sena;
+      acc.aporteIcbf += icbf;
+      acc.esap += 0;
+      acc.aporteMinisterio += 0;
+    }
+
+    const rowItems = Array.from(empMap.values()).map(acc => {
+      const novArray = Array.from(acc.noveltySet as Set<string>);
+      acc.novedad = novArray.length > 0 ? novArray.join(', ') : 'NO';
+
+      acc.diasLaborados = Math.min(30, acc.diasLaborados);
+      acc.diasCotizados = Math.min(30, acc.diasCotizados);
+      acc.diasAfp = Math.min(30, acc.diasAfp);
+      acc.diasEps = Math.min(30, acc.diasEps);
+      acc.diasArp = Math.min(30, acc.diasArp);
+      acc.diasCcf = Math.min(30, acc.diasCcf);
+
+      acc.ibcPension = round2(acc.ibcPension);
+      acc.aportePension = round2(acc.aportePension);
+      acc.ibcSalud = round2(acc.ibcSalud);
+      acc.aporteSalud = round2(acc.aporteSalud);
+      acc.ibcCajas = round2(acc.ibcCajas);
+      acc.aporteCajas = round2(acc.aporteCajas);
+      acc.ibcRiesgos = round2(acc.ibcRiesgos);
+      acc.aporteRiesgos = round2(acc.aporteRiesgos);
+      acc.aporteSena = round2(acc.aporteSena);
+      acc.aporteIcbf = round2(acc.aporteIcbf);
+      acc.esap = round2(acc.esap);
+      acc.aporteMinisterio = round2(acc.aporteMinisterio);
+
+      acc.totalEmpPila = round2(acc.aporteSalud + acc.aportePension + acc.aporteRiesgos + acc.aporteCajas + acc.aporteSena + acc.aporteIcbf + acc.esap + acc.aporteMinisterio);
+      return acc;
+    });
+
+    let totIbcPension = 0, totAportePension = 0;
+    let totIbcSalud = 0, totAporteSalud = 0;
+    let totIbcCajas = 0, totAporteCajas = 0;
+    let totIbcRiesgos = 0, totAporteRiesgos = 0;
+    let totSena = 0, totIcbf = 0, totEsap = 0, totMinisterio = 0;
     let totPilaGlobal = 0;
 
-    const rowItems = lines.map((l: any) => {
-      const emp = l.expand?.employee_id || {};
-      const doc = emp.doc_number || l.employee_id || '—';
-      const name = emp.name || 'Empleado';
-      const days = l.days_worked || 30;
-
-      const ibc = l.salary_base || 0;
-      const saludTrab = l.deduction_health || 0;
-      const saludEmp = l.employer_health || 0;
-
-      const penTrab = l.deduction_pension || 0;
-      const penEmp = l.employer_pension || 0;
-      const fsp = l.solidarity_fund || 0;
-
-      const arlVal = l.employer_arl || 0;
-      const arlLevel = l.arl_risk_level || 1;
-      const arlRate = ARL_RISK_RATES[arlLevel] || 0.00522;
-
-      const caja = l.caja_comp || 0;
-      const sena = l.sena || 0;
-      const icbf = l.icbf || 0;
-
-      const subtotalSalud = round2(saludTrab + saludEmp);
-      const subtotalPen = round2(penTrab + penEmp + fsp);
-      const subtotalPara = round2(caja + sena + icbf);
-      const totalEmpPila = round2(subtotalSalud + subtotalPen + arlVal + subtotalPara);
-
-      totIbc += ibc;
-      totSaludEmp += saludTrab;
-      totSaludPat += saludEmp;
-      totPenEmp += penTrab;
-      totPenPat += penEmp;
-      totFsp += fsp;
-      totArl += arlVal;
-      totCaja += caja;
-      totSena += sena;
-      totIcbf += icbf;
-      totPilaGlobal += totalEmpPila;
-
-      return {
-        doc, name, days, ibc,
-        saludTrab, saludEmp, subtotalSalud,
-        penTrab, penEmp, fsp, subtotalPen,
-        arlLevel, arlRate, arlVal,
-        caja, sena, icbf, subtotalPara,
-        totalEmpPila
-      };
+    rowItems.forEach(r => {
+      totIbcPension += r.ibcPension;
+      totAportePension += r.aportePension;
+      totIbcSalud += r.ibcSalud;
+      totAporteSalud += r.aporteSalud;
+      totIbcCajas += r.ibcCajas;
+      totAporteCajas += r.aporteCajas;
+      totIbcRiesgos += r.ibcRiesgos;
+      totAporteRiesgos += r.aporteRiesgos;
+      totSena += r.aporteSena;
+      totIcbf += r.aporteIcbf;
+      totEsap += r.esap;
+      totMinisterio += r.aporteMinisterio;
+      totPilaGlobal += r.totalEmpPila;
     });
+
+    // Company info for PDF header
+    const settingsList = await pb.listAll('settings', { filter: 'key="company" || key="company_name" || key="company_nit"' }).catch(() => []);
+    let companyName = 'MI EMPRESA S.A.S.';
+    let companyNit = '';
+    const companySetting = settingsList.find((s: any) => s.key === 'company');
+    if (companySetting) {
+      try {
+        const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
+        companyName = valObj.name || valObj.razon_social || companyName;
+        companyNit = valObj.nit || companyNit;
+      } catch (_) {}
+    }
 
     const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
     const monthLabel = monthNames[month] || String(month);
@@ -3320,74 +3487,101 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         <div class="flex flex-wrap justify-between items-center bg-gray-50 p-3 rounded-xl border">
           <div>
             <h3 class="font-bold text-sm text-gray-800">PLANILLA DE REVISIÓN DE SEGURIDAD SOCIAL Y PARAFISCALES (PILA)</h3>
-            <p class="text-gray-500">Período de Liquidación: <strong>${monthLabel} / ${year}</strong> — Empleados Liquidados: <strong>${lines.length}</strong></p>
+            <p class="text-gray-500">Período Acumulado: <strong>${monthLabel} / ${year}</strong> — Empleados Consolidados: <strong>${rowItems.length}</strong></p>
           </div>
           <div class="flex gap-2">
-            <button class="btn btn-outline btn-sm text-emerald-700 font-bold" id="btn-export-pila-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel</button>
-            <button class="btn btn-outline btn-sm text-gray-700 font-bold" onclick="window.print()"><i class="fas fa-print mr-1"></i>Imprimir Planilla</button>
+            <button class="btn btn-outline btn-sm text-emerald-700 font-bold" id="btn-export-pila-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel (25 Campos)</button>
+            <button class="btn btn-primary btn-sm font-bold" id="btn-export-pila-pdf"><i class="fas fa-file-pdf mr-1"></i>Imprimir / Exportar a PDF</button>
           </div>
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-6 gap-2 text-center font-semibold">
-          <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><div class="text-gray-400 text-3xs">TOTAL IBC</div><div class="text-blue-900 text-xs font-bold">${fmt(totIbc)}</div></div>
-          <div class="bg-emerald-50 p-2 rounded-lg border border-emerald-100"><div class="text-gray-400 text-3xs">TOTAL SALUD</div><div class="text-emerald-900 text-xs font-bold">${fmt(totSaludEmp + totSaludPat)}</div></div>
-          <div class="bg-purple-50 p-2 rounded-lg border border-purple-100"><div class="text-gray-400 text-3xs">TOTAL PENSIÓN + FSP</div><div class="text-purple-900 text-xs font-bold">${fmt(totPenEmp + totPenPat + totFsp)}</div></div>
-          <div class="bg-amber-50 p-2 rounded-lg border border-amber-100"><div class="text-gray-400 text-3xs">TOTAL ARL</div><div class="text-amber-900 text-xs font-bold">${fmt(totArl)}</div></div>
-          <div class="bg-indigo-50 p-2 rounded-lg border border-indigo-100"><div class="text-gray-400 text-3xs">PARAFISCALES</div><div class="text-indigo-900 text-xs font-bold">${fmt(totCaja + totSena + totIcbf)}</div></div>
-          <div class="bg-emerald-100 p-2 rounded-lg border border-emerald-300"><div class="text-emerald-800 text-3xs">TOTAL PILA A PAGAR</div><div class="text-emerald-950 text-sm font-bold">${fmt(totPilaGlobal)}</div></div>
+          <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><div class="text-gray-400 text-3xs">TOTAL IBC</div><div class="text-blue-900 text-xs font-bold">${fmt(totIbcSalud)}</div></div>
+          <div class="bg-emerald-50 p-2 rounded-lg border border-emerald-100"><div class="text-gray-400 text-3xs">TOTAL SALUD</div><div class="text-emerald-900 text-xs font-bold">${fmt(totAporteSalud)}</div></div>
+          <div class="bg-purple-50 p-2 rounded-lg border border-purple-100"><div class="text-gray-400 text-3xs">TOTAL PENSIÓN</div><div class="text-purple-900 text-xs font-bold">${fmt(totAportePension)}</div></div>
+          <div class="bg-amber-50 p-2 rounded-lg border border-amber-100"><div class="text-gray-400 text-3xs">TOTAL ARL</div><div class="text-amber-900 text-xs font-bold">${fmt(totAporteRiesgos)}</div></div>
+          <div class="bg-indigo-50 p-2 rounded-lg border border-indigo-100"><div class="text-gray-400 text-3xs">PARAFISCALES</div><div class="text-indigo-900 text-xs font-bold">${fmt(totAporteCajas + totSena + totIcbf + totEsap + totMinisterio)}</div></div>
+          <div class="bg-emerald-100 p-2 rounded-lg border border-emerald-300"><div class="text-emerald-800 text-3xs">TOTAL PLANILLA PILA</div><div class="text-emerald-950 text-sm font-bold">${fmt(totPilaGlobal)}</div></div>
         </div>
 
         <div class="overflow-x-auto border rounded-xl bg-white max-h-96">
-          <table class="data-table text-xs">
+          <table class="data-table text-xs whitespace-nowrap">
             <thead>
               <tr class="bg-gray-100 text-gray-700">
-                <th>Empleado / Cédula</th>
-                <th class="text-center">Días</th>
-                <th class="text-right">IBC ($)</th>
-                <th class="text-right">Salud (Trab/Pat)</th>
-                <th class="text-right">Pensión (Trab/Pat/FSP)</th>
-                <th class="text-right">ARL (Nivel)</th>
-                <th class="text-right">Parafiscales (CCF/SENA/ICBF)</th>
+                <th class="sticky left-0 bg-gray-100 z-10">Empleado / Cédula</th>
+                <th class="text-center">Novedad</th>
+                <th class="text-center">Días (Lab/Cot)</th>
+                <th class="text-center">Días (AFP/EPS/ARP/CCF)</th>
+                <th>Administrador Pensión</th>
+                <th class="text-right">IBC Pensión</th>
+                <th class="text-right">Aporte Pensión</th>
+                <th>Administrador Salud</th>
+                <th class="text-right">IBC Salud</th>
+                <th class="text-right">Aporte Salud</th>
+                <th>Administrador Cajas</th>
+                <th class="text-right">IBC Cajas</th>
+                <th class="text-right">Aporte Cajas</th>
+                <th class="text-center">Tarifa ARL</th>
+                <th class="text-right">IBC Riesgos</th>
+                <th class="text-right">Aporte Riesgos</th>
+                <th class="text-right">Aporte SENA</th>
+                <th class="text-right">Aporte ICBF</th>
+                <th class="text-right">ESAP</th>
+                <th class="text-right">Aporte Ministerio</th>
                 <th class="text-right font-bold text-emerald-900">Total PILA ($)</th>
               </tr>
             </thead>
             <tbody>
               ${rowItems.map(r => `
                 <tr>
-                  <td>
+                  <td class="sticky left-0 bg-white z-10 border-r">
                     <div class="font-semibold text-gray-800">${esc(r.name)}</div>
                     <div class="text-gray-400 text-3xs">${esc(r.doc)}</div>
                   </td>
-                  <td class="text-center font-mono">${r.days}</td>
-                  <td class="text-right font-semibold">${fmt(r.ibc)}</td>
-                  <td class="text-right">
-                    <div>${fmt(r.subtotalSalud)}</div>
-                    <div class="text-gray-400 text-3xs">T: ${fmt(r.saludTrab)} | E: ${fmt(r.saludEmp)}</div>
+                  <td class="text-center">
+                    <span class="badge ${r.novedad !== 'NO' && r.novedad !== 'No' ? 'badge-amber font-bold' : 'badge-gray'}">${esc(r.novedad)}</span>
                   </td>
-                  <td class="text-right">
-                    <div>${fmt(r.subtotalPen)}</div>
-                    <div class="text-gray-400 text-3xs">T: ${fmt(r.penTrab)} | E: ${fmt(r.penEmp)} | FSP: ${fmt(r.fsp)}</div>
-                  </td>
-                  <td class="text-right">
-                    <div>${fmt(r.arlVal)}</div>
-                    <div class="text-gray-400 text-3xs">Nivel ${r.arlLevel} (${round2(r.arlRate * 100)}%)</div>
-                  </td>
-                  <td class="text-right">
-                    <div>${fmt(r.subtotalPara)}</div>
-                    <div class="text-gray-400 text-3xs">CCF: ${fmt(r.caja)} | SENA: ${fmt(r.sena)} | ICBF: ${fmt(r.icbf)}</div>
-                  </td>
+                  <td class="text-center font-mono">${r.diasLaborados} / ${r.diasCotizados}</td>
+                  <td class="text-center font-mono text-3xs text-gray-600">${r.diasAfp} / ${r.diasEps} / ${r.diasArp} / ${r.diasCcf}</td>
+                  <td>${esc(r.adminPension)}</td>
+                  <td class="text-right font-mono">${fmt(r.ibcPension)}</td>
+                  <td class="text-right font-semibold text-purple-900">${fmt(r.aportePension)}</td>
+                  <td>${esc(r.adminSalud)}</td>
+                  <td class="text-right font-mono">${fmt(r.ibcSalud)}</td>
+                  <td class="text-right font-semibold text-emerald-900">${fmt(r.aporteSalud)}</td>
+                  <td>${esc(r.adminCajas)}</td>
+                  <td class="text-right font-mono">${fmt(r.ibcCajas)}</td>
+                  <td class="text-right font-mono">${fmt(r.aporteCajas)}</td>
+                  <td class="text-center font-mono text-xs">${esc(r.tarifaRiesgos)}</td>
+                  <td class="text-right font-mono">${fmt(r.ibcRiesgos)}</td>
+                  <td class="text-right font-semibold text-amber-900">${fmt(r.aporteRiesgos)}</td>
+                  <td class="text-right font-mono">${fmt(r.aporteSena)}</td>
+                  <td class="text-right font-mono">${fmt(r.aporteIcbf)}</td>
+                  <td class="text-right font-mono">${fmt(r.esap)}</td>
+                  <td class="text-right font-mono">${fmt(r.aporteMinisterio)}</td>
                   <td class="text-right font-bold text-emerald-800 text-sm">${fmt(r.totalEmpPila)}</td>
                 </tr>
               `).join('')}
             </tbody>
             <tfoot>
               <tr class="bg-gray-100 font-bold border-t">
-                <td colspan="2">TOTALES CONSOLIDADOS</td>
-                <td class="text-right">${fmt(totIbc)}</td>
-                <td class="text-right">${fmt(totSaludEmp + totSaludPat)}</td>
-                <td class="text-right">${fmt(totPenEmp + totPenPat + totFsp)}</td>
-                <td class="text-right">${fmt(totArl)}</td>
-                <td class="text-right">${fmt(totCaja + totSena + totIcbf)}</td>
+                <td colspan="4" class="sticky left-0 bg-gray-100 z-10">TOTALES CONSOLIDADOS (${rowItems.length} Empleados)</td>
+                <td>—</td>
+                <td class="text-right">${fmt(totIbcPension)}</td>
+                <td class="text-right text-purple-900">${fmt(totAportePension)}</td>
+                <td>—</td>
+                <td class="text-right">${fmt(totIbcSalud)}</td>
+                <td class="text-right text-emerald-900">${fmt(totAporteSalud)}</td>
+                <td>—</td>
+                <td class="text-right">${fmt(totIbcCajas)}</td>
+                <td class="text-right">${fmt(totAporteCajas)}</td>
+                <td>—</td>
+                <td class="text-right">${fmt(totIbcRiesgos)}</td>
+                <td class="text-right text-amber-900">${fmt(totAporteRiesgos)}</td>
+                <td class="text-right">${fmt(totSena)}</td>
+                <td class="text-right">${fmt(totIcbf)}</td>
+                <td class="text-right">${fmt(totEsap)}</td>
+                <td class="text-right">${fmt(totMinisterio)}</td>
                 <td class="text-right text-emerald-950 text-sm">${fmt(totPilaGlobal)}</td>
               </tr>
             </tfoot>
@@ -3398,71 +3592,113 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
 
     openModal(`Planilla PILA de Revisión — ${monthLabel} ${year}`, bodyHtml, `<button class="btn btn-primary" onclick="closeModal()">Cerrar</button>`, true);
 
+    $('#btn-export-pila-pdf')?.addEventListener('click', () => {
+      const companyInfo = {
+        name: companyName,
+        nit: companyNit
+      };
+      const totalsObj = {
+        totIbcSalud,
+        totAporteSalud,
+        totIbcPension,
+        totAportePension,
+        totIbcRiesgos,
+        totAporteRiesgos,
+        totIbcCajas,
+        totAporteCajas,
+        totSena,
+        totIcbf,
+        totEsap,
+        totMinisterio,
+        totParafiscales: totAporteCajas + totSena + totIcbf + totEsap + totMinisterio,
+        totPilaGlobal
+      };
+      exportPlanillaPilaPdf(monthLabel, year, rowItems, totalsObj, companyInfo);
+    });
+
     $('#btn-export-pila-excel')?.addEventListener('click', () => {
       const exportExcelData = rowItems.map((r: any) => ({
-        documento: r.doc,
-        empleado: r.name,
-        dias: r.days,
-        ibc: r.ibc,
-        salud_trabajador: r.saludTrab,
-        salud_empleador: r.saludEmp,
-        subtotal_salud: r.subtotalSalud,
-        pension_trabajador: r.penTrab,
-        pension_empleador: r.penEmp,
-        fsp: r.fsp,
-        subtotal_pension: r.subtotalPen,
-        nivel_arl: `Nivel ${r.arlLevel}`,
-        tasa_arl: `${round2(r.arlRate * 100)}%`,
-        valor_arl: r.arlVal,
-        caja_compensacion: r.caja,
-        sena: r.sena,
-        icbf: r.icbf,
-        subtotal_parafiscales: r.subtotalPara,
-        total_pila: r.totalEmpPila,
+        identificacion_empleado: r.doc,
+        nombre_empleado: r.name,
+        novedad: r.novedad,
+        dias_laborados: r.diasLaborados,
+        dias_cotizados: r.diasCotizados,
+        dias_afp: r.diasAfp,
+        dias_eps: r.diasEps,
+        dias_arp: r.diasArp,
+        dias_ccf: r.diasCcf,
+        admin_pension: r.adminPension,
+        ibc_pension: r.ibcPension,
+        aporte_pension: r.aportePension,
+        admin_salud: r.adminSalud,
+        ibc_salud: r.ibcSalud,
+        aporte_salud: r.aporteSalud,
+        admin_cajas: r.adminCajas,
+        ibc_cajas: r.ibcCajas,
+        aporte_cajas: r.aporteCajas,
+        tarifa_arl: r.tarifaRiesgos,
+        ibc_riesgos: r.ibcRiesgos,
+        aporte_riesgos: r.aporteRiesgos,
+        aporte_sena: r.aporteSena,
+        aporte_icbf: r.aporteIcbf,
+        esap: r.esap,
+        aporte_ministerio: r.aporteMinisterio,
       }));
 
       exportExcelData.push({
-        documento: 'TOTALES',
-        empleado: 'TOTAL CONSOLIDADO',
-        dias: rowItems.reduce((s: number, r: any) => s + r.days, 0),
-        ibc: totIbc,
-        salud_trabajador: totSaludEmp,
-        salud_empleador: totSaludPat,
-        subtotal_salud: totSaludEmp + totSaludPat,
-        pension_trabajador: totPenEmp,
-        pension_empleador: totPenPat,
-        fsp: totFsp,
-        subtotal_pension: totPenEmp + totPenPat + totFsp,
-        nivel_arl: '',
-        tasa_arl: '',
-        valor_arl: totArl,
-        caja_compensacion: totCaja,
-        sena: totSena,
-        icbf: totIcbf,
-        subtotal_parafiscales: totCaja + totSena + totIcbf,
-        total_pila: totPilaGlobal,
+        identificacion_empleado: 'TOTALES',
+        nombre_empleado: 'TOTAL CONSOLIDADO',
+        novedad: '',
+        dias_laborados: rowItems.reduce((s: number, r: any) => s + r.diasLaborados, 0),
+        dias_cotizados: rowItems.reduce((s: number, r: any) => s + r.diasCotizados, 0),
+        dias_afp: rowItems.reduce((s: number, r: any) => s + r.diasAfp, 0),
+        dias_eps: rowItems.reduce((s: number, r: any) => s + r.diasEps, 0),
+        dias_arp: rowItems.reduce((s: number, r: any) => s + r.diasArp, 0),
+        dias_ccf: rowItems.reduce((s: number, r: any) => s + r.diasCcf, 0),
+        admin_pension: '',
+        ibc_pension: totIbcPension,
+        aporte_pension: totAportePension,
+        admin_salud: '',
+        ibc_salud: totIbcSalud,
+        aporte_salud: totAporteSalud,
+        admin_cajas: '',
+        ibc_cajas: totIbcCajas,
+        aporte_cajas: totAporteCajas,
+        tarifa_arl: '',
+        ibc_riesgos: totIbcRiesgos,
+        aporte_riesgos: totAporteRiesgos,
+        aporte_sena: totSena,
+        aporte_icbf: totIcbf,
+        esap: totEsap,
+        aporte_ministerio: totMinisterio,
       });
 
       const headers = [
-        { key: 'documento', label: 'Cédula / Documento' },
-        { key: 'empleado', label: 'Nombre Empleado' },
-        { key: 'dias', label: 'Días Cotizados' },
-        { key: 'ibc', label: 'IBC ($)' },
-        { key: 'salud_trabajador', label: 'Salud Trabajador ($)' },
-        { key: 'salud_empleador', label: 'Salud Empleador ($)' },
-        { key: 'subtotal_salud', label: 'Subtotal Salud ($)' },
-        { key: 'pension_trabajador', label: 'Pensión Trabajador ($)' },
-        { key: 'pension_empleador', label: 'Pensión Empleador ($)' },
-        { key: 'fsp', label: 'Fondo Solidaridad FSP ($)' },
-        { key: 'subtotal_pension', label: 'Subtotal Pensión ($)' },
-        { key: 'nivel_arl', label: 'Nivel ARL' },
-        { key: 'tasa_arl', label: 'Tasa ARL (%)' },
-        { key: 'valor_arl', label: 'ARL ($)' },
-        { key: 'caja_compensacion', label: 'Caja Compensación ($)' },
-        { key: 'sena', label: 'SENA ($)' },
-        { key: 'icbf', label: 'ICBF ($)' },
-        { key: 'subtotal_parafiscales', label: 'Subtotal Parafiscales ($)' },
-        { key: 'total_pila', label: 'Total Planilla PILA ($)' },
+        { key: 'identificacion_empleado', label: 'Identificación Empleado' },
+        { key: 'nombre_empleado', label: 'Nombre Completo Empleado' },
+        { key: 'novedad', label: 'Novedad (Si/No)' },
+        { key: 'dias_laborados', label: 'Días Laborados' },
+        { key: 'dias_cotizados', label: 'Días Cotizados' },
+        { key: 'dias_afp', label: 'Días a Pagar AFP' },
+        { key: 'dias_eps', label: 'Días a Pagar EPS' },
+        { key: 'dias_arp', label: 'Días a Pagar ARP' },
+        { key: 'dias_ccf', label: 'Días a Pagar CCF' },
+        { key: 'admin_pension', label: 'Administrador Pensión' },
+        { key: 'ibc_pension', label: 'IBC Pensión ($)' },
+        { key: 'aporte_pension', label: 'Aporte Pensión ($)' },
+        { key: 'admin_salud', label: 'Administrador Salud' },
+        { key: 'ibc_salud', label: 'IBC Salud ($)' },
+        { key: 'aporte_salud', label: 'Aporte Salud ($)' },
+        { key: 'admin_cajas', label: 'Administrador Cajas' },
+        { key: 'ibc_cajas', label: 'IBC Cajas ($)' },
+        { key: 'aporte_cajas', label: 'Aporte Cajas ($)' },
+        { key: 'tarifa_arl', label: 'Tarifa Riesgos ARL' },
+        { key: 'ibc_riesgos', label: 'IBC Riesgos ($)' },
+        { key: 'aporte_riesgos', label: 'Aporte Riesgos ($)' },
+        { key: 'aporte_sena', label: 'Aportes SENA ($)' },
+        { key: 'aporte_icbf', label: 'Aporte ICBF ($)' },
+        { key: 'esap', label: 'ESAP ($)' },
+        { key: 'aporte_ministerio', label: 'Aporte Ministerio ($)' },
       ];
 
       if (typeof (window as any).exportToExcel === 'function') {
@@ -3475,6 +3711,290 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
     showToast(`Error al generar planilla de revisión: ${err.message}`, 'error');
   }
 }
+
+function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[], totals: any, companyInfo: any) {
+  const now = new Date();
+  const fechaGeneracion = now.toLocaleDateString('es-CO') + ' ' + now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Planilla PILA de Revisión — ${monthLabel} ${year}</title>
+  <style>
+    @page {
+      size: letter landscape;
+      margin: 8mm 10mm;
+    }
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 8pt;
+      color: #1f2937;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
+    .header-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0f766e;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+    }
+    .company-title {
+      font-size: 13pt;
+      font-weight: 800;
+      color: #0f766e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .report-title {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 2px;
+    }
+    .meta-text {
+      font-size: 8pt;
+      color: #64748b;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .kpi-card {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 5px;
+      text-align: center;
+    }
+    .kpi-card.highlight {
+      background-color: #f0fdf4;
+      border-color: #86efac;
+    }
+    .kpi-label {
+      font-size: 6.5pt;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+    .kpi-value {
+      font-size: 8.5pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 2px;
+    }
+    .kpi-card.highlight .kpi-value {
+      color: #166534;
+      font-size: 9.5pt;
+    }
+    table.pila-pdf-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 7pt;
+    }
+    table.pila-pdf-table th, table.pila-pdf-table td {
+      border: 1px solid #cbd5e1;
+      padding: 3px 4px;
+      vertical-align: middle;
+    }
+    table.pila-pdf-table th {
+      background-color: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 6pt;
+      text-align: center;
+    }
+    table.pila-pdf-table tr:nth-child(even) td {
+      background-color: #f8fafc;
+    }
+    .text-left { text-align: left; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .font-bold { font-weight: 700; }
+    .badge-pdf {
+      display: inline-block;
+      padding: 1px 3px;
+      border-radius: 3px;
+      font-size: 6pt;
+      font-weight: 700;
+    }
+    .badge-pdf-amber { background-color: #fef3c7; color: #92400e; }
+    .badge-pdf-gray { background-color: #f1f5f9; color: #64748b; }
+
+    .tfoot-row td {
+      background-color: #e2e8f0 !important;
+      font-weight: 800;
+      font-size: 7.5pt;
+      border-top: 2px solid #0f766e;
+    }
+    .signatures-container {
+      margin-top: 15px;
+      display: flex;
+      justify-content: space-between;
+      page-break-inside: avoid;
+    }
+    .signature-box {
+      width: 42%;
+      border-top: 1px solid #94a3b8;
+      padding-top: 4px;
+      text-align: center;
+      font-size: 7.5pt;
+      color: #475569;
+    }
+    @media print {
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#1e293b; color:#fff; padding:8px 12px; text-align:center; margin-bottom:10px; border-radius:6px; font-size:12px;">
+    <button onclick="window.print()" style="background:#0f766e; color:#fff; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;">
+      🖨️ Imprimir / Guardar como PDF
+    </button>
+    <span style="margin-left:12px; opacity:0.85;">Recomendado: Orientación <strong>Horizontal (Landscape)</strong> en tamaño Carta/A4.</span>
+  </div>
+
+  <div class="header-container">
+    <div>
+      <div class="company-title">${esc(companyInfo.name)}</div>
+      <div class="meta-text">${companyInfo.nit ? 'NIT: ' + esc(companyInfo.nit) : ''}</div>
+      <div class="report-title">PLANILLA DE REVISIÓN DE SEGURIDAD SOCIAL Y PARAFISCALES (PILA)</div>
+      <div class="meta-text">Nómina Electrónica DIAN — Resumen Acumulado Mensual por Empleado</div>
+    </div>
+    <div class="text-right">
+      <div class="meta-text">Período: <strong>${monthLabel} / ${year}</strong></div>
+      <div class="meta-text">Empleados Consolidados: <strong>${rowItems.length}</strong></div>
+      <div class="meta-text">Generado: ${fechaGeneracion}</div>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">TOTAL IBC</div><div class="kpi-value">${fmt(totals.totIbcSalud)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">TOTAL SALUD</div><div class="kpi-value">${fmt(totals.totAporteSalud)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">TOTAL PENSIÓN</div><div class="kpi-value">${fmt(totals.totAportePension)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">TOTAL ARL</div><div class="kpi-value">${fmt(totals.totAporteRiesgos)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">PARAFISCALES</div><div class="kpi-value">${fmt(totals.totParafiscales)}</div></div>
+    <div class="kpi-card highlight"><div class="kpi-label">TOTAL PLANILLA PILA</div><div class="kpi-value">${fmt(totals.totPilaGlobal)}</div></div>
+  </div>
+
+  <table class="pila-pdf-table">
+    <thead>
+      <tr>
+        <th style="width:11%;">Empleado / Cédula</th>
+        <th style="width:5%;">Nov.</th>
+        <th style="width:4%;">Días</th>
+        <th style="width:5%;">Entidades</th>
+        <th style="width:8%;">Fondo Pensión</th>
+        <th style="width:6%;">IBC Pensión</th>
+        <th style="width:6%;">Aporte Pensión</th>
+        <th style="width:8%;">EPS Salud</th>
+        <th style="width:6%;">IBC Salud</th>
+        <th style="width:6%;">Aporte Salud</th>
+        <th style="width:7%;">Caja CCF</th>
+        <th style="width:5%;">IBC Cajas</th>
+        <th style="width:5%;">Aporte Cajas</th>
+        <th style="width:4%;">ARL %</th>
+        <th style="width:5%;">Aporte ARL</th>
+        <th style="width:4%;">SENA</th>
+        <th style="width:4%;">ICBF</th>
+        <th style="width:6%;">Total PILA</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowItems.map(r => `
+        <tr>
+          <td class="text-left font-bold">
+            <div>${esc(r.name)}</div>
+            <div style="font-size:6pt; color:#64748b; font-weight:normal;">${esc(r.doc)}</div>
+          </td>
+          <td class="text-center">
+            <span class="badge-pdf ${r.novedad !== 'NO' && r.novedad !== 'No' ? 'badge-pdf-amber' : 'badge-pdf-gray'}">${esc(r.novedad)}</span>
+          </td>
+          <td class="text-center font-mono">${r.diasLaborados}/${r.diasCotizados}</td>
+          <td class="text-center font-mono" style="font-size:6pt;">${r.diasAfp}/${r.diasEps}/${r.diasArp}/${r.diasCcf}</td>
+          <td class="text-left">${esc(r.adminPension)}</td>
+          <td class="text-right font-mono">${fmt(r.ibcPension)}</td>
+          <td class="text-right font-mono font-bold" style="color:#581c87;">${fmt(r.aportePension)}</td>
+          <td class="text-left">${esc(r.adminSalud)}</td>
+          <td class="text-right font-mono">${fmt(r.ibcSalud)}</td>
+          <td class="text-right font-mono font-bold" style="color:#065f46;">${fmt(r.aporteSalud)}</td>
+          <td class="text-left">${esc(r.adminCajas)}</td>
+          <td class="text-right font-mono">${fmt(r.ibcCajas)}</td>
+          <td class="text-right font-mono">${fmt(r.aporteCajas)}</td>
+          <td class="text-center font-mono">${esc(r.tarifaRiesgos)}</td>
+          <td class="text-right font-mono font-bold" style="color:#92400e;">${fmt(r.aporteRiesgos)}</td>
+          <td class="text-right font-mono">${fmt(r.aporteSena)}</td>
+          <td class="text-right font-mono">${fmt(r.aporteIcbf)}</td>
+          <td class="text-right font-mono font-bold" style="color:#064e3b; font-size:7.5pt;">${fmt(r.totalEmpPila)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+    <tfoot>
+      <tr class="tfoot-row">
+        <td colspan="4" class="text-left">TOTALES CONSOLIDADOS (${rowItems.length} EMPLEADOS)</td>
+        <td class="text-center">—</td>
+        <td class="text-right font-mono">${fmt(totals.totIbcPension)}</td>
+        <td class="text-right font-mono" style="color:#581c87;">${fmt(totals.totAportePension)}</td>
+        <td class="text-center">—</td>
+        <td class="text-right font-mono">${fmt(totals.totIbcSalud)}</td>
+        <td class="text-right font-mono" style="color:#065f46;">${fmt(totals.totAporteSalud)}</td>
+        <td class="text-center">—</td>
+        <td class="text-right font-mono">${fmt(totals.totIbcCajas)}</td>
+        <td class="text-right font-mono">${fmt(totals.totAporteCajas)}</td>
+        <td class="text-center">—</td>
+        <td class="text-right font-mono" style="color:#92400e;">${fmt(totals.totAporteRiesgos)}</td>
+        <td class="text-right font-mono">${fmt(totals.totSena)}</td>
+        <td class="text-right font-mono">${fmt(totals.totIcbf)}</td>
+        <td class="text-right font-mono" style="color:#064e3b; font-size:8pt;">${fmt(totals.totPilaGlobal)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="signatures-container">
+    <div class="signature-box">
+      <br><br>
+      <strong>Elaborado por / Liquidación de Nómina</strong><br>
+      Firma y Cédula
+    </div>
+    <div class="signature-box">
+      <br><br>
+      <strong>Revisado y Aprobado / Contabilidad y Gerencia</strong><br>
+      Firma, Cédula y T.P.
+    </div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+      }, 400);
+    };
+  <\/script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=1200,height=800,scrollbars=yes');
+  if (!win) {
+    showToast('El navegador bloqueó la ventana emergente. Permite popups para esta página.', 'warning');
+    return;
+  }
+  win.document.write(html);
+  win.document.close();
+}
+
+(window as any).exportPlanillaPilaPdf = exportPlanillaPilaPdf;
 
 function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: number, consecutivo: number) {
   const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;

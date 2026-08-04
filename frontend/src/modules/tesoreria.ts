@@ -150,6 +150,20 @@ function parseFormattedNumber(val: any): number {
   });
   const totEl = document.getElementById('teso-modal-total-abonos');
   if (totEl) totEl.textContent = _fmt(total);
+
+  const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+  const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
+
+  if (isManual && montoInput) {
+    montoInput.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+  }
+
+  _updateMontoIndicator();
+  if ((window as any)._applyDefaultRetenciones && (document.getElementById('teso-modal-has-retenciones') as HTMLInputElement)?.checked) {
+    (window as any)._applyDefaultRetenciones();
+  } else {
+    _recalculateTesoNeto();
+  }
 };
 
 let _tesoAllTerceros: ThirdParty[] = [];
@@ -1238,14 +1252,34 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
 
 function _toggleModalManualMode() {
   const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement).value === 'manual';
+  const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+
   document.querySelectorAll('.teso-abono-input').forEach(el => {
     const inp = el as HTMLInputElement;
     inp.disabled = !isManual;
     if (!isManual) inp.value = '';
   });
-  if (!isManual) {
-    const totEl = document.getElementById('teso-modal-total-abonos');
-    if (totEl) totEl.textContent = '$0';
+
+  let total = 0;
+  if (isManual) {
+    document.querySelectorAll('.teso-abono-input').forEach(el => {
+      total += parseFormattedNumber((el as HTMLInputElement).value || '0');
+    });
+  }
+
+  const totEl = document.getElementById('teso-modal-total-abonos');
+  if (totEl) totEl.textContent = _fmt(total);
+
+  if (isManual && montoInput) {
+    montoInput.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+  }
+
+  _updateMontoIndicator();
+  if ((window as any)._applyDefaultRetenciones && (document.getElementById('teso-modal-has-retenciones') as HTMLInputElement)?.checked) {
+    (window as any)._applyDefaultRetenciones();
+  } else {
+    _recalculateTesoNeto();
   }
 }
 
@@ -1430,11 +1464,36 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       }
     }
 
+    // Procesar Ajuste al Peso si está activo
+    const hasAjustePeso = (document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement)?.checked || false;
+    let ajustePesoAmt = 0;
+    let ajustePesoType = 'faltante';
+    let ajustePesoAccId = '';
+
+    if (hasAjustePeso) {
+      ajustePesoAmt = parseFormattedNumber((document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement)?.value || '0');
+      ajustePesoType = (document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement)?.value || 'faltante';
+      ajustePesoAccId = (document.getElementById('teso-modal-ajuste-cuenta') as HTMLSelectElement)?.value || '';
+
+      if (ajustePesoAmt > 0 && !ajustePesoAccId) {
+        _showToast('Debes seleccionar la cuenta contable para el Ajuste al Peso', 'warning');
+        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        return;
+      }
+    }
+
     const totalAbono = modo === 'manual' ? distribucion.reduce((a, b) => a + b.monto, 0) : monto;
-    const netoTransado = totalAbono - retFuenteAmt - retIcaAmt - descuentoAmt;
+    let netoTransado = totalAbono - retFuenteAmt - retIcaAmt - descuentoAmt;
+    if (hasAjustePeso && ajustePesoAmt > 0) {
+      if (isRecaudo) {
+        netoTransado = ajustePesoType === 'faltante' ? (netoTransado - ajustePesoAmt) : (netoTransado + ajustePesoAmt);
+      } else {
+        netoTransado = ajustePesoType === 'sobrante' ? (netoTransado - ajustePesoAmt) : (netoTransado + ajustePesoAmt);
+      }
+    }
 
     if (netoTransado < 0) {
-      _showToast('Las retenciones y descuentos no pueden superar el monto total', 'warning');
+      _showToast('Las retenciones, descuentos y ajustes no pueden superar el monto total', 'warning');
       if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
       return;
     }
@@ -1452,7 +1511,10 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       ret_ica_amount: retIcaAmt,
       ret_ica_account_id: retIcaAccId || null,
       descuento_amount: descuentoAmt,
-      descuento_account_id: descuentoAccId || null
+      descuento_account_id: descuentoAccId || null,
+      ajuste_peso_amount: ajustePesoAmt,
+      ajuste_peso_type: ajustePesoType,
+      ajuste_peso_account_id: ajustePesoAccId || null
     };
 
     if (_tesoIsPagoMixto) {
@@ -2092,11 +2154,95 @@ function _applyDefaultRetenciones() {
   _recalculateTesoNeto();
 }
 
+let _tesoAjustePesoAccountsMap: { sobrante: string; faltante: string } = { sobrante: '', faltante: '' };
+let _tesoAllAccountsForAjuste: any[] = [];
+
+(window as any)._toggleTesoAjustePeso = () => {
+  const chk = document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement | null;
+  const container = document.getElementById('teso-ajuste-peso-container');
+  if (!container) return;
+  if (chk?.checked) {
+    container.classList.remove('hidden');
+    (window as any)._updateAjustePesoAccountOptions();
+  } else {
+    container.classList.add('hidden');
+    const montoInput = document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement | null;
+    if (montoInput) montoInput.value = '';
+  }
+  _recalculateTesoNeto();
+};
+
+(window as any)._updateAjustePesoAccountOptions = () => {
+  const tipoSelect = document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement | null;
+  const cuentaSelect = document.getElementById('teso-modal-ajuste-cuenta') as HTMLSelectElement | null;
+  if (!tipoSelect || !cuentaSelect) return;
+
+  const tipo = tipoSelect.value;
+  const defaultAccId = tipo === 'sobrante' 
+    ? _tesoAjustePesoAccountsMap.sobrante 
+    : _tesoAjustePesoAccountsMap.faltante;
+
+  if (cuentaSelect.options.length <= 1 && _tesoAllAccountsForAjuste.length > 0) {
+    cuentaSelect.innerHTML = '<option value="">— Seleccionar Cuenta PUC —</option>' +
+      _tesoAllAccountsForAjuste.map(a => `<option value="${a.id}">${a.code} - ${a.name}</option>`).join('');
+  }
+  if (defaultAccId) {
+    cuentaSelect.value = defaultAccId;
+  }
+};
+
+(window as any)._handleAjustePesoInput = (input: HTMLInputElement) => {
+  formatInputWithSeparators(input);
+  _recalculateTesoNeto();
+};
+
+(window as any)._autoAjustarPeso = () => {
+  const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement;
+  const ajusteMontoInput = document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement;
+  const ajusteTipoSelect = document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement;
+
+  if (!montoInput || !ajusteMontoInput || !ajusteTipoSelect) return;
+
+  const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+  const montoBruto = parseFormattedNumber(montoInput.value || '0');
+
+  if (totalCartera <= 0 || montoBruto <= 0) {
+    _showToast('Debes ingresar el valor bruto y contar con saldos pendientes para calcular el ajuste al peso.', 'info');
+    return;
+  }
+
+  const diff = montoBruto - totalCartera;
+  const absDiff = Math.abs(diff);
+
+  if (absDiff < 0.001) {
+    _showToast('El monto ingresado coincide exactamente con el valor de la cartera.', 'info');
+    return;
+  }
+
+  if (diff < 0) {
+    ajusteTipoSelect.value = 'faltante';
+  } else {
+    ajusteTipoSelect.value = 'sobrante';
+  }
+
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+  ajusteMontoInput.value = absDiff.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
+  
+  (window as any)._updateAjustePesoAccountOptions();
+  _recalculateTesoNeto();
+  _showToast(`Ajuste al peso calculado: ${ajusteTipoSelect.value === 'sobrante' ? 'Sobrante' : 'Faltante'} de ${_fmt(absDiff)}`, 'success');
+};
+
 function _recalculateTesoNeto() {
   const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement;
   const rfInput = document.getElementById('teso-modal-ret-fuente') as HTMLInputElement;
   const icaInput = document.getElementById('teso-modal-ret-ica') as HTMLInputElement;
   const descInput = document.getElementById('teso-modal-descuento') as HTMLInputElement;
+  
+  const hasAjustePeso = (document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement)?.checked || false;
+  const ajusteTipoSelect = document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement;
+  const ajusteMontoInput = document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement;
+
   const netEl = document.getElementById('teso-modal-neto-valor');
 
   const monto = parseFormattedNumber(montoInput?.value || '0');
@@ -2104,7 +2250,25 @@ function _recalculateTesoNeto() {
   const ica = parseFormattedNumber(icaInput?.value || '0');
   const desc = parseFormattedNumber(descInput?.value || '0');
 
-  const net = monto - rf - ica - desc;
+  let ajusteAmt = 0;
+  let ajusteTipo = 'faltante';
+  if (hasAjustePeso && ajusteMontoInput) {
+    ajusteAmt = parseFormattedNumber(ajusteMontoInput.value || '0');
+    ajusteTipo = ajusteTipoSelect?.value || 'faltante';
+  }
+
+  const docNumEl = document.getElementById('teso-modal-doc-number');
+  const isRecaudo = docNumEl?.classList.contains('text-blue-700') || (document.getElementById('modal-rc-wrap') !== null);
+
+  let net = monto - rf - ica - desc;
+
+  if (hasAjustePeso && ajusteAmt > 0) {
+    if (isRecaudo) {
+      net = ajusteTipo === 'faltante' ? (net - ajusteAmt) : (net + ajusteAmt);
+    } else {
+      net = ajusteTipo === 'sobrante' ? (net - ajusteAmt) : (net + ajusteAmt);
+    }
+  }
 
   if (netEl) {
     netEl.textContent = _fmt(net >= 0 ? net : 0);
@@ -2128,23 +2292,29 @@ async function openRecaudoModal() {
     _tesoAllTerceros = await pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
   }
 
-  const [metodosPago, branches, costCenters, txTypes, settingsReq] = await Promise.all([
+  const [metodosPago, branches, costCenters, txTypes, settingsReq, accountsReq] = await Promise.all([
     pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' }),
     pb.listAll('branches', { filter: 'active=true', sort: 'name' }),
     pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
     pb.listAll('transaction_types', { filter: 'code="RC" || code ~ "RC%"', sort: 'name' }),
-    pb.listAll('settings', { filter: 'key="treasury_rules"' })
+    pb.listAll('settings', { filter: 'key="treasury_rules"' }),
+    pb.listAll('accounts', { filter: 'level>=3', sort: 'code' })
   ]);
 
   _tesoAvailableMetodosPago = metodosPago;
   _tesoIsPagoMixto = false;
   _tesoMixedRows = [];
+  _tesoAllAccountsForAjuste = accountsReq || [];
 
   let allowManualDocNumber = false;
   if (settingsReq.length > 0 && settingsReq[0].value) {
     try {
       const parsed = JSON.parse(settingsReq[0].value);
       allowManualDocNumber = !!parsed.allowManualDocNumber;
+      _tesoAjustePesoAccountsMap = {
+        sobrante: parsed.ajuste_peso_sobrante_account_id || '',
+        faltante: parsed.ajuste_peso_faltante_account_id || ''
+      };
     } catch (_) {}
   }
 
@@ -2269,10 +2439,46 @@ async function openRecaudoModal() {
               <input id="teso-modal-cruzar-anticipos" type="checkbox" class="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500" onchange="window._toggleTesoCruzarAnticipos()">
               Cruzar Anticipos
             </label>
+            <label class="flex items-center gap-2 cursor-pointer select-none bg-amber-50 border border-amber-100 rounded-lg px-3 py-1 text-xs font-semibold text-amber-800" title="Activa o desactiva el ajuste por sobrante o faltante">
+              <input id="teso-modal-has-ajuste-peso" type="checkbox" class="rounded border-amber-300 text-amber-600 focus:ring-amber-500" onchange="window._toggleTesoAjustePeso()">
+              Ajuste al Peso
+            </label>
             <label class="flex items-center gap-2 cursor-pointer select-none bg-blue-50 border border-blue-100 rounded-lg px-3 py-1 text-xs font-semibold text-blue-800">
               <input id="teso-modal-has-retenciones" type="checkbox" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" onchange="window._toggleTesoRetenciones()">
               Retenciones y Descuentos
             </label>
+          </div>
+        </div>
+
+        <!-- Fila de Ajuste al Peso (Oculta por defecto) -->
+        <div id="teso-ajuste-peso-container" class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 hidden space-y-2">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-scale-balanced text-amber-600"></i>
+              <span class="text-xs font-bold text-amber-900 uppercase">Opciones de Ajuste al Peso</span>
+            </div>
+            <button type="button" class="btn btn-xs bg-amber-600 text-white hover:bg-amber-700 font-semibold" onclick="window._autoAjustarPeso()">
+              <i class="fas fa-calculator mr-1"></i>Auto-Ajustar Peso (Diferencia Cartera)
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Tipo de Ajuste</label>
+              <select id="teso-modal-ajuste-tipo" class="form-input py-1 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
+                <option value="faltante">Faltante (Gasto por ajuste al peso)</option>
+                <option value="sobrante">Sobrante (Ingreso por aprovechamiento)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Valor del Ajuste ($)</label>
+              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Cuenta Contable (PUC)</label>
+              <select id="teso-modal-ajuste-cuenta" class="form-input py-1 text-xs bg-white border-amber-300">
+                <option value="">— Seleccionar Cuenta —</option>
+              </select>
+            </div>
           </div>
         </div>
         
@@ -2416,23 +2622,29 @@ async function openPagoModal() {
     _tesoAllTerceros = await pb.listAll('third_parties', { filter: 'active=true', sort: 'name' });
   }
 
-  const [metodosPago, branches, costCenters, txTypes, settingsReq] = await Promise.all([
+  const [metodosPago, branches, costCenters, txTypes, settingsReq, accountsReq] = await Promise.all([
     pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' }),
     pb.listAll('branches', { filter: 'active=true', sort: 'name' }),
     pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
     pb.listAll('transaction_types', { filter: 'code="CE" || code ~ "CE%"', sort: 'name' }),
-    pb.listAll('settings', { filter: 'key="treasury_rules"' })
+    pb.listAll('settings', { filter: 'key="treasury_rules"' }),
+    pb.listAll('accounts', { filter: 'level>=3', sort: 'code' })
   ]);
 
   _tesoAvailableMetodosPago = metodosPago;
   _tesoIsPagoMixto = false;
   _tesoMixedRows = [];
+  _tesoAllAccountsForAjuste = accountsReq || [];
 
   let allowManualDocNumber = false;
   if (settingsReq.length > 0 && settingsReq[0].value) {
     try {
       const parsed = JSON.parse(settingsReq[0].value);
       allowManualDocNumber = !!parsed.allowManualDocNumber;
+      _tesoAjustePesoAccountsMap = {
+        sobrante: parsed.ajuste_peso_sobrante_account_id || '',
+        faltante: parsed.ajuste_peso_faltante_account_id || ''
+      };
     } catch (_) {}
   }
 
@@ -2557,10 +2769,46 @@ async function openPagoModal() {
               <input id="teso-modal-cruzar-anticipos" type="checkbox" class="rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500" onchange="window._toggleTesoCruzarAnticipos()">
               Cruzar Anticipos
             </label>
+            <label class="flex items-center gap-2 cursor-pointer select-none bg-amber-50 border border-amber-100 rounded-lg px-3 py-1 text-xs font-semibold text-amber-800" title="Activa o desactiva el ajuste por sobrante o faltante">
+              <input id="teso-modal-has-ajuste-peso" type="checkbox" class="rounded border-amber-300 text-amber-600 focus:ring-amber-500" onchange="window._toggleTesoAjustePeso()">
+              Ajuste al Peso
+            </label>
             <label class="flex items-center gap-2 cursor-pointer select-none bg-red-50 border border-red-100 rounded-lg px-3 py-1 text-xs font-semibold text-red-800">
               <input id="teso-modal-has-retenciones" type="checkbox" class="rounded border-gray-300 text-red-600 focus:ring-red-500" onchange="window._toggleTesoRetenciones()">
               Retenciones y Descuentos
             </label>
+          </div>
+        </div>
+        
+        <!-- Fila de Ajuste al Peso (Oculta por defecto) -->
+        <div id="teso-ajuste-peso-container" class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 hidden space-y-2">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-scale-balanced text-amber-600"></i>
+              <span class="text-xs font-bold text-amber-900 uppercase">Opciones de Ajuste al Peso</span>
+            </div>
+            <button type="button" class="btn btn-xs bg-amber-600 text-white hover:bg-amber-700 font-semibold" onclick="window._autoAjustarPeso()">
+              <i class="fas fa-calculator mr-1"></i>Auto-Ajustar Peso (Diferencia Obligaciones)
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Tipo de Ajuste</label>
+              <select id="teso-modal-ajuste-tipo" class="form-input py-1 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
+                <option value="sobrante">Sobrante (Ingreso por aprovechamiento)</option>
+                <option value="faltante">Faltante (Gasto por ajuste al peso)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Valor del Ajuste ($)</label>
+              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Cuenta Contable (PUC)</label>
+              <select id="teso-modal-ajuste-cuenta" class="form-input py-1 text-xs bg-white border-amber-300">
+                <option value="">— Seleccionar Cuenta —</option>
+              </select>
+            </div>
           </div>
         </div>
         
@@ -2787,7 +3035,7 @@ async function openTesoreriaConfigModal() {
     const settingsReq = await pb.listAll('settings', { filter: `key="treasury_rules"` });
     const cuentas = await pb.listAll('accounts', { filter: 'level>=3', sort: 'code' });
     
-    let rules: any = { primeroVencido: true, primeroMora: true, interesPrioridad: true, cuentasInteres: [] };
+    let rules: any = { primeroVencido: true, primeroMora: true, interesPrioridad: true, cuentasInteres: [], ajuste_peso_sobrante_account_id: '', ajuste_peso_faltante_account_id: '' };
     let recordId = '';
     
     if (settingsReq.length > 0) {
@@ -2798,6 +3046,7 @@ async function openTesoreriaConfigModal() {
     }
 
     const accountOptions = cuentas.map((c:any) => `<option value="${c.code}">${c.code} - ${c.name}</option>`).join('');
+    const accountOptionsWithId = cuentas.map((c:any) => `<option value="${c.id}">${c.code} - ${c.name}</option>`).join('');
     
     const bodyHtml = `
       <div class="border-b mb-4 flex gap-4" style="border-color:#E5E7EB">
@@ -2832,6 +3081,27 @@ async function openTesoreriaConfigModal() {
         </div>
 
         <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-4">
+          <h4 class="font-bold text-gray-800 mb-3"><i class="fas fa-scale-balanced mr-2 text-amber-600"></i>Cuentas de Ajuste al Peso</h4>
+          <p class="text-xs text-gray-500 mb-4">Configura las cuentas contables del PUC asignadas por defecto para registrar diferencias por sobrante o faltante en recaudos y egresos.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">Ajuste por Sobrante (Ingreso / Aprovechamiento)</label>
+              <select id="teso-cfg-sobrante-account" class="form-input text-xs bg-white w-full border border-gray-300 rounded-lg">
+                <option value="">— Seleccionar Cuenta PUC —</option>
+                ${accountOptionsWithId}
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">Ajuste por Faltante (Gasto / Pérdida)</label>
+              <select id="teso-cfg-faltante-account" class="form-input text-xs bg-white w-full border border-gray-300 rounded-lg">
+                <option value="">— Seleccionar Cuenta PUC —</option>
+                ${accountOptionsWithId}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-4">
           <h4 class="font-bold text-gray-800 mb-3"><i class="fas fa-file-invoice mr-2 text-blue-600"></i>Numeración de Documentos</h4>
           <p class="text-xs text-gray-500 mb-4">Define si los usuarios pueden modificar manualmente el número sugerido de los comprobantes.</p>
           <div class="space-y-3">
@@ -2839,7 +3109,7 @@ async function openTesoreriaConfigModal() {
               <input type="checkbox" id="teso-cfg-manual-doc" class="mt-1 w-4 h-4 text-blue-600" ${rules.allowManualDocNumber ? 'checked' : ''}>
               <div>
                 <span class="block font-semibold text-sm text-gray-800">Permitir edición manual de números de documento</span>
-                <span class="block text-xs text-gray-500 mt-1">Si está desactivado, el campo de número estará bloqueado y se generará estrictamente según la secuencia correlativa configurada.</span>
+                <span class="block text-xs text-gray-500 mt-1">Si está desactivado, el campo de número estará bloqueado y se generará strictly según la secuencia correlativa configurada.</span>
               </div>
             </label>
           </div>
@@ -2896,6 +3166,11 @@ async function openTesoreriaConfigModal() {
 
     _openModal('Configuración de Tesorería Automática', bodyHtml, footerHtml, false);
 
+    const sobranteEl = document.getElementById('teso-cfg-sobrante-account') as HTMLSelectElement;
+    const faltanteEl = document.getElementById('teso-cfg-faltante-account') as HTMLSelectElement;
+    if (sobranteEl && rules.ajuste_peso_sobrante_account_id) sobranteEl.value = rules.ajuste_peso_sobrante_account_id;
+    if (faltanteEl && rules.ajuste_peso_faltante_account_id) faltanteEl.value = rules.ajuste_peso_faltante_account_id;
+
     document.getElementById('btn-save-cfg')!.onclick = async () => {
       const btn = document.getElementById('btn-save-cfg') as HTMLButtonElement;
       btn.disabled = true;
@@ -2909,6 +3184,9 @@ async function openTesoreriaConfigModal() {
       const modoOperacion = (document.querySelector('input[name="teso-cfg-modo-operacion"]:checked') as HTMLInputElement)?.value || 'comercial';
       const allowManualDocNumber = (document.getElementById('teso-cfg-manual-doc') as HTMLInputElement).checked;
 
+      const ajuste_peso_sobrante_account_id = (document.getElementById('teso-cfg-sobrante-account') as HTMLSelectElement)?.value || '';
+      const ajuste_peso_faltante_account_id = (document.getElementById('teso-cfg-faltante-account') as HTMLSelectElement)?.value || '';
+
       const payload = {
         key: 'treasury_rules',
         value: JSON.stringify({
@@ -2917,7 +3195,9 @@ async function openTesoreriaConfigModal() {
           primeroMora: mora,
           interesPrioridad: interes,
           cuentasInteres: cuentasArr,
-          allowManualDocNumber
+          allowManualDocNumber,
+          ajuste_peso_sobrante_account_id,
+          ajuste_peso_faltante_account_id
         })
       };
 
@@ -4200,4 +4480,6 @@ if ((window as any).registerModule) {
 (window as any)._applyDefaultRetenciones = _applyDefaultRetenciones;
 (window as any)._recalculateTesoNeto = _recalculateTesoNeto;
 (window as any)._handleRetInput = _handleRetInput;
+(window as any)._handleAjustePesoInput = (window as any)._handleAjustePesoInput;
+(window as any)._autoAjustarPeso = (window as any)._autoAjustarPeso;
 (window as any)._updateTesoDocNumberPlaceholder = _updateTesoDocNumberPlaceholder;

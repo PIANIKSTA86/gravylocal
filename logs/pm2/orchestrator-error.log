@@ -1,0 +1,17 @@
+2026-08-04T15:59:44: [GRAVY ORCHESTRATOR] LISTEN_ERROR: Error: listen EADDRINUSE: address already in use :::8088
+2026-08-04T15:59:44:     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+2026-08-04T15:59:44:     at listenInCluster (node:net:2005:12)
+2026-08-04T15:59:44:     at Server.listen (node:net:2110:7)
+2026-08-04T15:59:44:     at app.listen (c:\Users\JULIAN\Desktop\GravyLocalTABS\hub\node_modules\express\lib\application.js:605:24)
+2026-08-04T15:59:44:     at Object.<anonymous> (c:\Users\JULIAN\Desktop\GravyLocalTABS\hub\orchestrator.js:2988:5)
+2026-08-04T15:59:44:     at Module._compile (node:internal/modules/cjs/loader:1812:14)
+2026-08-04T15:59:44:     at Object..js (node:internal/modules/cjs/loader:1943:10)
+2026-08-04T15:59:44:     at Module.load (node:internal/modules/cjs/loader:1533:32)
+2026-08-04T15:59:44:     at Module._load (node:internal/modules/cjs/loader:1335:12)
+2026-08-04T15:59:44:     at Object.<anonymous> (C:\Users\JULIAN\AppData\Roaming\npm\node_modules\pm2\lib\ProcessContainerFork.js:32:23) {
+2026-08-04T15:59:44:   code: 'EADDRINUSE',
+2026-08-04T15:59:44:   errno: -4091,
+2026-08-04T15:59:44:   syscall: 'listen',
+2026-08-04T15:59:44:   address: '::',
+2026-08-04T15:59:44:   port: 8088
+2026-08-04T15:59:44: }

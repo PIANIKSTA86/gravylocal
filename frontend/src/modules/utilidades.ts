@@ -232,7 +232,7 @@ function _downloadMassProductsTemplate() {
     ['codigo', 'SÍ', 'Texto Alfanumérico', 'Código único de identificación del producto o servicio. Si el código ya existe, la información del producto será actualizada.', 'P-001'],
     ['nombre', 'SÍ', 'Texto Libre', 'Nombre o descripción comercial completa del ítem.', 'Detergente Multiuso 1L'],
     ['tipo', 'SÍ', 'Texto (BIEN / SERVICIO)', 'Indica la naturaleza del ítem. Valores válidos: BIEN (para bienes tangibles con control de inventario) o SERVICIO (servicios/honorarios).', 'BIEN'],
-    ['unidad', 'SÍ', 'Código DIAN UBL 2.1', 'Código oficial de Unidad de Medida DIAN / UBL 2.1 (REQUERIDO). Catálogo oficial:\n• 94: Unidad\n• WSD: Servicio\n• KGM: Kilogramo\n• BX: Caja\n• LTR: Litro\n• MTR: Metro\n• GRM: Gramo\n• BO: Botella\n• PK: Paquete\n• DZN: Docena\n• LBR: Libra\n• MTK: Metro cuadrado\n• MTQ: Metro cúbico\n• GN: Galón bruto\n• CZ: Combo\n• TNE: Tonelada métrica', '94'],
+    ['unidad', 'SÍ', 'Código DIAN UBL 2.1', 'Código oficial de Unidad de Medida DIAN / UBL 2.1 (REQUERIDO). Catálogo oficial:\n• 94: Unidad\n• WSD: Servicio\n• KGM: Kilogramo\n• BX: Caja\n• LTR: Litro\n• MTR: Metro\n• GRM: Gramo\n• BO: Botella\n• PK: Paquete\n• DZN: Docena\n• LBR: Libra\n• MTK: Metro cuadrado\n• MTQ: Metro cúbico\n• GN: Galón bruto\n• CZ: Combo\n• SET: Set (Juego)\n• TNE: Tonelada métrica', '94'],
     ['presentacion', 'NO', 'Texto Libre', 'Forma de presentación comercial del ítem.', 'Caja x 12 unidades'],
     ['categoria', 'NO', 'Texto Libre', 'Categoría general de clasificación del catálogo.', 'Aseo'],
     ['linea', 'NO', 'Texto Libre', 'Subgrupo o línea de producto.', 'Hogar'],

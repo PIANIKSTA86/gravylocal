@@ -47,6 +47,7 @@ const PRODUCT_UNITS: { code: string; name: string }[] = [
   { code: 'QK',  name: 'Cuarto de kilogramo' },
   { code: 'QT',  name: 'Cuarto de galón (US)' },
   { code: 'SEC', name: 'Segundo' },
+  { code: 'SET', name: 'Set (Juego)' },
   { code: 'TNE', name: 'Tonelada (tonelada métrica)' },
   { code: 'WSD', name: 'Servicio' },
   { code: 'WTT', name: 'Vatio' },
@@ -1654,14 +1655,15 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
           return showToast('El código es obligatorio', 'warning');
         }
 
-        // Verificar código duplicado en creación
-        if (!row?.id) {
-          const safeCode = pb.escapeFilterValue(code);
-          const dup = await pb.list('products', { filter: `code="${safeCode}"`, perPage: 1 });
-          if (dup.items.length) {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
-            return showToast(`Ya existe un producto con el código ${code}`, 'warning');
-          }
+        // Verificar código duplicado en creación o edición
+        const safeCode = pb.escapeFilterValue(code);
+        const filterStr = row?.id 
+          ? `code="${safeCode}" && id!="${row.id}"`
+          : `code="${safeCode}"`;
+        const dup = await pb.list('products', { filter: filterStr, perPage: 1 });
+        if (dup.items.length) {
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
+          return showToast(`Ya existe un producto con el código ${code}`, 'warning');
         }
       }
 

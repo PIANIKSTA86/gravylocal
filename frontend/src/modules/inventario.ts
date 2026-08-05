@@ -2617,6 +2617,10 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
               <input type="checkbox" id="rep-conteo-show-stock" class="w-4 h-4 text-blue-600 rounded">
               <label for="rep-conteo-show-stock" class="text-xs text-gray-600">Mostrar stock del sistema (no ciego)</label>
             </div>
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="rep-conteo-only-mov-stock" class="w-4 h-4 text-blue-600 rounded">
+              <label for="rep-conteo-only-mov-stock" class="text-xs text-gray-600">Listar solo con movimiento o saldo</label>
+            </div>
           </div>
           <div class="flex gap-2 justify-end">
             <button class="btn btn-outline py-2 text-xs" onclick="window._printReport('conteo')"><i class="fas fa-print mr-1"></i>Imprimir</button>
@@ -3454,6 +3458,7 @@ async function _saveTomaFisica() {
     } else if (type === 'conteo') {
       const whId = getSelectVal('rep-conteo-wh');
       const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
+      const onlyMovStock = (document.getElementById('rep-conteo-only-mov-stock') as HTMLInputElement).checked;
 
       const filteredStock = stock.filter((s: any) => s.warehouse_id === whId);
       const stockMap = new Map(filteredStock.map((s: any) => [s.product_id, s.qty_on_hand]));
@@ -3474,7 +3479,12 @@ async function _saveTomaFisica() {
           <tbody>
       `;
 
-      for (const p of products.filter((p: any) => p.type === 'BIEN')) {
+      let listProducts = products.filter((p: any) => p.type === 'BIEN');
+      if (onlyMovStock) {
+        listProducts = listProducts.filter((p: any) => stockMap.has(p.id));
+      }
+
+      for (const p of listProducts) {
         const sys = stockMap.get(p.id) || 0;
         html += `
           <tr>
@@ -3860,11 +3870,17 @@ async function _saveTomaFisica() {
     } else if (type === 'conteo') {
       const whId = getSelectVal('rep-conteo-wh');
       const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
+      const onlyMovStock = (document.getElementById('rep-conteo-only-mov-stock') as HTMLInputElement).checked;
 
       const filteredStock = stock.filter((s: any) => s.warehouse_id === whId);
       const stockMap = new Map(filteredStock.map((s: any) => [s.product_id, s.qty_on_hand]));
 
-      const exportRows = products.filter((p: any) => p.type === 'BIEN').map(p => {
+      let listProducts = products.filter((p: any) => p.type === 'BIEN');
+      if (onlyMovStock) {
+        listProducts = listProducts.filter((p: any) => stockMap.has(p.id));
+      }
+
+      const exportRows = listProducts.map(p => {
         const sys = stockMap.get(p.id) || 0;
         const r: any = {
           codigo: p.code,

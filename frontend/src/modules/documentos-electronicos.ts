@@ -188,6 +188,9 @@ async function loadCdePage(c: HTMLElement) {
 
   document.getElementById('cde-q')?.addEventListener('input', applyFilter);
   document.getElementById('cde-status-f')?.addEventListener('change', applyFilter);
+
+  const tbl = document.getElementById('cde-table') as HTMLTableElement;
+  if (tbl) (window as any).makeTableSortable(tbl);
 }
 
 function cdeKpi(title: string, value: any, icon: string, color: string, bg: string) {

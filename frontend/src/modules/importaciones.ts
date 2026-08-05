@@ -119,6 +119,9 @@ async function _loadImportacionesPage(c: HTMLElement) {
   const applyFilter = () => filterImportTable();
   document.getElementById('imp-q')?.addEventListener('input', applyFilter);
   document.getElementById('imp-status-f')?.addEventListener('change', applyFilter);
+
+  const tbl = document.getElementById('imp-table') as HTMLTableElement;
+  if (tbl) (window as any).makeTableSortable(tbl);
 }
 
 function importKpi(title: string, value: any, icon: string, color: string, bg: string) {

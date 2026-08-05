@@ -1269,6 +1269,8 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       }
     });
 
+    const tbl = document.getElementById('assets-table') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
   } catch (err: any) {
     c.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-1.5"></i>Error: ${esc(err.message)}</div>`;
   }
@@ -1292,7 +1294,7 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div class="overflow-x-auto">
-          <table class="data-table">
+          <table class="data-table" id="asset-categories-table">
             <thead>
               <tr>
                 <th>Código</th>
@@ -1343,6 +1345,9 @@ async function renderSubTabCategorias(c: HTMLElement) {
     `;
 
     $('#btn-new-category')?.addEventListener('click', () => (window as any).openCategoryForm());
+
+    const tbl = document.getElementById('asset-categories-table') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
 
   } catch (err: any) {
     c.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-1.5"></i>Error: ${esc(err.message)}</div>`;

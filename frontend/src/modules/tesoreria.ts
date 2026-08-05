@@ -1035,7 +1035,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     } else {
        // Modo Comercial: Buscar facturas comerciales para permitir su cruce
        try {
-         const commInvoices = await pb.listAll('invoices', { filter: `third_party_id="${thirdPartyId}" && status="posted"` });
+         const commInvoices = await pb.listAll('invoices', { filter: `customer_id="${thirdPartyId}" && status="posted"` });
          commInvoices.forEach((inv: any) => allowedRefs.add(inv.number));
        } catch(_) {}
        
@@ -1671,7 +1671,10 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       }) : null
     });
 
-    renderTesoListado(document.getElementById('teso-content')!, typeCode as any);
+    const cont = document.getElementById('recaudos-listado-content') || document.getElementById('egresos-listado-content') || document.getElementById('teso-content');
+    if (cont) {
+      renderTesoListado(cont, typeCode as any);
+    }
 
   } catch (err: any) {
     console.error(err);

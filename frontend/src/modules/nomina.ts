@@ -3101,6 +3101,8 @@ async function renderNominaNovedades(c, periods, employees) {
     $('#btn-new-novelty')?.addEventListener('click', () => openNoveltyForm(periods, employees));
 
     renderRows();
+    const tbl = document.getElementById('novelties-table') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
   } catch (err) {
     c.innerHTML = `<div class="p-4 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
@@ -3349,7 +3351,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
           aporteIcbf: 0,
           esap: 0,
           aporteMinisterio: 0,
-          totalEmpPila: 0
+          fondoSolidaridad: 0,
+          totalEmpPila: 0,
+          totalAportesEmpleado: 0
         });
       }
 
@@ -3426,11 +3430,16 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.diasArp += days;
       acc.diasCcf += days;
 
+      const isExempt = !!config.company_rules.exempt_sena_icbf && (lineIbc < (config.company_rules.smmlv * 10));
+      const effectiveSena = isExempt ? 0 : sena;
+      const effectiveIcbf = isExempt ? 0 : icbf;
+      const effectiveSalud = round2(saludTrab + (isExempt ? 0 : saludEmp));
+
       acc.ibcPension += lineIbc;
       acc.aportePension += round2(penTrab + penEmp + fsp);
 
       acc.ibcSalud += lineIbc;
-      acc.aporteSalud += round2(saludTrab + saludEmp);
+      acc.aporteSalud += effectiveSalud;
 
       acc.ibcCajas += lineIbc;
       acc.aporteCajas += caja;
@@ -3438,10 +3447,12 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.ibcRiesgos += lineIbc;
       acc.aporteRiesgos += arlVal;
 
-      acc.aporteSena += sena;
-      acc.aporteIcbf += icbf;
+      acc.aporteSena += effectiveSena;
+      acc.aporteIcbf += effectiveIcbf;
       acc.esap += 0;
       acc.aporteMinisterio += 0;
+      acc.fondoSolidaridad += fsp;
+      acc.totalAportesEmpleado += round2(saludTrab + penTrab + fsp);
     }
 
     const rowItems = Array.from(empMap.values()).map(acc => {
@@ -3476,6 +3487,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.aporteIcbf = round2(acc.aporteIcbf);
       acc.esap = round2(acc.esap);
       acc.aporteMinisterio = round2(acc.aporteMinisterio);
+      acc.fondoSolidaridad = round2(acc.fondoSolidaridad);
+      acc.totalAportesEmpleado = round2(acc.totalAportesEmpleado);
 
       acc.totalEmpPila = round2(acc.aporteSalud + acc.aportePension + acc.aporteRiesgos + acc.aporteCajas + acc.aporteSena + acc.aporteIcbf + acc.esap + acc.aporteMinisterio);
       return acc;
@@ -3488,6 +3501,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
     let totSena = 0, totIcbf = 0, totEsap = 0, totMinisterio = 0;
     let totHorasExtrasMonto = 0, totHorasExtrasHoras = 0, totComisionesMonto = 0;
     let totPilaGlobal = 0;
+    let totAportesEmpleado = 0;
+    let totFondoSolidaridad = 0;
 
     rowItems.forEach(r => {
       totHorasExtrasMonto += r.horasExtrasMonto;
@@ -3507,6 +3522,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       totEsap += r.esap;
       totMinisterio += r.aporteMinisterio;
       totPilaGlobal += r.totalEmpPila;
+      totAportesEmpleado += r.totalAportesEmpleado;
+      totFondoSolidaridad += r.fondoSolidaridad;
     });
 
     // Company info for PDF header
@@ -3573,6 +3590,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                 <th class="text-right">Aporte ICBF</th>
                 <th class="text-right">ESAP</th>
                 <th class="text-right">Aporte Ministerio</th>
+                <th class="text-right text-violet-900">Fondo Solidaridad</th>
+                <th class="text-right font-bold text-indigo-900">Aportes Empleado ($)</th>
                 <th class="text-right font-bold text-emerald-900">Total PILA ($)</th>
               </tr>
             </thead>
@@ -3611,6 +3630,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                   <td class="text-right font-mono">${fmt(r.aporteIcbf)}</td>
                   <td class="text-right font-mono">${fmt(r.esap)}</td>
                   <td class="text-right font-mono">${fmt(r.aporteMinisterio)}</td>
+                  <td class="text-right font-semibold text-violet-900">${fmt(r.fondoSolidaridad)}</td>
+                  <td class="text-right font-semibold text-indigo-900">${fmt(r.totalAportesEmpleado)}</td>
                   <td class="text-right font-bold text-emerald-800 text-sm">${fmt(r.totalEmpPila)}</td>
                 </tr>
               `).join('')}
@@ -3637,6 +3658,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                 <td class="text-right">${fmt(totIcbf)}</td>
                 <td class="text-right">${fmt(totEsap)}</td>
                 <td class="text-right">${fmt(totMinisterio)}</td>
+                <td class="text-right text-violet-900 font-bold">${fmt(totFondoSolidaridad)}</td>
+                <td class="text-right text-indigo-950 font-bold">${fmt(totAportesEmpleado)}</td>
                 <td class="text-right text-emerald-950 text-sm">${fmt(totPilaGlobal)}</td>
               </tr>
             </tfoot>
@@ -3665,11 +3688,13 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         totIcbf,
         totEsap,
         totMinisterio,
+        totFondoSolidaridad,
         totHorasExtrasMonto,
         totHorasExtrasHoras,
         totComisionesMonto,
         totParafiscales: totAporteCajas + totSena + totIcbf + totEsap + totMinisterio,
-        totPilaGlobal
+        totPilaGlobal,
+        totAportesEmpleado
       };
       exportPlanillaPilaPdf(monthLabel, year, rowItems, totalsObj, companyInfo);
     });
@@ -3705,6 +3730,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         aporte_icbf: r.aporteIcbf,
         esap: r.esap,
         aporte_ministerio: r.aporteMinisterio,
+        fondo_solidaridad: r.fondoSolidaridad,
+        aportes_empleado: r.totalAportesEmpleado,
+        total_pila: r.totalEmpPila,
       }));
 
       exportExcelData.push({
@@ -3737,6 +3765,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         aporte_icbf: totIcbf,
         esap: totEsap,
         aporte_ministerio: totMinisterio,
+        fondo_solidaridad: totFondoSolidaridad,
+        aportes_empleado: totAportesEmpleado,
+        total_pila: totPilaGlobal,
       });
 
       const headers = [
@@ -3769,6 +3800,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         { key: 'aporte_icbf', label: 'Aporte ICBF ($)' },
         { key: 'esap', label: 'ESAP ($)' },
         { key: 'aporte_ministerio', label: 'Aporte Ministerio ($)' },
+        { key: 'fondo_solidaridad', label: 'Fondo de Solidaridad ($)' },
+        { key: 'aportes_empleado', label: 'Aportes Empleado ($)' },
+        { key: 'total_pila', label: 'Total PILA ($)' },
       ];
 
       if (typeof (window as any).exportToExcel === 'function') {
@@ -3962,26 +3996,28 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
   <table class="pila-pdf-table">
     <thead>
       <tr>
-        <th style="width:10%;">Empleado / Cédula</th>
-        <th style="width:4%;">Nov.</th>
-        <th style="width:7%;">Horas Extras / Recargos</th>
-        <th style="width:5%;">Comisiones</th>
-        <th style="width:3.5%;">Días</th>
-        <th style="width:4%;">Entidades</th>
-        <th style="width:7%;">Fondo Pensión</th>
-        <th style="width:5%;">IBC Pensión</th>
-        <th style="width:5%;">Aporte Pensión</th>
-        <th style="width:7%;">EPS Salud</th>
-        <th style="width:5%;">IBC Salud</th>
-        <th style="width:5%;">Aporte Salud</th>
-        <th style="width:6%;">Caja CCF</th>
+        <th style="width:9%;">Empleado / Cédula</th>
+        <th style="width:3.5%;">Nov.</th>
+        <th style="width:6.5%;">Horas Extras / Recargos</th>
+        <th style="width:4.5%;">Comisiones</th>
+        <th style="width:3%;">Días</th>
+        <th style="width:3.5%;">Entidades</th>
+        <th style="width:6.5%;">Fondo Pensión</th>
+        <th style="width:4.5%;">IBC Pensión</th>
+        <th style="width:4.5%;">Aporte Pensión</th>
+        <th style="width:6.5%;">EPS Salud</th>
+        <th style="width:4.5%;">IBC Salud</th>
+        <th style="width:4.5%;">Aporte Salud</th>
+        <th style="width:5.5%;">Caja CCF</th>
         <th style="width:4.5%;">IBC Cajas</th>
         <th style="width:4%;">Aporte Cajas</th>
         <th style="width:3%;">ARL %</th>
-        <th style="width:4.5%;">Aporte ARL</th>
-        <th style="width:3.5%;">SENA</th>
-        <th style="width:3.5%;">ICBF</th>
-        <th style="width:5.5%;">Total PILA</th>
+        <th style="width:4%;">Aporte ARL</th>
+        <th style="width:3%;">SENA</th>
+        <th style="width:3%;">ICBF</th>
+        <th style="width:3.5%;">F.Solidar.</th>
+        <th style="width:4.5%;">Aportes Emp.</th>
+        <th style="width:5%;">Total PILA</th>
       </tr>
     </thead>
     <tbody>
@@ -4016,6 +4052,8 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
           <td class="text-right font-mono font-bold" style="color:#92400e;">${fmt(r.aporteRiesgos)}</td>
           <td class="text-right font-mono">${fmt(r.aporteSena)}</td>
           <td class="text-right font-mono">${fmt(r.aporteIcbf)}</td>
+          <td class="text-right font-mono font-bold" style="color:#6d28d9;">${fmt(r.fondoSolidaridad)}</td>
+          <td class="text-right font-mono font-bold" style="color:#312e81;">${fmt(r.totalAportesEmpleado)}</td>
           <td class="text-right font-mono font-bold" style="color:#064e3b; font-size:7.5pt;">${fmt(r.totalEmpPila)}</td>
         </tr>
       `).join('')}
@@ -4039,6 +4077,8 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
         <td class="text-right font-mono" style="color:#92400e;">${fmt(totals.totAporteRiesgos)}</td>
         <td class="text-right font-mono">${fmt(totals.totSena)}</td>
         <td class="text-right font-mono">${fmt(totals.totIcbf)}</td>
+        <td class="text-right font-mono" style="color:#6d28d9;">${fmt(totals.totFondoSolidaridad || 0)}</td>
+        <td class="text-right font-mono" style="color:#312e81;">${fmt(totals.totAportesEmpleado)}</td>
         <td class="text-right font-mono" style="color:#064e3b; font-size:8pt;">${fmt(totals.totPilaGlobal)}</td>
       </tr>
     </tfoot>
@@ -4077,6 +4117,848 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
 }
 
 (window as any).exportPlanillaPilaPdf = exportPlanillaPilaPdf;
+
+async function renderDetailedPayrollReport(year: number, month: number) {
+  try {
+    const monthPadded = String(month).padStart(2, '0');
+    const ymPrefix = `${year}-${monthPadded}`;
+
+    const allPeriods = await pb.listAll('payroll_periods');
+    const matchingPeriods = allPeriods.filter((p: any) => (p.date_from || '').startsWith(ymPrefix) || (p.date_to || '').startsWith(ymPrefix));
+
+    if (!matchingPeriods.length) {
+      return showToast(`No hay períodos de nómina registrados para ${month}/${year}.`, 'warning');
+    }
+
+    const periodIds = matchingPeriods.map((p: any) => p.id);
+    const filterExpr = periodIds.map((id: string) => `period_id="${pb.escapeFilterValue(id)}"`).join('||');
+    const lines = await pb.listAll('payroll_lines', {
+      filter: filterExpr,
+      expand: 'employee_id'
+    });
+
+    if (!lines.length) {
+      return showToast(`No se encontraron liquidaciones de nómina registradas para los períodos de ${month}/${year}.`, 'warning');
+    }
+
+    const { config } = await getNominaConfigWithRow();
+    const thirdParties = await pb.listAll('third_parties', { filter: 'active=true' }).catch(() => []);
+    const thirdPartiesMap = new Map<string, any>(thirdParties.map((tp: any) => [tp.id, tp]));
+
+    const novelties = await pb.listAll('payroll_novelties', {
+      filter: filterExpr
+    }).catch(() => []);
+
+    // Fetch company info
+    const settingsList = await pb.listAll('settings', { filter: 'key="company" || key="company_name" || key="company_nit"' }).catch(() => []);
+    let companyName = 'MI EMPRESA S.A.S.';
+    let companyNit = '';
+    const companySetting = settingsList.find((s: any) => s.key === 'company');
+    if (companySetting) {
+      try {
+        const valObj = typeof companySetting.value === 'string' ? JSON.parse(companySetting.value) : companySetting.value;
+        companyName = valObj.name || valObj.razon_social || companyName;
+        companyNit = valObj.nit || companyNit;
+      } catch (_) {}
+    }
+
+    const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const monthLabel = monthNames[month] || String(month);
+
+    const empMap = new Map<string, any>();
+
+    let totalDevengosGlobal = 0;
+    let totalDeduccionesGlobal = 0;
+    let totalNetoGlobal = 0;
+
+    for (const line of lines) {
+      const empId = line.employee_id || line.expand?.employee_id?.id || '';
+      if (!empId) continue;
+
+      const empObj = line.expand?.employee_id || {};
+      const empRule = getEmployeePayrollRule(config, empId);
+      const notesObj = getNominaLineMeta(line);
+      const conceptAmounts = getNominaConceptAmountsFromLine(line);
+      const otMeta = getNominaOvertimeMetaFromLine(line);
+
+      const periodObj = matchingPeriods.find((p: any) => p.id === line.period_id) || {};
+      const dateParts = (periodObj.date_to || '').split('-');
+      const dateStr = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '';
+
+      const empNovs = novelties.filter((nov: any) => nov.employee_id === empId);
+
+      // Sueldo Trabajado proportional
+      const sueldoTrabajado = round2((line.salary_base || 0) / 30 * line.days_worked);
+
+      // OT breakdown
+      const findOt = (key: string) => otMeta.breakdown?.find((b: any) => b.key === key) || { hours: 0, amount: 0 };
+
+      // Incapacidades
+      const generalIncaps = empNovs.filter((nov: any) => nov.type === 'INCAPACIDAD_ENFERMEDAD_GENERAL');
+      const gIncapsQty = generalIncaps.reduce((s: number, n: any) => s + (n.qty || 0), 0);
+      const gIncapsPay = generalIncaps.reduce((s: number, n: any) => s + (n.amount || 0), 0);
+
+      // Licencias MP
+      const mpLicences = empNovs.filter((nov: any) => nov.type === 'LICENCIA_MATERNIDAD' || nov.type === 'LICENCIA_PATERNIDAD');
+      const mpLicencesQty = mpLicences.reduce((s: number, n: any) => s + (n.qty || 0), 0);
+      const mpLicencesPay = mpLicences.reduce((s: number, n: any) => s + (n.amount || 0), 0);
+
+      // Incapacidades ARL
+      const arlIncaps = empNovs.filter((nov: any) => nov.type === 'INCAPACIDAD_ACCIDENTE_TRABAJO' || nov.type === 'INCAPACIDAD_ENFERMEDAD_PROFESION');
+      const arlIncapsQty = arlIncaps.reduce((s: number, n: any) => s + (n.qty || 0), 0);
+      const arlIncapsPay = arlIncaps.reduce((s: number, n: any) => s + (n.amount || 0), 0);
+
+      // Licencias NR
+      const nrLicences = empNovs.filter((nov: any) => nov.type === 'LICENCIA_NO_REMUNERADA' || nov.type === 'PERMISO_NO_REMUNERADO' || nov.type === 'SUSPENSION');
+      const nrLicencesQty = nrLicences.reduce((s: number, n: any) => s + (n.qty || 0), 0);
+      const nrLicencesPay = nrLicences.reduce((s: number, n: any) => s + (n.amount || 0), 0);
+      const nrLicencesInicio = nrLicences[0]?.date_from || '';
+      const nrLicencesFin = nrLicences[0]?.date_to || '';
+
+      // Auxilios No Salariales (Alimentacion + rodamiento + aux_no_salariales)
+      const auxNoSalarial = round2((conceptAmounts.alimentacion || 0) + (conceptAmounts.rodamiento || 0) + (conceptAmounts.aux_no_salariales || 0));
+
+      const n_primaServicios = empNovs.filter((nov: any) => nov.type === 'PRIMA_SERVICIOS').reduce((sum: number, n: any) => sum + (n.amount || 0), 0);
+      const n_cesantias = empNovs.filter((nov: any) => nov.type === 'CESANTIAS').reduce((sum: number, n: any) => sum + (n.amount || 0), 0);
+      const n_interesesCesantias = empNovs.filter((nov: any) => nov.type === 'INTERESES_CESANTIAS').reduce((sum: number, n: any) => sum + (n.amount || 0), 0);
+
+      // Devengos sum (excludes provisions, includes actual payments of benefits)
+      const devengos = round2(
+        sueldoTrabajado +
+        (line.transport_allowance || 0) +
+        (otMeta.total_amount || 0) +
+        (conceptAmounts.vacaciones_disfrutadas || 0) +
+        n_primaServicios +
+        n_cesantias +
+        n_interesesCesantias +
+        (conceptAmounts.gastos_representacion || 0) +
+        (conceptAmounts.bonificacion || 0) +
+        auxNoSalarial +
+        (conceptAmounts.comisiones || 0) +
+        (conceptAmounts.dotaciones || 0) +
+        (conceptAmounts.compensatorios || 0) +
+        (conceptAmounts.otros_ingresos || 0) +
+        (conceptAmounts.incapacidades || 0) +
+        (conceptAmounts.licencias || 0)
+      );
+
+      // Deducciones sum
+      const fsp = notesObj.solidarity_fund || line.solidarity_fund || 0;
+      const withholding = line.withholding_tax || notesObj.withholding_tax || 0;
+      const deducciones = round2(
+        (line.deduction_health || 0) +
+        (line.deduction_pension || 0) +
+        fsp +
+        withholding +
+        (conceptAmounts.embargo || 0) +
+        (conceptAmounts.libranza || 0) +
+        (conceptAmounts.prestamos || 0) +
+        (line.deduction_other || 0)
+      );
+
+      const totalNeto = round2(devengos - deducciones);
+
+      const ibc = line.deduction_health > 0 ? round2(line.deduction_health / 0.04) : 0;
+      const fspRate = fsp > 0 && ibc > 0 ? round2((fsp / ibc) * 100) : 0;
+
+      if (!empMap.has(empId)) {
+        empMap.set(empId, {
+          fecha_liquidacion: dateStr,
+          doc_number: empObj.doc_number || empObj.numeroDocumento || line.employee_id || '',
+          full_name: empObj.name || (empObj.first_name ? `${empObj.first_name} ${empObj.last_name || ''}` : 'Empleado'),
+          sueldo_basico: line.salary_base || 0,
+          sueldo_trabajado: 0,
+          aux_transporte: 0,
+          viaticos1: 0,
+          viaticos2: 0,
+          hed_cant: 0,
+          hed_pago: 0,
+          hen_cant: 0,
+          hen_pago: 0,
+          hrn_cant: 0,
+          hrn_pago: 0,
+          heddf_cant: 0,
+          heddf_pago: 0,
+          hrddf_cant: 0,
+          hrddf_pago: 0,
+          hendf_cant: 0,
+          hendf_pago: 0,
+          hrndf_cant: 0,
+          hrndf_pago: 0,
+          vac_cant: 0,
+          vac_pago: 0,
+          primas_cant: 0,
+          primas_pago: 0,
+          primas_pago_ns: 0,
+          cesantias_pago: 0,
+          cesantias_porc: 0,
+          cesantias_int: 0,
+          incap_inicio: generalIncaps[0]?.date_from || '',
+          incap_fin: generalIncaps[0]?.date_to || '',
+          incap_cant: 0,
+          incap_tipo: generalIncaps[0] ? 'General' : '',
+          incap_pago: 0,
+          lic_mp_inicio: mpLicences[0]?.date_from || '',
+          lic_mp_fin: mpLicences[0]?.date_to || '',
+          lic_mp_cant: 0,
+          lic_mp_pago: 0,
+          incap_arl_inicio: arlIncaps[0]?.date_from || '',
+          incap_arl_fin: arlIncaps[0]?.date_to || '',
+          incap_arl_cant: 0,
+          incap_arl_pago: 0,
+          lic_nr_inicio: nrLicencesInicio,
+          lic_nr_fin: nrLicencesFin,
+          lic_nr_cant: 0,
+          lic_nr_pago: 0,
+          gastos_represen: 0,
+          bonif_salarial: 0,
+          bonif_no_salarial: 0,
+          aux_salariales: 0,
+          aux_no_salariales: 0,
+          huelga_inicio: '',
+          huelga_fin: '',
+          huelga_cant: 0,
+          otro_cpt_desc: conceptAmounts.otros_ingresos > 0 ? 'Otros Ingresos' : '',
+          otro_cpt_sal: 0,
+          otro_cpt_no_sal: 0,
+          compensacion_ord: 0,
+          compensacion_ext: 0,
+          bonos_pagosal: 0,
+          bonos_pagonosal: 0,
+          bonos_alimsal: 0,
+          pago_rec_tercero: 0,
+          comision: 0,
+          pago_anticipado: 0,
+          dotacion_anticipado: 0,
+          apoyos_anticipado: 0,
+          bono_retiro: 0,
+          prestamos_anticipos: 0,
+          indemniza: 0,
+          pension_voluntaria: 0,
+          retefuente: 0,
+          ica: 0,
+          afc_cesantias: 0,
+          cooperativa: 0,
+          embargos: 0,
+          educacion: 0,
+          reintegro: 0,
+          deuda: 0,
+          redondeo: 0,
+          devengos_total: 0,
+          deducciones_total: 0,
+          comprobante_total: 0,
+          salud_porc: 4,
+          salud_base: 0,
+          salud_ded: 0,
+          pension_porc: empRule.is_pensioner ? 0 : 4,
+          pension_base: 0,
+          pension_ded: 0,
+          fsp_porc: fspRate,
+          fsp_ded: 0,
+          fsp_sub: 0,
+          base_aportes: 0,
+          sindicato_porc: 0,
+          sindicato_ded: 0,
+          sancion_pub: 0,
+          sancion_priv: 0,
+          libranza_desc: conceptAmounts.libranza > 0 ? 'Libranza' : '',
+          libranza_ded: 0,
+          pago_terceros: 0,
+          prestamos: 0,
+          otras_ded: 0,
+          prov_cesantias: 0,
+          prov_int_ces: 0,
+          prov_primas: 0,
+          prov_vacaciones: 0,
+          aporte_salud_patron: 0,
+          aporte_pension_patron: 0,
+          aporte_riesgos: 0,
+          aporte_caja: 0,
+          aporte_icbf: 0,
+          aporte_sena: 0
+        });
+      }
+
+      const acc = empMap.get(empId);
+
+      // Accumulate numeric fields
+      acc.sueldo_trabajado += sueldoTrabajado;
+      acc.aux_transporte += line.transport_allowance || 0;
+      acc.hed_cant += findOt('hed').hours;
+      acc.hed_pago += findOt('hed').amount;
+      acc.hen_cant += findOt('hen').hours;
+      acc.hen_pago += findOt('hen').amount;
+      acc.hrn_cant += findOt('rno').hours;
+      acc.hrn_pago += findOt('rno').amount;
+      acc.heddf_cant += findOt('heddf').hours;
+      acc.heddf_pago += findOt('heddf').amount;
+      acc.hrddf_cant += findOt('rdfd').hours;
+      acc.hrddf_pago += findOt('rdfd').amount;
+      acc.hendf_cant += findOt('hendf').hours;
+      acc.hendf_pago += findOt('hendf').amount;
+
+      // Vacaciones: only reported if there is an actual payment
+      if ((conceptAmounts.vacaciones_disfrutadas || 0) > 0) {
+        acc.vac_cant += notesObj.dias_vacaciones || 0;
+        acc.vac_pago += conceptAmounts.vacaciones_disfrutadas || 0;
+      }
+      
+      // Primas: only reported if there is an actual payment novelty
+      if (n_primaServicios > 0) {
+        const primaNov = empNovs.find((nov: any) => nov.type === 'PRIMA_SERVICIOS');
+        acc.primas_cant += (primaNov?.qty || 180);
+        acc.primas_pago += n_primaServicios;
+      }
+
+      // Cesantias: only reported if there is an actual payment novelty
+      if (n_cesantias > 0) {
+        acc.cesantias_pago += n_cesantias;
+        acc.cesantias_porc = 8.33;
+      }
+
+      // Intereses de Cesantias: only reported if there is an actual payment novelty
+      if (n_interesesCesantias > 0) {
+        acc.cesantias_int += n_interesesCesantias;
+      }
+
+      acc.incap_cant += gIncapsQty;
+      acc.incap_pago += gIncapsPay;
+      acc.lic_mp_cant += mpLicencesQty;
+      acc.lic_mp_pago += mpLicencesPay;
+      acc.incap_arl_cant += arlIncapsQty;
+      acc.incap_arl_pago += arlIncapsPay;
+      acc.lic_nr_cant += nrLicencesQty;
+      acc.lic_nr_pago += nrLicencesPay;
+
+      acc.gastos_represen += conceptAmounts.gastos_representacion || 0;
+      acc.bonif_salarial += conceptAmounts.bonificacion || 0;
+      acc.aux_no_salariales += auxNoSalarial;
+      acc.otro_cpt_no_sal += conceptAmounts.otros_ingresos || 0;
+      acc.comision += conceptAmounts.comisiones || 0;
+      acc.prestamos_anticipos += conceptAmounts.prestamos || 0;
+      acc.retefuente += withholding;
+      acc.embargos += conceptAmounts.embargo || 0;
+
+      acc.devengos_total += devengos;
+      acc.deducciones_total += deducciones;
+      acc.comprobante_total += totalNeto;
+
+      acc.salud_base += ibc;
+      acc.salud_ded += line.deduction_health || 0;
+      acc.pension_base += line.deduction_pension > 0 ? ibc : 0;
+      acc.pension_ded += line.deduction_pension || 0;
+      acc.fsp_ded += fsp;
+      acc.base_aportes += ibc;
+
+      acc.libranza_ded += conceptAmounts.libranza || 0;
+      acc.prestamos += conceptAmounts.prestamos || 0;
+      acc.otras_ded += line.deduction_other || 0;
+
+      acc.prov_cesantias += round2((line.cesantias || 0) - n_cesantias);
+      acc.prov_int_ces += round2((line.intereses_ces || 0) - n_interesesCesantias);
+      acc.prov_primas += round2((line.prima || 0) - n_primaServicios);
+      acc.prov_vacaciones += line.vacaciones || 0;
+
+      acc.aporte_salud_patron += line.employer_health || 0;
+      acc.aporte_pension_patron += line.employer_pension || 0;
+      acc.aporte_riesgos += line.employer_arl || 0;
+      acc.aporte_caja += line.caja_comp || 0;
+      acc.aporte_icbf += line.icbf || 0;
+      acc.aporte_sena += line.sena || 0;
+    }
+
+    const reportRows: any[] = [];
+    for (const acc of empMap.values()) {
+      acc.sueldo_trabajado = round2(acc.sueldo_trabajado);
+      acc.aux_transporte = round2(acc.aux_transporte);
+      acc.hed_pago = round2(acc.hed_pago);
+      acc.hen_pago = round2(acc.hen_pago);
+      acc.hrn_pago = round2(acc.hrn_pago);
+      acc.heddf_pago = round2(acc.heddf_pago);
+      acc.hrddf_pago = round2(acc.hrddf_pago);
+      acc.hendf_pago = round2(acc.hendf_pago);
+      acc.vac_pago = round2(acc.vac_pago);
+      acc.primas_pago = round2(acc.primas_pago);
+      acc.cesantias_pago = round2(acc.cesantias_pago);
+      acc.cesantias_int = round2(acc.cesantias_int);
+      acc.incap_pago = round2(acc.incap_pago);
+      acc.lic_mp_pago = round2(acc.lic_mp_pago);
+      acc.incap_arl_pago = round2(acc.incap_arl_pago);
+      acc.lic_nr_pago = round2(acc.lic_nr_pago);
+      acc.gastos_represen = round2(acc.gastos_represen);
+      acc.bonif_salarial = round2(acc.bonif_salarial);
+      acc.aux_no_salariales = round2(acc.aux_no_salariales);
+      acc.otro_cpt_no_sal = round2(acc.otro_cpt_no_sal);
+      acc.comision = round2(acc.comision);
+      acc.prestamos_anticipos = round2(acc.prestamos_anticipos);
+      acc.retefuente = round2(acc.retefuente);
+      acc.embargos = round2(acc.embargos);
+      acc.devengos_total = round2(acc.devengos_total);
+      acc.deducciones_total = round2(acc.deducciones_total);
+      acc.comprobante_total = round2(acc.comprobante_total);
+      acc.salud_base = round2(acc.salud_base);
+      acc.salud_ded = round2(acc.salud_ded);
+      acc.pension_base = round2(acc.pension_base);
+      acc.pension_ded = round2(acc.pension_ded);
+      acc.fsp_ded = round2(acc.fsp_ded);
+      acc.base_aportes = round2(acc.base_aportes);
+      acc.libranza_ded = round2(acc.libranza_ded);
+      acc.prestamos = round2(acc.prestamos);
+      acc.otras_ded = round2(acc.otras_ded);
+      acc.prov_cesantias = round2(acc.prov_cesantias);
+      acc.prov_int_ces = round2(acc.prov_int_ces);
+      acc.prov_primas = round2(acc.prov_primas);
+      acc.prov_vacaciones = round2(acc.prov_vacaciones);
+      acc.aporte_salud_patron = round2(acc.aporte_salud_patron);
+      acc.aporte_pension_patron = round2(acc.aporte_pension_patron);
+      acc.aporte_riesgos = round2(acc.aporte_riesgos);
+      acc.aporte_caja = round2(acc.aporte_caja);
+      acc.aporte_icbf = round2(acc.aporte_icbf);
+      acc.aporte_sena = round2(acc.aporte_sena);
+
+      totalDevengosGlobal += acc.devengos_total;
+      totalDeduccionesGlobal += acc.deducciones_total;
+      totalNetoGlobal += acc.comprobante_total;
+
+      reportRows.push(acc);
+    }
+
+    const bodyHtml = `
+      <div class="space-y-4 text-left text-xs">
+        <div class="flex flex-wrap justify-between items-center bg-gray-50 p-3 rounded-xl border">
+          <div>
+            <h3 class="font-bold text-sm text-gray-800">REPORTE DETALLADO DE NÓMINA (REVISIÓN AUDITORÍA)</h3>
+            <p class="text-gray-500">Período: <strong>${monthLabel} / ${year}</strong> — Liquidaciones Consolidadas: <strong>${reportRows.length}</strong></p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm font-bold" id="btn-export-detailed-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel Detallado (112 Columnas)</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-center font-semibold">
+          <div class="bg-blue-50 p-2 rounded-lg border border-blue-100"><div class="text-gray-400 text-3xs">TOTAL DEVENGOS</div><div class="text-blue-900 text-xs font-bold">${fmt(totalDevengosGlobal)}</div></div>
+          <div class="bg-red-50 p-2 rounded-lg border border-red-100"><div class="text-gray-400 text-3xs">TOTAL DEDUCCIONES</div><div class="text-red-900 text-xs font-bold">${fmt(totalDeduccionesGlobal)}</div></div>
+          <div class="bg-emerald-50 p-2 rounded-lg border border-emerald-100"><div class="text-gray-400 text-3xs">NETO A PAGAR (CONSOLIDADO)</div><div class="text-emerald-950 text-sm font-bold">${fmt(totalNetoGlobal)}</div></div>
+        </div>
+
+        <div class="overflow-x-auto border rounded-xl bg-white max-h-96">
+          <table class="data-table text-xs whitespace-nowrap">
+            <thead>
+              <tr class="bg-gray-100 text-gray-700">
+                <th class="sticky left-0 bg-gray-100 z-10">Doc. Identidad</th>
+                <th>Empleado / Nombre Completo</th>
+                <th class="text-right">Sueldo Básico</th>
+                <th class="text-right">Sueldo Trabajado</th>
+                <th class="text-right">Auxilio Transporte</th>
+                <th class="text-right">Salud Empleado</th>
+                <th class="text-right">Pensión Empleado</th>
+                <th class="text-right text-violet-900">Fondo Solidaridad</th>
+                <th class="text-right">Total Deducciones</th>
+                <th class="text-right font-bold text-emerald-900">Neto a Pagar ($)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${reportRows.map(r => `
+                <tr>
+                  <td class="sticky left-0 bg-white z-10 border-r font-mono">${esc(r.doc_number)}</td>
+                  <td class="font-semibold text-gray-800">${esc(r.full_name)}</td>
+                  <td class="text-right font-mono">${fmt(r.sueldo_basico)}</td>
+                  <td class="text-right font-mono">${fmt(r.sueldo_trabajado)}</td>
+                  <td class="text-right font-mono">${fmt(r.aux_transporte)}</td>
+                  <td class="text-right font-mono">${fmt(r.salud_ded)}</td>
+                  <td class="text-right font-mono">${fmt(r.pension_ded)}</td>
+                  <td class="text-right font-semibold text-violet-900 font-mono">${fmt(r.fsp_ded)}</td>
+                  <td class="text-right font-semibold text-red-900 font-mono">${fmt(r.deducciones_total)}</td>
+                  <td class="text-right font-bold text-emerald-800 font-mono">${fmt(r.comprobante_total)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+            <tfoot>
+              <tr class="bg-gray-100 font-bold border-t">
+                <td colspan="2" class="sticky left-0 bg-gray-100 z-10">TOTALES CONSOLIDADOS (${reportRows.length} Empleados)</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td class="text-right text-violet-900 font-bold font-mono">${fmt(reportRows.reduce((s, r) => s + r.salud_ded, 0))}</td>
+                <td class="text-right text-violet-900 font-bold font-mono">${fmt(reportRows.reduce((s, r) => s + r.pension_ded, 0))}</td>
+                <td class="text-right text-violet-950 font-bold font-mono">${fmt(reportRows.reduce((s, r) => s + r.fsp_ded, 0))}</td>
+                <td class="text-right text-red-900 font-mono">${fmt(totalDeduccionesGlobal)}</td>
+                <td class="text-right text-emerald-950 font-mono">${fmt(totalNetoGlobal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+
+    openModal(`Reporte Detallado de Nómina — ${monthLabel} ${year}`, bodyHtml, `<button class="btn btn-primary" onclick="closeModal()">Cerrar</button>`, true);
+
+    $('#btn-export-detailed-excel')?.addEventListener('click', () => {
+      exportDetailedPayrollExcel(monthLabel, year, reportRows);
+    });
+
+  } catch (err: any) {
+    showToast(`Error al generar reporte detallado: ${err.message}`, 'error');
+  }
+}
+
+function exportDetailedPayrollExcel(monthLabel: string, year: number, rows: any[]) {
+  const excelData = rows.map((r: any) => ({
+    fecha_liq: r.fecha_liquidacion,
+    doc_id: r.doc_number,
+    full_name: r.full_name,
+    sueldo_basico: r.sueldo_basico,
+    sueldo_trabajado: r.sueldo_trabajado,
+    aux_transporte: r.aux_transporte,
+    viaticos1: r.viaticos1,
+    viaticos2: r.viaticos2,
+    hed_cant: r.hed_cant,
+    hed_pago: r.hed_pago,
+    hen_cant: r.hen_cant,
+    hen_pago: r.hen_pago,
+    hrn_cant: r.hrn_cant,
+    hrn_pago: r.hrn_pago,
+    heddf_cant: r.heddf_cant,
+    heddf_pago: r.heddf_pago,
+    hrddf_cant: r.hrddf_cant,
+    hrddf_pago: r.hrddf_pago,
+    hendf_cant: r.hendf_cant,
+    hendf_pago: r.hendf_pago,
+    hrndf_cant: r.hrndf_cant,
+    hrndf_pago: r.hrndf_pago,
+    vac_cant: r.vac_cant,
+    vac_pago: r.vac_pago,
+    primas_cant: r.primas_cant,
+    primas_pago: r.primas_pago,
+    primas_pago_ns: r.primas_pago_ns,
+    cesantias_pago: r.cesantias_pago,
+    cesantias_porc: r.cesantias_porc,
+    cesantias_int: r.cesantias_int,
+    incap_inicio: r.incap_inicio,
+    incap_fin: r.incap_fin,
+    incap_cant: r.incap_cant,
+    incap_tipo: r.incap_tipo,
+    incap_pago: r.incap_pago,
+    lic_mp_inicio: r.lic_mp_inicio,
+    lic_mp_fin: r.lic_mp_fin,
+    lic_mp_cant: r.lic_mp_cant,
+    lic_mp_pago: r.lic_mp_pago,
+    incap_arl_inicio: r.incap_arl_inicio,
+    incap_arl_fin: r.incap_arl_fin,
+    incap_arl_cant: r.incap_arl_cant,
+    incap_arl_pago: r.incap_arl_pago,
+    lic_nr_inicio: r.lic_nr_inicio,
+    lic_nr_fin: r.lic_nr_fin,
+    lic_nr_pago: r.lic_nr_pago,
+    gastos_represen: r.gastos_represen,
+    bonif_salarial: r.bonif_salarial,
+    bonif_no_salarial: r.bonif_no_salarial,
+    aux_salariales: r.aux_salariales,
+    aux_no_salariales: r.aux_no_salariales,
+    huelga_inicio: r.huelga_inicio,
+    huelga_fin: r.huelga_fin,
+    huelga_cant: r.huelga_cant,
+    otro_cpt_desc: r.otro_cpt_desc,
+    otro_cpt_sal: r.otro_cpt_sal,
+    otro_cpt_no_sal: r.otro_cpt_no_sal,
+    compensacion_ord: r.compensacion_ord,
+    compensacion_ext: r.compensacion_ext,
+    bonos_pagosal: r.bonos_pagosal,
+    bonos_pagonosal: r.bonos_pagonosal,
+    bonos_alimsal: r.bonos_alimsal,
+    pago_rec_tercero: r.pago_rec_tercero,
+    comision: r.comision,
+    pago_anticipado: r.pago_anticipado,
+    dotacion_anticipado: r.dotacion_anticipado,
+    apoyos_anticipado: r.apoyos_anticipado,
+    bono_retiro: r.bono_retiro,
+    prestamos_anticipos: r.prestamos_anticipos,
+    indemniza: r.indemniza,
+    pension_voluntaria: r.pension_voluntaria,
+    retefuente: r.retefuente,
+    ica: r.ica,
+    afc_cesantias: r.afc_cesantias,
+    cooperativa: r.cooperativa,
+    embargos: r.embargos,
+    educacion: r.educacion,
+    reintegro: r.reintegro,
+    deuda: r.deuda,
+    redondeo: r.redondeo,
+    devengos_total: r.devengos_total,
+    deducciones_total: r.deducciones_total,
+    comprobante_total: r.comprobante_total,
+    salud_porc: r.salud_porc,
+    salud_base: r.salud_base,
+    salud_ded: r.salud_ded,
+    pension_porc: r.pension_porc,
+    pension_base: r.pension_base,
+    pension_ded: r.pension_ded,
+    fsp_porc: r.fsp_porc,
+    fsp_ded: r.fsp_ded,
+    fsp_sub: r.fsp_sub,
+    base_aportes: r.base_aportes,
+    sindicato_porc: r.sindicato_porc,
+    sindicato_ded: r.sindicato_ded,
+    sancion_pub: r.sancion_pub,
+    sancion_priv: r.sancion_priv,
+    libranza_desc: r.libranza_desc,
+    libranza_ded: r.libranza_ded,
+    pago_terceros: r.pago_terceros,
+    prestamos: r.prestamos,
+    otras_ded: r.otras_ded,
+    prov_cesantias: r.prov_cesantias,
+    prov_int_ces: r.prov_int_ces,
+    prov_primas: r.prov_primas,
+    prov_vacaciones: r.prov_vacaciones,
+    aporte_salud_patron: r.aporte_salud_patron,
+    aporte_pension_patron: r.aporte_pension_patron,
+    aporte_riesgos: r.aporte_riesgos,
+    aporte_caja: r.aporte_caja,
+    aporte_icbf: r.aporte_icbf,
+    aporte_sena: r.aporte_sena
+  }));
+
+  excelData.push({
+    fecha_liq: 'TOTALES',
+    doc_id: 'TOTAL CONSOLIDADO',
+    full_name: '',
+    sueldo_basico: rows.reduce((s, r) => s + r.sueldo_basico, 0),
+    sueldo_trabajado: rows.reduce((s, r) => s + r.sueldo_trabajado, 0),
+    aux_transporte: rows.reduce((s, r) => s + r.aux_transporte, 0),
+    viaticos1: 0,
+    viaticos2: 0,
+    hed_cant: rows.reduce((s, r) => s + r.hed_cant, 0),
+    hed_pago: rows.reduce((s, r) => s + r.hed_pago, 0),
+    hen_cant: rows.reduce((s, r) => s + r.hen_cant, 0),
+    hen_pago: rows.reduce((s, r) => s + r.hen_pago, 0),
+    hrn_cant: rows.reduce((s, r) => s + r.hrn_cant, 0),
+    hrn_pago: rows.reduce((s, r) => s + r.hrn_pago, 0),
+    heddf_cant: rows.reduce((s, r) => s + r.heddf_cant, 0),
+    heddf_pago: rows.reduce((s, r) => s + r.heddf_pago, 0),
+    hrddf_cant: rows.reduce((s, r) => s + r.hrddf_cant, 0),
+    hrddf_pago: rows.reduce((s, r) => s + r.hrddf_pago, 0),
+    hendf_cant: rows.reduce((s, r) => s + r.hendf_cant, 0),
+    hendf_pago: rows.reduce((s, r) => s + r.hendf_pago, 0),
+    hrndf_cant: 0,
+    hrndf_pago: 0,
+    vac_cant: rows.reduce((s, r) => s + r.vac_cant, 0),
+    vac_pago: rows.reduce((s, r) => s + r.vac_pago, 0),
+    primas_cant: 0,
+    primas_pago: rows.reduce((s, r) => s + r.primas_pago, 0),
+    primas_pago_ns: 0,
+    cesantias_pago: rows.reduce((s, r) => s + r.cesantias_pago, 0),
+    cesantias_porc: 0,
+    cesantias_int: rows.reduce((s, r) => s + r.cesantias_int, 0),
+    incap_inicio: '',
+    incap_fin: '',
+    incap_cant: rows.reduce((s, r) => s + r.incap_cant, 0),
+    incap_tipo: '',
+    incap_pago: rows.reduce((s, r) => s + r.incap_pago, 0),
+    lic_mp_inicio: '',
+    lic_mp_fin: '',
+    lic_mp_cant: rows.reduce((s, r) => s + r.lic_mp_cant, 0),
+    lic_mp_pago: rows.reduce((s, r) => s + r.lic_mp_pago, 0),
+    incap_arl_inicio: '',
+    incap_arl_fin: '',
+    incap_arl_cant: rows.reduce((s, r) => s + r.incap_arl_cant, 0),
+    incap_arl_pago: rows.reduce((s, r) => s + r.incap_arl_pago, 0),
+    lic_nr_inicio: '',
+    lic_nr_fin: '',
+    lic_nr_cant: rows.reduce((s, r) => s + r.lic_nr_cant, 0),
+    lic_nr_pago: rows.reduce((s, r) => s + r.lic_nr_pago, 0),
+    gastos_represen: rows.reduce((s, r) => s + r.gastos_represen, 0),
+    bonif_salarial: rows.reduce((s, r) => s + r.bonif_salarial, 0),
+    bonif_no_salarial: 0,
+    aux_salariales: 0,
+    aux_no_salariales: rows.reduce((s, r) => s + r.aux_no_salariales, 0),
+    huelga_inicio: '',
+    huelga_fin: '',
+    huelga_cant: 0,
+    otro_cpt_desc: '',
+    otro_cpt_sal: 0,
+    otro_cpt_no_sal: rows.reduce((s, r) => s + r.otro_cpt_no_sal, 0),
+    compensacion_ord: 0,
+    compensacion_ext: 0,
+    bonos_pagosal: 0,
+    bonos_pagonosal: 0,
+    bonos_alimsal: 0,
+    pago_rec_tercero: 0,
+    comision: rows.reduce((s, r) => s + r.comision, 0),
+    pago_anticipado: 0,
+    dotacion_anticipado: 0,
+    apoyos_anticipado: 0,
+    bono_retiro: 0,
+    prestamos_anticipos: rows.reduce((s, r) => s + r.prestamos_anticipos, 0),
+    indemniza: 0,
+    pension_voluntaria: 0,
+    retefuente: rows.reduce((s, r) => s + r.retefuente, 0),
+    ica: 0,
+    afc_cesantias: 0,
+    cooperativa: 0,
+    embargos: rows.reduce((s, r) => s + r.embargos, 0),
+    educacion: 0,
+    reintegro: 0,
+    deuda: 0,
+    redondeo: 0,
+    devengos_total: rows.reduce((s, r) => s + r.devengos_total, 0),
+    deducciones_total: rows.reduce((s, r) => s + r.deducciones_total, 0),
+    comprobante_total: rows.reduce((s, r) => s + r.comprobante_total, 0),
+    salud_porc: 0,
+    salud_base: rows.reduce((s, r) => s + r.salud_base, 0),
+    salud_ded: rows.reduce((s, r) => s + r.salud_ded, 0),
+    pension_porc: 0,
+    pension_base: rows.reduce((s, r) => s + r.pension_base, 0),
+    pension_ded: rows.reduce((s, r) => s + r.pension_ded, 0),
+    fsp_porc: 0,
+    fsp_ded: rows.reduce((s, r) => s + r.fsp_ded, 0),
+    fsp_sub: 0,
+    base_aportes: rows.reduce((s, r) => s + r.base_aportes, 0),
+    sindicato_porc: 0,
+    sindicato_ded: 0,
+    sancion_pub: 0,
+    sancion_priv: 0,
+    libranza_desc: '',
+    libranza_ded: rows.reduce((s, r) => s + r.libranza_ded, 0),
+    pago_terceros: 0,
+    prestamos: rows.reduce((s, r) => s + r.prestamos, 0),
+    otras_ded: rows.reduce((s, r) => s + r.otras_ded, 0),
+    prov_cesantias: rows.reduce((s, r) => s + r.prov_cesantias, 0),
+    prov_int_ces: rows.reduce((s, r) => s + r.prov_int_ces, 0),
+    prov_primas: rows.reduce((s, r) => s + r.prov_primas, 0),
+    prov_vacaciones: rows.reduce((s, r) => s + r.prov_vacaciones, 0),
+    aporte_salud_patron: rows.reduce((s, r) => s + r.aporte_salud_patron, 0),
+    aporte_pension_patron: rows.reduce((s, r) => s + r.aporte_pension_patron, 0),
+    aporte_riesgos: rows.reduce((s, r) => s + r.aporte_riesgos, 0),
+    aporte_caja: rows.reduce((s, r) => s + r.aporte_caja, 0),
+    aporte_icbf: rows.reduce((s, r) => s + r.aporte_icbf, 0),
+    aporte_sena: rows.reduce((s, r) => s + r.aporte_sena, 0)
+  });
+
+  const headers = [
+    { key: 'fecha_liq', label: '7.Fecha Liquidacion' },
+    { key: 'doc_id', label: '8.Codigo Trabajador/ No.ID' },
+    { key: 'full_name', label: '16.Nombre Completo' },
+    { key: 'sueldo_basico', label: '32.Sueldo Basico' },
+    { key: 'sueldo_trabajado', label: '39.Sueldo Trabajado' },
+    { key: 'aux_transporte', label: '40.Auxilio Transporte' },
+    { key: 'viaticos1', label: '41.Viaticos1' },
+    { key: 'viaticos2', label: '42.Viaticos2' },
+    { key: 'hed_cant', label: '45.HED Cantidad' },
+    { key: 'hed_pago', label: '46.HED Pago' },
+    { key: 'hen_cant', label: '49.HEN Cantidad' },
+    { key: 'hen_pago', label: '50.HEN Pago' },
+    { key: 'hrn_cant', label: '53.HRN Cantidad' },
+    { key: 'hrn_pago', label: '54.HRN Pago' },
+    { key: 'heddf_cant', label: '57.HEDDF Cantidad' },
+    { key: 'heddf_pago', label: '58.HEDDF Pago' },
+    { key: 'hrddf_cant', label: '61.HRDDF Cantidad' },
+    { key: 'hrddf_pago', label: '62.HRDDF Pago' },
+    { key: 'hendf_cant', label: '65.HENDF Cantidad' },
+    { key: 'hendf_pago', label: '66.HENDF Pago' },
+    { key: 'hrndf_cant', label: '69.HRNDF Cantidad' },
+    { key: 'hrndf_pago', label: '70.HRNDF Pago' },
+    { key: 'vac_cant', label: '73.Cantidad Vac.Comun' },
+    { key: 'vac_pago', label: '74.Pago Vac.Comun' },
+    { key: 'primas_cant', label: '79.Primas Cantidad' },
+    { key: 'primas_pago', label: '80.Prima Pago' },
+    { key: 'primas_pago_ns', label: '81.Prima PagoNS' },
+    { key: 'cesantias_pago', label: '82.Cesantias Pago' },
+    { key: 'cesantias_porc', label: '83.Cesantias Porcentaje' },
+    { key: 'cesantias_int', label: '84.Cesantias Intereses' },
+    { key: 'incap_inicio', label: '85.FechaIncio Incapacidad' },
+    { key: 'incap_fin', label: '86.FechaFin Incapacidad' },
+    { key: 'incap_cant', label: '87.Cantidad Incapacidad' },
+    { key: 'incap_tipo', label: '88.Tipo Incapacidad' },
+    { key: 'incap_pago', label: '89.Pago Incapacidad' },
+    { key: 'lic_mp_inicio', label: '90.FechaIncio LicenciaMP' },
+    { key: 'lic_mp_fin', label: '91.FechaFin LicenciaMP' },
+    { key: 'lic_mp_cant', label: '92.Cantidad LicenciaMP' },
+    { key: 'lic_mp_pago', label: '93.Pago LicenciaMP' },
+    { key: 'incap_arl_inicio', label: '94.FechaIncio Incap. ARL' },
+    { key: 'incap_arl_fin', label: '95.FechaFin Incap. ARL' },
+    { key: 'incap_arl_cant', label: '96.Cantidad Incap. ARL' },
+    { key: 'incap_arl_pago', label: '97.Pago Incap. ARL' },
+    { key: 'lic_nr_inicio', label: '98.FechaIncio LicenciaNR' },
+    { key: 'lic_nr_fin', label: '99.FechaFin LicenciaNR' },
+    { key: 'lic_nr_pago', label: '100.Pago LicenciaNR' },
+    { key: 'gastos_represen', label: '101.Gastos Represen' },
+    { key: 'bonif_salarial', label: '102.Bonificacion Salarial' },
+    { key: 'bonif_no_salarial', label: '103.Bonificacion NoSalarial' },
+    { key: 'aux_salariales', label: '104.Auxilios Salariales' },
+    { key: 'aux_no_salariales', label: '105.Auxilios NoSalarial' },
+    { key: 'huelga_inicio', label: '106.FechaIncio Huelga' },
+    { key: 'huelga_fin', label: '107.FechaFin Huelga' },
+    { key: 'huelga_cant', label: '108.Cantidad Huelga' },
+    { key: 'otro_cpt_desc', label: '109.OtroConcepto Descripcion' },
+    { key: 'otro_cpt_sal', label: '110.OtroConcepto Salarial' },
+    { key: 'otro_cpt_no_sal', label: '111.OtroConcepto NoSalarial' },
+    { key: 'compensacion_ord', label: '112.Compensacion Ordinaria' },
+    { key: 'compensacion_ext', label: '113.Compensacion Ext.Ord' },
+    { key: 'bonos_pagosal', label: '114.Bonos PagoSal' },
+    { key: 'bonos_pagonosal', label: '115.Bonos PagoNoSal' },
+    { key: 'bonos_alimsal', label: '116.Bonos AlimSal' },
+    { key: 'pago_rec_tercero', label: '117.Pago Rec de tercero' },
+    { key: 'comision', label: '118.Comision' },
+    { key: 'pago_anticipado', label: '119.Pago Anticipado' },
+    { key: 'dotacion_anticipado', label: '120.Dotacion Anticipado' },
+    { key: 'apoyos_anticipado', label: '121.ApoyoS Anticipado' },
+    { key: 'bono_retiro', label: '122.Bono Retiro Anticipado' },
+    { key: 'prestamos_anticipos', label: '123.Prestamos Anticipos' },
+    { key: 'indemniza', label: '124.Indemniza Anticipado' },
+    { key: 'pension_voluntaria', label: '125.Pension Voluntaria' },
+    { key: 'retefuente', label: '126.Retefuente' },
+    { key: 'ica', label: '127.ICA' },
+    { key: 'afc_cesantias', label: '128.AFC cesantias' },
+    { key: 'cooperativa', label: '129.Cooperativa' },
+    { key: 'embargos', label: '130.Embargos' },
+    { key: 'educacion', label: '132.Educacion' },
+    { key: 'reintegro', label: '133.Reintegro' },
+    { key: 'deuda', label: '134.Deuda' },
+    { key: 'redondeo', label: '135.Redondeo' },
+    { key: 'devengos_total', label: '136.Devengos Total' },
+    { key: 'deducciones_total', label: '137.Deduccion Total' },
+    { key: 'comprobante_total', label: '138.Comprobante Total' },
+    { key: 'salud_porc', label: '139.Salud Porcentaje' },
+    { key: 'salud_base', label: '140.Salud Base' },
+    { key: 'salud_ded', label: '141.Salud Deduccion' },
+    { key: 'pension_porc', label: '142.Pension Porcentaje' },
+    { key: 'pension_base', label: '143.Pension Base' },
+    { key: 'pension_ded', label: '144.Pension Deduccion' },
+    { key: 'fsp_porc', label: '145.Fondo Solid Porc.' },
+    { key: 'fsp_ded', label: '146.Fondo Solid Ded.' },
+    { key: 'fsp_sub', label: '147.FondoSP Porc_Sub' },
+    { key: 'base_aportes', label: '148.Base aportes Liquidacion' },
+    { key: 'sindicato_porc', label: '149.Sindicato Porcentaje' },
+    { key: 'sindicato_ded', label: '150.Sindicato Deduccion' },
+    { key: 'sancion_pub', label: '151.Sancion Publica' },
+    { key: 'sancion_priv', label: '152.Sancion Privada' },
+    { key: 'libranza_desc', label: '153.Libranza Descripcion' },
+    { key: 'libranza_ded', label: '154.Libranza Deduccion' },
+    { key: 'pago_terceros', label: '155.Pago Terceros' },
+    { key: 'prestamos', label: '156.Prestamos' },
+    { key: 'otras_ded', label: '157.Otras Deducciones' },
+    { key: 'prov_cesantias', label: '158.Provision Cesantias' },
+    { key: 'prov_int_ces', label: '159.Provision Int.Cesant.' },
+    { key: 'prov_primas', label: '160.Provision Primas' },
+    { key: 'prov_vacaciones', label: '161.Provision Vacaciones' },
+    { key: 'aporte_salud_patron', label: '162.Aporte Salud 8.5' },
+    { key: 'aporte_pension_patron', label: '163.Aporte Pension 12' },
+    { key: 'aporte_riesgos', label: '164.Aporte Riesgos' },
+    { key: 'aporte_caja', label: '165.Aporte Caja Comp. 4' },
+    { key: 'aporte_icbf', label: '166.Aporte ICBF 3' },
+    { key: 'aporte_sena', label: '167.Aporte SENA 2' }
+  ];
+
+  if (typeof (window as any).exportToExcel === 'function') {
+    (window as any).exportToExcel(excelData, headers, `Reporte_Detallado_Nomina_${monthLabel}_${year}`);
+  } else {
+    showToast('La función de exportación a Excel no está disponible.', 'error');
+  }
+}
+
+(window as any).exportPlanillaPilaPdf = exportPlanillaPilaPdf;
+(window as any).renderDetailedPayrollReport = renderDetailedPayrollReport;
+(window as any).exportDetailedPayrollExcel = exportDetailedPayrollExcel;
 
 function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: number, consecutivo: number) {
   const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
@@ -4173,6 +5055,7 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
           </div>
           <button class="btn btn-primary btn-sm" id="btn-generate-ne"><i class="fas fa-file-export mr-1"></i>Generar Nómina Electrónica (Individual por Empleado)</button>
           <button class="btn btn-outline btn-sm text-indigo-700 font-bold" id="btn-view-pila-report"><i class="fas fa-table mr-1"></i>Listado Planilla PILA (Revisión)</button>
+          <button class="btn btn-outline btn-sm text-indigo-700 font-bold" id="btn-view-detailed-payroll-report"><i class="fas fa-list-alt mr-1"></i>Reporte Detallado Nómina</button>
         </div>
 
         <div id="ne-result-container" class="space-y-4">
@@ -4238,6 +5121,7 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
           <div class="flex flex-wrap gap-2">
             <button class="btn btn-primary btn-sm" onclick="window.emitAllNominaElectronicaDian(${year}, ${month})"><i class="fas fa-paper-plane mr-1"></i>Transmitir Todo a DIAN (Lote)</button>
             <button class="btn btn-outline btn-sm text-indigo-700 font-bold" id="btn-view-pila-report-inner"><i class="fas fa-file-invoice-dollar mr-1"></i>Planilla PILA de Revisión</button>
+            <button class="btn btn-outline btn-sm text-indigo-700 font-bold" id="btn-view-detailed-payroll-report-inner"><i class="fas fa-list-alt mr-1"></i>Reporte Detallado de Nómina</button>
           </div>
 
           <div class="border rounded-xl overflow-hidden bg-white mt-4">
@@ -4308,8 +5192,14 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
           </div>
         `;
 
+        const tbl = container.querySelector('table');
+        if (tbl) (window as any).makeTableSortable(tbl);
+
         $('#btn-view-pila-report-inner')?.addEventListener('click', () => {
           renderPlanillaPilaRevision(year, month);
+        });
+        $('#btn-view-detailed-payroll-report-inner')?.addEventListener('click', () => {
+          renderDetailedPayrollReport(year, month);
         });
 
       } catch (err: any) {
@@ -4328,6 +5218,11 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
       const year = parseInt(($('#ne-filter-year') as HTMLSelectElement)?.value || '0');
       const month = parseInt(($('#ne-filter-month') as HTMLSelectElement)?.value || '0');
       renderPlanillaPilaRevision(year, month);
+    });
+    $('#btn-view-detailed-payroll-report')?.addEventListener('click', () => {
+      const year = parseInt(($('#ne-filter-year') as HTMLSelectElement)?.value || '0');
+      const month = parseInt(($('#ne-filter-month') as HTMLSelectElement)?.value || '0');
+      renderDetailedPayrollReport(year, month);
     });
 
     await loadReport();

@@ -26,7 +26,7 @@ const PO_PRODUCT_UNITS = [
   '94',  'BO',  'BX',  'CMK', 'CMQ', 'CMT', 'CZ',  'DZN', 'FOT', 'FTK',
   'FTQ', 'GN',  'GRM', 'INH', 'JR',  'KGM', 'KMK', 'KTM', 'LBR', 'LH',
   'LTR', 'MGM', 'MLT', 'MMT', 'MTK', 'MTQ', 'MTR', 'NL',  'ONZ', 'PK',
-  'QK',  'QT',  'SEC', 'TNE', 'WSD', 'WTT', 'Z3'
+  'QK',  'QT',  'SEC', 'SET', 'TNE', 'WSD', 'WTT', 'Z3'
 ];
 const PO_IVA_RATES = [0, 5, 19];
 

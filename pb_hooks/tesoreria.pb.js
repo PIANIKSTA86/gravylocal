@@ -79,7 +79,7 @@ onRecordCreateRequest((e) => {
     } else {
       allowedRefs = {};
       try {
-        const commInvoices = $app.findRecordsByFilter("invoices", `third_party_id = '${thirdPartyId}' && status = 'posted'`, "", 10000, 0) || [];
+        const commInvoices = $app.findRecordsByFilter("invoices", `customer_id = '${thirdPartyId}' && status = 'posted'`, "", 10000, 0) || [];
         for (const inv of commInvoices) allowedRefs[inv.get("number")] = true;
       } catch(err) {}
 

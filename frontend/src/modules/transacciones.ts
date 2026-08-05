@@ -2027,21 +2027,128 @@ function revertTxToDraft(id, number) {
   );
 }
 
+async function performVoidTransaction(id: string, reason: string) {
+  const safeId = pb.escapeFilterValue(id);
+
+  // 1. Obtener facturas de venta vinculadas y sus movimientos
+  const sales = await pb.listAll('invoices', { filter: `tx_id="${safeId}"` }).catch(() => []);
+  
+  // 2. Obtener facturas de compra vinculadas y sus movimientos
+  const purchases = await pb.listAll('purchase_invoices', { filter: `tx_id="${safeId}"` }).catch(() => []);
+  
+  // 3. Obtener movimientos de inventario directos por tx_id
+  const directMovs = await pb.listAll('inventory_movements', { filter: `tx_id="${safeId}"` }).catch(() => []);
+
+  const movMap = new Map<string, any>();
+  (directMovs || []).forEach((m: any) => movMap.set(m.id, m));
+
+  // 4. Anular la transacción contable principal
+  await API.voidTransaction(id, `Anulación desde consulta | Motivo: ${reason}`);
+
+  // 5. Anular facturas de venta vinculadas
+  for (const s of sales) {
+    if (s.status !== 'voided') {
+      await API.voidInvoice(s.id, reason).catch((err: any) => {
+        console.warn(`Aviso al anular factura de venta relacionada ${s.id}:`, err);
+      });
+    }
+    if (s.inv_movement_id && !movMap.has(s.inv_movement_id)) {
+      const m = await pb.get('inventory_movements', s.inv_movement_id).catch(() => null);
+      if (m) movMap.set(m.id, m);
+    }
+  }
+
+  // 6. Anular facturas de compra vinculadas
+  for (const p of purchases) {
+    if (p.status !== 'voided') {
+      await API.voidPurchaseInvoice(p.id, reason).catch((err: any) => {
+        console.warn(`Aviso al anular factura de compra relacionada ${p.id}:`, err);
+      });
+    }
+    if (p.inv_movement_id && !movMap.has(p.inv_movement_id)) {
+      const m = await pb.get('inventory_movements', p.inv_movement_id).catch(() => null);
+      if (m) movMap.set(m.id, m);
+    }
+  }
+
+  // 7. Anular todos los movimientos de inventario asociados
+  for (const [movId, mov] of movMap) {
+    if (mov.status !== 'voided') {
+      try {
+        if (mov.status === 'applied') {
+          await API.voidInventoryMovement(movId, `Anulación por anulación de transacción | Motivo: ${reason}`);
+        } else {
+          await pb.update('inventory_movements', movId, { status: 'voided' });
+          await API.logAudit('VOID', 'InventoryMovement', movId, `Anulación automática ${mov.mov_type || 'MOV'} - ${mov.number || ''} | Motivo: ${reason}`);
+        }
+      } catch (errMov) {
+        console.warn(`Aviso al anular movimiento de inventario relacionado ${movId}:`, errMov);
+      }
+    }
+  }
+}
+
 function voidTx(id) {
   if (!can('canDelete')) return showToast('No tienes permisos para anular', 'error');
-  confirmDialog('Anular transacción', 'Esta acción cambia el estado a anulada. ¿Deseas continuar?', async () => {
-    try {
-      // Check period closure
-      if (typeof isPeriodClosed === 'function') {
-        const tx = await pb.get('transactions', id);
-        const closed = await isPeriodClosed(tx.date);
-        if (closed) return showToast(`El período ${(tx.date||'').slice(0,7)} no está habilitado o está cerrado. No se puede anular.`, 'error');
+
+  openModal(
+    'Anular Transacción',
+    `
+      <div class="space-y-4 text-sm" style="color:#374151">
+        <div>
+          <p>Esta acción cambiará el estado de la transacción a anulada y afectará a todos los movimientos de inventario y documentos relacionados.</p>
+        </div>
+        <div>
+          <label class="form-label font-bold text-gray-700">Motivo de Anulación <span style="color:#EF4444">*</span></label>
+          <textarea id="tx-void-reason" class="form-input w-full" rows="4" placeholder="Escribe la explicación detallada de por qué se realiza esta acción..."></textarea>
+          <p class="text-xs text-gray-500 mt-1">Este motivo quedará registrado en los logs de auditoría contable (mínimo 8 caracteres).</p>
+        </div>
+      </div>
+    `,
+    `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" id="tx-void-confirm-btn">Anular Transacción</button>
+    `
+  );
+
+  setTimeout(() => {
+    const text = document.getElementById('tx-void-reason') as HTMLTextAreaElement;
+    const btn = document.getElementById('tx-void-confirm-btn') as HTMLButtonElement;
+    text?.focus();
+
+    btn?.addEventListener('click', async () => {
+      const reason = text?.value.trim() || '';
+      if (reason.length < 8) {
+        showToast('Ingresa un motivo descriptivo de al menos 8 caracteres', 'warning');
+        return;
       }
-      await API.voidTransaction(id, 'Anulación desde consulta');
-      showToast('Transacción anulada', 'success');
-      renderConsultaTx($('#page-content'));
-    } catch (err) { showToast(err.message, 'error'); }
-  });
+      try {
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+
+        // Verificar cierre de período
+        if (typeof isPeriodClosed === 'function') {
+          const tx = await pb.get('transactions', id);
+          const closed = await isPeriodClosed(tx.date);
+          if (closed) {
+            closeModal();
+            return showToast(`El período ${(tx.date||'').slice(0,7)} no está habilitado o está cerrado. No se puede anular.`, 'error');
+          }
+        }
+
+        // Anular transacción y movimientos relacionados
+        await performVoidTransaction(id, reason);
+
+        closeModal();
+        showToast('Transacción y movimientos asociados anulados con éxito', 'success');
+        renderConsultaTx($('#page-content'));
+      } catch (err: any) {
+        showToast(err.message || 'Error al anular la transacción', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Anular Transacción';
+      }
+    });
+  }, 50);
 }
 
 // ── Estado para edición de transacción ───────────────────────────────────────
@@ -2577,6 +2684,11 @@ function deleteTxPhysical(id, number) {
        <div class="form-group">
          <label class="form-label">Para confirmar, escribe el número del comprobante: <strong>${esc(number)}</strong></label>
          <input id="delete-tx-confirm-input" class="form-input" placeholder="${esc(number)}" autocomplete="off">
+       </div>
+       <div class="form-group mt-3">
+         <label class="form-label">Motivo/Explicación de la eliminación <span style="color:#EF4444">*</span></label>
+         <textarea id="delete-tx-reason-input" class="form-input w-full" rows="3" placeholder="Escribe la explicación detallada de por qué eliminas este comprobante..."></textarea>
+         <p class="text-xs text-gray-500 mt-1">Este motivo quedará registrado en los logs de auditoría contable (mínimo 8 caracteres).</p>
        </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
        <button class="btn btn-danger" id="btn-confirm-delete-tx" onclick="_confirmDeleteTx('${esc(id)}','${esc(number)}')">
@@ -2591,6 +2703,9 @@ function deleteTxPhysical(id, number) {
 async function _confirmDeleteTx(id: string, number: string) {
   const input = ((document.getElementById('delete-tx-confirm-input') as HTMLInputElement)?.value || '').trim();
   if (input !== number) return showToast(`Escribe exactamente: ${number}`, 'warning');
+
+  const reason = ((document.getElementById('delete-tx-reason-input') as HTMLTextAreaElement)?.value || '').trim();
+  if (reason.length < 8) return showToast('Ingresa un motivo descriptivo de al menos 8 caracteres', 'warning');
 
   const btn = document.getElementById('btn-confirm-delete-tx') as HTMLButtonElement;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Eliminando registro e inventario...'; }
@@ -2627,7 +2742,7 @@ async function _confirmDeleteTx(id: string, number: string) {
     for (const [movId, mov] of movMap) {
       try {
         if (mov.status === 'applied') {
-          await API.voidInventoryMovement(movId, `Reversión por eliminación física de transacción ${number}`).catch((e: any) => {
+          await API.voidInventoryMovement(movId, `Reversión por eliminación física de transacción ${number} | Motivo: ${reason}`).catch((e: any) => {
             console.warn(`Aviso al revertir stock de movimiento ${movId}:`, e);
           });
         }
@@ -2647,7 +2762,7 @@ async function _confirmDeleteTx(id: string, number: string) {
 
     // 6. Eliminar la transacción contable principal
     await pb.delete('transactions', id);
-    await API.logAudit('DELETE', 'transactions', id, `Eliminación física total del comprobante ${number} y ${movMap.size} movimiento(s) de inventario asociado(s)`);
+    await API.logAudit('DELETE', 'transactions', id, `Eliminación física total del comprobante ${number} y ${movMap.size} movimiento(s) de inventario asociado(s) | Motivo: ${reason}`);
 
     closeModal();
     showToast(`Comprobante ${number} y su inventario asociado eliminados permanentemente`, 'success');

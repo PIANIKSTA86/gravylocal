@@ -410,6 +410,9 @@ function getDsPeriodDates(periodType: string): { from: string; to: string } {
 
   // Ejecución inicial de filtrado
   filterFn();
+
+  const tbl = document.getElementById('ds-table') as HTMLTableElement;
+  if (tbl) (window as any).makeTableSortable(tbl);
 }
 
 function dsKpiCard(label: string, val: any, icon: string, color: string, bg: string) {

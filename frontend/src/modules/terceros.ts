@@ -747,10 +747,13 @@ function terceroPayload() {
   const pt        = _tpfCurrentPersonType();
   const isNatural = pt === 'NATURAL';
 
-  const firstName  = getInputVal('tpf-first-name').toUpperCase();
-  const lastName   = getInputVal('tpf-last-name').toUpperCase();
-  const bizName    = getInputVal('tpf-business-name').toUpperCase();
-  const comName    = getInputVal('tpf-commercial-name').toUpperCase();
+  // Elimina slashes y espacios al inicio/final del nombre (previene bug de razon social con slash)
+  const _snz = (v: string) => v.replace(/^[/\s]+|[/\s]+$/g, '').trim();
+
+  const firstName  = _snz(getInputVal('tpf-first-name').toUpperCase());
+  const lastName   = _snz(getInputVal('tpf-last-name').toUpperCase());
+  const bizName    = _snz(getInputVal('tpf-business-name').toUpperCase());
+  const comName    = _snz(getInputVal('tpf-commercial-name').toUpperCase());
   const name       = isNatural
     ? [firstName, lastName].filter(Boolean).join(' ')
     : (bizName || comName);

@@ -58,6 +58,15 @@ function mapDocType(type) {
   return '13';
 }
 
+/**
+ * Elimina slashes (/) y espacios al inicio y al final de un nombre.
+ * Corrige bug donde datos históricos en third_parties.name contienen
+ * un slash inicial (ej: "/JULIAN ESPINO ARRUBL" -> "JULIAN ESPINO ARRUBL").
+ */
+function sanitizeName(val) {
+  return String(val || '').replace(/^[\/\s]+|[\/\s]+$/g, '').trim();
+}
+
 
 
 routerAdd('POST', '/api/dian/emit', (e) => {
@@ -201,7 +210,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         const supplierPhone = getSetting("company_phone", "");
         const supplierEmail = getSetting("company_email", "");
 
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
+        const customerName = sanitizeName(customer ? customer.getString("name") : "Consumidor Final");
         const customerNit = customer ? customer.getString("doc_number") : "222222222";
         const customerAddress = customer ? customer.getString("address") : "";
         const customerPhone = customer ? customer.getString("phone") : "";
@@ -499,7 +508,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
             
             <div style="background-color: #F8FAFC; border-radius: 12px; padding: 20px; border: 1px solid #F1F5F9; margin-bottom: 28px;">
               <p style="font-size: 14px; margin: 0 0 12px 0; color: #475569;">
-                Estimado cliente <strong>${customer ? customer.getString("name") : "Consumidor Final"}</strong>,
+                Estimado cliente <strong>${sanitizeName(customer ? customer.getString("name") : "Consumidor Final")}</strong>,
               </p>
               <p style="font-size: 14px; margin: 0; line-height: 1.6; color: #475569;">
                 Adjunto en este correo encontrará el archivo comprimido <strong>ZIP</strong> que contiene el XML firmado y la representación gráfica en formato PDF correspondientes a la <strong>Factura Electrónica de Venta No. ${docNumber}</strong>.
@@ -2181,7 +2190,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         const companyThird = $app.findRecordById("third_parties", companyThirdPartyId);
         if (companyThird) {
           emitterNit = companyThird.getString("doc_number") || emitterNit;
-          emitterName = companyThird.getString("name") || emitterName;
+          emitterName = sanitizeName(companyThird.getString("name")) || emitterName;
           emitterAddress = companyThird.getString("address") || emitterAddress;
           emitterPhone = companyThird.getString("phone") || emitterPhone;
           emitterEmail = companyThird.getString("email") || emitterEmail;
@@ -2198,7 +2207,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     const certBase64 = getSetting("dian_certificate_base64", "");
     const certPassword = getSetting("dian_certificate_password", "");
     
-    const custName = (customer ? customer.getString("name") : "") || "Consumidor Final";
+    const custName = sanitizeName((customer ? customer.getString("name") : "") || "Consumidor Final");
     const custDocType = (customer ? customer.getString("doc_type") : "") || "CC";
     const custDocNum = (customer ? customer.getString("doc_number") : "") || "222222222222";
     const custEmail = (customer ? customer.getString("email") : "") || "cliente@dian.com";
@@ -2999,7 +3008,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         const supplierPhone = getSetting("company_phone", "");
         const supplierEmail = getSetting("company_email", "");
 
-        const customerName = customer ? customer.getString("name") : "Consumidor Final";
+        const customerName = sanitizeName(customer ? customer.getString("name") : "Consumidor Final");
         const customerNit = customer ? customer.getString("doc_number") : "222222222";
         const customerAddress = customer ? customer.getString("address") : "";
         const customerPhone = customer ? customer.getString("phone") : "";

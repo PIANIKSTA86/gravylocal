@@ -195,7 +195,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
     // 2. Suma de Recaudos / Egresos del mes (líneas de cuentas 11xx en transacciones activas RC / CE)
     const sqlMonth = isRecaudo ? `
       SELECT 
-        SUM(l.debit) as total_11
+        COALESCE(SUM(l.debit), 0) as total_11
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
@@ -206,7 +206,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
         AND a.code LIKE '11%'
     ` : `
       SELECT 
-        SUM(l.credit) as total_11
+        COALESCE(SUM(l.credit), 0) as total_11
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
@@ -230,7 +230,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
 
     if (monthTotal <= 0) {
       const sqlFallback = isRecaudo ? `
-        SELECT SUM(l.debit) as total_fallback
+        SELECT COALESCE(SUM(l.debit), 0) as total_fallback
         FROM tx_lines l
         INNER JOIN transactions t ON t.id = l.tx_id
         LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
@@ -238,7 +238,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
           AND t.date >= {:startDateStr} AND t.date <= {:endDateStr}
           AND (tt.code = 'RC' OR tt.code LIKE 'RC%' OR t.number LIKE 'RC%')
       ` : `
-        SELECT SUM(l.credit) as total_fallback
+        SELECT COALESCE(SUM(l.credit), 0) as total_fallback
         FROM tx_lines l
         INNER JOIN transactions t ON t.id = l.tx_id
         LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id

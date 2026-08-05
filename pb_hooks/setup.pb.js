@@ -820,14 +820,12 @@ onRecordCreateRequest((e) => {
       if (parts.length === 2 && txTypeId) {
         const numPart = parseInt(parts[1], 10);
         if (Number.isFinite(numPart)) {
-          $app.runInTransaction((txApp) => {
-            const txType = txApp.findRecordById("transaction_types", txTypeId);
-            const currentConsec = Number(txType.get("consecutive") || 0);
-            if (numPart > currentConsec) {
-              txType.set("consecutive", numPart);
-              txApp.save(txType);
-            }
-          });
+          const txType = $app.findRecordById("transaction_types", txTypeId);
+          const currentConsec = Number(txType.get("consecutive") || 0);
+          if (numPart > currentConsec) {
+            txType.set("consecutive", numPart);
+            $app.save(txType);
+          }
         }
       }
     } catch (_) {}
@@ -862,14 +860,12 @@ onRecordCreateRequest((e) => {
 
   // Si se guardó correctamente, actualizamos el consecutivo en transaction_types.
   try {
-    $app.runInTransaction((txApp) => {
-      const txType = txApp.findRecordById("transaction_types", txTypeId);
-      const currentConsec = Number(txType.get("consecutive") || 0);
-      if (next > currentConsec) {
-        txType.set("consecutive", next);
-        txApp.save(txType);
-      }
-    });
+    const txType = $app.findRecordById("transaction_types", txTypeId);
+    const currentConsec = Number(txType.get("consecutive") || 0);
+    if (next > currentConsec) {
+      txType.set("consecutive", next);
+      $app.save(txType);
+    }
   } catch (err) {
     console.log("[GRAVY] Error al guardar consecutivo de transaccion post-creacion: " + err);
   }

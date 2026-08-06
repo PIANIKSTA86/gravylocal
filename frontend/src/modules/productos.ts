@@ -926,29 +926,50 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     const salesAccounts = salesCfg?.accounting?.accounts || {};
     const purchaseAccounts = purchaseCfg?.accounting?.accounts || {};
 
-    // 1. Cuenta de Ingresos: buscar configuración de Ventas o primer auxiliar nivel 5 de la clase 41
-    const targetIncomeCode = String(salesAccounts.income_fallback_code || salesAccounts.income_account_code || '').trim();
-    let incomeAccObj = targetIncomeCode ? accountList.find((a: any) => Number(a.level) === 5 && a.code === targetIncomeCode) : null;
-    if (!incomeAccObj) {
-      incomeAccObj = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith('41'));
-    }
-    if (incomeAccObj) defaultIncomeAccountId = incomeAccObj.id;
+    const findAccountByCode = (codeStr: string, defaultPrefixes: string) => {
+      const code = String(codeStr || '').trim();
+      if (code) {
+        // 1. Coincidencia exacta nivel 5 (auxiliar)
+        const exactL5 = accountList.find((a: any) => Number(a.level) === 5 && a.code === code);
+        if (exactL5) return exactL5.id;
 
-    // 2. Cuenta de Costo / Gasto: buscar configuración de Ventas/Compras o primer auxiliar nivel 5 de la clase 61 / 51
-    const targetExpenseCode = String(salesAccounts.cost_fallback_code || salesAccounts.expense_fallback_code || purchaseAccounts.expense_fallback_code || purchaseAccounts.cost_fallback_code || '').trim();
-    let costAccObj = targetExpenseCode ? accountList.find((a: any) => Number(a.level) === 5 && a.code === targetExpenseCode) : null;
-    if (!costAccObj) {
-      costAccObj = accountList.find((a: any) => Number(a.level) === 5 && (String(a.code || '').startsWith('61') || String(a.code || '').startsWith('51')));
-    }
-    if (costAccObj) defaultCostAccountId = costAccObj.id;
+        // 2. Coincidencia exacta en cualquier nivel -> buscar el primer auxiliar nivel 5 que empiece con ese código
+        const exactAny = accountList.find((a: any) => a.code === code);
+        if (exactAny) {
+          if (Number(exactAny.level) === 5) return exactAny.id;
+          const childL5 = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
+          if (childL5) return childL5.id;
+        }
 
-    // 3. Cuenta de Inventario: buscar configuración de Ventas/Compras o primer auxiliar nivel 5 de la clase 14 (solo para bienes)
-    const targetInvCode = String(salesAccounts.inventory_fallback_code || purchaseAccounts.inventory_code || salesAccounts.inventory_code || '').trim();
-    let invAccObj = targetInvCode ? accountList.find((a: any) => Number(a.level) === 5 && a.code === targetInvCode) : null;
-    if (!invAccObj) {
-      invAccObj = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith('14'));
-    }
-    if (invAccObj) defaultInventoryAccountId = invAccObj.id;
+        // 3. Primer auxiliar nivel 5 que empiece con el código
+        const prefMatch = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
+        if (prefMatch) return prefMatch.id;
+      }
+
+      // Fallback: buscar por prefijos generales de la clase contable
+      const prefixes = defaultPrefixes.split(',');
+      for (const pref of prefixes) {
+        const fallback = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(pref.trim()));
+        if (fallback) return fallback.id;
+      }
+      return '';
+    };
+
+    // 1. Cuenta de Ingresos (Clase 41)
+    const targetIncomeCode = String(salesAccounts.income_fallback_code || salesAccounts.income_account_code || '41359501').trim();
+    defaultIncomeAccountId = findAccountByCode(targetIncomeCode, '41');
+
+    // 2. Cuenta de Costo de Ventas (Clase 61)
+    const targetCostCode = String(
+      salesAccounts.cost_fallback_code || 
+      (purchaseAccounts.cost_fallback_code && String(purchaseAccounts.cost_fallback_code).startsWith('61') ? purchaseAccounts.cost_fallback_code : '') || 
+      '61359501'
+    ).trim();
+    defaultCostAccountId = findAccountByCode(targetCostCode, '61');
+
+    // 3. Cuenta de Inventario (Clase 14)
+    const targetInvCode = String(salesAccounts.inventory_fallback_code || purchaseAccounts.inventory_code || salesAccounts.inventory_code || '14350501').trim();
+    defaultInventoryAccountId = findAccountByCode(targetInvCode, '14');
   }
 
   const pickAccountByPrefix = (prefix = '', query = '') => {
@@ -984,6 +1005,8 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     visto_bueno_entidad: row?.visto_bueno_entidad ?? '',
     registro_sanitario: row?.registro_sanitario ?? '',
   };
+
+  const defaultIvaRate = (row?.iva_rate !== undefined && row?.iva_rate !== null) ? Number(row.iva_rate) : 19;
 
   openModal(
     row ? `Editar — ${esc(row.code)}` : 'Nuevo Producto / Servicio',
@@ -1045,7 +1068,7 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       <div class="form-group">
         <label class="form-label">Tarifa IVA <span style="color:#EF4444">*</span></label>
         <select id="pf-iva" class="form-input">
-          ${IVA_RATES.map(r => `<option value="${r.value}" ${Number(row?.iva_rate) === r.value ? 'selected' : ''}>${r.label}</option>`).join('')}
+          ${IVA_RATES.map(r => `<option value="${r.value}" ${defaultIvaRate === r.value ? 'selected' : ''}>${r.label}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">

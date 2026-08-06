@@ -91,10 +91,10 @@ function defaultSalesConfig() {
     },
     accounting: {
       accounts: {
-        receivable_code: '130505',
-        income_fallback_code: '413505',
-        cost_fallback_code: '613595',
-        inventory_fallback_code: '143505',
+        receivable_code: '13050501',
+        income_fallback_code: '41359501',
+        cost_fallback_code: '61359501',
+        inventory_fallback_code: '14350501',
         iva_by_rate: {
           '0': '233501',
           '5': '233501',

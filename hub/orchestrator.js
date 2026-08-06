@@ -1028,11 +1028,10 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
       });
     }
 
-    const xmlRes = response.data;
-    const code = extractSoapTag(xmlRes, 'code');
-    const success = extractSoapTag(xmlRes, 'success').toLowerCase() === 'true';
+    const rawSuccessVal = extractSoapTag(xmlRes, 'success');
+    const success = rawSuccessVal.toLowerCase() === 'true' || code === '200' || code === '201' || code === '100' || rawSuccessVal.toLowerCase().includes('autorizada');
     let transaccionID = extractSoapTag(xmlRes, 'transaccionID') || extractSoapTag(xmlRes, 'transId') || extractSoapTag(xmlRes, 'transactionID');
-    const message = extractSoapTag(xmlRes, 'message') || extractSoapTag(xmlRes, 'error');
+    const message = extractSoapTag(xmlRes, 'message') || rawSuccessVal || extractSoapTag(xmlRes, 'error');
 
     // Extraer transaccionID del mensaje si viene dentro del texto (ej. "TrasactionID b65db717...")
     if (!transaccionID && message) {

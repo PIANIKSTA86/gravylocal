@@ -264,6 +264,79 @@ function calculateSolidarityFund(ibc: number, smmlv: number): number {
   return round2(ibc * rate);
 }
 
+function isLastPeriodOfCalendarMonth(period: any, allPeriodsInMonth: any[]): boolean {
+  if (!period) return true;
+  const currentEndDate = period.date_to || period.date_from || '';
+  const day = parseInt((currentEndDate.slice(8, 10) || '30'), 10);
+
+  // Si hay más períodos en el mismo mes, verificar si hay uno con fecha final estrictamente posterior
+  if (Array.isArray(allPeriodsInMonth) && allPeriodsInMonth.length > 1) {
+    const hasLaterPeriod = allPeriodsInMonth.some((p: any) => {
+      if (p.id === period.id) return false;
+      const otherEndDate = p.date_to || p.date_from || '';
+      return otherEndDate > currentEndDate;
+    });
+    if (hasLaterPeriod) return false;
+  }
+
+  // Si el día de fin es menor a 25 (ej. día 15 en quincena 1), no es fin de mes
+  if (day < 25) return false;
+
+  return true;
+}
+
+async function getMonthlyAccumulatedPayrollData(employeeId: string, currentPeriodId: string, ymPrefix: string) {
+  let previousIbc = 0;
+  let previousFsp = 0;
+
+  try {
+    const monthPeriods = await pb.listAll('payroll_periods', {
+      filter: `(date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}") && id != "${pb.escapeFilterValue(currentPeriodId)}"`
+    }).catch(() => []);
+
+    if (!monthPeriods.length) return { previousIbc: 0, previousFsp: 0 };
+
+    const periodIds = monthPeriods.map((p: any) => p.id);
+    const filterExpr = periodIds.map((id: string) => `period_id="${pb.escapeFilterValue(id)}"`).join(' || ');
+
+    if (!filterExpr) return { previousIbc: 0, previousFsp: 0 };
+
+    const lines = await pb.listAll('payroll_lines', {
+      filter: `employee_id="${pb.escapeFilterValue(employeeId)}" && (${filterExpr})`
+    }).catch(() => []);
+
+    for (const l of lines) {
+      let lineIbc = 0;
+      if (l.notes) {
+        try {
+          const parsed = JSON.parse(l.notes);
+          lineIbc = Number(parsed?.payroll_meta?.ibc || 0);
+        } catch (_) {}
+      }
+
+      if (!lineIbc) {
+        const healthDed = Number(l.deduction_health || 0);
+        if (healthDed > 0) {
+          lineIbc = round2(healthDed / 0.04);
+        } else {
+          const base = Number(l.salary_base || 0);
+          const days = Number(l.days_worked || 30);
+          const ot = Number(l.overtime || 0);
+          lineIbc = round2((base / 30) * days + ot);
+        }
+      }
+
+      previousIbc += lineIbc;
+      previousFsp += Number(l.solidarity_fund || 0);
+    }
+  } catch (err) {
+    console.error('Error obteniendo acumulados de nómina del mes:', err);
+  }
+
+  return { previousIbc: round2(previousIbc), previousFsp: round2(previousFsp) };
+}
+
+
 function calculateWithholdingTax(ingresoBruto: number, health: number, pension: number, fsp: number, uvtValue = 52374): number {
   const uvt = uvtValue || 52374;
   const ingresoNeto = Math.max(0, (ingresoBruto || 0) - ((health || 0) + (pension || 0) + (fsp || 0)));
@@ -1814,6 +1887,47 @@ async function liquidarPeriodoMasivo(periodId) {
       noveltiesByEmployee[n.employee_id].push(n);
     });
 
+    const ymPrefix = (period.date_from || period.date_to || '').slice(0, 7);
+    const monthPeriods = await pb.listAll('payroll_periods', {
+      filter: `date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}"`
+    }).catch(() => []);
+    const isLastPeriodMonth = isLastPeriodOfCalendarMonth(period, monthPeriods);
+
+    const otherMonthPeriodIds = monthPeriods.filter((p: any) => p.id !== periodId).map((p: any) => p.id);
+    const empMonthAccumulatedMap = new Map<string, { previousIbc: number, previousFsp: number }>();
+
+    if (otherMonthPeriodIds.length > 0) {
+      const filterExpr = otherMonthPeriodIds.map((id: string) => `period_id="${pb.escapeFilterValue(id)}"`).join(' || ');
+      const otherMonthLines = await pb.listAll('payroll_lines', { filter: filterExpr }).catch(() => []);
+
+      for (const l of otherMonthLines) {
+        let lineIbc = 0;
+        if (l.notes) {
+          try {
+            const parsed = JSON.parse(l.notes);
+            lineIbc = Number(parsed?.payroll_meta?.ibc || 0);
+          } catch (_) {}
+        }
+        if (!lineIbc) {
+          const healthDed = Number(l.deduction_health || 0);
+          if (healthDed > 0) {
+            lineIbc = round2(healthDed / 0.04);
+          } else {
+            const base = Number(l.salary_base || 0);
+            const days = Number(l.days_worked || 30);
+            const ot = Number(l.overtime || 0);
+            lineIbc = round2((base / 30) * days + ot);
+          }
+        }
+
+        const empId = l.employee_id;
+        const currentAcc = empMonthAccumulatedMap.get(empId) || { previousIbc: 0, previousFsp: 0 };
+        currentAcc.previousIbc = round2(currentAcc.previousIbc + lineIbc);
+        currentAcc.previousFsp = round2(currentAcc.previousFsp + Number(l.solidarity_fund || 0));
+        empMonthAccumulatedMap.set(empId, currentAcc);
+      }
+    }
+
     const SMLV_VIGENTE = config.company_rules.smmlv || 1423500;
     const UVT_VIGENTE = config.company_rules.uvt_value || 52374;
     const AUX_TRANSPORTE_VIGENTE = config.company_rules.transport_allowance || ((SMLV_VIGENTE <= 1423500) ? 162000 : 180000);
@@ -1980,7 +2094,14 @@ async function liquidarPeriodoMasivo(periodId) {
       const deductionHealth = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
       const deductionPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.04);
 
-      const solidarityFund = (empRule.apply_solidarity_fund !== false) ? calculateSolidarityFund(ibc, SMLV_VIGENTE) : 0;
+      let solidarityFund = 0;
+      if (empRule.apply_solidarity_fund !== false && isLastPeriodMonth) {
+        const accum = empMonthAccumulatedMap.get(emp.id) || { previousIbc: 0, previousFsp: 0 };
+        const monthlyTotalIbc = round2(accum.previousIbc + ibc);
+        const monthlyTotalFsp = calculateSolidarityFund(monthlyTotalIbc, SMLV_VIGENTE);
+        solidarityFund = Math.max(0, round2(monthlyTotalFsp - accum.previousFsp));
+      }
+
       const withholdingTax = (empRule.apply_withholding_tax !== false) ? calculateWithholdingTax(totalEarnings, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE) : 0;
 
       const deductionOther = prestamos + anticipos + multas + embargos + otrasDeducciones + libranzas;
@@ -2022,6 +2143,7 @@ async function liquidarPeriodoMasivo(periodId) {
 
       const notesObj = {
         payroll_meta: {
+          ibc: round2(ibc),
           dias_vacaciones: diasVacaciones,
           vacaciones_disfrutadas: vacacionesAmount,
           arl_risk_level: empRule.arl_risk_level,
@@ -7158,7 +7280,33 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const SMLV_VIGENTE = companyRules.smmlv || 1423500;
     const UVT_VIGENTE = companyRules.uvt_value || 52374;
 
-    const dedSolidarity = (empRule.apply_solidarity_fund !== false) ? calculateSolidarityFund(ibc, SMLV_VIGENTE) : 0;
+    const periodId = getSelectVal('pl-period') || (window as any)._currentNominaPeriodId;
+    let isLastPeriodMonth = true;
+    let previousIbc = 0;
+    let previousFsp = 0;
+    if (periodId) {
+      const periodRec = await pb.get('payroll_periods', periodId).catch(() => null);
+      if (periodRec) {
+        const ymPrefix = (periodRec.date_from || periodRec.date_to || '').slice(0, 7);
+        const monthPeriods = await pb.listAll('payroll_periods', {
+          filter: `date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}"`
+        }).catch(() => []);
+        isLastPeriodMonth = isLastPeriodOfCalendarMonth(periodRec, monthPeriods);
+        if (isLastPeriodMonth && employeeId) {
+          const accum = await getMonthlyAccumulatedPayrollData(employeeId, periodId, ymPrefix);
+          previousIbc = accum.previousIbc;
+          previousFsp = accum.previousFsp;
+        }
+      }
+    }
+
+    let dedSolidarity = 0;
+    if (empRule.apply_solidarity_fund !== false && isLastPeriodMonth) {
+      const monthlyTotalIbc = round2(previousIbc + ibc);
+      const monthlyTotalFsp = calculateSolidarityFund(monthlyTotalIbc, SMLV_VIGENTE);
+      dedSolidarity = Math.max(0, round2(monthlyTotalFsp - previousFsp));
+    }
+
     const dedWithholding = (empRule.apply_withholding_tax !== false) ? calculateWithholdingTax(devengado, dedSalud, dedPension, dedSolidarity, UVT_VIGENTE) : 0;
     const dedTotal = round2(dedSalud + dedPension + dedSolidarity + dedWithholding + dedOther + extraDedConcepts);
     const neto = round2(devengado - dedTotal);
@@ -7407,7 +7555,20 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const SMLV_VIGENTE = companyRules.smmlv || 1423500;
       const UVT_VIGENTE = companyRules.uvt_value || 52374;
 
-      const solidarityFund = (empRule.apply_solidarity_fund !== false) ? calculateSolidarityFund(ibc, SMLV_VIGENTE) : 0;
+      const ymPrefix = (period.date_from || period.date_to || '').slice(0, 7);
+      const monthPeriods = await pb.listAll('payroll_periods', {
+        filter: `date_from ~ "${ymPrefix}" || date_to ~ "${ymPrefix}"`
+      }).catch(() => []);
+      const isLastPeriodMonth = isLastPeriodOfCalendarMonth(period, monthPeriods);
+
+      let solidarityFund = 0;
+      if (empRule.apply_solidarity_fund !== false && isLastPeriodMonth) {
+        const { previousIbc, previousFsp } = await getMonthlyAccumulatedPayrollData(employeeId, periodId, ymPrefix);
+        const monthlyTotalIbc = round2(previousIbc + ibc);
+        const monthlyTotalFsp = calculateSolidarityFund(monthlyTotalIbc, SMLV_VIGENTE);
+        solidarityFund = Math.max(0, round2(monthlyTotalFsp - previousFsp));
+      }
+
       const withholdingTax = (empRule.apply_withholding_tax !== false) ? calculateWithholdingTax(devengado, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE) : 0;
       const deductionOther = dedOther;
 
@@ -7434,6 +7595,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
       const notesObj = {
         payroll_meta: {
+          ibc: round2(ibc),
           arl_risk_level: empRule.arl_risk_level,
           arl_rate: arlRate,
           is_pensioner: !!empRule.is_pensioner,

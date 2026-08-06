@@ -2087,7 +2087,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     return xml;
   };
 
-  const auth = e.requestInfo()?.auth;
+  const auth = e.requestInfo()?.auth || (typeof $apis !== 'undefined' ? $apis.requestInfo(e)?.auth : null);
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
     return;
@@ -2179,11 +2179,11 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     const ftechEnvironment = getSetting("ftech_environment", "2");
     const companyThirdPartyId = getSetting("company_third_party_id", "");
 
-    let emitterNit = getSetting("dian_nit", getSetting("company_nit", "900123456"));
-    let emitterName = getSetting("company_name", "GRAVY CORP SAS");
-    let emitterAddress = getSetting("company_address", "Calle 1 # 2 - 3");
-    let emitterPhone = getSetting("company_phone", "601-555-0100");
-    let emitterEmail = getSetting("company_email", "dian@gravy.com");
+    let emitterNit = String(getSetting("dian_nit", getSetting("company_nit", "900123456"))).trim();
+    let emitterName = String(getSetting("company_name", "GRAVY CORP SAS")).trim();
+    let emitterAddress = String(getSetting("company_address", "Calle 1 # 2 - 3")).trim();
+    let emitterPhone = String(getSetting("company_phone", "601-555-0100")).trim();
+    let emitterEmail = String(getSetting("company_email", "facturacion@domestiko.com")).trim();
 
     if (companyThirdPartyId) {
       try {
@@ -2198,6 +2198,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       } catch (err) {
         console.warn("[GRAVY] Error al cargar tercero de empresa:", err);
       }
+    }
+
+    if (!emitterEmail || !emitterEmail.trim()) {
+      emitterEmail = "facturacion@domestiko.com";
     }
 
     const dianEnvironment = getSetting("dian_environment", "2");
@@ -2863,7 +2867,8 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         console.error("[GRAVY HOOK] Error al guardar error en docRecord:", saveErr);
       }
     }
-    throw new BadRequestError("Error al procesar la emisión DIAN: " + (err.message || String(err)));
+    e.json(400, { message: "Error al procesar la emisión DIAN: " + (err.message || String(err)) });
+    return;
   }
 });
 

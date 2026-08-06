@@ -2776,9 +2776,11 @@ async function _confirmDeleteTx(id: string, number: string) {
 // ── Impresión: Nota Contable ─────────────────────────────────────────────────
 async function printTxNotaContable(id) {
   try {
-    const [tx, lines, companyName, companyNit, companyAddress] = await Promise.all([
+    const [tx, lines, salesInvoices, purchaseInvoices, companyName, companyNit, companyAddress] = await Promise.all([
       pb.get('transactions', id, { expand: 'tx_type_id,third_party_id,user_id' }),
       API.getTxLines(id),
+      pb.listAll('invoices', { filter: `tx_id="${id}"` }).catch(() => []),
+      pb.listAll('purchase_invoices', { filter: `tx_id="${id}"` }).catch(() => []),
       API.getSetting('company_name').catch(() => ''),
       API.getSetting('company_nit').catch(() => ''),
       API.getSetting('company_address').catch(() => ''),
@@ -2791,6 +2793,24 @@ async function printTxNotaContable(id) {
     const thirdDoc    = tx.expand?.third_party_id?.doc_number || '';
     const createdByName  = tx.expand?.user_id?.name || '';
     const printedByName  = pb.currentUser?.name || '';
+
+    // Determinación de fecha de documento y fecha de vencimiento
+    let dueDate = tx.due_date || '';
+    if (!dueDate && salesInvoices.length > 0 && salesInvoices[0].due_date) {
+      dueDate = salesInvoices[0].due_date;
+    }
+    if (!dueDate && purchaseInvoices.length > 0 && purchaseInvoices[0].due_date) {
+      dueDate = purchaseInvoices[0].due_date;
+    }
+    if (!dueDate && tx.payment_days) {
+      dueDate = addDaysToDate(tx.date || todayStr(), tx.payment_days);
+    }
+    if (!dueDate) {
+      dueDate = tx.date || '';
+    }
+
+    const docDate = tx.date || '—';
+    const docDueDate = dueDate || docDate;
 
     const linesHtml = lines.map((l, i) => {
       const accCode = l.expand?.account_id?.code || '';
@@ -2813,7 +2833,8 @@ async function printTxNotaContable(id) {
         </tr>`;
     }).join('');
 
-    const printDate = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+    const now = new Date();
+    const printDate = now.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }) + ' ' + now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -2829,13 +2850,14 @@ async function printTxNotaContable(id) {
     .company-block { flex: 1; }
     .company-name { font-size: 13pt; font-weight: bold; color: #0D2137; }
     .company-sub { font-size: 8.5pt; color: #444; margin-top: 2px; }
-    .doc-block { text-align: right; min-width: 180px; }
+    .doc-block { text-align: right; min-width: 200px; }
     .doc-number { font-size: 14pt; font-weight: bold; color: #1A4B8C; letter-spacing: 0.5px; }
     .doc-type { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
-    .doc-date { font-size: 9pt; color: #444; }
+    .doc-dates-header { font-size: 8.5pt; color: #333; margin-top: 3px; }
+    .doc-dates-header div { display: flex; justify-content: flex-end; gap: 4px; }
     .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 12px; font-size: 9pt; }
     .meta-row { display: flex; gap: 6px; }
-    .meta-label { font-weight: bold; color: #0D2137; white-space: nowrap; min-width: 90px; }
+    .meta-label { font-weight: bold; color: #0D2137; white-space: nowrap; min-width: 110px; }
     .meta-value { color: #333; }
     .section-title { font-size: 8pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; color: #6B7280; border-bottom: 1px solid #E5E7EB; padding-bottom: 3px; margin-bottom: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
@@ -2880,7 +2902,10 @@ async function printTxNotaContable(id) {
     <div class="doc-block">
       <div class="doc-type">${esc(txTypeName)}</div>
       <div class="doc-number">${esc(tx.number || '')}</div>
-      <div class="doc-date">${esc(tx.date || '')}</div>
+      <div class="doc-dates-header">
+        <div><strong>Fecha:</strong> <span>${esc(docDate)}</span></div>
+        <div><strong>Vencimiento:</strong> <span>${esc(docDueDate)}</span></div>
+      </div>
       ${tx.status === 'voided' ? '<div style="color:#DC2626;font-weight:bold;font-size:10pt;margin-top:4px">&#x26D4; ANULADO</div>' : ''}
     </div>
   </div>
@@ -2895,12 +2920,20 @@ async function printTxNotaContable(id) {
       <span class="meta-value">${esc(printedByName || '—')}</span>
     </div>
     <div class="meta-row">
-      <span class="meta-label">Concepto:</span>
-      <span class="meta-value">${esc(tx.description || '—')}</span>
+      <span class="meta-label">Fecha doc.:</span>
+      <span class="meta-value">${esc(docDate)}</span>
     </div>
     <div class="meta-row">
       <span class="meta-label">Fecha impresión:</span>
       <span class="meta-value">${printDate}</span>
+    </div>
+    <div class="meta-row">
+      <span class="meta-label">Fecha vencimiento:</span>
+      <span class="meta-value">${esc(docDueDate)}</span>
+    </div>
+    <div class="meta-row">
+      <span class="meta-label">Concepto:</span>
+      <span class="meta-value">${esc(tx.description || '—')}</span>
     </div>
   </div>
 
@@ -2948,7 +2981,7 @@ async function printTxNotaContable(id) {
     </div>
     <div style="text-align:right;font-size:7.5pt;color:#9CA3AF">
       GRAVY &mdash; Plataforma contable inteligente<br>
-      ${esc(tx.number || '')} &mdash; ${esc(tx.date || '')}
+      ${esc(tx.number || '')} &mdash; Fecha: ${esc(docDate)} &mdash; Vencimiento: ${esc(docDueDate)}
     </div>
   </div>
 
@@ -2961,7 +2994,7 @@ async function printTxNotaContable(id) {
     win.document.open();
     win.document.write(html);
     win.document.close();
-  } catch (err) {
+  } catch (err: any) {
     showToast('Error al generar la nota contable: ' + err.message, 'error');
   }
 }

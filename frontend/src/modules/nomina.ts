@@ -46,6 +46,7 @@ const NOVELTY_TYPES = {
     { key: 'MULTA', label: 'Multa / Sanción' },
     { key: 'EMBARGO', label: 'Embargo' },
     { key: 'LIBRANZA', label: 'Descuento por Libranza' },
+    { key: 'RETENCION_PORCENTAJE', label: 'Retención en la Fuente (% Fijo)' },
     { key: 'OTRA_DEDUCCION', label: 'Otra Deducción' },
   ],
   INGRESOS_ADICIONALES: [
@@ -337,10 +338,16 @@ async function getMonthlyAccumulatedPayrollData(employeeId: string, currentPerio
 }
 
 
-function calculateWithholdingTax(ingresoBruto: number, health: number, pension: number, fsp: number, uvtValue = 52374): number {
+// rateOverride: 0 = usar tablas UVT; >0 = usar ese porcentaje fijo sobre ingresoNeto
+function calculateWithholdingTax(ingresoBruto: number, health: number, pension: number, fsp: number, uvtValue = 52374, rateOverride = 0): number {
   const uvt = uvtValue || 52374;
   const ingresoNeto = Math.max(0, (ingresoBruto || 0) - ((health || 0) + (pension || 0) + (fsp || 0)));
   if (ingresoNeto <= 0) return 0;
+
+  // Si hay una tasa fija configurada, aplicarla directamente
+  if (rateOverride > 0) {
+    return round2(ingresoNeto * rateOverride);
+  }
 
   const rentaExenta25 = Math.min(ingresoNeto * 0.25, ingresoNeto * 0.40);
   const baseGravableCop = Math.max(0, ingresoNeto - rentaExenta25);
@@ -1970,6 +1977,7 @@ async function liquidarPeriodoMasivo(periodId) {
       let compensatorios = 0;
       let alimentacion = 0;
       let libranzas = 0;
+      let retencionPorcentajeNovedad = 0; // % fijo de retención desde novedad (0 = no aplica)
 
       const otHours = { hed: 0, hen: 0, rno: 0, heddf: 0, hendf: 0, rdfd: 0 };
 
@@ -2040,6 +2048,9 @@ async function liquidarPeriodoMasivo(periodId) {
           alimentacion += amount;
         } else if (type === 'LIBRANZA') {
           libranzas += amount;
+        } else if (type === 'RETENCION_PORCENTAJE') {
+          // qty = porcentaje entero (ej. 5 para 5%), amount ignorado
+          retencionPorcentajeNovedad = Math.max(retencionPorcentajeNovedad, qty > 0 ? qty / 100 : (amount > 0 ? amount / 100 : 0));
         } else if (type === 'OTRA_DEDUCCION') {
           otrasDeducciones += amount;
         } else if (NOVEDAD_A_OVERTIME_KEY[type]) {
@@ -2102,7 +2113,15 @@ async function liquidarPeriodoMasivo(periodId) {
         solidarityFund = Math.max(0, round2(monthlyTotalFsp - accum.previousFsp));
       }
 
-      const withholdingTax = (empRule.apply_withholding_tax !== false) ? calculateWithholdingTax(totalEarnings, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE) : 0;
+      // Retención: prioridad novedad > config empleado > tablas UVT
+      const effectiveRate = retencionPorcentajeNovedad > 0
+        ? retencionPorcentajeNovedad
+        : ((empRule.apply_withholding_tax !== false && (empRule.withholding_rate || 0) > 0)
+            ? (empRule.withholding_rate as number)
+            : 0);
+      const withholdingTax = (empRule.apply_withholding_tax !== false)
+        ? calculateWithholdingTax(totalEarnings, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE, effectiveRate)
+        : 0;
 
       const deductionOther = prestamos + anticipos + multas + embargos + otrasDeducciones + libranzas;
       const totalDeducciones = round2(deductionHealth + deductionPension + solidarityFund + withholdingTax + deductionOther);
@@ -2151,6 +2170,7 @@ async function liquidarPeriodoMasivo(periodId) {
           is_pensioner: !!empRule.is_pensioner,
           solidarity_fund: round2(solidarityFund),
           withholding_tax: round2(withholdingTax),
+          withholding_rate_used: effectiveRate > 0 ? round2(effectiveRate * 100) : 0,
           company_exempt_sena_icbf: !!config.company_rules.exempt_sena_icbf,
           overtime_breakdown: {
             hourly_rate: hourlyRate,
@@ -2173,6 +2193,8 @@ async function liquidarPeriodoMasivo(periodId) {
         transport_allowance: transportAllowance,
         deduction_health: deductionHealth,
         deduction_pension: deductionPension,
+        solidarity_fund: round2(solidarityFund),
+        withholding_tax: round2(withholdingTax),
         deduction_other: deductionOther,
         net_pay: netPay,
         employer_health: employerHealth,
@@ -3266,6 +3288,7 @@ function openNoveltyForm(periods, employees, novelty = null) {
 
   const getFieldType = (tipo) => {
     if (['HORA_EXTRA_DIURNA', 'HORA_EXTRA_NOCTURNA', 'HORA_EXTRA_DOMINICAL', 'HORA_EXTRA_DOMINICAL_NOCTURNA', 'RECARGO_NOCTURNO', 'RECARGO_DOMINICAL'].includes(tipo)) return 'horas';
+    if (['RETENCION_PORCENTAJE'].includes(tipo)) return 'porcentaje';
     if (['PRESTAMO', 'ANTICIPO', 'MULTA', 'EMBARGO', 'OTRA_DEDUCCION', 'BONIFICACION', 'COMISION', 'AJUSTE_SALARIAL', 'PRIMA_SERVICIOS', 'INTERESES_CESANTIAS', 'CESANTIAS', 'DOTACION', 'PRIMA_EXTRALGAL', 'OTRO_INGRESO', 'GASTOS_REPRESENTACION', 'AUX_NO_SALARIALES', 'AUXILIO_RODAMIENTO', 'COMPENSATORIOS', 'AUXILIO_ALIMENTACION', 'LIBRANZA'].includes(tipo)) return 'valor';
     return 'dias';
   };
@@ -3281,6 +3304,10 @@ function openNoveltyForm(periods, employees, novelty = null) {
       if (qtyContainer) qtyContainer.style.display = '';
       if (amountContainer) amountContainer.style.display = 'none';
       if (lblQty) lblQty.innerHTML = 'Cantidad de Horas *';
+    } else if (fType === 'porcentaje') {
+      if (qtyContainer) qtyContainer.style.display = '';
+      if (amountContainer) amountContainer.style.display = 'none';
+      if (lblQty) lblQty.innerHTML = 'Porcentaje de Retención (%) *  — Ej: 5 para 5%';
     } else if (fType === 'valor') {
       if (qtyContainer) qtyContainer.style.display = 'none';
       if (amountContainer) amountContainer.style.display = '';
@@ -3474,6 +3501,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
           esap: 0,
           aporteMinisterio: 0,
           fondoSolidaridad: 0,
+          retencionFuente: 0,
           totalEmpPila: 0,
           totalAportesEmpleado: 0
         });
@@ -3535,7 +3563,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const saludEmp = line.employer_health || 0;
       const penTrab = line.deduction_pension || 0;
       const penEmp = line.employer_pension || 0;
-      const fsp = line.solidarity_fund || 0;
+      // Fondo de solidaridad: campo directo (nuevas liquidaciones) o desde notes (legacy)
+      const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch(_) { return {}; } })();
+      const fsp = round2((line.solidarity_fund || 0) + (!(line.solidarity_fund) ? (pilaNotesObj.solidarity_fund || 0) : 0));
       const arlVal = line.employer_arl || 0;
       const caja = line.caja_comp || 0;
       const sena = line.sena || 0;
@@ -3574,6 +3604,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.esap += 0;
       acc.aporteMinisterio += 0;
       acc.fondoSolidaridad += fsp;
+      // Retención desde campo directo, fallback a notes
+      const pilaRet = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta?.withholding_tax || 0; } catch(_) { return 0; } })();
+      acc.retencionFuente += round2((line.withholding_tax || 0) || pilaRet);
       acc.totalAportesEmpleado += round2(saludTrab + penTrab + fsp);
     }
 
@@ -3610,6 +3643,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.esap = round2(acc.esap);
       acc.aporteMinisterio = round2(acc.aporteMinisterio);
       acc.fondoSolidaridad = round2(acc.fondoSolidaridad);
+      acc.retencionFuente = round2(acc.retencionFuente);
       acc.totalAportesEmpleado = round2(acc.totalAportesEmpleado);
 
       acc.totalEmpPila = round2(acc.aporteSalud + acc.aportePension + acc.aporteRiesgos + acc.aporteCajas + acc.aporteSena + acc.aporteIcbf + acc.esap + acc.aporteMinisterio);
@@ -3625,6 +3659,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
     let totPilaGlobal = 0;
     let totAportesEmpleado = 0;
     let totFondoSolidaridad = 0;
+    let totRetencionFuente = 0;
 
     rowItems.forEach(r => {
       totHorasExtrasMonto += r.horasExtrasMonto;
@@ -3646,6 +3681,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       totPilaGlobal += r.totalEmpPila;
       totAportesEmpleado += r.totalAportesEmpleado;
       totFondoSolidaridad += r.fondoSolidaridad;
+      totRetencionFuente += r.retencionFuente;
     });
 
     // Company info for PDF header
@@ -3713,6 +3749,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                 <th class="text-right">ESAP</th>
                 <th class="text-right">Aporte Ministerio</th>
                 <th class="text-right text-violet-900">Fondo Solidaridad</th>
+                <th class="text-right text-rose-900">Reten. Fuente</th>
                 <th class="text-right font-bold text-indigo-900">Aportes Empleado ($)</th>
                 <th class="text-right font-bold text-emerald-900">Total PILA ($)</th>
               </tr>
@@ -3753,6 +3790,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                   <td class="text-right font-mono">${fmt(r.esap)}</td>
                   <td class="text-right font-mono">${fmt(r.aporteMinisterio)}</td>
                   <td class="text-right font-semibold text-violet-900">${fmt(r.fondoSolidaridad)}</td>
+                  <td class="text-right font-semibold text-rose-900">${fmt(r.retencionFuente)}</td>
                   <td class="text-right font-semibold text-indigo-900">${fmt(r.totalAportesEmpleado)}</td>
                   <td class="text-right font-bold text-emerald-800 text-sm">${fmt(r.totalEmpPila)}</td>
                 </tr>
@@ -3781,6 +3819,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                 <td class="text-right">${fmt(totEsap)}</td>
                 <td class="text-right">${fmt(totMinisterio)}</td>
                 <td class="text-right text-violet-900 font-bold">${fmt(totFondoSolidaridad)}</td>
+                <td class="text-right text-rose-900 font-bold">${fmt(totRetencionFuente)}</td>
                 <td class="text-right text-indigo-950 font-bold">${fmt(totAportesEmpleado)}</td>
                 <td class="text-right text-emerald-950 text-sm">${fmt(totPilaGlobal)}</td>
               </tr>
@@ -3811,6 +3850,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         totEsap,
         totMinisterio,
         totFondoSolidaridad,
+        totRetencionFuente,
         totHorasExtrasMonto,
         totHorasExtrasHoras,
         totComisionesMonto,
@@ -3853,6 +3893,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         esap: r.esap,
         aporte_ministerio: r.aporteMinisterio,
         fondo_solidaridad: r.fondoSolidaridad,
+        retencion_fuente: r.retencionFuente,
         aportes_empleado: r.totalAportesEmpleado,
         total_pila: r.totalEmpPila,
       }));
@@ -3888,6 +3929,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         esap: totEsap,
         aporte_ministerio: totMinisterio,
         fondo_solidaridad: totFondoSolidaridad,
+        retencion_fuente: totRetencionFuente,
         aportes_empleado: totAportesEmpleado,
         total_pila: totPilaGlobal,
       });
@@ -3923,6 +3965,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         { key: 'esap', label: 'ESAP ($)' },
         { key: 'aporte_ministerio', label: 'Aporte Ministerio ($)' },
         { key: 'fondo_solidaridad', label: 'Fondo de Solidaridad ($)' },
+        { key: 'retencion_fuente', label: 'Retención en la Fuente ($)' },
         { key: 'aportes_empleado', label: 'Aportes Empleado ($)' },
         { key: 'total_pila', label: 'Total PILA ($)' },
       ];
@@ -7569,7 +7612,13 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         solidarityFund = Math.max(0, round2(monthlyTotalFsp - previousFsp));
       }
 
-      const withholdingTax = (empRule.apply_withholding_tax !== false) ? calculateWithholdingTax(devengado, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE) : 0;
+      // Retención: prioridad config empleado (tasa fija) > tablas UVT
+      const empWithholdingRate = (empRule.apply_withholding_tax !== false && (empRule.withholding_rate || 0) > 0)
+        ? (empRule.withholding_rate as number)
+        : 0;
+      const withholdingTax = (empRule.apply_withholding_tax !== false)
+        ? calculateWithholdingTax(devengado, deductionHealth, deductionPension, solidarityFund, UVT_VIGENTE, empWithholdingRate)
+        : 0;
       const deductionOther = dedOther;
 
       const employerHealth = round2(ibc * 0.085);
@@ -7623,6 +7672,8 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         transport_allowance: aux,
         deduction_health: deductionHealth,
         deduction_pension: deductionPension,
+        solidarity_fund: round2(solidarityFund),
+        withholding_tax: round2(withholdingTax),
         deduction_other: deductionOther,
         net_pay: netPay,
         employer_health: employerHealth,

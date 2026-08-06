@@ -369,6 +369,8 @@ onBootstrap((e) => {
       { name: "transport_allowance", type: "number",   required: false, min: 0 },
       { name: "deduction_health",    type: "number",   required: false, min: 0 },
       { name: "deduction_pension",   type: "number",   required: false, min: 0 },
+      { name: "solidarity_fund",     type: "number",   required: false, min: 0 },
+      { name: "withholding_tax",     type: "number",   required: false, min: 0 },
       { name: "deduction_other",     type: "number",   required: false, min: 0 },
       { name: "net_pay",             type: "number",   required: false, min: 0 },
       { name: "employer_health",     type: "number",   required: false, min: 0 },

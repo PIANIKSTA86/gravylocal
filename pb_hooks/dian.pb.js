@@ -1,5 +1,18 @@
 /// <reference path="../pb_data/types.d.ts" />
 
+function sanitizeName(val) {
+  return String(val || '').replace(/^[\/\s]+|[\/\s]+$/g, '').trim();
+}
+
+function getSetting(key, defaultValue) {
+  try {
+    const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
+    return r.get("value") || defaultValue;
+  } catch (_) {
+    return defaultValue;
+  }
+}
+
 function getAndIncrementDianShipmentConsecutive() {
   const currentYear = new Date().getFullYear();
   const yearStr = String(currentYear);
@@ -63,23 +76,36 @@ function mapDocType(type) {
  * Corrige bug donde datos históricos en third_parties.name contienen
  * un slash inicial (ej: "/JULIAN ESPINO ARRUBL" -> "JULIAN ESPINO ARRUBL").
  */
-function sanitizeName(val) {
-  return String(val || '').replace(/^[\/\s]+|[\/\s]+$/g, '').trim();
-}
-
-
-
 routerAdd('POST', '/api/dian/emit', (e) => {
 
-function sendInvoiceEmailHelper(txId, customEmail) {
-  const getSetting = function(key, fallback) {
+  function getSetting(key, defaultValue) {
     try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-      return r.get("value") || fallback;
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defaultValue;
     } catch (_) {
-      return fallback;
+      return defaultValue;
     }
-  };
+  }
+
+  function sanitizeName(val) {
+    return String(val || '').replace(/^[\/\s]+|[\/\s]+$/g, '').trim();
+  }
+
+  function mapDocType(type) {
+    const t = String(type || '').trim().toUpperCase();
+    if (t === '13' || t === 'CC' || t.includes('CEDULA') || t.includes('CÉDULA')) return '13';
+    if (t === '31' || t === 'NIT') return '31';
+    if (t === '22' || t === 'CE' || t.includes('EXTRANJER')) return '22';
+    if (t === '41' || t === 'PASAPORTE' || t === 'PAS') return '41';
+    if (t === '47' || t === 'PEP') return '47';
+    if (t === '12' || t === 'TI' || t.includes('TARJETA')) return '12';
+    if (t === '11' || t === 'RC' || t.includes('REGISTRO')) return '11';
+    if (t === '42' || t === 'TE' || t.includes('EXTERIOR')) return '42';
+    if (/^\d{2}$/.test(t)) return t;
+    return '13';
+  }
+
+function sendInvoiceEmailHelper(txId, customEmail) {
 
   const syncSmtpSettings = function() {
     const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
@@ -607,25 +633,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     return String(residuo > 1 ? 11 - residuo : residuo);
   };
 
-  const getSetting = function(key, fallback) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-      return r.get("value") || fallback;
-    } catch (_) {
-      return fallback;
-    }
-  };
-
-  const mapDocType = (type) => {
-    switch (String(type).toUpperCase()) {
-      case 'NIT': return '31';
-      case 'CC': return '13';
-      case 'CE': return '22';
-      case 'TI': return '12';
-      case 'PAS': return '41';
-      default: return '13'; // CC fallback
-    }
-  };
 
   const buildUblXml = function({
   documentType,
@@ -2087,21 +2094,31 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     return xml;
   };
 
-  const auth = e.requestInfo()?.auth || (typeof $apis !== 'undefined' ? $apis.requestInfo(e)?.auth : null);
-  if (!auth) {
-    e.json(401, { message: "Autenticación requerida." });
-    return;
-  }
-  
-  const body = e.requestInfo()?.body || {};
-  const txId = body.txId || body.tx_id;
-  if (!txId) {
-    e.json(400, { message: "txId es requerido." });
-    return;
-  }
-  
-  try {
-    let tx = null;
+    let authRecord = null;
+    try { authRecord = e.auth; } catch (_) {}
+    if (!authRecord) {
+      try { authRecord = $apis.requestInfo(e).authRecord; } catch (_) {}
+    }
+    if (!authRecord) {
+      try { if (e.hasSuperuserAuth && e.hasSuperuserAuth()) authRecord = true; } catch (_) {}
+    }
+    if (!authRecord) {
+      e.json(401, { message: "Autenticación requerida." });
+      return;
+    }
+    
+    let body = {};
+    try { body = e.requestInfo().body || {}; } catch (_) {
+      try { body = e.bindBody({}); } catch (_2) {}
+    }
+    const txId = body.txId || body.tx_id;
+    if (!txId) {
+      e.json(400, { message: "txId es requerido." });
+      return;
+    }
+    
+    try {
+      let tx = null;
     let purchaseInv = null;
     let salesInv = null;
     try {
@@ -2129,9 +2146,14 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
     const realTxId = tx.id;
     
-    $app.expandRecord(tx, ["tx_type_id", "third_party_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const customer = tx.expandedOne("third_party_id");
+    let txType = null;
+    let customer = null;
+    if (tx.getString("tx_type_id")) {
+      try { txType = $app.findRecordById("transaction_types", tx.getString("tx_type_id")); } catch (_) {}
+    }
+    if (tx.getString("third_party_id")) {
+      try { customer = $app.findRecordById("third_parties", tx.getString("third_party_id")); } catch (_) {}
+    }
     
     const txTypeCode = txType ? String(txType.getString("code") || '').toUpperCase() : "";
     const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : "";
@@ -2357,7 +2379,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         ivaTotal = invoice.getFloat("iva_total");
         total = invoice.getFloat("total");
         
-        const isPurchase = (invoice.collection().name === 'purchase_invoices');
+        const isPurchase = (purchaseInv !== null);
         const linesCollection = isPurchase ? 'purchase_invoice_lines' : 'invoice_lines';
         const lines = $app.findRecordsByFilter(linesCollection, "invoice_id = '" + invoice.id + "'", "line_order");
         for (let i = 0; i < lines.length; i++) {
@@ -2875,14 +2897,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 routerAdd('POST', '/api/dian/check-status', (e) => {
 
 function sendInvoiceEmailHelper(txId, customEmail) {
-  const getSetting = function(key, fallback) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-      return r.get("value") || fallback;
-    } catch (_) {
-      return fallback;
-    }
-  };
 
   const syncSmtpSettings = function() {
     const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
@@ -3396,15 +3410,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 }
 
 
-  const getSetting = function(key, fallback) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-      return r.get("value") || fallback;
-    } catch (_) {
-      return fallback;
-    }
-  };
-
   const auth = e.requestInfo()?.auth;
   if (!auth) {
     e.json(401, { message: "Autenticación requerida." });
@@ -3535,14 +3540,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 routerAdd('POST', '/api/dian/resend-email', (e) => {
 
 function sendInvoiceEmailHelper(txId, customEmail) {
-  const getSetting = function(key, fallback) {
-    try {
-      const r = $app.findFirstRecordByFilter("settings", "key = '" + key + "'");
-      return r.get("value") || fallback;
-    } catch (_) {
-      return fallback;
-    }
-  };
 
   const syncSmtpSettings = function() {
     const smtpEnabled = getSetting("smtp_enabled", "0") === "1";

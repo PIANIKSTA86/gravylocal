@@ -368,3 +368,41 @@ Si el servicio local está activo pero sigues recibiendo el error, debes indicar
      * **Access-Control-Allow-Credentials**: `true` (obligatorio si usas la URL de origen específica `https://domestiko.gravy-ms.com` y PocketBase envía cookies/sesión).
   5. Guarda los cambios. Esto inyectará las cabeceras CORS en el Edge de Cloudflare antes de que la respuesta llegue al navegador.
 
+---
+
+### ⚠️ C. El Servidor se reinició y el Túnel no levanta automáticamente (Error 1033)
+**Causa:** El diagnóstico local muestra que tus bases de datos y el orquestador (`8088`, `8089`, `8090`) están activos, pero el navegador arroja un **Error 1033 (Cloudflare Tunnel error)**. Esto significa que el demonio del túnel (`cloudflared.exe`) no se está ejecutando o no pudo conectarse a Cloudflare. 
+
+En Windows Server, esto ocurre comúnmente por dos razones:
+1. **No se instaló como servicio:** El túnel se ejecutó manualmente en una consola interactiva cmd (que se cerró al reiniciar).
+2. **Conflicto de Tiempos de Red (Network Timing Issue):** El servicio de Windows `cloudflared` intentó arrancar inmediatamente durante el arranque del sistema, pero el adaptador de red o el router MikroTik aún no habían asignado una dirección IP/acceso a internet. Al no poder conectarse, el servicio abortó y se quedó detenido (`Stopped`).
+
+**Solución definitiva en el Servidor (PowerShell como Administrador):**
+
+1. **Verifica el estado del servicio:**
+   ```powershell
+   Get-Service -Name "cloudflared"
+   ```
+   * Si no existe el servicio, regresa al **Paso 5** e instálalo usando `.\setup-cloudflare.bat`.
+
+2. **Inicia el servicio manualmente (Prueba inicial):**
+   ```powershell
+   Start-Service -Name "cloudflared"
+   ```
+   *Comprueba en tu navegador si el Error 1033 desaparece.*
+
+3. **Configura el Inicio Automático Retrasado (Delayed Start):**
+   Para evitar que el servicio falle en futuros reinicios por falta de red inicial, ordénale a Windows que espere a que el sistema esté completamente listo antes de arrancar el túnel:
+   ```powershell
+   # Configura el tipo de inicio en Automático (Inicio Retrasado)
+   Set-Service -Name "cloudflared" -StartupType Automatic
+   sc.exe config "cloudflared" start= delayed-auto
+   ```
+
+4. **Configura el Reinicio Automático en caso de fallo:**
+   Configura el Administrador de Servicios para que, si el túnel llega a desconectarse o fallar por cualquier micro-corte de internet, Windows intente levantarlo de nuevo cada 60 segundos de forma indefinida:
+   ```powershell
+   sc.exe failure "cloudflared" reset= 86400 actions= restart/60000/restart/60000/restart/60000
+   ```
+
+

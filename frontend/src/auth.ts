@@ -28,7 +28,9 @@ async function loadLicenses(): Promise<void> {
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
     const keys = activeCompany.modules || [];
     ENABLED_MODULES = new Set(['core', 'spa', ...keys]);
-    console.log('[GRAVY HUB] Módulos activos (sincronizados):', [...ENABLED_MODULES].join(', '));
+    if (localStorage.getItem('gravy_debug') === '1') {
+      console.log('[GRAVY HUB] Módulos activos (sincronizados):', [...ENABLED_MODULES].join(', '));
+    }
   } catch (err) {
     console.warn('[GRAVY HUB] Error al cargar licencias locales:', err);
     ENABLED_MODULES = new Set(['core', 'spa']);
@@ -607,17 +609,44 @@ async function doHubLogout() {
   }
   pb.logout();
   localStorage.removeItem('gravy_hub_token');
+  localStorage.removeItem('gravy_active_company');
   localStorage.removeItem('gravy_last_activity');
-  $('#screen-company-select').style.display = 'none';
+  localStorage.removeItem('active_branch_id');
+  const compSel = document.getElementById('screen-company-select');
+  if (compSel) compSel.style.display = 'none';
+  const appSel = document.getElementById('screen-app');
+  if (appSel) appSel.style.display = 'none';
+  if (typeof (window as any).clearTabsState === 'function') {
+    (window as any).clearTabsState();
+  }
   showLogin();
 }
 
+/* -- Validar que el Hub Token sigue siendo válido ---------- */
+async function validateHubToken(hubToken: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${HUB_URL}/api/hub/my-companies`, {
+      headers: { 'Authorization': `Bearer ${hubToken}` }
+    });
+    return res.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 /* -- Logout de la Empresa (Vuelve al selector o Login) ---- */
-async function doLogout(reason = 'Cierre de sesión manual') {
+async function doLogout(reason: string | Event = 'Cierre de sesión manual') {
   stopInactivityTracker();
+
+  // Normalizar: si se llama como handler de DOM recibe un MouseEvent, no un string
+  const reasonStr = typeof reason === 'string' ? reason : 'Cierre de sesión manual';
+
+  // Determinar si es un cierre automático (inactividad) para forzar salida total
+  const isAutoLogout = reasonStr.toLowerCase().includes('inactividad');
+
   if (pb.currentUser && pb.authToken) {
     try {
-      await pb.logAudit('LOGOUT', 'sistema', pb.currentUser.id || '', reason);
+      await pb.logAudit('LOGOUT', 'sistema', pb.currentUser.id || '', reasonStr);
     } catch (_) {}
   }
   pb.logout();
@@ -629,20 +658,40 @@ async function doLogout(reason = 'Cierre de sesión manual') {
   const branchSel = document.getElementById('global-branch-selector');
   if (branchSel) branchSel.style.display = 'none';
 
+  // Si el cierre es por inactividad, siempre cerrar la sesión del HUB también
+  if (isAutoLogout) {
+    console.warn('[GRAVY Auth] Cierre por inactividad — invalidando sesión del HUB.');
+    localStorage.removeItem('gravy_hub_token');
+    localStorage.removeItem('gravy_active_company');
+    const compSel = document.getElementById('screen-company-select');
+    if (compSel) compSel.style.display = 'none';
+    const appSel = document.getElementById('screen-app');
+    if (appSel) appSel.style.display = 'none';
+    showLogin();
+    return;
+  }
+
+  // Cierre manual desde dentro de la empresa: volver al selector si el hub token sigue activo
   const hubToken = localStorage.getItem('gravy_hub_token');
   if (hubToken) {
-    // Re-cargar empresas
-    try {
-      const resComp = await fetch(`${HUB_URL}/api/hub/my-companies`, {
-        headers: { 'Authorization': `Bearer ${hubToken}` }
-      });
-      if (resComp.ok) {
-        const dataComp = await resComp.json();
-        renderCompanySelector(dataComp.companies || []);
-        $('#screen-app').style.display = 'none';
-        return;
-      }
-    } catch (_) {}
+    const hubValid = await validateHubToken(hubToken);
+    if (hubValid) {
+      try {
+        const resComp = await fetch(`${HUB_URL}/api/hub/my-companies`, {
+          headers: { 'Authorization': `Bearer ${hubToken}` }
+        });
+        if (resComp.ok) {
+          const dataComp = await resComp.json();
+          renderCompanySelector(dataComp.companies || []);
+          const appSel = document.getElementById('screen-app');
+          if (appSel) appSel.style.display = 'none';
+          return;
+        }
+      } catch (_) {}
+    }
+    // Hub token inválido o expirado — limpiar y pedir login
+    localStorage.removeItem('gravy_hub_token');
+    localStorage.removeItem('gravy_active_company');
   }
   showLogin();
 }

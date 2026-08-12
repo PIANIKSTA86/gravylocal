@@ -254,7 +254,47 @@ async function initApp() {
   if (existing && pb.authToken) {
     try {
       await pb.authRefresh();
-      // Sesión válida — ir directo a la app
+
+      // --- VALIDACIÓN DEL HUB TOKEN ---
+      // Aunque el token del tenant sea válido, si el Hub cerró sesión
+      // también debemos exigir un nuevo login.
+      const hubToken = localStorage.getItem('gravy_hub_token');
+      if (!hubToken) {
+        console.warn('[GRAVY Auth] Sesión del tenant activa pero sin hub token — forzando login.');
+        pb.logout();
+        hideSplash();
+        showLogin();
+        startConnCheck();
+        return;
+      }
+
+      // Verificar que el hub token siga siendo aceptado por el servidor
+      let hubValid = false;
+      try {
+        const hubUrl = (window as any).HUB_URL ||
+          (() => {
+            const { protocol, hostname, port } = window.location;
+            return port ? `${protocol}//${hostname}:8089` : `${protocol}//hub.${hostname}`;
+          })();
+        const hubRes = await fetch(`${hubUrl}/api/hub/my-companies`, {
+          headers: { 'Authorization': `Bearer ${hubToken}` }
+        });
+        hubValid = hubRes.ok;
+      } catch (_) { hubValid = false; }
+
+      if (!hubValid) {
+        console.warn('[GRAVY Auth] Hub token inválido o expirado — forzando login.');
+        pb.logout();
+        localStorage.removeItem('gravy_hub_token');
+        localStorage.removeItem('gravy_active_company');
+        localStorage.removeItem('gravy_last_activity');
+        hideSplash();
+        showLogin();
+        startConnCheck();
+        return;
+      }
+
+      // Sesión válida en tenant y HUB — ir directo a la app
       hideSplash();
       await showApp();
       startConnCheck();

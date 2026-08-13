@@ -1142,29 +1142,35 @@ function openClearMovementsModal(bankAccounts, movements) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// IMPORTACIÓN DE EXTRACTO BANCARIO
-// Soporta: Excel/CSV (via XLSX) y Copiar-Pegar desde PDF
+// IMPORTACIÓN DE EXTRACTO BANCARIO (REFACTORIZADO Y SEGURO)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-let _importRows = [];
+let _importRows: any[] = [];
 let _importBankAccId = '';
 
-function openImportModal(bankAccounts) {
+function openImportModal(bankAccounts: any[]) {
+  _importRows = [];
+  _importBankAccId = '';
+
+  // wide = false asegura que se renderice como Overlay Modal contextual flotante
   openModal(
     '<i class="fas fa-file-import mr-2"></i>Importar Extracto Bancario',
-    `<div id="import-wizard"></div>`,
-    `<div id="import-footer" style="display:contents"></div>`,
-    true
+    `<div id="import-wizard-container" class="p-1"></div>`,
+    '',
+    false
   );
+
   _renderImportStep1(bankAccounts);
 }
 
-// ─── PASO 1: Selector de fuente ───────────────────────────────────────────────
-function _renderImportStep1(bankAccounts) {
-  $('#modal-body').querySelector('#import-wizard').innerHTML = `
+function _renderImportStep1(bankAccounts: any[]) {
+  const container = document.getElementById('import-wizard-container');
+  if (!container) return;
+
+  container.innerHTML = `
     <div class="mb-4">
-      <label class="form-label">Cuenta bancaria destino <span style="color:#EF4444">*</span></label>
-      <select id="imp-bank-acc" class="form-input">
+      <label class="form-label font-bold text-xs text-gray-700">Cuenta bancaria destino <span style="color:#EF4444">*</span></label>
+      <select id="imp-bank-acc" class="form-input w-full font-medium text-xs">
         ${bankAccounts.map(b => `<option value="${esc(b.id)}">${esc(b.bank)} — ${esc(b.number)} (${esc(b.name)})</option>`).join('')}
       </select>
     </div>
@@ -1195,7 +1201,7 @@ function _renderImportStep1(bankAccounts) {
       <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 14px;font-size:13px;color:#92400E;margin-bottom:10px">
         <i class="fas fa-lightbulb mr-1"></i>
         Abre el PDF, selecciona el texto de la tabla de movimientos (<strong>Ctrl+A</strong> en la página del extracto) y pégalo aquí.
-        Funciona con <strong>PDFs digitales</strong> (texto seleccionable), no escaneados.
+        Soporta extractos de Bancolombia, Davivienda, Banco de Bogotá, Nequi, etc.
       </div>
 
       <div style="margin-bottom:10px">
@@ -1216,37 +1222,45 @@ function _renderImportStep1(bankAccounts) {
         </div>
       </div>
 
-      <textarea id="imp-paste-area" class="form-input" rows="9"
+      <textarea id="imp-paste-area" class="form-input w-full" rows="7"
         style="font-family:monospace;font-size:12px;resize:vertical"
-        placeholder="Pega el texto aquí. Ejemplo (formato Déb|Créd|Saldo):&#10;&#10;01/04/2025  TRANSFERENCIA PSE PAGO       1.250.000,00              4.800.000,00&#10;05/04/2025  COMPRA POS EXITO CALLE 80        85.400,00              4.714.600,00&#10;10/04/2025  CONSIGNACION EFECTIVO                        2.000.000,00  6.714.600,00"></textarea>
-      <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
+        placeholder="Pega el texto aquí. Ejemplo:&#10;01/04/2026  TRANSFERENCIA PAGO  1.250.000,00  4.800.000,00&#10;05-Ene-2026 COMPRA POS EXITO    85.400,00    4.714.600,00"></textarea>
+
+      <div style="display:flex;align-items:center;justify-content:between;gap:12px;margin-top:12px">
         <button class="btn btn-secondary" id="btn-imp-analyze">
           <i class="fas fa-wand-magic-sparkles mr-1"></i> Analizar texto
         </button>
-        <span style="font-size:12px;color:#9CA3AF">Se detectan fechas, descripciones y montos automáticamente.</span>
+        <span style="font-size:12px;color:#9CA3AF">Detección automática de fechas, descripciones y montos.</span>
       </div>
-    </div>`;
+    </div>
 
-  $('#modal-footer').innerHTML =
-    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>`;
+    <div class="mt-4 pt-3 border-t flex justify-end gap-2" style="border-color:#E5E7EB">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    </div>
+  `;
 
   // Tab switching
-  $$('.imp-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      $$('.imp-tab').forEach(t => {
-        t.style.borderBottom = 'none';
-        t.style.color = '#6B7280';
+  container.querySelectorAll('.imp-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      container.querySelectorAll('.imp-tab').forEach(t => {
+        (t as HTMLElement).style.borderBottom = 'none';
+        (t as HTMLElement).style.color = '#6B7280';
       });
-      tab.style.borderBottom = '3px solid #2E6CE6';
-      tab.style.color = '#2E6CE6';
-      $('#imp-tab-excel').style.display = tab.dataset.tab === 'excel' ? '' : 'none';
-      $('#imp-tab-paste').style.display  = tab.dataset.tab === 'paste'  ? '' : 'none';
+      const target = e.currentTarget as HTMLElement;
+      target.style.borderBottom = '3px solid #2E6CE6';
+      target.style.color = '#2E6CE6';
+      const excelTab = container.querySelector('#imp-tab-excel') as HTMLElement;
+      const pasteTab = container.querySelector('#imp-tab-paste') as HTMLElement;
+      if (excelTab) excelTab.style.display = target.dataset.tab === 'excel' ? '' : 'none';
+      if (pasteTab) pasteTab.style.display = target.dataset.tab === 'paste' ? '' : 'none';
     });
   });
 
-  // Drag & drop / click upload
-  const dz = $('#imp-drop-zone');
-  dz?.addEventListener('click', () => $('#imp-file-input')?.click());
+  // Drag & drop / file selection
+  const dz = container.querySelector('#imp-drop-zone') as HTMLElement | null;
+  const fileInput = container.querySelector('#imp-file-input') as HTMLInputElement | null;
+
+  dz?.addEventListener('click', () => fileInput?.click());
   dz?.addEventListener('dragover', e => { e.preventDefault(); dz.style.borderColor = '#2E6CE6'; dz.style.background = '#EFF6FF'; });
   dz?.addEventListener('dragleave', () => { dz.style.borderColor = '#D1D5DB'; dz.style.background = '#F9FAFB'; });
   dz?.addEventListener('drop', e => {
@@ -1255,34 +1269,37 @@ function _renderImportStep1(bankAccounts) {
     const f = e.dataTransfer?.files?.[0];
     if (f) _handleExcelFile(f, bankAccounts);
   });
-  $('#imp-file-input')?.addEventListener('change', e => {
-    if (e.target.files?.[0]) _handleExcelFile(e.target.files[0], bankAccounts);
+  fileInput?.addEventListener('change', e => {
+    const files = (e.target as HTMLInputElement).files;
+    if (files?.[0]) _handleExcelFile(files[0], bankAccounts);
   });
 
-  // PDF paste analyze
-  $('#btn-imp-analyze')?.addEventListener('click', () => {
-    const text = $('#imp-paste-area')?.value?.trim() || '';
+  // Evento analizar PDF
+  container.querySelector('#btn-imp-analyze')?.addEventListener('click', () => {
+    const pasteArea = container.querySelector('#imp-paste-area') as HTMLTextAreaElement | null;
+    const text = pasteArea?.value?.trim() || '';
     if (!text) return showToast('Pega el texto del extracto primero', 'warning');
-    const fmt = document.querySelector('input[name="imp-format"]:checked')?.value || 'tres';
-    const rows = _parsePdfText(text, fmt);
-    if (!rows.length) return showToast('No se detectaron movimientos. Verifica que el texto incluya fechas (dd/mm/aaaa) y el formato seleccionado sea correcto.', 'warning');
-    const bankAccId = getSelectVal('imp-bank-acc');
+    const selectedFormat = (container.querySelector('input[name="imp-format"]:checked') as HTMLInputElement)?.value || 'tres';
+    const rows = _parsePdfText(text, selectedFormat);
+    if (!rows.length) return showToast('No se detectaron movimientos válidos. Revisa el formato pegado.', 'warning');
+    const bankAccId = (container.querySelector('#imp-bank-acc') as HTMLSelectElement)?.value || '';
     _renderImportPreview(rows, bankAccounts, bankAccId);
   });
 }
 
 // ─── EXCEL / CSV ──────────────────────────────────────────────────────────────
-function _handleExcelFile(file, bankAccounts) {
+function _handleExcelFile(file: File, bankAccounts: any[]) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const raw: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
       if (raw.length < 2) return showToast('El archivo no tiene datos suficientes', 'warning');
       const map = _autoMapColumns(raw);
       _renderColMapper(raw, map, file.name, bankAccounts);
-    } catch (err) { showToast('Error al leer el archivo: ' + err.message, 'error'); }
+    } catch (err: any) { showToast('Error al leer archivo Excel: ' + err.message, 'error'); }
   };
   reader.readAsArrayBuffer(file);
 }
@@ -1295,7 +1312,7 @@ const _COL_KEYS = {
   ref:   ['referencia','ref','numero','número','doc','comprobante','nro','cheque'],
 };
 
-function _autoMapColumns(raw) {
+function _autoMapColumns(raw: any[][]) {
   let hRow = 0;
   for (let i = 0; i < Math.min(raw.length, 10); i++) {
     const cells = raw[i].map(c => String(c).toLowerCase());
@@ -1306,70 +1323,74 @@ function _autoMapColumns(raw) {
     if (hits >= 2) { hRow = i; break; }
   }
   const hdrs = raw[hRow].map(c => String(c).toLowerCase().trim());
-  const find = keys => hdrs.findIndex(h => keys.some(k => h.includes(k)));
+  const find = (keys: string[]) => hdrs.findIndex(h => keys.some(k => h.includes(k)));
   return { hRow, date: find(_COL_KEYS.date), desc: find(_COL_KEYS.desc),
            debit: find(_COL_KEYS.debit), cred: find(_COL_KEYS.cred), ref: find(_COL_KEYS.ref) };
 }
 
-function _renderColMapper(raw, map, fileName, bankAccounts) {
+function _renderColMapper(raw: any[][], map: any, fileName: string, bankAccounts: any[]) {
+  const container = document.getElementById('import-wizard-container');
+  if (!container) return;
+
   const hdrs = raw[map.hRow];
   const dataRows = raw.length - map.hRow - 1;
 
-  const dz = $('#imp-drop-zone');
+  const dz = container.querySelector('#imp-drop-zone') as HTMLElement | null;
   if (dz) {
     dz.style.cssText = 'padding:10px 16px;border:1.5px solid #22C55E;border-radius:12px;background:#F0FDF4;display:flex;align-items:center;gap:10px;cursor:default';
     dz.innerHTML = `<i class="fas fa-file-excel" style="color:#16A34A;font-size:1.3rem"></i>
       <span style="font-size:14px;font-weight:600;color:#15803D">${esc(fileName)}</span>
       <span style="font-size:12px;color:#6B7280">${dataRows} filas detectadas</span>`;
     dz.onclick = null;
-    ['dragover','dragleave','drop'].forEach(ev => dz.removeEventListener(ev, null));
   }
 
-  const opts = sel => [-1, ...hdrs.keys()].map(i =>
+  const opts = (sel: number) => [-1, ...hdrs.keys()].map(i =>
     `<option value="${i}" ${i === sel ? 'selected' : ''}>${i < 0 ? '— No usar —' : `Col.${i+1}: ${esc(String(hdrs[i]).slice(0,24))}`}</option>`
   ).join('');
 
-  const mapDiv = $('#imp-col-map');
-  mapDiv.style.display = '';
-  mapDiv.innerHTML = `
-    <p style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">
-      Mapeo de columnas <span style="font-weight:400;color:#9CA3AF">(ajusta si es necesario)</span>
-    </p>
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-      <div><label class="form-label">Fecha <span style="color:#EF4444">*</span></label>
-           <select id="mc-date"  class="form-input" style="font-size:13px">${opts(map.date)}</select></div>
-      <div><label class="form-label">Descripción <span style="color:#EF4444">*</span></label>
-           <select id="mc-desc"  class="form-input" style="font-size:13px">${opts(map.desc)}</select></div>
-      <div><label class="form-label">Débito</label>
-           <select id="mc-debit" class="form-input" style="font-size:13px">${opts(map.debit)}</select></div>
-      <div><label class="form-label">Crédito</label>
-           <select id="mc-cred"  class="form-input" style="font-size:13px">${opts(map.cred)}</select></div>
-      <div><label class="form-label">Referencia</label>
-           <select id="mc-ref"   class="form-input" style="font-size:13px">${opts(map.ref)}</select></div>
-    </div>
-
-    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:12px">
-      <p style="font-size:12px;font-weight:700;color:#1D4ED8;margin:0 0 6px">
-        <i class="fas fa-info-circle mr-1"></i> ¿El extracto usa una sola columna de valor con positivo/negativo?
+  const mapDiv = container.querySelector('#imp-col-map') as HTMLElement | null;
+  if (mapDiv) {
+    mapDiv.style.display = '';
+    mapDiv.innerHTML = `
+      <p style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px">
+        Mapeo de columnas <span style="font-weight:400;color:#9CA3AF">(ajusta si es necesario)</span>
       </p>
-      <div style="display:flex;align-items:center;gap:10px">
-        <select id="mc-valor" class="form-input" style="font-size:13px;max-width:280px">${opts(-1)}</select>
-        <span style="font-size:12px;color:#6B7280">Selecciona la columna. Positivo → Crédito · Negativo → Débito. <em>Ignora los campos Débito/Crédito de arriba.</em></span>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+        <div><label class="form-label">Fecha <span style="color:#EF4444">*</span></label>
+             <select id="mc-date"  class="form-input" style="font-size:13px">${opts(map.date)}</select></div>
+        <div><label class="form-label">Descripción <span style="color:#EF4444">*</span></label>
+             <select id="mc-desc"  class="form-input" style="font-size:13px">${opts(map.desc)}</select></div>
+        <div><label class="form-label">Débito</label>
+             <select id="mc-debit" class="form-input" style="font-size:13px">${opts(map.debit)}</select></div>
+        <div><label class="form-label">Crédito</label>
+             <select id="mc-cred"  class="form-input" style="font-size:13px">${opts(map.cred)}</select></div>
+        <div><label class="form-label">Referencia</label>
+             <select id="mc-ref"   class="form-input" style="font-size:13px">${opts(map.ref)}</select></div>
       </div>
-    </div>
 
-    <button class="btn btn-primary" id="btn-imp-preview">
-      <i class="fas fa-eye mr-1"></i> Ver vista previa
-    </button>`;
+      <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <p style="font-size:12px;font-weight:700;color:#1D4ED8;margin:0 0 6px">
+          <i class="fas fa-info-circle mr-1"></i> ¿El extracto usa una sola columna de valor con positivo/negativo?
+        </p>
+        <div style="display:flex;align-items:center;gap:10px">
+          <select id="mc-valor" class="form-input" style="font-size:13px;max-width:280px">${opts(-1)}</select>
+          <span style="font-size:12px;color:#6B7280">Selecciona la columna. Positivo → Crédito · Negativo → Débito. <em>Ignora los campos Débito/Crédito de arriba.</em></span>
+        </div>
+      </div>
 
-  $('#btn-imp-preview')?.addEventListener('click', () => {
+      <button class="btn btn-primary" id="btn-imp-preview">
+        <i class="fas fa-eye mr-1"></i> Ver vista previa
+      </button>`;
+  }
+
+  container.querySelector('#btn-imp-preview')?.addEventListener('click', () => {
     const ci = {
-      date:  +getSelectVal('mc-date'),
-      desc:  +getSelectVal('mc-desc'),
-      debit: +getSelectVal('mc-debit'),
-      cred:  +getSelectVal('mc-cred'),
-      ref:   +getSelectVal('mc-ref'),
-      valor: +getSelectVal('mc-valor'),
+      date:  +(container.querySelector('#mc-date') as HTMLSelectElement).value,
+      desc:  +(container.querySelector('#mc-desc') as HTMLSelectElement).value,
+      debit: +(container.querySelector('#mc-debit') as HTMLSelectElement).value,
+      cred:  +(container.querySelector('#mc-cred') as HTMLSelectElement).value,
+      ref:   +(container.querySelector('#mc-ref') as HTMLSelectElement).value,
+      valor: +(container.querySelector('#mc-valor') as HTMLSelectElement).value,
     };
     if (ci.date < 0 || ci.desc < 0)
       return showToast('Las columnas Fecha y Descripción son obligatorias', 'warning');
@@ -1402,160 +1423,164 @@ function _renderColMapper(raw, map, fileName, bankAccounts) {
     if (!rows.length)
       return showToast('No se encontraron filas válidas con el mapeo seleccionado', 'warning');
 
-    const bankAccId = getSelectVal('imp-bank-acc');
+    const bankAccId = (container.querySelector('#imp-bank-acc') as HTMLSelectElement)?.value || '';
     _renderImportPreview(rows, bankAccounts, bankAccId);
   });
 }
 
-function _parseExcelDate(val) {
+function _parseExcelDate(val: any): string | null {
   if (val == null || val === '') return null;
-  if (val instanceof Date && !isNaN(val)) return (window as any).getColombiaDateStr(val);
+  if (val instanceof Date && !isNaN(val.getTime())) return (window as any).getColombiaDateStr(val);
   if (typeof val === 'number') {
     const d = new Date(Math.round((val - 25569) * 86400000));
     return isNaN(d.getTime()) ? null : (window as any).getColombiaDateStr(d);
   }
   const s = String(val).trim();
-  const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if (m1) return `${m1[3]}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;
+  const ES_MONTHS: Record<string, string> = {
+    ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
+    jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12'
+  };
+
+  // Caso 1: DD/MM/YYYY o DD-Ene-2026
+  const m1 = s.match(/^(\d{1,2})[\/\-\.]([0-9]{1,2}|[a-zA-Z]{3})[\/\-\.](\d{2,4})$/);
+  if (m1) {
+    let [, d, mo, y] = m1;
+    if (y.length === 2) y = '20' + y;
+    const moLower = mo.toLowerCase().slice(0, 3);
+    const finalMonth = ES_MONTHS[moLower] || mo.padStart(2, '0');
+    return `${y}-${finalMonth}-${d.padStart(2, '0')}`;
+  }
+
+  // Caso 2: YYYY/MM/DD
   const m2 = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
   if (m2) return `${m2[1]}-${m2[2].padStart(2,'0')}-${m2[3].padStart(2,'0')}`;
+
+  // Caso 3: DD/MM o DD-Ene (Sin año, común en Bancolombia Excel ej. "1/07")
+  const m3 = s.match(/^(\d{1,2})[\/\-\.]([0-9]{1,2}|[a-zA-Z]{3})$/);
+  if (m3) {
+    let [, d, mo] = m3;
+    const moLower = mo.toLowerCase().slice(0, 3);
+    const finalMonth = ES_MONTHS[moLower] || mo.padStart(2, '0');
+    let y = '2026';
+    if (_filterFrom && _filterFrom.length >= 4) {
+      y = _filterFrom.slice(0, 4);
+    } else {
+      y = String(new Date().getFullYear());
+    }
+    return `${y}-${finalMonth}-${d.padStart(2, '0')}`;
+  }
+
   return null;
 }
 
-function _parseColNum(val) {
+function _parseColNum(val: any): number {
   if (val == null || val === '') return 0;
   if (typeof val === 'number') return Math.abs(val);
-  const s = String(val).replace(/\s/g, '');
-  // Formato colombiano: 1.234.567,89 → quitar puntos, coma→punto
-  let cleaned;
+  const s = String(val).replace(/\u00A0|\u2009|\u202F|\s/g, '');
+  let cleaned: string;
   if (/\d\.\d{3},/.test(s))      cleaned = s.replace(/\./g, '').replace(',', '.');
   else if (/\d,\d{3}\./.test(s)) cleaned = s.replace(/,/g, '');
   else                            cleaned = s.replace(/[^0-9.\-]/g, '');
   return Math.abs(parseFloat(cleaned)) || 0;
 }
 
-// Versión con signo para columna única positivo/negativo en Excel
-function _parseSignedColNum(val) {
+function _parseSignedColNum(val: any): number {
   if (val == null || val === '') return 0;
-  if (typeof val === 'number') return val; // preservar signo
+  if (typeof val === 'number') return val;
   const s = String(val).trim();
-  // Notación con paréntesis (1.234,00) = negativo
-  const isNeg = /^[-−(]/.test(s) || /\)$/.test(s);
-  const clean = s.replace(/^[-−(]/, '').replace(/\)$/, '');
-  return isNeg ? -_parseColNum(clean) : _parseColNum(clean);
+  const isNeg = /[-−]/.test(s) || /\(.*\)/.test(s);
+  const clean = s.replace(/[^0-9.,]/g, '');
+  const abs = _parseColNum(clean);
+  return isNeg ? -abs : abs;
 }
 
-// ─── PARSER DE TEXTO PEGADO (PDF) ─────────────────────────────────────────────
-// ─── PARSER DE TEXTO PEGADO (PDF) ─────────────────────────────────────────────
-// format: 'tres' (Déb|Créd|Saldo), 'dos' (Déb|Créd sin saldo), 'signos' (valor único +/−)
-function _parsePdfText(text, format = 'tres') {
-  const rows = [];
-
-  // Detecta fecha: dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, yyyy-mm-dd
-  const DATE_RE = /\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b|\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/;
-
-  // Regex de montos amplia: soporta separadores de miles con punto, coma,
-  // espacio normal o NBSP (U+00A0), thin space (U+2009), etc.
-  // También captura signo negativo/guión al frente.
-  // Ejemplos: 1.250.000,00 | 1,250,000.00 | 1 250 000,00 | 1\u00A0250\u00A0000,00 | 500,00 | -85.400,00
-  const NUM_SRC = '[-\u2212]?\\d{1,3}(?:[.,\\u00A0\\u2009\\u202F ]\\d{3})+(?:[.,]\\d{1,2})?|[-\u2212]?\\d+[.,]\\d{2}';
-  const mkNum   = () => new RegExp(NUM_SRC, 'g'); // nueva instancia cada uso (evita lastIndex stale)
-
-  // ── 1. Normalizar separadores invisibles ──────────────────────────────────
+function _parsePdfText(text: string, format = 'tres') {
+  const rows: any[] = [];
   const normalized = text
-    .replace(/\u00A0|\u2009|\u202F/g, ' ') // NBSP → espacio normal
-    .replace(/\u2212/g, '-');              // guión largo → guión ASCII
+    .replace(/\u00A0|\u2009|\u202F/g, ' ')
+    .replace(/\u2212/g, '-');
 
-  // ── 2. Agrupar líneas por fecha (soporte multi-línea) ────────────────────
-  const groups = [];
+  const ES_MONTHS: Record<string, string> = {
+    ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06',
+    jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12'
+  };
+
+  const DATE_RE = /\b(\d{1,2})[\/\-\.]([0-9]{1,2}|[a-zA-Z]{3})[\/\-\.](\d{2,4})\b|\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/;
+  const NUM_SRC = '[-\u2212]?\\(?\\$?\\s*\\d{1,3}(?:[.,\\u00A0\\u2009\\u202F ]\\d{3})+(?:[.,]\\d{1,2})?\\)?|[-\u2212]?\\(?\\$?\\s*\\d+[.,]\\d{2}\\)?';
+
+  const groups: Array<{ date: string; lines: string[] }> = [];
+
   for (const rawLine of normalized.split('\n')) {
     const line = rawLine.trim();
     if (!line) continue;
     const dm = line.match(DATE_RE);
     if (dm) {
-      let dateStr;
+      let dateStr = '';
       if (dm[4]) {
-        dateStr = `${dm[4]}-${dm[5]}-${dm[6]}`; // ISO yyyy-mm-dd
+        dateStr = `${dm[4]}-${dm[5]}-${dm[6]}`;
       } else {
         let [, d, mo, y] = dm;
         if (y.length === 2) y = '20' + y;
-        dateStr = `${y}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        const moLower = mo.toLowerCase().slice(0, 3);
+        const finalMonth = ES_MONTHS[moLower] || mo.padStart(2, '0');
+        dateStr = `${y}-${finalMonth}-${d.padStart(2, '0')}`;
       }
       groups.push({ date: dateStr, lines: [line] });
     } else if (groups.length > 0) {
-      // Línea de continuación del registro anterior
       groups[groups.length - 1].lines.push(line);
     }
   }
 
   if (!groups.length) return rows;
 
-  // ── 3. Parsear cada grupo ─────────────────────────────────────────────────
-  let prevSaldo = null;
+  let prevSaldo: number | null = null;
 
   for (const g of groups) {
     const fullText = g.lines.join(' ');
-
-    // Extraer todos los montos del grupo
-    const numMatches = [...fullText.matchAll(mkNum())].map(m => {
-      const raw = m[0].replace(/\s/g, ''); // quitar espacios internos
-      const isNeg = /^[-]/.test(raw);
-      const abs = _parseColNum(raw.replace(/^[-]/, ''));
-      return { isNeg, abs, signed: isNeg ? -abs : abs };
+    const numMatches = [...fullText.matchAll(new RegExp(NUM_SRC, 'g'))].map(m => {
+      const raw = m[0];
+      const signed = _parseSignedColNum(raw);
+      return { abs: Math.abs(signed), isNeg: signed < 0, signed };
     }).filter(n => n.abs > 0);
 
     if (!numMatches.length) continue;
 
-    // Descripción: texto completo del grupo sin la fecha ni los números
     const dateM = fullText.match(DATE_RE);
-    const afterDate = dateM ? fullText.slice(dateM.index + dateM[0].length) : fullText;
+    const afterDate = dateM ? fullText.slice(dateM.index! + dateM[0].length) : fullText;
     let description = afterDate
       .replace(new RegExp(NUM_SRC, 'g'), ' ')
       .replace(/[^\w\sáéíóúüñÁÉÍÓÚÜÑ\-\/]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (!description || description.length < 2) description = 'Movimiento';
 
-    // ── Interpretación de valores según formato ───────────────────────────
+    if (!description || description.length < 2) description = 'Movimiento Bancario';
+
     let debit = 0, credit = 0;
 
     if (format === 'signos') {
-      // Columna única con signo: tomar el primer número relevante
       const n = numMatches[0];
-      if (n.isNeg) debit  = n.abs;
-      else         credit = n.abs;
-
+      if (n.isNeg) debit = n.abs;
+      else credit = n.abs;
     } else if (format === 'dos') {
-      // Dos columnas: (débito, crédito), sin saldo.
-      // Los últimos 1 o 2 números al final de la línea son los valores.
       if (numMatches.length >= 2) {
-        debit  = numMatches[numMatches.length - 2].abs;
+        debit = numMatches[numMatches.length - 2].abs;
         credit = numMatches[numMatches.length - 1].abs;
       } else {
         credit = numMatches[numMatches.length - 1].abs;
       }
-
     } else {
-      // 'tres': Débito | Crédito | Saldo  (formato más común en bancos colombianos)
-      // En el PDF solo aparecen los valores no-vacíos: si hay débito, el PDF muestra
-      // [monto_débito, saldo]; si hay crédito, muestra [monto_crédito, saldo].
-      // Usamos el delta del saldo para determinar la dirección.
       if (numMatches.length >= 2) {
-        const saldo  = numMatches[numMatches.length - 1].abs; // último = saldo
-        const amount = numMatches[numMatches.length - 2].abs; // penúltimo = monto
-        if (!amount) continue;
+        const saldo = numMatches[numMatches.length - 1].abs;
+        const amount = numMatches[numMatches.length - 2].abs;
         if (prevSaldo !== null) {
           const delta = saldo - prevSaldo;
-          // Tolerancia del 1 % para redondeos de extracto
           if (delta >= -amount * 0.01) credit = amount;
-          else                          debit  = amount;
+          else debit = amount;
         } else {
-          // Primera fila: sin saldo anterior, asumir crédito
           credit = amount;
         }
         prevSaldo = saldo;
       } else if (numMatches.length === 1) {
-        // Solo un número en la línea (sin saldo) → tratar como crédito
         credit = numMatches[0].abs;
       }
     }
@@ -1567,28 +1592,32 @@ function _parsePdfText(text, format = 'tres') {
   return rows;
 }
 
-// ─── VISTA PREVIA & CONFIRMACIÓN ──────────────────────────────────────────────
-function _renderImportPreview(rows, bankAccounts, bankAccId) {
-  _importRows    = rows.map((r, i) => ({ ...r, _id: i, _skip: false }));
+// ─── VISTA PREVIA Y CONFIRMACIÓN DE IMPORTACIÓN ──────────────────────────────
+
+function _renderImportPreview(rows: any[], bankAccounts: any[], bankAccId: string) {
+  _importRows = rows.map((r, i) => ({ ...r, _id: i, _skip: false }));
   _importBankAccId = bankAccId;
 
-  const bankLabel = bankAccounts.find(b => b.id === bankAccId);
-  const bankName  = bankLabel ? `${bankLabel.bank} — ${bankLabel.number}` : bankAccId;
+  const container = document.getElementById('import-wizard-container');
+  if (!container) return;
 
-  $('#modal-body').querySelector('#import-wizard').innerHTML = `
+  const bankLabel = bankAccounts.find(b => b.id === bankAccId);
+  const bankName = bankLabel ? `${bankLabel.bank} — ${bankLabel.number}` : bankAccId;
+
+  container.innerHTML = `
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap">
       <div>
         <p style="font-weight:700;font-size:14px;color:#374151;margin:0 0 2px">Vista previa de importación</p>
         <p style="font-size:12px;color:#6B7280;margin:0">
-          Cuenta: <strong>${esc(bankName)}</strong> &nbsp;·&nbsp;
-          Elimina filas incorrectas antes de confirmar.
+          Cuenta: <strong>${esc(bankName)}</strong> &nbsp;·&nbsp; Elimina filas no deseadas antes de confirmar.
         </p>
       </div>
       <span id="imp-count-badge" class="badge badge-blue" style="white-space:nowrap">
         ${rows.length} movimientos
       </span>
     </div>
-    <div style="max-height:340px;overflow-y:auto;border:1px solid #F0F0F0;border-radius:12px">
+
+    <div style="max-height:320px;overflow-y:auto;border:1px solid #F0F0F0;border-radius:12px">
       <table class="data-table" style="font-size:12px" id="imp-preview-table">
         <thead>
           <tr><th>Fecha</th><th>Descripción</th><th style="text-align:right">Débito</th>
@@ -1599,84 +1628,110 @@ function _renderImportPreview(rows, bankAccounts, bankAccId) {
             <tr id="imp-row-${r._id}">
               <td>${esc(r.date)}</td>
               <td>${esc(r.description)}</td>
-              <td style="text-align:right">${r.debit  ? fmt(r.debit)  : '<span style="color:#D1D5DB">—</span>'}</td>
+              <td style="text-align:right">${r.debit ? fmt(r.debit) : '<span style="color:#D1D5DB">—</span>'}</td>
               <td style="text-align:right">${r.credit ? fmt(r.credit) : '<span style="color:#D1D5DB">—</span>'}</td>
               <td>${esc(r.ref || '—')}</td>
               <td>
-                <button class="btn btn-outline btn-sm"
-                  style="color:#EF4444;border-color:#FECACA;padding:2px 8px"
-                  onclick="_removeImportRow(${r._id})" title="Eliminar fila">
+                <button class="btn btn-outline btn-sm btn-del-row" data-id="${r._id}"
+                  style="color:#EF4444;border-color:#FECACA;padding:2px 8px" title="Eliminar fila">
                   <i class="fas fa-times"></i>
                 </button>
               </td>
             </tr>`).join('')}
         </tbody>
       </table>
-    </div>`;
+    </div>
 
-  $('#modal-footer').innerHTML = `
-    <button class="btn btn-outline" id="btn-imp-back">
-      <i class="fas fa-arrow-left mr-1"></i> Volver
-    </button>
-    <button class="btn btn-primary" id="btn-imp-confirm">
-      <i class="fas fa-file-import mr-1"></i>
-      Importar <span id="imp-confirm-count">${rows.length}</span> movimientos
-    </button>`;
+    <div class="mt-4 pt-3 border-t flex items-center justify-between gap-2" style="border-color:#E5E7EB">
+      <button class="btn btn-outline" id="btn-imp-back">
+        <i class="fas fa-arrow-left mr-1"></i> Volver
+      </button>
+      <button class="btn btn-primary" id="btn-imp-confirm">
+        <i class="fas fa-file-import mr-1"></i> Importar <span id="imp-confirm-count">${rows.length}</span> movimientos
+      </button>
+    </div>
+  `;
 
-  $('#btn-imp-back')?.addEventListener('click', () => {
+  container.querySelectorAll('.btn-del-row').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = Number((e.currentTarget as HTMLElement).dataset.id);
+      _removeImportRow(id);
+    });
+  });
+
+  container.querySelector('#btn-imp-back')?.addEventListener('click', () => {
     _importRows = []; _importBankAccId = '';
     _renderImportStep1(bankAccounts);
   });
-  $('#btn-imp-confirm')?.addEventListener('click', () => _doImport());
+
+  container.querySelector('#btn-imp-confirm')?.addEventListener('click', () => _doImport());
 }
 
-function _removeImportRow(id) {
+function _removeImportRow(id: number) {
   const row = _importRows.find(r => r._id === id);
   if (row) row._skip = true;
   document.getElementById(`imp-row-${id}`)?.remove();
   const remaining = _importRows.filter(r => !r._skip).length;
-  const badge    = $('#imp-count-badge');
-  const countSpan = $('#imp-confirm-count');
-  if (badge)     badge.textContent = `${remaining} movimientos`;
-  if (countSpan) countSpan.textContent = remaining;
+  
+  const badge = document.getElementById('imp-count-badge');
+  const countSpan = document.getElementById('imp-confirm-count');
+  if (badge) badge.textContent = `${remaining} movimientos`;
+  if (countSpan) countSpan.textContent = String(remaining);
+
   if (!remaining) {
-    const btn = $('#btn-imp-confirm');
+    const btn = document.getElementById('btn-imp-confirm') as HTMLButtonElement | null;
     if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
   }
 }
+
+// ─── PERSISTENCIA OPTIMIZADA POR LOTES (CHUNK PROMISES) ───────────────────────
 
 async function _doImport() {
   if (!_importBankAccId) return showToast('Cuenta bancaria no definida', 'error');
   const toImport = _importRows.filter(r => !r._skip);
   if (!toImport.length) return showToast('No hay movimientos para importar', 'warning');
 
-  const btn = $('#btn-imp-confirm');
+  const btn = document.getElementById('btn-imp-confirm') as HTMLButtonElement | null;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Importando...'; }
 
-  let ok = 0, fail = 0;
-  for (const r of toImport) {
-    try {
-      await pb.create('bank_movements', {
-        bank_account_id: _importBankAccId,
-        date:        r.date,
-        description: r.description,
-        debit:       r.debit  || 0,
-        credit:      r.credit || 0,
-        balance:     0,
-        ref:         r.ref    || '',
-        reconciled:  false,
-      });
-      ok++;
-    } catch { fail++; }
+  let ok = 0;
+  let fail = 0;
+  const chunkSize = 15; // Tamaño del lote para peticiones HTTP concurrentes
+
+  for (let i = 0; i < toImport.length; i += chunkSize) {
+    const chunk = toImport.slice(i, i + chunkSize);
+    const promises = chunk.map(r => pb.create('bank_movements', {
+      bank_account_id: _importBankAccId,
+      date: r.date,
+      description: r.description,
+      debit: r.debit || 0,
+      credit: r.credit || 0,
+      balance: 0,
+      ref: r.ref || '',
+      reconciled: false,
+    }));
+
+    const results = await Promise.allSettled(promises);
+    results.forEach(res => {
+      if (res.status === 'fulfilled') ok++;
+      else fail++;
+    });
   }
 
   closeModal();
-  _importRows = []; _importBankAccId = '';
+  _importRows = [];
+  _importBankAccId = '';
 
-  if (fail) showToast(`Importados ${ok} movimientos. ${fail} no pudieron guardarse.`, 'warning');
-  else      showToast(`${ok} movimientos importados correctamente`, 'success');
-  renderConciliacion($('#page-content'));
+  if (fail > 0) {
+    showToast(`Importados ${ok} movimientos correctamente. ${fail} fallaron al guardar.`, 'warning');
+  } else {
+    showToast(`${ok} movimientos importados correctamente`, 'success');
+  }
+
+  const pageContent = document.getElementById('page-content');
+  if (pageContent) renderConciliacion(pageContent);
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARAMETRIZACIÓN DE CUENTAS PUC PARA NOTAS DE AJUSTE BANCARIO

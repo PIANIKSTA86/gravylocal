@@ -1432,18 +1432,26 @@ const API = {
     if (!txTypeId) throw new Error('Debes seleccionar el tipo de comprobante contable en la compra.');
     if (!txNumber) throw new Error('Debes definir la numeraciÃ³n del comprobante contable en la compra.');
 
-    // Calcular totales desde las lÃ­neas
-    let subtotal = 0, ivaTot = 0, retTot = 0;
+    // Calcular totales desde las líneas
+    let subtotal = 0, ivaTot = 0, retTot = 0, ivaCostTot = 0;
+    const headerIvaTreatment = String(header?.iva_treatment || 'DESCONTABLE').toUpperCase();
+
     for (const l of lines) {
-      subtotal += l.subtotal || 0;
-      ivaTot += l.iva_amount || 0;
-      retTot += l.ret_amount || 0;
+      subtotal += Number(l.subtotal || 0);
+      ivaTot += Number(l.iva_amount || 0);
+      retTot += Number(l.ret_amount || 0);
+      const lineIsCost = (headerIvaTreatment === 'MAYOR_COSTO') || (headerIvaTreatment === 'POR_LINEA' && !!l.iva_as_cost);
+      if (lineIsCost) {
+        ivaCostTot += Number(l.iva_amount || 0);
+      }
     }
     const payableTotal = (subtotal + ivaTot) - retTot;
     const inv = await pb.create('purchase_invoices', {
       ...header,
       subtotal,
       iva_total: ivaTot,
+      iva_treatment: headerIvaTreatment,
+      iva_cost_total: ivaCostTot,
       total: payableTotal,
       ret_total: retTot,
       payable_total: payableTotal,
@@ -1464,10 +1472,12 @@ const API = {
     }
 
     for (let i = 0; i < lines.length; i++) {
+      const lineIsCost = (headerIvaTreatment === 'MAYOR_COSTO') || (headerIvaTreatment === 'POR_LINEA' && !!lines[i].iva_as_cost);
       await pb.create('purchase_invoice_lines', {
         invoice_id: inv.id,
         line_order: i + 1,
         ...lines[i],
+        iva_as_cost: lineIsCost,
       });
     }
     await this.logAudit('CREATE', 'PurchaseInvoice', inv.id, `Factura compra ${inv.number}`);
@@ -1543,7 +1553,7 @@ const API = {
       return res.items[0];
     };
 
-    const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '' }) => {
+    const buildTxLine = async ({ accountId, thirdPartyId = null, debit = 0, credit = 0, description = '', crossDocRef = '', isIvaCost = false }) => {
       const acc = await getAccById(accountId);
       const line = {
         account_id: acc.id,
@@ -1551,6 +1561,7 @@ const API = {
         debit: Math.round(debit * 100) / 100,
         credit: Math.round(credit * 100) / 100,
         description,
+        is_iva_cost: !!isIvaCost,
         line_order: txLines.length + 1,
       };
       if (acc.maneja_cruce && String(crossDocRef || '').trim()) {
@@ -1563,11 +1574,12 @@ const API = {
     const accExpFallback = await findAccByCode(codeExpFallback);
     const ivaAccountCache = {};
 
-    // â”€â”€ Construir lÃ­neas del asiento contable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Construir líneas del asiento contable ──────────────────────────────
     const txLines = [];
     const bienLines = [];
     const ivaByRate = {};
     const retByAccount = {};
+    const headerIvaTreatment = String(inv.iva_treatment || 'DESCONTABLE').toUpperCase();
 
     for (const line of lines) {
       const prod = line.expand?.product_id;
@@ -1580,24 +1592,34 @@ const API = {
           throw new Error(`El producto ${prod.code || ''} ${prod.name || ''} no tiene cuenta de inventario asignada.`.trim());
         }
       } else {
-        if (!line.account_id) throw new Error(`LÃ­nea sin cuenta contable: "${line.description || '?'}"`);
+        if (!line.account_id) throw new Error(`Línea sin cuenta contable: "${line.description || '?'}"`);
         accountId = line.account_id;
       }
+
+      const isIvaAsCost = (headerIvaTreatment === 'MAYOR_COSTO') || (headerIvaTreatment === 'POR_LINEA' && !!line.iva_as_cost);
+      const lineSubtotal = Number(line.subtotal || 0);
+      const ivaAmt = Number(line.iva_amount || 0);
+      const effectiveDebit = isIvaAsCost ? (lineSubtotal + ivaAmt) : lineSubtotal;
+
       txLines.push(await buildTxLine({
         accountId,
         thirdPartyId: inv.supplier_id,
-        debit: line.subtotal || 0,
+        debit: effectiveDebit,
         credit: 0,
         description: line.description || inv.expand?.supplier_id?.name || '',
         crossDocRef: inv.supplier_ref || '',
+        isIvaCost: isIvaAsCost && ivaAmt > 0,
       }));
+
       if (prod?.type === 'BIEN') {
-        bienLines.push({ product_id: line.product_id, qty: line.qty, unit_cost: line.unit_price, notes: line.description });
+        const unitCostForStock = (isIvaAsCost && Number(line.qty || 0) > 0)
+          ? ((lineSubtotal + ivaAmt) / Number(line.qty))
+          : Number(line.unit_price || 0);
+        bienLines.push({ product_id: line.product_id, qty: line.qty, unit_cost: unitCostForStock, notes: line.description });
       }
 
-      const rateKey = String(Number(line.iva_rate || 0));
-      const ivaAmt = Number(line.iva_amount || 0);
-      if (ivaAmt > 0) {
+      if (!isIvaAsCost && ivaAmt > 0) {
+        const rateKey = String(Number(line.iva_rate || 0));
         ivaByRate[rateKey] = (ivaByRate[rateKey] || 0) + ivaAmt;
       }
 
@@ -4574,13 +4596,15 @@ const API = {
       const third = tl.expand?.third_party_id;
       if (!third) continue;
 
-      const key = `${third.id}-${matchedConcept}-${accCode}`;
+      const isIvaCost = !!tl.is_iva_cost;
+      const key = `${third.id}-${matchedConcept}-${accCode}-${isIvaCost ? 'COST' : 'NOCOST'}`;
       if (!results[key]) {
         results[key] = {
           third,
           conceptCode: matchedConcept,
           accountCode: accCode,
           accountName: acc.name,
+          isIvaCost,
           debit: 0,
           credit: 0,
           net: 0

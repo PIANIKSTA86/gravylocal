@@ -71,6 +71,43 @@ function mapDocType(type) {
   return '13';
 }
 
+function callFacturatechNominaSoap(actionName, soapBodyParams, settings) {
+  const isDemo = (settings.ftechEnvironment === 'demo' || settings.ftechEnvironment === '2' || settings.ftechEnvironment === 'pruebas');
+  const baseUrl = isDemo 
+    ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
+    : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
+  const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+  const soapAction = targetNs + '#' + actionName;
+
+  let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
+  for (let key in soapBodyParams) {
+    const val = soapBodyParams[key];
+    const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
+    bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+  }
+  bodyXml += '</urn:' + actionName + '>';
+
+  const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
+    '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
+    '  <soapenv:Header/>\n' +
+    '  <soapenv:Body>\n' +
+    '    ' + bodyXml + '\n' +
+    '  </soapenv:Body>\n' +
+    '</soapenv:Envelope>';
+
+  const res = $http.send({
+    url: baseUrl,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': soapAction
+    },
+    body: envelope
+  });
+
+  return res;
+}
+
 /**
  * Elimina slashes (/) y espacios al inicio y al final de un nombre.
  * Corrige bug donde datos históricos en third_parties.name contienen
@@ -4248,43 +4285,6 @@ routerAdd("POST", "/api/dian/pdf-bytes", (e) => {
 // NÓMINA ELECTRÓNICA DIAN & FACTURATECH ENDPOINTS
 // ============================================================================
 
-function callFacturatechNominaSoap(actionName, soapBodyParams, settings) {
-  const isDemo = (settings.ftechEnvironment === 'demo' || settings.ftechEnvironment === '1' || settings.ftechEnvironment === 'pruebas');
-  const baseUrl = isDemo 
-    ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
-    : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
-  const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-  const soapAction = targetNs + '#' + actionName;
-
-  let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
-  for (let key in soapBodyParams) {
-    const val = soapBodyParams[key];
-    const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
-    bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
-  }
-  bodyXml += '</urn:' + actionName + '>';
-
-  const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
-    '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
-    '  <soapenv:Header/>\n' +
-    '  <soapenv:Body>\n' +
-    '    ' + bodyXml + '\n' +
-    '  </soapenv:Body>\n' +
-    '</soapenv:Envelope>';
-
-  const res = $http.send({
-    url: baseUrl,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      'SOAPAction': soapAction
-    },
-    body: envelope
-  });
-
-  return res;
-}
-
 routerAdd('POST', '/api/dian/nomina/emit', (e) => {
   try {
     const body = e.requestInfo().body || {};
@@ -4315,20 +4315,74 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
 
     const xmlContent = rec.getString("xml_generado") || "";
     let cufe = rec.getString("cufe");
-    let isSimulated = false;
 
-    if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword) {
-      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica a Facturatech...");
+    if (einvoiceMethod === "facturatech") {
+      if (!ftechUsername || !ftechPassword) {
+        return e.json(400, { success: false, message: "Modo Facturatech configurado pero faltan credenciales (usuario/contraseña) en Configuración." });
+      }
+
+      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica REAL a Facturatech...");
       try {
-        const xmlBase64 = $security.base64Encode(xmlContent);
+        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
+          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
+          const baseUrl = isDemo 
+            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
+            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
+          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+          const soapAction = targetNs + '#' + actionName;
+
+          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
+          for (let key in soapBodyParams) {
+            const val = soapBodyParams[key];
+            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
+            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+          }
+          bodyXml += '</urn:' + actionName + '>';
+
+          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
+            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
+            '  <soapenv:Header/>\n' +
+            '  <soapenv:Body>\n' +
+            '    ' + bodyXml + '\n' +
+            '  </soapenv:Body>\n' +
+            '</soapenv:Envelope>';
+
+          return $http.send({
+            url: baseUrl,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'SOAPAction': soapAction
+            },
+            body: envelope
+          });
+        };
+
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        var xmlBase64 = '';
+        var utf8Str = unescape(encodeURIComponent(xmlContent));
+        var c1, c2, c3, e1, e2, e3, e4;
+        var idx = 0;
+        while (idx < utf8Str.length) {
+          c1 = utf8Str.charCodeAt(idx++);
+          c2 = utf8Str.charCodeAt(idx++);
+          c3 = utf8Str.charCodeAt(idx++);
+          e1 = c1 >> 2;
+          e2 = ((c1 & 3) << 4) | (c2 >> 4);
+          e3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (c3 >> 6));
+          e4 = isNaN(c2) || isNaN(c3) ? 64 : (c3 & 63);
+          xmlBase64 += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
+        }
+
         const soapRes = callFacturatechNominaSoap('FtechAction.uploadDocument', {
           username: ftechUsername,
           password: ftechPassword,
           xmlBase64: xmlBase64
-        }, { ftechEnvironment });
+        }, ftechEnvironment);
 
         if (soapRes.statusCode === 200) {
           const raw = soapRes.raw || "";
+          console.log("[GRAVY HOOK] Facturatech raw response:", raw);
           const transIdMatch = raw.match(/<transactionID[^>]*>(.*?)<\/transactionID>/i);
           const transId = transIdMatch ? transIdMatch[1] : "";
           const codeMatch = raw.match(/<code[^>]*>(.*?)<\/code>/i);
@@ -4347,20 +4401,26 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
             $app.save(rec);
             return e.json(200, { success: true, status: "APROBADO", cufe: cufe, transactionID: transId, message: "Nómina electrónica transmitida y validada por Facturatech DIAN." });
           } else {
-            const errMatch = raw.match(/<error[^>]*>(.*?)<\/error>/i) || raw.match(/<messageError[^>]*>(.*?)<\/messageError>/i);
-            const errMsg = errMatch ? errMatch[1] : "Error en comunicación con Facturatech";
+            const errMatch = raw.match(/<error[^>]*>(.*?)<\/error>/i) || raw.match(/<messageError[^>]*>(.*?)<\/messageError>/i) || raw.match(/<status[^>]*>(.*?)<\/status>/i);
+            const errMsg = errMatch ? errMatch[1] : ("Error en Facturatech (Código " + code + ")");
             rec.set("estado_dian", "RECHAZADO");
             $app.save(rec);
             return e.json(400, { success: false, status: "RECHAZADO", message: errMsg });
           }
+        } else {
+          rec.set("estado_dian", "RECHAZADO");
+          $app.save(rec);
+          return e.json(soapRes.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error conectando con Facturatech WebService (HTTP " + soapRes.statusCode + ")" });
         }
       } catch (soapErr) {
         console.error("[GRAVY HOOK] Error al consumir WebService Facturatech Nómina:", soapErr);
+        rec.set("estado_dian", "RECHAZADO");
+        $app.save(rec);
+        return e.json(500, { success: false, status: "RECHAZADO", message: "Error al transmitir a Facturatech: " + soapErr.message });
       }
     }
 
-    // Fallback a simulación
-    isSimulated = true;
+    // Modo Simulación explícito
     if (!cufe) {
       cufe = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
     }
@@ -4371,7 +4431,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
 
     return e.json(200, {
       success: true,
-      simulated: isSimulated,
+      simulated: true,
       status: "APROBADO",
       cufe: cufe,
       message: "Envío y firmado de Nómina Electrónica simulado exitosamente ante la DIAN."
@@ -4501,6 +4561,240 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
   } catch (err) {
     console.error("[GRAVY HOOK] Error al enviar email de nómina:", err);
     return e.json(500, { message: "Error al enviar correo de nómina: " + err.message });
+  }
+});
+
+routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
+  try {
+    const body = e.requestInfo().body || {};
+    const recordId = body.id || body.electronicPayrollId;
+    if (!recordId) {
+      return e.json(400, { message: "ID de registro de nómina electrónica no especificado." });
+    }
+
+    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    if (!rec) {
+      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
+    }
+
+    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
+    let einvoiceMethod = "simulation";
+    let ftechUsername = "";
+    let ftechPassword = "";
+    let ftechEnvironment = "demo";
+
+    settingsList.forEach((s) => {
+      const k = s.getString("key");
+      const v = s.getString("value");
+      if (k === "einvoice_method") einvoiceMethod = v;
+      if (k === "ftech_username") ftechUsername = v;
+      if (k === "ftech_password") ftechPassword = v;
+      if (k === "ftech_environment") ftechEnvironment = v;
+    });
+
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
+    const filename = `NominaIndividual_${prefijo}-${consecutivo}.xml`;
+
+    if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword && rec.getString("estado_dian") === "APROBADO") {
+      try {
+        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
+          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
+          const baseUrl = isDemo 
+            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
+            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
+          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+          const soapAction = targetNs + '#' + actionName;
+
+          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
+          bodyXml += '<username xsi:type="xsd:string">' + ftechUsername + '</username>';
+          bodyXml += '<password xsi:type="xsd:string">' + ftechPassword + '</password>';
+          for (let key in soapBodyParams) {
+            const val = soapBodyParams[key];
+            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
+            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+          }
+          bodyXml += '</urn:' + actionName + '>';
+
+          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
+            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
+            '  <soapenv:Header/>\n' +
+            '  <soapenv:Body>\n' +
+            '    ' + bodyXml + '\n' +
+            '  </soapenv:Body>\n' +
+            '</soapenv:Envelope>';
+
+          return $http.send({
+            url: baseUrl,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'SOAPAction': soapAction
+            },
+            body: envelope
+          });
+        };
+
+        const soapRes = callFacturatechNominaSoap('FtechAction.downloadXML', {
+          prefix: prefijo,
+          number: consecutivo
+        }, ftechEnvironment);
+
+        if (soapRes.statusCode === 200) {
+          const raw = soapRes.raw || "";
+          const docB64Match = raw.match(/<documentBase64[^>]*>(.*?)<\/documentBase64>/i);
+          const docB64 = docB64Match ? docB64Match[1] : "";
+          if (docB64) {
+            let utf8Xml = "";
+            try {
+              const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+              let input = docB64.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+              let i = 0;
+              while (i < input.length) {
+                let enc1 = chars.indexOf(input.charAt(i++));
+                let enc2 = chars.indexOf(input.charAt(i++));
+                let enc3 = chars.indexOf(input.charAt(i++));
+                let enc4 = chars.indexOf(input.charAt(i++));
+                let chr1 = (enc1 << 2) | (enc2 >> 4);
+                let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+                let chr3 = ((enc3 & 3) << 6) | enc4;
+                utf8Xml += String.fromCharCode(chr1);
+                if (enc3 != 64) utf8Xml += String.fromCharCode(chr2);
+                if (enc4 != 64) utf8Xml += String.fromCharCode(chr3);
+              }
+              utf8Xml = decodeURIComponent(escape(utf8Xml));
+            } catch (_) {
+              utf8Xml = docB64;
+            }
+
+            return e.json(200, {
+              success: true,
+              isSigned: true,
+              xml: utf8Xml,
+              filename: filename
+            });
+          }
+        }
+      } catch (errSoap) {
+        console.error("[GRAVY HOOK] Error al descargar XML firmado de Facturatech:", errSoap);
+      }
+    }
+
+    const localXml = rec.getString("xml_generado") || "";
+    return e.json(200, {
+      success: true,
+      isSigned: false,
+      xml: localXml,
+      filename: filename
+    });
+
+  } catch (err) {
+    return e.json(500, { message: "Error al descargar XML: " + err.message });
+  }
+});
+
+routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
+  try {
+    const body = e.requestInfo().body || {};
+    const recordId = body.id || body.electronicPayrollId;
+    if (!recordId) {
+      return e.json(400, { message: "ID de registro de nómina electrónica no especificado." });
+    }
+
+    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    if (!rec) {
+      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
+    }
+
+    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
+    let einvoiceMethod = "simulation";
+    let ftechUsername = "";
+    let ftechPassword = "";
+    let ftechEnvironment = "demo";
+
+    settingsList.forEach((s) => {
+      const k = s.getString("key");
+      const v = s.getString("value");
+      if (k === "einvoice_method") einvoiceMethod = v;
+      if (k === "ftech_username") ftechUsername = v;
+      if (k === "ftech_password") ftechPassword = v;
+      if (k === "ftech_environment") ftechEnvironment = v;
+    });
+
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
+    const filename = `NominaIndividual_${prefijo}-${consecutivo}.pdf`;
+
+    if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword && rec.getString("estado_dian") === "APROBADO") {
+      try {
+        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
+          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
+          const baseUrl = isDemo 
+            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
+            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
+          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+          const soapAction = targetNs + '#' + actionName;
+
+          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
+          bodyXml += '<username xsi:type="xsd:string">' + ftechUsername + '</username>';
+          bodyXml += '<password xsi:type="xsd:string">' + ftechPassword + '</password>';
+          for (let key in soapBodyParams) {
+            const val = soapBodyParams[key];
+            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
+            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+          }
+          bodyXml += '</urn:' + actionName + '>';
+
+          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
+            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
+            '  <soapenv:Header/>\n' +
+            '  <soapenv:Body>\n' +
+            '    ' + bodyXml + '\n' +
+            '  </soapenv:Body>\n' +
+            '</soapenv:Envelope>';
+
+          return $http.send({
+            url: baseUrl,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/xml; charset=utf-8',
+              'SOAPAction': soapAction
+            },
+            body: envelope
+          });
+        };
+
+        const soapRes = callFacturatechNominaSoap('FtechAction.downloadPDF', {
+          prefix: prefijo,
+          number: consecutivo
+        }, ftechEnvironment);
+
+        if (soapRes.statusCode === 200) {
+          const raw = soapRes.raw || "";
+          const docB64Match = raw.match(/<documentBase64[^>]*>(.*?)<\/documentBase64>/i);
+          const docB64 = docB64Match ? docB64Match[1] : "";
+          if (docB64) {
+            return e.json(200, {
+              success: true,
+              isOfficial: true,
+              pdfBase64: docB64,
+              filename: filename
+            });
+          }
+        }
+      } catch (errSoap) {
+        console.error("[GRAVY HOOK] Error al descargar PDF oficial de Facturatech:", errSoap);
+      }
+    }
+
+    return e.json(200, {
+      success: true,
+      isOfficial: false,
+      filename: filename
+    });
+
+  } catch (err) {
+    return e.json(500, { message: "Error al descargar PDF: " + err.message });
   }
 });
 

@@ -933,6 +933,15 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
               <option value="CREDITO"${(inv?.payment_method === 'CREDITO' || !inv) ? ' selected' : ''}>Crédito Comercial</option>
             </select>
           </div>
+          <!-- Tratamiento IVA -->
+          <div>
+            <label class="po-hdr-label" title="Determina si el IVA va a la cuenta 2408 (descontable) o al costo/gasto">Tratamiento IVA <span style="font-size:10px;color:#D97706">(Exógena)</span></label>
+            <select id="po-iva-treatment" class="form-input po-compact-inp font-semibold" style="border-color:#F59E0B;color:#92400E" onchange="window.poRecalcLine(0)">
+              <option value="DESCONTABLE"${(!inv || inv?.iva_treatment === 'DESCONTABLE') ? ' selected' : ''}>IVA Descontable (Cta. 2408)</option>
+              <option value="MAYOR_COSTO"${inv?.iva_treatment === 'MAYOR_COSTO' ? ' selected' : ''}>IVA Mayor Valor Costo/Gasto</option>
+              <option value="POR_LINEA"${inv?.iva_treatment === 'POR_LINEA' ? ' selected' : ''}>Especificar por Línea</option>
+            </select>
+          </div>
           <!-- Bodega Destino -->
           <div>
             <label class="po-hdr-label">Bodega Destino <span style="font-size:10px;color:#9CA3AF">(ingreso)</span></label>
@@ -1029,9 +1038,14 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
                 <span id="po-total-discount" class="font-semibold">-$ 0</span>
               </div>
               <div class="flex justify-between gap-4">
-                <span style="color:#6B7280">IVA:</span>
+                <span style="color:#6B7280">IVA Descontable (2408):</span>
                 <span id="po-total-iva" class="font-semibold" style="color:#0D2137">$ 0</span>
               </div>
+              <div id="po-total-iva-cost-wrap" class="flex justify-between gap-4 text-amber-700" style="display:none">
+                <span class="font-medium" title="IVA sumado al costo de inventario o gasto">IVA a Mayor Costo:</span>
+                <span id="po-total-iva-cost" class="font-semibold">$ 0</span>
+              </div>
+              <div id="po-iva-cost-notice" class="mt-1 text-xs font-semibold text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200" style="display:none"></div>
             </div>
 
             <!-- Col 2: Retenciones -->
@@ -1515,11 +1529,17 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       <td><input type="number" id="pol-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:13px" min="0.001" step="0.001" value="${initQty}" oninput="window.poRecalcLine(${idx})"></td>
       <td><input type="number" id="pol-price-${idx}" class="form-input text-right w-full" style="font-size:13px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.poRecalcLine(${idx})"></td>
       <td>
-        <select id="pol-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" onchange="window.poRecalcLine(${idx})">
-          <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
-          <option value="5"  ${initIva == 5  ? 'selected' : ''}>5 %</option>
-          <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
-        </select>
+        <div class="flex flex-col gap-1">
+          <select id="pol-iva-${idx}" class="form-input text-right w-full" style="font-size:12px" onchange="window.poRecalcLine(${idx})">
+            <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
+            <option value="5"  ${initIva == 5  ? 'selected' : ''}>5 %</option>
+            <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
+          </select>
+          <label class="po-iva-cost-col items-center gap-1 cursor-pointer select-none text-[10px] font-semibold text-amber-700" style="display:none" title="Marcar si el IVA de esta línea se debe sumar al costo/gasto">
+            <input type="checkbox" id="pol-iva-cost-${idx}" ${preloadedLine?.iva_as_cost ? 'checked' : ''} onchange="window.poRecalcLine(${idx})">
+            <span>A costo</span>
+          </label>
+        </div>
       </td>
       <td class="po-discount-col" style="display:none">
         <input type="number" id="pol-disc-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.01" value="${initDisc}" placeholder="0" oninput="window.poRecalcLine(${idx})">
@@ -1797,6 +1817,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
     const payMethod = (document.getElementById('po-payment-method') as HTMLSelectElement)?.value;
     const warehouseId = (document.getElementById('po-warehouse') as HTMLSelectElement)?.value;
     const txTypeId = (document.getElementById('po-tx-type') as HTMLSelectElement)?.value;
+    const ivaTreatment = (document.getElementById('po-iva-treatment') as HTMLSelectElement)?.value || 'DESCONTABLE';
     const supplierRef = (document.getElementById('po-supplier-ref') as HTMLInputElement)?.value || '';
     let notes = (document.getElementById('po-notes') as HTMLInputElement)?.value || '';
 
@@ -1858,6 +1879,8 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
         }
       }
 
+      const isIvaAsCost = (ivaTreatment === 'MAYOR_COSTO') || (ivaTreatment === 'POR_LINEA' && !!(document.getElementById(`pol-iva-cost-${idx}`) as HTMLInputElement)?.checked);
+
       lines.push({
         product_id: prodId || null,
         account_id: acctId || null,
@@ -1865,6 +1888,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
         unit_price: price,
         iva_rate: ivaRate,
         iva_amount,
+        iva_as_cost: isIvaAsCost,
         subtotal,
         total,
         description: desc,
@@ -2357,10 +2381,13 @@ function poGlobalSelectProduct(idx: number) {
 
 function poRecalcLine(targetIdx: number = 0) {
   let subtotalSum = 0;
-  let ivaSum = 0;
+  let ivaDescontableSum = 0;
+  let ivaCostSum = 0;
   let retSum = 0;
   let totalDiscount = 0;
   let qtyTotal = 0;
+
+  const ivaTreatment = (document.getElementById('po-iva-treatment') as HTMLSelectElement)?.value || 'DESCONTABLE';
 
   const rows = document.querySelectorAll('#po-lines-body tr');
   rows.forEach((row: any) => {
@@ -2372,6 +2399,11 @@ function poRecalcLine(targetIdx: number = 0) {
     const ivaRate = parseFloat((document.getElementById(`pol-iva-${idx}`) as HTMLSelectElement)?.value || '0') || 0;
     const discPct = parseFloat((document.getElementById(`pol-disc-${idx}`) as HTMLInputElement)?.value || '0') || 0;
     const retRuleId = (window as any).__poRetMode === 'line' ? ((document.getElementById(`pol-ret-rule-${idx}`) as HTMLSelectElement)?.value || '') : '';
+    const ivaCostCheck = (document.getElementById(`pol-iva-cost-${idx}`) as HTMLInputElement)?.checked;
+
+    // Mostrar u ocultar casilla por línea según tratamiento
+    const lineCostWrap = row.querySelector('.po-iva-cost-col');
+    if (lineCostWrap) lineCostWrap.style.display = (ivaTreatment === 'POR_LINEA') ? 'inline-flex' : 'none';
 
     qtyTotal += qty;
 
@@ -2382,7 +2414,13 @@ function poRecalcLine(targetIdx: number = 0) {
     const total = sub + ivaVal;
 
     subtotalSum += sub;
-    ivaSum += ivaVal;
+    const isLineCost = (ivaTreatment === 'MAYOR_COSTO') || (ivaTreatment === 'POR_LINEA' && !!ivaCostCheck);
+    if (isLineCost) {
+      ivaCostSum += ivaVal;
+    } else {
+      ivaDescontableSum += ivaVal;
+    }
+
     totalDiscount += discAmt;
 
     const totalEl = document.getElementById(`pol-total-${idx}`);
@@ -2402,6 +2440,8 @@ function poRecalcLine(targetIdx: number = 0) {
       if (lineRetEl) lineRetEl.textContent = lineRet > 0 ? (window as any).fmt(lineRet) : '—';
     }
   });
+
+  const ivaSum = ivaDescontableSum + ivaCostSum;
 
   // Calcular retenciones globales si corresponde
   let reteRentaVal = 0;
@@ -2425,7 +2465,7 @@ function poRecalcLine(targetIdx: number = 0) {
       }
       if (retRuleIva && (window as any).__poRetRulesCache) {
         const r = (window as any).__poRetRulesCache.find((x: any) => x.id === retRuleIva);
-        if (r && ivaSum >= r.min_base) reteIvaVal = ivaSum * (r.rate / 100);
+        if (r && ivaDescontableSum >= r.min_base) reteIvaVal = ivaDescontableSum * (r.rate / 100);
       }
     }
     retSum = reteRentaVal + reteIcaVal + reteIvaVal;
@@ -2445,7 +2485,26 @@ function poRecalcLine(targetIdx: number = 0) {
   const discEl = document.getElementById('po-total-discount');
   if (discEl) discEl.textContent = `-${(window as any).fmt(totalDiscount)}`;
   const ivaEl = document.getElementById('po-total-iva');
-  if (ivaEl) ivaEl.textContent = (window as any).fmt(ivaSum);
+  if (ivaEl) ivaEl.textContent = (window as any).fmt(ivaDescontableSum);
+  const ivaCostEl = document.getElementById('po-total-iva-cost');
+  if (ivaCostEl) ivaCostEl.textContent = (window as any).fmt(ivaCostSum);
+
+  const ivaCostWrap = document.getElementById('po-total-iva-cost-wrap');
+  if (ivaCostWrap) ivaCostWrap.style.display = (ivaCostSum > 0 || ivaTreatment !== 'DESCONTABLE') ? 'flex' : 'none';
+
+  const ivaNotice = document.getElementById('po-iva-cost-notice');
+  if (ivaNotice) {
+    if (ivaTreatment === 'MAYOR_COSTO') {
+      ivaNotice.style.display = 'block';
+      ivaNotice.innerHTML = '<i class="fas fa-info-circle mr-1"></i>Todo el IVA será sumado al costo/gasto (No va a la 2408 y se reportará como IVA al costo en Exógena).';
+    } else if (ivaCostSum > 0) {
+      ivaNotice.style.display = 'block';
+      ivaNotice.innerHTML = `<i class="fas fa-info-circle mr-1"></i>$ ${(window as any).fmt(ivaCostSum)} de IVA serán sumados al costo/gasto de los ítems marcados.`;
+    } else {
+      ivaNotice.style.display = 'none';
+    }
+  }
+
   const retEl = document.getElementById('po-total-ret');
   if (retEl) retEl.textContent = (window as any).fmt(retSum);
   const netEl = document.getElementById('po-total-net');

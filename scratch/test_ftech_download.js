@@ -1,88 +1,50 @@
 const https = require('https');
 
-const username = '901428834';
-const passwordHash = '8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb'; // Already SHA-256 hashed
-const endpointUrl = 'https://ws.facturatech.co/v2/pro/index.php';
+async function sendSoap(action, params) {
+  const username = "901428834";
+  const password = "8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb";
 
-function postSoapRequest(url, action, envelope) {
+  let body = `<urn:${action} soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">`;
+  body += `<username xsi:type="xsd:string">${username}</username>`;
+  body += `<password xsi:type="xsd:string">${password}</password>`;
+  for (let k in params) {
+    const t = typeof params[k] === 'number' ? 'xsd:integer' : 'xsd:string';
+    body += `<${k} xsi:type="${t}">${params[k]}</${k}>`;
+  }
+  body += `</urn:${action}>`;
+
+  const envelope = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    ${body}
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
   return new Promise((resolve, reject) => {
-    const urlObj = new URL(url);
-    const options = {
+    const req = https.request('https://ws-nomina.facturatech.co/v1/pro/index.php', {
       method: 'POST',
-      hostname: urlObj.hostname,
-      path: urlObj.pathname + urlObj.search,
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
-        'SOAPAction': action,
+        'SOAPAction': 'urn:https://ws-nomina.facturatech.co/v1/pro/#' + action,
         'Content-Length': Buffer.byteLength(envelope)
       }
-    };
-
-    const req = https.request(options, (res) => {
+    }, (res) => {
       let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        resolve({ statusCode: res.statusCode, data });
-      });
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve({ status: res.statusCode, data }));
     });
-
-    req.on('error', (e) => { reject(e); });
+    req.on('error', reject);
     req.write(envelope);
     req.end();
   });
 }
 
-function makeCufeEnvelope(prefijo, folio) {
-  return `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.getCUFEFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${username}</username>
-         <password xsi:type="xsd:string">${passwordHash}</password>
-         <prefijo xsi:type="xsd:string">${prefijo}</prefijo>
-         <folio xsi:type="xsd:string">${folio}</folio>
-      </urn:FtechAction.getCUFEFile>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-}
-
-function makeXmlEnvelope(prefijo, folio) {
-  return `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws.facturatech.co/v2/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.downloadXMLFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${username}</username>
-         <password xsi:type="xsd:string">${passwordHash}</password>
-         <prefijo xsi:type="xsd:string">${prefijo}</prefijo>
-         <folio xsi:type="xsd:string">${folio}</folio>
-      </urn:FtechAction.downloadXMLFile>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-}
-
 async function run() {
-  const folios = ['00003734', '3734'];
-  for (const folio of folios) {
-    console.log(`\n===================================`);
-    console.log(`TESTING FOLIO: "${folio}"`);
-    console.log(`===================================`);
-
-    // 1. Test getCUFEFile
-    console.log("Calling FtechAction.getCUFEFile...");
-    const cufeEnvelope = makeCufeEnvelope('FV', folio);
-    const cufeRes = await postSoapRequest(endpointUrl, 'urn:https://ws.facturatech.co/v2/pro/#FtechAction.getCUFEFile', cufeEnvelope);
-    console.log("CUFE SOAP Status:", cufeRes.statusCode);
-    console.log("CUFE SOAP Data length:", cufeRes.data.length);
-    console.log("CUFE SOAP Snippet:", cufeRes.data.substring(0, 500));
-
-    // 2. Test downloadXMLFile
-    console.log("Calling FtechAction.downloadXMLFile...");
-    const xmlEnvelope = makeXmlEnvelope('FV', folio);
-    const xmlRes = await postSoapRequest(endpointUrl, 'urn:https://ws.facturatech.co/v2/pro/#FtechAction.downloadXMLFile', xmlEnvelope);
-    console.log("XML SOAP Status:", xmlRes.statusCode);
-    console.log("XML SOAP Data length:", xmlRes.data.length);
-    console.log("XML SOAP Snippet:", xmlRes.data.substring(0, 500));
-  }
+  console.log("--- PROBANDO FtechAction.documentStatus para transactionID 5c3cde757ad729c7824f810eca45a4fce6609b3bd0fdaa5d1b11d7587bde9f2f ---");
+  const r1 = await sendSoap('FtechAction.documentStatus', { transaccionID: "5c3cde757ad729c7824f810eca45a4fce6609b3bd0fdaa5d1b11d7587bde9f2f" });
+  console.log("Status:", r1.status);
+  console.log("Raw response:", r1.data);
 }
 
-run();
+run().catch(console.error);

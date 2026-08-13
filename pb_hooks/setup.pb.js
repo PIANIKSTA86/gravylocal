@@ -244,6 +244,7 @@ onBootstrap((e) => {
       { name: "debit",      type: "number",   required: false, min: 0 },
       { name: "credit",     type: "number",   required: false, min: 0 },
       { name: "description",type: "text",     required: false },
+      { name: "is_iva_cost",type: "bool",     required: false },
       { name: "line_order", type: "number",   required: false },
     ],
   });
@@ -1471,6 +1472,8 @@ onBootstrap((e) => {
             values: ["draft","posted","voided"] },
           { name: "subtotal",          type: "number",   required: false, min: 0 },
           { name: "iva_total",         type: "number",   required: false, min: 0 },
+          { name: "iva_treatment",     type: "select",   required: false, values: ["DESCONTABLE","MAYOR_COSTO","POR_LINEA"] },
+          { name: "iva_cost_total",    type: "number",   required: false, min: 0 },
           { name: "total",             type: "number",   required: false, min: 0 },
           { name: "ret_total",         type: "number",   required: false, min: 0 },
           { name: "payable_total",     type: "number",   required: false, min: 0 },
@@ -1541,6 +1544,7 @@ onBootstrap((e) => {
           { name: "ret_amount",  type: "number",   required: false, min: 0 },
           { name: "ret_account_code", type: "text", required: false },
           { name: "total",       type: "number",   required: false, min: 0 },
+          { name: "iva_as_cost", type: "bool",     required: false },
           { name: "line_order",  type: "number",   required: false },
         ],
       });

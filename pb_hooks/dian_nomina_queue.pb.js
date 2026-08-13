@@ -158,8 +158,24 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
 
       if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword) {
         try {
-          const xmlBase64 = $security.base64Encode(xmlContent);
-          const soapRes = callFacturatechNominaSoap('FtechAction.uploadDocument', {
+          var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+          var xmlBase64 = '';
+          var utf8Str = unescape(encodeURIComponent(xmlContent));
+          var c1, c2, c3, e1, e2, e3, e4;
+          var idx = 0;
+          while (idx < utf8Str.length) {
+            c1 = utf8Str.charCodeAt(idx++);
+            c2 = utf8Str.charCodeAt(idx++);
+            c3 = utf8Str.charCodeAt(idx++);
+            e1 = c1 >> 2;
+            e2 = ((c1 & 3) << 4) | (c2 >> 4);
+            e3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (c3 >> 6));
+            e4 = isNaN(c2) || isNaN(c3) ? 64 : (c3 & 63);
+            xmlBase64 += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
+          }
+
+          const fnSoap = globalThis.callFacturatechNominaSoap || callFacturatechNominaSoap;
+          const soapRes = fnSoap('FtechAction.uploadDocument', {
             username: ftechUsername,
             password: ftechPassword,
             xmlBase64: xmlBase64

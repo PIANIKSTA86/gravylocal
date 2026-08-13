@@ -302,10 +302,20 @@ function buildExogenaRows(formatId, rawData) {
       const credit = item.credit;
 
       if (formatId === '1001') {
-        if (code.startsWith('5') || code.startsWith('6') || code.startsWith('15')) {
+        if (code.startsWith('2408') && !item.isIvaCost) {
+          if (row.hasOwnProperty('Impuesto descontable')) {
+            row['Impuesto descontable'] += debit - credit;
+          } else if (row.hasOwnProperty('IVA mayor valor del costo o gasto, deducible')) {
+            row['IVA mayor valor del costo o gasto, deducible'] += debit - credit;
+          }
+        } else if (item.isIvaCost) {
+          if (row.hasOwnProperty('IVA mayor valor del costo o gasto, deducible')) {
+            row['IVA mayor valor del costo o gasto, deducible'] += debit - credit;
+          } else if (row.hasOwnProperty('IVA cargado al costo o gasto')) {
+            row['IVA cargado al costo o gasto'] += debit - credit;
+          }
+        } else if (code.startsWith('5') || code.startsWith('6') || code.startsWith('14') || code.startsWith('15')) {
           row['Pago o abono en cuenta deducible'] += debit - credit;
-        } else if (code.startsWith('2408')) {
-          row['IVA mayor valor del costo o gasto, deducible'] += debit - credit;
         } else if (code.startsWith('2365')) {
           row['Retención en la fuente practicada Renta'] += credit - debit;
         } else if (code.startsWith('2367') || code.startsWith('2368')) {

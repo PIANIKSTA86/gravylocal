@@ -95,6 +95,8 @@ function defaultSalesConfig() {
         income_fallback_code: '41359501',
         cost_fallback_code: '61359501',
         inventory_fallback_code: '14350501',
+        special_third_party_id: '',
+        special_account_code: '',
         iva_by_rate: {
           '0': '233501',
           '5': '233501',
@@ -166,6 +168,8 @@ function normalizeSalesConfig(cfg: any) {
         income_fallback_code: String(acc.income_fallback_code || base.accounting.accounts.income_fallback_code).trim(),
         cost_fallback_code: String(acc.cost_fallback_code || base.accounting.accounts.cost_fallback_code).trim(),
         inventory_fallback_code: String(acc.inventory_fallback_code || base.accounting.accounts.inventory_fallback_code).trim(),
+        special_third_party_id: String(acc.special_third_party_id || '').trim(),
+        special_account_code: String(acc.special_account_code || '').trim(),
         iva_by_rate: Object.keys(ivaByRate).length ? ivaByRate : { ...base.accounting.accounts.iva_by_rate },
         discount_code: String(acc.discount_code || '').trim(),
         freight_code: String(acc.freight_code || '').trim(),
@@ -198,14 +202,20 @@ async function saveSalesConfig(cfg: any) {
 // --- Configuración Comercial de Ventas Modal ---
 async function openSalesSettingsModal(onSaved: any = null) {
   try {
-    const [cfg, accounts, warehouses] = await Promise.all([
+    const [cfg, accounts, warehouses, thirdParties] = await Promise.all([
       getSalesConfig(),
       (window as any).API.getAccounts(true),
       (window as any).API.getWarehouses(true).catch(() => []),
+      (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }).catch(() => []),
     ]);
 
     const warehouseOptions = (selectedId = '') => {
       return `<option value="">— Ninguna (Seleccionar al vender) —</option>${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}"${w.id === selectedId ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}`;
+    };
+
+    const thirdPartyOptions = (selectedId = '') => {
+      const rows = (thirdParties || []).sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+      return `<option value="">— Ninguno (Desactivado) —</option>${rows.map((t: any) => `<option value="${(window as any).esc(t.id)}"${t.id === selectedId ? ' selected' : ''}>${(window as any).esc(t.name)} (${(window as any).esc(t.nit || t.identification || 'Sin NIT')})</option>`).join('')}`;
     };
 
     const accountOptions = (selectedCode = '') => {
@@ -305,6 +315,22 @@ async function openSalesSettingsModal(onSaved: any = null) {
               <select id="so-cfg-refund-acct" class="form-input">${accountOptions(cfg.accounting.accounts.refund_code)}</select>
             </div>
           </div>
+
+          <div class="mt-4 rounded-xl border p-4" style="border-color:#E5E7EB;background:#F9FAFB">
+            <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-user-tag mr-2"></i>Contabilización Especial por Tercero</h4>
+            <p class="text-xs mb-3" style="color:#6B7280">Para las ventas emitidas a este tercero, la contabilización omitirá la forma y método de pago (Efectivo, Transferencia, Crédito, etc.) y debitará directamente a la cuenta contable preestablecida. No afecta los datos enviados a la DIAN.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="form-group mb-0">
+                <label class="form-label">Tercero Parametrizado</label>
+                <select id="so-cfg-special-third-party" class="form-input">${thirdPartyOptions(cfg.accounting.accounts.special_third_party_id)}</select>
+              </div>
+              <div class="form-group mb-0">
+                <label class="form-label">Cuenta Contable Preestablecida</label>
+                <select id="so-cfg-special-account" class="form-input">${accountOptions(cfg.accounting.accounts.special_account_code)}</select>
+              </div>
+            </div>
+          </div>
+
           <div class="mt-4 rounded-xl border p-3" style="border-color:#E5E7EB;background:#fff">
             <div class="flex items-center justify-between mb-2">
               <label class="form-label" style="margin-bottom:0">Cuentas IVA Generado por tarifa</label>
@@ -444,6 +470,8 @@ async function openSalesSettingsModal(onSaved: any = null) {
               income_fallback_code: getSelectVal('so-cfg-inc-fallback') || '413505',
               cost_fallback_code: getSelectVal('so-cfg-cost-fallback') || '613595',
               inventory_fallback_code: getSelectVal('so-cfg-inv-fallback') || '143505',
+              special_third_party_id: getSelectVal('so-cfg-special-third-party') || '',
+              special_account_code: getSelectVal('so-cfg-special-account') || '',
               iva_by_rate: ivaByRate,
               discount_code: getSelectVal('so-cfg-discount-acct') || '',
               freight_code: getSelectVal('so-cfg-freight-acct') || '',

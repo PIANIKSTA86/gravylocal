@@ -309,6 +309,23 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
   }
   thirdType = thirdType.trim().toUpperCase();
 
+  let sellerId = "";
+  try {
+    sellerId = c.queryParam("sellerId") || "";
+  } catch (_) {
+    try {
+      sellerId = c.QueryParam("sellerId") || "";
+    } catch (_) {
+      try {
+        const q = c.requestInfo().query;
+        if (q && q.sellerId) {
+          sellerId = Array.isArray(q.sellerId) ? q.sellerId[0] : q.sellerId;
+        }
+      } catch (_) {}
+    }
+  }
+  sellerId = sellerId.trim();
+
   let asOfDate = "";
   try {
     asOfDate = c.queryParam("asOfDate") || "";
@@ -353,12 +370,17 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         COALESCE(tp.name, 'Sin tercero') AS third_party_name,
         COALESCE(tp.doc_number, '') AS third_party_doc,
         COALESCE(tp.type, 'OTRO') AS third_party_type,
+        COALESCE(inv.seller_id, tp.advisor, '') AS seller_id,
+        COALESCE(seller_tp.name, 'Sin Vendedor') AS seller_name,
+        COALESCE(seller_tp.doc_number, '') AS seller_doc,
         t.date AS tx_date,
         COALESCE(t.payment_days, 0) AS tx_payment_days
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
       INNER JOIN transactions t ON t.id = l.tx_id
       LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+      LEFT JOIN invoices inv ON inv.tx_id = t.id
+      LEFT JOIN third_parties seller_tp ON seller_tp.id = COALESCE(inv.seller_id, tp.advisor)
       WHERE t.status = 'active'
         AND t.date <= {:asOfDateLimit}
         AND (${filterClause})
@@ -382,6 +404,9 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
       third_party_name: "",
       third_party_doc: "",
       third_party_type: "",
+      seller_id: "",
+      seller_name: "",
+      seller_doc: "",
       tx_date: "",
       tx_payment_days: 0
     }));
@@ -397,6 +422,15 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
 
       const tpType = String(row.third_party_type || '').toUpperCase();
       if (thirdType && tpType !== thirdType) continue;
+
+      const rowSellerId = String(row.seller_id || '').trim();
+      if (sellerId) {
+        if (sellerId === 'NONE' || sellerId === 'sin_vendedor') {
+          if (rowSellerId) continue;
+        } else if (rowSellerId !== sellerId) {
+          continue;
+        }
+      }
 
       const accNature = String(row.account_nature || '').toLowerCase() || defaultNature;
       const ref = refRaw || 'SIN_DOC';
@@ -415,6 +449,9 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
           third_name: row.third_party_name,
           third_doc: row.third_party_doc,
           third_type: tpType || 'OTRO',
+          seller_id: rowSellerId,
+          seller_name: row.seller_name || 'Sin Vendedor',
+          seller_doc: row.seller_doc || '',
           doc_ref: ref,
           doc_date: effectiveDocDate,
           explicit_due_date: lineDueDate,
@@ -495,6 +532,9 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         third_name: d.third_name,
         third_doc: d.third_doc,
         third_type: d.third_type,
+        seller_id: d.seller_id,
+        seller_name: d.seller_name,
+        seller_doc: d.seller_doc,
         doc_ref: d.doc_ref,
         doc_date: dateOnly,
         payment_days: d.payment_days,
@@ -1201,5 +1241,173 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
     });
   } catch (err) {
     return c.json(500, { error: "Error en flujo de caja optimizado: " + err.message });
+  }
+});
+
+routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
+  let authRecord = null;
+  try { authRecord = c.auth; } catch (_) {}
+  if (!authRecord) {
+    try {
+      const info = c.requestInfo ? c.requestInfo() : null;
+      if (info) authRecord = info.authRecord || info.admin;
+    } catch (_) {}
+  }
+  if (!authRecord) {
+    try {
+      if (typeof $apis !== "undefined" && $apis.requestInfo) {
+        const info = $apis.requestInfo(c);
+        if (info) authRecord = info.authRecord || info.admin;
+      }
+    } catch (_) {}
+  }
+
+  if (!authRecord) {
+    return c.json(401, { error: "No autorizado" });
+  }
+
+  const readQueryParam = (cCtx, key) => {
+    try {
+      if (cCtx && typeof cCtx.requestInfo === "function") {
+        const info = cCtx.requestInfo();
+        if (info && info.query) {
+          const v = info.query[key];
+          if (v !== undefined && v !== null) {
+            return String(Array.isArray(v) ? v[0] : v).trim();
+          }
+        }
+      }
+    } catch (_) {}
+
+    try {
+      if (cCtx && typeof cCtx.queryParam === "function") {
+        const v = cCtx.queryParam(key);
+        if (v) return String(v).trim();
+      }
+    } catch (_) {}
+
+    try {
+      if (cCtx && typeof cCtx.QueryParam === "function") {
+        const v = cCtx.QueryParam(key);
+        if (v) return String(v).trim();
+      }
+    } catch (_) {}
+
+    try {
+      if (typeof $apis !== "undefined" && $apis.requestInfo) {
+        const info = $apis.requestInfo(cCtx);
+        if (info && info.query) {
+          const v = info.query[key];
+          if (v !== undefined && v !== null) {
+            return String(Array.isArray(v) ? v[0] : v).trim();
+          }
+        }
+      }
+    } catch (_) {}
+
+    return "";
+  };
+
+  let startDate = readQueryParam(c, "startDate");
+  let endDate = readQueryParam(c, "endDate");
+  let sellerId = readQueryParam(c, "sellerId");
+
+  if (!startDate || !endDate) {
+    return c.json(400, { error: "Los parámetros startDate y endDate son requeridos." });
+  }
+
+  startDate = startDate.slice(0, 10);
+  endDate = endDate.slice(0, 10);
+
+  try {
+    let sql = `
+      SELECT
+        inv.id AS invoice_id,
+        inv.number AS invoice_number,
+        inv.date AS invoice_date,
+        COALESCE(inv.payment_method, 'EFECTIVO') AS payment_method,
+        inv.status AS status,
+        COALESCE(inv.subtotal, 0) AS subtotal,
+        COALESCE(inv.iva_total, 0) AS iva_total,
+        COALESCE(inv.ret_total, 0) AS ret_total,
+        COALESCE(inv.total, 0) AS total,
+        COALESCE(inv.seller_id, cust.advisor, '') AS seller_id,
+        COALESCE(seller_tp.name, 'Sin Vendedor') AS seller_name,
+        COALESCE(seller_tp.doc_number, '') AS seller_doc,
+        COALESCE(inv.customer_id, '') AS customer_id,
+        COALESCE(cust.name, 'Sin Cliente') AS customer_name,
+        COALESCE(cust.doc_number, '') AS customer_doc
+      FROM invoices inv
+      LEFT JOIN third_parties cust ON cust.id = inv.customer_id
+      LEFT JOIN third_parties seller_tp ON seller_tp.id = COALESCE(inv.seller_id, cust.advisor)
+      WHERE inv.status != 'voided'
+        AND inv.date >= {:startDate}
+        AND inv.date <= {:endDateLimit}
+    `;
+
+    const query = $app.db().newQuery(sql);
+    query.bind({
+      startDate: startDate + " 00:00:00",
+      endDateLimit: endDate + " 23:59:59"
+    });
+
+    const data = arrayOf(new DynamicModel({
+      invoice_id: "",
+      invoice_number: "",
+      invoice_date: "",
+      payment_method: "",
+      status: "",
+      subtotal: -0,
+      iva_total: -0,
+      ret_total: -0,
+      total: -0,
+      seller_id: "",
+      seller_name: "",
+      seller_doc: "",
+      customer_id: "",
+      customer_name: "",
+      customer_doc: ""
+    }));
+    query.all(data);
+
+    const items = [];
+    for (const row of data) {
+      const rowSellerId = String(row.seller_id || '').trim();
+      if (sellerId) {
+        if (sellerId === 'sin_vendedor' || sellerId === 'NONE') {
+          if (rowSellerId) continue;
+        } else if (rowSellerId !== sellerId) {
+          continue;
+        }
+      }
+
+      items.push({
+        invoice_id: row.invoice_id,
+        invoice_number: row.invoice_number,
+        invoice_date: String(row.invoice_date).split(" ")[0],
+        payment_method: row.payment_method,
+        status: row.status,
+        subtotal: Number(row.subtotal || 0),
+        iva_total: Number(row.iva_total || 0),
+        ret_total: Number(row.ret_total || 0),
+        total: Number(row.total || 0),
+        seller_id: rowSellerId,
+        seller_name: row.seller_name || 'Sin Vendedor',
+        seller_doc: row.seller_doc || '',
+        customer_id: row.customer_id,
+        customer_name: row.customer_name || 'Sin Cliente',
+        customer_doc: row.customer_doc || ''
+      });
+    }
+
+    items.sort((a, b) => {
+      const aKey = `${a.seller_name}|${a.invoice_date}|${a.invoice_number}`;
+      const bKey = `${b.seller_name}|${b.invoice_date}|${b.invoice_number}`;
+      return aKey.localeCompare(bKey);
+    });
+
+    return c.json(200, items);
+  } catch (err) {
+    return c.json(500, { error: "Error en reporte de ventas por vendedor: " + err.message });
   }
 });

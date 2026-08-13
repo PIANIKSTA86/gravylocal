@@ -176,6 +176,7 @@ async function renderReportes(c) {
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-sales">
         ${reportCard('ventas-emision', 'Reporte de Ventas por Emisión', 'Consulta ventas detalladas agrupadas por POS, Factura Estándar o Pedidos.')}
+        ${reportCard('ventas-vendedor', 'Reporte de Ventas por Vendedor', 'Detalle y acumulados de ventas agrupados por vendedor o asesor comercial.')}
         ${reportCard('ventas-productos', 'Reporte de Ventas por Producto (Acumulado)', 'Consulta los productos vendidos acumulados en un rango de fechas por caja y tipo de emisión.')}
         ${reportCard('ventas-calor', 'Horarios de Calor de Ventas', 'Visualiza el volumen y valor de ventas agrupado por hora del día y día de la semana para identificar horas pico.')}
         ${reportCard('ar-bal', 'Saldos Cuentas por Cobrar', 'Pendientes por tercero y cuenta de cartera.')}
@@ -227,6 +228,7 @@ async function renderReportes(c) {
   $('#btn-report-cash-flow')?.addEventListener('click', () => launchReportModal('Reporte de Flujo de Caja', () => renderCashFlowReport()));
   $('#btn-report-financial-analysis')?.addEventListener('click', () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()));
   $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
+  $('#btn-report-ventas-vendedor')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Vendedor', () => renderSalesBySellerReport()));
   $('#btn-report-ventas-productos')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Producto (Acumulado)', () => renderSalesProductsReport()));
   $('#btn-report-ventas-calor')?.addEventListener('click', () => launchReportModal('Horarios de Calor de Ventas', () => renderSalesHeatmapReport()));
   $('#btn-report-budget-execution')?.addEventListener('click', () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()));
@@ -586,13 +588,13 @@ function agingBucket(expiredDays) {
   return 'b90p';
 }
 
-async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thirdType = '' } = {}) {
-  const cacheKey = `${mode}|${asOfDate}|${thirdType}`;
+async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thirdType = '', sellerId = '' } = {}) {
+  const cacheKey = `${mode}|${asOfDate}|${thirdType}|${sellerId}`;
   if (REPORT_STATE.portfolioCache[cacheKey]) {
     return REPORT_STATE.portfolioCache[cacheKey];
   }
 
-  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}`, {
+  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}&sellerId=${encodeURIComponent(sellerId)}`, {
     method: 'GET'
   });
 
@@ -603,10 +605,10 @@ async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thi
 /**
  * Dedicated, optimized query for Cartera por Edades.
  * Fetches ONLY the account codes relevant to the mode (13 for CxC, 22/23/25 for CxP)
- * and filters by date server-side. Uses a local cache keyed by mode|asOfDate.
+ * and filters by date server-side. Uses a local cache keyed by mode|asOfDate|sellerId.
  */
-async function buildAgingDocsDirect({ mode = 'cxc', asOfDate = todayStr() } = {}) {
-  return buildOpenPortfolioDocs({ mode, asOfDate, thirdType: '' });
+async function buildAgingDocsDirect({ mode = 'cxc', asOfDate = todayStr(), sellerId = '' } = {}) {
+  return buildOpenPortfolioDocs({ mode, asOfDate, thirdType: '', sellerId });
 }
 
 async function renderPortfolioBalances(mode) {
@@ -829,10 +831,15 @@ async function renderAgingPortfolio() {
   const view = getReportViewHost();
   if (!view) return;
 
+  let sellers: any[] = [];
+  try {
+    sellers = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" || type="VENDEDOR"', sort: 'name', fields: 'id,name,doc_number' });
+  } catch (_) {}
+
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Cartera por Edades (Por Vencer / 0-30-60-90+)</h4>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div class="form-group">
           <label class="form-label">Fecha de corte</label>
           <input id="age-cutoff" type="date" class="form-input" value="${todayStr()}">
@@ -844,6 +851,14 @@ async function renderAgingPortfolio() {
             <option value="cxp">Proveedores (CxP) — Ctas. 22/23/25</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Vendedor / Asesor</label>
+          <select id="age-seller" class="form-input">
+            <option value="">Todos los vendedores</option>
+            <option value="sin_vendedor">Sin vendedor asignado</option>
+            ${sellers.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.doc_number ? ` (${esc(s.doc_number)})` : ''}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-group flex items-end">
           <button class="btn btn-primary w-full" id="btn-gen-aging"><i class="fas fa-filter"></i> Generar</button>
         </div>
@@ -852,7 +867,7 @@ async function renderAgingPortfolio() {
           ${can('canExport') ? '<button class="btn btn-outline flex-1" id="btn-exp-aging" disabled><i class="fas fa-file-excel"></i> Excel</button>' : ''}
         </div>
       </div>
-      <p class="text-xs mt-2" style="color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>El tipo de cartera determina automáticamente las cuentas y el perfil de tercero a consultar.</p>
+      <p class="text-xs mt-2" style="color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>El tipo de cartera determina automáticamente las cuentas y el perfil de tercero a consultar. Puedes filtrar por vendedor para obtener cartera independiente.</p>
     </div>
     <div id="aging-results" class="p-8 text-center" style="color:#9CA3AF">
       <i class="fas fa-hourglass-half mr-2"></i>Selecciona filtros y pulsa Generar.
@@ -860,7 +875,7 @@ async function renderAgingPortfolio() {
 
   let lastExportRows = [];
   let lastPdfRows = [];
-  let lastPdfMeta = {};
+  let lastPdfMeta: any = {};
 
   const generate = async () => {
     const results = $('#aging-results');
@@ -868,12 +883,13 @@ async function renderAgingPortfolio() {
 
     const asOfDate = getInputVal('age-cutoff');
     const mode = getSelectVal('age-mode') || 'cxc';
+    const sellerId = getSelectVal('age-seller') || '';
     if (!asOfDate) return showToast('Selecciona la fecha de corte.', 'warning');
 
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando cartera por edades...</div>';
 
     try {
-      const docs = await buildAgingDocsDirect({ mode, asOfDate });
+      const docs = await buildAgingDocsDirect({ mode, asOfDate, sellerId });
 
       if (!docs.length) {
         results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</div>';
@@ -889,6 +905,9 @@ async function renderAgingPortfolio() {
         return {
           tercero: d.third_name,
           documento_tercero: d.third_doc,
+          vendedor: d.seller_name || 'Sin Vendedor',
+          vendedor_doc: d.seller_doc || '',
+          vendedor_id: d.seller_id || '',
           cuenta_id: d.account_id,
           cuenta: `${d.account_code} - ${d.account_name}`.trim(),
           cuenta_code: d.account_code,
@@ -923,6 +942,8 @@ async function renderAgingPortfolio() {
       }, { saldo_a_favor: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 });
 
       const carteraLabel = mode === 'cxc' ? 'Clientes (CxC)' : 'Proveedores (CxP)';
+      const selectedSellerObj = sellers.find(s => s.id === sellerId);
+      const sellerLabel = sellerId === 'sin_vendedor' ? 'Sin Vendedor Asignado' : (selectedSellerObj ? selectedSellerObj.name : 'Todos los Vendedores');
 
       // Group by account for section headers in table
       const byAccount = new Map();
@@ -934,7 +955,7 @@ async function renderAgingPortfolio() {
       const bodyRowsHtml = [];
       for (const [cuenta, cuentaRows] of byAccount) {
         bodyRowsHtml.push(`<tr style="background:#F0F4F8">
-            <td colspan="12" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
+            <td colspan="13" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
               <i class="fas fa-bookmark mr-1" style="color:#E87D1E"></i>${esc(cuenta)}
             </td>
           </tr>`);
@@ -955,6 +976,7 @@ async function renderAgingPortfolio() {
             const expColor = r.saldo_a_favor > 0 ? '#2563EB' : (r.expired_days < 0 ? '#059669' : r.expired_days <= 30 ? '#D97706' : '#EF4444');
             bodyRowsHtml.push(`<tr>
               <td>${esc(r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero)}</td>
+              <td><span class="badge badge-gray text-xs" style="white-space:nowrap"><i class="fas fa-user-tag mr-1" style="color:#0D9488"></i>${esc(r.vendedor)}</span></td>
               <td><span class="font-mono">${esc(r.documento_cruce)}</span></td>
               <td>${esc(r.fecha_documento)}</td>
               <td style="text-align:right">${fmtN(r.plazo_dias)}</td>
@@ -977,7 +999,7 @@ async function renderAgingPortfolio() {
           }
           
           bodyRowsHtml.push(`<tr style="background:#F9FAFB">
-            <td colspan="5" class="font-semibold text-xs" style="padding-left: 20px; color:#4B5563">Subtotal ${esc(tercero)}</td>
+            <td colspan="6" class="font-semibold text-xs" style="padding-left: 20px; color:#4B5563">Subtotal ${esc(tercero)}</td>
             <td class="font-semibold text-xs text-right" style="color:#2563EB">${thirdSubtotal.saldo_a_favor > 0 ? `-${fmt(thirdSubtotal.saldo_a_favor)}` : fmt(0)}</td>
             <td class="font-semibold text-xs text-right" style="color:#059669">${fmt(thirdSubtotal.por_vencer)}</td>
             <td class="font-semibold text-xs text-right" style="color:#4B5563">${fmt(thirdSubtotal.de_0_a_30)}</td>
@@ -997,7 +1019,7 @@ async function renderAgingPortfolio() {
         }
         
         bodyRowsHtml.push(`<tr style="background:#FDF6E3">
-            <td colspan="5" class="font-bold">Subtotal Cuenta ${esc(cuenta)}</td>
+            <td colspan="6" class="font-bold">Subtotal Cuenta ${esc(cuenta)}</td>
             <td class="font-bold" style="color:#2563EB">${accountSubtotal.saldo_a_favor > 0 ? `-${fmt(accountSubtotal.saldo_a_favor)}` : fmt(0)}</td>
             <td class="font-bold" style="color:#059669">${fmt(accountSubtotal.por_vencer)}</td>
             <td class="font-bold">${fmt(accountSubtotal.de_0_a_30)}</td>
@@ -1010,19 +1032,19 @@ async function renderAgingPortfolio() {
 
       results.innerHTML = `
         <div class="p-4 border-b" style="border-color:#F3F4F6">
-          <p class="text-sm" style="color:#6B7280">Cartera: <strong>${esc(carteraLabel)}</strong> · Corte: <strong>${esc(asOfDate)}</strong> · Documentos: <strong>${fmtN(rows.length)}</strong> · Total Neto: <strong>${fmt(totals.total)}</strong></p>
+          <p class="text-sm" style="color:#6B7280">Cartera: <strong>${esc(carteraLabel)}</strong> · Vendedor: <strong>${esc(sellerLabel)}</strong> · Corte: <strong>${esc(asOfDate)}</strong> · Documentos: <strong>${fmtN(rows.length)}</strong> · Total Neto: <strong>${fmt(totals.total)}</strong></p>
         </div>
         <div class="overflow-x-auto" style="max-height:480px">
           <table class="data-table">
             <thead><tr>
-              <th>Tercero</th><th>Doc. Cruce</th><th>Fecha Doc.</th>
+              <th>Tercero</th><th>Vendedor</th><th>Doc. Cruce</th><th>Fecha Doc.</th>
               <th style="text-align:right">Plazo</th><th>Vencimiento</th>
               <th style="color:#2563EB">Saldo a Favor</th><th>Por Vencer</th><th>0-30 días</th><th>31-60 días</th><th>61-90 días</th><th>Más de 90</th><th>Total</th>
             </tr></thead>
             <tbody>${bodyRowsHtml.join('')}</tbody>
             <tfoot>
               <tr>
-                <td colspan="5" class="font-bold">Total general</td>
+                <td colspan="6" class="font-bold">Total general</td>
                 <td class="font-bold" style="color:#2563EB">${totals.saldo_a_favor > 0 ? `-${fmt(totals.saldo_a_favor)}` : fmt(0)}</td>
                 <td class="font-bold" style="color:#059669">${fmt(totals.por_vencer)}</td>
                 <td class="font-bold">${fmt(totals.de_0_a_30)}</td>
@@ -1037,7 +1059,7 @@ async function renderAgingPortfolio() {
 
       lastExportRows = rows.map(r => ({ ...r }));
       lastPdfRows = rows.map(r => ({ ...r }));
-      lastPdfMeta = { asOfDate, mode, carteraLabel };
+      lastPdfMeta = { asOfDate, mode, carteraLabel, sellerLabel };
 
       if ($('#btn-exp-aging')) $('#btn-exp-aging').disabled = !lastExportRows.length;
       if ($('#btn-pdf-aging')) $('#btn-pdf-aging').disabled = !lastPdfRows.length;
@@ -1056,6 +1078,7 @@ async function renderAgingPortfolio() {
     exportToExcel(lastExportRows, [
       { key: 'tercero',           label: 'Tercero' },
       { key: 'documento_tercero', label: 'Documento tercero' },
+      { key: 'vendedor',          label: 'Vendedor / Asesor' },
       { key: 'cuenta',            label: 'Cuenta' },
       { key: 'documento_cruce',   label: 'Doc. Cruce' },
       { key: 'fecha_documento',   label: 'Fecha documento' },
@@ -1077,7 +1100,7 @@ async function renderAgingPortfolio() {
       const jsPdfCtor = getPdfCtorOrWarn();
       if (!jsPdfCtor) return;
 
-      const { asOfDate, carteraLabel } = lastPdfMeta;
+      const { asOfDate, carteraLabel, sellerLabel } = lastPdfMeta;
 
       const totals = lastPdfRows.reduce((acc, r) => {
         acc.saldo_a_favor += Number(r.saldo_a_favor || 0);
@@ -1097,6 +1120,7 @@ async function renderAgingPortfolio() {
         subtitles: [
           `Corte: ${asOfDate}`,
           `Cartera: ${carteraLabel}`,
+          `Vendedor: ${sellerLabel || 'Todos los Vendedores'}`,
         ],
       });
 
@@ -1116,7 +1140,7 @@ async function renderAgingPortfolio() {
 
       for (const [cuenta, cuentaRows] of accountGroups) {
         if (hasMultipleAccounts) {
-          body.push([{ content: cuenta, colSpan: 12, styles: { fontStyle: 'bold', fillColor: [235, 240, 248], textColor: [13, 33, 55] } }]);
+          body.push([{ content: cuenta, colSpan: 13, styles: { fontStyle: 'bold', fillColor: [235, 240, 248], textColor: [13, 33, 55] } }]);
           accountSectionIndices.add(rowIdx++);
         }
         
@@ -1133,6 +1157,7 @@ async function renderAgingPortfolio() {
           for (const r of terceroRows) {
             body.push([
               r.documento_tercero ? `${r.documento_tercero} - ${r.tercero}` : r.tercero,
+              r.vendedor || 'Sin Vendedor',
               r.documento_cruce,
               r.fecha_documento,
               String(r.plazo_dias || 0),
@@ -1155,7 +1180,7 @@ async function renderAgingPortfolio() {
             rowIdx++;
           }
           body.push([
-            `Subtotal ${tercero}`, '', '', '', '',
+            `Subtotal ${tercero}`, '', '', '', '', '',
             thirdSubtotal.saldo_a_favor > 0 ? `-${fmtPdfNum(thirdSubtotal.saldo_a_favor)}` : fmtPdfNum(0),
             fmtPdfNum(thirdSubtotal.por_vencer),
             fmtPdfNum(thirdSubtotal.de_0_a_30),
@@ -1176,7 +1201,7 @@ async function renderAgingPortfolio() {
 
         if (hasMultipleAccounts) {
           body.push([
-            `Subtotal Cuenta ${cuenta}`, '', '', '', '',
+            `Subtotal Cuenta ${cuenta}`, '', '', '', '', '',
             accountSubtotal.saldo_a_favor > 0 ? `-${fmtPdfNum(accountSubtotal.saldo_a_favor)}` : fmtPdfNum(0),
             fmtPdfNum(accountSubtotal.por_vencer),
             fmtPdfNum(accountSubtotal.de_0_a_30),
@@ -1189,7 +1214,7 @@ async function renderAgingPortfolio() {
         }
       }
       body.push([
-        'TOTAL', '', '', '', '',
+        'TOTAL', '', '', '', '', '',
         totals.saldo_a_favor > 0 ? `-${fmtPdfNum(totals.saldo_a_favor)}` : fmtPdfNum(0),
         fmtPdfNum(totals.por_vencer),
         fmtPdfNum(totals.de_0_a_30),
@@ -1201,25 +1226,26 @@ async function renderAgingPortfolio() {
 
       doc.autoTable({
         startY: header.startY,
-        head: [['Tercero', 'Cruce', 'Fecha', 'Plazo', 'Vencimiento', 'Saldo a Favor', 'Por Vencer', '0-30', '31-60', '61-90', '>90', 'Total']],
+        head: [['Tercero', 'Vendedor', 'Cruce', 'Fecha', 'Plazo', 'Vencimiento', 'Saldo a Favor', 'Por Vencer', '0-30', '31-60', '61-90', '>90', 'Total']],
         body,
         theme: 'plain',
         margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
-        styles: { font: 'helvetica', fontSize: 7.2, textColor: [55, 55, 55], cellPadding: 2.2, lineWidth: 0, overflow: 'linebreak' },
-        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.5, lineWidth: { bottom: 0.25 } },
+        styles: { font: 'helvetica', fontSize: 7.0, textColor: [55, 55, 55], cellPadding: 2.2, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.3, lineWidth: { bottom: 0.25 } },
         columnStyles: {
-          0:  { cellWidth: 154 },
-          1:  { cellWidth: 65 },
-          2:  { cellWidth: 50 },
-          3:  { cellWidth: 30, halign: 'right' },
-          4:  { cellWidth: 48 },
-          5:  { cellWidth: 55, halign: 'right' },
-          6:  { cellWidth: 55, halign: 'right' },
-          7:  { cellWidth: 44, halign: 'right' },
-          8:  { cellWidth: 44, halign: 'right' },
-          9:  { cellWidth: 44, halign: 'right' },
-          10: { cellWidth: 44, halign: 'right' },
-          11: { cellWidth: 65, halign: 'right' },
+          0:  { cellWidth: 120 },
+          1:  { cellWidth: 80 },
+          2:  { cellWidth: 55 },
+          3:  { cellWidth: 44 },
+          4:  { cellWidth: 26, halign: 'right' },
+          5:  { cellWidth: 44 },
+          6:  { cellWidth: 50, halign: 'right' },
+          7:  { cellWidth: 50, halign: 'right' },
+          8:  { cellWidth: 40, halign: 'right' },
+          9:  { cellWidth: 40, halign: 'right' },
+          10: { cellWidth: 40, halign: 'right' },
+          11: { cellWidth: 40, halign: 'right' },
+          12: { cellWidth: 55, halign: 'right' },
         },
         didParseCell: (data) => {
           if (data.section !== 'body') return;
@@ -13253,4 +13279,480 @@ function exportAccountStatementExcel() {
 // --- VITE MIGRATION GLOBALS ---
 (window as any).renderCostCentersReport = renderCostCentersReport;
 (window as any).renderAccountStatementReport = renderAccountStatementReport;
+
+/* ═══════════════════════════════════════════════════════════
+   REPORTE DE VENTAS POR VENDEDOR
+   ═══════════════════════════════════════════════════════════ */
+async function renderSalesBySellerReport() {
+  const view = getReportViewHost();
+  if (!view) return;
+
+  let sellers: any[] = [];
+  try {
+    sellers = await pb.listAll('third_parties', { filter: 'type="EMPLEADO" || type="VENDEDOR"', sort: 'name', fields: 'id,name,doc_number' });
+  } catch (_) {}
+
+  const now = new Date();
+  const startDefault = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  const endDefault = todayStr();
+
+  view.innerHTML = `
+    <div class="p-4 border-b" style="border-color:#F3F4F6">
+      <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-user-tag text-teal-600 mr-2"></i>Reporte de Ventas por Vendedor / Asesor Comercial</h4>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+        <div class="form-group">
+          <label class="form-label">Desde</label>
+          <input id="sv-start" type="date" class="form-input" value="${startDefault}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hasta</label>
+          <input id="sv-end" type="date" class="form-input" value="${endDefault}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vendedor / Asesor</label>
+          <select id="sv-seller" class="form-input">
+            <option value="">Todos los Vendedores</option>
+            <option value="sin_vendedor">Sin vendedor asignado</option>
+            ${sellers.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.doc_number ? ` (${esc(s.doc_number)})` : ''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Método de Pago</label>
+          <select id="sv-pay-method" class="form-input">
+            <option value="">Todos los Métodos</option>
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="CREDITO">Crédito</option>
+            <option value="MIXTO">Mixto</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 justify-between items-center pt-2 border-t" style="border-color:#F3F4F6">
+        <div class="flex gap-1.5">
+          <button class="btn btn-xs btn-outline" id="sv-preset-today">Hoy</button>
+          <button class="btn btn-xs btn-outline" id="sv-preset-month">Este Mes</button>
+          <button class="btn btn-xs btn-outline" id="sv-preset-prev-month">Mes Anterior</button>
+          <button class="btn btn-xs btn-outline" id="sv-preset-year">Este Año</button>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-primary" id="btn-gen-sv"><i class="fas fa-filter mr-1"></i> Generar</button>
+          <button class="btn btn-outline" id="btn-pdf-sv" disabled><i class="fas fa-file-pdf mr-1"></i> PDF</button>
+          ${can('canExport') ? '<button class="btn btn-outline" id="btn-exp-sv" disabled><i class="fas fa-file-excel mr-1"></i> Excel</button>' : ''}
+        </div>
+      </div>
+    </div>
+
+    <div id="sv-results" class="p-8 text-center" style="color:#9CA3AF">
+      <i class="fas fa-chart-bar mr-2"></i>Selecciona filtros y pulsa Generar.
+    </div>
+  `;
+
+  let lastExportRows: any[] = [];
+  let lastPdfRows: any[] = [];
+  let lastPdfMeta: any = {};
+
+  const setDatesAndGenerate = (start: string, end: string) => {
+    const sEl = document.getElementById('sv-start') as HTMLInputElement;
+    const eEl = document.getElementById('sv-end') as HTMLInputElement;
+    if (sEl) sEl.value = start;
+    if (eEl) eEl.value = end;
+    generate();
+  };
+
+  $('#sv-preset-today')?.addEventListener('click', () => setDatesAndGenerate(todayStr(), todayStr()));
+  $('#sv-preset-month')?.addEventListener('click', () => {
+    const d = new Date();
+    const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    setDatesAndGenerate(start, todayStr());
+  });
+  $('#sv-preset-prev-month')?.addEventListener('click', () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(y, d.getMonth() + 1, 0).getDate();
+    setDatesAndGenerate(`${y}-${m}-01`, `${y}-${m}-${String(lastDay).padStart(2, '0')}`);
+  });
+  $('#sv-preset-year')?.addEventListener('click', () => {
+    const y = new Date().getFullYear();
+    setDatesAndGenerate(`${y}-01-01`, todayStr());
+  });
+
+  const generate = async () => {
+    const results = $('#sv-results');
+    if (!results) return;
+
+    const startDate = getInputVal('sv-start');
+    const endDate = getInputVal('sv-end');
+    const sellerId = getSelectVal('sv-seller') || '';
+    const payMethod = getSelectVal('sv-pay-method') || '';
+
+    if (!startDate || !endDate) return showToast('Selecciona el rango de fechas.', 'warning');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando ventas por vendedor...</div>';
+
+    try {
+      const filterParts = [
+        `status != "voided"`,
+        `date >= "${startDate} 00:00:00"`,
+        `date <= "${endDate} 23:59:59"`
+      ];
+
+      const rawInvoices = await pb.listAll('invoices', {
+        filter: filterParts.join(' && '),
+        sort: 'date',
+        expand: 'seller_id,customer_id,customer_id.advisor'
+      }).catch(() => []);
+
+      const invoices = rawInvoices.map((inv: any) => {
+        const sellerObj = inv.expand?.seller_id;
+        const custObj = inv.expand?.customer_id;
+        const custAdvisorObj = custObj?.expand?.advisor;
+
+        const resolvedSellerId = inv.seller_id || custObj?.advisor || '';
+        const resolvedSellerName = sellerObj ? sellerObj.name : (custAdvisorObj ? custAdvisorObj.name : (inv.seller_name || 'Sin Vendedor'));
+        const resolvedSellerDoc = sellerObj ? sellerObj.doc_number : (custAdvisorObj ? custAdvisorObj.doc_number : (inv.seller_doc || ''));
+
+        return {
+          invoice_id: inv.id,
+          invoice_number: inv.number || inv.tx_number || inv.id,
+          invoice_date: String(inv.date || '').split(' ')[0],
+          payment_method: inv.payment_method || 'EFECTIVO',
+          status: inv.status,
+          subtotal: Number(inv.subtotal || 0),
+          iva_total: Number(inv.iva_total || 0),
+          ret_total: Number(inv.ret_total || 0),
+          total: Number(inv.total || 0),
+          seller_id: resolvedSellerId,
+          seller_name: resolvedSellerName,
+          seller_doc: resolvedSellerDoc,
+          customer_id: inv.customer_id || '',
+          customer_name: custObj ? custObj.name : (inv.customer_name || 'Sin Cliente'),
+          customer_doc: custObj ? custObj.doc_number : (inv.customer_doc || '')
+        };
+      });
+
+      let filteredInvoices = invoices;
+      if (sellerId) {
+        if (sellerId === 'sin_vendedor') {
+          filteredInvoices = filteredInvoices.filter((i: any) => !i.seller_id || i.seller_name === 'Sin Vendedor');
+        } else {
+          filteredInvoices = filteredInvoices.filter((i: any) => i.seller_id === sellerId);
+        }
+      }
+
+      if (payMethod) {
+        filteredInvoices = filteredInvoices.filter((i: any) => String(i.payment_method || '').toUpperCase() === payMethod);
+      }
+
+      if (!filteredInvoices.length) {
+        results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-inbox mr-2"></i>No se encontraron ventas para los filtros seleccionados.</div>';
+        lastExportRows = []; lastPdfRows = [];
+        if ($('#btn-exp-sv')) $('#btn-exp-sv').disabled = true;
+        if ($('#btn-pdf-sv')) $('#btn-pdf-sv').disabled = true;
+        return;
+      }
+
+      // Group by seller
+      const bySeller = new Map<string, any[]>();
+      let globalSubtotal = 0;
+      let globalIva = 0;
+      let globalRet = 0;
+      let globalTotal = 0;
+
+      for (const inv of filteredInvoices) {
+        const sellerKey = inv.seller_name || 'Sin Vendedor';
+        if (!bySeller.has(sellerKey)) bySeller.set(sellerKey, []);
+        bySeller.get(sellerKey)!.push(inv);
+
+        globalSubtotal += Number(inv.subtotal || 0);
+        globalIva += Number(inv.iva_total || 0);
+        globalRet += Number(inv.ret_total || 0);
+        globalTotal += Number(inv.total || 0);
+      }
+
+      const totalInvoicesCount = filteredInvoices.length;
+      const ticketPromedio = totalInvoicesCount ? (globalTotal / totalInvoicesCount) : 0;
+
+      // Find top seller
+      let topSellerName = 'N/A';
+      let maxSellerTotal = 0;
+      for (const [sName, sInvs] of bySeller.entries()) {
+        const sSum = sInvs.reduce((acc, x) => acc + Number(x.total || 0), 0);
+        if (sSum > maxSellerTotal) {
+          maxSellerTotal = sSum;
+          topSellerName = sName;
+        }
+      }
+
+      const selectedSellerObj = sellers.find(s => s.id === sellerId);
+      const sellerLabel = sellerId === 'sin_vendedor' ? 'Sin Vendedor Asignado' : (selectedSellerObj ? selectedSellerObj.name : 'Todos los Vendedores');
+
+      // Build KPI cards
+      const kpisHtml = `
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 bg-slate-50 border-b" style="border-color:#F1F5F9">
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs font-medium text-slate-500 uppercase">Total Ventas ($)</p>
+            <p class="text-lg font-bold text-slate-900 mt-1">${fmt(globalTotal)}</p>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs font-medium text-slate-500 uppercase">Facturas Emitidas</p>
+            <p class="text-lg font-bold text-slate-900 mt-1">${fmtN(totalInvoicesCount)}</p>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs font-medium text-slate-500 uppercase">Ticket Promedio</p>
+            <p class="text-lg font-bold text-teal-700 mt-1">${fmt(ticketPromedio)}</p>
+          </div>
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200">
+            <p class="text-xs font-medium text-slate-500 uppercase">Vendedor Destacado</p>
+            <p class="text-sm font-bold text-indigo-900 mt-1 truncate" title="${esc(topSellerName)}">${esc(topSellerName)} (${fmt(maxSellerTotal)})</p>
+          </div>
+        </div>
+      `;
+
+      // Build table rows
+      const tableRowsHtml: string[] = [];
+      const exportList: any[] = [];
+
+      for (const [sellerName, sInvoices] of bySeller.entries()) {
+        const sellerSubtotal = sInvoices.reduce((a, b) => a + Number(b.subtotal || 0), 0);
+        const sellerIva = sInvoices.reduce((a, b) => a + Number(b.iva_total || 0), 0);
+        const sellerRet = sInvoices.reduce((a, b) => a + Number(b.ret_total || 0), 0);
+        const sellerTotal = sInvoices.reduce((a, b) => a + Number(b.total || 0), 0);
+        const sellerAvg = sInvoices.length ? sellerTotal / sInvoices.length : 0;
+
+        tableRowsHtml.push(`
+          <tr style="background:#F1F5F9">
+            <td colspan="8" style="font-weight:700;padding:8px 12px;font-size:13px;color:#0F172A;border-top:1px solid #CBD5E1">
+              <i class="fas fa-user-tag mr-2" style="color:#0D9488"></i>${esc(sellerName)}
+              <span class="text-xs font-normal text-slate-500 ml-2">(${sInvoices.length} facturas · Ticket Promedio: ${fmt(sellerAvg)})</span>
+            </td>
+          </tr>
+        `);
+
+        for (const inv of sInvoices) {
+          tableRowsHtml.push(`
+            <tr>
+              <td class="font-mono text-xs font-semibold">${esc(inv.invoice_number)}</td>
+              <td class="text-xs">${esc(inv.invoice_date)}</td>
+              <td class="text-xs font-medium">${esc(inv.customer_doc ? `${inv.customer_doc} - ${inv.customer_name}` : inv.customer_name)}</td>
+              <td class="text-xs"><span class="badge badge-gray">${esc(inv.payment_method || 'EFECTIVO')}</span></td>
+              <td class="text-xs text-right">${fmt(inv.subtotal)}</td>
+              <td class="text-xs text-right">${fmt(inv.iva_total)}</td>
+              <td class="text-xs text-right">${fmt(inv.ret_total)}</td>
+              <td class="text-xs text-right font-bold" style="color:#0F172A">${fmt(inv.total)}</td>
+            </tr>
+          `);
+
+          exportList.push({
+            vendedor: sellerName,
+            vendedor_doc: inv.seller_doc || '',
+            factura: inv.invoice_number,
+            fecha: inv.invoice_date,
+            cliente: inv.customer_name,
+            cliente_doc: inv.customer_doc,
+            metodo_pago: inv.payment_method,
+            subtotal: inv.subtotal,
+            iva: inv.iva_total,
+            retencion: inv.ret_total,
+            total: inv.total,
+          });
+        }
+
+        tableRowsHtml.push(`
+          <tr style="background:#F8FAFC;border-bottom:2px solid #E2E8F0">
+            <td colspan="4" class="font-bold text-xs" style="padding-left:24px;color:#334155">Subtotal ${esc(sellerName)}</td>
+            <td class="font-bold text-xs text-right">${fmt(sellerSubtotal)}</td>
+            <td class="font-bold text-xs text-right">${fmt(sellerIva)}</td>
+            <td class="font-bold text-xs text-right">${fmt(sellerRet)}</td>
+            <td class="font-bold text-xs text-right" style="color:#0D9488">${fmt(sellerTotal)}</td>
+          </tr>
+        `);
+      }
+
+      results.innerHTML = `
+        ${kpisHtml}
+        <div class="p-4 border-b flex flex-wrap justify-between items-center" style="border-color:#F3F4F6">
+          <p class="text-sm" style="color:#6B7280">Período: <strong>${esc(startDate)} a ${esc(endDate)}</strong> · Vendedor: <strong>${esc(sellerLabel)}</strong> · Facturas: <strong>${fmtN(filteredInvoices.length)}</strong></p>
+        </div>
+        <div class="overflow-x-auto" style="max-height:460px">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>No. Factura</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Método Pago</th>
+                <th style="text-align:right">Subtotal</th>
+                <th style="text-align:right">IVA</th>
+                <th style="text-align:right">Retención</th>
+                <th style="text-align:right">Total</th>
+              </tr>
+            </thead>
+            <tbody>${tableRowsHtml.join('')}</tbody>
+            <tfoot>
+              <tr style="background:#E2E8F0">
+                <td colspan="4" class="font-bold text-slate-900">Total General</td>
+                <td class="font-bold text-right text-slate-900">${fmt(globalSubtotal)}</td>
+                <td class="font-bold text-right text-slate-900">${fmt(globalIva)}</td>
+                <td class="font-bold text-right text-slate-900">${fmt(globalRet)}</td>
+                <td class="font-bold text-right text-teal-800" style="font-size:13px">${fmt(globalTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      `;
+
+      lastExportRows = exportList;
+      lastPdfRows = filteredInvoices;
+      lastPdfMeta = { startDate, endDate, sellerLabel, payMethod, globalSubtotal, globalIva, globalRet, globalTotal };
+
+      if ($('#btn-exp-sv')) $('#btn-exp-sv').disabled = !lastExportRows.length;
+      if ($('#btn-pdf-sv')) $('#btn-pdf-sv').disabled = !lastPdfRows.length;
+    } catch (err: any) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastExportRows = []; lastPdfRows = [];
+      if ($('#btn-exp-sv')) $('#btn-exp-sv').disabled = true;
+      if ($('#btn-pdf-sv')) $('#btn-pdf-sv').disabled = true;
+    }
+  };
+
+  $('#btn-gen-sv')?.addEventListener('click', generate);
+
+  $('#btn-exp-sv')?.addEventListener('click', () => {
+    if (!lastExportRows.length) return;
+    exportToExcel(lastExportRows, [
+      { key: 'vendedor',     label: 'Vendedor / Asesor' },
+      { key: 'vendedor_doc', label: 'Doc Vendedor' },
+      { key: 'factura',      label: 'No. Factura' },
+      { key: 'fecha',        label: 'Fecha' },
+      { key: 'cliente',      label: 'Cliente' },
+      { key: 'cliente_doc',  label: 'Doc Cliente' },
+      { key: 'metodo_pago',  label: 'Método Pago' },
+      { key: 'subtotal',     label: 'Subtotal' },
+      { key: 'iva',          label: 'IVA' },
+      { key: 'retencion',    label: 'Retención' },
+      { key: 'total',        label: 'Total' },
+    ], `ventas_por_vendedor_${lastPdfMeta.startDate}_${lastPdfMeta.endDate}`);
+  });
+
+  $('#btn-pdf-sv')?.addEventListener('click', async () => {
+    if (!lastPdfRows.length) return;
+    try {
+      const jsPdfCtor = getPdfCtorOrWarn();
+      if (!jsPdfCtor) return;
+
+      const { startDate, endDate, sellerLabel, globalSubtotal, globalIva, globalRet, globalTotal } = lastPdfMeta;
+      const headerCtx = await getPdfHeaderContext();
+      const doc = new jsPdfCtor({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+
+      const header = drawPdfHeader(doc, headerCtx, {
+        title: 'Reporte de Ventas por Vendedor',
+        subtitles: [
+          `Período: ${startDate} a ${endDate}`,
+          `Vendedor: ${sellerLabel || 'Todos los Vendedores'}`,
+        ],
+      });
+
+      // Group by seller for PDF body
+      const bySellerPdf = new Map<string, any[]>();
+      for (const r of lastPdfRows) {
+        const sName = r.seller_name || 'Sin Vendedor';
+        if (!bySellerPdf.has(sName)) bySellerPdf.set(sName, []);
+        bySellerPdf.get(sName)!.push(r);
+      }
+
+      const body: any[] = [];
+      const subtotalIndices = new Set<number>();
+      let rIndex = 0;
+
+      for (const [sName, sInvs] of bySellerPdf.entries()) {
+        body.push([{ content: sName, colSpan: 8, styles: { fontStyle: 'bold', fillColor: [240, 244, 248], textColor: [13, 33, 55] } }]);
+        rIndex++;
+
+        let sSub = 0, sIva = 0, sRet = 0, sTot = 0;
+        for (const inv of sInvs) {
+          body.push([
+            inv.invoice_number,
+            inv.invoice_date,
+            inv.customer_doc ? `${inv.customer_doc} - ${inv.customer_name}` : inv.customer_name,
+            inv.payment_method || 'EFECTIVO',
+            fmtPdfNum(inv.subtotal),
+            fmtPdfNum(inv.iva_total),
+            fmtPdfNum(inv.ret_total),
+            fmtPdfNum(inv.total),
+          ]);
+          sSub += Number(inv.subtotal || 0);
+          sIva += Number(inv.iva_total || 0);
+          sRet += Number(inv.ret_total || 0);
+          sTot += Number(inv.total || 0);
+          rIndex++;
+        }
+
+        body.push([
+          `Subtotal ${sName}`, '', '', '',
+          fmtPdfNum(sSub),
+          fmtPdfNum(sIva),
+          fmtPdfNum(sRet),
+          fmtPdfNum(sTot),
+        ]);
+        subtotalIndices.add(rIndex++);
+      }
+
+      body.push([
+        'TOTAL GENERAL', '', '', '',
+        fmtPdfNum(globalSubtotal),
+        fmtPdfNum(globalIva),
+        fmtPdfNum(globalRet),
+        fmtPdfNum(globalTotal),
+      ]);
+
+      doc.autoTable({
+        startY: header.startY,
+        head: [['No. Factura', 'Fecha', 'Cliente', 'Método Pago', 'Subtotal', 'IVA', 'Retención', 'Total']],
+        body,
+        theme: 'plain',
+        margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
+        styles: { font: 'helvetica', fontSize: 7.5, textColor: [55, 55, 55], cellPadding: 2.5, lineWidth: 0, overflow: 'linebreak' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.8, lineWidth: { bottom: 0.25 } },
+        columnStyles: {
+          0: { cellWidth: 70 },
+          1: { cellWidth: 55 },
+          2: { cellWidth: 230 },
+          3: { cellWidth: 75 },
+          4: { cellWidth: 65, halign: 'right' },
+          5: { cellWidth: 55, halign: 'right' },
+          6: { cellWidth: 55, halign: 'right' },
+          7: { cellWidth: 70, halign: 'right' },
+        },
+        didParseCell: (data: any) => {
+          if (data.section !== 'body') return;
+          const isTotal = data.row.index === body.length - 1;
+          const isSubtotal = subtotalIndices.has(data.row.index);
+          if (isTotal) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [236, 236, 236];
+            data.cell.styles.textColor = [13, 33, 55];
+            data.cell.styles.lineWidth = { top: 0.2 };
+            data.cell.styles.lineColor = [13, 33, 55];
+          } else if (isSubtotal) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [248, 250, 252];
+            data.cell.styles.textColor = [13, 148, 136];
+            data.cell.styles.lineWidth = { top: 0.1 };
+            data.cell.styles.lineColor = [200, 200, 200];
+          }
+        },
+        didDrawPage: (data: any) => drawPdfFooter(doc, data.pageNumber),
+      });
+
+      doc.save(`ventas_por_vendedor_${startDate}_${endDate}.pdf`);
+    } catch (err: any) {
+      showToast(`Error al generar PDF: ${err.message}`, 'error');
+    }
+  });
+}
+
+(window as any).renderSalesBySellerReport = renderSalesBySellerReport;
 

@@ -2353,8 +2353,36 @@ const API = {
       throw new Error('No se pudo determinar una cuenta contable para el Flete. Por favor configure "freight_code" en los parámetros del POS o Ventas.');
     };
 
-    // ── Registrar débito por recaudo/CxC (Soportando Pago Mixto) ───────────
-    if (inv.payment_method === 'MIXTO') {
+    // ── Obtener parámetros de ventas para verificar regla de Tercero Especial ──
+    let specialThirdPartyId = '';
+    let specialAccountCode = '';
+    try {
+      const rawSalesCfg = await this.getSetting('sales_settings_v2');
+      if (rawSalesCfg) {
+        const sc = JSON.parse(rawSalesCfg);
+        specialThirdPartyId = String(sc?.accounting?.accounts?.special_third_party_id || '').trim();
+        specialAccountCode = String(sc?.accounting?.accounts?.special_account_code || '').trim();
+      }
+    } catch (_) { }
+
+    const isSpecialThirdParty = Boolean(
+      specialThirdPartyId && 
+      specialAccountCode && 
+      inv.customer_id === specialThirdPartyId
+    );
+
+    // ── Registrar débito por recaudo/CxC / Cuenta Preestablecida ──────────────
+    if (isSpecialThirdParty) {
+      const specialAcc = await findAccByCode(specialAccountCode);
+      txLines.push(await buildTxLine({
+        accountId: specialAcc.id,
+        thirdPartyId: inv.customer_id,
+        debit: rDec(inv.payable_total),
+        credit: 0,
+        description: `${docLabel} ${inv.number} (Contabilización Especial Tercero)`,
+        crossDocRef: inv.number,
+      }));
+    } else if (inv.payment_method === 'MIXTO') {
       let split = {};
       try {
         split = typeof inv.payment_split === 'string' ? JSON.parse(inv.payment_split) : (inv.payment_split || {});

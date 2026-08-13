@@ -5197,6 +5197,10 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
         const totalEmpleador = records.reduce((s: number, r: any) => s + (r.total_empleador || 0), 0);
 
         const aprobsCount = records.filter((r: any) => r.estado_dian === 'APROBADO').length;
+        const globalStatusBadge = aprobsCount === records.length
+          ? '<span class="badge badge-green font-bold">TODOS APROBADOS DIAN</span>'
+          : `<span class="badge font-bold" style="background:#FFF3CD;color:#856404">${aprobsCount} DE ${records.length} APROBADOS</span>`;
+
         const neResolutions = await pb.listAll('dian_resolutions', { filter: 'document_type="NE" && active=true' }).catch(() => []);
         const activeNeRes = neResolutions[0] || null;
 

@@ -37,6 +37,15 @@ async function renderTerceros(c) {
   try {
     const rows = await pb.listAll('third_parties', { sort: 'name' });
 
+    // Mapa de resolución para Asesores Comerciales (ID -> Nombre legible)
+    const tpMap = new Map<string, string>();
+    rows.forEach((r: any) => {
+      if (r.id) {
+        const nameVal = r.name || [r.first_name, r.last_name].filter(Boolean).join(' ') || r.business_name || r.doc_number || r.id;
+        tpMap.set(r.id, r.doc_number ? `${r.doc_number} - ${nameVal}` : nameVal);
+      }
+    });
+
     const personBadge = (pt) => {
       if (pt === 'JURIDICA') return '<span class="badge badge-blue"><i class="fas fa-building mr-1"></i>Jurídica</span>';
       return '<span class="badge badge-gray"><i class="fas fa-user mr-1"></i>Natural</span>';
@@ -85,11 +94,13 @@ async function renderTerceros(c) {
           <thead>
             <tr>
               <th>Persona</th><th>Documento</th><th>Nombre / Razón Social</th>
-              <th>Correo</th><th>Ciudad</th><th>Rol</th><th>Estado</th><th>Acciones</th>
+              <th>Correo</th><th>Ciudad</th><th>Rol</th><th>Asesor Comercial</th><th>Estado</th><th>Acciones</th>
             </tr>
           </thead>
           <tbody>
-            ${rows.length ? rows.map(r => `
+            ${rows.length ? rows.map(r => {
+              const resolvedAdvisor = r.advisor ? (tpMap.get(r.advisor) || r.advisor_name || r.advisor) : '—';
+              return `
               <tr data-type="${esc(r.type)}" data-person="${esc(r.person_type||'NATURAL')}">
                 <td>${personBadge(r.person_type)}</td>
                 <td><span class="font-semibold">${esc(r.doc_type)} ${esc(r.doc_number)}${r.dv?`-${esc(r.dv)}`:''}</span></td>
@@ -97,6 +108,7 @@ async function renderTerceros(c) {
                 <td>${esc(r.email||'—')}</td>
                 <td>${esc(r.city||'—')}</td>
                 <td>${typeBadge(r.type)}</td>
+                <td>${r.advisor ? `<span class="badge badge-gray text-xs" style="white-space:nowrap" title="${esc(resolvedAdvisor)}"><i class="fas fa-user-tag mr-1" style="color:#0D9488"></i>${esc(resolvedAdvisor)}</span>` : '<span style="color:#9CA3AF">—</span>'}</td>
                 <td>${r.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
                 <td>
                   <div class="flex gap-2">
@@ -111,8 +123,9 @@ async function renderTerceros(c) {
                     ` : ''}
                   </div>
                 </td>
-              </tr>`).join('') :
-              '<tr><td colspan="8" class="text-center py-10" style="color:#9CA3AF">No hay terceros registrados.</td></tr>'}
+              </tr>`;
+            }).join('') :
+              '<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF">No hay terceros registrados.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -124,7 +137,7 @@ async function renderTerceros(c) {
       const t  = $('#tp-type')?.value ?? '';
       const s  = $('#tp-status')?.value ?? '';
       $$('#tp-table tbody tr').forEach(tr => {
-        const active = tr.children[6]?.textContent.includes('Activo');
+        const active = tr.children[7]?.textContent.includes('Activo');
         tr.style.display = (
           (!q  || tr.textContent.toLowerCase().includes(q)) &&
           (!pt || (tr.dataset.person || '') === pt) &&
@@ -1000,6 +1013,17 @@ async function editTercero(id) {
       const cityName = row.city.trim().toUpperCase();
       const found = geoMunisByDept(row.dept_code).find(m => m.name === cityName);
       if (found) row.city_code = found.code;
+    }
+    // Resolver advisor_name legible si advisor posee un ID de registro raw
+    if (row.advisor) {
+      if (!row.advisor_name || row.advisor_name === row.advisor || !row.advisor_name.includes(' ')) {
+        try {
+          const advRec = await pb.get('third_parties', row.advisor);
+          if (advRec) {
+            row.advisor_name = `${advRec.doc_number ? advRec.doc_number + ' - ' : ''}${advRec.name}`;
+          }
+        } catch (_) {}
+      }
     }
     openTerceroForm(row);
   } catch (err) { showToast(err.message, 'error'); }

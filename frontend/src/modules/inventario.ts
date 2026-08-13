@@ -87,12 +87,19 @@ function _renderInvPage(c, activeTab, ctx = {}) {
 async function renderStockTab(c, ctx = {}) {
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando stock...</div>`;
   try {
-    const [stock, warehouses] = await Promise.all([
-      API.getInventoryStock(),
-      API.getWarehouses(false),
-    ]);
-    ctx.stock      = stock;
+    const warehouses = ctx.warehouses ? ctx.warehouses : await API.getWarehouses(false);
     ctx.warehouses = warehouses;
+
+    const todayDate = todayStr();
+    const asOfDateVal = (ctx as any).asOfDate || todayDate;
+
+    let stock = [];
+    if (asOfDateVal === todayDate) {
+      stock = await API.getInventoryStock();
+    } else {
+      stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal });
+    }
+    ctx.stock = stock;
 
     const totalSkus    = new Set(stock.map(s => s.product_id)).size;
     const totalUnits   = stock.reduce((a, s) => a + (s.qty_on_hand || 0), 0);
@@ -109,17 +116,24 @@ async function renderStockTab(c, ctx = {}) {
 
       <!-- Filtros -->
       <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
-        <div class="flex flex-wrap gap-3 flex-1">
+        <div class="flex flex-wrap gap-3 flex-1 items-center">
           <input id="st-q" class="form-input min-w-48" placeholder="Buscar producto...">
-          <select id="st-wh" class="form-input" style="max-width:220px">
+          <select id="st-wh" class="form-input" style="max-width:200px">
             <option value="">Todas las bodegas</option>
             ${warehouses.map(w => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
           </select>
-          <select id="st-status" class="form-input" style="max-width:180px">
+          <select id="st-status" class="form-input" style="max-width:160px">
             <option value="">Todo el stock</option>
             <option value="ok">Con stock</option>
             <option value="zero">Sin stock / Agotado</option>
           </select>
+          <div class="flex items-center gap-1.5 bg-blue-50/70 p-1.5 rounded-xl border border-blue-200">
+            <span class="text-xs font-bold text-blue-900 ml-1"><i class="fas fa-calendar-day mr-1"></i>Corte:</span>
+            <input type="date" id="st-as-of-date" class="form-input text-xs py-1 px-2 border-blue-300" value="${asOfDateVal}">
+            <button id="btn-apply-as-of" class="btn btn-primary py-1 px-2.5 text-xs" title="Consultar stock a la fecha de corte">
+              <i class="fas fa-filter mr-1"></i>Filtrar
+            </button>
+          </div>
         </div>
         ${['superadmin', 'admin'].includes(_pb().currentUser?.role) ? `
           <button id="btn-recalc-stock" class="btn btn-secondary flex items-center gap-1.5" style="border-radius:12px; font-size:13px; padding:6px 12px">
@@ -138,7 +152,7 @@ async function renderStockTab(c, ctx = {}) {
                 <th>Bodega</th>
                 <th class="text-right">Mínimo</th>
                 <th class="text-right">Máximo</th>
-                <th class="text-right">Stock</th>
+                <th class="text-right">Stock (${asOfDateVal === todayDate ? 'Actual' : 'al ' + asOfDateVal})</th>
                 <th class="text-right">Costo prom.</th>
                 <th class="text-right">Valor total</th>
                 <th>Estado Alerta</th>
@@ -146,7 +160,7 @@ async function renderStockTab(c, ctx = {}) {
               </tr>
             </thead>
             <tbody id="stock-tbody">
-              ${stock.length ? renderStockRows(stock) : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado.</td></tr>`}
+              ${stock.length ? renderStockRows(stock) : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-boxes-stacked mr-2"></i>No hay stock registrado a la fecha seleccionada.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -156,6 +170,12 @@ async function renderStockTab(c, ctx = {}) {
     $('#st-q')?.addEventListener('input', debounce(applyStockFilter, 150));
     $('#st-wh')?.addEventListener('change', applyStockFilter);
     $('#st-status')?.addEventListener('change', applyStockFilter);
+
+    $('#btn-apply-as-of')?.addEventListener('click', () => {
+      const selectedDate = (document.getElementById('st-as-of-date') as HTMLInputElement)?.value;
+      (ctx as any).asOfDate = selectedDate;
+      renderStockTab(c, ctx);
+    });
 
     $('#btn-recalc-stock')?.addEventListener('click', () => {
       const confirm = (window as any).confirmDialog;
@@ -2543,9 +2563,13 @@ async function renderReportesTab(c: HTMLElement, ctx: any = {}) {
           </div>
           <div class="space-y-3 mb-4">
             <div>
+              <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha de Corte <span class="text-blue-600">(Opcional)</span></label>
+              <input type="date" id="rep-gen-date" class="form-input text-xs w-full" value="${todayStr()}">
+            </div>
+            <div>
               <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Costo a Reportar</label>
               <select id="rep-gen-cost" class="form-input text-xs w-full">
-                <option value="promedio">Costo Promedio Actual (Kardex)</option>
+                <option value="promedio">Costo Promedio (Kardex a Fecha)</option>
                 <option value="ultimo">Último Costo del Producto</option>
               </select>
             </div>
@@ -2760,9 +2784,18 @@ async function _updateTomaFisicaSystemStock(whId: string) {
     tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400"><i class="fas fa-warehouse text-2xl mb-2"></i><p>Selecciona una bodega para listar las existencias.</p></td></tr>`;
     return;
   }
-  tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando existencias...</td></tr>`;
+  tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando existencias a la fecha de corte...</td></tr>`;
   try {
-    const stock = await API.getInventoryStock({ warehouseId: whId });
+    const asOfDateVal = (getInputVal('toma-date') || todayStr()).slice(0, 10);
+    const isToday = (asOfDateVal === todayStr());
+
+    let stock = [];
+    if (isToday) {
+      stock = await API.getInventoryStock({ warehouseId: whId });
+    } else {
+      stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal, warehouseId: whId });
+    }
+
     const stockByProd = new Map(stock.map((s: any) => [s.product_id, s]));
     const products = (window as any)._tomaProducts || [];
     if (!products.length) {
@@ -2780,7 +2813,7 @@ async function _updateTomaFisicaSystemStock(whId: string) {
           <td class="p-2 text-xs text-gray-500">${esc(p.unit || '—')}</td>
           <td class="p-2 text-right font-semibold text-gray-700" id="toma-sys-${p.id}">${fmtN(systemStock)}</td>
           <td class="p-2 text-right">
-            <input type="number" min="0" step="0.0001" 
+            <input type="number" step="0.0001" 
               class="form-input text-right w-24 py-1 text-xs toma-phys-input" 
               id="toma-phys-${p.id}" 
               data-prodid="${p.id}" 
@@ -3000,7 +3033,7 @@ async function _openTomaFisicaModal() {
         </div>
         <div class="form-group">
           <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Fecha de Ajuste <span class="text-red-500">*</span></label>
-          <input id="toma-date" type="date" class="form-input text-xs w-full" value="${todayStr()}">
+          <input id="toma-date" type="date" class="form-input text-xs w-full" value="${todayStr()}" onchange="window._updateTomaFisicaSystemStock(getSelectVal('toma-wh'))">
         </div>
         <div class="form-group">
           <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Costo a Utilizar <span class="text-red-500">*</span></label>
@@ -3311,19 +3344,27 @@ async function _saveTomaFisica() {
 (window as any)._printReport = async (type: string) => {
   try {
     const pb = _pb();
-    const [products, stock, warehouses] = await Promise.all([
+    const [products, warehouses] = await Promise.all([
       pb.listAll('products', { filter: 'active=true', sort: 'code' }),
-      API.getInventoryStock(),
       API.getWarehouses(false)
     ]);
 
     const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
     
     if (type === 'general') {
+      const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
+      const isToday = (asOfDateVal === todayStr());
       const whId = getSelectVal('rep-gen-wh');
       const costType = getSelectVal('rep-gen-cost');
       const catVal = getSelectVal('rep-gen-cat');
       const lineVal = getSelectVal('rep-gen-line');
+
+      let stock = [];
+      if (isToday) {
+        stock = await API.getInventoryStock();
+      } else {
+        stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal });
+      }
       
       const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
       const stockByProd = new Map();
@@ -3699,19 +3740,27 @@ async function _saveTomaFisica() {
 (window as any)._exportReport = async (type: string) => {
   try {
     const pb = _pb();
-    const [products, stock, warehouses] = await Promise.all([
+    const [products, warehouses] = await Promise.all([
       pb.listAll('products', { filter: 'active=true', sort: 'code' }),
-      API.getInventoryStock(),
       API.getWarehouses(false)
     ]);
 
     const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
 
     if (type === 'general') {
+      const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
+      const isToday = (asOfDateVal === todayStr());
       const whId = getSelectVal('rep-gen-wh');
       const costType = getSelectVal('rep-gen-cost');
       const catVal = getSelectVal('rep-gen-cat');
       const lineVal = getSelectVal('rep-gen-line');
+
+      let stock = [];
+      if (isToday) {
+        stock = await API.getInventoryStock();
+      } else {
+        stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal });
+      }
       
       const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
       const stockByProd = new Map();

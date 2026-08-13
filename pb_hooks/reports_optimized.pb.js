@@ -1411,3 +1411,219 @@ routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
     return c.json(500, { error: "Error en reporte de ventas por vendedor: " + err.message });
   }
 });
+
+routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
+  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  if (!authRecord) {
+    return c.json(401, { error: "No autorizado" });
+  }
+
+  let asOfDate = "";
+  try {
+    asOfDate = c.queryParam("asOfDate") || "";
+  } catch (_) {
+    try {
+      asOfDate = c.QueryParam("asOfDate") || "";
+    } catch (_) {
+      try {
+        const q = c.requestInfo().query;
+        if (q && q.asOfDate) {
+          asOfDate = Array.isArray(q.asOfDate) ? q.asOfDate[0] : q.asOfDate;
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!asOfDate) {
+    asOfDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  } else {
+    asOfDate = asOfDate.slice(0, 10);
+  }
+
+  let warehouseId = "";
+  try { warehouseId = c.queryParam("warehouseId") || ""; } catch (_) {}
+  let categoryId = "";
+  try { categoryId = c.queryParam("category") || ""; } catch (_) {}
+  let lineId = "";
+  try { lineId = c.queryParam("line") || ""; } catch (_) {}
+
+  try {
+    // 1. Obtener productos tipo BIEN
+    let prodSql = `SELECT id, code, name, unit, cost_price, stock_min, stock_max, categoria, linea FROM products WHERE type = 'BIEN' AND active = 1`;
+    const prodBinds = {};
+    if (categoryId) {
+      prodSql += ` AND categoria = {:category}`;
+      prodBinds.category = categoryId;
+    }
+    if (lineId) {
+      prodSql += ` AND linea = {:line}`;
+      prodBinds.line = lineId;
+    }
+    prodSql += ` ORDER BY code ASC`;
+
+    const prodQuery = $app.db().newQuery(prodSql);
+    prodQuery.bind(prodBinds);
+
+    const prodsData = arrayOf(new DynamicModel({
+      id: "",
+      code: "",
+      name: "",
+      unit: "",
+      cost_price: -0,
+      stock_min: -0,
+      stock_max: -0,
+      categoria: "",
+      linea: ""
+    }));
+    prodQuery.all(prodsData);
+
+    const prodMap = {};
+    for (const p of prodsData) {
+      prodMap[p.id] = {
+        id: p.id,
+        code: p.code,
+        name: p.name,
+        unit: p.unit || 'UND',
+        cost_price: Number(p.cost_price || 0),
+        stock_min: p.stock_min !== null ? Number(p.stock_min) : null,
+        stock_max: p.stock_max !== null ? Number(p.stock_max) : null,
+        categoria: p.categoria || '',
+        linea: p.linea || ''
+      };
+    }
+
+    // 2. Obtener movimientos aplicados hasta la fecha de corte
+    let movSql = `
+      SELECT
+        l.product_id,
+        l.qty,
+        l.unit_cost,
+        l.line_order,
+        m.id AS mov_id,
+        m.mov_type,
+        m.warehouse_id,
+        m.dest_warehouse_id,
+        m.date AS mov_date
+      FROM inventory_movement_lines l
+      INNER JOIN inventory_movements m ON m.id = l.movement_id
+      WHERE m.status = 'applied'
+        AND m.date <= {:asOfDateLimit}
+    `;
+
+    const movBinds = { asOfDateLimit: asOfDate + " 23:59:59" };
+    if (warehouseId) {
+      movSql += ` AND (m.warehouse_id = {:warehouseId} OR m.dest_warehouse_id = {:warehouseId})`;
+      movBinds.warehouseId = warehouseId;
+    }
+
+    movSql += ` ORDER BY m.date ASC, l.line_order ASC`;
+
+    const movQuery = $app.db().newQuery(movSql);
+    movQuery.bind(movBinds);
+
+    const movsData = arrayOf(new DynamicModel({
+      product_id: "",
+      qty: -0,
+      unit_cost: -0,
+      line_order: 0,
+      mov_id: "",
+      mov_type: "",
+      warehouse_id: "",
+      dest_warehouse_id: "",
+      mov_date: ""
+    }));
+    movQuery.all(movsData);
+
+    // 3. Procesar cálculo de stock y costo promedio por producto/bodega
+    const stockMap = {}; // key: prodId + "_" + whId
+
+    for (const mov of movsData) {
+      if (!prodMap[mov.product_id]) continue; // Filtrado por categoría/línea si aplica
+
+      const prodId = mov.product_id;
+      const qty = Number(mov.qty || 0);
+      const cost = Number(mov.unit_cost || 0);
+      const mType = mov.mov_type;
+      const whOrig = mov.warehouse_id;
+      const whDest = mov.dest_warehouse_id;
+
+      const adjust = (pId, wId, qtyDelta, unitCost) => {
+        if (!wId) return 0;
+        if (warehouseId && wId !== warehouseId) return 0;
+
+        const key = pId + "_" + wId;
+        if (!stockMap[key]) {
+          stockMap[key] = {
+            product_id: pId,
+            warehouse_id: wId,
+            qty_on_hand: 0,
+            avg_cost: prodMap[pId] ? prodMap[pId].cost_price : 0,
+            last_mov_date: mov.mov_date
+          };
+        }
+
+        const st = stockMap[key];
+        const curQty = st.qty_on_hand;
+        const curCost = st.avg_cost;
+        const newQty = curQty + qtyDelta;
+        let newCost = curCost;
+
+        if (qtyDelta > 0 && unitCost !== null && unitCost !== undefined && unitCost > 0) {
+          if (newQty > 0) {
+            newCost = ((curQty * curCost) + (qtyDelta * unitCost)) / newQty;
+          } else {
+            newCost = unitCost;
+          }
+          newCost = Math.round(newCost * 100) / 100;
+        }
+
+        st.qty_on_hand = newQty;
+        st.avg_cost = newCost;
+        st.last_mov_date = mov.mov_date;
+        return newCost;
+      };
+
+      if (mType === "ENTRADA" || mType === "AJUSTE_POSITIVO") {
+        adjust(prodId, whOrig, qty, cost);
+      } else if (mType === "SALIDA" || mType === "AJUSTE_NEGATIVO") {
+        adjust(prodId, whOrig, -qty, null);
+      } else if (mType === "TRASLADO") {
+        const keyOrig = prodId + "_" + whOrig;
+        const origAvg = stockMap[keyOrig] ? stockMap[keyOrig].avg_cost : (prodMap[prodId]?.cost_price || 0);
+        adjust(prodId, whOrig, -qty, null);
+        if (whDest) {
+          adjust(prodId, whDest, qty, origAvg);
+        }
+      }
+    }
+
+    // 4. Formatear respuesta consolidada o por registro
+    const results = [];
+    const keys = Object.keys(stockMap);
+
+    for (const k of keys) {
+      const st = stockMap[k];
+      const prod = prodMap[st.product_id];
+      if (!prod) continue;
+
+      results.push({
+        product_id: st.product_id,
+        warehouse_id: st.warehouse_id,
+        qty_on_hand: st.qty_on_hand,
+        avg_cost: st.avg_cost,
+        last_mov_date: st.last_mov_date,
+        expand: {
+          product_id: prod
+        }
+      });
+    }
+
+    return c.json(200, {
+      asOfDate: asOfDate,
+      items: results
+    });
+  } catch (err) {
+    return c.json(500, { error: "Error obteniendo inventario a fecha de corte: " + err.message });
+  }
+});
+

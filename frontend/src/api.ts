@@ -726,6 +726,20 @@ const API = {
     });
   },
 
+  /** Stock de inventario proyectado a una fecha de corte (Kardex histórico) */
+  async getInventoryStockAsOf(opts: { asOfDate: string; warehouseId?: string; category?: string; line?: string }) {
+    const params = new URLSearchParams();
+    if (opts.asOfDate) params.append('asOfDate', opts.asOfDate);
+    if (opts.warehouseId) params.append('warehouseId', opts.warehouseId);
+    if (opts.category) params.append('category', opts.category);
+    if (opts.line) params.append('line', opts.line);
+
+    const res = await pb.send(`/api/gravy/report-inventory-as-of?${params.toString()}`, {
+      method: 'GET'
+    });
+    return res.items || [];
+  },
+
   /** Retorna si la configuración permite stock negativo en inventarios, POS o Ventas */
   async isNegativeStockAllowed(): Promise<boolean> {
     try {

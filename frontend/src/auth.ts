@@ -789,6 +789,57 @@ async function initGlobalBranchSelector() {
   }
 }
 
+/* -- Inicializar selector global de centros de costo ----------------- */
+async function initGlobalCostCenterSelector() {
+  const selector = document.getElementById('global-cost-center-selector') as HTMLSelectElement;
+  if (!selector) return;
+
+  const user = pb.currentUser;
+  if (!user) {
+    selector.style.display = 'none';
+    return;
+  }
+
+  try {
+    const allCC = await pb.listAll('cost_centers', { filter: 'active=true', sort: 'code', ignoreCostCenter: true });
+    selector.innerHTML = '';
+
+    const optAll = document.createElement('option');
+    optAll.value = 'TODOS';
+    optAll.textContent = 'TODOS LOS CENTROS DE COSTO';
+    selector.appendChild(optAll);
+
+    allCC.forEach((cc: any) => {
+      const opt = document.createElement('option');
+      opt.value = cc.id;
+      opt.textContent = `${cc.code} - ${cc.name}`;
+      selector.appendChild(opt);
+    });
+
+    let activeCostCenterId = localStorage.getItem('active_cost_center_id');
+    const options = Array.from(selector.options).map(o => o.value);
+    if (!activeCostCenterId || !options.includes(activeCostCenterId)) {
+      activeCostCenterId = 'TODOS';
+      localStorage.setItem('active_cost_center_id', activeCostCenterId);
+    }
+
+    selector.value = activeCostCenterId;
+    selector.style.display = 'inline-block';
+
+    selector.onchange = (e: any) => {
+      const newVal = e.target.value;
+      localStorage.setItem('active_cost_center_id', newVal);
+      const curPage = (window as any).currentPage || 'dashboard';
+      if (typeof (window as any).navigate === 'function') {
+        (window as any).navigate(curPage);
+      }
+    };
+  } catch (err) {
+    console.error('[GRAVY] Error inicializando selector de centros de costo:', err);
+    selector.style.display = 'none';
+  }
+}
+
 /* -- Mostrar app principal --------------------------------- */
 async function showApp() {
   const user = pb.currentUser;
@@ -842,8 +893,9 @@ async function showApp() {
   // Aplicar visibilidad de módulos según licencia + rol
   applyModuleVisibility();
 
-  // Inicializar selector global de sucursal
+  // Inicializar selectores globales de sucursal y centros de costo
   await initGlobalBranchSelector();
+  await initGlobalCostCenterSelector();
 
   // Topbar
   $('#topbar-company').textContent = activeCompany.company_name || 'GRAVY';

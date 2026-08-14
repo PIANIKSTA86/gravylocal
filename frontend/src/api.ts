@@ -47,16 +47,23 @@ const pb = {
     return h;
   },
 
-  /** GET /api/collections/:col/records con filtro y paginacin */
-  async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '', ignoreBranch = false } = {}) {
-    const branchScoped = ['transactions', 'tx_lines', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders'];
+  /** GET /api/collections/:col/records con filtro y paginación */
+  async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '', ignoreBranch = false, ignoreCostCenter = false } = {}) {
+    const branchScoped = ['transactions', 'tx_lines', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders', 'niif_assets'];
     const activeBranchId = localStorage.getItem('active_branch_id');
-    if (activeBranchId && activeBranchId !== 'TODAS' && branchScoped.includes(collection) && !ignoreBranch) {
+    if (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL' && branchScoped.includes(collection) && !ignoreBranch) {
       const branchFilter = `branch_id = "${this.escapeFilterValue(activeBranchId)}"`;
       filter = filter ? `(${filter}) && ${branchFilter}` : branchFilter;
     }
 
-    const params = new URLSearchParams({ page, perPage });
+    const costCenterScoped = ['tx_lines', 'inventory_movements', 'niif_assets'];
+    const activeCostCenterId = localStorage.getItem('active_cost_center_id');
+    if (activeCostCenterId && activeCostCenterId !== 'TODOS' && activeCostCenterId !== 'ALL' && costCenterScoped.includes(collection) && !ignoreCostCenter) {
+      const ccFilter = `cost_center_id = "${this.escapeFilterValue(activeCostCenterId)}"`;
+      filter = filter ? `(${filter}) && ${ccFilter}` : ccFilter;
+    }
+
+    const params = new URLSearchParams({ page: String(page), perPage: String(perPage) });
     if (filter) params.set('filter', filter);
     if (sort) params.set('sort', sort);
     if (expand) params.set('expand', expand);
@@ -93,7 +100,7 @@ const pb = {
   /** POST  crear registro */
   async create(collection, data) {
     if (data && typeof data === 'object' && !(data instanceof FormData)) {
-      const relFields = ['owner_id', 'occupant_id', 'account_id', 'property_id', 'concept_id', 'invoice_id', 'branch_id'];
+      const relFields = ['owner_id', 'occupant_id', 'account_id', 'property_id', 'concept_id', 'invoice_id', 'branch_id', 'cost_center_id'];
       for (const field of relFields) {
         if (field in data && (data[field] === '' || data[field] === undefined)) {
           data[field] = null;
@@ -105,7 +112,7 @@ const pb = {
     if (branchScoped.includes(collection) && data && typeof data === 'object' && !(data instanceof FormData)) {
       const activeBranchId = localStorage.getItem('active_branch_id');
       const user = this.currentUser;
-      const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS') 
+      const targetBranchId = (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL') 
         ? activeBranchId 
         : (user?.default_branch_id || null);
       
@@ -116,6 +123,12 @@ const pb = {
       // Clean up invalid branch_id relation value (must be 15 alphanumeric characters)
       if (data.branch_id !== undefined && data.branch_id !== null && data.branch_id !== '' && !/^[a-z0-9]{15}$/.test(String(data.branch_id))) {
         data.branch_id = null;
+      }
+    }
+
+    if (data && typeof data === 'object' && !(data instanceof FormData)) {
+      if (data.cost_center_id !== undefined && data.cost_center_id !== null && data.cost_center_id !== '' && !/^[a-z0-9]{15}$/.test(String(data.cost_center_id))) {
+        data.cost_center_id = null;
       }
     }
 
@@ -134,7 +147,7 @@ const pb = {
   /** PATCH  actualizar registro */
   async update(collection, id, data) {
     if (data && typeof data === 'object' && !(data instanceof FormData)) {
-      const relFields = ['owner_id', 'occupant_id', 'account_id', 'property_id', 'concept_id', 'invoice_id', 'branch_id'];
+      const relFields = ['owner_id', 'occupant_id', 'account_id', 'property_id', 'concept_id', 'invoice_id', 'branch_id', 'cost_center_id'];
       for (const field of relFields) {
         if (field in data && (data[field] === '' || data[field] === undefined)) {
           data[field] = null;
@@ -144,9 +157,14 @@ const pb = {
 
     const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders'];
     if (branchScoped.includes(collection) && data && typeof data === 'object' && !(data instanceof FormData)) {
-      // Clean up invalid branch_id relation value (must be 15 alphanumeric characters)
       if (data.branch_id !== undefined && data.branch_id !== null && data.branch_id !== '' && !/^[a-z0-9]{15}$/.test(String(data.branch_id))) {
         data.branch_id = null;
+      }
+    }
+
+    if (data && typeof data === 'object' && !(data instanceof FormData)) {
+      if (data.cost_center_id !== undefined && data.cost_center_id !== null && data.cost_center_id !== '' && !/^[a-z0-9]{15}$/.test(String(data.cost_center_id))) {
+        data.cost_center_id = null;
       }
     }
 

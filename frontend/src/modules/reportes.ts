@@ -13,6 +13,19 @@ let REPORT_STATE = {
   portfolioCache: {} as Record<string, any[]>,
 };
 
+function getScopeQueryParams(): string {
+  const branchId = localStorage.getItem('active_branch_id') || 'TODAS';
+  const costCenterId = localStorage.getItem('active_cost_center_id') || 'TODOS';
+  let q = '';
+  if (branchId && branchId !== 'TODAS' && branchId !== 'ALL') {
+    q += `&branch_id=${encodeURIComponent(branchId)}`;
+  }
+  if (costCenterId && costCenterId !== 'TODOS' && costCenterId !== 'ALL') {
+    q += `&cost_center_id=${encodeURIComponent(costCenterId)}`;
+  }
+  return q;
+}
+
 function initAccountSearch(inputEl: HTMLInputElement, hiddenEl: HTMLInputElement, resultsEl: HTMLElement, accounts: any[]) {
   if (!inputEl || !hiddenEl || !resultsEl) return;
 
@@ -594,7 +607,7 @@ async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thi
     return REPORT_STATE.portfolioCache[cacheKey];
   }
 
-  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}&sellerId=${encodeURIComponent(sellerId)}`, {
+  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}&sellerId=${encodeURIComponent(sellerId)}${getScopeQueryParams()}`, {
     method: 'GET'
   });
 
@@ -1382,7 +1395,7 @@ async function renderTrialBalance() {
 
     try {
       const { accounts } = await ensureAccountsSaldos();
-      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}`;
+      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
       const data: any[] = await pb.send(url, { method: 'GET' });
 
       const accountById = new Map(accounts.map(a => [a.id, {
@@ -2092,8 +2105,8 @@ async function renderIncomeStatement() {
       }
 
       const [balNow, balCmp] = await Promise.all([
-        pb.send(`/api/gravy/report-balances?startDate=${startNow}&endDate=${reportDate}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}`, { method: 'GET' })
+        pb.send(`/api/gravy/report-balances?startDate=${startNow}&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
       ]);
 
       const roots4 = getPeriodBalances(accounts, balNow, balCmp, '4');
@@ -2692,8 +2705,8 @@ async function renderFinancialPosition() {
       const startCmp = '';
 
       const [balNow, balCmp] = await Promise.all([
-        pb.send(`/api/gravy/report-balances?startDate=${startNow}&endDate=${reportDate}`, { method: 'GET' }),
-        pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}`, { method: 'GET' })
+        pb.send(`/api/gravy/report-balances?startDate=${startNow}&endDate=${reportDate}${getScopeQueryParams()}`, { method: 'GET' }),
+        pb.send(`/api/gravy/report-balances?startDate=${startCmp}&endDate=${compareDate}${getScopeQueryParams()}`, { method: 'GET' })
       ]);
 
       const actCorr = groupSection(accounts, balNow, balCmp, a => ['11', '12', '13', '14'].some(prefix => String(a.code || '').startsWith(prefix)), 'asset', showNotes, maxLevel);
@@ -3058,7 +3071,7 @@ async function renderFinancialPosition() {
 }
 
 async function fetchFilteredJournalData(fromDate: string, toDate: string, txTypeId: string | null) {
-  return pb.send(`/api/gravy/report-journal?fromDate=${fromDate}&toDate=${toDate}&txTypeId=${txTypeId || ''}`, { method: 'GET' });
+  return pb.send(`/api/gravy/report-journal?fromDate=${fromDate}&toDate=${toDate}&txTypeId=${txTypeId || ''}${getScopeQueryParams()}`, { method: 'GET' });
 }
 
 async function renderJournalBook() {
@@ -3832,7 +3845,7 @@ async function generateAuxiliaryRows() {
 
     // Consultar el endpoint optimizado del Libro Auxiliar
     const accIdsParam = allowedAccountIds ? Array.from(allowedAccountIds).join(',') : '';
-    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}`, { method: 'GET' });
+    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}${getScopeQueryParams()}`, { method: 'GET' });
     const { openingBalances, periodLines } = res;
 
     // ── Saldos anteriores (movimientos ANTES de dateFrom) ──
@@ -5227,7 +5240,7 @@ async function renderClientPaymentsHistory() {
 
       // Endpoint de consulta indexada ultrarrápido (del lado del servidor)
       const res: any = await pb.send(
-        `/api/gravy/report-auxiliary?fromDate=${start}&toDate=${end}&thirdId=${thirdId}&accountIds=${cxcAccIds}`,
+        `/api/gravy/report-auxiliary?fromDate=${start}&toDate=${end}&thirdId=${thirdId}&accountIds=${cxcAccIds}${getScopeQueryParams()}`,
         { method: 'GET' }
       );
 
@@ -8706,7 +8719,7 @@ async function generateCashFlowReportRows() {
   results.innerHTML = '<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando Flujo de Caja...</div>';
 
   try {
-    const res: any = await pb.send(`/api/gravy/report-cash-flow?fromDate=${fromDate}&toDate=${toDate}`, { method: 'GET' });
+    const res: any = await pb.send(`/api/gravy/report-cash-flow?fromDate=${fromDate}&toDate=${toDate}${getScopeQueryParams()}`, { method: 'GET' });
     const { initialBalance, flowItems } = res;
 
     // Compute totals
@@ -12972,7 +12985,7 @@ async function generateAccountStatementRows() {
       allowedAccIdsStr = cxpAccs.join(',');
     }
 
-    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&thirdId=${thirdId}&accountIds=${allowedAccIdsStr}`, { method: 'GET' });
+    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&thirdId=${thirdId}&accountIds=${allowedAccIdsStr}${getScopeQueryParams()}`, { method: 'GET' });
     const { openingBalances, periodLines } = res;
 
     let initialBalance = 0;

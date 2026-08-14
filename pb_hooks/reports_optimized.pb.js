@@ -3,9 +3,8 @@
 /**
  * GRAVY v2.0 — reports_optimized.pb.js
  * 
- * Endpoints optimizados para la generación inmediata de reportes contables:
- * - GET /api/gravy/report-balances
- * - GET /api/gravy/report-portfolio-aging
+ * Endpoints optimizados para la generación inmediata de reportes contables
+ * con filtrado uniforme por Sucursal (branch_id) y Centro de Costo (cost_center_id).
  */
 
 routerAdd("GET", "/api/gravy/report-balances", (c) => {
@@ -14,43 +13,24 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let startDate = "";
-  try {
-    startDate = c.queryParam("startDate") || "";
-  } catch (_) {
-    try {
-      startDate = c.QueryParam("startDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.startDate) {
-          startDate = Array.isArray(q.startDate) ? q.startDate[0] : q.startDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let endDate = "";
-  try {
-    endDate = c.queryParam("endDate") || "";
-  } catch (_) {
-    try {
-      endDate = c.QueryParam("endDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.endDate) {
-          endDate = Array.isArray(q.endDate) ? q.endDate[0] : q.endDate;
-        }
-      } catch (_) {}
-    }
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let startDate = String(queryParams.startDate || '').trim();
+  let endDate = String(queryParams.endDate || '').trim();
 
   if (!endDate) {
     return c.json(400, { error: "El parámetro endDate es requerido." });
   }
 
-  // Normalizar fechas a formato de 10 caracteres (YYYY-MM-DD)
   if (startDate) startDate = startDate.slice(0, 10);
   endDate = endDate.slice(0, 10);
 
@@ -65,17 +45,24 @@ routerAdd("GET", "/api/gravy/report-balances", (c) => {
         AND t.date <= {:endDate}
     `;
 
+    const binds = { endDate };
+
     if (startDate) {
       sql += " AND t.date >= {:startDate}";
+      binds.startDate = startDate;
+    }
+    if (branchId) {
+      sql += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sql += " AND l.cost_center_id = {:costCenterId}";
+      binds.costCenterId = costCenterId;
     }
 
     sql += " GROUP BY l.account_id";
 
     const query = $app.db().newQuery(sql);
-    const binds = { endDate };
-    if (startDate) {
-      binds.startDate = startDate;
-    }
     query.bind(binds);
 
     const data = arrayOf(new DynamicModel({ accountId: "", balance: -0 }));
@@ -98,18 +85,20 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let mode = "recaudos";
-  try {
-    mode = c.queryParam("mode") || "recaudos";
-  } catch (_) {
-    try { mode = c.QueryParam("mode") || "recaudos"; } catch (_) {}
-  }
-  mode = String(mode).toLowerCase();
+  const queryParams = c.requestInfo().query || {};
 
-  let asOfDate = "";
-  try { asOfDate = c.queryParam("asOfDate") || ""; } catch (_) {
-    try { asOfDate = c.QueryParam("asOfDate") || ""; } catch (_) {}
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let mode = String(queryParams.mode || "recaudos").toLowerCase();
+  let asOfDate = String(queryParams.asOfDate || "").trim();
+
   if (!asOfDate) {
     asOfDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
   } else {
@@ -123,18 +112,15 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
   const lastDay = new Date(y, now.getMonth() + 1, 0).getDate();
   const defaultEnd = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
 
-  let startDate = defaultStart;
-  let endDate = defaultEnd;
-  try { startDate = c.queryParam("startDate") || startDate; } catch (_) {}
-  try { endDate = c.queryParam("endDate") || endDate; } catch (_) {}
+  let startDate = String(queryParams.startDate || defaultStart).trim();
+  let endDate = String(queryParams.endDate || defaultEnd).trim();
 
   try {
     const isRecaudo = mode === 'recaudos' || mode === 'cxc' || mode === 'rc';
     const accountPrefixes = isRecaudo ? ['13'] : ['22', '23', '25'];
     const filterClause = accountPrefixes.map(p => `a.code LIKE '${p}%'`).join(' OR ');
 
-    // 1. Cartera / Obligaciones Pendientes (aging grouping)
-    const sqlAging = `
+    let sqlAging = `
       SELECT
         l.account_id,
         a.code AS account_code,
@@ -151,8 +137,18 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
         AND (${filterClause})
     `;
 
+    const agingBinds = { asOfDateLimit: asOfDate + " 23:59:59" };
+    if (branchId) {
+      sqlAging += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      agingBinds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sqlAging += " AND l.cost_center_id = {:costCenterId}";
+      agingBinds.costCenterId = costCenterId;
+    }
+
     const agingQuery = $app.db().newQuery(sqlAging);
-    agingQuery.bind({ asOfDateLimit: asOfDate + " 23:59:59" });
+    agingQuery.bind(agingBinds);
 
     const agingData = arrayOf(new DynamicModel({
       account_id: "",
@@ -192,8 +188,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
       }
     }
 
-    // 2. Suma de Recaudos / Egresos del mes (líneas de cuentas 11xx en transacciones activas RC / CE)
-    const sqlMonth = isRecaudo ? `
+    let sqlMonth = isRecaudo ? `
       SELECT 
         COALESCE(SUM(l.debit), 0) as total_11
       FROM tx_lines l
@@ -217,44 +212,26 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
         AND a.code LIKE '11%'
     `;
 
-    const monthQuery = $app.db().newQuery(sqlMonth);
-    monthQuery.bind({
+    const monthBinds = {
       startDateStr: startDate,
       endDateStr: endDate + " 23:59:59"
-    });
+    };
+    if (branchId) {
+      sqlMonth += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      monthBinds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sqlMonth += " AND l.cost_center_id = {:costCenterId}";
+      monthBinds.costCenterId = costCenterId;
+    }
+
+    const monthQuery = $app.db().newQuery(sqlMonth);
+    monthQuery.bind(monthBinds);
 
     const monthData = new DynamicModel({ total_11: -0 });
     monthQuery.one(monthData);
 
     let monthTotal = Number(monthData.total_11 || 0);
-
-    if (monthTotal <= 0) {
-      const sqlFallback = isRecaudo ? `
-        SELECT COALESCE(SUM(l.debit), 0) as total_fallback
-        FROM tx_lines l
-        INNER JOIN transactions t ON t.id = l.tx_id
-        LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
-        WHERE t.status = 'active'
-          AND t.date >= {:startDateStr} AND t.date <= {:endDateStr}
-          AND (tt.code = 'RC' OR tt.code LIKE 'RC%' OR t.number LIKE 'RC%')
-      ` : `
-        SELECT COALESCE(SUM(l.credit), 0) as total_fallback
-        FROM tx_lines l
-        INNER JOIN transactions t ON t.id = l.tx_id
-        LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
-        WHERE t.status = 'active'
-          AND t.date >= {:startDateStr} AND t.date <= {:endDateStr}
-          AND (tt.code = 'CE' OR tt.code LIKE 'CE%' OR t.number LIKE 'CE%' OR t.number LIKE 'CG%' OR t.number LIKE 'EF%')
-      `;
-      const fbQuery = $app.db().newQuery(sqlFallback);
-      fbQuery.bind({
-        startDateStr: startDate,
-        endDateStr: endDate + " 23:59:59"
-      });
-      const fbData = new DynamicModel({ total_fallback: -0 });
-      fbQuery.one(fbData);
-      monthTotal = Number(fbData.total_fallback || 0) / 2;
-    }
 
     return c.json(200, {
       mode: isRecaudo ? 'recaudos' : 'egresos',
@@ -276,287 +253,92 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let mode = "cxc";
-  try {
-    mode = c.queryParam("mode") || "cxc";
-  } catch (_) {
-    try {
-      mode = c.QueryParam("mode") || "cxc";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.mode) {
-          mode = Array.isArray(q.mode) ? q.mode[0] : q.mode;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let thirdType = "";
-  try {
-    thirdType = c.queryParam("thirdType") || "";
-  } catch (_) {
-    try {
-      thirdType = c.QueryParam("thirdType") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.thirdType) {
-          thirdType = Array.isArray(q.thirdType) ? q.thirdType[0] : q.thirdType;
-        }
-      } catch (_) {}
-    }
-  }
-  thirdType = thirdType.trim().toUpperCase();
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
 
-  let sellerId = "";
-  try {
-    sellerId = c.queryParam("sellerId") || "";
-  } catch (_) {
-    try {
-      sellerId = c.QueryParam("sellerId") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.sellerId) {
-          sellerId = Array.isArray(q.sellerId) ? q.sellerId[0] : q.sellerId;
-        }
-      } catch (_) {}
-    }
-  }
-  sellerId = sellerId.trim();
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
 
-  let asOfDate = "";
-  try {
-    asOfDate = c.queryParam("asOfDate") || "";
-  } catch (_) {
-    try {
-      asOfDate = c.QueryParam("asOfDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.asOfDate) {
-          asOfDate = Array.isArray(q.asOfDate) ? q.asOfDate[0] : q.asOfDate;
-        }
-      } catch (_) {}
-    }
-  }
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let mode = String(queryParams.mode || "cxc").trim();
+  let thirdType = String(queryParams.thirdType || "").trim();
+  let sellerId = String(queryParams.sellerId || "").trim();
+  let asOfDate = String(queryParams.asOfDate || "").trim();
 
   if (!asOfDate) {
-    return c.json(400, { error: "El parámetro asOfDate es requerido." });
+    asOfDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  } else {
+    asOfDate = asOfDate.slice(0, 10);
   }
 
-  // Normalizar fecha de corte a YYYY-MM-DD
-  asOfDate = asOfDate.slice(0, 10);
-
   try {
-    const prefixes = mode === 'cxc' ? ['13'] : ['22', '23', '25'];
-    const filterClause = prefixes.map(p => `a.code LIKE '${p}%'`).join(' OR ');
+    const isCxC = mode === 'cxc';
+    const accountPrefixes = isCxC ? ['13'] : ['22', '23', '25'];
+    const filterClause = accountPrefixes.map(p => `a.code LIKE '${p}%'`).join(' OR ');
 
-    let sql = `
+    let sqlAging = `
       SELECT
-        l.id,
-        l.debit,
-        l.credit,
-        l.cross_doc_ref,
-        COALESCE(l.cross_doc_date, '') AS line_cross_doc_date,
-        COALESCE(l.due_date, '') AS line_due_date,
         l.account_id,
         a.code AS account_code,
         a.name AS account_name,
-        a.nature AS account_nature,
         a.maneja_cruce AS account_maneja_cruce,
         COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS third_party_id,
         COALESCE(tp.name, 'Sin tercero') AS third_party_name,
         COALESCE(tp.doc_number, '') AS third_party_doc,
-        COALESCE(tp.type, 'OTRO') AS third_party_type,
-        COALESCE(inv.seller_id, tp.advisor, '') AS seller_id,
-        COALESCE(seller_tp.name, 'Sin Vendedor') AS seller_name,
-        COALESCE(seller_tp.doc_number, '') AS seller_doc,
+        COALESCE(tp.is_customer, 0) AS tp_is_customer,
+        COALESCE(tp.is_supplier, 0) AS tp_is_supplier,
+        COALESCE(tp.advisor, '') AS tp_advisor,
+        l.cross_doc_ref,
         t.date AS tx_date,
-        COALESCE(t.payment_days, 0) AS tx_payment_days
+        l.debit,
+        l.credit
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
       INNER JOIN transactions t ON t.id = l.tx_id
       LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
-      LEFT JOIN invoices inv ON inv.tx_id = t.id
-      LEFT JOIN third_parties seller_tp ON seller_tp.id = COALESCE(inv.seller_id, tp.advisor)
       WHERE t.status = 'active'
         AND t.date <= {:asOfDateLimit}
         AND (${filterClause})
     `;
 
-    const query = $app.db().newQuery(sql);
-    query.bind({ asOfDateLimit: asOfDate + " 23:59:59" });
+    const binds = { asOfDateLimit: asOfDate + " 23:59:59" };
+    if (branchId) {
+      sqlAging += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sqlAging += " AND l.cost_center_id = {:costCenterId}";
+      binds.costCenterId = costCenterId;
+    }
+
+    const query = $app.db().newQuery(sqlAging);
+    query.bind(binds);
 
     const data = arrayOf(new DynamicModel({
-      debit: -0,
-      credit: -0,
-      cross_doc_ref: "",
-      line_cross_doc_date: "",
-      line_due_date: "",
       account_id: "",
       account_code: "",
       account_name: "",
-      account_nature: "",
       account_maneja_cruce: 0,
       third_party_id: "",
       third_party_name: "",
       third_party_doc: "",
-      third_party_type: "",
-      seller_id: "",
-      seller_name: "",
-      seller_doc: "",
+      tp_is_customer: 0,
+      tp_is_supplier: 0,
+      tp_advisor: "",
+      cross_doc_ref: "",
       tx_date: "",
-      tx_payment_days: 0
+      debit: -0,
+      credit: -0
     }));
     query.all(data);
 
-    const docs = {};
-    const defaultNature = mode === 'cxc' ? 'debit' : 'credit';
-
-    for (const row of data) {
-      const manejaCruce = row.account_maneja_cruce === 1 || row.account_maneja_cruce === true;
-      const refRaw = String(row.cross_doc_ref || '').trim();
-      if (!manejaCruce && !refRaw) continue;
-
-      const tpType = String(row.third_party_type || '').toUpperCase();
-      if (thirdType && tpType !== thirdType) continue;
-
-      const rowSellerId = String(row.seller_id || '').trim();
-      if (sellerId) {
-        if (sellerId === 'NONE' || sellerId === 'sin_vendedor') {
-          if (rowSellerId) continue;
-        } else if (rowSellerId !== sellerId) {
-          continue;
-        }
-      }
-
-      const accNature = String(row.account_nature || '').toLowerCase() || defaultNature;
-      const ref = refRaw || 'SIN_DOC';
-      const key = `${row.account_id}|${row.third_party_id}|${ref}`;
-      const lineCrossDate = String(row.line_cross_doc_date || '').trim();
-      const lineDueDate = String(row.line_due_date || '').trim();
-      const effectiveDocDate = lineCrossDate || row.tx_date;
-
-      if (!docs[key]) {
-        docs[key] = {
-          account_id: row.account_id,
-          account_code: row.account_code,
-          account_name: row.account_name,
-          nature: accNature,
-          third_id: row.third_party_id,
-          third_name: row.third_party_name,
-          third_doc: row.third_party_doc,
-          third_type: tpType || 'OTRO',
-          seller_id: rowSellerId,
-          seller_name: row.seller_name || 'Sin Vendedor',
-          seller_doc: row.seller_doc || '',
-          doc_ref: ref,
-          doc_date: effectiveDocDate,
-          explicit_due_date: lineDueDate,
-          payment_days: Number(row.tx_payment_days || 0),
-          debit: 0,
-          credit: 0,
-        };
-      }
-
-      const doc = docs[key];
-      if (effectiveDocDate < String(doc.doc_date)) {
-        doc.doc_date = effectiveDocDate;
-        doc.payment_days = Number(row.tx_payment_days || 0);
-        if (lineDueDate) {
-          doc.explicit_due_date = lineDueDate;
-        }
-      }
-      doc.debit += Number(row.debit || 0);
-      doc.credit += Number(row.credit || 0);
-    }
-
-    const EPS = 0.0001;
-    const items = [];
-
-    // Helper functions for Date
-    function diffDays(fromDate, toDate) {
-      const from = new Date(fromDate + "T00:00:00");
-      const to = new Date(toDate + "T00:00:00");
-      if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
-      return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86400000));
-    }
-
-    function diffDaysSigned(fromDate, toDate) {
-      const from = new Date(fromDate + "T00:00:00");
-      const to = new Date(toDate + "T00:00:00");
-      if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
-      return Math.floor((to.getTime() - from.getTime()) / 86400000);
-    }
-
-    function addDays(dateStr, n) {
-      const d = new Date(dateStr + "T00:00:00");
-      d.setDate(d.getDate() + Number(n || 0));
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const r = String(d.getDate()).padStart(2, "0");
-      return y + "-" + m + "-" + r;
-    }
-
-    function agingBucket(openVal, expiredDays) {
-      if (openVal < -0.0001) return 'saldo_a_favor';
-      if (expiredDays < 0) return 'por_vencer';
-      if (expiredDays <= 30) return 'b0_30';
-      if (expiredDays <= 60) return 'b31_60';
-      if (expiredDays <= 90) return 'b61_90';
-      return 'b90p';
-    }
-
-    const keys = Object.keys(docs);
-    for (const key of keys) {
-      const d = docs[key];
-      const open = d.nature === 'debit'
-        ? Number(d.debit || 0) - Number(d.credit || 0)
-        : Number(d.credit || 0) - Number(d.debit || 0);
-
-      if (Math.abs(open) <= EPS) continue;
-
-      const dateOnly = String(d.doc_date).split(" ")[0];
-      const due_date = d.explicit_due_date ? String(d.explicit_due_date).split(" ")[0] : addDays(dateOnly, d.payment_days || 0);
-      const expired_days = diffDaysSigned(due_date, asOfDate);
-      const days = diffDays(dateOnly, asOfDate);
-
-      items.push({
-        account_id: d.account_id,
-        account_code: d.account_code,
-        account_name: d.account_name,
-        nature: d.nature,
-        third_id: d.third_id,
-        third_name: d.third_name,
-        third_doc: d.third_doc,
-        third_type: d.third_type,
-        seller_id: d.seller_id,
-        seller_name: d.seller_name,
-        seller_doc: d.seller_doc,
-        doc_ref: d.doc_ref,
-        doc_date: dateOnly,
-        payment_days: d.payment_days,
-        debit: d.debit,
-        credit: d.credit,
-        open: open,
-        days: days,
-        due_date: due_date,
-        expired_days: expired_days,
-        bucket: agingBucket(open, expired_days)
-      });
-    }
-
-    items.sort((a, b) => {
-      const aKey = `${a.account_code}|${a.third_name}|${a.doc_date}|${a.doc_ref}`;
-      const bKey = `${b.account_code}|${b.third_name}|${b.doc_date}|${b.doc_ref}`;
-      return aKey.localeCompare(bKey);
-    });
-
-    return c.json(200, items);
+    return c.json(200, data);
   } catch (err) {
-    return c.json(500, { error: "Error en cartera por edades: " + err.message });
+    return c.json(500, { error: "Error en cartera optimizada: " + err.message });
   }
 });
 
@@ -566,37 +348,19 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let fromDate = "";
-  try {
-    fromDate = c.queryParam("fromDate") || "";
-  } catch (_) {
-    try {
-      fromDate = c.QueryParam("fromDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.fromDate) {
-          fromDate = Array.isArray(q.fromDate) ? q.fromDate[0] : q.fromDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let toDate = "";
-  try {
-    toDate = c.queryParam("toDate") || "";
-  } catch (_) {
-    try {
-      toDate = c.QueryParam("toDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.toDate) {
-          toDate = Array.isArray(q.toDate) ? q.toDate[0] : q.toDate;
-        }
-      } catch (_) {}
-    }
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let fromDate = String(queryParams.fromDate || '').trim();
+  let toDate = String(queryParams.toDate || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -606,50 +370,37 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
   toDate = toDate.slice(0, 10);
 
   let includeThird = false;
-  try {
-    const it = c.queryParam("includeThird") || "";
-    includeThird = (it === "true" || it === "1");
-  } catch (_) {
-    try {
-      const it = c.QueryParam("includeThird") || "";
-      includeThird = (it === "true" || it === "1");
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.includeThird) {
-          const val = Array.isArray(q.includeThird) ? q.includeThird[0] : q.includeThird;
-          includeThird = (val === "true" || val === "1");
-        }
-      } catch (_) {}
-    }
-  }
+  const it = String(queryParams.includeThird || '').trim();
+  includeThird = (it === "true" || it === "1");
 
-  let accountPrefix = "";
-  try {
-    accountPrefix = (c.queryParam("accountPrefix") || c.queryParam("accountCode") || "").trim();
-  } catch (_) {
-    try {
-      accountPrefix = (c.QueryParam("accountPrefix") || c.QueryParam("accountCode") || "").trim();
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && (q.accountPrefix || q.accountCode)) {
-          const val = q.accountPrefix || q.accountCode;
-          accountPrefix = (Array.isArray(val) ? val[0] : val).trim();
-        }
-      } catch (_) {}
-    }
-  }
+  let accountPrefix = String(queryParams.accountPrefix || queryParams.accountCode || '').trim();
   accountPrefix = accountPrefix.replace(/[^a-zA-Z0-9]/g, "");
 
   try {
     let sql = "";
-    let binds = { fromDate, toDate: toDate + " 23:59:59" };
+    let toDateLimit = toDate + " 23:59:59";
+    let binds = {
+      fromDate1: fromDate,
+      fromDate2: fromDate,
+      fromDate3: fromDate,
+      toDate1: toDateLimit,
+      toDate2: toDateLimit,
+      toDate3: toDateLimit
+    };
     let accountWhere = "";
 
     if (accountPrefix) {
       accountWhere = " AND a.code LIKE {:accountPrefixPattern} ";
       binds.accountPrefixPattern = accountPrefix + "%";
+    }
+
+    if (branchId) {
+      accountWhere += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId} ";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      accountWhere += " AND l.cost_center_id = {:costCenterId} ";
+      binds.costCenterId = costCenterId;
     }
 
     if (includeThird) {
@@ -659,15 +410,15 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
           COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS thirdPartyId,
           COALESCE(tp.name, 'Sin tercero') AS thirdPartyName,
           COALESCE(tp.doc_number, '') AS thirdPartyDoc,
-          SUM(CASE WHEN t.date < {:fromDate} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
-          SUM(CASE WHEN t.date >= {:fromDate} AND t.date <= {:toDate} THEN l.debit ELSE 0 END) AS debitSum,
-          SUM(CASE WHEN t.date >= {:fromDate} AND t.date <= {:toDate} THEN l.credit ELSE 0 END) AS creditSum
+          SUM(CASE WHEN t.date < {:fromDate1} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
+          SUM(CASE WHEN t.date >= {:fromDate2} AND t.date <= {:toDate1} THEN l.debit ELSE 0 END) AS debitSum,
+          SUM(CASE WHEN t.date >= {:fromDate3} AND t.date <= {:toDate2} THEN l.credit ELSE 0 END) AS creditSum
         FROM tx_lines l
         INNER JOIN transactions t ON t.id = l.tx_id
         INNER JOIN accounts a ON a.id = l.account_id
         LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
         WHERE t.status = 'active'
-          AND t.date <= {:toDate}
+          AND t.date <= {:toDate3}
           ${accountWhere}
         GROUP BY l.account_id, COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO')
       `;
@@ -675,14 +426,14 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
       sql = `
         SELECT
           l.account_id AS accountId,
-          SUM(CASE WHEN t.date < {:fromDate} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
-          SUM(CASE WHEN t.date >= {:fromDate} AND t.date <= {:toDate} THEN l.debit ELSE 0 END) AS debitSum,
-          SUM(CASE WHEN t.date >= {:fromDate} AND t.date <= {:toDate} THEN l.credit ELSE 0 END) AS creditSum
+          SUM(CASE WHEN t.date < {:fromDate1} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
+          SUM(CASE WHEN t.date >= {:fromDate2} AND t.date <= {:toDate1} THEN l.debit ELSE 0 END) AS debitSum,
+          SUM(CASE WHEN t.date >= {:fromDate3} AND t.date <= {:toDate2} THEN l.credit ELSE 0 END) AS creditSum
         FROM tx_lines l
         INNER JOIN transactions t ON t.id = l.tx_id
         INNER JOIN accounts a ON a.id = l.account_id
         WHERE t.status = 'active'
-          AND t.date <= {:toDate}
+          AND t.date <= {:toDate3}
           ${accountWhere}
         GROUP BY l.account_id
       `;
@@ -724,53 +475,20 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let fromDate = "";
-  try {
-    fromDate = c.queryParam("fromDate") || "";
-  } catch (_) {
-    try {
-      fromDate = c.QueryParam("fromDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.fromDate) {
-          fromDate = Array.isArray(q.fromDate) ? q.fromDate[0] : q.fromDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let toDate = "";
-  try {
-    toDate = c.queryParam("toDate") || "";
-  } catch (_) {
-    try {
-      toDate = c.QueryParam("toDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.toDate) {
-          toDate = Array.isArray(q.toDate) ? q.toDate[0] : q.toDate;
-        }
-      } catch (_) {}
-    }
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
 
-  let txTypeId = "";
-  try {
-    txTypeId = c.queryParam("txTypeId") || "";
-  } catch (_) {
-    try {
-      txTypeId = c.QueryParam("txTypeId") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.txTypeId) {
-          txTypeId = Array.isArray(q.txTypeId) ? q.txTypeId[0] : q.txTypeId;
-        }
-      } catch (_) {}
-    }
-  }
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let fromDate = String(queryParams.fromDate || '').trim();
+  let toDate = String(queryParams.toDate || '').trim();
+  let txTypeId = String(queryParams.txTypeId || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -808,6 +526,14 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       sql += " AND t.tx_type_id = {:txTypeId}";
       binds.txTypeId = txTypeId;
     }
+    if (branchId) {
+      sql += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sql += " AND l.cost_center_id = {:costCenterId}";
+      binds.costCenterId = costCenterId;
+    }
 
     const query = $app.db().newQuery(sql);
     query.bind(binds);
@@ -839,69 +565,21 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let fromDate = "";
-  try {
-    fromDate = c.queryParam("fromDate") || "";
-  } catch (_) {
-    try {
-      fromDate = c.QueryParam("fromDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.fromDate) {
-          fromDate = Array.isArray(q.fromDate) ? q.fromDate[0] : q.fromDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let toDate = "";
-  try {
-    toDate = c.queryParam("toDate") || "";
-  } catch (_) {
-    try {
-      toDate = c.QueryParam("toDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.toDate) {
-          toDate = Array.isArray(q.toDate) ? q.toDate[0] : q.toDate;
-        }
-      } catch (_) {}
-    }
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
 
-  let accountIdsStr = "";
-  try {
-    accountIdsStr = c.queryParam("accountIds") || "";
-  } catch (_) {
-    try {
-      accountIdsStr = c.QueryParam("accountIds") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.accountIds) {
-          accountIdsStr = Array.isArray(q.accountIds) ? q.accountIds[0] : q.accountIds;
-        }
-      } catch (_) {}
-    }
-  }
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
 
-  let thirdId = "";
-  try {
-    thirdId = c.queryParam("thirdId") || "";
-  } catch (_) {
-    try {
-      thirdId = c.QueryParam("thirdId") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.thirdId) {
-          thirdId = Array.isArray(q.thirdId) ? q.thirdId[0] : q.thirdId;
-        }
-      } catch (_) {}
-    }
-  }
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let fromDate = String(queryParams.fromDate || '').trim();
+  let toDate = String(queryParams.toDate || '').trim();
+  let accountIdsStr = String(queryParams.accountIds || '').trim();
+  let thirdId = String(queryParams.thirdId || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -913,15 +591,17 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
   const accountIds = accountIdsStr ? accountIdsStr.split(",").filter(Boolean) : [];
 
   try {
-    // 1. Build Binds and Dynamic SQL Filters
-    const binds = { fromDate, toDate: toDate + " 23:59:59" };
+    const openingBinds = { fromDate };
+    const periodBinds = { fromDate, toDate: toDate + " 23:59:59" };
+
     let accountFilter = "";
     if (accountIds.length > 0) {
       const placeholders = [];
       accountIds.forEach((id, index) => {
         const key = `accId${index}`;
         placeholders.push(`{:${key}}`);
-        binds[key] = id;
+        openingBinds[key] = id;
+        periodBinds[key] = id;
       });
       accountFilter = " AND l.account_id IN (" + placeholders.join(", ") + ") ";
     }
@@ -929,10 +609,22 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     let thirdFilter = "";
     if (thirdId) {
       thirdFilter = " AND (l.third_party_id = {:thirdId} OR t.third_party_id = {:thirdId}) ";
-      binds.thirdId = thirdId;
+      openingBinds.thirdId = thirdId;
+      periodBinds.thirdId = thirdId;
     }
 
-    // 2. Query Opening Balances (date < fromDate)
+    let extraCond = "";
+    if (branchId) {
+      extraCond += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId} ";
+      openingBinds.branchId = branchId;
+      periodBinds.branchId = branchId;
+    }
+    if (costCenterId) {
+      extraCond += " AND l.cost_center_id = {:costCenterId} ";
+      openingBinds.costCenterId = costCenterId;
+      periodBinds.costCenterId = costCenterId;
+    }
+
     const sqlOpening = `
       SELECT
         l.account_id AS accountId,
@@ -946,6 +638,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         AND t.date < {:fromDate}
         ` + accountFilter + `
         ` + thirdFilter + `
+        ` + extraCond + `
       GROUP BY
         l.account_id,
         COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO'),
@@ -953,7 +646,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     `;
 
     const queryOpening = $app.db().newQuery(sqlOpening);
-    queryOpening.bind(binds);
+    queryOpening.bind(openingBinds);
     const dataOpening = arrayOf(new DynamicModel({
       accountId: "",
       thirdId: "",
@@ -962,7 +655,6 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     }));
     queryOpening.all(dataOpening);
 
-    // 3. Query Period lines (fromDate <= date <= toDate)
     const sqlPeriod = `
       SELECT
         t.date AS fecha,
@@ -989,10 +681,11 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         AND t.date <= {:toDate}
         ` + accountFilter + `
         ` + thirdFilter + `
+        ` + extraCond + `
     `;
 
     const queryPeriod = $app.db().newQuery(sqlPeriod);
-    queryPeriod.bind(binds);
+    queryPeriod.bind(periodBinds);
     const dataPeriod = arrayOf(new DynamicModel({
       fecha: "",
       comprobante: "",
@@ -1027,37 +720,19 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let fromDate = "";
-  try {
-    fromDate = c.queryParam("fromDate") || "";
-  } catch (_) {
-    try {
-      fromDate = c.QueryParam("fromDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.fromDate) {
-          fromDate = Array.isArray(q.fromDate) ? q.fromDate[0] : q.fromDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
 
-  let toDate = "";
-  try {
-    toDate = c.queryParam("toDate") || "";
-  } catch (_) {
-    try {
-      toDate = c.QueryParam("toDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.toDate) {
-          toDate = Array.isArray(q.toDate) ? q.toDate[0] : q.toDate;
-        }
-      } catch (_) {}
-    }
-  }
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let fromDate = String(queryParams.fromDate || '').trim();
+  let toDate = String(queryParams.toDate || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -1072,42 +747,36 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
     const group2 = accCode.substring(0, 2);
     const group4 = accCode.substring(0, 4);
 
-    if (first === "4") {
-      return { category: "Operación", subcategory: "Ventas de Contado" };
-    }
-    if (group2 === "13") {
-      return { category: "Operación", subcategory: "Recaudo de Clientes / Cartera" };
-    }
-    if (group2 === "22" || group2 === "23") {
-      return { category: "Operación", subcategory: "Pago a Proveedores y Acreedores" };
-    }
-    if (group2 === "25" || group4 === "5105" || group4 === "5205") {
-      return { category: "Operación", subcategory: "Nómina y Beneficios a Empleados" };
-    }
-    if (group2 === "24") {
-      return { category: "Operación", subcategory: "Pago de Impuestos y Tasas" };
-    }
-    if (first === "5" || first === "6") {
-      return { category: "Operación", subcategory: "Gastos y Costos Directos" };
-    }
-    if (group2 === "15") {
-      return { category: "Inversión", subcategory: "Adquisición de Activos Fijos" };
-    }
-    if (["12", "14", "16", "17", "18", "19"].includes(group2)) {
-      return { category: "Inversión", subcategory: "Inversiones y Otros Activos" };
-    }
-    if (group2 === "21") {
-      return { category: "Financiación", subcategory: "Obligaciones Financieras (Créditos)" };
-    }
-    if (first === "3") {
-      return { category: "Financiación", subcategory: "Aportes de Capital / Dividendos" };
-    }
+    if (first === "4") return { category: "Operación", subcategory: "Ventas de Contado" };
+    if (group2 === "13") return { category: "Operación", subcategory: "Recaudo de Clientes / Cartera" };
+    if (group2 === "22" || group2 === "23") return { category: "Operación", subcategory: "Pago a Proveedores y Acreedores" };
+    if (group2 === "25" || group4 === "5105" || group4 === "5205") return { category: "Operación", subcategory: "Nómina y Beneficios a Empleados" };
+    if (group2 === "24") return { category: "Operación", subcategory: "Pago de Impuestos y Tasas" };
+    if (first === "5" || first === "6") return { category: "Operación", subcategory: "Gastos y Costos Directos" };
+    if (group2 === "15") return { category: "Inversión", subcategory: "Adquisición de Activos Fijos" };
+    if (["12", "14", "16", "17", "18", "19"].includes(group2)) return { category: "Inversión", subcategory: "Inversiones y Otros Activos" };
+    if (group2 === "21") return { category: "Financiación", subcategory: "Obligaciones Financieras (Créditos)" };
+    if (first === "3") return { category: "Financiación", subcategory: "Aportes de Capital / Dividendos" };
 
     return { category: "Operación", subcategory: "Otros Movimientos Operativos" };
   }
 
   try {
-    // 1. Query Initial Balance of group 11 accounts before fromDate
+    let extraCond = "";
+    const initialBinds = { fromDate };
+    const periodBinds = { fromDate, toDate: toDate + " 23:59:59" };
+
+    if (branchId) {
+      extraCond += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId} ";
+      initialBinds.branchId = branchId;
+      periodBinds.branchId = branchId;
+    }
+    if (costCenterId) {
+      extraCond += " AND l.cost_center_id = {:costCenterId} ";
+      initialBinds.costCenterId = costCenterId;
+      periodBinds.costCenterId = costCenterId;
+    }
+
     const sqlInitial = `
       SELECT COALESCE(SUM(l.debit - l.credit), 0) AS balance
       FROM tx_lines l
@@ -1116,14 +785,14 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
       WHERE t.status = 'active'
         AND t.date < {:fromDate}
         AND a.code LIKE '11%'
+        ${extraCond}
     `;
     const queryInitial = $app.db().newQuery(sqlInitial);
-    queryInitial.bind({ fromDate });
+    queryInitial.bind(initialBinds);
     const initialModel = new DynamicModel({ balance: -0 });
     queryInitial.one(initialModel);
     const initialBalance = Number(initialModel.balance) || 0;
 
-    // 2. Query transactions & lines in period with Cash flow impact (group 11)
     const sqlPeriod = `
       SELECT
         l.tx_id AS txId,
@@ -1140,6 +809,7 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
       WHERE t.status = 'active'
         AND t.date >= {:fromDate}
         AND t.date <= {:toDate}
+        ${extraCond}
         AND t.id IN (
           SELECT DISTINCT l2.tx_id
           FROM tx_lines l2
@@ -1148,7 +818,7 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
         )
     `;
     const queryPeriod = $app.db().newQuery(sqlPeriod);
-    queryPeriod.bind({ fromDate, toDate: toDate + " 23:59:59" });
+    queryPeriod.bind(periodBinds);
     const periodData = arrayOf(new DynamicModel({
       txId: "",
       txDate: "",
@@ -1161,7 +831,6 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
     }));
     queryPeriod.all(periodData);
 
-    // 3. Process data in JS VM
     const txMap = {};
     for (const row of periodData) {
       if (!txMap[row.txId]) {
@@ -1189,7 +858,7 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
       const nonCashLines = [];
 
       for (const line of tx.lines) {
-        if (line.code.indexOf('11') === 0) { // code starts with '11'
+        if (line.code.indexOf('11') === 0) {
           cashLines.push(line);
         } else {
           nonCashLines.push(line);
@@ -1219,7 +888,6 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
 
       const counterpartCode = mainCounterpart ? mainCounterpart.code : '';
       const counterpartName = mainCounterpart ? mainCounterpart.name : 'Transferencia / Ajuste';
-
       const classification = classifyCashFlow(counterpartCode);
 
       flowItems.push({
@@ -1245,72 +913,20 @@ routerAdd("GET", "/api/gravy/report-cash-flow", (c) => {
 });
 
 routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
-  let authRecord = null;
-  try { authRecord = c.auth; } catch (_) {}
-  if (!authRecord) {
-    try {
-      const info = c.requestInfo ? c.requestInfo() : null;
-      if (info) authRecord = info.authRecord || info.admin;
-    } catch (_) {}
-  }
-  if (!authRecord) {
-    try {
-      if (typeof $apis !== "undefined" && $apis.requestInfo) {
-        const info = $apis.requestInfo(c);
-        if (info) authRecord = info.authRecord || info.admin;
-      }
-    } catch (_) {}
-  }
-
+  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
   if (!authRecord) {
     return c.json(401, { error: "No autorizado" });
   }
 
-  const readQueryParam = (cCtx, key) => {
-    try {
-      if (cCtx && typeof cCtx.requestInfo === "function") {
-        const info = cCtx.requestInfo();
-        if (info && info.query) {
-          const v = info.query[key];
-          if (v !== undefined && v !== null) {
-            return String(Array.isArray(v) ? v[0] : v).trim();
-          }
-        }
-      }
-    } catch (_) {}
+  const queryParams = c.requestInfo().query || {};
 
-    try {
-      if (cCtx && typeof cCtx.queryParam === "function") {
-        const v = cCtx.queryParam(key);
-        if (v) return String(v).trim();
-      }
-    } catch (_) {}
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
 
-    try {
-      if (cCtx && typeof cCtx.QueryParam === "function") {
-        const v = cCtx.QueryParam(key);
-        if (v) return String(v).trim();
-      }
-    } catch (_) {}
-
-    try {
-      if (typeof $apis !== "undefined" && $apis.requestInfo) {
-        const info = $apis.requestInfo(cCtx);
-        if (info && info.query) {
-          const v = info.query[key];
-          if (v !== undefined && v !== null) {
-            return String(Array.isArray(v) ? v[0] : v).trim();
-          }
-        }
-      }
-    } catch (_) {}
-
-    return "";
-  };
-
-  let startDate = readQueryParam(c, "startDate");
-  let endDate = readQueryParam(c, "endDate");
-  let sellerId = readQueryParam(c, "sellerId");
+  let startDate = String(queryParams.startDate || '').trim();
+  let endDate = String(queryParams.endDate || '').trim();
+  let sellerId = String(queryParams.sellerId || '').trim();
 
   if (!startDate || !endDate) {
     return c.json(400, { error: "Los parámetros startDate y endDate son requeridos." });
@@ -1345,11 +961,18 @@ routerAdd("GET", "/api/gravy/report-sales-by-seller", (c) => {
         AND inv.date <= {:endDateLimit}
     `;
 
-    const query = $app.db().newQuery(sql);
-    query.bind({
+    const binds = {
       startDate: startDate + " 00:00:00",
       endDateLimit: endDate + " 23:59:59"
-    });
+    };
+
+    if (branchId) {
+      sql += " AND inv.branch_id = {:branchId}";
+      binds.branchId = branchId;
+    }
+
+    const query = $app.db().newQuery(sql);
+    query.bind(binds);
 
     const data = arrayOf(new DynamicModel({
       invoice_id: "",
@@ -1418,21 +1041,13 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     return c.json(401, { error: "No autorizado" });
   }
 
-  let asOfDate = "";
-  try {
-    asOfDate = c.queryParam("asOfDate") || "";
-  } catch (_) {
-    try {
-      asOfDate = c.QueryParam("asOfDate") || "";
-    } catch (_) {
-      try {
-        const q = c.requestInfo().query;
-        if (q && q.asOfDate) {
-          asOfDate = Array.isArray(q.asOfDate) ? q.asOfDate[0] : q.asOfDate;
-        }
-      } catch (_) {}
-    }
-  }
+  const queryParams = c.requestInfo().query || {};
+
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+
+  let asOfDate = String(queryParams.asOfDate || '').trim();
 
   if (!asOfDate) {
     asOfDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -1440,15 +1055,11 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     asOfDate = asOfDate.slice(0, 10);
   }
 
-  let warehouseId = "";
-  try { warehouseId = c.queryParam("warehouseId") || ""; } catch (_) {}
-  let categoryId = "";
-  try { categoryId = c.queryParam("category") || ""; } catch (_) {}
-  let lineId = "";
-  try { lineId = c.queryParam("line") || ""; } catch (_) {}
+  let warehouseId = String(queryParams.warehouseId || '').trim();
+  let categoryId = String(queryParams.category || '').trim();
+  let lineId = String(queryParams.line || '').trim();
 
   try {
-    // 1. Obtener productos tipo BIEN
     let prodSql = `SELECT id, code, name, unit, cost_price, stock_min, stock_max, categoria, linea FROM products WHERE type = 'BIEN' AND active = 1`;
     const prodBinds = {};
     if (categoryId) {
@@ -1492,7 +1103,6 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
       };
     }
 
-    // 2. Obtener movimientos aplicados hasta la fecha de corte
     let movSql = `
       SELECT
         l.product_id,
@@ -1515,6 +1125,10 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
       movSql += ` AND (m.warehouse_id = {:warehouseId} OR m.dest_warehouse_id = {:warehouseId})`;
       movBinds.warehouseId = warehouseId;
     }
+    if (branchId) {
+      movSql += ` AND m.branch_id = {:branchId}`;
+      movBinds.branchId = branchId;
+    }
 
     movSql += ` ORDER BY m.date ASC, l.line_order ASC`;
 
@@ -1534,11 +1148,10 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     }));
     movQuery.all(movsData);
 
-    // 3. Procesar cálculo de stock y costo promedio por producto/bodega
-    const stockMap = {}; // key: prodId + "_" + whId
+    const stockMap = {};
 
     for (const mov of movsData) {
-      if (!prodMap[mov.product_id]) continue; // Filtrado por categoría/línea si aplica
+      if (!prodMap[mov.product_id]) continue;
 
       const prodId = mov.product_id;
       const qty = Number(mov.qty || 0);
@@ -1597,7 +1210,6 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
       }
     }
 
-    // 4. Formatear respuesta consolidada o por registro
     const results = [];
     const keys = Object.keys(stockMap);
 
@@ -1626,4 +1238,3 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     return c.json(500, { error: "Error obteniendo inventario a fecha de corte: " + err.message });
   }
 });
-

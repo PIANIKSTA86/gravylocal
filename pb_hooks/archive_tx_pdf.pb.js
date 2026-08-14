@@ -598,7 +598,7 @@ function executeTransactionPdfArchiving(txRecord) {
 
 // ─── HOOKS DE EVENTOS EN POCKETBASE ──────────────────────────────────────────
 
-onRecordAfterCreateRequest((e) => {
+onRecordAfterCreateSuccess((e) => {
   try {
     executeTransactionPdfArchiving(e.record);
   } catch (err) {
@@ -606,7 +606,7 @@ onRecordAfterCreateRequest((e) => {
   }
 }, "transactions");
 
-onRecordAfterUpdateRequest((e) => {
+onRecordAfterUpdateSuccess((e) => {
   try {
     executeTransactionPdfArchiving(e.record);
   } catch (err) {

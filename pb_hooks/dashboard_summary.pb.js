@@ -35,6 +35,26 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       } catch (_) {}
     }
   }
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null") branchId = "";
+
+  // Obtener cost_center_id
+  let costCenterId = "";
+  try {
+    costCenterId = e.queryParam("cost_center_id") || e.queryParam("cost_center") || "";
+  } catch (_) {
+    try {
+      costCenterId = e.QueryParam("cost_center_id") || e.QueryParam("cost_center") || "";
+    } catch (_) {
+      try {
+        const q = e.requestInfo().query;
+        if (q && (q.cost_center_id || q.cost_center)) {
+          const val = q.cost_center_id || q.cost_center;
+          costCenterId = Array.isArray(val) ? val[0] : val;
+        }
+      } catch (_) {}
+    }
+  }
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null") costCenterId = "";
 
   // Obtener advisor_id (vendedor)
   let advisorId = "";

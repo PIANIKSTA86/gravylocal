@@ -2786,17 +2786,22 @@ async function _updateTomaFisicaSystemStock(whId: string) {
   }
   tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando existencias a la fecha de corte...</td></tr>`;
   try {
-    const asOfDateVal = (getInputVal('toma-date') || todayStr()).slice(0, 10);
+    const dateInput = document.getElementById('toma-date') as HTMLInputElement;
+    const asOfDateVal = (dateInput?.value || todayStr()).slice(0, 10);
     const isToday = (asOfDateVal === todayStr());
 
-    let stock = [];
+    let stock: any[] = [];
     if (isToday) {
       stock = await API.getInventoryStock({ warehouseId: whId });
     } else {
       stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal, warehouseId: whId });
     }
 
-    const stockByProd = new Map(stock.map((s: any) => [s.product_id, s]));
+    const stockByProd = new Map(
+      stock
+        .filter((s: any) => !s.warehouse_id || s.warehouse_id === whId)
+        .map((s: any) => [s.product_id, s])
+    );
     const products = (window as any)._tomaProducts || [];
     if (!products.length) {
       tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-gray-400">No hay productos tipo BIEN registrados.</td></tr>`;
@@ -2806,6 +2811,8 @@ async function _updateTomaFisicaSystemStock(whId: string) {
     tableBody.innerHTML = products.map((p: any) => {
       const st = stockByProd.get(p.id) || { qty_on_hand: 0, avg_cost: Number(p.cost_price || 0) };
       const systemStock = Number(st.qty_on_hand || 0);
+      const avgCost = Number(st.avg_cost || p.cost_price || 0);
+
       return `
         <tr class="toma-prod-row hover:bg-gray-50 border-b border-gray-100" data-code="${esc(p.code)}" data-name="${esc(p.name)}">
           <td class="p-2 font-mono text-xs text-blue-800 font-semibold">${esc(p.code)}</td>
@@ -2818,7 +2825,7 @@ async function _updateTomaFisicaSystemStock(whId: string) {
               id="toma-phys-${p.id}" 
               data-prodid="${p.id}" 
               data-sys="${systemStock}" 
-              data-avgcost="${st.avg_cost || p.cost_price || 0}" 
+              data-avgcost="${avgCost}" 
               data-lastcost="${p.cost_price || 0}"
               placeholder="Sin contar">
           </td>
@@ -2826,7 +2833,7 @@ async function _updateTomaFisicaSystemStock(whId: string) {
       `;
     }).join('');
   } catch (err: any) {
-    tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-red-500">Error: ${esc(err.message)}</td></tr>`;
+    tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-10 text-red-500">Error al cargar existencias: ${esc(err.message)}</td></tr>`;
   }
 }
 
@@ -2838,6 +2845,8 @@ async function _downloadTomaFisicaTemplate() {
   }
   const selectEl = document.getElementById('toma-wh') as HTMLSelectElement;
   const whName = selectEl.options[selectEl.selectedIndex].text;
+  const asOfDateVal = (getInputVal('toma-date') || todayStr()).slice(0, 10);
+  const isToday = (asOfDateVal === todayStr());
 
   const XLSX = (window as any).XLSX;
   if (!XLSX) {
@@ -2846,8 +2855,18 @@ async function _downloadTomaFisicaTemplate() {
   }
 
   try {
-    const stock = await API.getInventoryStock({ warehouseId: whId });
-    const stockByProd = new Map(stock.map((s: any) => [s.product_id, s]));
+    let stock: any[] = [];
+    if (isToday) {
+      stock = await API.getInventoryStock({ warehouseId: whId });
+    } else {
+      stock = await API.getInventoryStockAsOf({ asOfDate: asOfDateVal, warehouseId: whId });
+    }
+
+    const stockByProd = new Map(
+      stock
+        .filter((s: any) => !s.warehouse_id || s.warehouse_id === whId)
+        .map((s: any) => [s.product_id, s])
+    );
     const products = (window as any)._tomaProducts || [];
 
     if (!products.length) {
@@ -2870,7 +2889,7 @@ async function _downloadTomaFisicaTemplate() {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Toma Física');
-    XLSX.writeFile(wb, `Plantilla_Toma_Fisica_${whName.replaceAll(' ', '_')}_${todayStr()}.xlsx`);
+    XLSX.writeFile(wb, `Plantilla_Toma_Fisica_${whName.replaceAll(' ', '_')}_${asOfDateVal}.xlsx`);
     showToast('Plantilla descargada con éxito.', 'success');
   } catch (err: any) {
     showToast(`Error al generar plantilla: ${err.message}`, 'error');
@@ -3129,6 +3148,9 @@ async function _saveTomaFisica() {
   if (!date) return showToast('La fecha es obligatoria.', 'warning');
   if (!accContraId) return showToast('Selecciona la cuenta contable de contrapartida.', 'warning');
 
+  const whSelect = document.getElementById('toma-wh') as HTMLSelectElement;
+  const whName = whSelect?.options[whSelect.selectedIndex]?.text || 'Bodega';
+
   const btn = document.getElementById('btn-toma-save') as HTMLButtonElement;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando ajuste...'; }
 
@@ -3213,7 +3235,7 @@ async function _saveTomaFisica() {
           account_id: inventoryAccId,
           debit: totalValue,
           credit: 0,
-          description: `Sobrante toma física ${prod.code} (${fmtN(adj.qtyDiff)} und)`,
+          description: `Sobrante toma física ${prod.code} (${fmtN(adj.qtyDiff)} und) - ${whName}`,
           line_order: txLines.length + 1
         });
         // Credito a la Cuenta de Contrapartida
@@ -3221,7 +3243,7 @@ async function _saveTomaFisica() {
           account_id: accContraId,
           debit: 0,
           credit: totalValue,
-          description: `Ajuste sobrante ${prod.code} en bodega`,
+          description: `Ajuste sobrante ${prod.code} en ${whName}`,
           line_order: txLines.length + 1
         });
       } else {
@@ -3231,7 +3253,7 @@ async function _saveTomaFisica() {
           account_id: inventoryAccId,
           debit: 0,
           credit: totalValue,
-          description: `Faltante toma física ${prod.code} (${fmtN(Math.abs(adj.qtyDiff))} und)`,
+          description: `Faltante toma física ${prod.code} (${fmtN(Math.abs(adj.qtyDiff))} und) - ${whName}`,
           line_order: txLines.length + 1
         });
         // Debito a la Cuenta de Contrapartida
@@ -3239,7 +3261,7 @@ async function _saveTomaFisica() {
           account_id: accContraId,
           debit: totalValue,
           credit: 0,
-          description: `Ajuste faltante ${prod.code} en bodega`,
+          description: `Ajuste faltante ${prod.code} en ${whName}`,
           line_order: txLines.length + 1
         });
       }
@@ -3261,7 +3283,7 @@ async function _saveTomaFisica() {
       tx_type_id: txTypeId,
       number: txNumber,
       date,
-      description: `Ajuste por Toma Física de Inventario en Bodega`,
+      description: `Ajuste por Toma Física de Inventario en ${whName}`,
       status: 'draft',
       payment_days: 0,
       cross_enabled: false,
@@ -3280,7 +3302,7 @@ async function _saveTomaFisica() {
         mov_type: 'AJUSTE_POSITIVO',
         date,
         warehouse_id: whId,
-        notes: `Ajuste sobrantes toma física - Ref Tx ${txNumber}`,
+        notes: `Ajuste sobrantes toma física (${whName}) - Ref Tx ${txNumber}`,
         status: 'draft',
         tx_id: tx.id,
         branch_id: targetBranchId || null,
@@ -3292,7 +3314,7 @@ async function _saveTomaFisica() {
           product_id: a.productId,
           qty: a.qtyDiff,
           unit_cost: a.cost,
-          notes: `Sobrante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)}`,
+          notes: `Sobrante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)} en ${whName}`,
           line_order: i + 1
         });
       }
@@ -3307,7 +3329,7 @@ async function _saveTomaFisica() {
         mov_type: 'AJUSTE_NEGATIVO',
         date,
         warehouse_id: whId,
-        notes: `Ajuste faltantes toma física - Ref Tx ${txNumber}`,
+        notes: `Ajuste faltantes toma física (${whName}) - Ref Tx ${txNumber}`,
         status: 'draft',
         tx_id: tx.id,
         branch_id: targetBranchId || null,
@@ -3319,7 +3341,7 @@ async function _saveTomaFisica() {
           product_id: a.productId,
           qty: Math.abs(a.qtyDiff),
           unit_cost: a.cost,
-          notes: `Faltante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)}`,
+          notes: `Faltante: contados ${fmtN(a.physicalQty)} vs sistema ${fmtN(a.systemQty)} en ${whName}`,
           line_order: i + 1
         });
       }
@@ -3329,7 +3351,7 @@ async function _saveTomaFisica() {
     // 7. Aprobar la transacción contable una vez aplicados los movimientos
     await pb.update('transactions', tx.id, { status: 'active' });
 
-    showToast('Ajuste contable e inventario aplicados con éxito.', 'success');
+    showToast(`Ajuste contable e inventario aplicados con éxito en ${whName}.`, 'success');
     closeModal();
     renderInventario(document.getElementById('page-content')!);
   } catch (err: any) {

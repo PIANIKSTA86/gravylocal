@@ -455,10 +455,10 @@ function defaultNominaConfig() {
     employee_groups: [],
     group_rules: [],
     company_rules: {
-      smmlv: 1423500,
+      smmlv: 1750905,
       uvt_value: 52374,
-      transport_allowance: 162000,
-      solidarity_threshold_smmlv: 3,
+      transport_allowance: 200000,
+      solidarity_threshold_smmlv: 4,
       solidarity_rate: 0.01,
       exempt_sena_icbf: false,
       weekly_hours: 44,
@@ -510,7 +510,7 @@ function normalizeNominaConfig(raw) {
       }))
       .filter((r) => r.group_id),
     company_rules: {
-      smmlv: Number(company.smmlv) > 0 ? Number(company.smmlv) : 1423500,
+      smmlv: Number(company.smmlv) > 0 ? Number(company.smmlv) : 1750905,
       uvt_value: Number(company.uvt_value) > 0 ? Number(company.uvt_value) : 52374,
       transport_allowance: Number(company.transport_allowance) >= 0 ? Number(company.transport_allowance) : 162000,
       solidarity_threshold_smmlv: Number(company.solidarity_threshold_smmlv) > 0 ? Number(company.solidarity_threshold_smmlv) : 3,
@@ -2127,12 +2127,15 @@ async function liquidarPeriodoMasivo(periodId) {
       const totalDeducciones = round2(deductionHealth + deductionPension + solidarityFund + withholdingTax + deductionOther);
       const netPay = round2(totalEarnings - totalDeducciones);
 
-      const employerHealth = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.085);
+      const smmlvVal = config.company_rules?.smmlv || 1750905;
+      const isArt114Exempt = !!config.company_rules?.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+
+      const employerHealth = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.085);
       const employerPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
       const employerArl = empRule.subtipoTrabajador === 'APRENDIZ' ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
-      const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || config.company_rules.exempt_sena_icbf) ? 0 : round2(ibc * 0.02);
-      const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || config.company_rules.exempt_sena_icbf) ? 0 : round2(ibc * 0.03);
+      const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.02);
+      const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.03);
       const cajaComp = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
 
       const cesantias = round2(round2(ibc * 0.0833) + n_cesantias);
@@ -7909,11 +7912,16 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const dedTotal = round2(dedSalud + dedPension + dedSolidarity + dedWithholding + dedOther + extraDedConcepts);
     const neto = round2(devengado - dedTotal);
 
+    const smmlvVal = companyRules.smmlv || 1750905;
+    const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+
     const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-    const senaRate = companyRules.exempt_sena_icbf ? 0 : 0.02;
-    const icbfRate = companyRules.exempt_sena_icbf ? 0 : 0.03;
-    const pensionRate = empRule.is_pensioner ? 0 : 0.12;
-    const para = round2(ibc * (0.085 + pensionRate + arlRate + senaRate + icbfRate + 0.04));
+    const healthEmployerRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.085;
+    const senaRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.02;
+    const icbfRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.03;
+    const pensionRate = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : 0.12;
+    const cajaRate = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : 0.04;
+    const para = round2(ibc * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate + cajaRate));
     const prov = round2(ibc * (0.0833 + 0.12 * 0.0833 + 0.0833 + 0.0417));
 
     const preview = $('#nomina-preview');
@@ -8176,13 +8184,16 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         : 0;
       const deductionOther = dedOther;
 
-      const employerHealth = round2(ibc * 0.085);
-      const employerPension = empRule.is_pensioner ? 0 : round2(ibc * 0.12);
+      const smmlvVal = companyRules.smmlv || 1750905;
+      const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+
+      const employerHealth = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.085);
+      const employerPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = round2(ibc * arlRate);
-      const sena = companyRules.exempt_sena_icbf ? 0 : round2(ibc * 0.02);
-      const icbf = companyRules.exempt_sena_icbf ? 0 : round2(ibc * 0.03);
-      const cajaComp = round2(ibc * 0.04);
+      const employerArl = empRule.subtipoTrabajador === 'APRENDIZ' ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
+      const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.02);
+      const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.03);
+      const cajaComp = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
       const cesantias = cesantiasVal || round2(baseSalarial * 0.0833);
       const interesesCes = interesesCesVal || round2(cesantias * 0.12);
       const prima = primaVal || round2(baseSalarial * 0.0833);

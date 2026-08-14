@@ -2406,16 +2406,7 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         y += 12;
         doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
         
-        // Vertical Divider line between Emitter and Customer details
-        const detailsBoxHeight = 92;
-        doc.moveTo(L + 270, y - 12).lineTo(L + 270, y + detailsBoxHeight).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-        
-        y += 6;
-
-        const drawInfoLine = (label, val, xOffset, yOffset) => {
-          doc.font('Helvetica').fontSize(8).fillColor('#000000').text(label, xOffset, yOffset, { width: 85 });
-          doc.font('Helvetica').fontSize(8).fillColor('#1F2937').text(val || '', xOffset + 90, yOffset, { width: 170 });
-        };
+        const detailsStartY = y + 6;
 
         const DANE_DEPTS = {
           '05': 'ANTIOQUIA', '08': 'ATLÁNTICO', '11': 'BOGOTÁ, D.C.', '13': 'BOLÍVAR',
@@ -2514,6 +2505,27 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           return locationText;
         };
 
+        // Helper to draw a list of info key-value pairs dynamically without text collision
+        const drawInfoBlock = (items, xOffset, startY) => {
+          let currY = startY;
+          items.forEach(({ label, val }) => {
+            const labelWidth = 85;
+            const valWidth = 170;
+            const textVal = String(val || '').trim();
+            
+            doc.font('Helvetica').fontSize(8);
+            const labelHeight = doc.heightOfString(label, { width: labelWidth });
+            const valHeight = textVal ? doc.heightOfString(textVal, { width: valWidth }) : 10;
+            const rowHeight = Math.max(labelHeight, valHeight, 10);
+
+            doc.font('Helvetica').fontSize(8).fillColor('#000000').text(label, xOffset, currY, { width: labelWidth });
+            doc.font('Helvetica').fontSize(8).fillColor('#1F2937').text(textVal, xOffset + 90, currY, { width: valWidth });
+
+            currY += rowHeight + 1.5;
+          });
+          return currY;
+        };
+
         // Supplier clean NIT (strip existing DV)
         const rawSupplierNit = String(supplierNit || '').split('-')[0];
         const supplierDv = calcularDV(rawSupplierNit);
@@ -2525,13 +2537,15 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         // Emitter values
         const suppAddrInfo = parseAddress(supplierAddress);
         const suppCityDeptStr = formatCityDeptStr(supplierCity, supplierDept, supplierCityCode, supplierDeptCode, suppAddrInfo);
-        drawInfoLine('Razón Social', supplierName, L, y);
-        drawInfoLine('NIT', rawSupplierNit + (supplierDv ? ` - ${supplierDv}` : ''), L, y + 11);
-        drawInfoLine('Obligación', supplierTaxLevel, L, y + 22);
-        drawInfoLine('Email', supplierEmail || '', L, y + 33);
-        drawInfoLine('Teléfono', supplierPhone || '', L, y + 44);
-        drawInfoLine('Dirección Fiscal', suppAddrInfo.mainAddr || supplierAddress || '', L, y + 55);
-        drawInfoLine('Ciudad, Depart.', suppCityDeptStr || '', L, y + 66);
+        const emitterItems = [
+          { label: 'Razón Social', val: supplierName },
+          { label: 'NIT', val: rawSupplierNit + (supplierDv ? ` - ${supplierDv}` : '') },
+          { label: 'Obligación', val: supplierTaxLevel },
+          { label: 'Email', val: supplierEmail || '' },
+          { label: 'Teléfono', val: supplierPhone || '' },
+          { label: 'Dirección Fiscal', val: suppAddrInfo.mainAddr || supplierAddress || '' },
+          { label: 'Ciudad, Depart.', val: suppCityDeptStr || '' }
+        ];
 
         // Customer clean NIT
         const rawCustomerNit = String(customerNit || '').split('-')[0];
@@ -2540,15 +2554,25 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         // Customer values
         const custAddrInfo = parseAddress(customerAddress);
         const custCityDeptStr = formatCityDeptStr(customerCity, customerDept, customerCityCode, customerDeptCode, custAddrInfo);
-        drawInfoLine('Razón Social', customerName, L + 280, y);
-        drawInfoLine('NIT', rawCustomerNit + (custDv ? ` - ${custDv}` : ''), L + 280, y + 11);
-        drawInfoLine('Obligación', customerTaxLevel, L + 280, y + 22);
-        drawInfoLine('Email', customerEmail || '', L + 280, y + 33);
-        drawInfoLine('Teléfono', customerPhone || '', L + 280, y + 44);
-        drawInfoLine('Dirección', custAddrInfo.mainAddr || customerAddress || '', L + 280, y + 55);
-        drawInfoLine('Ciudad, Depart.', custCityDeptStr || '', L + 280, y + 66);
+        const customerItems = [
+          { label: 'Razón Social', val: customerName },
+          { label: 'NIT', val: rawCustomerNit + (custDv ? ` - ${custDv}` : '') },
+          { label: 'Obligación', val: customerTaxLevel },
+          { label: 'Email', val: customerEmail || '' },
+          { label: 'Teléfono', val: customerPhone || '' },
+          { label: 'Dirección', val: custAddrInfo.mainAddr || customerAddress || '' },
+          { label: 'Ciudad, Depart.', val: custCityDeptStr || '' }
+        ];
 
-        y += detailsBoxHeight + 8;
+        const emitterEndY = drawInfoBlock(emitterItems, L, detailsStartY);
+        const customerEndY = drawInfoBlock(customerItems, L + 280, detailsStartY);
+
+        const detailsBoxHeight = Math.max(emitterEndY, customerEndY) - detailsStartY;
+
+        // Vertical Divider line between Emitter and Customer details
+        doc.moveTo(L + 270, y).lineTo(L + 270, detailsStartY + detailsBoxHeight).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+
+        y = detailsStartY + detailsBoxHeight + 8;
 
         // --- 5. ITEMS TABLE HEADER ---
         doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.75).stroke();

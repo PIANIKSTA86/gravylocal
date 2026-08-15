@@ -752,6 +752,11 @@ const API = {
     if (opts.category) params.append('category', opts.category);
     if (opts.line) params.append('line', opts.line);
 
+    const activeBranchId = localStorage.getItem('active_branch_id') || 'TODAS';
+    if (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL') {
+      params.append('branch_id', activeBranchId);
+    }
+
     const res = await pb.send(`/api/gravy/report-inventory-as-of?${params.toString()}`, {
       method: 'GET'
     });

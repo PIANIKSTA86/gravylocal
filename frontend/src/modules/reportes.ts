@@ -414,22 +414,90 @@ function fmtPdfSignedNum(value) {
   return n < 0 ? `-${txt}` : txt;
 }
 
-async function getPdfHeaderContext() {
-  const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName] = await Promise.all([
+let cachedBranchesList: any[] | null = null;
+let cachedCostCentersList: any[] | null = null;
+
+async function getScopeBranchName(specificBranchId?: string): Promise<string> {
+  const targetId = specificBranchId !== undefined ? specificBranchId : (localStorage.getItem('active_branch_id') || 'TODAS');
+  if (!targetId || targetId === 'TODAS' || targetId === 'ALL') {
+    return 'Todas las sucursales';
+  }
+  try {
+    if (!cachedBranchesList) {
+      cachedBranchesList = await pb.listAll('branches', { ignoreBranch: true }).catch(() => []);
+    }
+    const found = cachedBranchesList.find((b: any) => b.id === targetId);
+    if (found) {
+      return found.code ? `${found.code} - ${found.name}` : found.name;
+    }
+  } catch (_) {}
+  return targetId;
+}
+
+async function getScopeCostCenterName(specificCostCenterId?: string): Promise<string> {
+  const targetId = specificCostCenterId !== undefined ? specificCostCenterId : (localStorage.getItem('active_cost_center_id') || 'TODOS');
+  if (!targetId || targetId === 'TODOS' || targetId === 'ALL') {
+    return 'Todos los centros de costo';
+  }
+  try {
+    if (!cachedCostCentersList) {
+      cachedCostCentersList = await pb.listAll('cost_centers').catch(() => []);
+    }
+    const found = cachedCostCentersList.find((c: any) => c.id === targetId);
+    if (found) {
+      return found.code ? `${found.code} - ${found.name}` : found.name;
+    }
+  } catch (_) {}
+  return targetId;
+}
+
+function getScopeBranchNameSync(specificBranchId?: string): string {
+  const targetId = specificBranchId !== undefined ? specificBranchId : (localStorage.getItem('active_branch_id') || 'TODAS');
+  if (!targetId || targetId === 'TODAS' || targetId === 'ALL') return 'Todas las sucursales';
+  if (cachedBranchesList) {
+    const found = cachedBranchesList.find((b: any) => b.id === targetId);
+    if (found) return found.code ? `${found.code} - ${found.name}` : found.name;
+  }
+  return targetId;
+}
+
+function getScopeCostCenterNameSync(specificCostCenterId?: string): string {
+  const targetId = specificCostCenterId !== undefined ? specificCostCenterId : (localStorage.getItem('active_cost_center_id') || 'TODOS');
+  if (!targetId || targetId === 'TODOS' || targetId === 'ALL') return 'Todos los centros de costo';
+  if (cachedCostCentersList) {
+    const found = cachedCostCentersList.find((c: any) => c.id === targetId);
+    if (found) return found.code ? `${found.code} - ${found.name}` : found.name;
+  }
+  return targetId;
+}
+
+(window as any).getScopeBranchNameSync = getScopeBranchNameSync;
+(window as any).getScopeCostCenterNameSync = getScopeCostCenterNameSync;
+
+async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: string }) {
+  const [companyName, companyNit, companyAddress, companyCity, companyCountry, softwareName, branchName, costCenterName] = await Promise.all([
     API.getSetting('company_name').catch(() => ''),
     API.getSetting('company_nit').catch(() => ''),
     API.getSetting('company_address').catch(() => ''),
     API.getSetting('company_city').catch(() => ''),
     API.getSetting('company_country').catch(() => ''),
     API.getSetting('software_name').catch(() => ''),
+    getScopeBranchName(opts?.branchId),
+    getScopeCostCenterName(opts?.costCenterId)
   ]);
+
+  const pbInst = (window as any).pb || (typeof pb !== 'undefined' ? pb : null);
+  const userObj = pbInst?.authStore?.model;
+  const userName = userObj ? (userObj.name || userObj.email || 'Usuario') : String(sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || 'Usuario').trim();
 
   return {
     companyName: String(companyName || 'EMPRESA').trim(),
     companyNit: String(companyNit || 'N/A').trim(),
-    companyAddress: [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Direccion no configurada',
+    companyAddress: [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Dirección no configurada',
     softwareName: String(softwareName || 'GRAVY v2.0').trim(),
-    userName: String(sessionStorage.getItem('user_name') || 'Usuario').trim(),
+    userName: userName,
+    branchName: branchName,
+    costCenterName: costCenterName,
     generatedAt: new Date().toLocaleString('es-CO'),
   };
 }
@@ -523,6 +591,7 @@ function drawPdfHeader(doc, headerCtx, cfg) {
   const title = String(cfg?.title || '').trim();
   const subtitles = Array.isArray(cfg?.subtitles) ? cfg.subtitles : [];
 
+  // Left side: Original Company Info
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(13, 33, 55);
@@ -533,6 +602,7 @@ function drawPdfHeader(doc, headerCtx, cfg) {
   doc.text(`NIT: ${headerCtx.companyNit}`, left, 30);
   doc.text(headerCtx.companyAddress, left, 40);
 
+  // Center side: Original Title & Subtitles
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(13, 33, 55);
@@ -544,21 +614,24 @@ function drawPdfHeader(doc, headerCtx, cfg) {
     doc.text(String(line || ''), pageWidth / 2, 30 + (idx * 10), { align: 'center' });
   });
 
+  // Right side: Software, Usuario, Sucursal, C. Costo, Impreso
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
   doc.text(headerCtx.softwareName, right, 20, { align: 'right' });
   doc.text(`Usuario: ${headerCtx.userName}`, right, 30, { align: 'right' });
-  doc.text(`Impreso: ${headerCtx.generatedAt}`, right, 40, { align: 'right' });
+  doc.text(`Sucursal: ${headerCtx.branchName}`, right, 40, { align: 'right' });
+  doc.text(`C. Costo: ${headerCtx.costCenterName}`, right, 50, { align: 'right' });
+  doc.text(`Impreso: ${headerCtx.generatedAt}`, right, 60, { align: 'right' });
 
   doc.setDrawColor(180, 180, 180);
   doc.setLineWidth(0.5);
-  doc.line(left, 58, right, 58);
+  doc.line(left, 68, right, 68);
 
   return {
     marginLeft: left,
     marginRight: right,
-    startY: 66,
+    startY: 76,
   };
 }
 
@@ -1670,6 +1743,8 @@ async function renderTrialBalance() {
   $('#btn-exp-trial')?.addEventListener('click', () => {
     if (!lastExportRows.length) return;
     const accTag = lastTrialPdf?.accountPrefix ? `_cuenta_${lastTrialPdf.accountPrefix}` : '';
+    const fromDate = getInputVal('trial-from') || todayStr();
+    const toDate = getInputVal('trial-to') || todayStr();
     exportToExcel(lastExportRows, [
       { key: 'codigo', label: 'CUENTA' },
       { key: 'descripcion', label: 'DESCRIPCIÓN' },
@@ -1679,7 +1754,14 @@ async function renderTrialBalance() {
       { key: 'mov_debito', label: 'DÉBITOS' },
       { key: 'mov_credito', label: 'CRÉDITOS' },
       { key: 'saldo_actual', label: 'BALANCE ACTUAL' },
-    ], `balance_prueba${accTag}_n${getSelectVal('trial-level')}_${getInputVal('trial-from')}_${getInputVal('trial-to')}`);
+    ], `balance_prueba${accTag}_n${getSelectVal('trial-level')}_${fromDate}_${toDate}`, {
+      title: 'Balance de Prueba (Detallado)',
+      subtitles: [
+        `Desde: ${fromDate}`,
+        `Hasta: ${toDate}`,
+        lastTrialPdf?.accountPrefix ? `Cuenta/Grupo: ${lastTrialPdf.accountPrefix}` : 'Cuentas: Todas',
+      ]
+    });
   });
   $('#btn-pdf-trial')?.addEventListener('click', async () => {
     if (!lastTrialPdf || !lastTrialPdf.displayRows.length) return;
@@ -3144,6 +3226,9 @@ async function renderJournalBook() {
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Generando Libro Diario...</div>';
 
     try {
+      const activeBranchId = localStorage.getItem('active_branch_id') || 'TODAS';
+      const showSucursalColumn = activeBranchId === 'TODAS' || activeBranchId === 'ALL' || !activeBranchId;
+
       const data = await fetchFilteredJournalData(range.fromDate, range.toDate, txTypeId) as any[];
 
       const rows = data.map(r => ({
@@ -3159,6 +3244,7 @@ async function renderJournalBook() {
         typeId: r.typeId,
         typeCode: r.typeCode,
         typeName: r.typeName,
+        sucursal: r.sucursal || 'Principal',
       })).sort((a, b) => `${a.fecha}|${a.comprobante}|${a.cuenta}`.localeCompare(`${b.fecha}|${b.comprobante}|${b.cuenta}`));
 
       const totalDeb = rows.reduce((s, r) => s + Number(r.debito || 0), 0);
@@ -3265,6 +3351,7 @@ async function renderJournalBook() {
               <tr>
                 <td>${showHeader ? esc(line.fecha) : ''}</td>
                 <td>${showHeader ? `<strong>${esc(line.comprobante)}</strong>` : ''}</td>
+                ${showSucursalColumn ? `<td><span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold text-[10.5px]">${esc(line.sucursal)}</span></td>` : ''}
                 <td>${showHeader ? esc(line.tercero) : ''}</td>
                 <td>${esc(line.cuenta)}</td>
                 <td class="text-xs text-gray-500">${esc(line.descripcion !== g.descripcion ? line.descripcion : '')}</td>
@@ -3274,19 +3361,19 @@ async function renderJournalBook() {
             `;
           }).join('') + `
             <tr class="font-semibold" style="background-color: #F9FAFB; border-bottom: 1.5px solid #E5E7EB;">
-              <td colspan="5" class="text-right text-xs" style="color: #4B5563">Subtotal ${esc(g.comprobante)}</td>
+              <td colspan="${showSucursalColumn ? 6 : 5}" class="text-right text-xs" style="color: #4B5563">Subtotal ${esc(g.comprobante)}</td>
               <td class="text-right" style="color: #111827">${fmt(g.totalDeb)}</td>
               <td class="text-right" style="color: #111827">${fmt(g.totalCre)}</td>
             </tr>
           `;
-        }).join('') : '<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>';
+        }).join('') : `<tr><td colspan="${showSucursalColumn ? 8 : 7}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>`;
       }
 
       const tableHeaderHtml = format === 'summarized'
         ? `<thead><tr><th>Código Cuenta</th><th>Cuenta</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`
-        : `<thead><tr><th>Fecha</th><th>Comp.</th><th>Tercero</th><th>Cuenta</th><th>Descripción</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`;
+        : `<thead><tr><th>Fecha</th><th>Comp.</th>${showSucursalColumn ? '<th>Sucursal</th>' : ''}<th>Tercero</th><th>Cuenta</th><th>Descripción</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`;
 
-      const colSpanTotal = format === 'summarized' ? 2 : 5;
+      const colSpanTotal = format === 'summarized' ? 2 : (showSucursalColumn ? 6 : 5);
 
       results.innerHTML = `
         <div class="p-4 border-b" style="border-color:#F3F4F6">
@@ -3309,7 +3396,7 @@ async function renderJournalBook() {
         </div>`;
 
       lastRows = rows;
-      lastMeta = { fromMonth, toMonth, txTypeId, format, totalDeb, totalCre };
+      lastMeta = { fromMonth, toMonth, txTypeId, format, totalDeb, totalCre, showSucursalColumn };
 
       if ($('#btn-exp-journal')) $('#btn-exp-journal').disabled = !rows.length;
       if ($('#btn-pdf-journal')) $('#btn-pdf-journal').disabled = !rows.length;
@@ -3400,37 +3487,55 @@ async function renderJournalBook() {
         { key: 'credito', label: 'Haber' },
       ], `libro_diario_resumido_${lastMeta.fromMonth}_a_${lastMeta.toMonth}`);
     } else {
+      const isMultiBranch = !!lastMeta.showSucursalColumn;
       lastRows.forEach(r => {
-        exportRows.push({
+        const item: any = {
           fecha: r.fecha,
           comprobante: r.comprobante,
-          tercero: r.tercero,
-          cuenta: r.cuenta,
-          descripcion: r.descripcion,
-          debito: r.debito,
-          credito: r.credito,
-          isBold: false
-        });
+        };
+        if (isMultiBranch) {
+          item.sucursal = r.sucursal;
+        }
+        item.tercero = r.tercero;
+        item.cuenta = r.cuenta;
+        item.descripcion = r.descripcion;
+        item.debito = r.debito;
+        item.credito = r.credito;
+        item.isBold = false;
+        exportRows.push(item);
       });
-      exportRows.push({
+
+      const totalRow: any = {
         fecha: 'TOTAL GENERAL',
         comprobante: '',
-        tercero: '',
-        cuenta: '',
-        descripcion: '',
-        debito: lastMeta.totalDeb,
-        credito: lastMeta.totalCre,
-        isBold: true
-      });
-      exportToExcel(exportRows, [
+      };
+      if (isMultiBranch) {
+        totalRow.sucursal = '';
+      }
+      totalRow.tercero = '';
+      totalRow.cuenta = '';
+      totalRow.descripcion = '';
+      totalRow.debito = lastMeta.totalDeb;
+      totalRow.credito = lastMeta.totalCre;
+      totalRow.isBold = true;
+      exportRows.push(totalRow);
+
+      const excelHeaders = [
         { key: 'fecha', label: 'Fecha' },
         { key: 'comprobante', label: 'Comp.' },
+      ];
+      if (isMultiBranch) {
+        excelHeaders.push({ key: 'sucursal', label: 'Sucursal' });
+      }
+      excelHeaders.push(
         { key: 'tercero', label: 'Tercero' },
         { key: 'cuenta', label: 'Cuenta' },
         { key: 'descripcion', label: 'Descripcion' },
         { key: 'debito', label: 'Debito' },
-        { key: 'credito', label: 'Credito' },
-      ], `libro_diario_detallado_${lastMeta.fromMonth}_a_${lastMeta.toMonth}`);
+        { key: 'credito', label: 'Credito' }
+      );
+
+      exportToExcel(exportRows, excelHeaders, `libro_diario_detallado_${lastMeta.fromMonth}_a_${lastMeta.toMonth}`);
     }
   });
 
@@ -3439,7 +3544,8 @@ async function renderJournalBook() {
     try {
       const jsPdfCtor = getPdfCtorOrWarn();
       if (!jsPdfCtor) return;
-      const doc = new jsPdfCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+      const isMultiBranch = !!lastMeta.showSucursalColumn;
+      const doc = new jsPdfCtor({ orientation: isMultiBranch ? 'landscape' : 'portrait', unit: 'pt', format: 'letter' });
       const headerCtx = await getPdfHeaderContext();
       const selectedType = txTypes.find(t => String(t.id) === String(lastMeta.txTypeId));
       const header = drawPdfHeader(doc, headerCtx, {
@@ -3576,49 +3682,52 @@ async function renderJournalBook() {
           currentGroup.totalCre += r.credito;
         }
 
+        const pdfHead = isMultiBranch
+          ? [['Fecha', 'Comp.', 'Sucursal', 'Tercero', 'Cuenta', 'Descripción', 'Débito', 'Crédito']]
+          : [['Fecha', 'Comp.', 'Tercero', 'Cuenta', 'Descripción', 'Débito', 'Crédito']];
+
+        const textColSpan = isMultiBranch ? 6 : 5;
+
         pdfGroups.forEach(g => {
           g.lines.forEach((l, idx) => {
-            body.push([
+            const rowData = [
               idx === 0 ? l.fecha : '',
-              idx === 0 ? l.comprobante : '',
+              idx === 0 ? l.comprobante : ''
+            ];
+            if (isMultiBranch) {
+              rowData.push(l.sucursal);
+            }
+            rowData.push(
               idx === 0 ? l.tercero : '',
               l.cuenta,
               l.descripcion,
               fmtPdfNum(l.debito),
               fmtPdfNum(l.credito)
-            ]);
+            );
+            body.push(rowData);
           });
           // Subtotal row
           body.push([
-            { content: `Subtotal ${g.comprobante}`, colSpan: 5, styles: { fontStyle: 'bold', halign: 'right', fillColor: [243, 244, 246] } },
+            { content: `Subtotal ${g.comprobante}`, colSpan: textColSpan, styles: { fontStyle: 'bold', halign: 'right', fillColor: [243, 244, 246] } },
             { content: fmtPdfNum(g.totalDeb), styles: { fontStyle: 'bold', halign: 'right', fillColor: [243, 244, 246] } },
             { content: fmtPdfNum(g.totalCre), styles: { fontStyle: 'bold', halign: 'right', fillColor: [243, 244, 246] } }
           ]);
         });
         // Grand total row
         body.push([
-          { content: 'TOTAL GENERAL', colSpan: 5, styles: { fontStyle: 'bold', halign: 'right', fillColor: [230, 230, 230] } },
+          { content: 'TOTAL GENERAL', colSpan: textColSpan, styles: { fontStyle: 'bold', halign: 'right', fillColor: [230, 230, 230] } },
           { content: fmtPdfNum(lastMeta.totalDeb), styles: { fontStyle: 'bold', halign: 'right', fillColor: [230, 230, 230] } },
           { content: fmtPdfNum(lastMeta.totalCre), styles: { fontStyle: 'bold', halign: 'right', fillColor: [230, 230, 230] } }
         ]);
 
         doc.autoTable({
           startY: header.startY,
-          head: [['Fecha', 'Comp.', 'Tercero', 'Cuenta', 'Descripcion', 'Debito', 'Credito']],
+          head: pdfHead,
           body,
           theme: 'plain',
           margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
           styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
           headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
-          columnStyles: {
-            0: { cellWidth: 50 },
-            1: { cellWidth: 65 },
-            2: { cellWidth: 90 },
-            3: { cellWidth: 110 },
-            4: { cellWidth: 137 },
-            5: { cellWidth: 56, halign: 'right' },
-            6: { cellWidth: 56, halign: 'right' },
-          },
           didParseCell: (data) => {
             if (data.section !== 'body') return;
             if (data.row.index === body.length - 1) {
@@ -3633,7 +3742,8 @@ async function renderJournalBook() {
         });
       }
 
-      doc.save(`libro_diario_${lastMeta.fromMonth}_${lastMeta.toMonth}.pdf`);
+      const pdfFileName = isMultiBranch ? `libro_diario_multisucursal_${lastMeta.fromMonth}_a_${lastMeta.toMonth}.pdf` : `libro_diario_${lastMeta.fromMonth}_a_${lastMeta.toMonth}.pdf`;
+      doc.save(pdfFileName);
     } catch (err) {
       showToast(`Error al generar PDF: ${err.message}`, 'error');
     }
@@ -5917,13 +6027,23 @@ async function generateIvaReportRows() {
     if (prefixes.length > 0) {
       accountFilter = ' && (' + prefixes.map(p => `account_id.code ~ "${p}"`).join(' || ') + ')';
     }
-    const linesFilter = `tx_id.status="active" && tx_id.date >= "${fromDate}" && tx_id.date <= "${toDate} 23:59:59"${accountFilter}`;
+
+    const activeBranchId = localStorage.getItem('active_branch_id') || 'TODAS';
+    const activeCostCenterId = localStorage.getItem('active_cost_center_id') || 'TODOS';
+    let scopeFilter = '';
+    if (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL') {
+      scopeFilter += ` && (branch_id = "${activeBranchId}" || tx_id.branch_id = "${activeBranchId}")`;
+    }
+    if (activeCostCenterId && activeCostCenterId !== 'TODOS' && activeCostCenterId !== 'ALL') {
+      scopeFilter += ` && cost_center_id = "${activeCostCenterId}"`;
+    }
+
+    const linesFilter = `tx_id.status="active" && tx_id.date >= "${fromDate}" && tx_id.date <= "${toDate} 23:59:59"${accountFilter}${scopeFilter}`;
 
     const [rawTxLines, thirdParties] = await Promise.all([
       pb.listAll('tx_lines', {
         filter: linesFilter,
-        expand: 'account_id,tx_id',
-        ignoreBranch: true
+        expand: 'account_id,tx_id'
       }),
       pb.listAll('third_parties')
     ]);
@@ -6750,13 +6870,23 @@ async function generateRetReportRows() {
     if (prefixes.length > 0) {
       accountFilter = ' && (' + prefixes.map(p => `account_id.code ~ "${p}"`).join(' || ') + ')';
     }
-    const linesFilter = `tx_id.status="active" && tx_id.date >= "${fromDate}" && tx_id.date <= "${toDate} 23:59:59"${accountFilter}`;
+
+    const activeBranchId = localStorage.getItem('active_branch_id') || 'TODAS';
+    const activeCostCenterId = localStorage.getItem('active_cost_center_id') || 'TODOS';
+    let scopeFilter = '';
+    if (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL') {
+      scopeFilter += ` && (branch_id = "${activeBranchId}" || tx_id.branch_id = "${activeBranchId}")`;
+    }
+    if (activeCostCenterId && activeCostCenterId !== 'TODOS' && activeCostCenterId !== 'ALL') {
+      scopeFilter += ` && cost_center_id = "${activeCostCenterId}"`;
+    }
+
+    const linesFilter = `tx_id.status="active" && tx_id.date >= "${fromDate}" && tx_id.date <= "${toDate} 23:59:59"${accountFilter}${scopeFilter}`;
 
     const [rawTxLines, thirdParties] = await Promise.all([
       pb.listAll('tx_lines', {
         filter: linesFilter,
-        expand: 'account_id,tx_id',
-        ignoreBranch: true
+        expand: 'account_id,tx_id'
       }),
       pb.listAll('third_parties')
     ]);
@@ -12595,27 +12725,18 @@ async function renderCostCentersReport() {
     results.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos...</div>`;
 
     try {
-      // 1. Obtener centros de costo
-      const costCenters = await pb.listAll('cost_centers', { sort: 'code' });
+      const [costCenters, items] = await Promise.all([
+        pb.listAll('cost_centers', { sort: 'code' }),
+        pb.send(`/api/gravy/report-cost-centers?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(toDate)}&branch_id=${encodeURIComponent(branchId === 'TODAS' ? '' : branchId)}`, { method: 'GET' }).catch(() => [])
+      ]);
       
-      // 2. Obtener movimientos asociados a centros de costo
-      let filter = `tx_id.date >= "${fromDate}" && tx_id.date <= "${toDate}" && tx_id.status = "active"`;
-      if (branchId && branchId !== 'TODAS') {
-        filter += ` && branch_id = "${branchId}"`;
-      }
-      
-      const lines = await pb.listAll('tx_lines', { filter });
-
-      // 3. Consolidar totales por ID de Centro de Costo
       const ccTotals = new Map();
-      for (const line of lines) {
-        const ccId = line.cost_center_id || '';
-        if (!ccTotals.has(ccId)) {
-          ccTotals.set(ccId, { debit: 0, credit: 0 });
-        }
-        const totals = ccTotals.get(ccId);
-        totals.debit += Number(line.debit || 0);
-        totals.credit += Number(line.credit || 0);
+      for (const row of items) {
+        const ccId = row.cost_center_id || '';
+        ccTotals.set(ccId, {
+          debit: Number(row.debit || 0),
+          credit: Number(row.credit || 0)
+        });
       }
 
       // 4. Construir las filas con jerarquía
@@ -13406,45 +13527,15 @@ async function renderSalesBySellerReport() {
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando ventas por vendedor...</div>';
 
     try {
-      const filterParts = [
-        `status != "voided"`,
-        `date >= "${startDate} 00:00:00"`,
-        `date <= "${endDate} 23:59:59"`
-      ];
+      const items: any[] = await pb.send(
+        `/api/gravy/report-sales-by-seller?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&sellerId=${encodeURIComponent(sellerId)}${getScopeQueryParams()}`,
+        { method: 'GET' }
+      ).catch(() => []);
 
-      const rawInvoices = await pb.listAll('invoices', {
-        filter: filterParts.join(' && '),
-        sort: 'date',
-        expand: 'seller_id,customer_id,customer_id.advisor'
-      }).catch(() => []);
-
-      const invoices = rawInvoices.map((inv: any) => {
-        const sellerObj = inv.expand?.seller_id;
-        const custObj = inv.expand?.customer_id;
-        const custAdvisorObj = custObj?.expand?.advisor;
-
-        const resolvedSellerId = inv.seller_id || custObj?.advisor || '';
-        const resolvedSellerName = sellerObj ? sellerObj.name : (custAdvisorObj ? custAdvisorObj.name : (inv.seller_name || 'Sin Vendedor'));
-        const resolvedSellerDoc = sellerObj ? sellerObj.doc_number : (custAdvisorObj ? custAdvisorObj.doc_number : (inv.seller_doc || ''));
-
-        return {
-          invoice_id: inv.id,
-          invoice_number: inv.number || inv.tx_number || inv.id,
-          invoice_date: String(inv.date || '').split(' ')[0],
-          payment_method: inv.payment_method || 'EFECTIVO',
-          status: inv.status,
-          subtotal: Number(inv.subtotal || 0),
-          iva_total: Number(inv.iva_total || 0),
-          ret_total: Number(inv.ret_total || 0),
-          total: Number(inv.total || 0),
-          seller_id: resolvedSellerId,
-          seller_name: resolvedSellerName,
-          seller_doc: resolvedSellerDoc,
-          customer_id: inv.customer_id || '',
-          customer_name: custObj ? custObj.name : (inv.customer_name || 'Sin Cliente'),
-          customer_doc: custObj ? custObj.doc_number : (inv.customer_doc || '')
-        };
-      });
+      let invoices = items;
+      if (payMethod) {
+        invoices = invoices.filter((i: any) => String(i.payment_method || '').toUpperCase() === payMethod.toUpperCase());
+      }
 
       let filteredInvoices = invoices;
       if (sellerId) {

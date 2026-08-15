@@ -818,6 +818,45 @@ function roleBadge(role) {
   return `<span class="badge ${ROLES[role]?.badge ?? 'badge-gray'}">${esc(roleLabel(role))}</span>`;
 }
 
+function parseTitleFromFilename(filename: string): string {
+  if (!filename || typeof filename !== 'string') return 'Reporte';
+  const name = filename.toLowerCase();
+  if (name.includes('balance_prueba') || name.includes('trial_balance')) return 'Balance de Prueba (Detallado)';
+  if (name.includes('auxiliar') || name.includes('auxiliary')) return 'Libro Auxiliar Contable';
+  if (name.includes('flujo_caja') || name.includes('cash_flow')) return 'Estado de Flujo de Efectivo';
+  if (name.includes('diario') || name.includes('journal')) return 'Libro Diario';
+  if (name.includes('estados_financieros') || name.includes('financial')) return 'Estados Financieros';
+  if (name.includes('cartera') || name.includes('aging')) return 'Informe de Cartera por Edades';
+  if (name.includes('saldos')) return 'Reporte de Saldos de Cuentas';
+  if (name.includes('inventario') || name.includes('stock')) return 'Reporte de Inventarios';
+  if (name.includes('ventas') || name.includes('sales')) return 'Reporte de Ventas';
+  if (name.includes('costos') || name.includes('cost_center')) return 'Reporte de Centros de Costo';
+  if (name.includes('tesoreria') || name.includes('treasury')) return 'Informe de Tesorería';
+
+  return filename
+    .replace(/^reporte_?|^informe_?/i, '')
+    .replace(/_\d{4}-\d{2}-\d{2}.*/g, '')
+    .replace(/_/g, ' ')
+    .trim()
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function parseSubtitlesFromFilename(filename: string): string[] {
+  if (!filename || typeof filename !== 'string') return [];
+  const subs: string[] = [];
+  const rangeMatch = filename.match(/(\d{4}-\d{2}-\d{2})_a_(\d{4}-\d{2}-\d{2})/) || filename.match(/(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})/);
+  if (rangeMatch) {
+    subs.push(`Desde: ${rangeMatch[1]}`);
+    subs.push(`Hasta: ${rangeMatch[2]}`);
+  } else {
+    const singleDate = filename.match(/(\d{4}-\d{2}-\d{2})/);
+    if (singleDate) {
+      subs.push(`Corte al: ${singleDate[1]}`);
+    }
+  }
+  return subs;
+}
+
 /* ── Exportar a Excel ────────────────────────────────────── */
 function exportToExcel(data, headers, filename, options?: any) {
   let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
@@ -830,32 +869,66 @@ function exportToExcel(data, headers, filename, options?: any) {
     .bold { font-weight: bold; }
   </style></head><body><table>`;
 
-  const colCount = headers?.length || 1;
+  const colCount = Math.max(headers?.length || 1, 3);
+  const leftSpan = Math.max(1, Math.floor(colCount * 0.35));
+  const centerSpan = Math.max(1, Math.floor(colCount * 0.30));
+  const rightSpan = Math.max(1, colCount - leftSpan - centerSpan);
 
-  if (options) {
-    const optObj = typeof options === 'string' ? { title: options } : options;
-    
-    if (optObj.companyName) {
-      html += `<tr><td colspan="${colCount}" style="font-size:12pt;font-weight:bold;color:#0D2137;border:none;padding:2px 4px;">${esc(optObj.companyName)}</td></tr>`;
-    }
-    if (optObj.companyNit) {
-      html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#4B5563;border:none;padding:2px 4px;">${esc(optObj.companyNit)}</td></tr>`;
-    }
-    if (optObj.companyAddress) {
-      html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#4B5563;border:none;padding:2px 4px;">${esc(optObj.companyAddress)}</td></tr>`;
-    }
-    if (optObj.title) {
-      html += `<tr><td colspan="${colCount}" style="font-size:13pt;font-weight:bold;color:#0D2137;text-align:center;padding:6px;border:none;">${esc(optObj.title)}</td></tr>`;
-    }
-    if (Array.isArray(optObj.subtitles)) {
-      optObj.subtitles.forEach(sub => {
-        if (sub) {
-          html += `<tr><td colspan="${colCount}" style="font-size:9pt;color:#374151;border:none;padding:2px 4px;">${esc(sub)}</td></tr>`;
-        }
-      });
-    }
-    html += `<tr><td colspan="${colCount}" style="border:none;height:10px;"></td></tr>`;
-  }
+  const optObj = typeof options === 'object' && options !== null
+    ? options
+    : (typeof filename === 'object' && filename !== null ? filename : {});
+
+  const fnameStr = typeof filename === 'string' ? filename : (typeof options === 'string' ? options : '');
+
+  const pbInst = (window as any).pb || (typeof pb !== 'undefined' ? pb : null);
+  const userObj = pbInst?.authStore?.model;
+  const userName = optObj.userName || (userObj ? (userObj.name || userObj.email) : null) || sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || 'Usuario';
+  const branchName = optObj.branchName || (typeof (window as any).getScopeBranchNameSync === 'function' ? (window as any).getScopeBranchNameSync(optObj.branchId) : null) || (localStorage.getItem('active_branch_id') === 'TODAS' || !localStorage.getItem('active_branch_id') ? 'Todas las sucursales' : localStorage.getItem('active_branch_id'));
+  const costCenterName = optObj.costCenterName || (typeof (window as any).getScopeCostCenterNameSync === 'function' ? (window as any).getScopeCostCenterNameSync(optObj.costCenterId) : null) || (localStorage.getItem('active_cost_center_id') === 'TODOS' || !localStorage.getItem('active_cost_center_id') ? 'Todos los centros de costo' : localStorage.getItem('active_cost_center_id'));
+
+  const companyName = optObj.companyName || (window as any).COMPANY_NAME_CACHE || localStorage.getItem('active_company_name') || localStorage.getItem('company_name') || 'DOMESTIKO SAS';
+  const companyNit = optObj.companyNit || (window as any).COMPANY_NIT_CACHE || localStorage.getItem('active_company_nit') || localStorage.getItem('company_nit') || '';
+  const companyAddress = optObj.companyAddress || (window as any).COMPANY_ADDRESS_CACHE || localStorage.getItem('active_company_address') || localStorage.getItem('company_address') || '';
+
+  const title = optObj.title || parseTitleFromFilename(fnameStr);
+  const parsedSubtitles = parseSubtitlesFromFilename(fnameStr);
+  const subtitles = Array.isArray(optObj.subtitles) && optObj.subtitles.length ? optObj.subtitles : parsedSubtitles;
+  const softwareName = optObj.softwareName || 'GRAVY v2.0';
+  const generatedAt = new Date().toLocaleString('es-CO');
+
+  // Encabezado de 3 columnas (Empresa | Título y Filtros | Auditoría y Ámbito)
+  html += '<tr>';
+  html += `<td colspan="${leftSpan}" style="font-size:11pt;font-weight:bold;color:#0D2137;border:none;padding:2px 4px;vertical-align:top;">${esc(String(companyName).toUpperCase())}</td>`;
+  html += `<td colspan="${centerSpan}" style="font-size:12pt;font-weight:bold;color:#0D2137;text-align:center;border:none;padding:2px 4px;vertical-align:top;">${esc(title)}</td>`;
+  html += `<td colspan="${rightSpan}" style="font-size:8.5pt;color:#6B7280;text-align:right;border:none;padding:2px 4px;vertical-align:top;">${esc(softwareName)}</td>`;
+  html += '</tr>';
+
+  html += '<tr>';
+  html += `<td colspan="${leftSpan}" style="font-size:8.5pt;color:#6B7280;border:none;padding:2px 4px;">${companyNit ? (String(companyNit).startsWith('NIT') ? esc(companyNit) : `NIT: ${esc(companyNit)}`) : ''}</td>`;
+  html += `<td colspan="${centerSpan}" style="font-size:8.5pt;color:#4B5563;text-align:center;border:none;padding:2px 4px;">${subtitles[0] ? esc(subtitles[0]) : ''}</td>`;
+  html += `<td colspan="${rightSpan}" style="font-size:8.5pt;color:#6B7280;text-align:right;border:none;padding:2px 4px;">Usuario: ${esc(userName)}</td>`;
+  html += '</tr>';
+
+  html += '<tr>';
+  html += `<td colspan="${leftSpan}" style="font-size:8.5pt;color:#6B7280;border:none;padding:2px 4px;">${esc(companyAddress)}</td>`;
+  html += `<td colspan="${centerSpan}" style="font-size:8.5pt;color:#4B5563;text-align:center;border:none;padding:2px 4px;">${subtitles[1] ? esc(subtitles[1]) : ''}</td>`;
+  html += `<td colspan="${rightSpan}" style="font-size:8.5pt;color:#6B7280;text-align:right;border:none;padding:2px 4px;">Sucursal: ${esc(branchName)}</td>`;
+  html += '</tr>';
+
+  html += '<tr>';
+  html += `<td colspan="${leftSpan}" style="border:none;"></td>`;
+  html += `<td colspan="${centerSpan}" style="font-size:8.5pt;color:#4B5563;text-align:center;border:none;padding:2px 4px;">${subtitles[2] ? esc(subtitles[2]) : ''}</td>`;
+  html += `<td colspan="${rightSpan}" style="font-size:8.5pt;color:#6B7280;text-align:right;border:none;padding:2px 4px;">C. Costo: ${esc(costCenterName)}</td>`;
+  html += '</tr>';
+
+  html += '<tr>';
+  html += `<td colspan="${leftSpan}" style="border:none;"></td>`;
+  html += `<td colspan="${centerSpan}" style="font-size:8.5pt;color:#4B5563;text-align:center;border:none;padding:2px 4px;">${subtitles[3] ? esc(subtitles[3]) : ''}</td>`;
+  html += `<td colspan="${rightSpan}" style="font-size:8.5pt;color:#6B7280;text-align:right;border:none;padding:2px 4px;">Impreso: ${esc(generatedAt)}</td>`;
+  html += '</tr>';
+
+  html += `<tr><td colspan="${colCount}" style="border-bottom:1.5pt solid #CCCCCC;height:4px;padding:0;"></td></tr>`;
+  html += `<tr><td colspan="${colCount}" style="border:none;height:8px;"></td></tr>`;
 
   // Headers
   html += '<tr>';

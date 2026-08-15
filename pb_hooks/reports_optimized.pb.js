@@ -287,10 +287,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         a.name AS account_name,
         a.maneja_cruce AS account_maneja_cruce,
         COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS third_party_id,
-        COALESCE(tp.name, 'Sin tercero') AS third_party_name,
-        COALESCE(tp.doc_number, '') AS third_party_doc,
-        COALESCE(tp.is_customer, 0) AS tp_is_customer,
-        COALESCE(tp.is_supplier, 0) AS tp_is_supplier,
+        COALESCE(tp.type, '') AS tp_type,
         COALESCE(tp.advisor, '') AS tp_advisor,
         l.cross_doc_ref,
         t.date AS tx_date,
@@ -326,8 +323,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
       third_party_id: "",
       third_party_name: "",
       third_party_doc: "",
-      tp_is_customer: 0,
-      tp_is_supplier: 0,
+      tp_type: "",
       tp_advisor: "",
       cross_doc_ref: "",
       tx_date: "",
@@ -510,12 +506,14 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
         l.credit AS credito,
         t.tx_type_id AS typeId,
         COALESCE(tt.code, 'OTROS') AS typeCode,
-        COALESCE(tt.name, 'Otros Comprobantes') AS typeName
+        COALESCE(tt.name, 'Otros Comprobantes') AS typeName,
+        COALESCE(b.name, 'Principal') AS sucursal
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
       LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
       LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
+      LEFT JOIN branches b ON b.id = COALESCE(l.branch_id, t.branch_id)
       WHERE t.status = 'active'
         AND t.date >= {:fromDate}
         AND t.date <= {:toDate}
@@ -549,7 +547,8 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       credito: -0,
       typeId: "",
       typeCode: "",
-      typeName: ""
+      typeName: "",
+      sucursal: ""
     }));
     query.all(data);
 
@@ -1236,5 +1235,84 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     });
   } catch (err) {
     return c.json(500, { error: "Error obteniendo inventario a fecha de corte: " + err.message });
+  }
+});
+
+routerAdd("GET", "/api/gravy/report-cost-centers", (c) => {
+  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  if (!authRecord) {
+    return c.json(401, { error: "No autorizado" });
+  }
+
+  const queryParams = c.requestInfo().query || {};
+
+  let branchId = String(queryParams.branch_id || queryParams.branch || '').trim();
+  if (Array.isArray(branchId)) branchId = String(branchId[0] || '').trim();
+
+  let costCenterId = String(queryParams.cost_center_id || queryParams.cost_center || queryParams.costCenterId || '').trim();
+  if (Array.isArray(costCenterId)) costCenterId = String(costCenterId[0] || '').trim();
+
+  if (branchId === "TODAS" || branchId === "TODOS" || branchId === "ALL" || branchId === "null" || branchId === "undefined") branchId = "";
+  if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
+
+  let fromDate = String(queryParams.fromDate || '').trim();
+  let toDate = String(queryParams.toDate || '').trim();
+
+  if (!fromDate || !toDate) {
+    return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
+  }
+
+  fromDate = fromDate.slice(0, 10);
+  toDate = toDate.slice(0, 10);
+
+  try {
+    let sql = `
+      SELECT
+        l.cost_center_id AS cost_center_id,
+        COALESCE(cc.code, 'SIN_CENCO') AS cost_center_code,
+        COALESCE(cc.name, 'Sin centro de costo') AS cost_center_name,
+        SUM(l.debit) AS debit,
+        SUM(l.credit) AS credit,
+        SUM(l.debit - l.credit) AS balance
+      FROM tx_lines l
+      INNER JOIN transactions t ON t.id = l.tx_id
+      LEFT JOIN cost_centers cc ON cc.id = l.cost_center_id
+      WHERE t.status = 'active'
+        AND t.date >= {:fromDate}
+        AND t.date <= {:toDateLimit}
+    `;
+
+    const binds = {
+      fromDate: fromDate,
+      toDateLimit: toDate + " 23:59:59"
+    };
+
+    if (branchId) {
+      sql += " AND COALESCE(l.branch_id, t.branch_id) = {:branchId}";
+      binds.branchId = branchId;
+    }
+    if (costCenterId) {
+      sql += " AND l.cost_center_id = {:costCenterId}";
+      binds.costCenterId = costCenterId;
+    }
+
+    sql += " GROUP BY l.cost_center_id";
+
+    const query = $app.db().newQuery(sql);
+    query.bind(binds);
+
+    const data = arrayOf(new DynamicModel({
+      cost_center_id: "",
+      cost_center_code: "",
+      cost_center_name: "",
+      debit: -0,
+      credit: -0,
+      balance: -0
+    }));
+    query.all(data);
+
+    return c.json(200, data);
+  } catch (err) {
+    return c.json(500, { error: "Error en reporte de centros de costo: " + err.message });
   }
 });

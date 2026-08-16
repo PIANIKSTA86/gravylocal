@@ -634,6 +634,7 @@ function renderSoRow(inv: any) {
         <div class="flex flex-col gap-1">
           <span class="badge ${meta.badge}">${meta.label}</span>
           ${deliveryBadge}
+          ${inv.cost_corrected ? `<span class="badge badge-blue text-[10px]" title="Costo de ventas corregido el ${(window as any).esc(inv.cost_corrected_at || '')} mediante Recálculo y Revalorización de Costos"><i class="fas fa-rotate mr-1"></i>Costo corregido</span>` : ''}
         </div>
       </td>
       <td>

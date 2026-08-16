@@ -1829,8 +1829,6 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const tabTitle = invoiceId ? 'Editar Factura' : (noteConfig ? `Ajuste (${noteConfig.type})` : 'Nueva Factura de Venta');
     (window as any).openDocumentTab(tabKey, tabTitle, 'fa-receipt', formHtml, footer, () => {
       initSoSupplierSearch();
-      initSoLinesAutocomplete();
-      bindSoFormEvents();
     });
   } else {
     (window as any).openModal(invoiceId ? 'Editar Factura de Venta' : 'Nueva Factura de Venta', formHtml, footer, true);

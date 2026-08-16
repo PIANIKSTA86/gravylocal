@@ -129,7 +129,15 @@ const resolutionHandler = (e) => {
             try {
               $app.runInTransaction((txApp) => {
                 const tt = txApp.findRecordById("transaction_types", txTypeIdLocal);
-                if (numVal > Number(tt.get("consecutive") || 0)) {
+                if ((tt.getString("numbering_mode") || "continuous") === "period" && parts.length === 3) {
+                  const periodTagLocal = parts[1];
+                  const counters = JSON.parse(tt.getString("period_counters") || "{}") || {};
+                  if (numVal > (counters[periodTagLocal] || 0)) {
+                    counters[periodTagLocal] = numVal;
+                    tt.set("period_counters", JSON.stringify(counters));
+                    txApp.save(tt);
+                  }
+                } else if (numVal > Number(tt.get("consecutive") || 0)) {
                   tt.set("consecutive", numVal);
                   txApp.save(tt);
                 }
@@ -166,31 +174,51 @@ const resolutionHandler = (e) => {
     if (!isDS) {
       let txNumber = "";
       let finalConsecutive = 0;
+      let periodMode = false;
+      let periodTag = "";
       if (txTypeRecord) {
         try {
           const txType = $app.findRecordById("transaction_types", txTypeId);
           const prefix = String(txType.getString("prefix") || txType.getString("code") || "FC").trim().toUpperCase() || "FC";
-          let consecutiveRaw = Number(txType.get("consecutive") || 0);
+          periodMode = (txType.getString("numbering_mode") || "continuous") === "period";
 
-          while (true) {
-            consecutiveRaw++;
-            txNumber = `${prefix}-${String(consecutiveRaw).padStart(8, "0")}`;
-            let found = false;
-            try {
-              $app.findFirstRecordByFilter("purchase_invoices", "number='" + txNumber + "'");
-              found = true;
-            } catch (e) {}
+          if (periodMode) {
+            const docDate = String(record.getString("date") || "").trim();
+            periodTag = docDate.slice(0, 7).replace("-", "");
+            const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+            let counter = Number(counters[periodTag]) || 0;
 
-            if (!found) {
+            while (true) {
+              counter++;
+              txNumber = `${prefix}-${periodTag}-${String(counter).padStart(6, "0")}`;
+              let found = false;
+              try { $app.findFirstRecordByFilter("purchase_invoices", "number='" + txNumber + "'"); found = true; } catch (e) {}
+              if (!found) { try { $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'"); found = true; } catch (e) {} }
+              if (!found) { finalConsecutive = counter; break; }
+            }
+          } else {
+            let consecutiveRaw = Number(txType.get("consecutive") || 0);
+
+            while (true) {
+              consecutiveRaw++;
+              txNumber = `${prefix}-${String(consecutiveRaw).padStart(8, "0")}`;
+              let found = false;
               try {
-                $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'");
+                $app.findFirstRecordByFilter("purchase_invoices", "number='" + txNumber + "'");
                 found = true;
               } catch (e) {}
-            }
 
-            if (!found) {
-              finalConsecutive = consecutiveRaw;
-              break;
+              if (!found) {
+                try {
+                  $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'");
+                  found = true;
+                } catch (e) {}
+              }
+
+              if (!found) {
+                finalConsecutive = consecutiveRaw;
+                break;
+              }
             }
           }
           if (txNumber) {
@@ -205,16 +233,26 @@ const resolutionHandler = (e) => {
       // Guardamos primero en la base de datos
       e.next();
 
-      // Si tiene éxito, actualizamos el consecutivo en la serie
+      // Si tiene éxito, actualizamos el consecutivo/contador de período en la serie
       if (finalConsecutive > 0 && txTypeId) {
         try {
           $app.runInTransaction((txApp) => {
             const tt = txApp.findRecordById("transaction_types", txTypeId);
-            const currentConsec = Number(tt.get("consecutive") || 0);
-            if (finalConsecutive > currentConsec) {
-              tt.set("consecutive", finalConsecutive);
-              txApp.save(tt);
-              console.log("[GRAVY-HOOK] Guardado consecutivo interno para compra en DB: " + finalConsecutive);
+            if (periodMode) {
+              const counters = JSON.parse(tt.getString("period_counters") || "{}") || {};
+              if (finalConsecutive > (counters[periodTag] || 0)) {
+                counters[periodTag] = finalConsecutive;
+                tt.set("period_counters", JSON.stringify(counters));
+                txApp.save(tt);
+                console.log("[GRAVY-HOOK] Guardado contador de período para compra en DB: " + finalConsecutive);
+              }
+            } else {
+              const currentConsec = Number(tt.get("consecutive") || 0);
+              if (finalConsecutive > currentConsec) {
+                tt.set("consecutive", finalConsecutive);
+                txApp.save(tt);
+                console.log("[GRAVY-HOOK] Guardado consecutivo interno para compra en DB: " + finalConsecutive);
+              }
             }
           });
         } catch (err) {
@@ -279,30 +317,50 @@ const resolutionHandler = (e) => {
     if (!isElectronic) {
       let txNumber = "";
       let finalConsecutive = 0;
+      let periodMode = false;
+      let periodTag = "";
       try {
         const txType = $app.findRecordById("transaction_types", txTypeId);
         const prefix = String(txType.getString("prefix") || txType.getString("code") || "RM").trim().toUpperCase() || "RM";
-        let consecutiveRaw = Number(txType.get("consecutive") || 0);
+        periodMode = (txType.getString("numbering_mode") || "continuous") === "period";
 
-        while (true) {
-          consecutiveRaw++;
-          txNumber = `${prefix}-${String(consecutiveRaw).padStart(8, "0")}`;
-          let found = false;
-          try {
-            $app.findFirstRecordByFilter("invoices", "number='" + txNumber + "'");
-            found = true;
-          } catch (e) {}
+        if (periodMode) {
+          const docDate = String(record.getString("date") || "").trim();
+          periodTag = docDate.slice(0, 7).replace("-", "");
+          const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+          let counter = Number(counters[periodTag]) || 0;
 
-          if (!found) {
+          while (true) {
+            counter++;
+            txNumber = `${prefix}-${periodTag}-${String(counter).padStart(6, "0")}`;
+            let found = false;
+            try { $app.findFirstRecordByFilter("invoices", "number='" + txNumber + "'"); found = true; } catch (e) {}
+            if (!found) { try { $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'"); found = true; } catch (e) {} }
+            if (!found) { finalConsecutive = counter; break; }
+          }
+        } else {
+          let consecutiveRaw = Number(txType.get("consecutive") || 0);
+
+          while (true) {
+            consecutiveRaw++;
+            txNumber = `${prefix}-${String(consecutiveRaw).padStart(8, "0")}`;
+            let found = false;
             try {
-              $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'");
+              $app.findFirstRecordByFilter("invoices", "number='" + txNumber + "'");
               found = true;
             } catch (e) {}
-          }
 
-          if (!found) {
-            finalConsecutive = consecutiveRaw;
-            break;
+            if (!found) {
+              try {
+                $app.findFirstRecordByFilter("transactions", "number='" + txNumber + "'");
+                found = true;
+              } catch (e) {}
+            }
+
+            if (!found) {
+              finalConsecutive = consecutiveRaw;
+              break;
+            }
           }
         }
         if (txNumber) {
@@ -316,16 +374,26 @@ const resolutionHandler = (e) => {
       // Guardar en la base de datos primero
       e.next();
 
-      // Si tiene éxito, actualizamos el consecutivo en la serie
+      // Si tiene éxito, actualizamos el consecutivo/contador de período en la serie
       if (finalConsecutive > 0 && txTypeId) {
         try {
           $app.runInTransaction((txApp) => {
             const tt = txApp.findRecordById("transaction_types", txTypeId);
-            const currentConsec = Number(tt.get("consecutive") || 0);
-            if (finalConsecutive > currentConsec) {
-              tt.set("consecutive", finalConsecutive);
-              txApp.save(tt);
-              console.log("[GRAVY-HOOK] Guardado consecutivo interno para no-electrónico en DB: " + finalConsecutive);
+            if (periodMode) {
+              const counters = JSON.parse(tt.getString("period_counters") || "{}") || {};
+              if (finalConsecutive > (counters[periodTag] || 0)) {
+                counters[periodTag] = finalConsecutive;
+                tt.set("period_counters", JSON.stringify(counters));
+                txApp.save(tt);
+                console.log("[GRAVY-HOOK] Guardado contador de período para no-electrónico en DB: " + finalConsecutive);
+              }
+            } else {
+              const currentConsec = Number(tt.get("consecutive") || 0);
+              if (finalConsecutive > currentConsec) {
+                tt.set("consecutive", finalConsecutive);
+                txApp.save(tt);
+                console.log("[GRAVY-HOOK] Guardado consecutivo interno para no-electrónico en DB: " + finalConsecutive);
+              }
             }
           });
         } catch (err) {

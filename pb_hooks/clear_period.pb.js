@@ -94,6 +94,24 @@ routerAdd("POST", "/api/gravy/clear-period", (e) => {
         let remaining = [];
         try { remaining = txApp.findRecordsByFilter("transactions", "tx_type_id = '" + ttId + "'", "", 150000); } catch(_) {}
 
+        if ((tt.getString("numbering_mode") || "continuous") === "period") {
+          const counters = {};
+          for (let j = 0; j < remaining.length; j++) {
+            const numStr = remaining[j].getString("number") || "";
+            const parts  = numStr.split("-");
+            if (parts.length !== 3) continue;
+            const periodTag = parts[1];
+            const numPart = parseInt(parts[2], 10);
+            if (Number.isFinite(numPart) && numPart > (counters[periodTag] || 0)) {
+              counters[periodTag] = numPart;
+            }
+          }
+          tt.set("period_counters", JSON.stringify(counters));
+          txApp.save(tt);
+          console.log("[GRAVY-CONSECUTIVOS] Tipo Tx (" + code + ") -> period_counters " + JSON.stringify(counters));
+          continue;
+        }
+
         let maxConsec = 0;
         for (let j = 0; j < remaining.length; j++) {
           const numStr  = remaining[j].getString("number") || "";

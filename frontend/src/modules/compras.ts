@@ -1120,8 +1120,6 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
         el.style.display = isDiscountEnabled ? '' : 'none';
       });
       initPoSupplierSearch();
-      initPoLinesAutocomplete();
-      bindPoFormEvents();
     });
   } else {
     (window as any).openModal(invoiceId ? 'Editar Factura de Compra' : 'Nueva Compra', formHtml, footer, true);
@@ -1453,8 +1451,20 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     if (invoiceId && inv?.tx_number) return;
     const selected = txTypes.find((t: any) => t.id === txTypeSel.value);
     if (!selected) return;
-    const next = Number(selected.consecutive || 0) + 1;
     const prefix = selected.prefix || selected.code || 'TX';
+
+    if (selected.numbering_mode === 'period') {
+      const dateInput = document.getElementById('po-date') as HTMLInputElement;
+      const docDate = (dateInput?.value || new Date().toISOString().slice(0, 10));
+      const periodTag = docDate.slice(0, 7).replace('-', '');
+      let counters: any = {};
+      try { counters = typeof selected.period_counters === 'string' ? JSON.parse(selected.period_counters || '{}') : (selected.period_counters || {}); } catch (_) {}
+      const next = (Number(counters[periodTag]) || 0) + 1;
+      (window as any).__poSuggestedTxNumber = `${prefix}-${periodTag}-${String(next).padStart(6, '0')}`;
+      return;
+    }
+
+    const next = Number(selected.consecutive || 0) + 1;
     const consecutiveVal = `${prefix}-${String(next).padStart(8, '0')}`;
     (window as any).__poSuggestedTxNumber = consecutiveVal;
   };
@@ -1950,22 +1960,28 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
     const iva_total = lines.reduce((s, l) => s + l.iva_amount, 0);
     const gross = subtotal + iva_total;
 
-    // Asignación de consecutivo de compra
+    const txNumber = isDianDoc ? 'AUTO' : ((window as any).__poSuggestedTxNumber || 'AUTO');
+
+    // Asignación de consecutivo de compra: usa el mismo consecutivo del comprobante
+    // contable en vez de inventar un número que no corresponde ni a la transacción
+    // ni al documento del proveedor (ese dato va en supplier_ref).
     let number = inv?.number;
     if (!number) {
-      const todayStr = date.replaceAll('-', '');
-      const rand = String(Date.now()).slice(-4);
-      let draftPrefix = 'FC';
-      if (txTypeId && (window as any).__poTxTypesCache) {
-        const tObj = (window as any).__poTxTypesCache.find((t: any) => t.id === txTypeId);
-        if (tObj && tObj.prefix) {
-          draftPrefix = tObj.prefix;
+      if (!isDianDoc && txNumber !== 'AUTO') {
+        number = txNumber;
+      } else {
+        const todayStr = date.replaceAll('-', '');
+        const rand = String(Date.now()).slice(-4);
+        let draftPrefix = 'FC';
+        if (txTypeId && (window as any).__poTxTypesCache) {
+          const tObj = (window as any).__poTxTypesCache.find((t: any) => t.id === txTypeId);
+          if (tObj && tObj.prefix) {
+            draftPrefix = tObj.prefix;
+          }
         }
+        number = `${draftPrefix}-${todayStr}-${rand}`;
       }
-      number = `${draftPrefix}-${todayStr}-${rand}`;
     }
-
-    const txNumber = isDianDoc ? 'AUTO' : ((window as any).__poSuggestedTxNumber || 'AUTO');
 
     // Resolver sucursal activa o por defecto del usuario
     const activeBranchId = localStorage.getItem('active_branch_id');

@@ -88,6 +88,10 @@ routerAdd("POST", "/api/gravy/renumber-transactions", (e) => {
       return e.json(404, { message: "El tipo de transacción especificado no existe" });
     }
 
+    if ((txType.getString("numbering_mode") || "continuous") === "period") {
+      return e.json(400, { message: "La renumeración manual no aplica a series con numeración mensual (period); ese modo no genera huecos en el consecutivo." });
+    }
+
     const typePrefix = String(txType.getString("prefix") || txType.getString("code") || "").trim();
     const targetTxTypeId = txType.id;
 

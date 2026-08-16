@@ -220,7 +220,10 @@ function getIconForDocumentTitle(title: string): string {
 }
 
 /* ── Modal genérico — Adaptador Inteligente Tab vs Overlay ─── */
-function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide = false) {
+// tabKey opcional: fija la pestaña destino cuando el título cambia entre llamadas
+// sucesivas del mismo flujo (ej: "Verificando..." -> "Modificar — N°123"), evitando
+// que cada título genere un slug distinto y quede la pestaña de carga huérfana.
+function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide = false, tabKey: string | null = null) {
   const titleClean = String(title || '').replace(/<[^>]*>/g, '').trim();
 
   let compiledFooterHtml = '';
@@ -278,10 +281,10 @@ function openModal(title: string, bodyHtml: string, footerHtml: any = '', wide =
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
-    const tabKey = `doc-${slug || Date.now()}`;
+    const resolvedKey = tabKey || `doc-${slug || Date.now()}`;
     const icon = getIconForDocumentTitle(titleClean);
 
-    (window as any).openDocumentTab(tabKey, titleClean, icon, bodyHtml, compiledFooterHtml, () => {
+    (window as any).openDocumentTab(resolvedKey, titleClean, icon, bodyHtml, compiledFooterHtml, () => {
       pendingClickHandlers.forEach(({ id, action }) => {
         const btn = document.getElementById(id);
         if (btn) {

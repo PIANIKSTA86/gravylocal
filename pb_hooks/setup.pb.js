@@ -820,14 +820,28 @@ onRecordCreateRequest((e) => {
     // Intentar sincronizar el consecutivo en la serie para evitar desajustes futuros si la creación es exitosa
     try {
       const parts = rawNumber.split("-");
-      if (parts.length === 2 && txTypeId) {
-        const numPart = parseInt(parts[1], 10);
-        if (Number.isFinite(numPart)) {
-          const txType = $app.findRecordById("transaction_types", txTypeId);
-          const currentConsec = Number(txType.get("consecutive") || 0);
-          if (numPart > currentConsec) {
-            txType.set("consecutive", numPart);
-            $app.save(txType);
+      if (txTypeId) {
+        const txType = $app.findRecordById("transaction_types", txTypeId);
+        const mode = txType.getString("numbering_mode") || "continuous";
+        if (mode === "period" && parts.length === 3) {
+          const periodTag = parts[1];
+          const numPart = parseInt(parts[2], 10);
+          if (Number.isFinite(numPart)) {
+            const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+            if (numPart > (counters[periodTag] || 0)) {
+              counters[periodTag] = numPart;
+              txType.set("period_counters", JSON.stringify(counters));
+              $app.save(txType);
+            }
+          }
+        } else if (mode !== "period" && parts.length === 2) {
+          const numPart = parseInt(parts[1], 10);
+          if (Number.isFinite(numPart)) {
+            const currentConsec = Number(txType.get("consecutive") || 0);
+            if (numPart > currentConsec) {
+              txType.set("consecutive", numPart);
+              $app.save(txType);
+            }
           }
         }
       }
@@ -841,13 +855,25 @@ onRecordCreateRequest((e) => {
 
   let txNumber = "";
   let next = 0;
+  let periodTag = "";
+  let periodMode = false;
 
   try {
     const txType = $app.findRecordById("transaction_types", txTypeId);
     const prefix = String(txType.getString("prefix") || txType.getString("code") || "TX").trim().toUpperCase() || "TX";
-    const consecutiveRaw = Number(txType.get("consecutive") || 0);
-    next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
-    txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+    periodMode = txType.getString("numbering_mode") === "period";
+
+    if (periodMode) {
+      const docDate = String(rec.get("date") || "").trim();
+      periodTag = docDate.slice(0, 7).replace("-", ""); // "2026-05" -> "202605"
+      const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+      next = (Number(counters[periodTag]) || 0) + 1;
+      txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
+    } else {
+      const consecutiveRaw = Number(txType.get("consecutive") || 0);
+      next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
+      txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+    }
   } catch (err) {
     throw new BadRequestError("No se pudo generar consecutivo de transaccion: " + err);
   }
@@ -864,10 +890,19 @@ onRecordCreateRequest((e) => {
   // Si se guardó correctamente, actualizamos el consecutivo en transaction_types.
   try {
     const txType = $app.findRecordById("transaction_types", txTypeId);
-    const currentConsec = Number(txType.get("consecutive") || 0);
-    if (next > currentConsec) {
-      txType.set("consecutive", next);
-      $app.save(txType);
+    if (periodMode) {
+      const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+      if (next > (counters[periodTag] || 0)) {
+        counters[periodTag] = next;
+        txType.set("period_counters", JSON.stringify(counters));
+        $app.save(txType);
+      }
+    } else {
+      const currentConsec = Number(txType.get("consecutive") || 0);
+      if (next > currentConsec) {
+        txType.set("consecutive", next);
+        $app.save(txType);
+      }
     }
   } catch (err) {
     console.log("[GRAVY] Error al guardar consecutivo de transaccion post-creacion: " + err);

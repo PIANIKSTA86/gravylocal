@@ -514,6 +514,7 @@ function bindNewTxModalEvents() {
     if (dueDateEl && dateVal && !dueDateEl.value) {
       dueDateEl.value = dateVal;
     }
+    if (getSelectVal('tx-type')) refreshConsecutive();
   });
 
   if (thirdEl && carteraBtn) carteraBtn.disabled = !thirdEl.value;
@@ -654,8 +655,8 @@ function _closeTxModal() {
     setTimeout(async () => {
       bindNewTxModalEvents();
       // Set consecutive for the target type
-      setInputVal('tx-number', `${targetType.prefix}-${String((targetType.consecutive ?? 0) + 1).padStart(8, '0')}`);
-      
+      setInputVal('tx-number', previewTxNumber(targetType, ($('#tx-date') as HTMLInputElement)?.value));
+
       renderTxLines(true);
       
       const hidden = document.getElementById('tx-third') as HTMLInputElement;
@@ -774,11 +775,25 @@ function buildTxTypeOptions(txTypes) {
   return parts.join('');
 }
 
+// Construye el número de comprobante sugerido según el modo de numeración de la serie
+function previewTxNumber(tt: any, dateVal?: string): string {
+  const prefix = tt.prefix || tt.code || 'TX';
+  if (tt.numbering_mode === 'period') {
+    const docDate = dateVal || todayStr();
+    const periodTag = docDate.slice(0, 7).replace('-', '');
+    let counters: any = {};
+    try { counters = typeof tt.period_counters === 'string' ? JSON.parse(tt.period_counters || '{}') : (tt.period_counters || {}); } catch (_) {}
+    const next = (Number(counters?.[periodTag]) || 0) + 1;
+    return `${prefix}-${periodTag}-${String(next).padStart(6, '0')}`;
+  }
+  return `${prefix}-${String((tt.consecutive ?? 0) + 1).padStart(8, '0')}`;
+}
+
 async function refreshConsecutive() {
   const typeId = getSelectVal('tx-type');
   const tt = TX_STATE.txTypes.find(t => t.id === typeId);
   if (!tt) return;
-  setInputVal('tx-number', `${tt.prefix}-${String((tt.consecutive ?? 0) + 1).padStart(8, '0')}`);
+  setInputVal('tx-number', previewTxNumber(tt, ($('#tx-date') as HTMLInputElement)?.value));
 }
 
 function addTxLine(row = null) {
@@ -2166,9 +2181,10 @@ let TX_EDIT_STATE = {
 async function editTx(id) {
   if (!can('canWrite')) return showToast('No tienes permisos para modificar transacciones', 'error');
 
+  const tabKey = `doc-edit-tx-${id}`;
   (window as any).__txModalOpen = true;  // Ítem 5: bloquear cierre
   openModal('<i class="fas fa-spinner fa-spin mr-2"></i>Verificando transacción...',
-    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true, tabKey);
 
   try {
     const [tx, lines, accounts, txTypes, terceros, branches, costCenters] = await Promise.all([
@@ -2182,27 +2198,30 @@ async function editTx(id) {
     ]);
 
     if (tx.status !== 'draft') {
+      (window as any).__txModalOpen = false;
       return openModal('No permitido',
         `<p class="text-sm mb-2" style="color:#374151">No se puede modificar directamente una transacción en estado <strong>${esc(tx.status)}</strong>.</p>
          <p class="text-sm" style="color:#6B7280">Para modificarla, primero un usuario <strong>Contador, Administrador o Superadministrador</strong> debe revertirla a <strong>Borrador</strong>.</p>`,
-        '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+        '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>', true, tabKey);
     }
 
     if (typeof isPeriodClosed === 'function') {
       const closed = await isPeriodClosed(tx.date);
       if (closed) {
+        (window as any).__txModalOpen = false;
         return openModal('Período cerrado',
           `<p class="text-sm" style="color:#374151">El período <strong>${esc((tx.date||'').slice(0,7))}</strong> está cerrado. Habilítalo en Cierre Contable para poder modificar esta transacción.</p>`,
-          '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+          '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>', true, tabKey);
       }
     }
 
     const deps = await API.checkTxDependencies(id);
     if (deps.blocks.length) {
+      (window as any).__txModalOpen = false;
       const listHtml = deps.blocks.map(b => `<li class="text-sm py-1"><i class="fas fa-ban mr-2" style="color:#EF4444"></i>${esc(b)}</li>`).join('');
       return openModal('<i class="fas fa-lock mr-2" style="color:#EF4444"></i>No se puede modificar',
         `<p class="text-sm mb-3" style="color:#374151">Esta transacción tiene dependencias que impiden su modificación:</p><ul class="space-y-1">${listHtml}</ul>`,
-        '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>');
+        '<button class="btn btn-outline" onclick="closeModal()">Entendido</button>', true, tabKey);
     }
 
     const user = pb.currentUser;
@@ -2306,13 +2325,15 @@ async function editTx(id) {
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
        <button class="btn btn-primary" onclick="saveEditTx('${esc(id)}')"><i class="fas fa-floppy-disk"></i> Guardar cambios</button>`,
-      true
+      true,
+      tabKey
     );
 
     renderEditTxLines(true);
     bindEditCarteraEvents();
   } catch (err) {
-    openModal('Error', `<p class="text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>');
+    (window as any).__txModalOpen = false;
+    openModal('Error', `<p class="text-sm" style="color:#EF4444">${esc(err.message)}</p>`, '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>', true, tabKey);
   }
 }
 

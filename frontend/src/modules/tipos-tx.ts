@@ -35,7 +35,8 @@ async function renderTiposTx(c) {
               <span class="font-mono text-sm font-semibold" style="color:#0D2137">${esc(r.prefix)}</span>
             </td>
             <td>${esc(r.name)}</td>
-            <td class="text-right">${fmtN(r.consecutive || 0)}</td>
+            <td>${r.numbering_mode === 'period' ? '<span class="badge" style="background:#F5F3FF;color:#6D28D9">Mensual</span>' : '<span class="badge" style="background:#F3F4F6;color:#374151">Continuo</span>'}</td>
+            <td class="text-right">${r.numbering_mode === 'period' ? fmtN(currentPeriodCounter(r)) + ' <span class="text-xs" style="color:#9CA3AF">(mes actual)</span>' : fmtN(r.consecutive || 0)}</td>
             <td>${r.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
             <td>
               <div class="flex gap-2">
@@ -66,13 +67,14 @@ async function renderTiposTx(c) {
                 <th>Código</th>
                 <th>Prefijo / Serie</th>
                 <th>Nombre</th>
+                <th>Modo</th>
                 <th class="text-right">Consecutivo</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              ${tableRows || '<tr><td colspan="6" class="text-center py-10" style="color:#9CA3AF">No hay tipos configurados.</td></tr>'}
+              ${tableRows || '<tr><td colspan="7" class="text-center py-10" style="color:#9CA3AF">No hay tipos configurados.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -81,7 +83,7 @@ async function renderTiposTx(c) {
       <div class="mt-3 p-3 rounded-xl text-xs" style="background:#EFF6FF;color:#1D4ED8">
         <i class="fas fa-info-circle mr-1"></i>
         Usa <strong><i class="fas fa-code-branch"></i> Nueva serie</strong> para agregar un nuevo prefijo al mismo código de tipo.
-        El número del comprobante tendrá el formato <strong>PREFIJO-00000001</strong> (8 dígitos).
+        Modo <strong>Continuo</strong>: <strong>PREFIJO-00000001</strong> (8 dígitos). Modo <strong>Mensual</strong>: <strong>PREFIJO-AAAAMM-000001</strong>, el contador se reinicia cada mes.
       </div>`;
 
     $('#btn-new-tx-type')?.addEventListener('click', () => openTxTypeForm());
@@ -125,8 +127,11 @@ function openTxTypeForm(row = null, suggestedCode = '') {
         <textarea id="tt-desc" class="form-input" rows="2">${esc(row?.description || '')}</textarea>
       </div>
       <div class="form-group">
-        <label class="form-label">Consecutivo actual</label>
-        <input id="tt-consec" type="number" min="0" class="form-input" value="${esc(row?.consecutive ?? 0)}">
+        <label class="form-label">Modo de numeración</label>
+        <select id="tt-numbering-mode" class="form-input">
+          <option value="continuous" ${row?.numbering_mode !== 'period' ? 'selected' : ''}>Continuo (PREFIJO-00000001)</option>
+          <option value="period" ${row?.numbering_mode === 'period' ? 'selected' : ''}>Mensual (PREFIJO-AAAAMM-000001)</option>
+        </select>
       </div>
       <div class="form-group">
         <label class="form-label">Estado</label>
@@ -135,6 +140,14 @@ function openTxTypeForm(row = null, suggestedCode = '') {
           <option value="0" ${row?.active === false ? 'selected' : ''}>Inactivo</option>
         </select>
       </div>
+      <div class="form-group" id="tt-consec-group" style="display:${row?.numbering_mode === 'period' ? 'none' : 'block'}">
+        <label class="form-label">Consecutivo actual</label>
+        <input id="tt-consec" type="number" min="0" class="form-input" value="${esc(row?.consecutive ?? 0)}">
+      </div>
+      <div class="form-group md:col-span-2" id="tt-period-counters-group" style="display:${row?.numbering_mode === 'period' ? 'block' : 'none'}">
+        <label class="form-label">Contadores mensuales actuales</label>
+        <div class="text-xs p-2 rounded-lg" style="background:#F9FAFB;color:#374151">${periodCountersSummary(row)}</div>
+      </div>
     </div>
     ${isCopyCode ? `<p class="text-xs mt-3" style="color:#1D4ED8"><i class="fas fa-info-circle mr-1"></i>Estás creando una nueva serie para el código <strong>${esc(suggestedCode)}</strong>. El prefijo debe ser diferente al de las series existentes.</p>` : ''}`,
     `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
@@ -142,14 +155,23 @@ function openTxTypeForm(row = null, suggestedCode = '') {
     true
   );
 
+  $('#tt-numbering-mode')?.addEventListener('change', (ev: any) => {
+    const isPeriod = ev.target.value === 'period';
+    const consecGroup = document.getElementById('tt-consec-group');
+    const periodGroup = document.getElementById('tt-period-counters-group');
+    if (consecGroup) (consecGroup as HTMLElement).style.display = isPeriod ? 'none' : 'block';
+    if (periodGroup) (periodGroup as HTMLElement).style.display = isPeriod ? 'block' : 'none';
+  });
+
   $('#btn-save-tt')?.addEventListener('click', async () => {
     const payload = {
-      code:        (getInputVal('tt-code') || '').trim().toUpperCase(),
-      prefix:      (getInputVal('tt-prefix') || '').trim().toUpperCase(),
-      name:        getInputVal('tt-name'),
-      description: getInputVal('tt-desc'),
-      consecutive: Number(getInputVal('tt-consec') || 0),
-      active:      getSelectVal('tt-active') === '1',
+      code:            (getInputVal('tt-code') || '').trim().toUpperCase(),
+      prefix:          (getInputVal('tt-prefix') || '').trim().toUpperCase(),
+      name:            getInputVal('tt-name'),
+      description:     getInputVal('tt-desc'),
+      consecutive:     Number(getInputVal('tt-consec') || 0),
+      numbering_mode:  getSelectVal('tt-numbering-mode') || 'continuous',
+      active:          getSelectVal('tt-active') === '1',
     };
     if (!payload.code || !payload.prefix || !payload.name)
       return showToast('Código, prefijo y nombre son obligatorios', 'warning');
@@ -176,6 +198,27 @@ function openTxTypeForm(row = null, suggestedCode = '') {
 async function editTxType(id) {
   try { openTxTypeForm(await pb.get('transaction_types', id)); }
   catch (err) { showToast(err.message, 'error'); }
+}
+
+function currentPeriodCounter(row) {
+  try {
+    const counters = typeof row.period_counters === 'string' ? JSON.parse(row.period_counters || '{}') : (row.period_counters || {});
+    const tag = new Date().toISOString().slice(0, 7).replace('-', '');
+    return counters[tag] || 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function periodCountersSummary(row) {
+  try {
+    const counters = typeof row?.period_counters === 'string' ? JSON.parse(row.period_counters || '{}') : (row?.period_counters || {});
+    const tags = Object.keys(counters).sort();
+    if (!tags.length) return 'Sin movimientos registrados aún.';
+    return tags.map(t => `${t.slice(0,4)}-${t.slice(4,6)}: ${counters[t]}`).join(' &nbsp;|&nbsp; ');
+  } catch (_) {
+    return 'Sin movimientos registrados aún.';
+  }
 }
 
 function toggleTxType(id, active) {

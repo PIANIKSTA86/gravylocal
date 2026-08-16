@@ -1720,7 +1720,7 @@ const API = {
       if (!ivaAccountCache[accCode]) ivaAccountCache[accCode] = await findAccByCode(accCode);
       txLines.push(await buildTxLine({
         accountId: ivaAccountCache[accCode].id,
-        thirdPartyId: null,
+        thirdPartyId: inv.supplier_id,
         debit: amount,
         credit: 0,
         description: `IVA ${rateKey}% compra ${inv.number}`,
@@ -1801,6 +1801,9 @@ const API = {
       });
     }
 
+    // La transacción queda Activa cuando "Contabilización inmediata" está habilitada en el
+    // engranaje de Compras; de lo contrario queda en Borrador pendiente de aprobar en Contabilidad.
+    const txStatus = purchaseCfg?.operational?.immediate_posting ? 'active' : 'draft';
     const tx = await this.createTransaction({
       tx_type_id: effectiveTxTypeId,
       number: effectiveTxNumber,
@@ -1809,7 +1812,7 @@ const API = {
       third_party_id: inv.supplier_id,
       payment_days: 0,
       cross_enabled: false,
-      status: 'draft',
+      status: txStatus,
       branch_id: inv.branch_id || null,
     }, txLines);
 

@@ -138,13 +138,25 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           txType.getString("prefix") || txType.getString("code") || "TX"
         ).trim().toUpperCase() || "TX";
 
-        const consecutiveRaw = Number(txType.get("consecutive") || 0);
-        const next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
+        if ((txType.getString("numbering_mode") || "continuous") === "period") {
+          const periodTag = txDate.slice(0, 7).replace("-", ""); // "2026-05" -> "202605"
+          const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+          const next = (Number(counters[periodTag]) || 0) + 1;
 
-        txType.set("consecutive", next);
-        txApp.save(txType);
+          counters[periodTag] = next;
+          txType.set("period_counters", JSON.stringify(counters));
+          txApp.save(txType);
 
-        txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+          txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
+        } else {
+          const consecutiveRaw = Number(txType.get("consecutive") || 0);
+          const next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
+
+          txType.set("consecutive", next);
+          txApp.save(txType);
+
+          txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+        }
       } else {
         // Si no se encontró por ID, buscar si existe un borrador con este número
         if (!txRec) {
@@ -158,13 +170,26 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           throw new Error(`El comprobante N° "${txNumber}" ya existe y se encuentra en estado ${txRec.getString("status")}.`);
         }
 
-        // Número explícito: sincronizar consecutivo para evitar desajustes futuros
+        // Número explícito: sincronizar consecutivo/contador de periodo para evitar desajustes futuros
         try {
           const parts = txNumber.split("-");
-          if (parts.length === 2) {
+          const txType = txApp.findRecordById("transaction_types", txTypeId);
+          const mode = txType.getString("numbering_mode") || "continuous";
+
+          if (mode === "period" && parts.length === 3) {
+            const periodTag = parts[1];
+            const numPart = parseInt(parts[2], 10);
+            if (Number.isFinite(numPart)) {
+              const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
+              if (numPart > (counters[periodTag] || 0)) {
+                counters[periodTag] = numPart;
+                txType.set("period_counters", JSON.stringify(counters));
+                txApp.save(txType);
+              }
+            }
+          } else if (mode !== "period" && parts.length === 2) {
             const numPart = parseInt(parts[1], 10);
             if (Number.isFinite(numPart)) {
-              const txType = txApp.findRecordById("transaction_types", txTypeId);
               const currentConsec = Number(txType.get("consecutive") || 0);
               if (numPart > currentConsec) {
                 txType.set("consecutive", numPart);

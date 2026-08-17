@@ -85,6 +85,18 @@ onBootstrap((e) => {
       }
     }
 
+    // ── Actualizar valores del campo 'doc_type' ────────────
+    const docTypeField = col.fields.getByName('doc_type');
+    if (docTypeField) {
+      const allowedDocTypes = [
+        '11', '12', '13', '21', '22', '31', '41', '42', '47', '48', '50', '91',
+        'NIT', 'NITPE', 'CC', 'CE', 'TI', 'PAS', 'RC'
+      ];
+      docTypeField.values = allowedDocTypes;
+      col.fields.add(docTypeField);
+      changed = true;
+    }
+
     if (changed) {
       $app.save(col);
       console.log('[GRAVY] Migración third_parties completada: campos nuevos agregados.');

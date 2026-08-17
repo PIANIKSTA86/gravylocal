@@ -500,24 +500,52 @@ function debounce(fn, ms = 300) {
 }
 
 /* ── Constantes del dominio colombiano ───────────────────── */
+const MAP_LEGACY_DOC_TYPE: Record<string, string> = {
+  'NIT': '31',
+  'CC': '13',
+  'CE': '22',
+  'TI': '12',
+  'PAS': '41',
+  'RC': '11',
+  'NITPE': '42',
+  'TE': '21',
+};
+
+function normalizeDocType(type: any): string {
+  if (!type) return '31';
+  const t = String(type).trim().toUpperCase();
+  return MAP_LEGACY_DOC_TYPE[t] || t;
+}
+
 const DOC_TYPES = [
-  { code: 'NIT', name: 'NIT' },
-  { code: 'CC',  name: 'Cédula de Ciudadanía' },
-  { code: 'CE',  name: 'Cédula de Extranjería' },
-  { code: 'TI',  name: 'Tarjeta de Identidad' },
-  { code: 'PAS', name: 'Pasaporte' },
-  { code: 'RC',  name: 'Registro Civil' },
+  { code: '11', name: 'Registro civil' },
+  { code: '12', name: 'Tarjeta de identidad' },
+  { code: '13', name: 'Cédula de ciudadanía' },
+  { code: '21', name: 'Tarjeta de extranjería' },
+  { code: '22', name: 'Cédula de extranjería' },
+  { code: '31', name: 'NIT (Numero de identificación tributaria)' },
+  { code: '41', name: 'Pasaporte' },
+  { code: '42', name: 'Documento de identificación extranjero' },
+  { code: '47', name: 'PEP (Permiso Especial de Permanencia)' },
+  { code: '48', name: 'PPT (Permiso Protección Temporal)' },
+  { code: '50', name: 'NIT de otro país' },
+  { code: '91', name: 'NUIP' },
 ];
 
-/** Tipos de documento ampliados para terceros (incluye NITPE para extranjeros) */
+/** Tipos de documento para terceros (según codificación DIAN para documentos electrónicos) */
 const LOCAL_DOC_TYPES = [
-  { code: 'NIT',   name: 'NIT — Número de Identificación Tributaria' },
-  { code: 'NITPE', name: 'NITPE — NIT Persona Extranjera (DIAN)' },
-  { code: 'CC',    name: 'CC — Cédula de Ciudadanía' },
-  { code: 'CE',    name: 'CE — Cédula de Extranjería' },
-  { code: 'TI',    name: 'TI — Tarjeta de Identidad' },
-  { code: 'PAS',   name: 'PAS — Pasaporte' },
-  { code: 'RC',    name: 'RC — Registro Civil' },
+  { code: '11', name: '11 - Registro civil' },
+  { code: '12', name: '12 - Tarjeta de identidad' },
+  { code: '13', name: '13 - Cédula de ciudadanía' },
+  { code: '21', name: '21 - Tarjeta de extranjería' },
+  { code: '22', name: '22 - Cédula de extranjería' },
+  { code: '31', name: '31 - NIT (Numero de identificación tributaria)' },
+  { code: '41', name: '41 - Pasaporte' },
+  { code: '42', name: '42 - Documento de identificación extranjero' },
+  { code: '47', name: '47 - PEP (Permiso Especial de Permanencia)' },
+  { code: '48', name: '48 - PPT (Permiso Protección Temporal)' },
+  { code: '50', name: '50 - NIT de otro país' },
+  { code: '91', name: '91 - NUIP' },
 ];
 
 /** Responsabilidades fiscales DIAN (catálogo oficial) */
@@ -1359,6 +1387,7 @@ function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? '';
 (window as any).confirmDialog = confirmDialog;
 (window as any).DOC_TYPES = DOC_TYPES;
 (window as any).LOCAL_DOC_TYPES = LOCAL_DOC_TYPES;
+(window as any).normalizeDocType = normalizeDocType;
 (window as any).DIAN_RESP = DIAN_RESP;
 (window as any).DIAN_CIIU = DIAN_CIIU;
 (window as any).$$ = $$;

@@ -2546,7 +2546,7 @@ function _downloadMassTpTemplate() {
   ];
 
   const indications: Array<[string, string, string, string, string]> = [
-    ['doc_type', 'SÍ', 'Código Tipo Doc', 'Tipo de documento fiscal de identificación. Valores permitidos:\n- NIT: Número de Identificación Tributaria (Persona Jurídica o Natural con NIT)\n- CC: Cédula de Ciudadanía\n- CE: Cédula de Extranjería\n- TI: Tarjeta de Identidad\n- PAS: Pasaporte\n- RC: Registro Civil\n- NITPE: NIT Persona Extranjera (DIAN)', 'NIT'],
+    ['doc_type', 'SÍ', 'Código Tipo Doc', 'Tipo de documento fiscal de identificación (DIAN). Valores permitidos:\n- 31: NIT (Número de Identificación Tributaria)\n- 13: Cédula de ciudadanía\n- 22: Cédula de extranjería\n- 12: Tarjeta de identidad\n- 11: Registro civil\n- 21: Tarjeta de extranjería\n- 41: Pasaporte\n- 42: Documento de identificación extranjero\n- 47: PEP (Permiso Especial de Permanencia)\n- 48: PPT (Permiso Protección Temporal)\n- 50: NIT de otro país\n- 91: NUIP', '31'],
     ['doc_number', 'SÍ', 'Texto / Numérico', 'Número de identificación sin puntos, espacios, guiones ni dígito de verificación. El sistema calcula automáticamente el DV para los NITs.', '900123456'],
     ['person_type', 'SÍ', 'Texto (NATURAL / JURIDICA)', 'Tipo de persona legal ante la DIAN. Valores permitidos: NATURAL o JURIDICA.', 'JURIDICA'],
     ['type', 'SÍ', 'Texto (Rol)', 'Rol funcional principal del tercero. Valores permitidos: CLIENTE, PROVEEDOR, EMPLEADO, PROPIETARIO, OTRO.', 'CLIENTE'],
@@ -2594,7 +2594,7 @@ async function _openMassTpImportModal() {
           ${['razon_social','nombres','apellidos','commercial_name','email','email2','phone','phone2','contact_name','contact_phone','advisor','address','country','dept_code','city_code','tax_regime','credit_limit','max_invoices','payment_days','active','ciiu','gc','gcm','ar','ei','rf','prf','pi','piv','responsabilidades','is_retention_agent','bank_name','bank_account','notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
         </div>
         <p class="text-xs" style="color:#1E40AF">
-          <strong>doc_type</strong>: NIT, CC, CE, TI, PAS, RC.&nbsp;
+          <strong>doc_type</strong>: Códigos DIAN (31=NIT, 13=CC, 22=CE, 12=TI, 11=RC, 21=TE, 41=Pasaporte, 42=Doc Ext, 47=PEP, 48=PPT, 50=NIT otro país, 91=NUIP).&nbsp;
           <strong>person_type</strong>: NATURAL, JURIDICA.&nbsp;
           <strong>type</strong>: CLIENTE, PROVEEDOR, EMPLEADO, PROPIETARIO, OTRO.&nbsp;
           <strong>tax_regime</strong>: COMUN, SIMPLIFICADO, NO_RESP, GRAN_CONTR.
@@ -2704,7 +2704,7 @@ async function _openMassTpImportModal() {
 
 /* Normaliza una fila a un draft de tercero { ok, payload, error, rowNo } */
 function _massTpBuildDraft(rawRows) {
-  const VALID_DOC_TYPES    = new Set(['NIT','NITPE','CC','CE','TI','PAS','RC']);
+  const VALID_DOC_TYPES    = new Set(['11','12','13','21','22','31','41','42','47','48','50','91','NIT','NITPE','CC','CE','TI','PAS','RC']);
   const VALID_PERSON_TYPES = new Set(['NATURAL','JURIDICA']);
   const VALID_TP_TYPES     = new Set(['CLIENTE','PROVEEDOR','EMPLEADO','PROPIETARIO','OTRO']);
 
@@ -2723,7 +2723,10 @@ function _massTpBuildDraft(rawRows) {
       return !/^(no|0|false|inactivo|inactiva)$/i.test(val);
     };
 
-    const docType    = get('doc_type','tipo_doc','tipo_documento').toUpperCase();
+    let docType      = get('doc_type','tipo_doc','tipo_documento').toUpperCase();
+    if ((window as any).normalizeDocType) {
+      docType = (window as any).normalizeDocType(docType);
+    }
     const docNumber  = get('doc_number','numero_doc','nit','documento','doc').replace(/[^0-9a-zA-Z]/g, '');
     const personType = get('person_type','tipo_persona','persona').toUpperCase() || 'NATURAL';
     let tpType       = get('type','tipo','rol').toUpperCase() || 'CLIENTE';

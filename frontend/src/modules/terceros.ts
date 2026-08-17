@@ -8,6 +8,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
+// Archivo PDF del RUT seleccionado pendiente de subida al servidor
+let _stagedRutFile: File | null = null;
+// Indica si el usuario quiere eliminar el RUT existente
+let _rutPdfClearFlag: boolean = false;
+
 declare var pb: any;
 declare var can: any;
 declare var esc: any;
@@ -90,26 +95,52 @@ async function renderTerceros(c) {
 
     <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
       <div class="overflow-x-auto" style="max-height: calc(100vh - 310px)">
-        <table class="data-table" id="tp-table">
+        <table class="data-table" id="tp-table" style="table-layout:fixed;width:100%;">
           <thead>
             <tr>
-              <th>Persona</th><th>Documento</th><th>Nombre / Razón Social</th>
-              <th>Correo</th><th>Ciudad</th><th>Rol</th><th>Asesor Comercial</th><th>Estado</th><th>Acciones</th>
+              <th style="width:80px">Persona</th>
+              <th style="width:130px">Documento</th>
+              <th style="min-width:200px;width:22%">Nombre / Razón Social</th>
+              <th style="min-width:160px;width:18%">Correo</th>
+              <th style="width:100px">Ciudad</th>
+              <th style="width:90px">Rol</th>
+              <th style="width:160px;max-width:160px">Asesor Comercial</th>
+              <th style="width:80px">Estado</th>
+              <th style="width:50px;text-align:center;">RUT</th>
+              <th style="width:110px">Acciones</th>
             </tr>
           </thead>
           <tbody>
             ${rows.length ? rows.map(r => {
               const resolvedAdvisor = r.advisor ? (tpMap.get(r.advisor) || r.advisor_name || r.advisor) : '—';
+              const rutUrl = r.rut_pdf
+                ? `${(window as any).PB_URL}/api/files/third_parties/${r.id}/${r.rut_pdf}${(window as any).pb?.authToken ? '?token=' + (window as any).pb.authToken : ''}`
+                : '';
               return `
               <tr data-type="${esc(r.type)}" data-person="${esc(r.person_type||'NATURAL')}">
                 <td>${personBadge(r.person_type)}</td>
                 <td><span class="font-semibold">${esc(r.doc_type)} ${esc(r.doc_number)}${r.dv?`-${esc(r.dv)}`:''}</span></td>
-                <td>${esc(r.name)}</td>
-                <td>${esc(r.email||'—')}</td>
+                <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(r.name)}">${esc(r.name)}</span></td>
+                <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;" title="${esc(r.email||'')}">${esc(r.email||'—')}</span></td>
                 <td>${esc(r.city||'—')}</td>
                 <td>${typeBadge(r.type)}</td>
-                <td>${r.advisor ? `<span class="badge badge-gray text-xs" style="white-space:nowrap" title="${esc(resolvedAdvisor)}"><i class="fas fa-user-tag mr-1" style="color:#0D9488"></i>${esc(resolvedAdvisor)}</span>` : '<span style="color:#9CA3AF">—</span>'}</td>
+                <td style="max-width:160px;">${r.advisor
+                  ? `<span class="badge badge-gray text-xs"
+                       title="${esc(resolvedAdvisor)}"
+                       style="display:inline-flex;align-items:center;gap:4px;max-width:150px;overflow:hidden;">
+                       <i class="fas fa-user-tag flex-shrink-0" style="color:#0D9488"></i>
+                       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(resolvedAdvisor)}</span>
+                     </span>`
+                  : '<span style="color:#9CA3AF">—</span>'}</td>
                 <td>${r.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
+                <td style="text-align:center;">
+                  ${rutUrl
+                    ? `<a href="${esc(rutUrl)}" target="_blank" rel="noopener"
+                         title="Ver RUT PDF"
+                         style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#FEF2F2;color:#DC2626;border:1px solid #FECACA;text-decoration:none;font-size:14px;">
+                         <i class="fas fa-file-pdf"></i></a>`
+                    : `<span title="Sin RUT adjunto" style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#F9FAFB;color:#D1D5DB;border:1px solid #E5E7EB;font-size:14px;"><i class="fas fa-file-pdf"></i></span>`}
+                </td>
                 <td>
                   <div class="flex gap-2">
                     ${can('canWrite') ? `<button class="btn btn-outline btn-sm" onclick="editTercero('${esc(r.id)}')" title="Editar"><i class="fas fa-pen"></i></button>` : ''}
@@ -189,15 +220,46 @@ function terceroFormHtml(row) {
 
   <!-- ══ TAB 0 — Datos Básicos ══════════════════════════════════ -->
   <div id="tpf-panel-0">
-    ${!row ? `
     <!-- ── Zona Drag & Drop RUT PDF ─────────────────────────── -->
-    <div id="tpf-rut-dropzone" style="border: 2px dashed #E2E8F0; border-radius: 12px; padding: 16px; text-align: center; background: #F8FAFC; cursor: pointer; transition: all 0.2s; margin-bottom: 16px;">
-      <div style="font-size: 24px; color: #6366F1; margin-bottom: 6px;"><i class="fas fa-file-pdf"></i></div>
-      <div style="font-size: 13px; font-weight: 700; color: #1E293B; margin-bottom: 2px;">¿Tienes el RUT en PDF?</div>
-      <div style="font-size: 11px; color: #64748B;">Arrastra tu archivo aquí o haz clic para autocompletar al instante (offline).</div>
-      <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display: none;">
-    </div>
-    ` : ''}
+    ${(() => {
+      if (row?.rut_pdf) {
+        // Modo edición: ya existe un RUT almacenado en el servidor
+        const rutUrl = `${(window as any).PB_URL}/api/files/third_parties/${row.id}/${row.rut_pdf}${(window as any).pb?.authToken ? '?token=' + (window as any).pb.authToken : ''}`;
+        return `
+        <div id="tpf-rut-dropzone" style="border: 2px solid #10B981; border-radius: 12px; padding: 14px 16px; background: #F0FDF4; margin-bottom: 16px;">
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="font-size: 28px; color: #10B981;"><i class="fas fa-file-pdf"></i></div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size: 12px; font-weight: 700; color: #065F46; margin-bottom: 2px;">RUT Almacenado</div>
+              <div style="font-size: 11px; color: #6B7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(row.rut_pdf)}</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-shrink:0;">
+              <a href="${esc(rutUrl)}" target="_blank" rel="noopener"
+                 style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:#10B981;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">
+                <i class="fas fa-eye"></i> Ver
+              </a>
+              <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:12px;font-weight:600;cursor:pointer;">
+                <i class="fas fa-arrow-up-from-bracket"></i> Reemplazar
+                <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
+              </label>
+              <button type="button" id="tpf-rut-clear-btn"
+                style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;background:#FEF2F2;border:1px solid #FECACA;color:#DC2626;font-size:12px;font-weight:600;cursor:pointer;border-style:solid;">
+                <i class="fas fa-trash-can"></i> Eliminar
+              </button>
+            </div>
+          </div>
+        </div>`;
+      } else {
+        // Modo creación o edición sin RUT
+        return `
+        <div id="tpf-rut-dropzone" style="border: 2px dashed #E2E8F0; border-radius: 12px; padding: 16px; text-align: center; background: #F8FAFC; cursor: pointer; transition: all 0.2s; margin-bottom: 16px;">
+          <div style="font-size: 24px; color: #6366F1; margin-bottom: 6px;"><i class="fas fa-file-pdf"></i></div>
+          <div style="font-size: 13px; font-weight: 700; color: #1E293B; margin-bottom: 2px;">${row ? 'Adjuntar RUT en PDF' : '¿Tienes el RUT en PDF?'}</div>
+          <div style="font-size: 11px; color: #64748B;">${row ? 'Arrastra tu archivo aquí o haz clic para adjuntar el RUT de este tercero.' : 'Arrastra tu archivo aquí o haz clic para autocompletar al instante (offline).'}</div>
+          <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display: none;">
+        </div>`;
+      }
+    })()}
 
     <!-- ── 1. Tipo de Persona ───────────────────────────────── -->
     <p class="form-label mb-2">Tipo de Persona <span style="color:#EF4444">*</span></p>
@@ -255,15 +317,24 @@ function terceroFormHtml(row) {
       <div class="form-group md:col-span-5">
         <label class="form-label">Tipo de Documento <span style="color:#EF4444">*</span></label>
         <select id="tpf-doc-type" class="form-input">
-          ${LOCAL_DOC_TYPES.map(d => `<option value="${esc(d.code)}" ${row?.doc_type===d.code?'selected':''}>${esc(d.name)}</option>`).join('')}
+          ${(() => {
+            const normType = (window as any).normalizeDocType ? (window as any).normalizeDocType(row?.doc_type) : (row?.doc_type || '31');
+            return LOCAL_DOC_TYPES.map(d => `<option value="${esc(d.code)}" ${normType===d.code?'selected':''}>${esc(d.name)}</option>`).join('');
+          })()}
         </select>
       </div>
-      <div class="form-group ${row?.doc_type==='NIT'||row?.doc_type==='NITPE'?'md:col-span-5':'md:col-span-7'}" id="tpf-doc-number-wrap">
+      <div class="form-group ${(() => {
+        const normType = (window as any).normalizeDocType ? (window as any).normalizeDocType(row?.doc_type) : (row?.doc_type || '31');
+        return ['31','50','NIT','NITPE'].includes(normType) ? 'md:col-span-5' : 'md:col-span-7';
+      })()}" id="tpf-doc-number-wrap">
         <label class="form-label">Número de Documento <span style="color:#EF4444">*</span></label>
         <input id="tpf-doc-number" class="form-input" value="${esc(row?.doc_number||'')}"
           placeholder="Ej: 900123456" inputmode="numeric" pattern="[0-9]+" autocomplete="off">
       </div>
-      <div class="form-group md:col-span-2" id="tpf-dv-wrap" style="${(row?.doc_type==='NIT'||row?.doc_type==='NITPE')?'':'display:none'}">
+      <div class="form-group md:col-span-2" id="tpf-dv-wrap" style="${(() => {
+        const normType = (window as any).normalizeDocType ? (window as any).normalizeDocType(row?.doc_type) : (row?.doc_type || '31');
+        return ['31','50','NIT','NITPE'].includes(normType) ? '' : 'display:none';
+      })()}">
         <label class="form-label">DV</label>
         <input id="tpf-dv" class="form-input" value="${esc(row?.dv||'')}" readonly
           style="background:#F9FAFB;font-size:16px;font-weight:700;text-align:center;
@@ -536,10 +607,10 @@ function _tpfUpdatePersonType() {
                 span.style.fontWeight = active ? '600' : '400'; }
   });
 
-  // Jurídica → sugerir NIT
+  // Jurídica → sugerir NIT (31)
   if (isJuridica) {
     const docEl = $('#tpf-doc-type');
-    if (docEl && docEl.value !== 'NIT' && docEl.value !== 'NITPE') { docEl.value = 'NIT'; _tpfUpdateDV(); }
+    if (docEl && !['31','50','NIT','NITPE'].includes(docEl.value)) { docEl.value = '31'; _tpfUpdateDV(); }
   }
 }
 
@@ -549,7 +620,7 @@ function _tpfUpdateDV() {
   const dvEl    = $('#tpf-dv');
   const numWrap = $('#tpf-doc-number-wrap');
   if (!dvEl) return;
-  if (docType === 'NIT' || docType === 'NITPE') {
+  if (['31','50','NIT','NITPE'].includes(docType)) {
     if (wrap) wrap.style.display = '';
     if (numWrap) {
       numWrap.classList.remove('md:col-span-7');
@@ -646,35 +717,73 @@ function _tpfBindEvents() {
   _tpfBindAdvisorSearch();
 
   // Zona de Arrastre de RUT PDF
+  // Limpiar estado de PDF al abrir el formulario
+  _stagedRutFile = null;
+  _rutPdfClearFlag = false;
+
   const dropzone = document.getElementById('tpf-rut-dropzone');
   const fileInput = document.getElementById('tpf-rut-file-input') as HTMLInputElement;
+  const clearBtn  = document.getElementById('tpf-rut-clear-btn');
 
-  if (dropzone && fileInput) {
-    dropzone.addEventListener('click', () => fileInput.click());
-
-    fileInput.addEventListener('change', (e) => {
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
       const files = fileInput.files;
       if (files && files.length > 0) {
         handleRUTUpload(files[0]);
       }
     });
+  }
+
+  // Botón Eliminar RUT existente
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (!confirm('¿Deseas eliminar el archivo RUT almacenado para este tercero? Esta acción se aplicará al guardar.')) return;
+      _rutPdfClearFlag = true;
+      _stagedRutFile = null;
+      if (dropzone) {
+        dropzone.style.border = '2px dashed #E2E8F0';
+        dropzone.style.background = '#FEF2F2';
+        dropzone.innerHTML = `
+          <div style="font-size: 22px; color: #DC2626; margin-bottom: 6px;"><i class="fas fa-trash-can"></i></div>
+          <div style="font-size: 13px; font-weight: 700; color: #991B1B; margin-bottom: 2px;">RUT marcado para eliminar</div>
+          <div style="font-size: 11px; color: #6B7280;">El archivo se eliminará cuando guardes el formulario.</div>
+          <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
+        `;
+        const newFileInput = document.getElementById('tpf-rut-file-input') as HTMLInputElement;
+        if (newFileInput) newFileInput.addEventListener('change', () => {
+          if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);
+        });
+      }
+      showToast('RUT marcado para eliminar. Guarda el formulario para confirmar.', 'warning');
+    });
+  }
+
+  if (dropzone) {
+    // Solo agregar listener click al dropzone si es el modo "sin RUT" (no tiene botones internos de otro tipo)
+    if (!dropzone.querySelector('a')) {
+      dropzone.addEventListener('click', (e) => {
+        // Evitar disparar el click si el usuario hizo clic en el input directamente
+        if ((e.target as HTMLElement).tagName === 'INPUT') return;
+        fileInput?.click();
+      });
+    }
 
     dropzone.addEventListener('dragover', (e) => {
       e.preventDefault();
       dropzone.style.borderColor = '#6366F1';
-      dropzone.style.background = '#EEF2F6';
+      dropzone.style.background  = '#EEF2F6';
     });
 
     dropzone.addEventListener('dragleave', (e) => {
       e.preventDefault();
       dropzone.style.borderColor = '#E2E8F0';
-      dropzone.style.background = '#F8FAFC';
+      dropzone.style.background  = '#F8FAFC';
     });
 
     dropzone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropzone.style.borderColor = '#E2E8F0';
-      dropzone.style.background = '#F8FAFC';
+      dropzone.style.background  = '#F8FAFC';
       const files = e.dataTransfer?.files;
       if (files && files.length > 0 && files[0].type === 'application/pdf') {
         handleRUTUpload(files[0]);
@@ -942,16 +1051,52 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
           return;
         }
 
+        // Determinar si se debe usar FormData (hay archivo PDF pendiente o eliminación)
+        const useFormData = !!_stagedRutFile || _rutPdfClearFlag;
         let savedRecord = null;
-        if (row?.id) {
-          savedRecord = await pb.update('third_parties', row.id, payload);
-          await API.logAudit('UPDATE', 'Tercero', row.id,
-            `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+
+        if (useFormData) {
+          const formData = new FormData();
+          // Agregar todos los campos del payload como strings en FormData
+          for (const [key, value] of Object.entries(payload)) {
+            if (Array.isArray(value)) {
+              value.forEach((v: any) => formData.append(key, String(v)));
+            } else if (value !== null && value !== undefined) {
+              formData.append(key, String(value));
+            }
+          }
+          // Gestionar el archivo PDF
+          if (_stagedRutFile) {
+            formData.append('rut_pdf', _stagedRutFile);
+          } else if (_rutPdfClearFlag) {
+            formData.append('rut_pdf', '');
+          }
+
+          if (row?.id) {
+            savedRecord = await pb.update('third_parties', row.id, formData);
+            await API.logAudit('UPDATE', 'Tercero', row.id,
+              `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+          } else {
+            savedRecord = await pb.create('third_parties', formData);
+            await API.logAudit('CREATE', 'Tercero', savedRecord.id,
+              `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+          }
         } else {
-          savedRecord = await pb.create('third_parties', payload);
-          await API.logAudit('CREATE', 'Tercero', savedRecord.id,
-            `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+          if (row?.id) {
+            savedRecord = await pb.update('third_parties', row.id, payload);
+            await API.logAudit('UPDATE', 'Tercero', row.id,
+              `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+          } else {
+            savedRecord = await pb.create('third_parties', payload);
+            await API.logAudit('CREATE', 'Tercero', savedRecord.id,
+              `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+          }
         }
+
+        // Limpiar estado del PDF pendiente
+        _stagedRutFile = null;
+        _rutPdfClearFlag = false;
+
         closeModal();
         showToast('Tercero guardado correctamente', 'success');
         if (onSaveSuccess) {
@@ -1152,6 +1297,8 @@ async function exportTercerosExcel() {
       'Facturas Máximas',
       'Estado',
       'Notas / Observaciones',
+      'Tiene RUT PDF',
+      'Enlace RUT PDF',
       'Fecha Creación',
       'Fecha Actualización'
     ];
@@ -1207,6 +1354,8 @@ async function exportTercerosExcel() {
         r.max_invoices ?? 0,
         r.active ? 'SI' : 'NO',
         r.notes || '',
+        r.rut_pdf ? 'SI' : 'NO',
+        r.rut_pdf ? `${(window as any).PB_URL}/api/files/third_parties/${r.id}/${r.rut_pdf}` : '',
         r.created ? new Date(r.created).toLocaleString('es-CO') : '',
         r.updated ? new Date(r.updated).toLocaleString('es-CO') : ''
       ];
@@ -1445,6 +1594,24 @@ async function viewTercero(id, event) {
         <span class="text-[10px] text-yellow-600 block font-semibold uppercase mb-1"><i class="fas fa-sticky-note mr-1"></i> Observaciones Internas</span>
         <p class="font-mono whitespace-pre-line">${esc(r.notes)}</p>
       </div>` : ''}
+      ${ (() => {
+        if (!r.rut_pdf) return '';
+        const rutViewUrl = `${(window as any).PB_URL}/api/files/third_parties/${r.id}/${r.rut_pdf}${(window as any).pb?.authToken ? '?token=' + (window as any).pb.authToken : ''}`;
+        return `
+        <div class="mt-4 rounded-xl p-4 border" style="background:#F0FDF4;border-color:#A7F3D0;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="font-size:26px;color:#10B981;"><i class="fas fa-file-pdf"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;font-weight:700;color:#065F46;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">RUT — Documento Oficial DIAN</div>
+              <div style="font-size:11px;color:#6B7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.rut_pdf)}</div>
+            </div>
+            <a href="${esc(rutViewUrl)}" target="_blank" rel="noopener"
+               style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;background:#10B981;color:#fff;font-size:12px;font-weight:600;text-decoration:none;">
+              <i class="fas fa-eye"></i> Ver / Descargar
+            </a>
+          </div>
+        </div>`;
+      })()}
     `;
     const footer = `
       ${can('canWrite') ? `<button class="btn btn-primary" onclick="closeModal(); editTercero('${esc(r.id)}');"><i class="fas fa-pen mr-1"></i> Editar</button>` : ''}
@@ -1467,6 +1634,8 @@ async function handleRUTUpload(file: File) {
                           <div style="font-size: 11px; color: #64748B;">Leyendo estructura digital del RUT.</div>`;
   }
 
+  let extractionSuccess = false;
+
   try {
     const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
       const reader = new FileReader();
@@ -1486,54 +1655,95 @@ async function handleRUTUpload(file: File) {
     const rutData = parseRUTText(items);
 
     if (!rutData.doc_number) {
-      throw new Error("No se pudo detectar el NIT en el documento. Asegúrate de que sea un RUT original de la DIAN.");
-    }
-
-    // Verificar si ya existe en la base de datos
-    try {
-      const escapedDoc = pb.escapeFilterValue(rutData.doc_number);
-      const duplicates = await pb.listAll('third_parties', {
-        filter: `doc_number = "${escapedDoc}"`
-      });
-
-      if (duplicates.length > 0) {
-        const existing = duplicates[0];
-        const confirmMsg = `El tercero con identificación ${rutData.doc_number} ya está registrado en el sistema como "${existing.name}".\n\n¿Deseas cancelar la creación de este tercero y abrir el registro existente para editarlo?`;
-
-        if (confirm(confirmMsg)) {
-          closeModal();
-          editTercero(existing.id);
-        } else {
-          showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos del RUT.`, 'warning');
-          // Restaurar dropzone
-          if (dropzone) {
-            dropzone.innerHTML = `
-              <div style="font-size: 13px; font-weight: 700; color: #E11D48; margin-bottom: 2px;">Carga cancelada</div>
-              <div style="font-size: 11px; color: #64748B;">El tercero ya existe en el sistema.</div>
-            `;
-          }
-        }
-        return; // Detener flujo para no autocompletar
+      // El PDF no parece ser un RUT, pero igual lo almacenamos si el usuario lo confirma
+      const keepFile = confirm('No se pudo detectar el NIT en el documento. ¿El archivo es el RUT oficial de la DIAN?\n\nSi confirmas, el archivo PDF se adjuntará al tercero de todas formas.');
+      if (keepFile) {
+        // Solo adjuntar el archivo, sin autocompletar campos
+        _stagedRutFile = file;
+        _rutPdfClearFlag = false;
+        extractionSuccess = true;
+        showToast('Archivo PDF adjunto. Los campos no se autocompletan — verifica el documento manualmente.', 'warning');
+      } else {
+        throw new Error('Operación cancelada por el usuario.');
       }
-    } catch (errDb) {
-      console.error("Error checking duplicate RUT doc number:", errDb);
-      // En caso de error de red o base de datos, dejamos que continúe el flujo
+    } else {
+      // Verificar duplicado antes de autocompletar
+      try {
+        const escapedDoc = pb.escapeFilterValue(rutData.doc_number);
+        const duplicates = await pb.listAll('third_parties', {
+          filter: `doc_number = "${escapedDoc}"`
+        });
+
+        if (duplicates.length > 0) {
+          const existing = duplicates[0];
+          const confirmMsg = `El tercero con identificación ${rutData.doc_number} ya está registrado como "${existing.name}".\n\n¿Abrir el registro existente para editarlo?`;
+          if (confirm(confirmMsg)) {
+            closeModal();
+            editTercero(existing.id);
+          } else {
+            showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos.`, 'warning');
+          }
+          return;
+        }
+      } catch (errDb) {
+        console.error('[RUT] Error verificando duplicado:', errDb);
+      }
+
+      // Retener archivo para subida posterior
+      _stagedRutFile = file;
+      _rutPdfClearFlag = false;
+      extractionSuccess = true;
+
+      // Auto-rellenar el formulario
+      applyRUTDataToForm(rutData);
+      showToast('RUT procesado con éxito. Por favor verifica los datos antes de guardar.', 'success');
     }
-
-    // Auto-rellenar el formulario en el DOM
-    applyRUTDataToForm(rutData);
-
-    showToast('RUT procesado con éxito. Por favor verifica los datos.', 'success');
   } catch (err: any) {
-    showToast(err.message || 'Error al procesar el RUT', 'error');
+    if (err.message !== 'Operación cancelada por el usuario.') {
+      showToast(err.message || 'Error al procesar el RUT', 'error');
+    }
   } finally {
-    // Restaurar dropzone
+    // Restaurar dropzone con estado final
     if (dropzone) {
-      dropzone.innerHTML = `
-        <div style="font-size: 24px; color: #10B981; margin-bottom: 6px;"><i class="fas fa-circle-check"></i></div>
-        <div style="font-size: 13px; font-weight: 700; color: #1E293B; margin-bottom: 2px;">¡RUT Importado con éxito!</div>
-        <div style="font-size: 11px; color: #64748B;">Carga otro archivo PDF si deseas sobreescribir.</div>
-      `;
+      if (_stagedRutFile) {
+        dropzone.style.border = '2px solid #6366F1';
+        dropzone.style.background = '#EEF2FF';
+        dropzone.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;text-align:left;flex-wrap:wrap;">
+            <div style="font-size:26px;color:#6366F1;"><i class="fas fa-file-pdf"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:700;color:#3730A3;margin-bottom:2px;">PDF listo para subir al guardar</div>
+              <div style="font-size:11px;color:#4B5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(_stagedRutFile.name)}</div>
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:11px;font-weight:600;cursor:pointer;">
+              <i class="fas fa-arrow-up-from-bracket"></i> Cambiar
+              <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
+            </label>
+          </div>`;
+        // Re-bind al nuevo input
+        const newFileInput = dropzone.querySelector('#tpf-rut-file-input') as HTMLInputElement;
+        if (newFileInput) newFileInput.addEventListener('change', () => {
+          if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);
+        });
+      } else {
+        dropzone.style.border = '2px dashed #E2E8F0';
+        dropzone.style.background = '#F8FAFC';
+        dropzone.innerHTML = `
+          <div style="font-size:24px;color:#6366F1;margin-bottom:6px;"><i class="fas fa-file-pdf"></i></div>
+          <div style="font-size:13px;font-weight:700;color:#1E293B;margin-bottom:2px;">Adjuntar RUT en PDF</div>
+          <div style="font-size:11px;color:#64748B;">Arrastra tu archivo aquí o haz clic para seleccionar.</div>
+          <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
+        `;
+        const newFileInput = dropzone.querySelector('#tpf-rut-file-input') as HTMLInputElement;
+        if (newFileInput) newFileInput.addEventListener('change', () => {
+          if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);
+        });
+        if (!dropzone.querySelector('a')) {
+          dropzone.addEventListener('click', (ev) => {
+            if ((ev.target as HTMLElement).tagName !== 'INPUT') newFileInput?.click();
+          }, { once: true });
+        }
+      }
     }
   }
 }
@@ -1774,10 +1984,10 @@ function applyRUTDataToForm(rutData: any) {
     setInputVal('tpf-commercial-name', rutData.commercial_name || `${rutData.first_name || ''} ${rutData.last_name || ''}`.trim());
   }
 
-  // 3. Documento (RUT siempre es NIT)
+  // 3. Documento (RUT siempre es NIT - código 31)
   const docTypeSelect = document.getElementById('tpf-doc-type') as HTMLSelectElement;
   if (docTypeSelect) {
-    docTypeSelect.value = 'NIT';
+    docTypeSelect.value = '31';
     const dvWrap = document.getElementById('tpf-dv-wrap');
     if (dvWrap) dvWrap.style.display = '';
     const docNumWrap = document.getElementById('tpf-doc-number-wrap');

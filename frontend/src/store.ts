@@ -792,9 +792,10 @@ function renderCheckout() {
                   <div>
                     <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Tipo Doc. *</label>
                     <select name="doc_type" class="form-input" required style="height: 48px; color-scheme: light;">
-                      <option value="CC" selected>Cédula (CC)</option>
-                      <option value="NIT">NIT</option>
-                      <option value="CE">Extranjería (CE)</option>
+                      <option value="13" selected>13 - Cédula de ciudadanía</option>
+                      <option value="31">31 - NIT</option>
+                      <option value="22">22 - Cédula de extranjería</option>
+                      <option value="41">41 - Pasaporte</option>
                     </select>
                   </div>
                   <div>
@@ -989,7 +990,7 @@ async function manejarSubmit(e: Event | null, modo: 'whatsapp' | 'directo') {
   if (!form) return false;
 
   // Extraer valores
-  const doc_type = (form.elements.namedItem('doc_type') as HTMLSelectElement)?.value || 'CC';
+  const doc_type = (form.elements.namedItem('doc_type') as HTMLSelectElement)?.value || '13';
   const doc_number = (form.elements.namedItem('doc_number') as HTMLInputElement)?.value.trim() || '';
   const nombre = (form.elements.namedItem('nombre') as HTMLInputElement)?.value.trim() || '';
   const telefono = (form.elements.namedItem('telefono') as HTMLInputElement)?.value.trim() || '';

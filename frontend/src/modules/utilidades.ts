@@ -1,128 +1,128 @@
 /**
- * GRAVY v2.0 — utilidades.js
- * Módulo de Utilidades: herramientas de administración y mantenimiento.
- */
+* GRAVY v2.0 — utilidades.js
+* Módulo de Utilidades: herramientas de administración y mantenimiento.
+*/
 'use strict';
 
 /* ── Colecciones que forman parte del backup ─────────────── */
 const BACKUP_COLLECTIONS = [
   // Configuración y Parametrización Básica
-  { name: 'settings',                  label: 'Configuración general' },
-  { name: 'treasury_settings',          label: 'Configuración de tesorería' },
-  { name: 'licenses',                  label: 'Licencias' },
-  { name: 'geo_countries',             label: 'Países' },
-  { name: 'geo_departments',           label: 'Departamentos' },
-  { name: 'geo_municipalities',        label: 'Municipios' },
-  { name: 'branches',                  label: 'Sucursales' },
-  { name: 'dian_resolutions',          label: 'Resoluciones DIAN' },
-  { name: 'exogena_concepts',          label: 'Conceptos de exógena' },
-  { name: 'financial_notes',           label: 'Notas financieras' },
-  { name: 'warehouses',                label: 'Bodegas / Almacenes' },
-  { name: 'cash_concepts',             label: 'Conceptos de caja / tesorería' },
-  { name: 'homologation_rules',        label: 'Reglas de homologación contable' },
-  { name: 'agenda_vencimientos',       label: 'Agenda de vencimientos tributarios' },
-  
+  { name: 'settings', label: 'Configuración general' },
+  { name: 'treasury_settings', label: 'Configuración de tesorería' },
+  { name: 'licenses', label: 'Licencias' },
+  { name: 'geo_countries', label: 'Países' },
+  { name: 'geo_departments', label: 'Departamentos' },
+  { name: 'geo_municipalities', label: 'Municipios' },
+  { name: 'branches', label: 'Sucursales' },
+  { name: 'dian_resolutions', label: 'Resoluciones DIAN' },
+  { name: 'exogena_concepts', label: 'Conceptos de exógena' },
+  { name: 'financial_notes', label: 'Notas financieras' },
+  { name: 'warehouses', label: 'Bodegas / Almacenes' },
+  { name: 'cash_concepts', label: 'Conceptos de caja / tesorería' },
+  { name: 'homologation_rules', label: 'Reglas de homologación contable' },
+  { name: 'agenda_vencimientos', label: 'Agenda de vencimientos tributarios' },
+
   // Contabilidad, NIIF y Centros de Costo
-  { name: 'account_types',             label: 'Tipos de cuenta contable' },
-  { name: 'accounts',                  label: 'Plan único de cuentas (PUC)' },
-  { name: 'cost_centers',              label: 'Centros de costo' },
-  { name: 'third_parties',             label: 'Terceros (Clientes/Proveedores/Empleados)' },
-  { name: 'transaction_types',         label: 'Tipos de transacción' },
-  { name: 'users',                     label: 'Usuarios y roles' },
-  { name: 'commission_rules',          label: 'Reglas de comisión' },
-  { name: 'niif_settings',             label: 'Configuración NIIF' },
-  { name: 'niif_policies',             label: 'Políticas contables NIIF' },
-  { name: 'niif_asset_categories',     label: 'Categorías de activos fijos NIIF' },
-  { name: 'niif_assets',               label: 'Activos fijos NIIF' },
-  { name: 'niif_asset_events',         label: 'Novedades y depreciaciones NIIF' },
-  { name: 'niif_asset_inventories',    label: 'Tomas físicas de activos NIIF' },
-  { name: 'niif_leases',               label: 'Arrendamientos NIIF 16' },
+  { name: 'account_types', label: 'Tipos de cuenta contable' },
+  { name: 'accounts', label: 'Plan único de cuentas (PUC)' },
+  { name: 'cost_centers', label: 'Centros de costo' },
+  { name: 'third_parties', label: 'Terceros (Clientes/Proveedores/Empleados)' },
+  { name: 'transaction_types', label: 'Tipos de transacción' },
+  { name: 'users', label: 'Usuarios y roles' },
+  { name: 'commission_rules', label: 'Reglas de comisión' },
+  { name: 'niif_settings', label: 'Configuración NIIF' },
+  { name: 'niif_policies', label: 'Políticas contables NIIF' },
+  { name: 'niif_asset_categories', label: 'Categorías de activos fijos NIIF' },
+  { name: 'niif_assets', label: 'Activos fijos NIIF' },
+  { name: 'niif_asset_events', label: 'Novedades y depreciaciones NIIF' },
+  { name: 'niif_asset_inventories', label: 'Tomas físicas de activos NIIF' },
+  { name: 'niif_leases', label: 'Arrendamientos NIIF 16' },
 
   // Productos, Precios y Stock
-  { name: 'products',                  label: 'Productos y servicios' },
-  { name: 'product_components',        label: 'Componentes y listas de materiales' },
-  { name: 'inventory_stock',           label: 'Stock actual' },
-  { name: 'listas_precios',            label: 'Listas de precios' },
-  { name: 'precios_producto',          label: 'Precios de producto por lista' },
-  
+  { name: 'products', label: 'Productos y servicios' },
+  { name: 'product_components', label: 'Componentes y listas de materiales' },
+  { name: 'inventory_stock', label: 'Stock actual' },
+  { name: 'listas_precios', label: 'Listas de precios' },
+  { name: 'precios_producto', label: 'Precios de producto por lista' },
+
   // Operaciones Contables, Financieras y Pagos
-  { name: 'transactions',              label: 'Transacciones y comprobantes' },
-  { name: 'tx_lines',                  label: 'Líneas de movimiento contable' },
-  { name: 'payments',                  label: 'Comprobantes de pago / Recibos de caja' },
-  { name: 'bank_accounts',             label: 'Cuentas bancarias' },
-  { name: 'bank_movements',            label: 'Movimientos bancarios' },
+  { name: 'transactions', label: 'Transacciones y comprobantes' },
+  { name: 'tx_lines', label: 'Líneas de movimiento contable' },
+  { name: 'payments', label: 'Comprobantes de pago / Recibos de caja' },
+  { name: 'bank_accounts', label: 'Cuentas bancarias' },
+  { name: 'bank_movements', label: 'Movimientos bancarios' },
 
   // Nómina y Nómina Electrónica
-  { name: 'payroll_periods',           label: 'Períodos de nómina' },
-  { name: 'payroll_lines',             label: 'Liquidación de nómina' },
-  { name: 'payroll_documents',         label: 'Documentos acumulados de nómina' },
-  { name: 'payroll_novelties',         label: 'Novedades de nómina' },
-  { name: 'electronic_payrolls',       label: 'Nómina electrónica DIAN' },
+  { name: 'payroll_periods', label: 'Períodos de nómina' },
+  { name: 'payroll_lines', label: 'Liquidación de nómina' },
+  { name: 'payroll_documents', label: 'Documentos acumulados de nómina' },
+  { name: 'payroll_novelties', label: 'Novedades de nómina' },
+  { name: 'electronic_payrolls', label: 'Nómina electrónica DIAN' },
 
   // Facturación Electrónica y Documentos DIAN
-  { name: 'einvoice_docs',             label: 'Documentos facturación electrónica' },
-  { name: 'electronic_documents',      label: 'Registro de documentos electrónicos' },
+  { name: 'einvoice_docs', label: 'Documentos facturación electrónica' },
+  { name: 'electronic_documents', label: 'Registro de documentos electrónicos' },
   { name: 'electronic_document_items', label: 'Ítems de documentos electrónicos' },
   { name: 'electronic_document_taxes', label: 'Impuestos de documentos electrónicos' },
-  
+
   // Compras, Inventarios y Consignación
-  { name: 'inventory_movements',       label: 'Movimientos de inventario' },
-  { name: 'inventory_movement_lines',  label: 'Detalle de movimientos de inventario' },
-  { name: 'purchase_invoices',         label: 'Facturas de compra' },
-  { name: 'purchase_invoice_lines',    label: 'Detalle de facturas de compra' },
-  { name: 'consignment_settlements',   label: 'Liquidaciones de consignación' },
+  { name: 'inventory_movements', label: 'Movimientos de inventario' },
+  { name: 'inventory_movement_lines', label: 'Detalle de movimientos de inventario' },
+  { name: 'purchase_invoices', label: 'Facturas de compra' },
+  { name: 'purchase_invoice_lines', label: 'Detalle de facturas de compra' },
+  { name: 'consignment_settlements', label: 'Liquidaciones de consignación' },
   { name: 'consignment_settlement_lines', label: 'Detalle de consignaciones' },
-  
+
   // Ventas, POS y Clientes Directos
-  { name: 'pos_registers',             label: 'Cajas registradoras POS' },
-  { name: 'pos_shifts',                label: 'Turnos POS' },
-  { name: 'invoices',                  label: 'Facturas de venta / POS' },
-  { name: 'invoice_lines',             label: 'Detalle de facturas de venta' },
-  { name: 'sales_orders',              label: 'Pedidos de venta' },
-  { name: 'sales_order_lines',         label: 'Detalle de pedidos' },
-  { name: 'sales_reservations',        label: 'Reservas y cotizaciones' },
-  { name: 'sales_reservation_lines',   label: 'Detalle de reservas' },
-  { name: 'clientes',                  label: 'Directorio de clientes de ventas' },
-  { name: 'spa_clients',               label: 'Clientes de estética / SPA' },
-  
+  { name: 'pos_registers', label: 'Cajas registradoras POS' },
+  { name: 'pos_shifts', label: 'Turnos POS' },
+  { name: 'invoices', label: 'Facturas de venta / POS' },
+  { name: 'invoice_lines', label: 'Detalle de facturas de venta' },
+  { name: 'sales_orders', label: 'Pedidos de venta' },
+  { name: 'sales_order_lines', label: 'Detalle de pedidos' },
+  { name: 'sales_reservations', label: 'Reservas y cotizaciones' },
+  { name: 'sales_reservation_lines', label: 'Detalle de reservas' },
+  { name: 'clientes', label: 'Directorio de clientes de ventas' },
+  { name: 'spa_clients', label: 'Clientes de estética / SPA' },
+
   // Clientes y Mascotas / Agenda
-  { name: 'pets',                      label: 'Mascotas' },
-  { name: 'appointments',              label: 'Citas médicas / Agenda' },
-  
+  { name: 'pets', label: 'Mascotas' },
+  { name: 'appointments', label: 'Citas médicas / Agenda' },
+
   // Módulo: Copropiedades (PH)
-  { name: 'ph_properties',             label: 'Propiedades / Unidades PH' },
-  { name: 'ph_common_areas',           label: 'Zonas comunes PH' },
-  { name: 'ph_billing_concepts',       label: 'Conceptos de cobro PH' },
-  { name: 'ph_budgets',                label: 'Presupuestos PH' },
-  { name: 'ph_budget_lines',           label: 'Líneas de presupuesto PH' },
-  { name: 'ph_invoices',               label: 'Facturas PH' },
-  { name: 'ph_invoice_lines',          label: 'Detalle de facturas PH' },
-  { name: 'ph_reservations',           label: 'Reservas de zonas comunes PH' },
-  { name: 'ph_pqrs',                   label: 'PQRS PH' },
-  { name: 'ph_individual_charges',     label: 'Cobros individuales PH' },
-  
+  { name: 'ph_properties', label: 'Propiedades / Unidades PH' },
+  { name: 'ph_common_areas', label: 'Zonas comunes PH' },
+  { name: 'ph_billing_concepts', label: 'Conceptos de cobro PH' },
+  { name: 'ph_budgets', label: 'Presupuestos PH' },
+  { name: 'ph_budget_lines', label: 'Líneas de presupuesto PH' },
+  { name: 'ph_invoices', label: 'Facturas PH' },
+  { name: 'ph_invoice_lines', label: 'Detalle de facturas PH' },
+  { name: 'ph_reservations', label: 'Reservas de zonas comunes PH' },
+  { name: 'ph_pqrs', label: 'PQRS PH' },
+  { name: 'ph_individual_charges', label: 'Cobros individuales PH' },
+
   // Módulo: Inmobiliarias
-  { name: 'inmo_properties',           label: 'Inmuebles' },
-  { name: 'inmo_contracts',            label: 'Contratos de arrendamiento' },
-  { name: 'inmo_invoices',             label: 'Facturas inmobiliarias' },
-  { name: 'inmo_invoice_lines',        label: 'Detalle de facturas inmobiliarias' },
-  { name: 'inmo_property_history',     label: 'Historial de inmuebles' },
-  
+  { name: 'inmo_properties', label: 'Inmuebles' },
+  { name: 'inmo_contracts', label: 'Contratos de arrendamiento' },
+  { name: 'inmo_invoices', label: 'Facturas inmobiliarias' },
+  { name: 'inmo_invoice_lines', label: 'Detalle de facturas inmobiliarias' },
+  { name: 'inmo_property_history', label: 'Historial de inmuebles' },
+
   // Módulo: CRM
-  { name: 'crm_deals',                 label: 'Oportunidades CRM' },
-  { name: 'crm_interactions',          label: 'Interacciones CRM' },
-  
+  { name: 'crm_deals', label: 'Oportunidades CRM' },
+  { name: 'crm_interactions', label: 'Interacciones CRM' },
+
   // Módulo: Logística y Entregas
-  { name: 'logistica_vehicles',        label: 'Vehículos de logística' },
-  { name: 'logistica_deliveries',      label: 'Despachos / Entregas' },
-  { name: 'logistica_delivery_lines',  label: 'Detalle de despachos' },
-  
+  { name: 'logistica_vehicles', label: 'Vehículos de logística' },
+  { name: 'logistica_deliveries', label: 'Despachos / Entregas' },
+  { name: 'logistica_delivery_lines', label: 'Detalle de despachos' },
+
   // Módulo: Importaciones
-  { name: 'imports',                   label: 'Importaciones' },
-  { name: 'import_lines',              label: 'Detalle de importaciones' },
-  
+  { name: 'imports', label: 'Importaciones' },
+  { name: 'import_lines', label: 'Detalle de importaciones' },
+
   // Auditoría
-  { name: 'audit_log',                 label: 'Registro de auditoría' },
+  { name: 'audit_log', label: 'Registro de auditoría' },
 ];
 
 const BACKUP_VERSION = '2.0';
@@ -391,16 +391,16 @@ async function _massProductsBuildDraft(rawRows) {
   // Cargar productos existentes para update/insert
   const existing = await pb.listAll('products', {});
   const byCode = new Map(existing.map(p => [String(p.code || '').toUpperCase(), p]));
-  const validTypes = new Set(['BIEN','SERVICIO']);
+  const validTypes = new Set(['BIEN', 'SERVICIO']);
   const validUnits = (typeof PRODUCT_UNITS !== 'undefined' ? PRODUCT_UNITS : []);
-  
+
   // Extraer solo los códigos DIAN para validación
   const validUnitCodes = new Set(
     Array.isArray(validUnits) && validUnits.length > 0 && typeof validUnits[0] === 'object'
       ? (validUnits as any[]).map((u: any) => u.code)
       : (validUnits as string[])
   );
-  const validIva = new Set([0,5,19]);
+  const validIva = new Set([0, 5, 19]);
 
   // Cargar cuentas para mapear por código contable o ID
   const accounts = await pb.listAll('accounts', {});
@@ -421,18 +421,18 @@ async function _massProductsBuildDraft(rawRows) {
       }
       return '';
     };
-    const code = get('codigo','code','código').toUpperCase();
-    const name = get('nombre','name');
-    const type = get('tipo','type').toUpperCase();
-    const unit = get('unidad','unit').toUpperCase();
-    const iva = Number(get('iva','iva_rate'));
-    const activeRaw = get('activo','active','estado').toLowerCase();
+    const code = get('codigo', 'code', 'código').toUpperCase();
+    const name = get('nombre', 'name');
+    const type = get('tipo', 'type').toUpperCase();
+    const unit = get('unidad', 'unit').toUpperCase();
+    const iva = Number(get('iva', 'iva_rate'));
+    const activeRaw = get('activo', 'active', 'estado').toLowerCase();
     const active = !/^(no|0|false|inactivo|inactiva)$/i.test(activeRaw);
-    
-    const vbReqRaw = get('visto_bueno_required','visto_bueno_req','visto_bueno').toLowerCase();
+
+    const vbReqRaw = get('visto_bueno_required', 'visto_bueno_req', 'visto_bueno').toLowerCase();
     const visto_bueno_required = /^(si|sí|yes|1|true)$/i.test(vbReqRaw);
 
-    const comboRaw = get('is_combo','combo','es_combo').toLowerCase();
+    const comboRaw = get('is_combo', 'combo', 'es_combo').toLowerCase();
     const is_combo = /^(si|sí|yes|1|true)$/i.test(comboRaw);
 
     // Validaciones mínimas
@@ -478,8 +478,8 @@ async function _massProductsBuildDraft(rawRows) {
       und_empaque: toNullableNumber(get('und_empaque')),
       peso_x_und_empaque: toNullableNumber(get('peso_x_und_empaque')),
       description: get('descripcion'),
-      posicion_arancelaria: get('posicion_arancelaria','posicion_arancelaria_default'),
-      arancel_rate_default: toNullableNumber(get('arancel_rate_default','arancel_rate')),
+      posicion_arancelaria: get('posicion_arancelaria', 'posicion_arancelaria_default'),
+      arancel_rate_default: toNullableNumber(get('arancel_rate_default', 'arancel_rate')),
       pais_origen: get('pais_origen'),
       marca: get('marca'),
       modelo: get('modelo'),
@@ -493,9 +493,9 @@ async function _massProductsBuildDraft(rawRows) {
       alto_cm,
       stock_min: toNullableNumber(get('stock_min')),
       stock_max: toNullableNumber(get('stock_max')),
-      income_account_id: resolveAccount(get('cuenta_ingresos','cuenta_ingreso','income_account')),
-      cost_account_id: resolveAccount(get('cuenta_costos','cuenta_costo','cost_account')),
-      inventory_account_id: resolveAccount(get('cuenta_inventarios','cuenta_inventario','inventory_account')),
+      income_account_id: resolveAccount(get('cuenta_ingresos', 'cuenta_ingreso', 'income_account')),
+      cost_account_id: resolveAccount(get('cuenta_costos', 'cuenta_costo', 'cost_account')),
+      inventory_account_id: resolveAccount(get('cuenta_inventarios', 'cuenta_inventario', 'inventory_account')),
       is_combo,
       margin_factor: toNullableNumber(get('factor_margen', 'margin_factor')),
       margin_type: get('tipo_margen', 'margin_type') || 'MARKUP_COST',
@@ -523,11 +523,11 @@ async function _massProductsBuildDraft(rawRows) {
 
 function _massProductsRenderPreview(rows) {
   const preview = $('#mass-products-preview');
-  const tbody   = $('#mass-products-preview-body');
+  const tbody = $('#mass-products-preview-body');
   const summary = $('#mass-products-summary');
-  const runBtn  = $('#btn-mass-products-run');
+  const runBtn = $('#btn-mass-products-run');
   if (!preview || !tbody || !summary || !runBtn) return;
-  const okRows  = rows.filter(r => r.ok);
+  const okRows = rows.filter(r => r.ok);
   const badRows = rows.filter(r => !r.ok);
   tbody.innerHTML = rows.map(r => {
     if (r.ok) {
@@ -563,9 +563,9 @@ async function _executeMassProductsImport(rows) {
   const valids = (rows || []).filter(r => r.ok && r.payload);
   if (!valids.length) return showToast('No hay filas válidas para importar', 'warning');
   (window as any)._massProductsImportInProgress = true;
-  const runBtn      = $('#btn-mass-products-run');
+  const runBtn = $('#btn-mass-products-run');
   const progressWrap = $('#mass-products-progress-wrap');
-  const progressBar  = $('#mass-products-progress-bar');
+  const progressBar = $('#mass-products-progress-bar');
   const progressText = $('#mass-products-progress-text');
   if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
   progressWrap?.classList.remove('hidden');
@@ -971,46 +971,46 @@ async function renderUtilidades(container) {
       </div>
     </div>`;
 
-    _backupInProgress = false;
-    _restoreInProgress = false;
-    _massTxImportInProgress = false;
-    _massTpImportInProgress = false;
-    _massAccImportInProgress = false;
-    _massPhUnitsImportInProgress = false;
+  _backupInProgress = false;
+  _restoreInProgress = false;
+  _massTxImportInProgress = false;
+  _massTpImportInProgress = false;
+  _massAccImportInProgress = false;
+  _massPhUnitsImportInProgress = false;
 
-    // Cargar última info de respaldo guardada localmente
-    _loadLastBackupInfo();
+  // Cargar última info de respaldo guardada localmente
+  _loadLastBackupInfo();
 
-    // Cargar estadísticas del sistema
-    _loadSysInfo();
+  // Cargar estadísticas del sistema
+  _loadSysInfo();
 
-    // Listeners
-    $('#btn-backup-create')?.addEventListener('click', () => _handleCreateBackup({ configOnly: false }));
-    $('#btn-backup-config-only')?.addEventListener('click', () => _handleCreateBackup({ configOnly: true }));
-    $('#btn-backup-restore')?.addEventListener('click', () => $('#backup-file-input')?.click());
-    $('#backup-file-input')?.addEventListener('change', _handleRestoreFileSelected);
+  // Listeners
+  $('#btn-backup-create')?.addEventListener('click', () => _handleCreateBackup({ configOnly: false }));
+  $('#btn-backup-config-only')?.addEventListener('click', () => _handleCreateBackup({ configOnly: true }));
+  $('#btn-backup-restore')?.addEventListener('click', () => $('#backup-file-input')?.click());
+  $('#backup-file-input')?.addEventListener('change', _handleRestoreFileSelected);
 
-    $('#btn-mass-tx-template')?.addEventListener('click', _downloadMassTxTemplate);
-    $('#btn-mass-tx-open')?.addEventListener('click', _openMassTxImportModal);
-    $('#btn-mass-tp-template')?.addEventListener('click', _downloadMassTpTemplate);
-    $('#btn-mass-tp-open')?.addEventListener('click', _openMassTpImportModal);
-    $('#btn-mass-acc-template')?.addEventListener('click', _downloadMassAccTemplate);
-    $('#btn-mass-acc-open')?.addEventListener('click', _openMassAccImportModal);
-    $('#btn-mass-ph-units-template')?.addEventListener('click', _downloadMassPhUnitsTemplate);
-    $('#btn-mass-ph-units-open')?.addEventListener('click', _openMassPhUnitsImportModal);
-    $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
-    $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
+  $('#btn-mass-tx-template')?.addEventListener('click', _downloadMassTxTemplate);
+  $('#btn-mass-tx-open')?.addEventListener('click', _openMassTxImportModal);
+  $('#btn-mass-tp-template')?.addEventListener('click', _downloadMassTpTemplate);
+  $('#btn-mass-tp-open')?.addEventListener('click', _openMassTpImportModal);
+  $('#btn-mass-acc-template')?.addEventListener('click', _downloadMassAccTemplate);
+  $('#btn-mass-acc-open')?.addEventListener('click', _openMassAccImportModal);
+  $('#btn-mass-ph-units-template')?.addEventListener('click', _downloadMassPhUnitsTemplate);
+  $('#btn-mass-ph-units-open')?.addEventListener('click', _openMassPhUnitsImportModal);
+  $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
+  $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
 
-    if (canRenumber) {
-      $('#btn-renumber-tx-open')?.addEventListener('click', _openRenumberTxModal);
-    }
-    if (isSuperAdmin) {
-      $('#btn-clear-db-execute')?.addEventListener('click', _handleClearDatabase);
-    }
-    if (isAdmin) {
-      $('#btn-clear-period-open')?.addEventListener('click', _handleClearPeriod);
-      $('#btn-bulk-replace-open')?.addEventListener('click', _openBulkReplaceModal);
-    }
+  if (canRenumber) {
+    $('#btn-renumber-tx-open')?.addEventListener('click', _openRenumberTxModal);
+  }
+  if (isSuperAdmin) {
+    $('#btn-clear-db-execute')?.addEventListener('click', _handleClearDatabase);
+  }
+  if (isAdmin) {
+    $('#btn-clear-period-open')?.addEventListener('click', _handleClearPeriod);
+    $('#btn-bulk-replace-open')?.addEventListener('click', _openBulkReplaceModal);
+  }
 }
 
 /* ── Información del último backup (localStorage) ──────── */
@@ -1043,10 +1043,10 @@ async function _loadSysInfo() {
   );
 
   const labels = {
-    accounts:      'Cuentas contables',
+    accounts: 'Cuentas contables',
     third_parties: 'Terceros',
-    transactions:  'Transacciones',
-    tx_lines:      'Líneas contables',
+    transactions: 'Transacciones',
+    tx_lines: 'Líneas contables',
   };
 
   el.innerHTML = stats.map(s => `
@@ -1073,17 +1073,17 @@ async function _handleCreateBackup(options?: { configOnly?: boolean }) {
   const btnOriginalHTML = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...'; }
 
-  const progressWrap  = $('#backup-progress-wrap');
-  const progressBar   = $('#backup-progress-bar');
+  const progressWrap = $('#backup-progress-wrap');
+  const progressBar = $('#backup-progress-bar');
   const progressLabel = $('#backup-progress-label');
-  const progressPct   = $('#backup-progress-pct');
+  const progressPct = $('#backup-progress-pct');
 
   if (progressWrap) progressWrap.classList.remove('hidden');
 
   const setProgress = (label, pct) => {
     if (progressLabel) progressLabel.textContent = label;
-    if (progressBar)   progressBar.style.width = `${pct}%`;
-    if (progressPct)   progressPct.textContent  = `${Math.round(pct)}%`;
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    if (progressPct) progressPct.textContent = `${Math.round(pct)}%`;
   };
 
   // Colecciones a excluir en el respaldo especial de parametrización (Plantilla)
@@ -1144,12 +1144,12 @@ async function _handleCreateBackup(options?: { configOnly?: boolean }) {
 
   const backup = {
     _meta: {
-      version:    BACKUP_VERSION,
+      version: BACKUP_VERSION,
       created_at: (window as any).nowStr(),
-      app:        'GRAVY',
-      company:    configOnly ? `${dbName} (Plantilla de Parametrización)` : dbName,
-      type:       configOnly ? 'config_template' : 'full',
-      user:       pb.currentUser?.email ?? 'desconocido',
+      app: 'GRAVY',
+      company: configOnly ? `${dbName} (Plantilla de Parametrización)` : dbName,
+      type: configOnly ? 'config_template' : 'full',
+      user: pb.currentUser?.email ?? 'desconocido',
     },
     collections: {},
   };
@@ -1184,12 +1184,12 @@ async function _handleCreateBackup(options?: { configOnly?: boolean }) {
       .replace(/^_+|_+$/g, '');
 
     // Serializar y descargar
-    const json    = JSON.stringify(backup, null, 2);
-    const blob    = new Blob([json], { type: 'application/json' });
-    const url     = URL.createObjectURL(blob);
-    const anchor  = document.createElement('a');
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
     const dateStr = (window as any).nowStr().slice(0, 16).replace(' ', '_').replace(':', '-');
-    anchor.href     = url;
+    anchor.href = url;
     if (configOnly) {
       anchor.download = `${sanitizedDbName}_plantilla_config_${dateStr}.json`;
     } else {
@@ -1204,7 +1204,7 @@ async function _handleCreateBackup(options?: { configOnly?: boolean }) {
 
     // Guardar metadata del último backup
     const backupInfo = JSON.stringify({
-      label:   new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }),
+      label: new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }),
       records: totalRecords,
     });
     localStorage.setItem('gravy_last_backup', backupInfo);
@@ -1257,9 +1257,9 @@ async function _handleRestoreFileSelected(e) {
   }
 
   // Confirmar con el usuario
-  const meta      = backup._meta;
-  const colCount  = Object.keys(backup.collections).length;
-  const recCount  = Object.values(backup.collections).reduce((s, r) => s + (r?.length ?? 0), 0);
+  const meta = backup._meta;
+  const colCount = Object.keys(backup.collections).length;
+  const recCount = Object.values(backup.collections).reduce((s, r) => s + (r?.length ?? 0), 0);
 
   // Crear desglose de colecciones con datos
   const collectionsSummary = Object.entries(backup.collections)
@@ -1327,10 +1327,10 @@ async function _handleRestoreFileSelected(e) {
       </div>
       <p class="text-sm text-center" style="color:#374151">¿Deseas continuar con el proceso de restauración masiva?</p>
     </div>`,
-  [
-    { label: 'Cancelar',   class: 'btn-outline',  action: () => closeModal() },
-    { label: 'Restaurar',  class: 'btn-danger',   action: () => _doRestore(backup) },
-  ]);
+    [
+      { label: 'Cancelar', class: 'btn-outline', action: () => closeModal() },
+      { label: 'Restaurar', class: 'btn-danger', action: () => _doRestore(backup) },
+    ]);
 }
 
 async function _doRestore(backup) {
@@ -1396,21 +1396,21 @@ function _handleClearDatabase() {
         <input type="text" id="clear-db-confirm-input" class="input w-full" placeholder="Escribe ELIMINAR" autocomplete="off" style="border: 1px solid #D1D5DB; border-radius: 8px; padding: 8px 12px;">
       </div>
     </div>`,
-  [
-    { label: 'Cancelar', class: 'btn-outline', action: () => closeModal() },
-    { 
-      label: 'Sí, vaciar base de datos', 
-      class: 'btn-danger', 
-      action: () => {
-        const val = ($('#clear-db-confirm-input') as HTMLInputElement)?.value;
-        if (String(val).trim().toUpperCase() !== 'ELIMINAR') {
-          showToast('Confirmación incorrecta', 'error');
-          return;
+    [
+      { label: 'Cancelar', class: 'btn-outline', action: () => closeModal() },
+      {
+        label: 'Sí, vaciar base de datos',
+        class: 'btn-danger',
+        action: () => {
+          const val = ($('#clear-db-confirm-input') as HTMLInputElement)?.value;
+          if (String(val).trim().toUpperCase() !== 'ELIMINAR') {
+            showToast('Confirmación incorrecta', 'error');
+            return;
+          }
+          _doClearDatabase();
         }
-        _doClearDatabase();
-      } 
-    },
-  ]);
+      },
+    ]);
 }
 
 async function _doClearDatabase() {
@@ -1449,7 +1449,7 @@ async function _handleClearPeriod() {
   let txTypes: any[] = [];
   try {
     txTypes = await pb.listAll('transaction_types', { sort: 'code,name' });
-  } catch(e) {
+  } catch (e) {
     console.warn('[Clear Period] Error fetching txTypes:', e);
   }
 
@@ -1460,7 +1460,7 @@ async function _handleClearPeriod() {
   const defaultStart = `${y}-${m}-01`;
   const defaultEnd = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
 
-  const txTypesOptionsHtml = txTypes.map(t => 
+  const txTypesOptionsHtml = txTypes.map(t =>
     `<option value="${t.id}" ${t.code === 'NM' ? 'selected' : ''}>[${t.code}] ${t.name || t.code}</option>`
   ).join('');
 
@@ -1569,64 +1569,64 @@ async function _handleClearPeriod() {
         <input type="text" id="clear-period-confirm-input" class="input w-full" placeholder="Escribe REINICIAR" autocomplete="off" style="border: 1px solid #D1D5DB; border-radius: 8px; padding: 8px 12px; font-size: 14px;">
       </div>
     </div>`,
-  [
-    { label: 'Cancelar', class: 'btn-outline', action: () => closeModal() },
-    { 
-      label: 'Borrar por período', 
-      class: 'btn-warning', 
-      action: () => {
-        const val = ($('#clear-period-confirm-input') as HTMLInputElement)?.value;
-        if (String(val).trim().toUpperCase() !== 'REINICIAR') {
-          showToast('Confirmación incorrecta', 'error');
-          return;
-        }
-        
-        const startDate = ($('#clear-period-start') as HTMLInputElement)?.value;
-        const endDate = ($('#clear-period-end') as HTMLInputElement)?.value;
-        
-        if (!startDate || !endDate) {
-          showToast('Fechas requeridas', 'error');
-          return;
-        }
-
-        const isTxChecked = ($('#chk-clear-tx') as HTMLInputElement)?.checked;
-        const txTypeMode = ($('input[name="cp-txtype-mode"]:checked') as HTMLInputElement)?.value;
-        let selectedTxTypeIds: string[] = [];
-
-        if (isTxChecked && txTypeMode === 'specific') {
-          const selectEl = $('#cp-txtype-select') as HTMLSelectElement;
-          if (selectEl) {
-            selectedTxTypeIds = Array.from(selectEl.selectedOptions).map(opt => opt.value);
-          }
-          if (selectedTxTypeIds.length === 0) {
-            showToast('Selecciona al menos un tipo de transacción o elige "Todos los tipos"', 'warning');
+    [
+      { label: 'Cancelar', class: 'btn-outline', action: () => closeModal() },
+      {
+        label: 'Borrar por período',
+        class: 'btn-warning',
+        action: () => {
+          const val = ($('#clear-period-confirm-input') as HTMLInputElement)?.value;
+          if (String(val).trim().toUpperCase() !== 'REINICIAR') {
+            showToast('Confirmación incorrecta', 'error');
             return;
           }
+
+          const startDate = ($('#clear-period-start') as HTMLInputElement)?.value;
+          const endDate = ($('#clear-period-end') as HTMLInputElement)?.value;
+
+          if (!startDate || !endDate) {
+            showToast('Fechas requeridas', 'error');
+            return;
+          }
+
+          const isTxChecked = ($('#chk-clear-tx') as HTMLInputElement)?.checked;
+          const txTypeMode = ($('input[name="cp-txtype-mode"]:checked') as HTMLInputElement)?.value;
+          let selectedTxTypeIds: string[] = [];
+
+          if (isTxChecked && txTypeMode === 'specific') {
+            const selectEl = $('#cp-txtype-select') as HTMLSelectElement;
+            if (selectEl) {
+              selectedTxTypeIds = Array.from(selectEl.selectedOptions).map(opt => opt.value);
+            }
+            if (selectedTxTypeIds.length === 0) {
+              showToast('Selecciona al menos un tipo de transacción o elige "Todos los tipos"', 'warning');
+              return;
+            }
+          }
+
+          const selections = {
+            transactions: isTxChecked,
+            tx_type_ids: selectedTxTypeIds,
+            reset_payroll: ($('#chk-cp-reset-payroll') as HTMLInputElement)?.checked,
+            clear_payroll_lines: ($('#chk-cp-clear-payroll-lines') as HTMLInputElement)?.checked,
+            invoices: ($('#chk-clear-invoices') as HTMLInputElement)?.checked,
+            purchase_invoices: ($('#chk-clear-pinvoices') as HTMLInputElement)?.checked,
+            inventory_movements: ($('#chk-clear-invmovements') as HTMLInputElement)?.checked,
+            bank_movements: ($('#chk-clear-bank') as HTMLInputElement)?.checked,
+            payroll: ($('#chk-clear-payroll') as HTMLInputElement)?.checked
+          };
+
+          const hasSelection = selections.transactions || selections.invoices || selections.purchase_invoices ||
+            selections.inventory_movements || selections.bank_movements || selections.payroll || selections.reset_payroll;
+          if (!hasSelection) {
+            showToast('Debes seleccionar al menos un componente a limpiar', 'error');
+            return;
+          }
+
+          _doClearPeriod(startDate, endDate, selections);
         }
-        
-        const selections = {
-          transactions: isTxChecked,
-          tx_type_ids: selectedTxTypeIds,
-          reset_payroll: ($('#chk-cp-reset-payroll') as HTMLInputElement)?.checked,
-          clear_payroll_lines: ($('#chk-cp-clear-payroll-lines') as HTMLInputElement)?.checked,
-          invoices: ($('#chk-clear-invoices') as HTMLInputElement)?.checked,
-          purchase_invoices: ($('#chk-clear-pinvoices') as HTMLInputElement)?.checked,
-          inventory_movements: ($('#chk-clear-invmovements') as HTMLInputElement)?.checked,
-          bank_movements: ($('#chk-clear-bank') as HTMLInputElement)?.checked,
-          payroll: ($('#chk-clear-payroll') as HTMLInputElement)?.checked
-        };
-        
-        const hasSelection = selections.transactions || selections.invoices || selections.purchase_invoices || 
-                             selections.inventory_movements || selections.bank_movements || selections.payroll || selections.reset_payroll;
-        if (!hasSelection) {
-          showToast('Debes seleccionar al menos un componente a limpiar', 'error');
-          return;
-        }
-        
-        _doClearPeriod(startDate, endDate, selections);
-      } 
-    },
-  ]);
+      },
+    ]);
 
   // Event listeners en el modal
   const radioAll = $('input[name="cp-txtype-mode"][value="all"]');
@@ -1718,7 +1718,7 @@ function _downloadMassTxTemplate() {
   ];
 
   const indications: Array<[string, string, string, string, string]> = [
-    ['grupo', 'SÍ', 'Texto Alfanumérico', 'Identificador único del comprobante. Permite agrupar múltiples líneas en una sola transacción contable. Debe iniciar con el prefijo o código del Tipo de Transacción configurado (ej: RC-001 para Recaudo, CE-001 para Egreso, CC-001 para Comprobante Contable, DS-001 para Documento Soporte, NM-001 para Nómina).', 'RC-00000001'],
+    ['grupo', 'SÍ', 'Texto Alfanumérico', 'Identificador único del comprobante. Permite agrupar múltiples líneas en una sola transacción contable. Debe iniciar con el prefijo o código del Tipo de Transacción configurado (ej. Modo Continuo: RC-00000001, CE-00000002; Modo Mensual: FC-202601-000001, CC-202601-000002, o simplemente el número secuencial si inicia con el prefijo).', 'RC-00000001'],
     ['fecha', 'SÍ', 'Fecha (YYYY-MM-DD)', 'Fecha del comprobante contable. El período debe estar abierto en el sistema.', '2026-05-01'],
     ['descripcion', 'SÍ', 'Texto Libre', 'Concepto general o encabezado del comprobante contable.', 'Registro de recaudo cliente'],
     ['cuenta', 'SÍ', 'Código PUC Auxiliar', 'Código numérico de la cuenta contable auxiliar (debe ser cuenta de movimiento, no de mayor).', '11100501'],
@@ -1790,18 +1790,13 @@ async function _openMassTxImportModal() {
 
       ${branchSelector}
 
-      <div class="rounded-xl p-3 mb-3" style="background:#ECFDF5;border:1px solid #A7F3D0">
-        <p class="text-xs font-semibold mb-1" style="color:#047857;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
-        <div class="flex flex-wrap gap-2 mb-2">
-          ${['grupo','fecha','descripcion','cuenta'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#D1FAE5;color:#065F46">${c}</code>`).join('')}
-          ${['debito','credito','tercero','plazo_dias','tercero_linea','descripcion_linea','doc_cruce','fecha_doc_cruce','fecha_vencimiento','sucursal'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+      <div id="mass-tx-sheet-wrap" class="hidden rounded-xl p-3 mb-3 flex items-center gap-3" style="background:#F0FDF4;border:1px solid #BBF7D0">
+        <i class="fas fa-table text-lg" style="color:#059669"></i>
+        <div style="flex:1">
+          <label class="text-xs font-semibold block mb-1" style="color:#047857;text-transform:uppercase;letter-spacing:.05em">Hoja de cálculo activa</label>
+          <select id="mass-tx-sheet-select" class="form-input" style="font-size:13px;padding:5px 10px"></select>
         </div>
-        <p class="text-xs" style="color:#065F46">
-          <strong>grupo</strong>: Número de comprobante o serie-consecutivo (ej: <code>RC-001</code> o <code>CE-15</code>). El prefijo define la serie y el tipo de transacción.<br>
-          <strong>doc_cruce / fecha_doc_cruce / fecha_vencimiento</strong>: Permite informar documento y fecha de origen/vencimiento de cartera para que los reportes calculen moras exactas.<br>
-          <strong>cuenta</strong>: Código contable auxiliar.<br>
-          <strong>sucursal</strong>: Código de sucursal (si se omite se usa el selector).
-        </p>
+        <p class="text-xs" style="color:#047857;max-width:240px">Selecciona la pestaña del Excel con las líneas contables a cargar.</p>
       </div>
 
       <div id="mass-tx-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
@@ -1840,17 +1835,23 @@ async function _openMassTxImportModal() {
   );
 
   let parsedGroups = [];
+  let currentFileBuffer: ArrayBuffer | null = null;
 
   const dropZone = $('#mass-tx-drop-zone');
-  const fileInput = $('#mass-tx-file-input');
+  const fileInput = $('#mass-tx-file-input') as HTMLInputElement;
   const runBtn = $('#btn-mass-tx-run');
   const clearBtn = $('#btn-mass-tx-clear');
+  const sheetWrap = $('#mass-tx-sheet-wrap');
+  const sheetSelect = $('#mass-tx-sheet-select') as HTMLSelectElement;
 
   const getSelectedBranchId = () =>
     ($('#mass-tx-branch') as HTMLSelectElement)?.value || defaultBranchId || null;
 
   const resetPreview = () => {
     parsedGroups = [];
+    currentFileBuffer = null;
+    sheetWrap?.classList.add('hidden');
+    if (sheetSelect) sheetSelect.innerHTML = '';
     $('#mass-tx-preview')?.classList.add('hidden');
     runBtn?.classList.add('hidden');
     const body = $('#mass-tx-preview-body');
@@ -1888,6 +1889,14 @@ async function _openMassTxImportModal() {
     }
   });
 
+  sheetSelect?.addEventListener('change', async () => {
+    if (!currentFileBuffer || !sheetSelect.value) return;
+    showToast(`Cargando hoja "${sheetSelect.value}"...`, 'info', 2000);
+    const parsed = _massTxParseExcel(currentFileBuffer, sheetSelect.value);
+    parsedGroups = await _massTxBuildDraft(parsed.rows, getSelectedBranchId(), allowedBranches);
+    _massTxRenderPreview(parsedGroups);
+  });
+
   fileInput?.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     if (file) processFile(file);
@@ -1896,7 +1905,7 @@ async function _openMassTxImportModal() {
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassTxImport(parsedGroups));
 
-  async function processFile(file) {
+  async function processFile(file: File) {
     if (file.size > 8 * 1024 * 1024) return showToast('El archivo supera el límite de 8 MB', 'error');
 
     const ext = String(file.name.split('.').pop() || '').toLowerCase();
@@ -1904,17 +1913,33 @@ async function _openMassTxImportModal() {
 
     try {
       if (ext === 'csv') {
+        sheetWrap?.classList.add('hidden');
         rawRows = _massTxParseCsv(await file.text());
       } else if (ext === 'xlsx' || ext === 'xls') {
-        rawRows = _massTxParseExcel(await file.arrayBuffer());
+        const buffer = await file.arrayBuffer();
+        currentFileBuffer = buffer;
+        const parsed = _massTxParseExcel(buffer);
+        rawRows = parsed.rows;
+
+        // Configurar selector de hojas si hay múltiples hojas
+        if (parsed.sheets && parsed.sheets.length > 1) {
+          if (sheetSelect && sheetWrap) {
+            sheetSelect.innerHTML = parsed.sheets.map((s: string) =>
+              `<option value="${esc(s)}" ${s === parsed.activeSheet ? 'selected' : ''}>${esc(s)}</option>`
+            ).join('');
+            sheetWrap.classList.remove('hidden');
+          }
+        } else {
+          sheetWrap?.classList.add('hidden');
+        }
       } else {
         return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
       }
-    } catch (err) {
+    } catch (err: any) {
       return showToast(`Error al leer el archivo: ${err.message}`, 'error');
     }
 
-    if (!rawRows.length) return showToast('El archivo no contiene datos', 'warning');
+    if (!rawRows.length) return showToast('El archivo o la hoja seleccionada no contiene datos', 'warning');
 
     // Feedback de progreso para archivos grandes
     if (rawRows.length > 100) {
@@ -1979,11 +2004,43 @@ function _massTxParseCsv(text) {
   });
 }
 
-function _massTxParseExcel(arrayBuffer) {
+function _massTxParseExcel(arrayBuffer: ArrayBuffer, requestedSheet: string | null = null) {
   // cellDates:true → XLSX convierte celdas de fecha a objetos Date en vez de número serial
-  const wb = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  const wb = (window as any).XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const sheetNames: string[] = wb.SheetNames || [];
+
+  // Si no se solicita una hoja específica, elegir inteligentemente la mejor hoja
+  let chosenSheet = requestedSheet;
+  if (!chosenSheet || !wb.Sheets[chosenSheet]) {
+    // 1. Buscar hojas que no sean informativas y que tengan filas con 'cuenta' no vacía
+    for (const name of sheetNames) {
+      if (name.toLowerCase().includes('indicacion')) continue;
+      const testWs = wb.Sheets[name];
+      if (!testWs) continue;
+      const testRows: any[] = (window as any).XLSX.utils.sheet_to_json(testWs, { defval: '' });
+      if (testRows.length > 0) {
+        const hasValidAccounts = testRows.some(r => {
+          for (const [k, v] of Object.entries(r)) {
+            if (_massTxNormHeader(k) === 'cuenta' && String(v ?? '').trim() !== '') {
+              return true;
+            }
+          }
+          return false;
+        });
+        if (hasValidAccounts) {
+          chosenSheet = name;
+          break;
+        }
+      }
+    }
+    // 2. Si ninguna tiene 'cuenta' llena, tomar la primera que no sea 'indicaciones'
+    if (!chosenSheet) {
+      chosenSheet = sheetNames.find(n => !n.toLowerCase().includes('indicacion')) || sheetNames[0] || '';
+    }
+  }
+
+  const ws = chosenSheet ? wb.Sheets[chosenSheet] : wb.Sheets[sheetNames[0]];
+  const rows = ws ? (window as any).XLSX.utils.sheet_to_json(ws, { defval: '' }) : [];
 
   // Convierte un valor de celda a string legible.
   // Las fechas (objetos Date) se formatean como YYYY-MM-DD para ser compatibles
@@ -1999,13 +2056,19 @@ function _massTxParseExcel(arrayBuffer) {
     return String(v ?? '').trim();
   };
 
-  return rows.map(r => {
+  const parsedRows = rows.map(r => {
     const row = {};
     Object.entries(r).forEach(([k, v]) => {
       row[_massTxNormHeader(k)] = cellToStr(v);
     });
     return row;
   });
+
+  return {
+    sheets: sheetNames,
+    activeSheet: chosenSheet,
+    rows: parsedRows,
+  };
 }
 
 function _massTxPick(raw, keys) {
@@ -2052,12 +2115,41 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
   const postableIds = new Set(accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id));
   const accByCode = new Map(accounts.map(a => [String(a.code || '').trim(), a]));
 
-  const txTypeByKey = new Map();
+  const txTypeByPrefix = new Map();
+  const txTypeByCode = new Map();
+  const txTypeById = new Map();
+
   txTypes.forEach(t => {
-    txTypeByKey.set(String(t.prefix || '').toUpperCase(), t);
-    txTypeByKey.set(String(t.code || '').toUpperCase(), t);
-    txTypeByKey.set(String(t.id || '').toUpperCase(), t);
+    const prefixKey = String(t.prefix || '').trim().toUpperCase();
+    const codeKey = String(t.code || '').trim().toUpperCase();
+    const idKey = String(t.id || '').trim();
+
+    if (prefixKey) {
+      txTypeByPrefix.set(prefixKey, t);
+    }
+    if (idKey) {
+      txTypeById.set(idKey, t);
+    }
+    if (codeKey) {
+      const existing = txTypeByCode.get(codeKey);
+      // Priorizar la serie donde prefix === code o si aún no hay ninguna asignada
+      if (!existing || (prefixKey === codeKey && String(existing.prefix || '').trim().toUpperCase() !== codeKey)) {
+        txTypeByCode.set(codeKey, t);
+      }
+    }
   });
+
+  const getTxType = (key) => {
+    if (!key) return null;
+    const k = String(key).trim().toUpperCase();
+    // Prioridad 1: Coincidencia EXACTA por Prefijo/Serie (ej: NC, NCNM, NCFE, NCFC, FV, FE, CG, EF)
+    if (txTypeByPrefix.has(k)) return txTypeByPrefix.get(k);
+    // Prioridad 2: Coincidencia por Código de tipo general (ej: NC -> serie principal de NC)
+    if (txTypeByCode.has(k)) return txTypeByCode.get(k);
+    // Prioridad 3: Coincidencia por ID de PocketBase
+    if (txTypeById.has(String(key).trim())) return txTypeById.get(String(key).trim());
+    return null;
+  };
 
   const thirdByDoc = new Map();
   terceros.forEach(t => {
@@ -2067,10 +2159,20 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
 
   const groups = new Map();
   const upsertHdr = (g, field, val, label, rowNo) => {
-    if (!val) return;
-    if (!g[field]) {
+    if (val === undefined || val === null || val === '') return;
+    if (g[field] === undefined || g[field] === null || g[field] === '') {
       g[field] = val;
       return;
+    }
+    // Para paymentDays: si un valor es '0' y otro es > 0, tomar el plazo efectivo sin conflicto
+    if (field === 'paymentDays') {
+      if (String(g[field]).trim() === '0' && String(val).trim() !== '0') {
+        g[field] = val;
+        return;
+      }
+      if (String(val).trim() === '0' && String(g[field]).trim() !== '0') {
+        return;
+      }
     }
     if (g[field] !== val) {
       g.errors.push(`Fila ${rowNo}: valor inconsistente en ${label} ("${g[field]}" vs "${val}")`);
@@ -2089,7 +2191,7 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
         txDate: '',
         txDesc: '',
         thirdDoc: '',
-        paymentDays: '0',
+        paymentDays: '',
         branchCode: '',   // código/id de sucursal leído del archivo
         lines: [],
         errors: [],
@@ -2097,10 +2199,10 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
     }
 
     const g = groups.get(group);
-    upsertHdr(g, 'txDate',      _massTxPick(raw, ['fecha', 'date', 'tx_date']),                                   'fecha',       rowNo);
-    upsertHdr(g, 'txDesc',      _massTxPick(raw, ['descripcion', 'description', 'detalle']),                      'descripcion', rowNo);
-    upsertHdr(g, 'paymentDays', _massTxPick(raw, ['plazo_dias', 'payment_days', 'dias_pago']),                    'plazo_dias',  rowNo);
-    upsertHdr(g, 'branchCode',  _massTxPick(raw, ['sucursal', 'branch', 'branch_code', 'sucursal_codigo']),       'sucursal',    rowNo);
+    upsertHdr(g, 'txDate', _massTxPick(raw, ['fecha', 'date', 'tx_date']), 'fecha', rowNo);
+    upsertHdr(g, 'txDesc', _massTxPick(raw, ['descripcion', 'description', 'detalle']), 'descripcion', rowNo);
+    upsertHdr(g, 'paymentDays', _massTxPick(raw, ['plazo_dias', 'payment_days', 'dias_pago']), 'plazo_dias', rowNo);
+    upsertHdr(g, 'branchCode', _massTxPick(raw, ['sucursal', 'branch', 'branch_code', 'sucursal_codigo']), 'sucursal', rowNo);
 
     // Tercero de cabecera: se toma el PRIMER valor no vacío del grupo.
     // Si filas posteriores tienen un tercero diferente NO se trata como error:
@@ -2111,18 +2213,18 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
       g.thirdDoc = rowTerceroHdr; // Primer valor define el tercero de cabecera
     }
 
-    const accountCode    = _massTxPick(raw, ['cuenta', 'account', 'codigo_cuenta', 'account_code']);
-    const debit          = _massTxNum(_massTxPick(raw, ['debito', 'debit']));
-    const credit         = _massTxNum(_massTxPick(raw, ['credito', 'credit']));
+    const accountCode = _massTxPick(raw, ['cuenta', 'account', 'codigo_cuenta', 'account_code']);
+    const debit = _massTxNum(_massTxPick(raw, ['debito', 'debit']));
+    const credit = _massTxNum(_massTxPick(raw, ['credito', 'credit']));
     // Si hay tercero_linea explícito, usarlo; si no, usar el tercero de la fila
     // (cuando difiere del de cabecera, cada línea tiene su propio tercero)
     const explicitLineThird = _massTxPick(raw, ['tercero_linea', 'line_third', 'tercero_line']);
-    const lineThirdDoc   = explicitLineThird
+    const lineThirdDoc = explicitLineThird
       || (rowTerceroHdr && rowTerceroHdr !== g.thirdDoc ? rowTerceroHdr : '');
-    const lineDesc       = _massTxPick(raw, ['descripcion_linea', 'line_description', 'detalle_linea']);
-    const crossDoc       = _massTxPick(raw, ['doc_cruce', 'cross_doc_ref', 'documento_cruce']);
-    const crossDocDate   = _massTxPick(raw, ['fecha_doc_cruce', 'fecha_cruce', 'fecha_origen', 'fecha_factura_cruce', 'cross_doc_date']);
-    const lineDueDate    = _massTxPick(raw, ['fecha_vencimiento', 'due_date', 'vencimiento', 'fecha_vencimiento_cruce']);
+    const lineDesc = _massTxPick(raw, ['descripcion_linea', 'line_description', 'detalle_linea']);
+    const crossDoc = _massTxPick(raw, ['doc_cruce', 'cross_doc_ref', 'documento_cruce']);
+    const crossDocDate = _massTxPick(raw, ['fecha_doc_cruce', 'fecha_cruce', 'fecha_origen', 'fecha_factura_cruce', 'cross_doc_date']);
+    const lineDueDate = _massTxPick(raw, ['fecha_vencimiento', 'due_date', 'vencimiento', 'fecha_vencimiento_cruce']);
 
     g.lines.push({
       rowNo,
@@ -2147,7 +2249,7 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
     // ── Resolución de Tipo de Transacción y Consecutivo por la Serie del Grupo ──
     const groupStr = String(g.group || '').trim();
 
-    // Intentamos separar prefijo y número del grupo (ej: "RC-001" -> "RC" y "001")
+    // Intentamos separar prefijo y número del grupo (ej: "RC-001" -> "RC" y "001", o "FC-202601-000001" -> "FC" y "202601-000001")
     const parts = groupStr.split(/[-_\s]+/);
     let groupPrefix = '';
     let groupNumberStr = '';
@@ -2169,41 +2271,67 @@ async function _massTxBuildDraft(rawRows, fallbackBranchId = null, knownBranches
     // Buscar el tipo de transacción correspondiente a la serie (prefijo del grupo)
     let txType = null;
     if (groupPrefix) {
-      txType = txTypeByKey.get(groupPrefix);
+      txType = getTxType(groupPrefix);
     }
-    
+
     // Si no se resolvió por prefijo, probar con el grupo completo
     if (!txType && groupStr) {
-      txType = txTypeByKey.get(groupStr.toUpperCase());
+      txType = getTxType(groupStr);
     }
 
     if (!g.txDate) groupErrors.push('Falta fecha del comprobante');
     if (!txType) {
-      groupErrors.push(`Serie / Tipo de transacción no encontrado para: "${groupPrefix || groupStr}". Asegúrate de que el nombre del grupo inicie con la serie correspondiente (ej: RC-001, CE-102).`);
+      groupErrors.push(`Serie / Tipo de transacción no encontrado para: "${groupPrefix || groupStr}". Asegúrate de que el nombre del grupo inicie con la serie correspondiente (ej: RC-001, CE-102, FC-202601-000001).`);
     }
     if (!g.txDesc) groupErrors.push('Falta descripción del comprobante');
 
-    // Construir el número final formateado si tenemos el tipo de transacción
+    // Construir el número final formateado según el formato del grupo o modo del tipo
     let resolvedNumber = '';
     if (txType) {
       const prefix = String(txType.prefix || txType.code || 'TX').toUpperCase();
-      
-      // Buscar dígitos numéricos en la parte del número o en todo el grupo
-      let numMatch = groupNumberStr.match(/\d+/);
-      if (!numMatch && parts.length > 1) {
-        numMatch = groupStr.match(/\d+/);
-      }
+      const isPeriodMode = (txType.numbering_mode === 'period');
 
-      if (numMatch) {
-        const numVal = parseInt(numMatch[0], 10);
-        const paddedNum = String(numVal).padStart(8, '0');
-        resolvedNumber = `${prefix}-${paddedNum}`;
-      } else {
-        // Sin parte numérica, usar el grupo tal cual o prefijarlo
-        if (groupStr.toUpperCase().startsWith(prefix)) {
-          resolvedNumber = groupStr;
+      // 1. Si el grupo ya contiene formato mensual explícito PREFIJO-YYYYMM-SEQ o YYYYMM-SEQ (ej: FC-202601-000001 o 202601-000001)
+      const periodPattern = groupStr.match(/^(?:([A-Za-z0-9]+)[-_])?(\d{6})[-_](\d+)$/);
+      if (periodPattern) {
+        const periodTag = periodPattern[2];
+        const seqNum = parseInt(periodPattern[3], 10);
+        const paddedSeq = String(seqNum).padStart(6, '0');
+        resolvedNumber = `${prefix}-${periodTag}-${paddedSeq}`;
+      } else if (isPeriodMode) {
+        // 2. Si está en modo mensual pero el grupo no tiene los 6 dígitos explícitos (ej: FC-1 o FC-000001), inferir período desde la fecha
+        const dateStr = g.txDate || new Date().toISOString().slice(0, 10);
+        const periodTag = dateStr.slice(0, 7).replace('-', '');
+        const allNums = groupStr.match(/\d+/g);
+        if (allNums && allNums.length > 0) {
+          const seqNum = parseInt(allNums[allNums.length - 1], 10);
+          const paddedSeq = String(seqNum).padStart(6, '0');
+          resolvedNumber = `${prefix}-${periodTag}-${paddedSeq}`;
         } else {
-          resolvedNumber = `${prefix}-${groupStr}`;
+          resolvedNumber = `${prefix}-${periodTag}-${groupStr}`;
+        }
+      } else {
+        // 3. Modo Continuo: PREFIJO-00000001 (8 dígitos secuencia)
+        let numVal = null;
+        if (parts.length > 1) {
+          const allNums = groupNumberStr.match(/\d+/g);
+          if (allNums && allNums.length > 0) {
+            numVal = parseInt(allNums[allNums.length - 1], 10);
+          }
+        } else {
+          const numMatch = groupStr.match(/\d+/);
+          if (numMatch) numVal = parseInt(numMatch[0], 10);
+        }
+
+        if (numVal !== null && !isNaN(numVal)) {
+          const paddedNum = String(numVal).padStart(8, '0');
+          resolvedNumber = `${prefix}-${paddedNum}`;
+        } else {
+          if (groupStr.toUpperCase().startsWith(prefix)) {
+            resolvedNumber = groupStr;
+          } else {
+            resolvedNumber = `${prefix}-${groupStr}`;
+          }
         }
       }
     } else {
@@ -2387,7 +2515,7 @@ function _massTxRenderPreview(groups) {
     ? (branchSel.options[branchSel.selectedIndex]?.text || '—')
     : '—';
 
-  const okGroups  = groups.filter(g => g.ok);
+  const okGroups = groups.filter(g => g.ok);
   const badGroups = groups.filter(g => !g.ok);
   const totalLines = groups.reduce((s, g) => s + (g.linesCount || 0), 0);
   const bigVoucher = okGroups.some(g => (g.linesCount || 0) > 50);
@@ -2409,8 +2537,8 @@ function _massTxRenderPreview(groups) {
         <td>${fmt(g.debit)}</td>
         <td>${fmt(g.credit)}</td>
         <td>${g.ok
-          ? '<span class="badge badge-green">OK</span>'
-          : '<span class="badge badge-red">Error</span>'}</td>
+        ? '<span class="badge badge-green">OK</span>'
+        : '<span class="badge badge-red">Error</span>'}</td>
         <td class="text-xs" style="max-width:360px;white-space:normal">${esc(detail)}</td>
       </tr>`;
   }).join('');
@@ -2587,11 +2715,11 @@ async function _openMassTpImportModal() {
       <div class="rounded-xl p-3 mb-3" style="background:#EFF6FF;border:1px solid #BFDBFE;max-height:220px;overflow-y:auto">
         <p class="text-xs font-semibold mb-1" style="color:#1D4ED8;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
         <div class="flex flex-wrap gap-2 mb-2">
-          ${['doc_type','doc_number','person_type','type'].map(c => `<code class="text-xs px-2 py-0.5 rounded font-mono" style="background:#DBEAFE;color:#1E40AF">${c}</code>`).join('')}
+          ${['doc_type', 'doc_number', 'person_type', 'type'].map(c => `<code class="text-xs px-2 py-0.5 rounded font-mono" style="background:#DBEAFE;color:#1E40AF">${c}</code>`).join('')}
         </div>
         <p class="text-xs font-semibold mb-1" style="color:#4B5563;text-transform:uppercase;letter-spacing:.05em">Columnas opcionales</p>
         <div class="flex flex-wrap gap-1.5 mb-2">
-          ${['razon_social','nombres','apellidos','commercial_name','email','email2','phone','phone2','contact_name','contact_phone','advisor','address','country','dept_code','city_code','tax_regime','credit_limit','max_invoices','payment_days','active','ciiu','gc','gcm','ar','ei','rf','prf','pi','piv','responsabilidades','is_retention_agent','bank_name','bank_account','notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
+          ${['razon_social', 'nombres', 'apellidos', 'commercial_name', 'email', 'email2', 'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor', 'address', 'country', 'dept_code', 'city_code', 'tax_regime', 'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu', 'gc', 'gcm', 'ar', 'ei', 'rf', 'prf', 'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name', 'bank_account', 'notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
         </div>
         <p class="text-xs" style="color:#1E40AF">
           <strong>doc_type</strong>: Códigos DIAN (31=NIT, 13=CC, 22=CE, 12=TI, 11=RC, 21=TE, 41=Pasaporte, 42=Doc Ext, 47=PEP, 48=PPT, 50=NIT otro país, 91=NUIP).&nbsp;
@@ -2704,9 +2832,9 @@ async function _openMassTpImportModal() {
 
 /* Normaliza una fila a un draft de tercero { ok, payload, error, rowNo } */
 function _massTpBuildDraft(rawRows) {
-  const VALID_DOC_TYPES    = new Set(['11','12','13','21','22','31','41','42','47','48','50','91','NIT','NITPE','CC','CE','TI','PAS','RC']);
-  const VALID_PERSON_TYPES = new Set(['NATURAL','JURIDICA']);
-  const VALID_TP_TYPES     = new Set(['CLIENTE','PROVEEDOR','EMPLEADO','PROPIETARIO','OTRO']);
+  const VALID_DOC_TYPES = new Set(['11', '12', '13', '21', '22', '31', '41', '42', '47', '48', '50', '91', 'NIT', 'NITPE', 'CC', 'CE', 'TI', 'PAS', 'RC']);
+  const VALID_PERSON_TYPES = new Set(['NATURAL', 'JURIDICA']);
+  const VALID_TP_TYPES = new Set(['CLIENTE', 'PROVEEDOR', 'EMPLEADO', 'PROPIETARIO', 'OTRO']);
 
   return rawRows.map((raw, i) => {
     const rowNo = i + 2; // +2 porque fila 1 es cabecera
@@ -2723,40 +2851,40 @@ function _massTpBuildDraft(rawRows) {
       return !/^(no|0|false|inactivo|inactiva)$/i.test(val);
     };
 
-    let docType      = get('doc_type','tipo_doc','tipo_documento').toUpperCase();
+    let docType = get('doc_type', 'tipo_doc', 'tipo_documento').toUpperCase();
     if ((window as any).normalizeDocType) {
       docType = (window as any).normalizeDocType(docType);
     }
-    const docNumber  = get('doc_number','numero_doc','nit','documento','doc').replace(/[^0-9a-zA-Z]/g, '');
-    const personType = get('person_type','tipo_persona','persona').toUpperCase() || 'NATURAL';
-    let tpType       = get('type','tipo','rol').toUpperCase() || 'CLIENTE';
+    const docNumber = get('doc_number', 'numero_doc', 'nit', 'documento', 'doc').replace(/[^0-9a-zA-Z]/g, '');
+    const personType = get('person_type', 'tipo_persona', 'persona').toUpperCase() || 'NATURAL';
+    let tpType = get('type', 'tipo', 'rol').toUpperCase() || 'CLIENTE';
     if (tpType === 'ACREEDOR' || tpType === 'TRANSPORTISTA') tpType = 'PROVEEDOR';
     if (tpType === 'VENDEDOR') tpType = 'EMPLEADO';
 
     // Nombre
-    const bizName   = get('razon_social','business_name','razon').toUpperCase();
-    const firstName = get('nombres','first_name','nombre').toUpperCase();
-    const lastName  = get('apellidos','last_name','apellido').toUpperCase();
+    const bizName = get('razon_social', 'business_name', 'razon').toUpperCase();
+    const firstName = get('nombres', 'first_name', 'nombre').toUpperCase();
+    const lastName = get('apellidos', 'last_name', 'apellido').toUpperCase();
     const isNatural = personType === 'NATURAL';
     const name = isNatural
       ? [firstName, lastName].filter(Boolean).join(' ')
       : bizName;
 
     // Opcionales
-    const comName      = get('commercial_name', 'nombre_comercial', 'marca').toUpperCase();
-    const email        = get('email','correo');
-    const email2       = get('email2', 'correo2');
-    const phone        = get('phone','telefono','tel');
-    const phone2       = get('phone2', 'telefono2', 'celular2');
-    const contactName  = get('contact_name', 'contacto', 'nombre_contacto');
+    const comName = get('commercial_name', 'nombre_comercial', 'marca').toUpperCase();
+    const email = get('email', 'correo');
+    const email2 = get('email2', 'correo2');
+    const phone = get('phone', 'telefono', 'tel');
+    const phone2 = get('phone2', 'telefono2', 'celular2');
+    const contactName = get('contact_name', 'contacto', 'nombre_contacto');
     const contactPhone = get('contact_phone', 'telefono_contacto', 'tel_contacto');
-    const advisorRaw   = get('advisor', 'asesor', 'vendedor');
-    const address      = get('address','direccion').toUpperCase();
-    const deptCode     = get('dept_code','cod_dept','departamento_cod');
-    const cityCode     = get('city_code','cod_mun','municipio_cod','ciudad_cod');
-    const country      = get('country', 'pais') || (deptCode ? 'CO' : '');
-    const taxRegimeRaw = get('tax_regime','regimen','tax').toUpperCase();
-    let taxRegime      = '';
+    const advisorRaw = get('advisor', 'asesor', 'vendedor');
+    const address = get('address', 'direccion').toUpperCase();
+    const deptCode = get('dept_code', 'cod_dept', 'departamento_cod');
+    const cityCode = get('city_code', 'cod_mun', 'municipio_cod', 'ciudad_cod');
+    const country = get('country', 'pais') || (deptCode ? 'CO' : '');
+    const taxRegimeRaw = get('tax_regime', 'regimen', 'tax').toUpperCase();
+    let taxRegime = '';
     if (taxRegimeRaw === 'RESP_IVA' || taxRegimeRaw === 'COMUN' || taxRegimeRaw === 'RESPONSABLE' || taxRegimeRaw === 'RESPONSABLE_IVA') {
       taxRegime = 'COMUN';
     } else if (taxRegimeRaw === 'SIMPLE' || taxRegimeRaw === 'SIMPLIFICADO' || taxRegimeRaw === 'REGIMEN_SIMPLE') {
@@ -2766,25 +2894,25 @@ function _massTpBuildDraft(rawRows) {
     } else if (taxRegimeRaw === 'GRAN_CONTR' || taxRegimeRaw === 'GRAN_CONTRIBUYENTE') {
       taxRegime = 'GRAN_CONTR';
     }
-    const creditLimit  = parseFloat(get('credit_limit','cupo_credito','cupo').replace(/[^0-9.]/g, '')) || 0;
-    const maxInvoices  = parseInt(get('max_invoices', 'max_facturas', 'facturas_maximas'), 10) || 1;
-    const payDays      = parseInt(get('payment_days','plazo_dias','plazo'), 10) || 0;
-    const active       = parseBool(get('active','activo','estado'), true);
-    const ciiu         = get('ciiu', 'actividad_economica', 'actividad');
-    const gc           = parseBool(get('gc', 'gran_contribuyente'), false);
-    const gcm          = parseBool(get('gcm', 'gran_contribuyente_municipal', 'gc_muni'), false);
-    const ar           = parseBool(get('ar', 'autorretenedor'), false);
-    const ei           = parseBool(get('ei', 'exento_iva', 'exento'), false);
-    const rf           = get('rf', 'agente_retencion', 'retencion').toUpperCase() || 'NO';
-    const prf          = parseFloat(get('prf', 'tarifa_retefuente', 'retefuente')) || 0;
-    const pi           = parseFloat(get('pi', 'tarifa_reteica', 'reteica')) || 0;
-    const piv          = parseFloat(get('piv', 'tarifa_reteiva', 'reteiva')) || 0;
-    const respStr      = get('responsabilidades', 'resp', 'responsabilidades_fiscales');
-    const resp         = respStr ? respStr.split(/[;,]/).map(x => x.trim().toUpperCase()).filter(Boolean) : [];
+    const creditLimit = parseFloat(get('credit_limit', 'cupo_credito', 'cupo').replace(/[^0-9.]/g, '')) || 0;
+    const maxInvoices = parseInt(get('max_invoices', 'max_facturas', 'facturas_maximas'), 10) || 1;
+    const payDays = parseInt(get('payment_days', 'plazo_dias', 'plazo'), 10) || 0;
+    const active = parseBool(get('active', 'activo', 'estado'), true);
+    const ciiu = get('ciiu', 'actividad_economica', 'actividad');
+    const gc = parseBool(get('gc', 'gran_contribuyente'), false);
+    const gcm = parseBool(get('gcm', 'gran_contribuyente_municipal', 'gc_muni'), false);
+    const ar = parseBool(get('ar', 'autorretenedor'), false);
+    const ei = parseBool(get('ei', 'exento_iva', 'exento'), false);
+    const rf = get('rf', 'agente_retencion', 'retencion').toUpperCase() || 'NO';
+    const prf = parseFloat(get('prf', 'tarifa_retefuente', 'retefuente')) || 0;
+    const pi = parseFloat(get('pi', 'tarifa_reteica', 'reteica')) || 0;
+    const piv = parseFloat(get('piv', 'tarifa_reteiva', 'reteiva')) || 0;
+    const respStr = get('responsabilidades', 'resp', 'responsabilidades_fiscales');
+    const resp = respStr ? respStr.split(/[;,]/).map(x => x.trim().toUpperCase()).filter(Boolean) : [];
     const isRetentionAgent = parseBool(get('is_retention_agent', 'agente_retencion_fuente'), false);
-    const bankName     = get('bank_name', 'banco');
-    const bankAccount  = get('bank_account', 'cuenta_bancaria', 'cuenta');
-    const notes        = get('notes', 'notas', 'observaciones');
+    const bankName = get('bank_name', 'banco');
+    const bankAccount = get('bank_account', 'cuenta_bancaria', 'cuenta');
+    const notes = get('notes', 'notas', 'observaciones');
 
     // Sincronizar gc y tax_regime con responsabilidades
     const isGc = resp.includes('13') || resp.includes('O-13') || gc;
@@ -2810,7 +2938,7 @@ function _massTpBuildDraft(rawRows) {
     const dv = docType === 'NIT' ? calcDV(docNumber) : '';
 
     // Validaciones
-    if (!docType)   return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_type` };
+    if (!docType) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_type` };
     if (!VALID_DOC_TYPES.has(docType))
       return { ok: false, rowNo, error: `Fila ${rowNo}: doc_type inválido (${docType})` };
     if (!docNumber) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_number` };
@@ -2843,36 +2971,36 @@ function _massTpBuildDraft(rawRows) {
     }
 
     const payload = {
-      doc_type:           docType,
-      doc_number:         docNumber,
+      doc_type: docType,
+      doc_number: docNumber,
       dv,
-      person_type:        personType,
-      type:               tpType,
-      first_name:         firstName,
-      last_name:          lastName,
-      business_name:      bizName,
-      commercial_name:    comName,
+      person_type: personType,
+      type: tpType,
+      first_name: firstName,
+      last_name: lastName,
+      business_name: bizName,
+      commercial_name: comName,
       name,
       email,
       email2,
       phone,
       phone2,
-      contact_name:       contactName,
-      contact_phone:      contactPhone,
-      advisor:            advisorRaw, // resolved dynamically in loop
+      contact_name: contactName,
+      contact_phone: contactPhone,
+      advisor: advisorRaw, // resolved dynamically in loop
       address,
       country,
-      department:         dept,
-      dept_code:          deptCode,
+      department: dept,
+      dept_code: deptCode,
       city,
-      city_code:          cityCode,
-      tax_regime:         finalTaxRegime,
-      credit_limit:       creditLimit,
-      max_invoices:       maxInvoices,
-      payment_days:       payDays,
+      city_code: cityCode,
+      tax_regime: finalTaxRegime,
+      credit_limit: creditLimit,
+      max_invoices: maxInvoices,
+      payment_days: payDays,
       active,
       ciiu,
-      gc:                 isGc,
+      gc: isGc,
       gcm,
       ar,
       ei,
@@ -2882,8 +3010,8 @@ function _massTpBuildDraft(rawRows) {
       piv,
       resp,
       is_retention_agent: isRetentionAgent,
-      bank_name:          bankName,
-      bank_account:       bankAccount,
+      bank_name: bankName,
+      bank_account: bankAccount,
       notes,
     };
 
@@ -2904,12 +3032,12 @@ function _massTpBuildDraft(rawRows) {
 
 function _massTpRenderPreview(rows) {
   const preview = $('#mass-tp-preview');
-  const tbody   = $('#mass-tp-preview-body');
+  const tbody = $('#mass-tp-preview-body');
   const summary = $('#mass-tp-summary');
-  const runBtn  = $('#btn-mass-tp-run');
+  const runBtn = $('#btn-mass-tp-run');
   if (!preview || !tbody || !summary || !runBtn) return;
 
-  const okRows  = rows.filter(r => r.ok);
+  const okRows = rows.filter(r => r.ok);
   const badRows = rows.filter(r => !r.ok);
 
   tbody.innerHTML = rows.map(r => {
@@ -2949,9 +3077,9 @@ async function _executeMassTpImport(rows) {
 
   _massTpImportInProgress = true;
 
-  const runBtn      = $('#btn-mass-tp-run');
+  const runBtn = $('#btn-mass-tp-run');
   const progressWrap = $('#mass-tp-progress-wrap');
-  const progressBar  = $('#mass-tp-progress-bar');
+  const progressBar = $('#mass-tp-progress-bar');
   const progressText = $('#mass-tp-progress-text');
 
   if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando...'; }
@@ -3097,50 +3225,50 @@ function _massAccNormalizeRow(raw, accTypes) {
   const parseFloat0 = (val: string) => { const n = parseFloat(val); return Number.isFinite(n) ? n : 0; };
 
   // ── Campos obligatorios
-  const code    = get('codigo', 'code', 'cod', 'cuenta');
-  const name    = get('nombre', 'name', 'descripcion', 'description');
+  const code = get('codigo', 'code', 'cod', 'cuenta');
+  const name = get('nombre', 'name', 'descripcion', 'description');
   const tipoRaw = get('tipo', 'type', 'tipo_cuenta', 'account_type');
 
-  if (!code)               return { ok: false, error: 'Falta el código' };
+  if (!code) return { ok: false, error: 'Falta el código' };
   if (!/^\d+$/.test(code)) return { ok: false, error: `Código "${code}" no es numérico` };
-  if (!name)               return { ok: false, error: 'Falta el nombre' };
-  if (!tipoRaw)            return { ok: false, error: 'Falta el tipo de cuenta' };
+  if (!name) return { ok: false, error: 'Falta el nombre' };
+  if (!tipoRaw) return { ok: false, error: 'Falta el tipo de cuenta' };
 
   const tipoNorm = tipoRaw.toLowerCase().trim();
-  const accType  = accTypes.find(t =>
+  const accType = accTypes.find(t =>
     String(t.code).toLowerCase() === tipoNorm ||
     t.name.toLowerCase().includes(tipoNorm)
   );
   if (!accType) return { ok: false, error: `Tipo "${tipoRaw}" no encontrado en account_types` };
 
   // ── Campos opcionales básicos
-  const natRaw     = get('naturaleza', 'nature', 'nat');
-  const levelRaw   = get('nivel', 'level');
+  const natRaw = get('naturaleza', 'nature', 'nat');
+  const levelRaw = get('nivel', 'level');
   const parentCode = get('codigo_padre', 'parent_code', 'padre', 'parent');
-  const thirdRaw   = get('requiere_tercero', 'requires_third_party', 'tercero', 'req_tercero');
-  const activeRaw  = get('activa', 'active', 'estado');
+  const thirdRaw = get('requiere_tercero', 'requires_third_party', 'tercero', 'req_tercero');
+  const activeRaw = get('activa', 'active', 'estado');
 
-  const nature        = /^(c|cr|credit|credito|crédito)$/i.test(natRaw) ? 'credit' : 'debit';
+  const nature = /^(c|cr|credit|credito|crédito)$/i.test(natRaw) ? 'credit' : 'debit';
   const LEVEL_MAP: Record<number, number> = { 1: 1, 2: 2, 4: 3, 6: 4, 8: 5, 10: 6 };
-  const level         = levelRaw ? Math.max(1, parseInt(levelRaw, 10) || 1) : (LEVEL_MAP[code.length] ?? code.length);
+  const level = levelRaw ? Math.max(1, parseInt(levelRaw, 10) || 1) : (LEVEL_MAP[code.length] ?? code.length);
   // Calcular parent_code automáticamente si no se provee (según estructura PUC colombiano)
-  let resolvedParent  = parentCode;
+  let resolvedParent = parentCode;
   if (!resolvedParent && code.length > 1) {
     resolvedParent = code.length === 2 ? code.slice(0, 1) : code.slice(0, code.length - 2);
   }
   const requiresThird = parseBool(thirdRaw);
-  const active        = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
+  const active = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
 
   // ── Campos de comportamiento contable (NUEVOS)
-  const manejaRaw     = get('maneja_retenciones', 'retenciones', 'maneja_ret');
-  const crucRaw       = get('maneja_cruce', 'cruce', 'doc_cruce');
-  const tiposRetRaw   = get('tipos_retencion', 'tipos_ret', 'retencion_tipos');
-  const rateRentaRaw  = get('ret_rate_reterenta', 'tasa_reterenta', 'rate_renta');
-  const rateIvaRaw    = get('ret_rate_reteiva', 'tasa_reteiva', 'rate_iva');
-  const rateIcaRaw    = get('ret_rate_reteica', 'tasa_reteica', 'rate_ica');
+  const manejaRaw = get('maneja_retenciones', 'retenciones', 'maneja_ret');
+  const crucRaw = get('maneja_cruce', 'cruce', 'doc_cruce');
+  const tiposRetRaw = get('tipos_retencion', 'tipos_ret', 'retencion_tipos');
+  const rateRentaRaw = get('ret_rate_reterenta', 'tasa_reterenta', 'rate_renta');
+  const rateIvaRaw = get('ret_rate_reteiva', 'tasa_reteiva', 'rate_iva');
+  const rateIcaRaw = get('ret_rate_reteica', 'tasa_reteica', 'rate_ica');
 
   const manejaRetenciones = parseBool(manejaRaw);
-  const manejaCruce       = parseBool(crucRaw);
+  const manejaCruce = parseBool(crucRaw);
 
   // Normalizar tipos_retencion: admite 'reterenta,reteiva,reteica' o 'reterenta reteiva reteica'
   const VALID_TIPOS = ['reterenta', 'reteiva', 'reteica'];
@@ -3150,8 +3278,8 @@ function _massAccNormalizeRow(raw, accTypes) {
   const tiposRetencion = manejaRetenciones ? tiposArr.join(',') : '';
 
   const retRateReterenta = manejaRetenciones && tiposArr.includes('reterenta') ? parseFloat0(rateRentaRaw) : 0;
-  const retRateReteiva   = manejaRetenciones && tiposArr.includes('reteiva')   ? parseFloat0(rateIvaRaw)   : 0;
-  const retRateReteica   = manejaRetenciones && tiposArr.includes('reteica')   ? parseFloat0(rateIcaRaw)   : 0;
+  const retRateReteiva = manejaRetenciones && tiposArr.includes('reteiva') ? parseFloat0(rateIvaRaw) : 0;
+  const retRateReteica = manejaRetenciones && tiposArr.includes('reteica') ? parseFloat0(rateIcaRaw) : 0;
 
   // Advertencias no bloqueantes
   const warnings: string[] = [];
@@ -3176,8 +3304,8 @@ function _massAccNormalizeRow(raw, accTypes) {
       maneja_retenciones: manejaRetenciones,
       tipos_retencion: tiposRetencion,
       ret_rate_reterenta: retRateReterenta,
-      ret_rate_reteiva:   retRateReteiva,
-      ret_rate_reteica:   retRateReteica,
+      ret_rate_reteiva: retRateReteiva,
+      ret_rate_reteica: retRateReteica,
     },
   };
 }
@@ -3191,7 +3319,7 @@ async function _openMassAccImportModal() {
 
   const reqCols = ['codigo', 'nombre', 'tipo'];
   const optColsBase = ['naturaleza', 'requiere_tercero', 'activa', 'maneja_cruce'];
-  const optColsRet  = ['maneja_retenciones', 'tipos_retencion', 'ret_rate_reterenta', 'ret_rate_reteiva', 'ret_rate_reteica'];
+  const optColsRet = ['maneja_retenciones', 'tipos_retencion', 'ret_rate_reterenta', 'ret_rate_reteiva', 'ret_rate_reteica'];
 
   openModal(
     '<i class="fas fa-list-tree mr-2" style="color:#6D28D9"></i>Importar Plan de Cuentas',
@@ -3270,7 +3398,7 @@ async function _openMassAccImportModal() {
 
   let parsedRows = [];
 
-  const dropZone  = document.getElementById('mass-acc-drop');
+  const dropZone = document.getElementById('mass-acc-drop');
   const fileInput = document.getElementById('mass-acc-file-input') as HTMLInputElement;
 
   document.getElementById('btn-mass-acc-dl-tmpl')?.addEventListener('click', _downloadMassAccTemplate);
@@ -3279,16 +3407,16 @@ async function _openMassAccImportModal() {
   dropZone?.addEventListener('dragover', e => {
     e.preventDefault();
     (dropZone as HTMLElement).style.borderColor = '#6D28D9';
-    (dropZone as HTMLElement).style.background  = '#F5F3FF';
+    (dropZone as HTMLElement).style.background = '#F5F3FF';
   });
   dropZone?.addEventListener('dragleave', () => {
     (dropZone as HTMLElement).style.borderColor = '#D1D5DB';
-    (dropZone as HTMLElement).style.background  = '#FAFAFA';
+    (dropZone as HTMLElement).style.background = '#FAFAFA';
   });
   dropZone?.addEventListener('drop', e => {
     e.preventDefault();
     (dropZone as HTMLElement).style.borderColor = '#D1D5DB';
-    (dropZone as HTMLElement).style.background  = '#FAFAFA';
+    (dropZone as HTMLElement).style.background = '#FAFAFA';
     const file = (e as DragEvent).dataTransfer?.files?.[0];
     if (file) processFile(file);
   });
@@ -3322,14 +3450,14 @@ async function _openMassAccImportModal() {
   }
 
   function renderPreview(rows: any[]) {
-    const tbody   = document.getElementById('mass-acc-preview-body');
-    const count   = document.getElementById('mass-acc-count');
+    const tbody = document.getElementById('mass-acc-preview-body');
+    const count = document.getElementById('mass-acc-count');
     const summary = document.getElementById('mass-acc-summary');
-    const runBtn  = document.getElementById('btn-mass-acc-run');
+    const runBtn = document.getElementById('btn-mass-acc-run');
     const preview = document.getElementById('mass-acc-preview');
     if (!tbody || !count || !summary || !preview) return;
 
-    const okRows  = rows.filter(r => r.ok);
+    const okRows = rows.filter(r => r.ok);
     const errRows = rows.filter(r => !r.ok);
     const warnRows = rows.filter(r => r.ok && r.warnings?.length);
     count.textContent = `${rows.length} fila(s) — ${okRows.length} válidas, ${errRows.length} con error${warnRows.length ? `, ${warnRows.length} con advertencias` : ''}`;
@@ -3366,18 +3494,18 @@ async function _openMassAccImportModal() {
       // Retenciones compactas
       let retCell = `<span style="color:#9CA3AF;font-size:11px">No</span>`;
       if (p.maneja_retenciones) {
-        const LABELS: Record<string,string> = { reterenta:'Renta', reteiva:'IVA', reteica:'ICA' };
-        const RATES: Record<string,number>  = {
+        const LABELS: Record<string, string> = { reterenta: 'Renta', reteiva: 'IVA', reteica: 'ICA' };
+        const RATES: Record<string, number> = {
           reterenta: p.ret_rate_reterenta,
-          reteiva:   p.ret_rate_reteiva,
-          reteica:   p.ret_rate_reteica,
+          reteiva: p.ret_rate_reteiva,
+          reteica: p.ret_rate_reteica,
         };
         const tipos = p.tipos_retencion ? p.tipos_retencion.split(',').filter(Boolean) : [];
         retCell = tipos.length
           ? tipos.map((t: string) => {
-              const rate = RATES[t];
-              return `<span class="badge badge-orange" style="font-size:10px;margin-right:2px">${LABELS[t] ?? t}${rate ? ` ${rate}%` : ''}</span>`;
-            }).join('')
+            const rate = RATES[t];
+            return `<span class="badge badge-orange" style="font-size:10px;margin-right:2px">${LABELS[t] ?? t}${rate ? ` ${rate}%` : ''}</span>`;
+          }).join('')
           : `<span class="badge badge-orange" style="font-size:10px">Sí<i class="fas fa-triangle-exclamation ml-1" title="Sin tipos definidos"></i></span>`;
       }
 
@@ -3401,7 +3529,7 @@ async function _openMassAccImportModal() {
 
     // Summary bar
     const parts: string[] = [];
-    if (errRows.length)  parts.push(`<span style="color:#EF4444"><i class="fas fa-circle-xmark mr-1"></i>${errRows.length} fila(s) con error serán omitidas.</span>`);
+    if (errRows.length) parts.push(`<span style="color:#EF4444"><i class="fas fa-circle-xmark mr-1"></i>${errRows.length} fila(s) con error serán omitidas.</span>`);
     if (warnRows.length) parts.push(`<span style="color:#D97706"><i class="fas fa-triangle-exclamation mr-1"></i>${warnRows.length} fila(s) con advertencias (se importarán igual).</span>`);
     if (!errRows.length && !warnRows.length) parts.push(`<span style="color:#22C55E"><i class="fas fa-circle-check mr-1"></i>Todas las filas son válidas.</span>`);
     summary.innerHTML = parts.join('  ');
@@ -3570,8 +3698,8 @@ async function _openMassPhUnitsImportModal() {
       <div class="rounded-xl p-3 mb-3" style="background:#F0FDFA;border:1px solid #99F6E4">
         <p class="text-xs font-semibold mb-1" style="color:#0F766E;text-transform:uppercase;letter-spacing:.05em">Columnas</p>
         <div class="flex flex-wrap gap-2">
-          ${['codigo','nombre','tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#CCFBF1;color:#0F766E">${c}</code>`).join('')}
-          ${['torre','apartamento','coef_participacion','cuota_admin','area_m2','doc_propietario','tipo_doc_propietario','activo','notas'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+          ${['codigo', 'nombre', 'tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#CCFBF1;color:#0F766E">${c}</code>`).join('')}
+          ${['torre', 'apartamento', 'coef_participacion', 'cuota_admin', 'area_m2', 'doc_propietario', 'tipo_doc_propietario', 'activo', 'notas'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
         </div>
       </div>
       <button class="btn btn-outline btn-sm mb-4" id="btn-mass-ph-units-dl-tmpl"><i class="fas fa-download mr-1"></i>Descargar plantilla CSV</button>
@@ -3785,10 +3913,10 @@ async function _openMassPhUnitsImportModal() {
   });
 }
 
-  function _openBulkReplaceModal() {
-    openModal(
-      'Reemplazo Masivo de Cuenta Contable',
-      `
+function _openBulkReplaceModal() {
+  openModal(
+    'Reemplazo Masivo de Cuenta Contable',
+    `
       <div class="space-y-4">
         <p class="text-sm" style="color:#4B5563;line-height:1.5">
           Esta herramienta buscará todas las líneas de asientos contables que utilicen la <strong>cuenta origen</strong> dentro del período seleccionado y las asociará a la <strong>cuenta destino</strong>.
@@ -3821,50 +3949,50 @@ async function _openMassPhUnitsImportModal() {
         </div>
       </div>
       `,
-      `
+    `
       <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" id="btn-bulk-replace-execute" style="background:#2563EB; border-color:#2563EB">
         <i class="fas fa-shuffle mr-1"></i> Ejecutar Reemplazo
       </button>
       `,
-      false
-    );
+    false
+  );
 
-    $('#btn-bulk-replace-execute')?.addEventListener('click', async () => {
-      const oldAccountCode = getInputVal('bulk-old-account').trim();
-      const newAccountCode = getInputVal('bulk-new-account').trim();
-      const startDate = getInputVal('bulk-date-from');
-      const endDate = getInputVal('bulk-date-to');
+  $('#btn-bulk-replace-execute')?.addEventListener('click', async () => {
+    const oldAccountCode = getInputVal('bulk-old-account').trim();
+    const newAccountCode = getInputVal('bulk-new-account').trim();
+    const startDate = getInputVal('bulk-date-from');
+    const endDate = getInputVal('bulk-date-to');
 
-      if (!oldAccountCode || !newAccountCode || !startDate || !endDate) {
-        return showToast('Por favor completa todos los campos', 'warning');
-      }
+    if (!oldAccountCode || !newAccountCode || !startDate || !endDate) {
+      return showToast('Por favor completa todos los campos', 'warning');
+    }
 
-      confirmDialog(
-        'Confirmar Reemplazo Masivo',
-        `¿Estás seguro de que deseas reemplazar la cuenta <strong>${esc(oldAccountCode)}</strong> por la cuenta <strong>${esc(newAccountCode)}</strong> en el lapso del <strong>${startDate}</strong> al <strong>${endDate}</strong>?<br><br>Esta acción modificará los asientos existentes de manera directa y no se puede deshacer de forma automática.`,
-        async () => {
-          try {
-            showToast('Procesando reemplazo en lote...', 'info');
-            const res = await pb.send('/api/gravy/bulk-replace-account', {
-              method: 'POST',
-              body: JSON.stringify({ oldAccountCode, newAccountCode, startDate, endDate }),
-              headers: { 'Content-Type': 'application/json' }
-            });
+    confirmDialog(
+      'Confirmar Reemplazo Masivo',
+      `¿Estás seguro de que deseas reemplazar la cuenta <strong>${esc(oldAccountCode)}</strong> por la cuenta <strong>${esc(newAccountCode)}</strong> en el lapso del <strong>${startDate}</strong> al <strong>${endDate}</strong>?<br><br>Esta acción modificará los asientos existentes de manera directa y no se puede deshacer de forma automática.`,
+      async () => {
+        try {
+          showToast('Procesando reemplazo en lote...', 'info');
+          const res = await pb.send('/api/gravy/bulk-replace-account', {
+            method: 'POST',
+            body: JSON.stringify({ oldAccountCode, newAccountCode, startDate, endDate }),
+            headers: { 'Content-Type': 'application/json' }
+          });
 
-            if (res && res.success) {
-              closeModal();
-              showToast(res.message, 'success');
-            } else {
-              showToast(res.message || 'Ocurrió un error inesperado', 'error');
-            }
-          } catch (err: any) {
-            showToast(err.message || 'Error al ejecutar el reemplazo', 'error');
+          if (res && res.success) {
+            closeModal();
+            showToast(res.message, 'success');
+          } else {
+            showToast(res.message || 'Ocurrió un error inesperado', 'error');
           }
+        } catch (err: any) {
+          showToast(err.message || 'Error al ejecutar el reemplazo', 'error');
         }
-      );
-    });
-  }
+      }
+    );
+  });
+}
 
 /* ══════════════════════════════════════════════════════════
    RENUMERACIÓN MASIVA DE DOCUMENTOS POR TIPO Y FECHA

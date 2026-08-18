@@ -511,6 +511,37 @@ const MAP_LEGACY_DOC_TYPE: Record<string, string> = {
   'TE': '21',
 };
 
+const MAP_DOC_TYPE_TO_ABBR: Record<string, string> = {
+  '31': 'NIT',
+  '13': 'CC',
+  '22': 'CE',
+  '12': 'TI',
+  '41': 'PAS',
+  '11': 'RC',
+  '42': 'DIE',
+  '21': 'TE',
+  '47': 'PEP',
+  '48': 'PPT',
+  '50': 'NIT EXT',
+  '91': 'NUIP',
+  'NIT': 'NIT',
+  'CC': 'CC',
+  'CE': 'CE',
+  'TI': 'TI',
+  'PAS': 'PAS',
+  'RC': 'RC',
+  'NITPE': 'DIE',
+  'TE': 'TE',
+  'PEP': 'PEP',
+  'PPT': 'PPT'
+};
+
+function docTypeAbbr(type: any): string {
+  if (!type) return '';
+  const t = String(type).trim().toUpperCase();
+  return MAP_DOC_TYPE_TO_ABBR[t] || t;
+}
+
 function normalizeDocType(type: any): string {
   if (!type) return '31';
   const t = String(type).trim().toUpperCase();
@@ -1388,6 +1419,8 @@ function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? '';
 (window as any).DOC_TYPES = DOC_TYPES;
 (window as any).LOCAL_DOC_TYPES = LOCAL_DOC_TYPES;
 (window as any).normalizeDocType = normalizeDocType;
+(window as any).docTypeAbbr = docTypeAbbr;
+(window as any).MAP_DOC_TYPE_TO_ABBR = MAP_DOC_TYPE_TO_ABBR;
 (window as any).DIAN_RESP = DIAN_RESP;
 (window as any).DIAN_CIIU = DIAN_CIIU;
 (window as any).$$ = $$;

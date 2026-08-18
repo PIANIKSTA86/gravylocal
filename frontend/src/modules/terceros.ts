@@ -12,6 +12,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 let _stagedRutFile: File | null = null;
 // Indica si el usuario quiere eliminar el RUT existente
 let _rutPdfClearFlag: boolean = false;
+// Registro de tercero en edición activa
+let _currentEditingRow: any = null;
 
 declare var pb: any;
 declare var can: any;
@@ -30,6 +32,7 @@ declare var geoMuni: any;
 declare var TP_TYPES: any;
 declare var COL_DEPTS: any;
 declare var PERSON_TYPES: any;
+declare var docTypeAbbr: any;
 
 /* ═══════════════════════════════════════════════════════════
    LISTA / TABLA
@@ -116,10 +119,11 @@ async function renderTerceros(c) {
               const rutUrl = r.rut_pdf
                 ? `${(window as any).PB_URL}/api/files/third_parties/${r.id}/${r.rut_pdf}${(window as any).pb?.authToken ? '?token=' + (window as any).pb.authToken : ''}`
                 : '';
+              const resolvedDocType = (typeof docTypeAbbr === 'function' ? docTypeAbbr(r.doc_type) : (window as any).docTypeAbbr?.(r.doc_type)) || r.doc_type || 'CC';
               return `
               <tr data-type="${esc(r.type)}" data-person="${esc(r.person_type||'NATURAL')}">
                 <td>${personBadge(r.person_type)}</td>
-                <td><span class="font-semibold">${esc(r.doc_type)} ${esc(r.doc_number)}${r.dv?`-${esc(r.dv)}`:''}</span></td>
+                <td><span class="font-semibold">${esc(resolvedDocType)} ${esc(r.doc_number)}${r.dv?`-${esc(r.dv)}`:''}</span></td>
                 <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;" title="${esc(r.name)}">${esc(r.name)}</span></td>
                 <td style="overflow:hidden;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;" title="${esc(r.email||'')}">${esc(r.email||'—')}</span></td>
                 <td>${esc(r.city||'—')}</td>
@@ -994,20 +998,54 @@ function _tpfValidate(p) {
 /* ═══════════════════════════════════════════════════════════
    ABRIR FORMULARIO
    ═══════════════════════════════════════════════════════════ */
-function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
+function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null, preStagedFile: File | null = null) {
   if (!can('canWrite')) return showToast('No tienes permisos para gestionar terceros', 'error');
+
+  const tabKey = row ? `editar-tercero-${row.id}` : 'nuevo-tercero';
+  _currentEditingRow = row;
+  _stagedRutFile = preStagedFile || null;
+  _rutPdfClearFlag = false;
 
   const footer = `<button class="btn btn-outline" id="btn-cancel-tp">Cancelar</button>
      <button class="btn btn-primary" id="btn-save-tp"><i class="fas fa-floppy-disk"></i> Guardar</button>`;
 
   const initTpfEvents = () => {
     $('#btn-cancel-tp')?.addEventListener('click', () => {
-      closeModal();
+      if (typeof (window as any).closeTab === 'function') {
+        (window as any).closeTab(tabKey);
+      } else {
+        closeModal();
+      }
       if (onCancel) onCancel();
     });
     _tpfBindEvents();
     _tpfUpdateDV();
     _tpfUpdatePersonType();
+
+    // Si venía un archivo pre-cargado desde handleRUTUpload, reflejarlo inmediatamente en el dropzone
+    if (_stagedRutFile) {
+      const dropzone = document.getElementById('tpf-rut-dropzone');
+      if (dropzone) {
+        dropzone.style.border = '2px solid #6366F1';
+        dropzone.style.background = '#EEF2FF';
+        dropzone.innerHTML = `
+          <div style="display:flex;align-items:center;gap:12px;text-align:left;flex-wrap:wrap;">
+            <div style="font-size:26px;color:#6366F1;"><i class="fas fa-file-pdf"></i></div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:700;color:#3730A3;margin-bottom:2px;">PDF listo para subir al guardar</div>
+              <div style="font-size:11px;color:#4B5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(_stagedRutFile.name)}</div>
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:8px;background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;font-size:11px;font-weight:600;cursor:pointer;">
+              <i class="fas fa-arrow-up-from-bracket"></i> Cambiar
+              <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
+            </label>
+          </div>`;
+        const newFileInput = dropzone.querySelector('#tpf-rut-file-input') as HTMLInputElement;
+        if (newFileInput) newFileInput.addEventListener('change', () => {
+          if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);
+        });
+      }
+    }
     if (row?.dept_code) {
       const cityEl = $('#tpf-city-select');
       if (cityEl) {
@@ -1057,10 +1095,12 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
 
         if (useFormData) {
           const formData = new FormData();
-          // Agregar todos los campos del payload como strings en FormData
+          // Agregar todos los campos del payload a FormData con tipado compatible para PocketBase
           for (const [key, value] of Object.entries(payload)) {
-            if (Array.isArray(value)) {
-              value.forEach((v: any) => formData.append(key, String(v)));
+            if (key === 'resp') {
+              formData.append('resp', JSON.stringify(value || []));
+            } else if (typeof value === 'boolean') {
+              formData.append(key, String(value));
             } else if (value !== null && value !== undefined) {
               formData.append(key, String(value));
             }
@@ -1097,8 +1137,13 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
         _stagedRutFile = null;
         _rutPdfClearFlag = false;
 
-        closeModal();
-        showToast('Tercero guardado correctamente', 'success');
+        if (typeof (window as any).closeTab === 'function') {
+          (window as any).closeTab(tabKey);
+        } else {
+          closeModal();
+        }
+
+        showToast('Tercero guardado correctamente con su RUT actualizado', 'success');
         if (onSaveSuccess) {
           onSaveSuccess(savedRecord);
         } else {
@@ -1126,7 +1171,7 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null) {
 /* ═══════════════════════════════════════════════════════════
    EDITAR  (con inferencia backward-compat)
 ═══════════════════════════════════════════════════════════ */
-async function editTercero(id) {
+async function editTercero(id, preStagedFile: File | null = null) {
   try {
     const row = await pb.get('third_parties', id);
     // Compat: inferir first_name/last_name/business_name desde campo "name"
@@ -1170,7 +1215,7 @@ async function editTercero(id) {
         } catch (_) {}
       }
     }
-    openTerceroForm(row);
+    openTerceroForm(row, null, null, preStagedFile);
   } catch (err) { showToast(err.message, 'error'); }
 }
 
@@ -1311,7 +1356,7 @@ async function exportTercerosExcel() {
         r.id || '',
         r.person_type || 'NATURAL',
         r.type || 'CLIENTE',
-        r.doc_type || 'CC',
+        (typeof docTypeAbbr === 'function' ? docTypeAbbr(r.doc_type) : (window as any).docTypeAbbr?.(r.doc_type)) || r.doc_type || 'CC',
         r.doc_number || '',
         r.dv || '',
         r.name || '',
@@ -1428,7 +1473,8 @@ async function viewTercero(id, event) {
   try {
     const r = await pb.get('third_parties', id);
 
-    const doc = `${esc(r.doc_type)} ${esc(r.doc_number)}${r.dv ? `-${esc(r.dv)}` : ''}`;
+    const resolvedDocType = (typeof docTypeAbbr === 'function' ? docTypeAbbr(r.doc_type) : (window as any).docTypeAbbr?.(r.doc_type)) || r.doc_type || 'CC';
+    const doc = `${esc(resolvedDocType)} ${esc(r.doc_number)}${r.dv ? `-${esc(r.dv)}` : ''}`;
     const formattedCredit = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(r.credit_limit || 0);
 
     const isNatural = r.person_type === 'NATURAL';
@@ -1667,7 +1713,12 @@ async function handleRUTUpload(file: File) {
         throw new Error('Operación cancelada por el usuario.');
       }
     } else {
-      // Verificar duplicado antes de autocompletar
+    // Verificar si el RUT corresponde al mismo tercero que se está editando
+    const currentDocInForm = (document.getElementById('tpf-doc-number') as HTMLInputElement)?.value?.trim();
+    const isSameAsFormDoc = currentDocInForm && currentDocInForm === rutData.doc_number.trim();
+    const isSameAsEditingId = _currentEditingRow && _currentEditingRow.id;
+
+    if (!isSameAsFormDoc) {
       try {
         const escapedDoc = pb.escapeFilterValue(rutData.doc_number);
         const duplicates = await pb.listAll('third_parties', {
@@ -1676,34 +1727,44 @@ async function handleRUTUpload(file: File) {
 
         if (duplicates.length > 0) {
           const existing = duplicates[0];
-          const confirmMsg = `El tercero con identificación ${rutData.doc_number} ya está registrado como "${existing.name}".\n\n¿Abrir el registro existente para editarlo?`;
-          if (confirm(confirmMsg)) {
-            closeModal();
-            editTercero(existing.id);
-          } else {
-            showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos.`, 'warning');
+          // Solo alertar si el duplicado encontrado NO es el mismo tercero que estamos editando
+          if (!isSameAsEditingId || existing.id !== _currentEditingRow.id) {
+            const confirmMsg = `El tercero con identificación ${rutData.doc_number} ya está registrado como "${existing.name}".\n\n¿Deseas abrir el registro de "${existing.name}" para adjuntarle este RUT?`;
+            if (confirm(confirmMsg)) {
+              const currentTabKey = _currentEditingRow ? `editar-tercero-${_currentEditingRow.id}` : 'nuevo-tercero';
+              if (typeof (window as any).closeTab === 'function') {
+                (window as any).closeTab(currentTabKey);
+              } else {
+                closeModal();
+              }
+              editTercero(existing.id, file);
+              return;
+            } else {
+              showToast(`Ya existe un tercero con identificación ${rutData.doc_number}. No se aplicaron los datos.`, 'warning');
+              return;
+            }
           }
-          return;
         }
       } catch (errDb) {
         console.error('[RUT] Error verificando duplicado:', errDb);
       }
+    }
 
-      // Retener archivo para subida posterior
-      _stagedRutFile = file;
-      _rutPdfClearFlag = false;
-      extractionSuccess = true;
+    // Retener archivo para subida posterior
+    _stagedRutFile = file;
+    _rutPdfClearFlag = false;
+    extractionSuccess = true;
 
-      // Auto-rellenar el formulario
-      applyRUTDataToForm(rutData);
-      showToast('RUT procesado con éxito. Por favor verifica los datos antes de guardar.', 'success');
+    // Auto-rellenar el formulario
+    applyRUTDataToForm(rutData);
+    showToast('RUT procesado con éxito y listo para guardar.', 'success');
     }
   } catch (err: any) {
     if (err.message !== 'Operación cancelada por el usuario.') {
       showToast(err.message || 'Error al procesar el RUT', 'error');
     }
   } finally {
-    // Restaurar dropzone con estado final
+    // Restaurar dropzone con estado final garantizado
     if (dropzone) {
       if (_stagedRutFile) {
         dropzone.style.border = '2px solid #6366F1';
@@ -1720,7 +1781,6 @@ async function handleRUTUpload(file: File) {
               <input type="file" id="tpf-rut-file-input" accept="application/pdf" style="display:none;">
             </label>
           </div>`;
-        // Re-bind al nuevo input
         const newFileInput = dropzone.querySelector('#tpf-rut-file-input') as HTMLInputElement;
         if (newFileInput) newFileInput.addEventListener('change', () => {
           if (newFileInput.files?.[0]) handleRUTUpload(newFileInput.files[0]);

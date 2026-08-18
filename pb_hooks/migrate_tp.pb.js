@@ -109,6 +109,20 @@ onBootstrap((e) => {
   // Permite múltiples series/prefijos por el mismo código de tipo (ej: varias
   // resoluciones de facturación con distintos prefijos DIAN en el mismo tipo FV).
   try {
+    const ttCol = $app.findCollectionByNameOrId('transaction_types');
+    const oldIndexes = ttCol.indexes || [];
+    const filtered = oldIndexes.filter(idxStr => {
+      const s = String(idxStr).trim();
+      return !s.includes("idx_tt_code ") && !s.includes("idx_tt_code(") && !s.includes("ON transaction_types (code)") && !s.includes("ON transaction_types(code)");
+    });
+    const hasComposite = filtered.some(i => i.includes("idx_tt_code_prefix"));
+    if (!hasComposite) {
+      filtered.push("CREATE UNIQUE INDEX idx_tt_code_prefix ON transaction_types (code, prefix)");
+    }
+    if (filtered.length !== oldIndexes.length || !hasComposite) {
+      ttCol.indexes = filtered;
+      $app.save(ttCol);
+    }
     $app.nonconcurrentDB()
       .newQuery("DROP INDEX IF EXISTS idx_tt_code")
       .execute();

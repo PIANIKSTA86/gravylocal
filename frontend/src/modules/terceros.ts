@@ -212,7 +212,7 @@ function terceroFormHtml(row) {
   <!-- ── Pestañas Nav ─────────────────────────────────────────── -->
   <div id="tpf-tab-nav"
     style="display:flex;border-bottom:2px solid #E5E7EB;margin:-4px -4px 16px;overflow-x:auto">
-    ${['Datos Básicos','Ubicación y Contacto','Tributario y Retenciones','Condiciones de Crédito','Notas'].map((label,i) => `
+    ${['Datos Básicos','Ubicación y Contacto','Tributario y Retenciones','Condiciones de Crédito','Notas','Sedes y Sucursales'].map((label,i) => `
       <button type="button" id="tpf-tab-${i}" onclick="_tpfSwitchTab(${i})"
         style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:13px;
                white-space:nowrap;margin-bottom:-2px;
@@ -564,6 +564,36 @@ function terceroFormHtml(row) {
       <textarea id="tpf-notes" class="form-input font-mono" rows="7" placeholder="Información adicional sobre el tercero...">${esc(row?.notes || '')}</textarea>
     </div>
   </div>
+
+  <!-- ══ TAB 5 — Sedes y Sucursales ═════════════════════════════ -->
+  <div id="tpf-panel-5" style="display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+      <div>
+        <h4 style="font-size:14px;font-weight:700;color:#0D2137;margin:0 0 2px;">Establecimientos y Sucursales</h4>
+        <p style="font-size:12px;color:#6B7280;margin:0;">Puntos de venta, bodegas o sedes operativas con ubicación física y tarifas territoriales de ReteICA específicas.</p>
+      </div>
+      ${row?.id ? `
+      <div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openBranchForm('${esc(row.id)}')">
+          <i class="fas fa-plus mr-1"></i> Nueva Sucursal
+        </button>
+      </div>` : ''}
+    </div>
+
+    ${row?.id ? `
+      <div id="tpf-branches-list-container">
+        <div style="padding:24px;text-align:center;color:#9CA3AF;"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando sucursales...</div>
+      </div>
+    ` : `
+      <div style="padding:24px;text-align:center;background:#F8FAFC;border:2px dashed #E2E8F0;border-radius:12px;">
+        <div style="font-size:32px;color:#94A3B8;margin-bottom:8px;"><i class="fas fa-store"></i></div>
+        <div style="font-size:14px;font-weight:700;color:#1E293B;margin-bottom:4px;">Gestión de Sedes y Sucursales</div>
+        <p style="font-size:12px;color:#64748B;max-width:480px;margin:0 auto 12px;line-height:1.5;">
+          Al guardar este nuevo tercero, se generará automáticamente su <strong>Sede Principal (001)</strong> utilizando la información de <em>Ubicación y Contacto</em>. Posteriormente podrás agregar todas las sucursales y puntos de venta adicionales que requieras.
+        </p>
+      </div>
+    `}
+  </div>
   `;
 }
 
@@ -571,7 +601,7 @@ function terceroFormHtml(row) {
    HELPERS DEL FORMULARIO
    ═══════════════════════════════════════════════════════════ */
 function _tpfSwitchTab(idx) {
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     const panel = $(`#tpf-panel-${i}`);
     const btn   = $(`#tpf-tab-${i}`);
     if (!panel || !btn) continue;
@@ -580,6 +610,10 @@ function _tpfSwitchTab(idx) {
     btn.style.borderBottomColor = on ? '#E87D1E' : 'transparent';
     btn.style.color      = on ? '#E87D1E' : '#6B7280';
     btn.style.fontWeight = on ? '600' : '400';
+  }
+
+  if (idx === 5 && _currentEditingRow?.id) {
+    renderThirdPartyBranches(_currentEditingRow.id);
   }
 }
 
@@ -1067,6 +1101,10 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null, preS
       });
     }
 
+    if (row?.id) {
+      renderThirdPartyBranches(row.id);
+    }
+
     $('#btn-save-tp')?.addEventListener('click', async () => {
       const payload = terceroPayload();
       if (!_tpfValidate(payload)) return;
@@ -1120,6 +1158,32 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null, preS
             savedRecord = await pb.create('third_parties', formData);
             await API.logAudit('CREATE', 'Tercero', savedRecord.id,
               `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+            // Crear automáticamente Sede Principal para nuevo tercero
+            try {
+              await pb.create('third_party_branches', {
+                third_party_id: savedRecord.id,
+                code: '001',
+                name: 'Sede Principal',
+                is_main: true,
+                country: payload.country || 'CO',
+                department: payload.department || '',
+                dept_code: payload.dept_code || '',
+                city: payload.city || '',
+                city_code: payload.city_code || '',
+                address: payload.address || '',
+                phone: payload.phone || '',
+                phone2: payload.phone2 || '',
+                email: payload.email || '',
+                contact_name: payload.contact_name || '',
+                advisor: payload.advisor || '',
+                advisor_name: payload.advisor_name || '',
+                pi: payload.pi || 0,
+                active: payload.active !== false,
+                notes: 'Sede principal generada automáticamente'
+              });
+            } catch (branchErr) {
+              console.warn('Could not auto-create main branch for new third party:', branchErr);
+            }
           }
         } else {
           if (row?.id) {
@@ -1130,6 +1194,32 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null, preS
             savedRecord = await pb.create('third_parties', payload);
             await API.logAudit('CREATE', 'Tercero', savedRecord.id,
               `${payload.doc_type} ${payload.doc_number} - ${payload.name}`);
+            // Crear automáticamente Sede Principal para nuevo tercero
+            try {
+              await pb.create('third_party_branches', {
+                third_party_id: savedRecord.id,
+                code: '001',
+                name: 'Sede Principal',
+                is_main: true,
+                country: payload.country || 'CO',
+                department: payload.department || '',
+                dept_code: payload.dept_code || '',
+                city: payload.city || '',
+                city_code: payload.city_code || '',
+                address: payload.address || '',
+                phone: payload.phone || '',
+                phone2: payload.phone2 || '',
+                email: payload.email || '',
+                contact_name: payload.contact_name || '',
+                advisor: payload.advisor || '',
+                advisor_name: payload.advisor_name || '',
+                pi: payload.pi || 0,
+                active: payload.active !== false,
+                notes: 'Sede principal generada automáticamente'
+              });
+            } catch (branchErr) {
+              console.warn('Could not auto-create main branch for new third party:', branchErr);
+            }
           }
         }
 
@@ -1258,6 +1348,276 @@ function deleteTercero(id) {
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   GESTIÓN DE SUCURSALES / SEDES DE TERCEROS
+═══════════════════════════════════════════════════════════ */
+async function renderThirdPartyBranches(thirdPartyId: string) {
+  const container = document.getElementById('tpf-branches-list-container');
+  if (!container) return;
+
+  try {
+    const list = await pb.listAll('third_party_branches', {
+      filter: `third_party_id = "${thirdPartyId}"`,
+      sort: '-is_main,code'
+    });
+
+    if (!list.length) {
+      container.innerHTML = `
+        <div style="padding:20px;text-align:center;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;">
+          <p style="font-size:13px;color:#64748B;margin:0 0 10px;">No hay sucursales registradas para este tercero.</p>
+          <button type="button" class="btn btn-outline btn-sm" onclick="openBranchForm('${esc(thirdPartyId)}')">
+            <i class="fas fa-plus mr-1"></i> Crear Sede Principal
+          </button>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="overflow-x-auto border rounded-xl" style="border-color:#E5E7EB">
+        <table class="data-table" style="width:100%;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="width:70px">Código</th>
+              <th>Nombre de Sede</th>
+              <th style="width:90px;text-align:center;">Principal</th>
+              <th>Ciudad</th>
+              <th>Dirección</th>
+              <th>Contacto / Teléfono</th>
+              <th style="width:90px;text-align:right;">ReteICA %</th>
+              <th style="width:70px;text-align:center;">Estado</th>
+              <th style="width:80px;text-align:center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map((b: any) => `
+              <tr>
+                <td><span class="font-mono font-bold text-gray-800">${esc(b.code)}</span></td>
+                <td><span class="font-semibold text-gray-900">${esc(b.name)}</span></td>
+                <td style="text-align:center;">
+                  ${b.is_main ? '<span class="badge badge-green text-[10px]"><i class="fas fa-star mr-1"></i>Principal</span>' : '<span style="color:#9CA3AF">—</span>'}
+                </td>
+                <td>${esc(b.city || b.department || '—')}</td>
+                <td>${esc(b.address || '—')}</td>
+                <td>${esc(b.contact_name || b.phone || '—')}</td>
+                <td style="text-align:right;"><span class="font-bold text-orange-600">${(b.pi ?? 0)}%</span></td>
+                <td style="text-align:center;">${b.active !== false ? '<span class="badge badge-green text-[10px]">Activo</span>' : '<span class="badge badge-gray text-[10px]">Inactivo</span>'}</td>
+                <td style="text-align:center;">
+                  <div class="flex items-center justify-center gap-1">
+                    <button type="button" class="btn btn-outline btn-sm" style="padding:3px 7px;font-size:11px;" onclick="openBranchForm('${esc(thirdPartyId)}', '${esc(b.id)}')" title="Editar Sede">
+                      <i class="fas fa-pen"></i>
+                    </button>
+                    ${!b.is_main ? `
+                    <button type="button" class="btn btn-danger btn-sm" style="padding:3px 7px;font-size:11px;background:#EF4444;border-color:#EF4444;" onclick="deleteThirdPartyBranch('${esc(b.id)}', '${esc(thirdPartyId)}')" title="Eliminar Sede">
+                      <i class="fas fa-trash-can"></i>
+                    </button>` : ''}
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err: any) {
+    container.innerHTML = `<div style="color:#EF4444;font-size:12px;padding:12px;"><i class="fas fa-circle-exclamation mr-1"></i>Error cargando sucursales: ${esc(err.message)}</div>`;
+  }
+}
+
+async function openBranchForm(thirdPartyId: string, branchId: string | null = null) {
+  let branch: any = null;
+  if (branchId) {
+    try {
+      branch = await pb.get('third_party_branches', branchId);
+    } catch (e: any) {
+      showToast('Error cargando datos de la sucursal: ' + e.message, 'error');
+      return;
+    }
+  }
+
+  const depts = (window as any).GEO_DEPTS || (window as any).COL_DEPTS || [];
+  const deptCode = branch?.dept_code || '';
+  const selDept = depts.find((d: any) => d.code === deptCode || d.name === branch?.department);
+  const munis = selDept ? geoMunisByDept(selDept.code) : [];
+
+  const body = `
+    <div class="space-y-4 text-sm" style="color:#374151">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+        <div class="form-group md:col-span-4">
+          <label class="form-label">Código Sede <span style="color:#EF4444">*</span></label>
+          <input id="bf-code" class="form-input font-mono" value="${esc(branch?.code || '')}" placeholder="Ej: 001, NORTE" style="text-transform:uppercase">
+        </div>
+        <div class="form-group md:col-span-8">
+          <label class="form-label">Nombre de la Sede / Punto de Venta <span style="color:#EF4444">*</span></label>
+          <input id="bf-name" class="form-input" value="${esc(branch?.name || '')}" placeholder="Ej: Sede Principal, Almacén Calle 80" style="text-transform:uppercase">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="flex items-center gap-2 cursor-pointer p-2.5 bg-slate-50 border rounded-xl" style="border-color:#E5E7EB">
+          <input type="checkbox" id="bf-is-main" ${branch?.is_main ? 'checked' : ''} style="accent-color:#E87D1E; width:16px; height:16px">
+          <div>
+            <div class="text-xs font-bold text-gray-900">Sede Principal / Domicilio Fiscal</div>
+            <div class="text-[11px] text-gray-500">Se usará como sede predeterminada en transacciones comerciales.</div>
+          </div>
+        </label>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group">
+          <label class="form-label">Departamento</label>
+          <select id="bf-dept-select" class="form-input">
+            <option value="">Seleccionar departamento...</option>
+            ${depts.map((d: any) => `<option value="${esc(d.code)}" ${selDept?.code === d.code ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ciudad / Municipio (DANE)</label>
+          <select id="bf-city-select" class="form-input">
+            <option value="">— Seleccione departamento primero —</option>
+            ${munis.map((m: any) => `<option value="${esc(m.code)}" ${branch?.city_code === m.code ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Dirección Física de la Sede</label>
+        <input id="bf-address" class="form-input" value="${esc(branch?.address || '')}" placeholder="CR 8 73-25" style="text-transform:uppercase">
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group">
+          <label class="form-label">Teléfono de Sede</label>
+          <input id="bf-phone" class="form-input" value="${esc(branch?.phone || '')}" placeholder="Fijo o celular">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contacto en la Sede</label>
+          <input id="bf-contact" class="form-input" value="${esc(branch?.contact_name || '')}" placeholder="Nombre del administrador/encargado">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Correo Electrónico de Sede</label>
+          <input id="bf-email" type="email" class="form-input" value="${esc(branch?.email || '')}" placeholder="sede@empresa.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tarifa Territorial ReteICA (%)</label>
+          <input id="bf-pi" type="number" min="0" max="100" step="0.001" class="form-input font-mono" value="${esc(branch?.pi ?? 0)}" placeholder="0.0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Notas / Observaciones de la Sede</label>
+        <textarea id="bf-notes" class="form-input" rows="2" placeholder="Detalles de entrega, horarios, etc.">${esc(branch?.notes || '')}</textarea>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-save-branch"><i class="fas fa-floppy-disk mr-1"></i> Guardar Sucursal</button>
+  `;
+
+  (window as any).openModal(branch ? `Editar Sucursal: ${branch.name}` : 'Nueva Sucursal / Sede', body, footer, false);
+
+  setTimeout(() => {
+    const deptSelect = document.getElementById('bf-dept-select') as HTMLSelectElement;
+    const citySelect = document.getElementById('bf-city-select') as HTMLSelectElement;
+
+    if (deptSelect && citySelect) {
+      deptSelect.addEventListener('change', () => {
+        const code = deptSelect.value;
+        const munisList = code ? geoMunisByDept(code) : [];
+        citySelect.innerHTML = '<option value="">Seleccionar municipio...</option>' +
+          munisList.map((m: any) => `<option value="${esc(m.code)}">${esc(m.name)}</option>`).join('');
+      });
+    }
+
+    const saveBtn = document.getElementById('btn-save-branch');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', async () => {
+        const code = (document.getElementById('bf-code') as HTMLInputElement)?.value?.trim().toUpperCase();
+        const name = (document.getElementById('bf-name') as HTMLInputElement)?.value?.trim().toUpperCase();
+        const isMain = (document.getElementById('bf-is-main') as HTMLInputElement)?.checked || false;
+        const deptCodeVal = deptSelect?.value || '';
+        const deptNameVal = depts.find((d: any) => d.code === deptCodeVal)?.name || '';
+        const cityCodeVal = citySelect?.value || '';
+        const cityNameVal = geoMuni(cityCodeVal)?.name || '';
+        const address = (document.getElementById('bf-address') as HTMLInputElement)?.value?.trim().toUpperCase() || '';
+        const phone = (document.getElementById('bf-phone') as HTMLInputElement)?.value?.trim() || '';
+        const contactName = (document.getElementById('bf-contact') as HTMLInputElement)?.value?.trim() || '';
+        const email = (document.getElementById('bf-email') as HTMLInputElement)?.value?.trim() || '';
+        const pi = parseFloat((document.getElementById('bf-pi') as HTMLInputElement)?.value || '0') || 0;
+        const notes = (document.getElementById('bf-notes') as HTMLInputElement)?.value?.trim() || '';
+
+        if (!code || !name) {
+          showToast('Código y Nombre de la sucursal son obligatorios', 'warning');
+          return;
+        }
+
+        saveBtn.setAttribute('disabled', 'true');
+        saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
+
+        try {
+          // Si es principal, desmarcar las demás sedes
+          if (isMain) {
+            const existingBranches = await pb.listAll('third_party_branches', {
+              filter: `third_party_id = "${thirdPartyId}" && is_main = true`
+            });
+            for (const eb of existingBranches) {
+              if (!branch || eb.id !== branch.id) {
+                await pb.update('third_party_branches', eb.id, { is_main: false });
+              }
+            }
+          }
+
+          const payload = {
+            third_party_id: thirdPartyId,
+            code,
+            name,
+            is_main: isMain,
+            country: 'CO',
+            department: deptNameVal,
+            dept_code: deptCodeVal,
+            city: cityNameVal,
+            city_code: cityCodeVal,
+            address,
+            phone,
+            email,
+            contact_name: contactName,
+            pi,
+            notes,
+            active: true
+          };
+
+          if (branch?.id) {
+            await pb.update('third_party_branches', branch.id, payload);
+            showToast('Sucursal actualizada con éxito', 'success');
+          } else {
+            await pb.create('third_party_branches', payload);
+            showToast('Sucursal creada con éxito', 'success');
+          }
+
+          closeModal();
+          renderThirdPartyBranches(thirdPartyId);
+        } catch (err: any) {
+          showToast('Error al guardar la sucursal: ' + err.message, 'error');
+          saveBtn.removeAttribute('disabled');
+          saveBtn.innerHTML = '<i class="fas fa-floppy-disk mr-1"></i> Guardar Sucursal';
+        }
+      });
+    }
+  }, 100);
+}
+
+async function deleteThirdPartyBranch(branchId: string, thirdPartyId: string) {
+  if (!confirm('¿Estás seguro de eliminar esta sucursal? Esta acción no se puede deshacer.')) return;
+  try {
+    await pb.delete('third_party_branches', branchId);
+    showToast('Sucursal eliminada correctamente', 'success');
+    renderThirdPartyBranches(thirdPartyId);
+  } catch (err: any) {
+    showToast('Error al eliminar sucursal: ' + err.message, 'error');
+  }
+}
+
 // --- VITE MIGRATION GLOBALS ---
 (window as any)._tpfSwitchTab = _tpfSwitchTab;
 (window as any).renderTerceros = renderTerceros;
@@ -1278,6 +1638,9 @@ function deleteTercero(id) {
 (window as any).exportTercerosExcel = exportTercerosExcel;
 (window as any).openNitValidatorModal = openNitValidatorModal;
 (window as any).viewTercero = viewTercero;
+(window as any).renderThirdPartyBranches = renderThirdPartyBranches;
+(window as any).openBranchForm = openBranchForm;
+(window as any).deleteThirdPartyBranch = deleteThirdPartyBranch;
 
 async function exportTercerosExcel() {
   try {

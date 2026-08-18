@@ -446,6 +446,17 @@ const API = {
     return pb.listAll('third_parties', { filter, sort: 'name' });
   },
 
+  async getThirdPartyBranches(thirdPartyId) {
+    if (!thirdPartyId) return [];
+    try {
+      const safeId = pb.escapeFilterValue(thirdPartyId);
+      return await pb.listAll('third_party_branches', {
+        filter: `third_party_id = "${safeId}" && active = true`,
+        sort: '-is_main,code'
+      });
+    } catch { return []; }
+  },
+
   // -- Tipos de transaccion ----------------------------------
   async getTxTypes() {
     return pb.listAll('transaction_types', { filter: 'active=true', sort: 'code' });

@@ -4271,10 +4271,20 @@ async function _analyzeRevaluation() {
     const prodMap = new Map(bienProducts.map((p: any) => [p.id, p]));
     const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
 
-    // 2. Traer todas las líneas de movimientos aplicados.
-    const lines = await pb.listAll('inventory_movement_lines', {
-      filter: 'movement_id.status = "applied"',
-      expand: 'movement_id'
+    // 2. Traer todas las líneas de movimientos no anulados y facturas relacionadas
+    const [lines, allInvoices] = await Promise.all([
+      pb.listAll('inventory_movement_lines', {
+        filter: 'movement_id.status != "voided"',
+        expand: 'movement_id'
+      }),
+      pb.listAll('invoices', {
+        fields: 'id,number,date,status,tx_id,inv_movement_id,cost_corrected'
+      }).catch(() => [])
+    ]);
+
+    const invByMovMap = new Map<string, any>();
+    (allInvoices || []).forEach((inv: any) => {
+      if (inv.inv_movement_id) invByMovMap.set(inv.inv_movement_id, inv);
     });
 
     // 3. Ordenar las líneas cronológicamente por fecha, fecha de creación y orden de línea
@@ -4296,7 +4306,8 @@ async function _analyzeRevaluation() {
     const getStock = (pId: string, wId: string) => {
       if (!stockState[pId]) stockState[pId] = {};
       if (!stockState[pId][wId]) {
-        stockState[pId][wId] = { qty: 0, avg_cost: 0 };
+        const prod = prodMap.get(pId);
+        stockState[pId][wId] = { qty: 0, avg_cost: Number(prod?.cost_price || 0) };
       }
       return stockState[pId][wId];
     };
@@ -4318,80 +4329,127 @@ async function _analyzeRevaluation() {
 
       const isWithinDateRange = date >= startDate && date <= endDate;
       const isTargetWarehouse = !whId || mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
+      const linkedInv = invByMovMap.get(mov.id);
+      const isCreditNote = linkedInv && (
+        String(linkedInv.number || '').startsWith('NC') ||
+        String(mov.notes || '').toLowerCase().includes('crédito') ||
+        String(mov.notes || '').toLowerCase().includes('credito') ||
+        String(mov.notes || '').toLowerCase().includes('devolución') ||
+        String(mov.notes || '').toLowerCase().includes('devolucion')
+      );
 
       if (type === 'ENTRADA' || type === 'AJUSTE_POSITIVO') {
         const st = getStock(prodId, mov.warehouse_id);
         const priorQty = st.qty;
         const priorAvgCost = st.avg_cost;
 
-        st.qty = priorQty + qty;
+        // Si es una Devolución en Venta (Nota Crédito): reingresa al costo promedio ponderado vigente
+        if (isCreditNote) {
+          let effectiveAvgCost = priorAvgCost;
+          if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
+            effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
+            st.avg_cost = effectiveAvgCost;
+          }
 
-        if (priorQty < 0) {
-          // Resolución de stock negativo!
-          const resolvedQty = Math.min(qty, Math.abs(priorQty));
-          const costDiff = unitCost - priorAvgCost;
-          const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+          const recordedCost = unitCost;
+          const costDiff = effectiveAvgCost - recordedCost;
+          const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
 
-          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
             simulatedAdjustments.push({
               prodId,
               whId: mov.warehouse_id,
               date,
               adjustmentVal,
-              resolvedQty,
+              resolvedQty: qty,
               costDiff,
-              priorAvgCost,
-              newCost: unitCost,
+              priorAvgCost: recordedCost,
+              newCost: effectiveAvgCost,
               movementNumber: mov.number,
               movementId: mov.id,
-              kind: 'NEG_STOCK_RESOLUTION'
+              movementLineId: line.id,
+              kind: 'DEVOLUCION_VENTA_COST_FIX',
+              isCreditNote: true
             });
           }
-          st.avg_cost = unitCost;
-        } else {
+
+          st.qty = priorQty + qty;
           if (st.qty > 0) {
-            st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * unitCost)) / st.qty) * 100) / 100;
+            st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * effectiveAvgCost)) / st.qty) * 100) / 100;
           } else {
+            st.avg_cost = effectiveAvgCost;
+          }
+        } else {
+          // Entrada normal / Compra
+          st.qty = priorQty + qty;
+
+          if (priorQty < 0) {
+            // Resolución de stock negativo
+            const resolvedQty = Math.min(qty, Math.abs(priorQty));
+            const costDiff = unitCost - priorAvgCost;
+            const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+            if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+              simulatedAdjustments.push({
+                prodId,
+                whId: mov.warehouse_id,
+                date,
+                adjustmentVal,
+                resolvedQty,
+                costDiff,
+                priorAvgCost,
+                newCost: unitCost,
+                movementNumber: mov.number,
+                movementId: mov.id,
+                movementLineId: line.id,
+                kind: 'NEG_STOCK_RESOLUTION'
+              });
+            }
             st.avg_cost = unitCost;
+          } else {
+            if (st.qty > 0) {
+              st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * unitCost)) / st.qty) * 100) / 100;
+            } else {
+              st.avg_cost = unitCost;
+            }
           }
         }
       } else if (type === 'SALIDA' || type === 'AJUSTE_NEGATIVO') {
         const st = getStock(prodId, mov.warehouse_id);
         const priorQty = st.qty;
+        let effectiveAvgCost = st.avg_cost;
+        if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
+          effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
+          st.avg_cost = effectiveAvgCost;
+        }
 
-        // Corrección tardía de costo: con stock positivo, comparar el costo ya
-        // posteado en la venta contra el costo promedio simulado con los costos
-        // de entrada vigentes hoy (que pudieron corregirse después de la venta).
-        if (type === 'SALIDA' && priorQty > 0) {
-          const recordedCost = unitCost;
-          const simulatedCost = st.avg_cost;
-          const costDiff = simulatedCost - recordedCost;
-          const adjQty = Math.min(qty, priorQty);
-          const adjustmentVal = Math.round((adjQty * costDiff) * 100) / 100;
+        const recordedCost = unitCost;
+        const costDiff = effectiveAvgCost - recordedCost;
+        const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
 
-          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
-            simulatedAdjustments.push({
-              prodId,
-              whId: mov.warehouse_id,
-              date,
-              adjustmentVal,
-              resolvedQty: adjQty,
-              costDiff,
-              priorAvgCost: recordedCost,
-              newCost: simulatedCost,
-              movementNumber: mov.number,
-              movementId: mov.id,
-              movementLineId: line.id,
-              kind: 'SALIDA_COST_FIX'
-            });
-          }
+        if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
+          simulatedAdjustments.push({
+            prodId,
+            whId: mov.warehouse_id,
+            date,
+            adjustmentVal,
+            resolvedQty: qty,
+            costDiff,
+            priorAvgCost: recordedCost,
+            newCost: effectiveAvgCost,
+            movementNumber: mov.number,
+            movementId: mov.id,
+            movementLineId: line.id,
+            kind: 'SALIDA_COST_FIX',
+            isCreditNote: false
+          });
         }
 
         st.qty = priorQty - qty;
       } else if (type === 'TRASLADO') {
         // Origen
         const stSrc = getStock(prodId, mov.warehouse_id);
-        const transferCost = stSrc.avg_cost;
+        const transferCost = stSrc.avg_cost > 0 ? stSrc.avg_cost : Number(prodMap.get(prodId)?.cost_price || 0);
         stSrc.qty = stSrc.qty - qty;
 
         // Destino
@@ -4432,20 +4490,12 @@ async function _analyzeRevaluation() {
       }
     }
 
-    // 5.1 Enlazar los ajustes de venta (SALIDA_COST_FIX) con su factura y el estado del periodo,
-    // para decidir si se corrige el asiento original directamente o se usa el ajuste consolidado.
-    const salidaFixAdjustments = simulatedAdjustments.filter((a: any) => a.kind === 'SALIDA_COST_FIX');
-    if (salidaFixAdjustments.length) {
-      const movIds = [...new Set(salidaFixAdjustments.map((a: any) => a.movementId))];
-      const invByMov = new Map<string, any>();
-      const chunkSize = 30;
-      for (let i = 0; i < movIds.length; i += chunkSize) {
-        const chunk = movIds.slice(i, i + chunkSize);
-        const filter = chunk.map((id: string) => `inv_movement_id="${pb.escapeFilterValue(id)}"`).join(' || ');
-        const invs = await pb.listAll('invoices', { filter });
-        invs.forEach((inv: any) => invByMov.set(inv.inv_movement_id, inv));
-      }
+    // 5.1 Enlazar los ajustes directos (SALIDA_COST_FIX y DEVOLUCION_VENTA_COST_FIX) con su factura/nota y periodo
+    const directCandidateAdjustments = simulatedAdjustments.filter((a: any) => 
+      a.kind === 'SALIDA_COST_FIX' || a.kind === 'DEVOLUCION_VENTA_COST_FIX'
+    );
 
+    if (directCandidateAdjustments.length) {
       let periodos: any[] = [];
       try {
         const raw = await API.getSetting('periodos_cierre');
@@ -4457,14 +4507,17 @@ async function _analyzeRevaluation() {
         return !found || !!found.closed;
       };
 
-      for (const adj of salidaFixAdjustments) {
-        const inv = invByMov.get(adj.movementId);
+      for (const adj of directCandidateAdjustments) {
+        const inv = invByMovMap.get(adj.movementId);
         adj.invoiceId = inv ? inv.id : null;
         adj.invoiceNumber = inv ? inv.number : null;
         adj.invoiceTxId = inv ? inv.tx_id : null;
         adj.invoiceDate = inv ? inv.date : null;
         adj.periodClosed = inv ? isClosedPeriod(inv.date) : true;
         adj.directTarget = !!(inv && inv.tx_id && !adj.periodClosed);
+        if (inv && String(inv.number || '').startsWith('NC')) {
+          adj.isCreditNote = true;
+        }
       }
     }
 
@@ -4482,15 +4535,20 @@ async function _analyzeRevaluation() {
           whName: whMap.get(adj.whId) || '',
           totalAdjustment: 0,
           details: [],
-          directCount: 0,
+          directInvoicesCount: 0,
+          directCreditNotesCount: 0,
           consolidatedCount: 0,
           hasAccounts: !!(prod?.inventory_account_id && prod?.cost_account_id)
         };
       }
       grouped[key].totalAdjustment += adj.adjustmentVal;
       grouped[key].details.push(adj);
-      if (adj.kind === 'SALIDA_COST_FIX' && adj.directTarget) grouped[key].directCount++;
-      else grouped[key].consolidatedCount++;
+      if ((adj.kind === 'SALIDA_COST_FIX' || adj.kind === 'DEVOLUCION_VENTA_COST_FIX') && adj.directTarget) {
+        if (adj.isCreditNote) grouped[key].directCreditNotesCount++;
+        else grouped[key].directInvoicesCount++;
+      } else {
+        grouped[key].consolidatedCount++;
+      }
     }
 
     const groupedList = Object.values(grouped);
@@ -4521,9 +4579,13 @@ async function _analyzeRevaluation() {
       const checkboxDisabled = !item.hasAccounts ? 'disabled' : '';
       const checkboxChecked = item.hasAccounts ? 'checked' : '';
 
+      const directParts: string[] = [];
+      if (item.directInvoicesCount) directParts.push(`${item.directInvoicesCount} Factura(s)`);
+      if (item.directCreditNotesCount) directParts.push(`${item.directCreditNotesCount} Devolución(es)`);
+
       const destinoHtml = [
-        item.directCount ? `<span class="badge badge-blue text-[10px]" title="Se corrige directamente el asiento de la factura">${item.directCount} Factura(s)</span>` : '',
-        item.consolidatedCount ? `<span class="badge badge-gray text-[10px]" title="Periodo cerrado, sin factura asociada o resolución de stock negativo: va a un asiento consolidado AJ-REV">${item.consolidatedCount} Consolidado</span>` : ''
+        directParts.length ? `<span class="badge badge-blue text-[10px]" title="Se corrige directamente el asiento">${directParts.join(', ')}</span>` : '',
+        item.consolidatedCount ? `<span class="badge badge-gray text-[10px]" title="Periodo cerrado, sin documento asociado o resolución de stock negativo: va a un asiento consolidado AJ-REV">${item.consolidatedCount} Consolidado</span>` : ''
       ].filter(Boolean).join(' ');
 
       return `
@@ -4607,15 +4669,12 @@ async function _applyRevaluation() {
     // 1. Obtener productos para leer cuentas contables configuradas
     const products = await pb.listAll('products', { filter: 'active=true' });
     const prodMap = new Map(products.map((p: any) => [p.id, p]));
-    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const round2 = (n: number) => Math.round((Number(n || 0) + Number.EPSILON) * 100) / 100;
     const today = (window as any).todayStr();
 
-    // 2. Separar ajustes de corrección directa (factura + periodo abierto) de los
-    //    que deben ir al asiento consolidado (resolución de negativos, periodo cerrado
-    //    o sin factura asociada).
-    let directCorrections = 0;
-    let directInvoiceIds: string[] = [];
-    const consolidatedItems: { item: any, consolidatedTotal: number }[] = [];
+    // 2. Separar todos los detalles de los productos seleccionados
+    const allDirectDetails: any[] = [];
+    const allConsolidatedDetails: any[] = [];
 
     for (const item of selectedItems) {
       const prod = prodMap.get(item.prodId) as any;
@@ -4626,85 +4685,225 @@ async function _applyRevaluation() {
         throw new Error(`El producto "${prod.code} — ${prod.name}" no tiene cuentas configuradas.`);
       }
 
-      const directDetails = (item.details || []).filter((d: any) => d.kind === 'SALIDA_COST_FIX' && d.directTarget);
-      const consolidatedDetails = (item.details || []).filter((d: any) => !(d.kind === 'SALIDA_COST_FIX' && d.directTarget));
-
-      // 2.a Agrupar las correcciones directas por factura y aplicarlas sobre su propio asiento.
-      const byInvoice: { [invId: string]: { invoiceId: string, delta: number, details: any[] } } = {};
-      for (const d of directDetails) {
-        if (!byInvoice[d.invoiceId]) byInvoice[d.invoiceId] = { invoiceId: d.invoiceId, delta: 0, details: [] };
-        byInvoice[d.invoiceId].delta += d.adjustmentVal;
-        byInvoice[d.invoiceId].details.push(d);
-      }
-
-      for (const invId of Object.keys(byInvoice)) {
-        const group = byInvoice[invId];
-        const delta = round2(group.delta);
-        if (Math.abs(delta) <= 0.009) continue;
-
-        const inv = await pb.get('invoices', invId);
-        if (!inv.tx_id) continue;
-        if (typeof isPeriodClosed === 'function' && await isPeriodClosed(inv.date)) {
-          // El periodo se cerró entre el análisis y la aplicación: cae a consolidado.
-          consolidatedDetails.push(...group.details);
-          continue;
+      for (const d of (item.details || [])) {
+        const isDirect = (d.kind === 'SALIDA_COST_FIX' || d.kind === 'DEVOLUCION_VENTA_COST_FIX') && d.directTarget && d.invoiceId;
+        if (isDirect) {
+          allDirectDetails.push({ ...d, prod });
+        } else {
+          allConsolidatedDetails.push({ ...d, prod });
         }
-
-        const invTxLines = await pb.listAll('tx_lines', {
-          filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}" && cross_doc_ref="${pb.escapeFilterValue(inv.number)}" && (account_id="${pb.escapeFilterValue(costAccId)}" || account_id="${pb.escapeFilterValue(inventoryAccId)}")`
-        });
-        const costLine = invTxLines.find((l: any) => l.account_id === costAccId);
-        const invLine = invTxLines.find((l: any) => l.account_id === inventoryAccId);
-        if (!costLine || !invLine) {
-          // No se encontró la línea original de costo/inventario: cae a consolidado.
-          consolidatedDetails.push(...group.details);
-          continue;
-        }
-
-        const oldCostDebit = Number(costLine.debit || 0);
-        const oldInvCredit = Number(invLine.credit || 0);
-        const newCostDebit = round2(Math.max(0, oldCostDebit + delta));
-        const newInvCredit = round2(Math.max(0, oldInvCredit + delta));
-
-        await pb.update('tx_lines', costLine.id, { debit: newCostDebit });
-        await pb.update('tx_lines', invLine.id, { credit: newInvCredit });
-
-        // Actualizar el costo grabado en cada línea de salida corregida (preservando el original).
-        for (const d of group.details) {
-          const movLine = await pb.get('inventory_movement_lines', d.movementLineId);
-          const patch: any = { unit_cost: d.newCost };
-          if (movLine.original_unit_cost === null || movLine.original_unit_cost === undefined || movLine.original_unit_cost === 0) {
-            patch.original_unit_cost = d.priorAvgCost;
-          }
-          await pb.update('inventory_movement_lines', d.movementLineId, patch);
-        }
-
-        await pb.update('invoices', invId, { cost_corrected: true, cost_corrected_at: today });
-
-        await API.logAudit('COST_CORRECTION', 'Invoice', invId, JSON.stringify({
-          product: prod.code,
-          invoice: inv.number,
-          cost_account_debit_before: oldCostDebit,
-          cost_account_debit_after: newCostDebit,
-          inventory_account_credit_before: oldInvCredit,
-          inventory_account_credit_after: newInvCredit,
-          delta
-        }));
-
-        directCorrections++;
-        directInvoiceIds.push(inv.number);
-      }
-
-      const consolidatedTotal = consolidatedDetails.reduce((sum: number, d: any) => sum + d.adjustmentVal, 0);
-      if (Math.abs(consolidatedTotal) > 0.009) {
-        consolidatedItems.push({ item, consolidatedTotal: round2(consolidatedTotal) });
       }
     }
 
-    // 3. Buscar/Crear tipo de transacción contable AJ (Ajuste de Inventario) sólo si
-    //    quedan ajustes que no pudieron aplicarse directamente sobre su factura.
-    let txNumber = '';
-    if (consolidatedItems.length) {
+    // 3. Agrupar las correcciones directas por factura
+    const directByInvoice: { [invId: string]: any[] } = {};
+    for (const d of allDirectDetails) {
+      if (!directByInvoice[d.invoiceId]) directByInvoice[d.invoiceId] = [];
+      directByInvoice[d.invoiceId].push(d);
+    }
+
+    let directCorrections = 0;
+    const directInvoiceNumbers: string[] = [];
+    const affectedMovementIds = new Set<string>();
+
+    // 4. Procesar cada factura candidata a ajuste directo
+    for (const invId of Object.keys(directByInvoice)) {
+      const detailsForInv = directByInvoice[invId];
+      const inv = await pb.get('invoices', invId).catch(() => null);
+      if (!inv || !inv.tx_id) {
+        allConsolidatedDetails.push(...detailsForInv);
+        continue;
+      }
+
+      if (inv.inv_movement_id) {
+        affectedMovementIds.add(inv.inv_movement_id);
+      }
+
+      // Validar si el periodo contable está cerrado
+      let isClosed = false;
+      if (typeof (window as any).isPeriodClosed === 'function') {
+        isClosed = await (window as any).isPeriodClosed(inv.date);
+      }
+      if (isClosed) {
+        allConsolidatedDetails.push(...detailsForInv);
+        continue;
+      }
+
+      // Obtener todas las líneas de la transacción original de la factura
+      let invTxLines = await pb.listAll('tx_lines', {
+        filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}"`,
+        ignoreBranch: true
+      });
+
+      const lineDeltaMap = new Map<string, number>();
+      const touchedLines = new Map<string, any>();
+      const successfullyAppliedDetails: any[] = [];
+      let canApplyAllOnInvoice = true;
+
+      for (const d of detailsForInv) {
+        const prod = d.prod;
+        const delta = round2(d.adjustmentVal);
+        if (d.movementId) affectedMovementIds.add(d.movementId);
+        if (Math.abs(delta) <= 0.009) continue;
+
+        // Buscar línea de costo existente (por cuenta exacta del producto o por descripción/código)
+        let costLine = invTxLines.find((l: any) => l.account_id === prod.cost_account_id);
+        if (!costLine) {
+          costLine = invTxLines.find((l: any) => String(l.description || '').toLowerCase().includes('costo'));
+        }
+
+        // Buscar línea de inventario existente (por cuenta exacta del producto o por descripción/código)
+        let invLine = invTxLines.find((l: any) => l.account_id === prod.inventory_account_id);
+        if (!invLine) {
+          invLine = invTxLines.find((l: any) => (String(l.description || '').toLowerCase().includes('inventario') || String(l.description || '').toLowerCase().includes('cogs')));
+        }
+
+        // Si no existían en el asiento (porque originalmente se posteó con costo $0), crearlas en el asiento original
+        if (!costLine) {
+          try {
+            costLine = await pb.create('tx_lines', {
+              tx_id: inv.tx_id,
+              account_id: prod.cost_account_id,
+              debit: 0,
+              credit: 0,
+              description: `Costo de Ventas consolidado - ${inv.number}`,
+              line_order: invTxLines.length + 1
+            });
+            invTxLines.push(costLine);
+          } catch (createErr) {
+            console.warn('[REVAL] No se pudo crear línea de costo en tx:', createErr);
+          }
+        }
+
+        if (!invLine) {
+          try {
+            invLine = await pb.create('tx_lines', {
+              tx_id: inv.tx_id,
+              account_id: prod.inventory_account_id,
+              debit: 0,
+              credit: 0,
+              description: `Baja Inventario COGS consolidada - ${inv.number}`,
+              line_order: invTxLines.length + 1
+            });
+            invTxLines.push(invLine);
+          } catch (createErr) {
+            console.warn('[REVAL] No se pudo crear línea de inventario en tx:', createErr);
+          }
+        }
+
+        if (!costLine || !invLine) {
+          canApplyAllOnInvoice = false;
+          break;
+        }
+
+        lineDeltaMap.set(costLine.id, round2((lineDeltaMap.get(costLine.id) || 0) + delta));
+        lineDeltaMap.set(invLine.id, round2((lineDeltaMap.get(invLine.id) || 0) + delta));
+        touchedLines.set(costLine.id, costLine);
+        touchedLines.set(invLine.id, invLine);
+        successfullyAppliedDetails.push(d);
+      }
+
+      if (!canApplyAllOnInvoice || !successfullyAppliedDetails.length) {
+        allConsolidatedDetails.push(...detailsForInv);
+        continue;
+      }
+
+      // Modificar directamente el asiento contable de la factura
+      for (const [lineId, totalDelta] of lineDeltaMap.entries()) {
+        const line = touchedLines.get(lineId);
+        if (!line) continue;
+        const currentDebit = Number(line.debit || 0);
+        const currentCredit = Number(line.credit || 0);
+
+        // Si es la línea de débito (Costo)
+        if (currentDebit > 0 || currentCredit === 0) {
+          const newDebit = round2(Math.max(0, currentDebit + totalDelta));
+          await pb.update('tx_lines', lineId, { debit: newDebit, credit: 0 });
+        } 
+        // Si es la línea de crédito (Inventario)
+        else {
+          const newCredit = round2(Math.max(0, currentCredit + totalDelta));
+          await pb.update('tx_lines', lineId, { credit: newCredit, debit: 0 });
+        }
+      }
+
+      // Actualizar el costo grabado en cada línea de movimiento de inventario de las salidas
+      for (const d of successfullyAppliedDetails) {
+        if (d.movementLineId) {
+          const movLine = await pb.get('inventory_movement_lines', d.movementLineId).catch(() => null);
+          if (movLine) {
+            const patch: any = { unit_cost: round2(d.newCost) };
+            if (movLine.original_unit_cost === null || movLine.original_unit_cost === undefined || movLine.original_unit_cost === 0) {
+              patch.original_unit_cost = movLine.unit_cost || d.priorAvgCost;
+            }
+            await pb.update('inventory_movement_lines', d.movementLineId, patch);
+          }
+        }
+      }
+
+      // Marcar la factura como corregida
+      await pb.update('invoices', invId, { cost_corrected: true, cost_corrected_at: today });
+
+      // Registrar auditoría detallada
+      await API.logAudit('COST_CORRECTION', 'Invoice', invId, JSON.stringify({
+        invoice: inv.number,
+        adjustedLinesCount: successfullyAppliedDetails.length,
+        totalAdjustedDelta: detailsForInv.reduce((sum: number, d: any) => sum + d.adjustmentVal, 0)
+      }));
+
+      directCorrections++;
+      directInvoiceNumbers.push(inv.number);
+    }
+
+    // 5. Procesar los ajustes que quedaron en Asiento Consolidado (periodo cerrado, sin factura o resoluciones)
+    const consolidatedByProd: { [prodId: string]: { prod: any, total: number, details: any[] } } = {};
+    for (const d of allConsolidatedDetails) {
+      const pId = d.prodId || d.prod?.id;
+      if (d.movementId) affectedMovementIds.add(d.movementId);
+      if (!pId) continue;
+      if (!consolidatedByProd[pId]) {
+        consolidatedByProd[pId] = { prod: d.prod, total: 0, details: [] };
+      }
+      consolidatedByProd[pId].total += Number(d.adjustmentVal || 0);
+      consolidatedByProd[pId].details.push(d);
+    }
+
+    // Actualizar unit_cost en inventory_movement_lines para los movimientos consolidados de salida
+    for (const group of Object.values(consolidatedByProd)) {
+      for (const d of group.details) {
+        if (d.movementLineId && d.kind === 'SALIDA_COST_FIX') {
+          const movLine = await pb.get('inventory_movement_lines', d.movementLineId).catch(() => null);
+          if (movLine) {
+            const patch: any = { unit_cost: round2(d.newCost) };
+            if (movLine.original_unit_cost === null || movLine.original_unit_cost === undefined || movLine.original_unit_cost === 0) {
+              patch.original_unit_cost = movLine.unit_cost || d.priorAvgCost;
+            }
+            await pb.update('inventory_movement_lines', d.movementLineId, patch);
+          }
+        }
+      }
+    }
+
+    // 6. Recalcular y actualizar total_cost y total_qty en la cabecera de inventory_movements afectados
+    for (const movId of affectedMovementIds) {
+      try {
+        const movLines = await pb.listAll('inventory_movement_lines', { filter: `movement_id="${pb.escapeFilterValue(movId)}"` });
+        if (movLines.length) {
+          const totalCost = movLines.reduce((sum: number, ml: any) => sum + (Number(ml.qty || 0) * Number(ml.unit_cost || 0)), 0);
+          const currentMov = await pb.get('inventory_movements', movId).catch(() => null);
+          if (currentMov && currentMov.status === 'draft') {
+            await pb.update('inventory_movements', movId, { status: 'applied' });
+          }
+        }
+      } catch (movErr) {
+        console.warn(`[REVAL] No se pudo actualizar cabecera del movimiento ${movId}:`, movErr);
+      }
+    }
+
+    let consolidatedTxNumber = '';
+    const consolidatedItemsToPost = Object.values(consolidatedByProd).filter(g => Math.abs(round2(g.total)) > 0.009);
+
+    if (consolidatedItemsToPost.length) {
       let ajType = await pb.listAll('transaction_types', { filter: 'code="AJ"' });
       if (!ajType.length) {
         ajType = [await pb.create('transaction_types', {
@@ -4717,22 +4916,19 @@ async function _applyRevaluation() {
         })];
       }
       const txTypeId = ajType[0].id;
-
-      const txLines: any[] = [];
       const rand = String(Date.now()).slice(-4);
-      txNumber = `AJ-REV-${today.replaceAll('-', '')}-${rand}`;
+      consolidatedTxNumber = `AJ-REV-${today.replaceAll('-', '')}-${rand}`;
+      const txLines: any[] = [];
 
-      for (const { item, consolidatedTotal } of consolidatedItems) {
-        const prod = prodMap.get(item.prodId) as any;
-        if (!prod) continue;
+      for (const { prod, total } of consolidatedItemsToPost) {
+        const roundedTotal = round2(total);
         const inventoryAccId = prod.inventory_account_id;
         const costAccId = prod.cost_account_id;
 
-        if (consolidatedTotal > 0) {
-          // Ajuste positivo: Débito a la Cuenta de Costo y Crédito a la Cuenta de Inventario
+        if (roundedTotal > 0) {
           txLines.push({
             account_id: costAccId,
-            debit: consolidatedTotal,
+            debit: roundedTotal,
             credit: 0,
             description: `Ajuste Costo Ventas revalorización ${prod.code}`,
             line_order: txLines.length + 1
@@ -4740,13 +4936,12 @@ async function _applyRevaluation() {
           txLines.push({
             account_id: inventoryAccId,
             debit: 0,
-            credit: consolidatedTotal,
+            credit: roundedTotal,
             description: `Ajuste Inventario revalorización ${prod.code}`,
             line_order: txLines.length + 1
           });
         } else {
-          // Ajuste negativo: Crédito a la Cuenta de Costo y Débito a la Cuenta de Inventario
-          const absVal = Math.abs(consolidatedTotal);
+          const absVal = Math.abs(roundedTotal);
           txLines.push({
             account_id: costAccId,
             debit: 0,
@@ -4767,24 +4962,24 @@ async function _applyRevaluation() {
       if (txLines.length) {
         await API.createTransaction({
           tx_type_id: txTypeId,
-          number: txNumber,
+          number: consolidatedTxNumber,
           date: today,
-          description: `Revalorización manual de costos de inventario`,
+          description: 'Revalorización manual de costos de inventario',
           status: 'active',
           payment_days: 0,
           cross_enabled: false
         }, txLines);
-        await API.logAudit('COST_CORRECTION', 'transactions', null, `Ajuste consolidado ${txNumber} por revalorización de costos (resoluciones de negativo / periodos cerrados / sin factura).`);
+        await API.logAudit('COST_CORRECTION', 'transactions', null, `Ajuste consolidado ${consolidatedTxNumber} por revalorización de costos (resoluciones de negativo / periodos cerrados / sin factura).`);
       }
     }
 
-    if (!directCorrections && !txNumber) {
+    if (!directCorrections && !consolidatedTxNumber) {
       throw new Error('El valor neto de los ajustes seleccionados es de $0. No se requiere registro contable.');
     }
 
     const parts: string[] = [];
-    if (directCorrections) parts.push(`${directCorrections} factura(s) corregida(s) directamente`);
-    if (txNumber) parts.push(`asiento consolidado ${txNumber} registrado`);
+    if (directCorrections) parts.push(`${directCorrections} factura(s) corregida(s) directamente en su asiento contable original`);
+    if (consolidatedTxNumber) parts.push(`asiento consolidado ${consolidatedTxNumber} registrado`);
     showToast(`Revalorización aplicada con éxito: ${parts.join(' y ')}.`, 'success');
     closeModal();
     renderInventario(document.getElementById('page-content')!);

@@ -901,6 +901,14 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
               <input id="po-supplier" type="hidden" value="${(window as any).esc(inv?.supplier_id || '')}">
               <div id="po-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
             </div>
+            <div id="po-branch-wrap" style="display:none;margin-top:4px;">
+              <div class="flex items-center gap-1">
+                <label class="po-hdr-label" style="color:#2563EB;margin:0;font-size:10px;white-space:nowrap;"><i class="fas fa-store mr-1"></i>Sede:</label>
+                <select id="po-supplier-branch" class="form-input po-compact-inp flex-1 text-xs" onchange="window.poOnSupplierBranchChange()" style="border-color:#93C5FD;background:#EFF6FF;height:24px;padding:2px 6px;">
+                  <option value="">— Sede Principal —</option>
+                </select>
+              </div>
+            </div>
             <div id="po-supplier-tax-info" class="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-medium"></div>
           </div>
           <!-- Comprobante -->
@@ -1219,9 +1227,60 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       hidden.value = id;
       input.value = text;
       poUpdateSupplierTaxInfo(id, true);
+      if (typeof (window as any).poLoadSupplierBranches === 'function') {
+        (window as any).poLoadSupplierBranches(id, inv?.third_party_branch_id || '');
+      }
       if (typeof (window as any).poSaveTempState === 'function') {
         (window as any).poSaveTempState(invoiceId);
       }
+    }
+  };
+
+  (window as any).poLoadSupplierBranches = async function(supplierId: string, selectedBranchId: string = '') {
+    const branchWrap = document.getElementById('po-branch-wrap');
+    const branchSelect = document.getElementById('po-supplier-branch') as HTMLSelectElement;
+    if (!branchWrap || !branchSelect) return;
+
+    try {
+      const branches = await (window as any).API.getThirdPartyBranches(supplierId);
+      (window as any).__poSupplierBranchesCache = branches;
+      if (branches.length > 1) {
+        branchSelect.innerHTML = branches.map((b: any) => `
+          <option value="${(window as any).esc(b.id)}" ${b.id === selectedBranchId || (b.is_main && !selectedBranchId) ? 'selected' : ''}>
+            ${(window as any).esc(b.code)} - ${(window as any).esc(b.name)} (${(window as any).esc(b.city || 'Principal')}) ${(b.pi ? `[ReteICA ${(window as any).esc(b.pi)}%]` : '')}
+          </option>
+        `).join('');
+        branchWrap.style.display = 'block';
+      } else if (branches.length === 1) {
+        branchSelect.innerHTML = `<option value="${(window as any).esc(branches[0].id)}" selected>${(window as any).esc(branches[0].code)} - ${(window as any).esc(branches[0].name)}</option>`;
+        branchWrap.style.display = 'none';
+      } else {
+        branchSelect.innerHTML = '<option value="">— Sede Principal —</option>';
+        branchWrap.style.display = 'none';
+      }
+    } catch (_) {
+      branchWrap.style.display = 'none';
+    }
+  };
+
+  (window as any).poOnSupplierBranchChange = function() {
+    const branchSelect = document.getElementById('po-supplier-branch') as HTMLSelectElement;
+    const branchId = branchSelect?.value;
+    const branches = (window as any).__poSupplierBranchesCache || [];
+    const branch = branches.find((b: any) => b.id === branchId);
+
+    if (branch && branch.pi !== undefined && branch.pi !== null) {
+      const retRulesIca = withholdingRules.filter((r: any) => {
+        const norm = (r.concept || '') + ' ' + (r.account_code || '');
+        return norm.toLowerCase().includes('ica');
+      });
+      const findRuleByRate = (rules: any[], rate: number) => rules.find((r: any) => Math.abs(Number(r.rate || 0) - rate) < 0.01);
+      const sel = document.getElementById('po-hdr-ret-rule-ica') as HTMLSelectElement;
+      if (sel && branch.pi > 0) {
+        const rule = findRuleByRate(retRulesIca, branch.pi);
+        if (rule) sel.value = rule.id;
+      }
+      (window as any).poRecalcTotals();
     }
   };
 
@@ -2010,6 +2069,7 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
       ret_rule_ica_id: retRuleIca,
       ret_rule_iva_id: retRuleIva,
       branch_id: inv?.branch_id || targetBranchId || null,
+      third_party_branch_id: (document.getElementById('po-supplier-branch') as HTMLSelectElement)?.value || inv?.third_party_branch_id || null,
       status: 'draft',
     };
 

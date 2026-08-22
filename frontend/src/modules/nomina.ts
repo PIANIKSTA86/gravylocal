@@ -321,7 +321,7 @@ async function getMonthlyAccumulatedPayrollData(employeeId: string, currentPerio
           lineIbc = round2(healthDed / 0.04);
         } else {
           const base = Number(l.salary_base || 0);
-          const days = Number(l.days_worked || 30);
+          const days = Number((l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30);
           const ot = Number(l.overtime || 0);
           lineIbc = round2((base / 30) * days + ot);
         }
@@ -891,7 +891,8 @@ function getNominaAdditionalConceptTotals(payLine) {
 function getNominaConceptAmount(payLine, conceptKey) {
   if (!payLine || !conceptKey) return 0;
   if (conceptKey === 'salary_base') {
-    return round2(((payLine.salary_base || 0) / 30) * (payLine.days_worked || 30));
+    const days = (payLine.days_worked !== undefined && payLine.days_worked !== null && !isNaN(Number(payLine.days_worked))) ? Number(payLine.days_worked) : 30;
+    return round2(((payLine.salary_base || 0) / 30) * days);
   }
   if (conceptKey === 'solidarity_fund') return getExtraDeductionsFromLine(payLine).solidarity;
   if (conceptKey === 'withholding_tax') return getExtraDeductionsFromLine(payLine).withholding;
@@ -905,7 +906,8 @@ function getNominaConceptAmount(payLine, conceptKey) {
 
 function getNominaDevengadoTotal(payLine) {
   const extra = getNominaAdditionalConceptTotals(payLine);
-  const salaryProportional = ((payLine?.salary_base || 0) / 30) * (payLine?.days_worked || 30);
+  const days = (payLine?.days_worked !== undefined && payLine?.days_worked !== null && !isNaN(Number(payLine?.days_worked))) ? Number(payLine.days_worked) : 30;
+  const salaryProportional = ((payLine?.salary_base || 0) / 30) * days;
   return round2(salaryProportional + (payLine?.transport_allowance || 0) + getNominaConceptAmount(payLine, 'overtime') + extra.earnings);
 }
 
@@ -1921,7 +1923,7 @@ async function liquidarPeriodoMasivo(periodId) {
             lineIbc = round2(healthDed / 0.04);
           } else {
             const base = Number(l.salary_base || 0);
-            const days = Number(l.days_worked || 30);
+            const days = Number((l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30);
             const ot = Number(l.overtime || 0);
             lineIbc = round2((base / 30) * days + ot);
           }
@@ -2314,7 +2316,7 @@ async function renderNominaPeriodos(c, periods, lines, periodTotals, loadErrors,
               <tr>
                 <td>${esc(l.expand?.period_id?.name || '?')}</td>
                 <td>${esc(l.expand?.employee_id?.name || '?')}</td>
-                <td class="text-center">${esc(String(l.days_worked || 30))}</td>
+                <td class="text-center">${esc(String((l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30))}</td>
                 <td>${fmt(getNominaDevengadoTotal(l))}</td>
                 <td>${fmt(getNominaDeduccionesTotal(l))}</td>
                 <td class="font-semibold">${fmt(l.net_pay || 0)}</td>
@@ -3016,7 +3018,7 @@ async function renderNominaLiquidacionPage(c) {
               <tbody>
                 ${lines.map(l => `<tr>
                   <td class="font-semibold">${esc(l.expand?.employee_id?.name || '?')}</td>
-                  <td class="text-center">${l.days_worked||30}</td>
+                  <td class="text-center">${(l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30}</td>
                   <td>${fmt(l.salary_base||0)}</td>
                   <td>${fmt(getNominaDevengadoTotal(l))}</td>
                   <td>${fmt(getNominaDeduccionesTotal(l))}</td>
@@ -3554,7 +3556,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       if (startDate && startDate.startsWith(ymPrefix)) acc.noveltySet.add('ING');
       if (endDate && endDate.startsWith(ymPrefix)) acc.noveltySet.add('RET');
 
-      const days = line.days_worked || 30;
+      const days = (line.days_worked !== undefined && line.days_worked !== null && !isNaN(Number(line.days_worked))) ? Number(line.days_worked) : 30;
 
       // Base salary proportional to days worked in this period
       const proportionalSalary = round2(((line.salary_base || 0) / 30) * days);
@@ -4351,12 +4353,13 @@ async function renderDetailedPayrollReport(year: number, month: number) {
       const periodObj = matchingPeriods.find((p: any) => p.id === line.period_id) || {};
       const dateParts = (periodObj.date_to || '').split('-');
       const dateStr = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : '';
-      const periodoNombre = periodObj.name || (periodObj.period_type ? `${periodObj.period_type} (${line.days_worked || 15}d)` : 'Período Liquidado');
+      const lineDays = (line.days_worked !== undefined && line.days_worked !== null && !isNaN(Number(line.days_worked))) ? line.days_worked : 15;
+      const periodoNombre = periodObj.name || (periodObj.period_type ? `${periodObj.period_type} (${lineDays}d)` : 'Período Liquidado');
 
       const empNovs = novelties.filter((nov: any) => nov.employee_id === empId);
 
       // Sueldo Trabajado proporcional del período liquidado
-      const sueldoTrabajado = round2((line.salary_base || 0) / 30 * line.days_worked);
+      const sueldoTrabajado = round2((line.salary_base || 0) / 30 * lineDays);
 
       // OT breakdown
       const findOt = (key: string) => otMeta.breakdown?.find((b: any) => b.key === key) || { hours: 0, amount: 0 };
@@ -4430,7 +4433,7 @@ async function renderDetailedPayrollReport(year: number, month: number) {
 
       const rowObj = {
         periodo_nombre: periodoNombre,
-        dias_trabajados: line.days_worked || 15,
+        dias_trabajados: lineDays,
         fecha_liquidacion: dateStr,
         doc_number: empObj.doc_number || empObj.numeroDocumento || line.employee_id || '',
         full_name: empObj.name || (empObj.first_name ? `${empObj.first_name} ${empObj.last_name || ''}` : 'Empleado'),
@@ -5553,7 +5556,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       if (!emp) return;
       const empId = emp.id;
 
-      const days = l.days_worked || 30;
+      const days = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
       const proportionalSalary = round2(((l.salary_base || 0) / 30) * days);
       const otMeta = getNominaOvertimeMetaFromLine(l);
       const otAmount = otMeta.total_amount || round2(l.overtime || 0);
@@ -6731,7 +6734,7 @@ async function viewPeriodLines(periodId, periodName, periodStatus = 'draft') {
             <tbody>
               ${lines.map(l => `<tr>
                 <td>${esc(l.expand?.employee_id?.name || '?')}</td>
-                <td class="text-center">${l.days_worked||30}</td>
+                <td class="text-center">${(l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30}</td>
                 <td>${fmt(l.salary_base||0)}</td>
                 <td>${fmt(getNominaDevengadoTotal(l))}</td>
                 <td>${fmt(getNominaDeduccionesTotal(l))}</td>
@@ -6783,7 +6786,8 @@ async function viewPayrollLineDetail(id) {
     const para = (l.employer_health||0) + (l.employer_pension||0) + (l.employer_arl||0) + (l.sena||0) + (l.icbf||0) + (l.caja_comp||0);
     const prov = (l.cesantias||0) + (l.intereses_ces||0) + (l.prima||0) + (l.vacaciones||0);
 
-    const transportDays = Number(meta.transport_days || l.days_worked || 30);
+    const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
+    const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
 
     const row = (label, value, bold = false) =>
       `<div class="flex justify-between py-1 border-b" style="border-color:#F3F4F6">
@@ -6811,9 +6815,9 @@ async function viewPayrollLineDetail(id) {
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Devengos</p>
            ${row('Salario base (30 días)', l.salary_base||0)}
-           ${row('Días trabajados ordinarios', String(l.days_worked||30))}
+           ${row('Días trabajados ordinarios', String(effectiveDays))}
            ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? row('Días de vacaciones', String(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones)) : ''}
-           ${row('Salario proporcional ordinario', (l.salary_base||0)/30*(l.days_worked||30))}
+           ${row('Salario proporcional ordinario', (l.salary_base||0)/30*effectiveDays)}
           ${overtimeRows}
           ${row('Días auxilio transporte', String(transportDays))}
           ${row('Aux. transporte', l.transport_allowance||0)}
@@ -6868,7 +6872,8 @@ async function printPayrollSlip(id) {
     const conceptAmounts = conceptTotals.conceptAmounts;
     const dev = getNominaDevengadoTotal(l);
     const ded = getNominaDeduccionesTotal(l);
-    const transportDays = Number(meta.transport_days || l.days_worked || 30);
+    const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
+    const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
 
     const [companyName, companyNit, companyAddress] = await Promise.all([
       API.getSetting('company_name').catch(() => ''),
@@ -6955,7 +6960,7 @@ async function printPayrollSlip(id) {
     <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
     <div class="emp-field"><label>Documento</label><span>${empDoc || '—'}</span></div>
     ${empCargo ? `<div class="emp-field"><label>Cargo / Notas</label><span>${empCargo}</span></div>` : ''}
-    <div class="emp-field"><label>Días trabajados ordinarios</label><span>${l.days_worked || 30}</span></div>
+    <div class="emp-field"><label>Días trabajados ordinarios</label><span>${effectiveDays}</span></div>
     ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
     <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
   </div>
@@ -6965,7 +6970,7 @@ async function printPayrollSlip(id) {
       <div class="section-title">Devengado</div>
       <table>
         ${slipRow('Salario base (mensual)', l.salary_base || 0)}
-        ${slipRow('Salario proporcional ordinario', (l.salary_base || 0) / 30 * (l.days_worked || 30))}
+        ${slipRow('Salario proporcional ordinario', (l.salary_base || 0) / 30 * effectiveDays)}
         ${overtimeSlipRows}
         ${slipRow('Auxilio de transporte', l.transport_allowance || 0)}
         ${extraEarningSlipRows}
@@ -7070,7 +7075,8 @@ async function printConsolidatedPayrollSlips(periodId: string) {
       const conceptAmounts = conceptTotals.conceptAmounts;
       const dev = getNominaDevengadoTotal(l);
       const ded = getNominaDeduccionesTotal(l);
-      const transportDays = Number(meta.transport_days || l.days_worked || 30);
+      const effectiveDays = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
+      const transportDays = Number(meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)) ? meta.transport_days : effectiveDays);
 
       const empName  = l.expand?.employee_id?.name  || 'Empleado sin nombre';
       const empDoc   = l.expand?.employee_id?.doc_number || '';
@@ -7110,7 +7116,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
             <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
             <div class="emp-field"><label>Documento</label><span>${empDocType} ${empDoc || '—'}</span></div>
             ${empCargo ? `<div class="emp-field"><label>Cargo / Notas</label><span>${empCargo}</span></div>` : ''}
-            <div class="emp-field"><label>Días trabajados</label><span>${l.days_worked || 30}</span></div>
+            <div class="emp-field"><label>Días trabajados</label><span>${effectiveDays}</span></div>
             ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
             <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
           </div>
@@ -7120,7 +7126,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
               <div class="section-title">Devengado</div>
               <table>
                 ${slipRow('Salario base (mensual)', l.salary_base || 0)}
-                ${slipRow('Salario proporcional ordinario', (l.salary_base || 0) / 30 * (l.days_worked || 30))}
+                ${slipRow('Salario proporcional ordinario', (l.salary_base || 0) / 30 * effectiveDays)}
                 ${overtimeSlipRows}
                 ${slipRow('Auxilio de transporte', l.transport_allowance || 0)}
                 ${extraEarningSlipRows}
@@ -7329,7 +7335,7 @@ async function printConsolidatedPayrollSummary(periodId: string) {
           <td style="text-align:center;">${idx + 1}</td>
           <td style="font-weight:600;color:#0D2137;">${empName}</td>
           <td>${empDocType} ${empDoc}</td>
-          <td style="text-align:center;">${l.days_worked || 30}</td>
+          <td style="text-align:center;">${(l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? l.days_worked : 30}</td>
           <td style="text-align:right;">${fmtCOP(l.salary_base || 0)}</td>
           <td style="text-align:right;">${fmtCOP(dev)}</td>
           <td style="text-align:right;">${fmtCOP(ded)}</td>
@@ -7870,8 +7876,10 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
   const calcPreview = async () => {
     const salary = parseNum(getInputVal('pl-salary'));
-    const salaryDays = parseNum(getInputVal('pl-days-salary')) || diasPeriodoBase;
-    const transportDays = parseNum(getInputVal('pl-days-transport')) || 0;
+    const rawSalaryDays = parseNum(getInputVal('pl-days-salary'));
+    const salaryDays = !isNaN(rawSalaryDays) ? rawSalaryDays : diasPeriodoBase;
+    const rawTransportDays = parseNum(getInputVal('pl-days-transport'));
+    const transportDays = !isNaN(rawTransportDays) ? rawTransportDays : 0;
     const auxMonthly = parseNum(getInputVal('pl-aux'));
     const aux = round2((auxMonthly / 30) * transportDays);
     const dedOther = parseNum(getInputVal('pl-ded-other'));
@@ -8002,16 +8010,24 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
       let diasAusentismo = 0;
       let diasVacaciones = 0;
+      let diasIncapacidad = 0;
+      let diasLicenciaRem = 0;
 
       novelties.forEach(n => {
         const type = n.type || '';
         const qty = Number(n.qty || 0);
         const amount = Number(n.amount || 0);
 
-        if (type.startsWith('INCAPACIDAD') || type === 'LICENCIA_NO_REMUNERADA' || type === 'PERMISO_NO_REMUNERADO' || type === 'SUSPENSION') {
+        if (type.startsWith('INCAPACIDAD')) {
+          diasIncapacidad += qty;
+          diasAusentismo += qty;
+        } else if (type === 'LICENCIA_NO_REMUNERADA' || type === 'PERMISO_NO_REMUNERADO' || type === 'SUSPENSION') {
           diasAusentismo += qty;
         } else if (type === 'VACACIONES') {
           diasVacaciones += qty;
+          diasAusentismo += qty;
+        } else if (type === 'LICENCIA_REMUNERADA' || type === 'LICENCIA_MATERNIDAD' || type === 'LICENCIA_PATERNIDAD' || type === 'LICENCIA_LUTO' || type === 'PERMISO_REMUNERADO') {
+          diasLicenciaRem += qty;
         }
 
         // Mapear novedades a inputs de horas extra
@@ -8044,6 +8060,8 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
           else if (type === 'COMPENSATORIOS') conceptKey = 'compensatorios';
           else if (type === 'AUXILIO_ALIMENTACION') conceptKey = 'alimentacion';
           else if (type === 'LIBRANZA') conceptKey = 'libranza';
+          else if (type.startsWith('INCAPACIDAD')) conceptKey = 'incapacidades';
+          else if (type.startsWith('LICENCIA_')) conceptKey = 'licencias';
 
           if (conceptKey) {
             const input = $('#pl-cpt-' + conceptKey);
@@ -8053,6 +8071,22 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
           }
         }
       });
+
+      const empRule = getEmployeePayrollRule(config, employeeId);
+      const empSalary = (empRule.basic_salary || parseNum(getInputVal('pl-salary')) || 0);
+
+      if (diasIncapacidad > 0 && $('#pl-cpt-incapacidades') && parseNum(getInputVal('pl-cpt-incapacidades')) === 0) {
+        const incVal = round2((empSalary / 30) * diasIncapacidad * 0.6667);
+        setInputVal('pl-cpt-incapacidades', String(incVal));
+      }
+      if (diasLicenciaRem > 0 && $('#pl-cpt-licencias') && parseNum(getInputVal('pl-cpt-licencias')) === 0) {
+        const licVal = round2((empSalary / 30) * diasLicenciaRem);
+        setInputVal('pl-cpt-licencias', String(licVal));
+      }
+      if (diasVacaciones > 0 && $('#pl-cpt-vacaciones_disfrutadas') && parseNum(getInputVal('pl-cpt-vacaciones_disfrutadas')) === 0) {
+        const vacVal = round2((empSalary / 30) * diasVacaciones);
+        setInputVal('pl-cpt-vacaciones_disfrutadas', String(vacVal));
+      }
 
       // Calcular días de salario y transporte
       const salaryDays = Math.max(0, diasPeriodoBase - diasAusentismo);
@@ -8100,9 +8134,17 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     if ($('#pl-period')) $('#pl-period').value = lineToEdit.period_id || '';
     if ($('#pl-emp')) $('#pl-emp').value = lineToEdit.employee_id || '';
     if ($('#pl-salary')) $('#pl-salary').value = String(lineToEdit.salary_base || 0);
-    if ($('#pl-days-salary')) $('#pl-days-salary').value = String(lineToEdit.days_worked || diasPeriodoBase);
+    if ($('#pl-days-salary')) {
+      const d = (lineToEdit.days_worked !== undefined && lineToEdit.days_worked !== null && !isNaN(Number(lineToEdit.days_worked))) ? lineToEdit.days_worked : diasPeriodoBase;
+      $('#pl-days-salary').value = String(d);
+    }
     const meta = getNominaLineMeta(lineToEdit);
-    if ($('#pl-days-transport')) $('#pl-days-transport').value = String(meta.transport_days || lineToEdit.days_worked || diasPeriodoBase);
+    if ($('#pl-days-transport')) {
+      const td = (meta.transport_days !== undefined && meta.transport_days !== null && !isNaN(Number(meta.transport_days)))
+        ? meta.transport_days
+        : ((lineToEdit.days_worked !== undefined && lineToEdit.days_worked !== null && !isNaN(Number(lineToEdit.days_worked))) ? lineToEdit.days_worked : diasPeriodoBase);
+      $('#pl-days-transport').value = String(td);
+    }
     if ($('#pl-aux')) $('#pl-aux').value = String(meta.transport_monthly || config.company_rules?.transport_allowance || 162000);
     if ($('#pl-ded-other')) $('#pl-ded-other').value = String(lineToEdit.deduction_other || 0);
     if ($('#pl-prima')) $('#pl-prima').value = '0';
@@ -8137,15 +8179,17 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
 
     try {
       const salary = parseNum(getInputVal('pl-salary'));
-      const salaryDays = parseNum(getInputVal('pl-days-salary')) || diasPeriodoBase;
-      const transportDays = parseNum(getInputVal('pl-days-transport')) || 0;
+      const rawSalaryDays = parseNum(getInputVal('pl-days-salary'));
+      const salaryDays = !isNaN(rawSalaryDays) ? rawSalaryDays : diasPeriodoBase;
+      const rawTransportDays = parseNum(getInputVal('pl-days-transport'));
+      const transportDays = !isNaN(rawTransportDays) ? rawTransportDays : 0;
       const auxMonthly = parseNum(getInputVal('pl-aux'));
       const aux = round2((auxMonthly / 30) * transportDays);
       const dedOther = parseNum(getInputVal('pl-ded-other'));
       const employeeId = getSelectVal('pl-emp');
 
       if (salary <= 0) return showToast('El salario base debe ser mayor a cero', 'warning');
-      if (salaryDays <= 0 || salaryDays > diasPeriodoBase) return showToast('Días salario debe estar entre 1 y ' + diasPeriodoBase, 'warning');
+      if (salaryDays < 0 || salaryDays > diasPeriodoBase) return showToast('Días salario debe estar entre 0 y ' + diasPeriodoBase, 'warning');
       if (transportDays < 0 || transportDays > diasPeriodoBase) return showToast('Días auxilio transporte debe estar entre 0 y ' + diasPeriodoBase, 'warning');
 
       const periodId = getSelectVal('pl-period');

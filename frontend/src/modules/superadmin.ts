@@ -198,13 +198,23 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
                 </div>
               </div>
 
-              <!-- Card Activos Fijos -->
+              <!-- Card Spa Mascotas -->
               <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
-                <input type="checkbox" class="new-comp-mod" value="activos_fijos" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(16,185,129,0.1);display:flex;align-items:center;justify-content:center;color:#10B981"><i class="fas fa-boxes-stacked"></i></div>
+                <input type="checkbox" class="new-comp-mod" value="spa" style="display:none">
+                <div style="width:32px;height:32px;border-radius:8px;background:rgba(244,63,94,0.1);display:flex;align-items:center;justify-content:center;color:#F43F5E"><i class="fas fa-dog"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Activos Fijos</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Propiedad, planta y equipo</p>
+                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Spa Mascotas</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Veterinaria y peluquería</p>
+                </div>
+              </div>
+
+              <!-- Card Spa Belleza -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="spa-belleza" style="display:none">
+                <div style="width:32px;height:32px;border-radius:8px;background:rgba(236,72,153,0.1);display:flex;align-items:center;justify-content:center;color:#EC4899"><i class="fas fa-spa"></i></div>
+                <div>
+                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Spa Belleza</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Estética y cosmetología humana</p>
                 </div>
               </div>
 
@@ -443,7 +453,8 @@ async function _loadSALicenses() {
     inventarios:   { label: 'Inventarios',   icon: 'fa-warehouse',  color: '#10B981' },
     tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B' },
     'tienda-virtual': { label: 'Tienda Virtual', icon: 'fa-basket-shopping', color: '#14B8A6' },
-    spa:           { label: 'Módulo SPA (Belleza & Mascotas)', icon: 'fa-spa', color: '#F43F5E' },
+    spa:           { label: 'Spa Mascotas (Veterinaria)', icon: 'fa-dog', color: '#F43F5E' },
+    'spa-belleza': { label: 'Spa Belleza Humana',         icon: 'fa-spa', color: '#EC4899' },
     conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1' },
     niif:          { label: 'Gestión NIIF (IFRS)', icon: 'fa-scale-balanced', color: '#2446B8' },
     activos_fijos: { label: 'Activos Fijos', icon: 'fa-boxes-stacked', color: '#10B981' },
@@ -463,7 +474,7 @@ async function _loadSALicenses() {
     const licMap: Record<string, any> = {};
     (data.items || []).forEach((m: any) => licMap[m.module_key] = m);
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion', 'niif', 'activos_fijos'];
+    const ORDER = ['core', 'contabilidad', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'spa-belleza', 'conciliacion', 'niif', 'activos_fijos'];
     
     container.innerHTML = ORDER.map(key => {
       const meta = MODULE_META[key];
@@ -562,11 +573,19 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
         
         // Update local set
         if (enabled) {
-          ENABLED_MODULES.add(moduleKey);
+          if (typeof (window as any).enableModule === 'function') {
+            (window as any).enableModule(moduleKey);
+          } else if (typeof ENABLED_MODULES !== 'undefined') {
+            ENABLED_MODULES.add(moduleKey);
+          }
           if (!activeCompany.modules) activeCompany.modules = [];
           if (!activeCompany.modules.includes(moduleKey)) activeCompany.modules.push(moduleKey);
         } else {
-          ENABLED_MODULES.delete(moduleKey);
+          if (typeof (window as any).disableModule === 'function') {
+            (window as any).disableModule(moduleKey);
+          } else if (typeof ENABLED_MODULES !== 'undefined') {
+            ENABLED_MODULES.delete(moduleKey);
+          }
           if (activeCompany.modules) {
             activeCompany.modules = activeCompany.modules.filter((m: string) => m !== moduleKey);
           }
@@ -575,6 +594,21 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
         // Save back to localStorage so it survives reload
         localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
         
+        // Sincronizar también con la base de datos local del tenant
+        try {
+          await fetch(
+            `${(window as any).PB_URL || window.location.origin}/api/gravy/toggle-license`,
+            {
+              method:  'POST',
+              headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${pb.authToken}`,
+              },
+              body: JSON.stringify({ module_key: moduleKey, enabled }),
+            }
+          );
+        } catch (_) {}
+
         if (typeof applyModuleVisibility === 'function') applyModuleVisibility();
         _loadSALicenses();
       } catch (err: any) {

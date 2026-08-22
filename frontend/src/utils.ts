@@ -508,7 +508,13 @@ const MAP_LEGACY_DOC_TYPE: Record<string, string> = {
   'PAS': '41',
   'RC': '11',
   'NITPE': '42',
+  'DIE': '42',
   'TE': '21',
+  'PEP': '47',
+  'PPT': '48',
+  'NIT EXT': '50',
+  'EXT': '50',
+  'NUIP': '91',
 };
 
 const MAP_DOC_TYPE_TO_ABBR: Record<string, string> = {
@@ -531,9 +537,12 @@ const MAP_DOC_TYPE_TO_ABBR: Record<string, string> = {
   'PAS': 'PAS',
   'RC': 'RC',
   'NITPE': 'DIE',
+  'DIE': 'DIE',
   'TE': 'TE',
   'PEP': 'PEP',
-  'PPT': 'PPT'
+  'PPT': 'PPT',
+  'EXT': 'NIT EXT',
+  'NUIP': 'NUIP'
 };
 
 function docTypeAbbr(type: any): string {

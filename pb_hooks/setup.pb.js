@@ -271,8 +271,8 @@ onBootstrap((e) => {
   const auditLog = new Collection({
     name: "audit_log",
     type: "base",
-    listRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
-    viewRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'auditor')",
+    listRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'auditor')",
+    viewRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'auditor')",
     createRule: "@request.auth.id != ''",
     updateRule: null,
     deleteRule: null,
@@ -926,7 +926,24 @@ onBootstrap((e) => {
 // Auditoría server-side (fuente confiable)
 // -----------------------------------------------------------------------------
 function getActorInfoFromEvent(e) {
-  const auth = e?.requestInfo?.auth;
+  let auth = null;
+  try {
+    if (e) {
+      if (typeof e.requestInfo === "function") {
+        auth = e.requestInfo()?.auth;
+      } else if (e.requestInfo && typeof e.requestInfo === "object") {
+        auth = e.requestInfo.auth;
+      }
+      if (!auth && e.auth) {
+        auth = e.auth;
+      }
+      if (!auth && typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+        const info = $apis.requestInfo(e);
+        auth = info?.authRecord || info?.auth;
+      }
+    }
+  } catch (_) {}
+
   if (!auth) {
     return { userId: "", username: "system" };
   }
@@ -936,31 +953,42 @@ function getActorInfoFromEvent(e) {
   return { userId, username };
 }
 
-function writeAuditFromEvent(e, action, entity, entityId = "", details = "") {
+function writeAuditLog(actor, action, entity, entityId = "", details = "", ip = "") {
   try {
     const auditCol = $app.findCollectionByNameOrId("audit_log");
-    const actor = getActorInfoFromEvent(e);
-    const remoteIp = (typeof e?.remoteIP === "function")
-      ? String(e.remoteIP() || "")
-      : String(e?.remoteIP || "");
-
     const payload = {
-      username: actor.username,
+      username: String((actor && (actor.username || actor.name || actor.email)) || "system"),
       action: String(action || ""),
       entity: String(entity || ""),
       entity_id: String(entityId || ""),
       event_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19),
       details: String(details || ""),
-      ip: remoteIp,
+      ip: String(ip || ""),
     };
-
-    if (actor.userId) payload.user_id = actor.userId;
+    const userId = String((actor && (actor.userId || actor.id)) || "");
+    if (userId) payload.user_id = userId;
 
     const log = new Record(auditCol, payload);
     $app.save(log);
   } catch (err) {
-    // Evitar romper la operación principal por un fallo de auditoría.
     console.log("[GRAVY][Audit] Error al guardar auditoria: " + err);
+  }
+}
+
+function writeAuditFromEvent(e, action, entity, entityId = "", details = "") {
+  try {
+    const actor = getActorInfoFromEvent(e);
+    let remoteIp = "";
+    try {
+      remoteIp = (typeof e?.remoteIP === "function")
+        ? String(e.remoteIP() || "")
+        : (typeof e?.realIP === "function" ? String(e.realIP() || "") : String(e?.remoteIP || ""));
+    } catch (_) {}
+
+    writeAuditLog(actor, action, entity, entityId, details, remoteIp);
+  } catch (err) {
+    // Evitar romper la operación principal por un fallo de auditoría.
+    console.log("[GRAVY][Audit] Error al procesar evento de auditoria: " + err);
   }
 }
 
@@ -994,11 +1022,21 @@ onBootstrap((e) => {
       changed = true;
     }
 
+    const expectedReadRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'auditor')";
+    if (auditCol.listRule !== expectedReadRule) {
+      auditCol.listRule = expectedReadRule;
+      changed = true;
+    }
+    if (auditCol.viewRule !== expectedReadRule) {
+      auditCol.viewRule = expectedReadRule;
+      changed = true;
+    }
+
     if (changed) {
       $app.save(auditCol);
     }
   } catch (err) {
-    console.log("[GRAVY] Aviso al asegurar campo event_at en audit_log: " + err);
+    console.log("[GRAVY] Aviso al asegurar campo event_at y reglas en audit_log: " + err);
   }
 });
 

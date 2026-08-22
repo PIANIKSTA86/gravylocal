@@ -5494,7 +5494,8 @@ async function _handleImportInventarioExcelUpload(input: HTMLInputElement) {
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const rawRows = (window as any)._massTxParseExcel(arrayBuffer);
+    const parsed = (window as any)._massTxParseExcel(arrayBuffer);
+    const rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
     
     const products = (window as any)._importInventarioProducts || [];
     const prodMap = new Map(products.map((p: any) => [String(p.code || '').toUpperCase().trim(), p]));

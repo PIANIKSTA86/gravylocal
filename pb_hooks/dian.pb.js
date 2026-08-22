@@ -72,41 +72,49 @@ function mapDocType(type) {
 }
 
 function callFacturatechNominaSoap(actionName, soapBodyParams, settings) {
-  const isDemo = (settings.ftechEnvironment === 'demo' || settings.ftechEnvironment === '2' || settings.ftechEnvironment === 'pruebas');
-  const baseUrl = isDemo 
-    ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
-    : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
-  const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-  const soapAction = targetNs + '#' + actionName;
+  try {
+    const envStr = (typeof settings === 'string') ? settings : (settings && settings.ftechEnvironment ? settings.ftechEnvironment : 'demo');
+    const isDemo = (envStr === 'demo' || envStr === '2' || envStr === 'pruebas');
+    const baseUrl = isDemo 
+      ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
+      : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
+    const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+    const soapAction = targetNs + '#' + actionName;
 
-  let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
-  for (let key in soapBodyParams) {
-    const val = soapBodyParams[key];
-    const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
-    bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+    let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
+    for (let key in soapBodyParams) {
+      const val = soapBodyParams[key];
+      const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
+      bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
+    }
+    bodyXml += '</urn:' + actionName + '>';
+
+    const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
+      '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
+      '  <soapenv:Header/>\n' +
+      '  <soapenv:Body>\n' +
+      '    ' + bodyXml + '\n' +
+      '  </soapenv:Body>\n' +
+      '</soapenv:Envelope>';
+
+    const res = $http.send({
+      url: baseUrl,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'SOAPAction': soapAction
+      },
+      body: envelope
+    });
+
+    return res;
+  } catch (httpErr) {
+    console.error("[GRAVY HOOK] Error en HTTP SOAP Facturatech Nómina:", httpErr);
+    return { statusCode: 500, raw: '<error>' + httpErr.message + '</error>' };
   }
-  bodyXml += '</urn:' + actionName + '>';
-
-  const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
-    '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
-    '  <soapenv:Header/>\n' +
-    '  <soapenv:Body>\n' +
-    '    ' + bodyXml + '\n' +
-    '  </soapenv:Body>\n' +
-    '</soapenv:Envelope>';
-
-  const res = $http.send({
-    url: baseUrl,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      'SOAPAction': soapAction
-    },
-    body: envelope
-  });
-
-  return res;
 }
+
+globalThis.callFacturatechNominaSoap = callFacturatechNominaSoap;
 
 /**
  * Elimina slashes (/) y espacios al inicio y al final de un nombre.
@@ -4282,232 +4290,347 @@ routerAdd("POST", "/api/dian/pdf-bytes", (e) => {
 });
 
 // ============================================================================
-// NÓMINA ELECTRÓNICA DIAN & FACTURATECH ENDPOINTS
+// NÓMINA ELECTRÓNICA DIAN & FACTURATECH ENDPOINTS (Vía Hub Orquestador)
 // ============================================================================
 
 routerAdd('POST', '/api/dian/nomina/emit', (e) => {
+  function getNominaSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
   try {
-    const body = e.requestInfo().body || {};
+    let body = {};
+    try {
+      const reqInfo = e.requestInfo();
+      body = reqInfo ? (reqInfo.body || {}) : {};
+      if (typeof body === 'string') {
+        body = JSON.parse(body);
+      }
+    } catch (_) {
+      try { body = e.bindBody({}); } catch (_2) {}
+    }
+
     const recordId = body.id || body.electronicPayrollId;
     if (!recordId) {
-      return e.json(400, { message: "ID de registro de nómina electrónica no especificado." });
+      e.json(400, { success: false, message: "ID de registro de nómina electrónica no especificado." });
+      return;
     }
 
-    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    let rec = null;
+    try {
+      rec = $app.findRecordById("electronic_payrolls", recordId);
+    } catch (findErr) {
+      e.json(404, { success: false, message: "Registro de nómina no encontrado (" + recordId + "): " + findErr.message });
+      return;
+    }
+
     if (!rec) {
-      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
+      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
+      return;
     }
 
-    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
-    let einvoiceMethod = "simulation";
-    let ftechUsername = "";
-    let ftechPassword = "";
-    let ftechEnvironment = "demo";
+    const einvoiceMethod = getNominaSetting("einvoice_method", "simulation");
+    const ftechUsername = getNominaSetting("ftech_username", "");
+    const ftechPassword = getNominaSetting("ftech_password", "");
+    const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
 
-    settingsList.forEach((s) => {
-      const k = s.getString("key");
-      const v = s.getString("value");
-      if (k === "einvoice_method") einvoiceMethod = v;
-      if (k === "ftech_username") ftechUsername = v;
-      if (k === "ftech_password") ftechPassword = v;
-      if (k === "ftech_environment") ftechEnvironment = v;
-    });
-
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
     const xmlContent = rec.getString("xml_generado") || "";
-    let cufe = rec.getString("cufe");
+    let cufe = rec.getString("cufe") || "";
 
     if (einvoiceMethod === "facturatech") {
-      if (!ftechUsername || !ftechPassword) {
-        return e.json(400, { success: false, message: "Modo Facturatech configurado pero faltan credenciales (usuario/contraseña) en Configuración." });
+      if (!ftechUsername) {
+        e.json(400, { success: false, message: "Modo Facturatech configurado pero falta el Usuario/NIT de Facturatech en Configuración." });
+        return;
       }
 
-      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica REAL a Facturatech...");
-      try {
-        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
-          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
-          const baseUrl = isDemo 
-            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
-            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
-          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-          const soapAction = targetNs + '#' + actionName;
+      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica a Facturatech vía Hub Orquestador...");
+      const hubUrl = "http://127.0.0.1:8088/api/facturatech/upload-and-send";
+      
+      const hubPayload = {
+        xmlContent: xmlContent,
+        ftechUsername: ftechUsername,
+        ftechPassword: ftechPassword,
+        ftechEnvironment: ftechEnvironment,
+        documentType: "NominaIndividual",
+        documentNumber: `${prefijo}${consecutivo}`,
+        prefix: prefijo,
+        folio: consecutivo,
+        isNomina: true
+      };
 
-          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
-          for (let key in soapBodyParams) {
-            const val = soapBodyParams[key];
-            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
-            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
-          }
-          bodyXml += '</urn:' + actionName + '>';
+      const resHub = $http.send({
+        url: hubUrl,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(hubPayload)
+      });
 
-          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
-            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
-            '  <soapenv:Header/>\n' +
-            '  <soapenv:Body>\n' +
-            '    ' + bodyXml + '\n' +
-            '  </soapenv:Body>\n' +
-            '</soapenv:Envelope>';
-
-          return $http.send({
-            url: baseUrl,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              'SOAPAction': soapAction
-            },
-            body: envelope
-          });
-        };
-
-        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-        var xmlBase64 = '';
-        var utf8Str = unescape(encodeURIComponent(xmlContent));
-        var c1, c2, c3, e1, e2, e3, e4;
-        var idx = 0;
-        while (idx < utf8Str.length) {
-          c1 = utf8Str.charCodeAt(idx++);
-          c2 = utf8Str.charCodeAt(idx++);
-          c3 = utf8Str.charCodeAt(idx++);
-          e1 = c1 >> 2;
-          e2 = ((c1 & 3) << 4) | (c2 >> 4);
-          e3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (c3 >> 6));
-          e4 = isNaN(c2) || isNaN(c3) ? 64 : (c3 & 63);
-          xmlBase64 += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
-        }
-
-        const soapRes = callFacturatechNominaSoap('FtechAction.uploadDocument', {
-          username: ftechUsername,
-          password: ftechPassword,
-          xmlBase64: xmlBase64
-        }, ftechEnvironment);
-
-        if (soapRes.statusCode === 200) {
-          const raw = soapRes.raw || "";
-          console.log("[GRAVY HOOK] Facturatech raw response:", raw);
-          const transIdMatch = raw.match(/<transactionID[^>]*>(.*?)<\/transactionID>/i);
-          const transId = transIdMatch ? transIdMatch[1] : "";
-          const codeMatch = raw.match(/<code[^>]*>(.*?)<\/code>/i);
-          const code = codeMatch ? codeMatch[1] : "200";
-
-          if (transId) {
-            rec.set("ftech_transaction_id", transId);
-          }
-          if (code === "200" || code === "201" || transId) {
-            rec.set("estado_dian", "APROBADO");
-            if (!cufe) {
-              cufe = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-              rec.set("cufe", cufe);
-            }
-            rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
-            $app.save(rec);
-            return e.json(200, { success: true, status: "APROBADO", cufe: cufe, transactionID: transId, message: "Nómina electrónica transmitida y validada por Facturatech DIAN." });
-          } else {
-            const errMatch = raw.match(/<error[^>]*>(.*?)<\/error>/i) || raw.match(/<messageError[^>]*>(.*?)<\/messageError>/i) || raw.match(/<status[^>]*>(.*?)<\/status>/i);
-            const errMsg = errMatch ? errMatch[1] : ("Error en Facturatech (Código " + code + ")");
-            rec.set("estado_dian", "RECHAZADO");
-            $app.save(rec);
-            return e.json(400, { success: false, status: "RECHAZADO", message: errMsg });
-          }
-        } else {
-          rec.set("estado_dian", "RECHAZADO");
-          $app.save(rec);
-          return e.json(soapRes.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error conectando con Facturatech WebService (HTTP " + soapRes.statusCode + ")" });
-        }
-      } catch (soapErr) {
-        console.error("[GRAVY HOOK] Error al consumir WebService Facturatech Nómina:", soapErr);
+      if (resHub.statusCode !== 200) {
+        let errDetails = resHub.raw;
+        try {
+          const parsed = JSON.parse(resHub.raw);
+          errDetails = parsed.error || parsed.message || resHub.raw;
+        } catch (_) {}
         rec.set("estado_dian", "RECHAZADO");
         $app.save(rec);
-        return e.json(500, { success: false, status: "RECHAZADO", message: "Error al transmitir a Facturatech: " + soapErr.message });
+        e.json(resHub.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error Hub Facturatech: " + errDetails });
+        return;
       }
+
+      let hubResData = {};
+      try {
+        hubResData = JSON.parse(resHub.raw);
+      } catch (_) {}
+      
+      const transId = hubResData.transaccionID || "";
+      if (transId) {
+        rec.set("ftech_transaction_id", transId);
+      }
+
+      // Consultar status inmediato a través del Hub
+      let finalStatus = "EN_PROCESO";
+      let statusMsg = hubResData.message || "Comprobante recibido por Facturatech y en proceso de validación DIAN.";
+
+      try {
+        const statusHubRes = $http.send({
+          url: "http://127.0.0.1:8088/api/facturatech/check-status",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transId: transId,
+            ftechUsername: ftechUsername,
+            ftechPassword: ftechPassword,
+            ftechEnvironment: ftechEnvironment,
+            documentType: "NominaIndividual",
+            documentNumber: `${prefijo}${consecutivo}`,
+            prefix: prefijo,
+            folio: consecutivo,
+            isNomina: true
+          })
+        });
+
+        if (statusHubRes.statusCode === 200) {
+          const sData = JSON.parse(statusHubRes.raw);
+          if (sData.status === "aceptada" || sData.status === "APROBADO") {
+            finalStatus = "APROBADO";
+            if (sData.xmlContent && sData.xmlContent.includes("<")) {
+              rec.set("xml_generado", sData.xmlContent);
+              const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
+                             sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
+                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
+              if (cMatch && cMatch[1]) {
+                cufe = cMatch[1].trim();
+                rec.set("cufe", cufe);
+              }
+            }
+          } else if (sData.status === "rechazada" || sData.status === "RECHAZADO") {
+            finalStatus = "RECHAZADO";
+          }
+          if (sData.message) statusMsg = sData.message;
+        }
+      } catch (stErr) {
+        console.warn("[GRAVY HOOK] No se pudo obtener status inmediato:", stErr);
+      }
+
+      rec.set("estado_dian", finalStatus);
+      rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+      $app.save(rec);
+
+      e.json(200, {
+        success: true,
+        status: finalStatus,
+        cufe: cufe,
+        transactionID: transId,
+        message: statusMsg
+      });
+      return;
     }
 
     // Modo Simulación explícito
-    if (!cufe) {
-      cufe = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-    }
-    rec.set("estado_dian", "APROBADO");
-    rec.set("cufe", cufe);
+    rec.set("estado_dian", "SIMULADO");
     rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
     $app.save(rec);
 
-    return e.json(200, {
+    e.json(200, {
       success: true,
       simulated: true,
-      status: "APROBADO",
+      status: "SIMULADO",
       cufe: cufe,
-      message: "Envío y firmado de Nómina Electrónica simulado exitosamente ante la DIAN."
+      message: "Modo Simulación: El comprobante no fue transmitido a la DIAN real porque el método de facturación electrónica configurado es 'simulation'."
     });
+    return;
 
   } catch (err) {
     console.error("[GRAVY HOOK] Error en /api/dian/nomina/emit:", err);
-    return e.json(500, { message: "Error al emitir nómina electrónica: " + err.message });
+    e.json(500, { success: false, message: "Error al emitir nómina electrónica: " + err.message });
   }
 });
 
 routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
+  function getNominaSetting(key, defVal) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defVal;
+    } catch (_) {
+      return defVal;
+    }
+  }
+
   try {
-    const body = e.requestInfo().body || {};
+    let body = {};
+    try {
+      const reqInfo = e.requestInfo();
+      body = reqInfo ? (reqInfo.body || {}) : {};
+      if (typeof body === 'string') {
+        body = JSON.parse(body);
+      }
+    } catch (_) {
+      try { body = e.bindBody({}); } catch (_2) {}
+    }
+
     const recordId = body.id || body.electronicPayrollId;
     if (!recordId) {
-      return e.json(400, { message: "ID de registro no especificado." });
+      e.json(400, { success: false, message: "ID de registro no especificado." });
+      return;
     }
 
-    const rec = $app.findRecordById("electronic_payrolls", recordId);
+    let rec = null;
+    try {
+      rec = $app.findRecordById("electronic_payrolls", recordId);
+    } catch (findErr) {
+      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado: " + findErr.message });
+      return;
+    }
+
     if (!rec) {
-      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
+      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
+      return;
     }
 
-    const settingsList = $app.findRecordsByFilter("settings", "key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
-    let ftechUsername = "";
-    let ftechPassword = "";
-    let ftechEnvironment = "demo";
-
-    settingsList.forEach((s) => {
-      const k = s.getString("key");
-      const v = s.getString("value");
-      if (k === "ftech_username") ftechUsername = v;
-      if (k === "ftech_password") ftechPassword = v;
-      if (k === "ftech_environment") ftechEnvironment = v;
-    });
-
+    const ftechUsername = getNominaSetting("ftech_username", "");
+    const ftechPassword = getNominaSetting("ftech_password", "");
+    const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
     const transId = rec.getString("ftech_transaction_id");
-    if (transId && ftechUsername && ftechPassword) {
-      try {
-        const soapRes = callFacturatechNominaSoap('FtechAction.documentStatus', {
-          username: ftechUsername,
-          password: ftechPassword,
-          transaccionID: transId
-        }, { ftechEnvironment });
 
-        if (soapRes.statusCode === 200) {
-          const raw = soapRes.raw || "";
-          const msgMatch = raw.match(/<message[^>]*>(.*?)<\/message>/i);
-          const statusStr = msgMatch ? msgMatch[1] : "PROCESADO";
-          
-          let estadoFinal = "APROBADO";
-          if (statusStr.toLowerCase().includes("rechaz") || statusStr.toLowerCase().includes("error")) {
+    if (transId && ftechUsername) {
+      try {
+        const statusHubRes = $http.send({
+          url: "http://127.0.0.1:8088/api/facturatech/check-status",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transId: transId,
+            ftechUsername: ftechUsername,
+            ftechPassword: ftechPassword,
+            ftechEnvironment: ftechEnvironment,
+            documentType: "NominaIndividual",
+            documentNumber: `${prefijo}${consecutivo}`,
+            prefix: prefijo,
+            folio: consecutivo,
+            isNomina: true
+          })
+        });
+
+        if (statusHubRes.statusCode === 200) {
+          const sData = JSON.parse(statusHubRes.raw);
+          let estadoFinal = "EN_PROCESO";
+          if (sData.status === "aceptada" || sData.status === "APROBADO") {
+            estadoFinal = "APROBADO";
+            if (sData.xmlContent && sData.xmlContent.includes("<")) {
+              rec.set("xml_generado", sData.xmlContent);
+              const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
+                             sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
+                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
+              if (cMatch && cMatch[1]) {
+                rec.set("cufe", cMatch[1].trim());
+              }
+            }
+          } else if (sData.status === "rechazada" || sData.status === "RECHAZADO") {
             estadoFinal = "RECHAZADO";
-          } else if (statusStr.toLowerCase().includes("process") || statusStr.toLowerCase().includes("pend")) {
-            estadoFinal = "PENDIENTE";
           }
 
           rec.set("estado_dian", estadoFinal);
           $app.save(rec);
-          return e.json(200, { success: true, status: estadoFinal, message: statusStr });
+          e.json(200, { success: true, status: estadoFinal, message: sData.message || `Estado DIAN: ${estadoFinal}` });
+          return;
         }
       } catch (errSoap) {
         console.error("[GRAVY HOOK] Error al consultar status Facturatech Nómina:", errSoap);
       }
     }
 
-    const currentStatus = rec.getString("estado_dian") || "APROBADO";
-    return e.json(200, {
+    const currentStatus = rec.getString("estado_dian") || "PENDIENTE";
+    e.json(200, {
       success: true,
       status: currentStatus,
-      message: `Estado actual DIAN de Nómina Electrónica: ${currentStatus}`
+      message: `Estado actual: ${currentStatus}`
     });
+    return;
 
   } catch (err) {
-    return e.json(500, { message: "Error al consultar estado de nómina: " + err.message });
+    e.json(500, { success: false, message: "Error al consultar estado de nómina: " + err.message });
+  }
+});
+
+routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
+  try {
+    let body = {};
+    try {
+      const reqInfo = e.requestInfo();
+      body = reqInfo ? (reqInfo.body || {}) : {};
+      if (typeof body === 'string') {
+        body = JSON.parse(body);
+      }
+    } catch (_) {
+      try { body = e.bindBody({}); } catch (_2) {}
+    }
+
+    const recordId = body.id || body.electronicPayrollId;
+    if (!recordId) {
+      e.json(400, { success: false, message: "ID de registro de nómina electrónica no especificado." });
+      return;
+    }
+
+    let rec = null;
+    try {
+      rec = $app.findRecordById("electronic_payrolls", recordId);
+    } catch (findErr) {
+      e.json(404, { success: false, message: "Registro no encontrado: " + findErr.message });
+      return;
+    }
+
+    if (!rec) {
+      e.json(404, { success: false, message: "Registro de nómina electrónica no encontrado." });
+      return;
+    }
+
+    const prefijo = rec.getString("prefijo") || "NOM";
+    const consecutivo = rec.getInt("consecutivo") || 1;
+    const filename = `NominaIndividual_${prefijo}-${consecutivo}.xml`;
+
+    let currentXml = rec.getString("xml_generado") || "";
+    const isSigned = currentXml.includes("AttachedDocument") || currentXml.includes("ds:SignatureValue") || currentXml.includes("ApplicationResponse");
+
+    e.json(200, {
+      success: true,
+      isSigned: isSigned,
+      xml: currentXml,
+      filename: filename
+    });
+    return;
+
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error al descargar XML de nómina:", err);
+    e.json(500, { success: false, message: "Error al descargar XML: " + err.message });
   }
 });
 
@@ -4564,134 +4687,7 @@ routerAdd('POST', '/api/dian/nomina/resend-email', (e) => {
   }
 });
 
-routerAdd('POST', '/api/dian/nomina/download-xml', (e) => {
-  try {
-    const body = e.requestInfo().body || {};
-    const recordId = body.id || body.electronicPayrollId;
-    if (!recordId) {
-      return e.json(400, { message: "ID de registro de nómina electrónica no especificado." });
-    }
 
-    const rec = $app.findRecordById("electronic_payrolls", recordId);
-    if (!rec) {
-      return e.json(404, { message: "Registro de nómina electrónica no encontrado." });
-    }
-
-    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
-    let einvoiceMethod = "simulation";
-    let ftechUsername = "";
-    let ftechPassword = "";
-    let ftechEnvironment = "demo";
-
-    settingsList.forEach((s) => {
-      const k = s.getString("key");
-      const v = s.getString("value");
-      if (k === "einvoice_method") einvoiceMethod = v;
-      if (k === "ftech_username") ftechUsername = v;
-      if (k === "ftech_password") ftechPassword = v;
-      if (k === "ftech_environment") ftechEnvironment = v;
-    });
-
-    const prefijo = rec.getString("prefijo") || "NOM";
-    const consecutivo = rec.getInt("consecutivo") || 1;
-    const filename = `NominaIndividual_${prefijo}-${consecutivo}.xml`;
-
-    if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword && rec.getString("estado_dian") === "APROBADO") {
-      try {
-        const callFacturatechNominaSoap = (actionName, soapBodyParams, env) => {
-          const isDemo = (env === 'demo' || env === '2' || env === 'pruebas');
-          const baseUrl = isDemo 
-            ? 'https://ws-nomina.facturatech.co/v1/demo/index.php' 
-            : 'https://ws-nomina.facturatech.co/v1/pro/index.php';
-          const targetNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-          const soapAction = targetNs + '#' + actionName;
-
-          let bodyXml = '<urn:' + actionName + ' soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">';
-          bodyXml += '<username xsi:type="xsd:string">' + ftechUsername + '</username>';
-          bodyXml += '<password xsi:type="xsd:string">' + ftechPassword + '</password>';
-          for (let key in soapBodyParams) {
-            const val = soapBodyParams[key];
-            const typeStr = (typeof val === 'number' || (!isNaN(val) && String(val).trim() !== '')) ? 'xsd:integer' : 'xsd:string';
-            bodyXml += '<' + key + ' xsi:type="' + typeStr + '">' + String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</' + key + '>';
-          }
-          bodyXml += '</urn:' + actionName + '>';
-
-          const envelope = '<?xml version="1.0" encoding="utf-8"?>\n' +
-            '<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="' + targetNs + '">\n' +
-            '  <soapenv:Header/>\n' +
-            '  <soapenv:Body>\n' +
-            '    ' + bodyXml + '\n' +
-            '  </soapenv:Body>\n' +
-            '</soapenv:Envelope>';
-
-          return $http.send({
-            url: baseUrl,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              'SOAPAction': soapAction
-            },
-            body: envelope
-          });
-        };
-
-        const soapRes = callFacturatechNominaSoap('FtechAction.downloadXML', {
-          prefix: prefijo,
-          number: consecutivo
-        }, ftechEnvironment);
-
-        if (soapRes.statusCode === 200) {
-          const raw = soapRes.raw || "";
-          const docB64Match = raw.match(/<documentBase64[^>]*>(.*?)<\/documentBase64>/i);
-          const docB64 = docB64Match ? docB64Match[1] : "";
-          if (docB64) {
-            let utf8Xml = "";
-            try {
-              const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-              let input = docB64.replace(/[^A-Za-z0-9\+\/\=]/g, "");
-              let i = 0;
-              while (i < input.length) {
-                let enc1 = chars.indexOf(input.charAt(i++));
-                let enc2 = chars.indexOf(input.charAt(i++));
-                let enc3 = chars.indexOf(input.charAt(i++));
-                let enc4 = chars.indexOf(input.charAt(i++));
-                let chr1 = (enc1 << 2) | (enc2 >> 4);
-                let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
-                let chr3 = ((enc3 & 3) << 6) | enc4;
-                utf8Xml += String.fromCharCode(chr1);
-                if (enc3 != 64) utf8Xml += String.fromCharCode(chr2);
-                if (enc4 != 64) utf8Xml += String.fromCharCode(chr3);
-              }
-              utf8Xml = decodeURIComponent(escape(utf8Xml));
-            } catch (_) {
-              utf8Xml = docB64;
-            }
-
-            return e.json(200, {
-              success: true,
-              isSigned: true,
-              xml: utf8Xml,
-              filename: filename
-            });
-          }
-        }
-      } catch (errSoap) {
-        console.error("[GRAVY HOOK] Error al descargar XML firmado de Facturatech:", errSoap);
-      }
-    }
-
-    const localXml = rec.getString("xml_generado") || "";
-    return e.json(200, {
-      success: true,
-      isSigned: false,
-      xml: localXml,
-      filename: filename
-    });
-
-  } catch (err) {
-    return e.json(500, { message: "Error al descargar XML: " + err.message });
-  }
-});
 
 routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
   try {

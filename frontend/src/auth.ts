@@ -7,34 +7,64 @@
 
 /* -- Permisos por rol --------------------------------------- */
 const PERMISSIONS = {
-  superadmin: { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  admin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  contador: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true,  canEditDocs: true  },
-  auxiliar: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
-  cajero:   { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
-  vendedor: { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
-  auditor:  { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true,  canApprove: false, canEditDocs: false },
-  viewer:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
-  propietario: { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
+  superadmin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
+  administrador: { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
+  admin:         { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
+  contador:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true,  canEditDocs: true  },
+  auxiliar:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
+  cajero:        { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
+  vendedor:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
+  auditor:       { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: true,  canExport: true,  canApprove: false, canEditDocs: false },
+  viewer:        { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
+  propietario:   { canWrite: false, canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
 };
 
 /* -- Licencias de módulos ----------------------------------- */
 // Set con los module_keys activos para esta instalación.
-// Se carga en showApp() consultando /api/gravy/my-licenses.
+// Se carga en showApp() consultando /api/gravy/my-licenses o desde la empresa activa en el HUB.
 let ENABLED_MODULES: Set<string> = new Set(['core']);
 
 async function loadLicenses(): Promise<void> {
   try {
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
-    const keys = activeCompany.modules || [];
-    ENABLED_MODULES = new Set(['core', 'spa', ...keys]);
+    let keys: string[] = activeCompany.modules || [];
+
+    // Consultar licencias locales del Tenant para sincronizar el estado real
+    try {
+      const res = await fetch(`${(window as any).PB_URL || window.location.origin}/api/gravy/my-licenses`, {
+        headers: pb?.authToken ? { 'Authorization': `Bearer ${pb.authToken}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.modules)) {
+          const localKeys = data.modules.map((m: any) => m.module_key);
+          if (localKeys.length > 0) {
+            keys = localKeys;
+          }
+        }
+      }
+    } catch (_) {}
+
+    ENABLED_MODULES = new Set(['core', ...keys]);
+    (window as any).ENABLED_MODULES = ENABLED_MODULES;
     if (localStorage.getItem('gravy_debug') === '1') {
       console.log('[GRAVY HUB] Módulos activos (sincronizados):', [...ENABLED_MODULES].join(', '));
     }
   } catch (err) {
     console.warn('[GRAVY HUB] Error al cargar licencias locales:', err);
-    ENABLED_MODULES = new Set(['core', 'spa']);
+    ENABLED_MODULES = new Set(['core']);
+    (window as any).ENABLED_MODULES = ENABLED_MODULES;
   }
+}
+
+function enableModule(moduleKey: string): void {
+  ENABLED_MODULES.add(moduleKey);
+  (window as any).ENABLED_MODULES = ENABLED_MODULES;
+}
+
+function disableModule(moduleKey: string): void {
+  ENABLED_MODULES.delete(moduleKey);
+  (window as any).ENABLED_MODULES = ENABLED_MODULES;
 }
 
 /** Verifica si un módulo está activo en la licencia actual */
@@ -48,44 +78,60 @@ function applyModuleVisibility(): void {
   const MODULE_OF_PAGE: Record<string, string> = {
     'consulta-tx':      'contabilidad',
     'nueva-tx':         'contabilidad',
-    'reportes':         'contabilidad',
     'cierre':           'contabilidad',
     'facturacion-dian': 'contabilidad',
     'documentos-electronicos': 'contabilidad',
     'doc-soporte':      'contabilidad',
     'exogena':          'contabilidad',
-    'utilidades':       'contabilidad',
     'ventas':           'comercial',
+    'pedidos':          'comercial',
     'compras':          'inventarios',
     'productos':        'inventarios',
     'inventario':       'inventarios',
+    'compra-sugerida':  'inventarios',
     'pos':              'comercial',
+    'comisiones':       'comercial',
     'spa':              'spa',
+    'spa-belleza':      'spa-belleza',
     'recaudos':         'tesoreria',
     'egresos':          'tesoreria',
     'cuentas-bancarias': 'tesoreria',
     'agenda-pagos':     'tesoreria',
     'conciliacion':     'conciliacion',
     'nomina':           'nomina',
-    'copro-facturacion': 'copropiedades',
-    'copro-cartera':     'copropiedades',
-    'copro-presupuesto': 'copropiedades',
-    'copro-unidades':    'copropiedades',
-    'copro-reservas':    'copropiedades',
-    'copro-pqrs':        'copropiedades',
-    'importaciones':     'logistica',
+    'nomina-empleados': 'nomina',
+    'nomina-contratos': 'nomina',
+    'nomina-periodos':  'nomina',
+    'nomina-novedades': 'nomina',
+    'nomina-distribucion-dotacion': 'nomina',
+    'nomina-liquidacion':'nomina',
+    'nomina-electronica-p':'nomina',
+    'copro-facturacion':'copropiedades',
+    'copro-cartera':    'copropiedades',
+    'copro-presupuesto':'copropiedades',
+    'copro-unidades':   'copropiedades',
+    'copro-reservas':   'copropiedades',
+    'copro-pqrs':       'copropiedades',
+    'importaciones':    'logistica',
     'reservas-logistica':'logistica',
-    'inmobiliarias':     'inmobiliarias',
-    'inmo-contratos':    'inmobiliarias',
+    'inmobiliarias':    'inmobiliarias',
+    'inmo-contratos':   'inmobiliarias',
     'inmo-liquidacion':  'inmobiliarias',
     'tienda-virtual':   'tienda-virtual',
-    'crm':               'crm',
-    'despachos':         'logistica',
-    'niif':              'niif',
+    'crm':              'crm',
+    'despachos':        'logistica',
+    'niif':             'niif',
+    'niif-diagnostico': 'niif',
+    'niif-politicas':   'niif',
+    'niif-mapeo':       'niif',
+    'niif-arrendamientos':'niif',
     'fixed-assets-catalogo': 'activos_fijos',
     'fixed-assets-categorias': 'activos_fijos',
     'fixed-assets-depreciacion': 'activos_fijos',
     'fixed-assets-inventario': 'activos_fijos',
+    'niif-impuesto':    'niif',
+    'niif-revelaciones':'niif',
+    'niif-estados':     'niif',
   };
 
   const isSidebarCollapsed = $('#sidebar')?.classList.contains('collapsed');
@@ -571,7 +617,8 @@ async function selectCompany(co: CompanyAccess) {
     pb.currentUser = dataSso.record;
     
     // Configurar el contexto local
-    ENABLED_MODULES = new Set(['core', ...co.modules]);
+    ENABLED_MODULES = new Set(['core', ...(co.modules || [])]);
+    (window as any).ENABLED_MODULES = ENABLED_MODULES;
     localStorage.setItem('gravy_active_company', JSON.stringify(co));
     
     // Registrar evento de LOGIN en la auditoría
@@ -983,6 +1030,9 @@ function startConnCheck() {
 (window as any)._connCheckInterval = _connCheckInterval;
 (window as any).ENABLED_MODULES = ENABLED_MODULES;
 (window as any).hasModule = hasModule;
+(window as any).loadLicenses = loadLicenses;
+(window as any).enableModule = enableModule;
+(window as any).disableModule = disableModule;
 (window as any).applyModuleVisibility = applyModuleVisibility;
 (window as any).HUB_URL = HUB_URL;
 (window as any).initGlobalBranchSelector = initGlobalBranchSelector;

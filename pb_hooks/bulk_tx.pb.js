@@ -305,6 +305,40 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
       }
     }
 
+    // Registrar auditoría server-side de la transacción creada
+    try {
+      const auditCol = $app.findCollectionByNameOrId("audit_log");
+      const userId = String(authRecord.id || "");
+      const username = String(
+        authRecord.getString?.("email") ||
+        authRecord.getString?.("username") ||
+        authRecord.getString?.("name") ||
+        userId || "system"
+      );
+      let remoteIp = "";
+      try {
+        remoteIp = (typeof e?.remoteIP === "function")
+          ? String(e.remoteIP() || "")
+          : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
+      } catch (_) {}
+
+      const auditPayload = {
+        username: username,
+        action: "CREATE",
+        entity: "transactions",
+        entity_id: createdTx.id,
+        event_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19),
+        details: `Transacción ${createdTx.number} creada (${createdTx.lines_count} líneas, fecha ${createdTx.date})`,
+        ip: remoteIp,
+      };
+      if (userId) auditPayload.user_id = userId;
+
+      const logRec = new Record(auditCol, auditPayload);
+      $app.save(logRec);
+    } catch (auditErr) {
+      console.log("[bulk-tx Audit] Aviso:", auditErr);
+    }
+
   } catch (txErr) {
     console.error("[GRAVY bulk-tx] Error creando transacción:", txErr.message);
 

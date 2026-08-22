@@ -374,11 +374,12 @@ async function _openMassProductsImportModal() {
       if (ext === 'csv') {
         rawRows = _massTxParseCsv(await file.text());
       } else if (ext === 'xlsx' || ext === 'xls') {
-        rawRows = _massTxParseExcel(await file.arrayBuffer());
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
       } else {
         return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
       }
-    } catch (err) {
+    } catch (err: any) {
       return showToast(`Error al leer el archivo: ${err.message}`, 'error');
     }
     if (!rawRows.length) return showToast('El archivo no contiene datos', 'warning');
@@ -2012,28 +2013,34 @@ function _massTxParseExcel(arrayBuffer: ArrayBuffer, requestedSheet: string | nu
   // Si no se solicita una hoja específica, elegir inteligentemente la mejor hoja
   let chosenSheet = requestedSheet;
   if (!chosenSheet || !wb.Sheets[chosenSheet]) {
-    // 1. Buscar hojas que no sean informativas y que tengan filas con 'cuenta' no vacía
-    for (const name of sheetNames) {
-      if (name.toLowerCase().includes('indicacion')) continue;
-      const testWs = wb.Sheets[name];
-      if (!testWs) continue;
-      const testRows: any[] = (window as any).XLSX.utils.sheet_to_json(testWs, { defval: '' });
-      if (testRows.length > 0) {
-        const hasValidAccounts = testRows.some(r => {
-          for (const [k, v] of Object.entries(r)) {
-            if (_massTxNormHeader(k) === 'cuenta' && String(v ?? '').trim() !== '') {
-              return true;
-            }
-          }
-          return false;
-        });
-        if (hasValidAccounts) {
+    // 1. Buscar hojas prioritarias con datos
+    const priorityKeywords = ['datos', 'terceros', 'productos', 'cuentas', 'unidades', 'movimientos', 'inventario', 'plantilla', 'hoja1', 'sheet1'];
+    for (const kw of priorityKeywords) {
+      const match = sheetNames.find(n => n.toLowerCase().includes(kw) && !n.toLowerCase().includes('indicacion') && !n.toLowerCase().includes('instruccion'));
+      if (match && wb.Sheets[match]) {
+        const testRows: any[] = (window as any).XLSX.utils.sheet_to_json(wb.Sheets[match], { defval: '' });
+        if (testRows.length > 0) {
+          chosenSheet = match;
+          break;
+        }
+      }
+    }
+
+    // 2. Si no se encontró por palabra clave, buscar la primera hoja con filas que no sea informativa
+    if (!chosenSheet) {
+      for (const name of sheetNames) {
+        if (name.toLowerCase().includes('indicacion') || name.toLowerCase().includes('instruccion') || name.toLowerCase().includes('guia')) continue;
+        const testWs = wb.Sheets[name];
+        if (!testWs) continue;
+        const testRows: any[] = (window as any).XLSX.utils.sheet_to_json(testWs, { defval: '' });
+        if (testRows.length > 0) {
           chosenSheet = name;
           break;
         }
       }
     }
-    // 2. Si ninguna tiene 'cuenta' llena, tomar la primera que no sea 'indicaciones'
+
+    // 3. Fallback: primera hoja disponible
     if (!chosenSheet) {
       chosenSheet = sheetNames.find(n => !n.toLowerCase().includes('indicacion')) || sheetNames[0] || '';
     }
@@ -2043,8 +2050,6 @@ function _massTxParseExcel(arrayBuffer: ArrayBuffer, requestedSheet: string | nu
   const rows = ws ? (window as any).XLSX.utils.sheet_to_json(ws, { defval: '' }) : [];
 
   // Convierte un valor de celda a string legible.
-  // Las fechas (objetos Date) se formatean como YYYY-MM-DD para ser compatibles
-  // con el validador de fecha de _massTxBuildDraft.
   const cellToStr = (v) => {
     if (v instanceof Date) {
       if (isNaN(v.getTime())) return '';
@@ -2643,53 +2648,60 @@ function _downloadMassTpTemplate() {
     'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor',
     'address', 'country', 'dept_code', 'city_code', 'tax_regime',
     'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu',
-    'gc', 'gcm', 'ar', 'ei', 'rf', 'prf',
+    'gc', 'ar', 'ei', 'rf', 'prf',
     'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name',
     'bank_account', 'notes'
   ];
 
   const rows = [
     {
-      doc_type: 'NIT', doc_number: '900123456', person_type: 'JURIDICA', type: 'CLIENTE',
+      doc_type: '31', doc_number: '900123456', person_type: 'JURIDICA', type: 'CLIENTE',
       razon_social: 'CERAMICAS CONSTRUHOGAR SAS', nombres: '', apellidos: '',
       commercial_name: 'CONSTRUHOGAR', email: 'construhogar@correo.com', email2: 'facturas@construhogar.com',
       phone: '6076330000', phone2: '3001234567', contact_name: 'CARLOS ORTIZ', contact_phone: '3001234567',
       advisor: 'JULIAN PEREZ', address: 'CR 8 73-25', country: 'CO', dept_code: '68',
-      city_code: '68001', tax_regime: 'RESP_IVA', credit_limit: 5000000, max_invoices: 3,
-      payment_days: 30, active: 'Si', ciiu: '4752', gc: 'No', gcm: 'No', ar: 'No',
+      city_code: '68001', tax_regime: 'COMUN', credit_limit: 5000000, max_invoices: 3,
+      payment_days: 30, active: 'Si', ciiu: '4752', gc: 'No', ar: 'No',
       ei: 'No', rf: 'NO', prf: 0, pi: 0, piv: 0, responsabilidades: '05;13;15;48;52',
       is_retention_agent: 'Si', bank_name: 'BANCO BOGOTA', bank_account: '123456789', notes: 'Cliente corporativo'
     },
     {
-      doc_type: 'CC', doc_number: '1234567890', person_type: 'NATURAL', type: 'PROVEEDOR',
+      doc_type: '13', doc_number: '1234567890', person_type: 'NATURAL', type: 'PROVEEDOR',
       razon_social: '', nombres: 'JUAN CARLOS', apellidos: 'PEREZ GOMEZ',
       commercial_name: '', email: 'juan.perez@correo.com', email2: '',
       phone: '3109876543', phone2: '', contact_name: '', contact_phone: '',
       advisor: '', address: 'CL 45 12-30', country: 'CO', dept_code: '05',
       city_code: '05001', tax_regime: 'NO_RESP', credit_limit: 0, max_invoices: 1,
-      payment_days: 0, active: 'Si', ciiu: '4711', gc: 'No', gcm: 'No', ar: 'No',
+      payment_days: 0, active: 'Si', ciiu: '4711', gc: 'No', ar: 'No',
       ei: 'No', rf: 'NO', prf: 0, pi: 0, piv: 0, responsabilidades: '49',
       is_retention_agent: 'No', bank_name: '', bank_account: '', notes: 'Proveedor insumos locales'
     }
   ];
 
   const indications: Array<[string, string, string, string, string]> = [
-    ['doc_type', 'SÍ', 'Código Tipo Doc', 'Tipo de documento fiscal de identificación (DIAN). Valores permitidos:\n- 31: NIT (Número de Identificación Tributaria)\n- 13: Cédula de ciudadanía\n- 22: Cédula de extranjería\n- 12: Tarjeta de identidad\n- 11: Registro civil\n- 21: Tarjeta de extranjería\n- 41: Pasaporte\n- 42: Documento de identificación extranjero\n- 47: PEP (Permiso Especial de Permanencia)\n- 48: PPT (Permiso Protección Temporal)\n- 50: NIT de otro país\n- 91: NUIP', '31'],
-    ['doc_number', 'SÍ', 'Texto / Numérico', 'Número de identificación sin puntos, espacios, guiones ni dígito de verificación. El sistema calcula automáticamente el DV para los NITs.', '900123456'],
+    ['doc_type', 'SÍ', 'Código Tipo Doc DIAN o Sigla', 'Tipo de documento fiscal de identificación. Se admiten códigos DIAN o siglas:\n- 31 o NIT: NIT\n- 13 o CC: Cédula de ciudadanía\n- 22 o CE: Cédula de extranjería\n- 12 o TI: Tarjeta de identidad\n- 11 o RC: Registro civil\n- 21 o TE: Tarjeta de extranjería\n- 41 o PAS: Pasaporte\n- 42 o DIE: Documento extranjero\n- 47 o PEP: Permiso Especial de Permanencia\n- 48 o PPT: Permiso Protección Temporal\n- 50 o EXT: NIT otro país\n- 91 o NUIP: NUIP', '31'],
+    ['doc_number', 'SÍ', 'Texto / Numérico', 'Número de identificación sin puntos, espacios, guiones ni dígito de verificación. El sistema calcula automáticamente el DV.', '900123456'],
     ['person_type', 'SÍ', 'Texto (NATURAL / JURIDICA)', 'Tipo de persona legal ante la DIAN. Valores permitidos: NATURAL o JURIDICA.', 'JURIDICA'],
     ['type', 'SÍ', 'Texto (Rol)', 'Rol funcional principal del tercero. Valores permitidos: CLIENTE, PROVEEDOR, EMPLEADO, PROPIETARIO, OTRO.', 'CLIENTE'],
     ['razon_social', 'SÍ (si JURIDICA)', 'Texto Libre', 'Razón social completa para personas jurídicas (empresa/organización).', 'CERAMICAS CONSTRUHOGAR SAS'],
     ['nombres', 'SÍ (si NATURAL)', 'Texto Libre', 'Nombres de la persona natural.', 'JUAN CARLOS'],
     ['apellidos', 'SÍ (si NATURAL)', 'Texto Libre', 'Apellidos de la persona natural.', 'PEREZ GOMEZ'],
-    ['tax_regime', 'NO', 'Código Régimen', 'Condición tributaria / Régimen del IVA DIAN. Valores permitidos:\n- RESP_IVA: Responsable de IVA (Régimen Común)\n- NO_RESP: No Responsable de IVA (Simplificado)\n- SIMPLE: Régimen Simple de Tributación (RST)\n- GRAN_CONTR: Gran Contribuyente', 'RESP_IVA'],
-    ['responsabilidades', 'NO', 'Códigos separados por ; o ,', 'Códigos de responsabilidades fiscales DIAN asignadas en el RUT. Códigos habituales:\n05: Renta Ordinario | 07: Retefuente Renta | 09: ReteIVA | 13: Gran Contribuyente | 14: Informante Exógena | 15: Autorretenedor | 23: Agente Retención IVA | 47: Régimen Simple (RST) | 48: Responsable de IVA | 49: No Responsable de IVA | 52: Facturador Electrónico', '05;13;15;48;52'],
-    ['dept_code', 'NO', 'Código DANE Dpto (2 dígitos)', 'Código DANE del Departamento colombiano. Ejemplos:\n11: Bogotá D.C. | 05: Antioquia | 08: Atlántico | 13: Bolívar | 15: Boyacá | 17: Caldas | 25: Cundinamarca | 54: Norte de Santander | 66: Risaralda | 68: Santander | 73: Tolima | 76: Valle del Cauca', '68'],
-    ['city_code', 'NO', 'Código DANE Municipio (5 dígitos)', 'Código DANE del Municipio colombiano. Ejemplos:\n11001: Bogotá D.C. | 05001: Medellín | 08001: Barranquilla | 13001: Cartagena | 15001: Tunja | 17001: Manizales | 25175: Chía | 54001: Cúcuta | 66001: Pereira | 68001: Bucaramanga | 73001: Ibagué | 76001: Cali', '68001'],
-    ['email', 'NO', 'Correo Electrónico', 'Correo electrónico principal para envío de facturas electrónicas y notificaciones.', 'contacto@empresa.com'],
-    ['ciiu', 'NO', 'Código Numérico (4 dígitos)', 'Código de actividad económica principal CIIU v4 A.C. según RUT.', '4752'],
-    ['credit_limit', 'NO', 'Número Positivo', 'Límite de crédito comercial autorizado en pesos COP.', '5000000'],
-    ['payment_days', 'NO', 'Número de Días', 'Días de plazo por defecto para condiciones de pago.', '30'],
-    ['active', 'NO', 'Texto (Si / No)', 'Estado del tercero. Valores: Si o No (Si omitido, asume Si).', 'Si']
+    ['commercial_name', 'NO', 'Texto Libre', 'Nombre o marca comercial conocida.', 'CONSTRUHOGAR'],
+    ['tax_regime', 'NO', 'Código Régimen', 'Condición tributaria / Régimen del IVA DIAN. Valores permitidos:\n- COMUN (o RESP_IVA): Responsable de IVA\n- NO_RESP: No Responsable de IVA\n- SIMPLIFICADO (o SIMPLE): Régimen Simple\n- GRAN_CONTR: Gran Contribuyente', 'COMUN'],
+    ['responsabilidades', 'NO', 'Códigos separados por ; o ,', 'Códigos de responsabilidades fiscales DIAN del RUT:\n05: Renta Ordinario | 07: Retefuente | 09: ReteIVA | 13: Gran Contribuyente | 14: Informante Exógena | 15: Autorretenedor | 23: Agente Retención IVA | 47: Régimen Simple | 48: Responsable IVA | 49: No Responsable IVA | 52: Facturador Electrónico', '05;13;15;48;52'],
+    ['dept_code', 'NO', 'Código DANE Dpto (2 dígitos)', 'Código DANE del Departamento colombiano (Ej: 11 Bogotá, 05 Antioquia, 68 Santander, 76 Valle).', '68'],
+    ['city_code', 'NO', 'Código DANE Municipio (5 dígitos)', 'Código DANE del Municipio colombiano (Ej: 11001 Bogotá, 05001 Medellín, 68001 Bucaramanga).', '68001'],
+    ['advisor', 'NO', 'Nombre o Doc del Asesor', 'Asesor comercial asignado (empleado). Puede ser el nombre completo o número de documento del empleado.', 'JULIAN PEREZ'],
+    ['email', 'NO', 'Correo Electrónico', 'Correo electrónico principal para facturación electrónica y notificaciones.', 'contacto@empresa.com'],
+    ['email2', 'NO', 'Correo Electrónico 2', 'Correo alternativo o secundario.', 'facturas@empresa.com'],
+    ['phone', 'NO', 'Teléfono / Celular', 'Teléfono principal de contacto.', '6076330000'],
+    ['phone2', 'NO', 'Teléfono 2', 'Teléfono o celular secundario.', '3001234567'],
+    ['address', 'NO', 'Dirección', 'Dirección física del domicilio fiscal.', 'CR 8 73-25'],
+    ['ciiu', 'NO', 'Código Numérico (4 dígitos)', 'Código de actividad económica principal CIIU según RUT.', '4752'],
+    ['credit_limit', 'NO', 'Número Positivo', 'Cupo límite de crédito comercial en pesos COP.', '5000000'],
+    ['payment_days', 'NO', 'Número de Días', 'Plazo de crédito comercial en días por defecto.', '30'],
+    ['max_invoices', 'NO', 'Número Entero', 'Número máximo de facturas abiertas en mora/crédito permitidas.', '3'],
+    ['active', 'NO', 'Texto (Si / No)', 'Estado del tercero: Si o No (por defecto Si).', 'Si']
   ];
 
   _generateTemplateXlsx({
@@ -2710,7 +2722,7 @@ async function _openMassTpImportModal() {
     <div class="mb-2">
       <p class="text-sm mb-3" style="color:#374151">
         Carga un archivo <strong>CSV</strong> o <strong>Excel (.xlsx/.xls)</strong> con los terceros a registrar.
-        Si el documento ya existe, el tercero será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
+        Si el documento ya existe, el tercero será <strong>actualizado</strong>; si no existe, será <strong>creado con su Sede Principal</strong>.
       </p>
       <div class="rounded-xl p-3 mb-3" style="background:#EFF6FF;border:1px solid #BFDBFE;max-height:220px;overflow-y:auto">
         <p class="text-xs font-semibold mb-1" style="color:#1D4ED8;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
@@ -2719,10 +2731,10 @@ async function _openMassTpImportModal() {
         </div>
         <p class="text-xs font-semibold mb-1" style="color:#4B5563;text-transform:uppercase;letter-spacing:.05em">Columnas opcionales</p>
         <div class="flex flex-wrap gap-1.5 mb-2">
-          ${['razon_social', 'nombres', 'apellidos', 'commercial_name', 'email', 'email2', 'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor', 'address', 'country', 'dept_code', 'city_code', 'tax_regime', 'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu', 'gc', 'gcm', 'ar', 'ei', 'rf', 'prf', 'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name', 'bank_account', 'notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
+          ${['razon_social', 'nombres', 'apellidos', 'commercial_name', 'email', 'email2', 'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor', 'address', 'country', 'dept_code', 'city_code', 'tax_regime', 'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu', 'gc', 'ar', 'ei', 'rf', 'prf', 'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name', 'bank_account', 'notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
         </div>
         <p class="text-xs" style="color:#1E40AF">
-          <strong>doc_type</strong>: Códigos DIAN (31=NIT, 13=CC, 22=CE, 12=TI, 11=RC, 21=TE, 41=Pasaporte, 42=Doc Ext, 47=PEP, 48=PPT, 50=NIT otro país, 91=NUIP).&nbsp;
+          <strong>doc_type</strong>: Códigos DIAN (31=NIT, 13=CC, 22=CE, 12=TI, 11=RC, 21=TE, 41=Pasaporte, 42=Doc Ext, 47=PEP, 48=PPT, 50=NIT otro país, 91=NUIP) o siglas (NIT, CC, CE, TI, PEP, PPT).<br>
           <strong>person_type</strong>: NATURAL, JURIDICA.&nbsp;
           <strong>type</strong>: CLIENTE, PROVEEDOR, EMPLEADO, PROPIETARIO, OTRO.&nbsp;
           <strong>tax_regime</strong>: COMUN, SIMPLIFICADO, NO_RESP, GRAN_CONTR.
@@ -2751,7 +2763,7 @@ async function _openMassTpImportModal() {
         <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
           <table class="data-table text-xs" id="mass-tp-preview-table">
             <thead><tr>
-              <th>#</th><th>Doc</th><th>Nombre / Razón Social</th><th>Tipo Persona</th><th>Rol</th><th>Email</th><th>Estado</th><th>Detalle</th>
+              <th>#</th><th>Doc</th><th>DV</th><th>Nombre / Razón Social</th><th>Tipo Persona</th><th>Rol</th><th>Email</th><th>Estado</th><th>Detalle</th>
             </tr></thead>
             <tbody id="mass-tp-preview-body"></tbody>
           </table>
@@ -2817,11 +2829,12 @@ async function _openMassTpImportModal() {
       if (ext === 'csv') {
         rawRows = _massTxParseCsv(await file.text());
       } else if (ext === 'xlsx' || ext === 'xls') {
-        rawRows = _massTxParseExcel(await file.arrayBuffer());
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
       } else {
         return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
       }
-    } catch (err) {
+    } catch (err: any) {
       return showToast(`Error al leer el archivo: ${err.message}`, 'error');
     }
     if (!rawRows.length) return showToast('El archivo no contiene datos', 'warning');
@@ -2832,7 +2845,10 @@ async function _openMassTpImportModal() {
 
 /* Normaliza una fila a un draft de tercero { ok, payload, error, rowNo } */
 function _massTpBuildDraft(rawRows) {
-  const VALID_DOC_TYPES = new Set(['11', '12', '13', '21', '22', '31', '41', '42', '47', '48', '50', '91', 'NIT', 'NITPE', 'CC', 'CE', 'TI', 'PAS', 'RC']);
+  const VALID_DOC_TYPES = new Set([
+    '11', '12', '13', '21', '22', '31', '41', '42', '47', '48', '50', '91',
+    'NIT', 'NITPE', 'CC', 'CE', 'TI', 'PAS', 'RC', 'PEP', 'PPT', 'DIE', 'TE', 'NUIP', 'EXT', 'NIT EXT'
+  ]);
   const VALID_PERSON_TYPES = new Set(['NATURAL', 'JURIDICA']);
   const VALID_TP_TYPES = new Set(['CLIENTE', 'PROVEEDOR', 'EMPLEADO', 'PROPIETARIO', 'OTRO']);
 
@@ -2851,7 +2867,11 @@ function _massTpBuildDraft(rawRows) {
       return !/^(no|0|false|inactivo|inactiva)$/i.test(val);
     };
 
-    let docType = get('doc_type', 'tipo_doc', 'tipo_documento').toUpperCase();
+    // Sanitizador de texto
+    const _snz = (v: string) => v.replace(/^[/\s]+|[/\s]+$/g, '').trim();
+
+    let docTypeRaw = get('doc_type', 'tipo_doc', 'tipo_documento').toUpperCase();
+    let docType = docTypeRaw;
     if ((window as any).normalizeDocType) {
       docType = (window as any).normalizeDocType(docType);
     }
@@ -2861,46 +2881,68 @@ function _massTpBuildDraft(rawRows) {
     if (tpType === 'ACREEDOR' || tpType === 'TRANSPORTISTA') tpType = 'PROVEEDOR';
     if (tpType === 'VENDEDOR') tpType = 'EMPLEADO';
 
-    // Nombre
-    const bizName = get('razon_social', 'business_name', 'razon').toUpperCase();
-    const firstName = get('nombres', 'first_name', 'nombre').toUpperCase();
-    const lastName = get('apellidos', 'last_name', 'apellido').toUpperCase();
+    // Nombre y Apellidos
+    let bizName = _snz(get('razon_social', 'business_name', 'razon').toUpperCase());
+    let firstName = _snz(get('nombres', 'first_name', 'nombre').toUpperCase());
+    let lastName = _snz(get('apellidos', 'last_name', 'apellido').toUpperCase());
+    let comName = _snz(get('commercial_name', 'nombre_comercial', 'marca').toUpperCase());
     const isNatural = personType === 'NATURAL';
+
+    // Si es persona natural y solo vino el nombre completo en un solo campo
+    if (isNatural && (!firstName || !lastName)) {
+      const fullFallback = comName || bizName;
+      if (fullFallback) {
+        const parts = fullFallback.split(/\s+/).filter(Boolean);
+        if (!firstName && parts.length > 1) {
+          const mid = Math.ceil(parts.length / 2);
+          firstName = parts.slice(0, mid).join(' ');
+          if (!lastName) lastName = parts.slice(mid).join(' ');
+        } else if (!firstName) {
+          firstName = fullFallback;
+        }
+      }
+    }
+
     const name = isNatural
       ? [firstName, lastName].filter(Boolean).join(' ')
-      : bizName;
+      : (bizName || comName);
 
-    // Opcionales
-    const comName = get('commercial_name', 'nombre_comercial', 'marca').toUpperCase();
-    const email = get('email', 'correo');
-    const email2 = get('email2', 'correo2');
-    const phone = get('phone', 'telefono', 'tel');
-    const phone2 = get('phone2', 'telefono2', 'celular2');
-    const contactName = get('contact_name', 'contacto', 'nombre_contacto');
-    const contactPhone = get('contact_phone', 'telefono_contacto', 'tel_contacto');
-    const advisorRaw = get('advisor', 'asesor', 'vendedor');
-    const address = get('address', 'direccion').toUpperCase();
-    const deptCode = get('dept_code', 'cod_dept', 'departamento_cod');
-    const cityCode = get('city_code', 'cod_mun', 'municipio_cod', 'ciudad_cod');
-    const country = get('country', 'pais') || (deptCode ? 'CO' : '');
+    // Opcionales de Contacto
+    const email = get('email', 'correo').trim();
+    const email2 = get('email2', 'correo2').trim();
+    const phone = get('phone', 'telefono', 'tel').trim();
+    const phone2 = get('phone2', 'telefono2', 'celular2').trim();
+    const contactName = get('contact_name', 'contacto', 'nombre_contacto').trim();
+    const contactPhone = get('contact_phone', 'telefono_contacto', 'tel_contacto').trim();
+    const advisorRaw = get('advisor', 'asesor', 'vendedor').trim();
+    const address = get('address', 'direccion').toUpperCase().trim();
+
+    // DANE Geografía con padding de ceros a la izquierda (evita pérdida de '05' -> '5' en Excel)
+    let rawDeptCode = get('dept_code', 'cod_dept', 'departamento_cod').replace(/[^0-9]/g, '');
+    let rawCityCode = get('city_code', 'cod_mun', 'municipio_cod', 'ciudad_cod').replace(/[^0-9]/g, '');
+    const deptCode = rawDeptCode ? rawDeptCode.padStart(2, '0') : '';
+    const cityCode = rawCityCode ? rawCityCode.padStart(5, '0') : '';
+    const country = get('country', 'pais').toUpperCase() || (deptCode ? 'CO' : 'CO');
+
+    // Régimen Tributario
     const taxRegimeRaw = get('tax_regime', 'regimen', 'tax').toUpperCase();
     let taxRegime = '';
-    if (taxRegimeRaw === 'RESP_IVA' || taxRegimeRaw === 'COMUN' || taxRegimeRaw === 'RESPONSABLE' || taxRegimeRaw === 'RESPONSABLE_IVA') {
+    if (taxRegimeRaw === 'RESP_IVA' || taxRegimeRaw === 'COMUN' || taxRegimeRaw === 'RESPONSABLE' || taxRegimeRaw === 'RESPONSABLE_IVA' || taxRegimeRaw === '48' || taxRegimeRaw === 'O-48') {
       taxRegime = 'COMUN';
-    } else if (taxRegimeRaw === 'SIMPLE' || taxRegimeRaw === 'SIMPLIFICADO' || taxRegimeRaw === 'REGIMEN_SIMPLE') {
+    } else if (taxRegimeRaw === 'SIMPLE' || taxRegimeRaw === 'SIMPLIFICADO' || taxRegimeRaw === 'REGIMEN_SIMPLE' || taxRegimeRaw === '47' || taxRegimeRaw === 'O-47') {
       taxRegime = 'SIMPLIFICADO';
-    } else if (taxRegimeRaw === 'NO_RESP' || taxRegimeRaw === 'NO_RESPONSABLE' || taxRegimeRaw === 'NO_RESPONSABLE_IVA') {
+    } else if (taxRegimeRaw === 'NO_RESP' || taxRegimeRaw === 'NO_RESPONSABLE' || taxRegimeRaw === 'NO_RESPONSABLE_IVA' || taxRegimeRaw === 'R-99-PN' || taxRegimeRaw === '49' || taxRegimeRaw === '53') {
       taxRegime = 'NO_RESP';
-    } else if (taxRegimeRaw === 'GRAN_CONTR' || taxRegimeRaw === 'GRAN_CONTRIBUYENTE') {
+    } else if (taxRegimeRaw === 'GRAN_CONTR' || taxRegimeRaw === 'GRAN_CONTRIBUYENTE' || taxRegimeRaw === '13' || taxRegimeRaw === 'O-13') {
       taxRegime = 'GRAN_CONTR';
     }
+
     const creditLimit = parseFloat(get('credit_limit', 'cupo_credito', 'cupo').replace(/[^0-9.]/g, '')) || 0;
     const maxInvoices = parseInt(get('max_invoices', 'max_facturas', 'facturas_maximas'), 10) || 1;
     const payDays = parseInt(get('payment_days', 'plazo_dias', 'plazo'), 10) || 0;
     const active = parseBool(get('active', 'activo', 'estado'), true);
-    const ciiu = get('ciiu', 'actividad_economica', 'actividad');
+    const ciiu = get('ciiu', 'actividad_economica', 'actividad').trim();
     const gc = parseBool(get('gc', 'gran_contribuyente'), false);
-    const gcm = parseBool(get('gcm', 'gran_contribuyente_municipal', 'gc_muni'), false);
     const ar = parseBool(get('ar', 'autorretenedor'), false);
     const ei = parseBool(get('ei', 'exento_iva', 'exento'), false);
     const rf = get('rf', 'agente_retencion', 'retencion').toUpperCase() || 'NO';
@@ -2910,9 +2952,9 @@ function _massTpBuildDraft(rawRows) {
     const respStr = get('responsabilidades', 'resp', 'responsabilidades_fiscales');
     const resp = respStr ? respStr.split(/[;,]/).map(x => x.trim().toUpperCase()).filter(Boolean) : [];
     const isRetentionAgent = parseBool(get('is_retention_agent', 'agente_retencion_fuente'), false);
-    const bankName = get('bank_name', 'banco');
-    const bankAccount = get('bank_account', 'cuenta_bancaria', 'cuenta');
-    const notes = get('notes', 'notas', 'observaciones');
+    const bankName = get('bank_name', 'banco').trim();
+    const bankAccount = get('bank_account', 'cuenta_bancaria', 'cuenta').trim();
+    const notes = get('notes', 'notas', 'observaciones').trim();
 
     // Sincronizar gc y tax_regime con responsabilidades
     const isGc = resp.includes('13') || resp.includes('O-13') || gc;
@@ -2927,20 +2969,19 @@ function _massTpBuildDraft(rawRows) {
       } else if (resp.includes('49') || resp.includes('53')) {
         finalTaxRegime = 'NO_RESP';
       }
-    } else {
-      // Por defecto, si es jurídica asumimos responsable (COMUN)
-      if (!finalTaxRegime) {
-        finalTaxRegime = personType === 'JURIDICA' ? 'COMUN' : 'NO_RESP';
-      }
+    }
+    if (!finalTaxRegime) {
+      finalTaxRegime = personType === 'JURIDICA' ? 'COMUN' : 'NO_RESP';
     }
 
-    // Dígito de verificación
-    const dv = docType === 'NIT' ? calcDV(docNumber) : '';
+    // Cálculo automático del Dígito de Verificación (DV) para NITs
+    const isNitDoc = ['31', '50', 'NIT', 'NITPE', 'EXT', 'NIT EXT'].includes(docType) || ['31', '50', 'NIT', 'NITPE', 'EXT', 'NIT EXT'].includes(docTypeRaw);
+    const dv = (isNitDoc && docNumber && typeof calcDV === 'function') ? calcDV(docNumber) : '';
 
     // Validaciones
-    if (!docType) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_type` };
-    if (!VALID_DOC_TYPES.has(docType))
-      return { ok: false, rowNo, error: `Fila ${rowNo}: doc_type inválido (${docType})` };
+    if (!docTypeRaw) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_type` };
+    if (!VALID_DOC_TYPES.has(docTypeRaw) && !VALID_DOC_TYPES.has(docType))
+      return { ok: false, rowNo, error: `Fila ${rowNo}: doc_type inválido (${docTypeRaw})` };
     if (!docNumber) return { ok: false, rowNo, error: `Fila ${rowNo}: falta doc_number` };
     if (!VALID_PERSON_TYPES.has(personType))
       return { ok: false, rowNo, error: `Fila ${rowNo}: person_type inválido (${personType})` };
@@ -2948,29 +2989,30 @@ function _massTpBuildDraft(rawRows) {
       return { ok: false, rowNo, error: `Fila ${rowNo}: type inválido (${tpType})` };
     if (isNatural && !firstName && !lastName)
       return { ok: false, rowNo, error: `Fila ${rowNo}: persona natural requiere nombres o apellidos` };
-    if (!isNatural && !bizName)
+    if (!isNatural && !bizName && !comName)
       return { ok: false, rowNo, error: `Fila ${rowNo}: persona jurídica requiere razon_social` };
     if (!name)
-      return { ok: false, rowNo, error: `Fila ${rowNo}: no se pudo determinar el nombre` };
+      return { ok: false, rowNo, error: `Fila ${rowNo}: no se pudo determinar el nombre o razón social` };
 
-    // Validar dept_code si se suministra (solo para Colombia)
+    // Validar dept_code y city_code si se suministran
     let dept = '';
     let city = '';
     if (deptCode) {
-      const deptRec = (typeof GEO_DEPTS !== 'undefined' ? GEO_DEPTS : []).find(d => d.code === deptCode);
+      const depts = (window as any).GEO_DEPTS || (typeof GEO_DEPTS !== 'undefined' ? GEO_DEPTS : []);
+      const deptRec = depts.find((d: any) => d.code === deptCode || d.name === deptCode);
       if (!deptRec)
-        return { ok: false, rowNo, error: `Fila ${rowNo}: dept_code "${deptCode}" no encontrado` };
+        return { ok: false, rowNo, error: `Fila ${rowNo}: dept_code "${deptCode}" no encontrado en catálogo DANE` };
       dept = deptRec.name;
       if (cityCode) {
         const munis = typeof geoMunisByDept === 'function' ? geoMunisByDept(deptCode) : [];
-        const muni = munis.find(m => m.code === cityCode);
+        const muni = munis.find((m: any) => m.code === cityCode || m.name === cityCode);
         if (!muni)
-          return { ok: false, rowNo, error: `Fila ${rowNo}: city_code "${cityCode}" no encontrado en dept ${deptCode}` };
+          return { ok: false, rowNo, error: `Fila ${rowNo}: city_code "${cityCode}" no encontrado en depto ${deptCode} (${dept})` };
         city = muni.name;
       }
     }
 
-    const payload = {
+    const payload: any = {
       doc_type: docType,
       doc_number: docNumber,
       dv,
@@ -2987,7 +3029,8 @@ function _massTpBuildDraft(rawRows) {
       phone2,
       contact_name: contactName,
       contact_phone: contactPhone,
-      advisor: advisorRaw, // resolved dynamically in loop
+      advisor: advisorRaw, // resuelto a ID dinámicamente en _executeMassTpImport
+      advisor_name: '',
       address,
       country,
       department: dept,
@@ -3001,7 +3044,6 @@ function _massTpBuildDraft(rawRows) {
       active,
       ciiu,
       gc: isGc,
-      gcm,
       ar,
       ei,
       rf,
@@ -3020,6 +3062,7 @@ function _massTpBuildDraft(rawRows) {
       rowNo,
       docNumber,
       docType,
+      dv,
       name,
       personType,
       tpType,
@@ -3042,9 +3085,11 @@ function _massTpRenderPreview(rows) {
 
   tbody.innerHTML = rows.map(r => {
     if (r.ok) {
+      const abbr = (typeof docTypeAbbr === 'function' ? docTypeAbbr(r.docType) : r.docType) || r.docType;
       return `<tr>
         <td>${r.rowNo}</td>
-        <td><span class="font-semibold" style="color:#1D4ED8">${esc(r.docType)} ${esc(r.docNumber)}</span></td>
+        <td><span class="font-semibold" style="color:#1D4ED8">${esc(abbr)} ${esc(r.docNumber)}</span></td>
+        <td><span class="font-mono text-xs font-bold" style="color:#D97706">${esc(r.dv ? '-' + r.dv : '—')}</span></td>
         <td>${esc(r.name)}</td>
         <td>${esc(r.personType)}</td>
         <td>${esc(r.tpType)}</td>
@@ -3055,7 +3100,7 @@ function _massTpRenderPreview(rows) {
     }
     return `<tr style="background:#FFF7F7">
       <td>${r.rowNo}</td>
-      <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error || 'Error')}</td>
+      <td colspan="7" class="text-xs" style="color:#EF4444">${esc(r.error || 'Error')}</td>
       <td><span class="badge badge-red">Error</span></td>
     </tr>`;
   }).join('');
@@ -3086,21 +3131,29 @@ async function _executeMassTpImport(rows) {
   progressWrap?.classList.remove('hidden');
 
   // Cargar terceros existentes para decidir create vs update y resolver advisor
-  let existingByDoc = new Map();
-  let employeesByName = new Map();
-  let employeesByDoc = new Map();
+  const existingByDoc = new Map<string, any>();
+  const existingByDocNumberOnly = new Map<string, any>();
+  const employeesByName = new Map<string, any>();
+  const employeesByDoc = new Map<string, any>();
+
   try {
     const all = await pb.listAll('third_parties', {});
-    all.forEach(t => {
+    all.forEach((t: any) => {
       const docClean = String(t.doc_number || '').replace(/[^0-9a-zA-Z]/g, '');
-      const key = `${t.doc_type}|${docClean}`;
-      existingByDoc.set(key, t.id);
+      const normType = (window as any).normalizeDocType ? (window as any).normalizeDocType(t.doc_type) : t.doc_type;
+      if (docClean) {
+        existingByDoc.set(`${normType}|${docClean}`, t);
+        existingByDoc.set(`${t.doc_type}|${docClean}`, t);
+        existingByDocNumberOnly.set(docClean, t);
+      }
       if (t.type === 'EMPLEADO') {
-        employeesByName.set(String(t.name || '').trim().toUpperCase(), t.id);
-        if (docClean) employeesByDoc.set(docClean, t.id);
+        const empLabel = `${t.doc_number ? t.doc_number + ' - ' : ''}${t.name || ''}`.trim();
+        const empObj = { id: t.id, name: t.name, doc_number: t.doc_number, label: empLabel };
+        if (t.name) employeesByName.set(String(t.name).trim().toUpperCase(), empObj);
+        if (docClean) employeesByDoc.set(docClean, empObj);
       }
     });
-  } catch (err) {
+  } catch (err: any) {
     showToast(`Error al cargar terceros existentes: ${err.message}`, 'error');
     _massTpImportInProgress = false;
     if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga'; }
@@ -3113,30 +3166,83 @@ async function _executeMassTpImport(rows) {
   try {
     for (let i = 0; i < valids.length; i++) {
       const draft = valids[i];
-      const pct = (i / valids.length) * 100;
+      const pct = Math.round(((i + 1) / valids.length) * 100);
       if (progressBar) progressBar.style.width = `${pct}%`;
       if (progressText) progressText.textContent = `Procesando ${i + 1} de ${valids.length}: ${draft.name}`;
 
-      // Resolve advisor relation dynamically if name or doc number provided
+      // Resolución de Asesor Comercial
       if (draft.payload.advisor) {
         const advStr = String(draft.payload.advisor).trim().toUpperCase();
         const advDoc = advStr.replace(/[^0-9a-zA-Z]/g, '');
-        const resolvedId = employeesByDoc.get(advDoc) || employeesByName.get(advStr) || draft.payload.advisor;
-        draft.payload.advisor = /^[a-z0-9]{15}$/.test(resolvedId) ? resolvedId : '';
+        const matchedEmp = employeesByDoc.get(advDoc) || employeesByName.get(advStr);
+        if (matchedEmp) {
+          draft.payload.advisor = matchedEmp.id;
+          draft.payload.advisor_name = matchedEmp.label;
+        } else if (/^[a-zA-Z0-9]{15}$/.test(draft.payload.advisor)) {
+          draft.payload.advisor = draft.payload.advisor;
+          draft.payload.advisor_name = draft.payload.advisor_name || '';
+        } else {
+          draft.payload.advisor_name = draft.payload.advisor;
+          draft.payload.advisor = '';
+        }
       }
 
-      const key = `${draft.payload.doc_type}|${draft.payload.doc_number}`;
-      const existingId = existingByDoc.get(key);
+      const normDocType = draft.payload.doc_type;
+      const docNumClean = draft.payload.doc_number;
+      const key = `${normDocType}|${docNumClean}`;
+      const existingRecord = existingByDoc.get(key) || existingByDocNumberOnly.get(docNumClean);
+
       try {
-        if (existingId) {
-          await pb.update('third_parties', existingId, draft.payload);
+        let savedId = '';
+        if (existingRecord) {
+          await pb.update('third_parties', existingRecord.id, draft.payload);
+          savedId = existingRecord.id;
           updated++;
         } else {
           const rec = await pb.create('third_parties', draft.payload);
-          existingByDoc.set(key, rec.id);
+          savedId = rec.id;
+          existingByDoc.set(key, rec);
+          existingByDocNumberOnly.set(docNumClean, rec);
           created++;
         }
-      } catch (err) {
+
+        // Auto-sincronización / creación de Sede Principal en third_party_branches
+        if (savedId) {
+          try {
+            const branches = await pb.listAll('third_party_branches', {
+              filter: `third_party_id = "${savedId}" && is_main = true`
+            }).catch(() => []);
+
+            const branchPayload = {
+              third_party_id: savedId,
+              code: '001',
+              name: 'Sede Principal',
+              is_main: true,
+              country: draft.payload.country || 'CO',
+              department: draft.payload.department || '',
+              dept_code: draft.payload.dept_code || '',
+              city: draft.payload.city || '',
+              city_code: draft.payload.city_code || '',
+              address: draft.payload.address || '',
+              phone: draft.payload.phone || '',
+              phone2: draft.payload.phone2 || '',
+              email: draft.payload.email || '',
+              contact_name: draft.payload.contact_name || '',
+              advisor: draft.payload.advisor || '',
+              advisor_name: draft.payload.advisor_name || '',
+              pi: draft.payload.pi || 0,
+              active: draft.payload.active !== false,
+              notes: 'Sede principal generada automáticamente'
+            };
+
+            if (!branches.length) {
+              await pb.create('third_party_branches', branchPayload);
+            }
+          } catch (branchErr) {
+            console.warn('[CargaMasivaTp] Aviso al sincronizar sucursal principal:', branchErr);
+          }
+        }
+      } catch (err: any) {
         failed++;
         failedRows.push(`Fila ${draft.rowNo} (${draft.docNumber}): ${err.message}`);
       }
@@ -3437,7 +3543,8 @@ async function _openMassAccImportModal() {
       if (ext === 'csv') {
         rawRows = _massTxParseCsv(await file.text());
       } else if (ext === 'xlsx' || ext === 'xls') {
-        rawRows = _massTxParseExcel(await file.arrayBuffer());
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
       } else {
         return showToast('Formato no soportado. Usa XLSX, XLS o CSV.', 'error');
       }
@@ -3787,10 +3894,15 @@ async function _openMassPhUnitsImportModal() {
     const ext = file.name.split('.').pop().toLowerCase();
     let rawRows = [];
     try {
-      if (ext === 'csv') rawRows = _massTxParseCsv(await file.text());
-      else if (ext === 'xlsx' || ext === 'xls') rawRows = _massTxParseExcel(await file.arrayBuffer());
-      else return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
-    } catch (e) {
+      if (ext === 'csv') {
+        rawRows = _massTxParseCsv(await file.text());
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
+      } else {
+        return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+      }
+    } catch (e: any) {
       return showToast('Error al leer el archivo: ' + e.message, 'error');
     }
     if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');

@@ -35,23 +35,16 @@ routerAdd('POST', '/api/dian/nomina/emit-batch-async', (e) => {
       });
     });
 
-    // 2. Disparar procesamiento asíncrono en background (Go routine / setTimeout wrapper en PocketBase JS)
-    // En PocketBase JS VM, usamos $app.onAfterBootstrap o procesamiento asíncrono deferido
-    // Para procesamiento background inmediato usaremos un worker goroutine nativo o timeout
+    // 2. Disparar procesamiento asíncrono en background
     try {
-      // Disparar worker no-bloqueante
-      $app.runInTransaction((_) => {}); // Warmup
-      
-      // Procesamiento en segundo plano de los IDs
       const recordIds = records.map((r) => r.getId());
       
-      // Lanzamos la rutina de background diferida
       setTimeout(() => {
         processNominaBatchInBackground(recordIds, ano, mes);
       }, 50);
 
     } catch (bgErr) {
-      console.error("[GRAVY QUEUE WORKER] Error iniciando goroutine de fondo:", bgErr);
+      console.error("[GRAVY QUEUE WORKER] Error iniciando rutina de fondo:", bgErr);
     }
 
     return e.json(202, {
@@ -84,19 +77,21 @@ routerAdd('GET', '/api/dian/nomina/batch-status', (e) => {
     let aprobados = 0;
     let rechazados = 0;
     let enCola = 0;
+    let enProceso = 0;
     let pendientes = 0;
 
     records.forEach((r) => {
       const st = r.getString("estado_dian") || "PENDIENTE";
-      if (st === "APROBADO") aprobados++;
+      if (st === "APROBADO" || st === "SIMULADO") aprobados++;
       else if (st === "RECHAZADO") rechazados++;
       else if (st === "EN_COLA") enCola++;
+      else if (st === "EN_PROCESO") enProceso++;
       else pendientes++;
     });
 
     const procesados = aprobados + rechazados;
     const porcentaje = total > 0 ? Math.round((procesados / total) * 100) : 0;
-    const finalizado = total > 0 && enCola === 0 && pendientes === 0;
+    const finalizado = total > 0 && enCola === 0 && enProceso === 0 && pendientes === 0;
 
     return e.json(200, {
       success: true,
@@ -106,6 +101,7 @@ routerAdd('GET', '/api/dian/nomina/batch-status', (e) => {
       aprobados,
       rechazados,
       enCola,
+      enProceso,
       pendientes,
       procesados,
       porcentaje,
@@ -119,30 +115,52 @@ routerAdd('GET', '/api/dian/nomina/batch-status', (e) => {
 });
 
 /**
- * Función que procesa cada comprobante en cola con throttling
+ * Helper para decodificar Base64 a UTF-8
+ */
+function decodeBase64Utf8Queue(b64) {
+  if (!b64) return "";
+  try {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let input = String(b64).replace(/[^A-Za-z0-9\+\/\=]/g, "");
+    let i = 0;
+    let utf8Xml = "";
+    while (i < input.length) {
+      let enc1 = chars.indexOf(input.charAt(i++));
+      let enc2 = chars.indexOf(input.charAt(i++));
+      let enc3 = chars.indexOf(input.charAt(i++));
+      let enc4 = chars.indexOf(input.charAt(i++));
+      let chr1 = (enc1 << 2) | (enc2 >> 4);
+      let chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      let chr3 = ((enc3 & 3) << 6) | enc4;
+      utf8Xml += String.fromCharCode(chr1);
+      if (enc3 !== 64) utf8Xml += String.fromCharCode(chr2);
+      if (enc4 !== 64) utf8Xml += String.fromCharCode(chr3);
+    }
+    return decodeURIComponent(escape(utf8Xml));
+  } catch (_) {
+    return b64;
+  }
+}
+
+/**
+ * Función que procesa cada comprobante en cola con transmisión DIAN / Facturatech
  */
 function processNominaBatchInBackground(recordIds, ano, mes) {
   console.log(`[GRAVY QUEUE WORKER] Iniciando transmisión masiva de ${recordIds.length} comprobantes para periodo ${mes}/${ano}...`);
 
-  // Obtener configuraciones de empresa y proveedor tecnológico
-  let einvoiceMethod = "simulation";
-  let ftechUsername = "";
-  let ftechPassword = "";
-  let ftechEnvironment = "demo";
-
-  try {
-    const settingsList = $app.findRecordsByFilter("settings", "key = 'einvoice_method' || key = 'ftech_username' || key = 'ftech_password' || key = 'ftech_environment'");
-    settingsList.forEach((s) => {
-      const k = s.getString("key");
-      const v = s.getString("value");
-      if (k === "einvoice_method") einvoiceMethod = v;
-      if (k === "ftech_username") ftechUsername = v;
-      if (k === "ftech_password") ftechPassword = v;
-      if (k === "ftech_environment") ftechEnvironment = v;
-    });
-  } catch (sErr) {
-    console.error("[GRAVY QUEUE WORKER] Error leyendo settings:", sErr);
+  function getSettingQueue(key, defaultValue) {
+    try {
+      const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
+      return (r ? r.get("value") : null) || defaultValue;
+    } catch (_) {
+      return defaultValue;
+    }
   }
+
+  let einvoiceMethod = getSettingQueue("einvoice_method", "simulation");
+  let ftechUsername = getSettingQueue("ftech_username", "");
+  let ftechPassword = getSettingQueue("ftech_password", "");
+  let ftechEnvironment = getSettingQueue("ftech_environment", "demo");
 
   for (let i = 0; i < recordIds.length; i++) {
     const recId = recordIds[i];
@@ -156,64 +174,87 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
       const xmlContent = rec.getString("xml_generado") || "";
       let cufe = rec.getString("cufe");
 
-      if (einvoiceMethod === "facturatech" && ftechUsername && ftechPassword) {
+      if (einvoiceMethod === "facturatech" && ftechUsername) {
         try {
-          var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-          var xmlBase64 = '';
-          var utf8Str = unescape(encodeURIComponent(xmlContent));
-          var c1, c2, c3, e1, e2, e3, e4;
-          var idx = 0;
-          while (idx < utf8Str.length) {
-            c1 = utf8Str.charCodeAt(idx++);
-            c2 = utf8Str.charCodeAt(idx++);
-            c3 = utf8Str.charCodeAt(idx++);
-            e1 = c1 >> 2;
-            e2 = ((c1 & 3) << 4) | (c2 >> 4);
-            e3 = isNaN(c2) ? 64 : (((c2 & 15) << 2) | (c3 >> 6));
-            e4 = isNaN(c2) || isNaN(c3) ? 64 : (c3 & 63);
-            xmlBase64 += chars.charAt(e1) + chars.charAt(e2) + chars.charAt(e3) + chars.charAt(e4);
-          }
+          const prefijo = rec.getString("prefijo") || "NOM";
+          const consecutivo = rec.getInt("consecutivo") || 1;
 
-          const fnSoap = globalThis.callFacturatechNominaSoap || callFacturatechNominaSoap;
-          const soapRes = fnSoap('FtechAction.uploadDocument', {
-            username: ftechUsername,
-            password: ftechPassword,
-            xmlBase64: xmlBase64
-          }, { ftechEnvironment });
+          const resHub = $http.send({
+            url: "http://127.0.0.1:8088/api/facturatech/upload-and-send",
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              xmlContent: xmlContent,
+              ftechUsername: ftechUsername,
+              ftechPassword: ftechPassword,
+              ftechEnvironment: ftechEnvironment,
+              documentType: "NominaIndividual",
+              documentNumber: `${prefijo}${consecutivo}`,
+              prefix: prefijo,
+              folio: consecutivo,
+              isNomina: true
+            })
+          });
 
-          if (soapRes.statusCode === 200) {
-            const raw = soapRes.raw || "";
-            const transIdMatch = raw.match(/<transactionID[^>]*>(.*?)<\/transactionID>/i);
-            const transId = transIdMatch ? transIdMatch[1] : "";
-            const codeMatch = raw.match(/<code[^>]*>(.*?)<\/code>/i);
-            const code = codeMatch ? codeMatch[1] : "200";
+          if (resHub.statusCode === 200) {
+            let hubResData = {};
+            try {
+              hubResData = JSON.parse(resHub.raw);
+            } catch (_) {}
 
+            const transId = hubResData.transaccionID || "";
             if (transId) rec.set("ftech_transaction_id", transId);
 
-            if (code === "200" || code === "201" || transId) {
-              rec.set("estado_dian", "APROBADO");
-              if (!cufe) {
-                cufe = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-                rec.set("cufe", cufe);
+            let finalStatus = "EN_PROCESO";
+            try {
+              const statusHubRes = $http.send({
+                url: "http://127.0.0.1:8088/api/facturatech/check-status",
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  transId: transId,
+                  ftechUsername: ftechUsername,
+                  ftechPassword: ftechPassword,
+                  ftechEnvironment: ftechEnvironment,
+                  documentType: "NominaIndividual",
+                  documentNumber: `${prefijo}${consecutivo}`,
+                  prefix: prefijo,
+                  folio: consecutivo,
+                  isNomina: true
+                })
+              });
+
+              if (statusHubRes.statusCode === 200) {
+                const sData = JSON.parse(statusHubRes.raw);
+                if (sData.status === "aceptada" || sData.status === "APROBADO") {
+                  finalStatus = "APROBADO";
+                  if (sData.xmlContent && sData.xmlContent.includes("<")) {
+                    rec.set("xml_generado", sData.xmlContent);
+                    const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
+                                   sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
+                                   sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
+                    if (cMatch && cMatch[1]) {
+                      rec.set("cufe", cMatch[1].trim());
+                    }
+                  }
+                } else if (sData.status === "rechazada" || sData.status === "RECHAZADO") {
+                  finalStatus = "RECHAZADO";
+                }
               }
-              rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
-            } else {
-              rec.set("estado_dian", "RECHAZADO");
-            }
+            } catch (_) {}
+
+            rec.set("estado_dian", finalStatus);
+            rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
           } else {
             rec.set("estado_dian", "RECHAZADO");
           }
         } catch (ftechErr) {
-          console.error(`[GRAVY QUEUE WORKER] Error SOAP para ID ${recId}:`, ftechErr);
+          console.error(`[GRAVY QUEUE WORKER] Error Hub para ID ${recId}:`, ftechErr);
           rec.set("estado_dian", "RECHAZADO");
         }
       } else {
-        // Modo Simulación / Desarrollo
-        if (!cufe) {
-          cufe = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-        }
-        rec.set("estado_dian", "APROBADO");
-        rec.set("cufe", cufe);
+        // Modo Simulación / Desarrollo explícito
+        rec.set("estado_dian", "SIMULADO");
         rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
       }
 

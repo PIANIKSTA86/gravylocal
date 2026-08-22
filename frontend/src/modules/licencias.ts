@@ -153,11 +153,18 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
       pages:       ['Tienda Virtual'],
     },
     spa: {
-      label:       'Módulo SPA (Belleza & Mascotas)',
-      icon:        'fa-spa',
+      label:       'Spa Mascotas (Veterinaria)',
+      icon:        'fa-dog',
       color:       '#F43F5E',
-      description: 'Gestión de agenda, expedientes clínicas/estéticas y servicios de spa personal o mascotas.',
-      pages:       ['Módulo SPA'],
+      description: 'Gestión de citas, agenda, peluquería canina/felina y expediente de mascotas.',
+      pages:       ['Spa Mascotas', 'Agenda Mascotas', 'Expediente de Mascotas'],
+    },
+    'spa-belleza': {
+      label:       'Spa Belleza Humana',
+      icon:        'fa-spa',
+      color:       '#EC4899',
+      description: 'Gestión de agenda estética, cosmetología, peluquería y ficha clínica de clientes.',
+      pages:       ['Spa Belleza', 'Agenda Estética', 'Expedientes Belleza'],
     },
     conciliacion: {
       label:       'Conciliación Bancaria',
@@ -217,7 +224,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     if (grid)    grid.style.display    = 'grid';
     if (info)    info.style.display    = 'block';
 
-    const ORDER = ['core', 'contabilidad', 'niif', 'activos_fijos', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'conciliacion'];
+    const ORDER = ['core', 'contabilidad', 'niif', 'activos_fijos', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'spa-belleza', 'conciliacion'];
     grid.innerHTML = ORDER.map(key => {
       const meta    = MODULE_META[key];
       if (!meta) return '';

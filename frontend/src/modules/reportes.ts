@@ -675,12 +675,13 @@ function agingBucket(expiredDays) {
 }
 
 async function buildOpenPortfolioDocs({ mode = 'cxc', asOfDate = todayStr(), thirdType = '', sellerId = '' } = {}) {
-  const cacheKey = `${mode}|${asOfDate}|${thirdType}|${sellerId}`;
+  const scopeParams = getScopeQueryParams();
+  const cacheKey = `${mode}|${asOfDate}|${thirdType}|${sellerId}|${scopeParams}`;
   if (REPORT_STATE.portfolioCache[cacheKey]) {
     return REPORT_STATE.portfolioCache[cacheKey];
   }
 
-  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}&sellerId=${encodeURIComponent(sellerId)}${getScopeQueryParams()}`, {
+  const items = await pb.send(`/api/gravy/report-portfolio-aging?mode=${mode}&asOfDate=${asOfDate}&thirdType=${encodeURIComponent(thirdType)}&sellerId=${encodeURIComponent(sellerId)}${scopeParams}`, {
     method: 'GET'
   });
 

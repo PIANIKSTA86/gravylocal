@@ -160,5 +160,26 @@ onBootstrap((e) => {
     }
   }
 
+  // Parche para asegurar reglas de lectura de auditoría para superadmin, admin y auditor
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_log');
+    let auditChanged = false;
+    const auditReadRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'auditor')";
+    if (auditCol.listRule !== auditReadRule) {
+      auditCol.listRule = auditReadRule;
+      auditChanged = true;
+    }
+    if (auditCol.viewRule !== auditReadRule) {
+      auditCol.viewRule = auditReadRule;
+      auditChanged = true;
+    }
+    if (auditChanged) {
+      $app.save(auditCol);
+      console.log('[GRAVY-PATCH] Reglas de lectura de audit_log actualizadas.');
+    }
+  } catch (err) {
+    console.log('[GRAVY-PATCH] Aviso al actualizar reglas de audit_log: ' + err);
+  }
+
   console.log('[GRAVY-PATCH] patch_collection_rules completado.');
 });

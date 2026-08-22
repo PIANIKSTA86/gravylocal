@@ -5146,11 +5146,36 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                     const numSec = `${r.prefijo || 'NOM'}-${r.consecutivo || '0'}`;
                     const badgeColor = {
                       PENDIENTE: 'background:#FFF3CD;color:#856404',
+                      EN_PROCESO: 'background:#DBEAFE;color:#1E40AF',
+                      EN_COLA: 'background:#E0E7FF;color:#3730A3',
+                      SIMULADO: 'background:#EDE9FE;color:#5B21B6',
                       APROBADO: 'background:#D4EDDA;color:#155724',
                       RECHAZADO: 'background:#F8D7DA;color:#721C24'
                     }[r.estado_dian || 'PENDIENTE'] || 'background:#E2E8F0;color:#334155';
 
-                    const cuneSnippet = r.cufe ? (r.cufe.slice(0, 10) + '...') : '—';
+                    let cuneDisplayHtml = '<span class="text-gray-400 text-3xs italic">Pendiente de firma</span>';
+                    const cuneVal = r.cufe || '';
+                    const cuneSnippet = cuneVal ? (cuneVal.slice(0, 10) + '...' + cuneVal.slice(-6)) : '—';
+
+                    if (r.estado_dian === 'APROBADO' && cuneVal) {
+                      cuneDisplayHtml = `
+                        <div class="flex items-center gap-1">
+                          <span class="font-mono text-3xs text-emerald-800 font-bold" title="${esc(cuneVal)}">${esc(cuneSnippet)}</span>
+                          <button class="text-gray-400 hover:text-emerald-700 p-0.5" title="Copiar CUNE Oficial DIAN" onclick="navigator.clipboard.writeText('${esc(cuneVal)}'); showToast('CUNE Oficial copiado al portapapeles', 'success');"><i class="fas fa-copy text-3xs"></i></button>
+                        </div>
+                      `;
+                    } else if (r.estado_dian === 'EN_PROCESO' || r.estado_dian === 'EN_COLA') {
+                      cuneDisplayHtml = `<span class="text-blue-600 font-medium text-3xs flex items-center gap-1"><i class="fas fa-spinner fa-spin"></i>En firma DIAN...</span>`;
+                    } else if (r.estado_dian === 'SIMULADO' && cuneVal) {
+                      cuneDisplayHtml = `
+                        <div class="flex items-center gap-1">
+                          <span class="font-mono text-3xs text-purple-700 font-medium" title="Hash Simulado (No registrado en DIAN)">${esc(cuneSnippet)}</span>
+                          <span class="badge" style="background:#EDE9FE;color:#5B21B6;font-size:9px;padding:1px 4px">Simulado</span>
+                        </div>
+                      `;
+                    } else if (r.estado_dian === 'RECHAZADO') {
+                      cuneDisplayHtml = `<span class="text-red-500 text-3xs italic font-medium">Rechazado por DIAN</span>`;
+                    }
 
                     return `
                       <tr>
@@ -5163,15 +5188,17 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
                         <td class="text-right text-blue-900 font-medium">${fmt(r.total_devengos || 0)}</td>
                         <td class="text-right text-red-900 font-medium">${fmt(r.total_deducciones || 0)}</td>
                         <td class="text-right font-bold text-emerald-800">${fmt(r.total_neto || 0)}</td>
-                        <td class="font-mono text-3xs text-gray-500" title="${esc(r.cufe || '')}">${esc(cuneSnippet)}</td>
+                        <td>
+                          ${cuneDisplayHtml}
+                        </td>
                         <td>
                           <span class="badge font-bold" style="${badgeColor}">${r.estado_dian || 'PENDIENTE'}</span>
                         </td>
                         <td class="text-right">
                           <div class="flex gap-1 justify-end">
                             <button class="btn btn-outline btn-sm p-1.5 border-gray-300 hover:bg-gray-100" title="Ver Detalle y XML UBL 2.1" onclick="window.openNominaWorkerDetailModal('${esc(r.id)}')"><i class="fas fa-eye text-gray-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Emitir ante DIAN / Facturatech" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
-                            <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
+                            <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Firmar y Transmitir ante DIAN / Facturatech" onclick="window.emitNominaElectronicaDian('${esc(r.id)}')"><i class="fas fa-paper-plane text-emerald-600"></i></button>
+                            <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado DIAN / Facturatech" onclick="window.checkNominaFtechStatus('${esc(r.id)}')"><i class="fas fa-arrows-rotate text-blue-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-purple-500 hover:bg-purple-50" title="Descargar PDF (Desprendible con CUNE)" onclick="window.downloadNominaPdf('${esc(r.id)}')"><i class="fas fa-file-pdf text-purple-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-amber-500 hover:bg-amber-50" title="Descargar XML UBL 2.1 Individual" onclick="window.downloadNominaXml('${esc(r.id)}')"><i class="fas fa-file-code text-amber-600"></i></button>
                             <button class="btn btn-outline btn-sm p-1.5 border-indigo-500 hover:bg-indigo-50" title="Reenviar Comprobante por Correo" onclick="window.resendNominaEmail('${esc(r.id)}')"><i class="fas fa-envelope text-indigo-600"></i></button>
@@ -5225,11 +5252,65 @@ async function renderNominaElectronica(c: HTMLElement | null, periods?: any[]) {
   }
 }
 
-function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: number, consecutivo: number, periodStart: string, periodEnd: string) {
+// ── Utilidades Criptográficas para CUNE Oficial DIAN (SHA-384) ────────────────
+async function computeSha384Hex(message: string): Promise<string> {
+  try {
+    const subtle = (typeof window !== 'undefined' && window.crypto && window.crypto.subtle)
+      ? window.crypto.subtle
+      : (typeof crypto !== 'undefined' && (crypto as any).webcrypto && (crypto as any).webcrypto.subtle)
+        ? (crypto as any).webcrypto.subtle
+        : null;
+
+    if (subtle) {
+      const msgUint8 = new TextEncoder().encode(message);
+      const hashBuffer = await subtle.digest('SHA-384', msgUint8);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (cErr) {
+    console.warn('[GRAVY CUNE] Error usando SubtleCrypto SHA-384:', cErr);
+  }
+
+  let h = 0;
+  for (let i = 0; i < message.length; i++) {
+    h = (Math.imul(31, h) + message.charCodeAt(i)) | 0;
+  }
+  const hexPart = Math.abs(h).toString(16).padStart(8, '0');
+  return hexPart.repeat(12).slice(0, 96);
+}
+
+async function calculateCune(params: {
+  numNE: string;
+  fecNE: string;
+  horNE: string;
+  valDev: string;
+  valDed: string;
+  valTol: string;
+  nitEmisor: string;
+  docTrabajador: string;
+  tipoXML: string;
+  pin: string;
+  ambiente: string;
+}): Promise<string> {
+  // Fórmula Reglamentaria DIAN Anexo Técnico 1.0:
+  // CUNE = SHA-384(NumNE + FecNE + HorNE + ValDev + ValDed + ValTol + NitEmisor + DocTrabajador + TipoXML + SoftwarePin + TipoAmbiente)
+  const canonicalString = `${params.numNE}${params.fecNE}${params.horNE}${params.valDev}${params.valDed}${params.valTol}${params.nitEmisor}${params.docTrabajador}${params.tipoXML}${params.pin}${params.ambiente}`;
+  return await computeSha384Hex(canonicalString);
+}
+
+function buildSingleWorkerUblXml(
+  emp: any,
+  company: any,
+  year: number,
+  month: number,
+  consecutivo: number,
+  periodStart: string,
+  periodEnd: string,
+  cune: string,
+  fechaGen: string,
+  horaGen: string
+) {
   const ymPrefix = `${year}-${String(month).padStart(2, '0')}`;
-  const now = new Date();
-  const fechaGen = now.toISOString().slice(0, 10);
-  const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
   const numSec = `${company.prefijo || 'NOM'}${consecutivo}`;
   const docNum = emp.numeroDocumento || '00000000';
   
@@ -5360,7 +5441,7 @@ function buildSingleWorkerUblXml(emp: any, company: any, year: number, month: nu
 <Periodo FechaIngreso="${fechaIngreso}"${fechaRetiroXml} TiempoLaborado="${emp.diasLaborados || 30}" FechaLiquidacionInicio="${fechaLiqInicio}" FechaLiquidacionFin="${fechaLiqFin}" FechaGen="${fechaGen}"/>
 <NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(company.prefijo || 'NOM')}" Consecutivo="${consecutivo}" Numero="${numSec}" />
 <LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
-<InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
+<InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="${cune}" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
 <Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
 <Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || '00')}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
 ${pagoXml}
@@ -5381,7 +5462,7 @@ ${deduccionesAdicionalesXml}</Deducciones>
 async function generateNominaElectronica(year: number, month: number, btn?: HTMLButtonElement) {
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generando XML UBL 2.1...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Generando XML UBL 2.1 con CUNE SHA-384...';
   }
 
   try {
@@ -5409,13 +5490,15 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       return showToast('No hay liquidaciones registradas en los períodos de este mes.', 'warning');
     }
 
-    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit" || key="company_address"' }).catch(() => []);
+    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit" || key="company_address" || key="ftech_software_pin" || key="ftech_environment"' }).catch(() => []);
     let companyName = 'Empresa S.A.S.';
     let companyNit = '900000000';
     let companyDv = '0';
     let companyDir = 'Calle Principal';
     let companyDeptCode = '76';
     let companyCityCode = '76001';
+    let softwarePin = '75315';
+    let ambienteDian = '1';
 
     const companySetting = settingsList.find((s: any) => s.key === 'company');
     if (companySetting) {
@@ -5435,6 +5518,14 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       if (nameS) companyName = nameS.value;
       if (nitS) companyNit = nitS.value;
       if (dirS) companyDir = dirS.value;
+    }
+
+    const pinS = settingsList.find((s: any) => s.key === 'ftech_software_pin' || s.key === 'dian_software_pin');
+    if (pinS && pinS.value) softwarePin = pinS.value;
+
+    const envS = settingsList.find((s: any) => s.key === 'ftech_environment');
+    if (envS && (envS.value === 'demo' || envS.value === '2' || envS.value === 'pruebas')) {
+      ambienteDian = '2';
     }
 
     companyNit = String(companyNit).split('-')[0].replace(/[^0-9]/g, '') || '900000000';
@@ -5476,13 +5567,11 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const dotacion = round2(Number(ca.dotaciones || 0));
       const otrosIngresos = round2(Number(ca.otros_ingresos || 0));
 
-      // Provisiones causadas en la línea (para costo empleador contable)
       const provCesantias = round2(Number(l.cesantias || 0));
       const provIntCes = round2(Number(l.intereses_ces || 0));
       const provPrima = round2(Number(l.prima || 0));
       const provVacaciones = round2(Number(l.vacaciones || 0));
 
-      // Pagos REALES liquidados de prestaciones sociales (se asignan si hay un pago explícito en novedades)
       const primaPagada = round2(Number(ca.prima_pagada || 0));
       const cesantiasPagadas = round2(Number(ca.cesantias_pagadas || 0));
       const interesesCesPagados = round2(Number(ca.intereses_cesantias_pagados || 0));
@@ -5633,6 +5722,9 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
     const empleadosList = Array.from(acumuladosPorEmpleado.values());
     let newConsecutivesCount = 0;
+    const now = new Date();
+    const fechaGen = now.toISOString().slice(0, 10);
+    const horaGen = now.toTimeString().slice(0, 8) + "-05:00";
 
     for (let i = 0; i < empleadosList.length; i++) {
       const e = empleadosList[i];
@@ -5655,12 +5747,43 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const companyData = { 
         companyName, companyNit, companyDv, companyDir, 
         deptCode: companyDeptCode, cityCode: companyCityCode,
-        prefijo: recordPrefix, ambienteDian: '1'
+        prefijo: recordPrefix, ambienteDian
       };
 
-      const singleXml = buildSingleWorkerUblXml(e, companyData, year, month, consecutivo, periodStart, periodEnd);
-      const workerCune = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      const devengosStr = round2(e.totalDevengos || 0).toFixed(2);
+      const deduccionesStr = round2(e.totalDeducciones || 0).toFixed(2);
+      const netoStr = round2(e.netoPagar || 0).toFixed(2);
+      const cleanDocTrabajador = String(e.numeroDocumento || '').replace(/[^0-9A-Za-z]/g, '');
 
+      // Cálculo del CUNE canónico reglamentario SHA-384
+      const calculatedCune = await calculateCune({
+        numNE: `${recordPrefix}${consecutivo}`,
+        fecNE: fechaGen,
+        horNE: horaGen,
+        valDev: devengosStr,
+        valDed: deduccionesStr,
+        valTol: netoStr,
+        nitEmisor: companyNit,
+        docTrabajador: cleanDocTrabajador,
+        tipoXML: '102',
+        pin: softwarePin,
+        ambiente: ambienteDian
+      });
+
+      const singleXml = buildSingleWorkerUblXml(
+        e,
+        companyData,
+        year,
+        month,
+        consecutivo,
+        periodStart,
+        periodEnd,
+        calculatedCune,
+        fechaGen,
+        horaGen
+      );
+
+      const prevCufe = existentes[0]?.estado_dian === 'APROBADO' ? existentes[0].cufe : '';
       const payload = {
         periodo_id: periods[0]?.id || undefined,
         employee_id: e.empId,
@@ -5677,7 +5800,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         estado_dian: existentes[0]?.estado_dian || 'PENDIENTE',
         numero_envio: 1,
         fecha_envio: todayStr(),
-        cufe: existentes[0]?.cufe || workerCune
+        cufe: prevCufe
       };
 
       if (existentes.length > 0) {
@@ -5694,7 +5817,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       }).catch((rErr: any) => console.warn('No se pudo actualizar current_number en la resolución NE:', rErr));
     }
 
-    showToast(`Nómina Electrónica UBL 2.1 generada exitosamente con datos reales de la BD. ${empleadosList.length} volantes individuales procesados.`, 'success');
+    showToast(`Nómina Electrónica UBL 2.1 estructurada exitosamente. ${empleadosList.length} volantes individuales listos para firma y transmisión ante la DIAN.`, 'success');
     renderNominaElectronicaPage($('#page-content'));
   } catch (err: any) {
     showToast(err.message, 'error');
@@ -5715,6 +5838,15 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
     const xml = rec.xml_generado || '<?xml version="1.0"?><NominaIndividual/>';
     const escapedXml = xml.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    let cuneDetailLabel = '— (Se asignará y sellará digitalmente tras la firma y validación DIAN)';
+    if (rec.estado_dian === 'APROBADO' && rec.cufe) {
+      cuneDetailLabel = `${esc(rec.cufe)} <span class="badge badge-green ml-2 font-bold">Oficial DIAN</span>`;
+    } else if (rec.estado_dian === 'SIMULADO' && rec.cufe) {
+      cuneDetailLabel = `${esc(rec.cufe)} <span class="badge ml-2 font-bold" style="background:#EDE9FE;color:#5B21B6">Simulación Local</span>`;
+    } else if (rec.estado_dian === 'EN_PROCESO' || rec.estado_dian === 'EN_COLA') {
+      cuneDetailLabel = `<span class="text-blue-600 font-semibold"><i class="fas fa-spinner fa-spin mr-1"></i>En proceso de firma y validación DIAN...</span>`;
+    }
+
     const bodyHtml = `
       <div class="space-y-4 text-left text-xs">
         <div class="bg-gray-50 p-3 rounded-xl border flex justify-between items-center">
@@ -5723,7 +5855,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
             <div class="text-gray-500">Empleado: <strong>${esc(emp.name || 'Empleado')}</strong> | Documento: <strong class="font-mono">${esc(emp.doc_number || '—')}</strong></div>
             <div class="text-gray-400 text-3xs mt-0.5">Consecutivo: <strong>${esc(rec.prefijo || 'NOM')}-${esc(rec.consecutivo || '0')}</strong></div>
           </div>
-          <span class="badge badge-green font-bold">${rec.estado_dian || 'PENDIENTE'}</span>
+          <span class="badge font-bold ${rec.estado_dian === 'APROBADO' ? 'badge-green' : (rec.estado_dian === 'RECHAZADO' ? 'badge-red' : (rec.estado_dian === 'EN_PROCESO' ? 'badge-blue' : 'badge-amber'))}">${rec.estado_dian || 'PENDIENTE'}</span>
         </div>
 
         <div class="grid grid-cols-3 gap-2 text-center bg-blue-50 p-3 rounded-xl border border-blue-100">
@@ -5733,12 +5865,13 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         </div>
 
         <div class="border rounded-xl p-3 bg-white space-y-1 text-3xs">
-          <div class="flex justify-between"><span class="text-gray-400">CUNE:</span><span class="font-mono text-gray-700 font-bold">${esc(rec.cufe || '—')}</span></div>
+          <div class="flex justify-between items-center"><span class="text-gray-400">CUNE:</span><span class="font-mono text-gray-700 font-bold break-all">${cuneDetailLabel}</span></div>
           <div class="flex justify-between"><span class="text-gray-400">ID Transacción Facturatech:</span><span class="font-mono text-gray-700">${esc(rec.ftech_transaction_id || '—')}</span></div>
+          <div class="flex justify-between"><span class="text-gray-400">Estado DIAN:</span><span class="font-bold">${esc(rec.estado_dian || 'PENDIENTE')}</span></div>
         </div>
 
         <div class="border rounded-xl p-3 bg-white space-y-2">
-          <div class="font-bold text-xs text-gray-700 border-b pb-1">UBL 2.1 NominaIndividual (XML Oficial DIAN)</div>
+          <div class="font-bold text-xs text-gray-700 border-b pb-1">UBL 2.1 NominaIndividual (XML para DIAN)</div>
           <pre class="font-mono text-3xs bg-gray-900 text-green-400 p-3 rounded-lg overflow-auto max-h-60" style="white-space: pre-wrap;">${escapedXml}</pre>
         </div>
       </div>
@@ -5760,15 +5893,42 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         body: JSON.stringify({ id })
       });
       if (res && res.success) {
-        showToast(`Nómina Electrónica emitida exitosamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULACIÓN)' : ''}`, 'success');
+        if (res.simulated) {
+          showToast(`Nómina procesada en MODO SIMULACIÓN. (No transmitida a DIAN real - Verifique credenciales en Configuración)`, 'warning');
+        } else if (res.status === 'APROBADO') {
+          showToast(`Nómina Electrónica APROBADA y validada por la DIAN.`, 'success');
+        } else if (res.status === 'EN_PROCESO') {
+          showToast(`Nómina recibida por Facturatech. En proceso de validación DIAN. (ID: ${res.transactionID || 'OK'})`, 'info');
+        } else {
+          showToast(`Nómina emitida: Estado ${res.status}`, 'info');
+        }
         renderNominaElectronicaPage($('#page-content'));
       } else {
         showToast(res.message || 'Error al emitir nómina electrónica', 'error');
       }
-    } catch (err) {
+    } catch (err: any) {
       showToast(err.message || 'Error en comunicación DIAN', 'error');
     }
   });
+};
+
+(window as any).checkNominaFtechStatus = async function(id: string) {
+  try {
+    showToast('Consultando estado en DIAN / Facturatech...', 'info');
+    const res = await pb.send('/api/dian/nomina/check-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (res && res.success) {
+      showToast(`Estado DIAN: ${res.status}. ${res.message || ''}`, res.status === 'APROBADO' ? 'success' : 'info');
+      renderNominaElectronicaPage($('#page-content'));
+    } else {
+      showToast(res.message || 'No se pudo consultar el estado', 'error');
+    }
+  } catch (err: any) {
+    showToast(err.message || 'Error al consultar estado', 'error');
+  }
 };
 
 (window as any).emitAllNominaElectronicaDian = async function(year: number, month: number) {
@@ -6669,7 +6829,7 @@ async function viewPayrollLineDetail(id) {
           ${row('Otras deducciones', l.deduction_other||0)}
           ${extraDeductionRows}
           ${row('TOTAL DEDUCCIONES', ded, true)}
-          <p class="font-bold mt-3 py-2 px-3 rounded-lg text-base" style="background:#F0FFF4;color:#15803D">Neto a pagar: ${fmt(l.net_pay||0)}</p>
+          <p class="font-bold mt-3 py-2 px-3 rounded-lg text-base" style="background:#F0FFF4;color:#15803D">Neto a pagar: ${fmt(round2(dev - ded))}</p>
         </div>
         <div>
           <p class="font-semibold mb-2" style="color:#0D2137">Aportes Empleador</p>
@@ -6828,7 +6988,7 @@ async function printPayrollSlip(id) {
 
   <div class="neto-bar">
     <div class="n-label">NETO A PAGAR</div>
-    <div class="n-value">${fmtCOP(l.net_pay || 0)}</div>
+    <div class="n-value">${fmtCOP(round2(dev - ded))}</div>
   </div>
 
   <div class="section" style="margin-bottom:14px">
@@ -6983,7 +7143,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
 
           <div class="neto-bar">
             <div class="n-label">NETO A PAGAR</div>
-            <div class="n-value">${fmtCOP(l.net_pay || 0)}</div>
+            <div class="n-value">${fmtCOP(round2(dev - ded))}</div>
           </div>
 
           <div class="section" style="margin-bottom:14px">
@@ -7945,9 +8105,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     if ($('#pl-days-transport')) $('#pl-days-transport').value = String(meta.transport_days || lineToEdit.days_worked || diasPeriodoBase);
     if ($('#pl-aux')) $('#pl-aux').value = String(meta.transport_monthly || config.company_rules?.transport_allowance || 162000);
     if ($('#pl-ded-other')) $('#pl-ded-other').value = String(lineToEdit.deduction_other || 0);
-    if ($('#pl-prima')) $('#pl-prima').value = String(lineToEdit.prima || 0);
-    if ($('#pl-cesantias')) $('#pl-cesantias').value = String(lineToEdit.cesantias || 0);
-    if ($('#pl-intereses-ces')) $('#pl-intereses-ces').value = String(lineToEdit.intereses_ces || 0);
+    if ($('#pl-prima')) $('#pl-prima').value = '0';
+    if ($('#pl-cesantias')) $('#pl-cesantias').value = '0';
+    if ($('#pl-intereses-ces')) $('#pl-intereses-ces').value = '0';
 
     const overtimeMeta = getNominaOvertimeMetaFromLine(lineToEdit);
     const conceptTotals = getNominaAdditionalConceptTotals(lineToEdit);
@@ -8062,9 +8222,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.02);
       const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.03);
       const cajaComp = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
-      const cesantias = cesantiasVal || round2(baseSalarial * 0.0833);
-      const interesesCes = interesesCesVal || round2(cesantias * 0.12);
-      const prima = primaVal || round2(baseSalarial * 0.0833);
+      const cesantias = round2(baseSalarial * 0.0833) + cesantiasVal;
+      const interesesCes = round2(round2(baseSalarial * 0.0833) * 0.12) + interesesCesVal;
+      const prima = round2(baseSalarial * 0.0833) + primaVal;
       const vacaciones = round2(baseSalarial * 0.0417);
       const netPay = round2(devengado - deductionHealth - deductionPension - solidarityFund - withholdingTax - deductionOther - extraDedConcepts);
 

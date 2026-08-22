@@ -14,12 +14,14 @@ const AUDIT_ACTION_MAP: Record<string, string> = {
   'LOGIN': 'Inicio de Sesión',
   'LOGOUT': 'Cierre de Sesión',
   'APPROVE': 'Aprobación',
+  'POST': 'Contabilización',
   'REVERT_DRAFT': 'Revertido a Borrador',
   'IMPORT': 'Importación',
   'BACKUP_CREATED': 'Copia de Seguridad',
   'CONFIG': 'Configuración',
   'MOVE_STAGE': 'Movimiento de Etapa',
-  'CANCEL': 'Cancelación'
+  'CANCEL': 'Cancelación',
+  'COST_CORRECTION': 'Corrección de Costos'
 };
 
 const AUDIT_ENTITY_MAP: Record<string, string> = {
@@ -28,34 +30,55 @@ const AUDIT_ENTITY_MAP: Record<string, string> = {
   'third_parties': 'Tercero',
   'Tercero': 'Tercero',
   'transaction_types': 'Tipo Transacción',
+  'Tipo Tx': 'Tipo Transacción',
   'transactions': 'Transacción',
+  'Transaccion': 'Transacción',
   'tx_lines': 'Línea Transacción',
+  'Linea Tx': 'Línea Transacción',
   'bank_accounts': 'Cuenta Bancaria',
   'bank_movements': 'Movimiento Bancario',
   'payroll_periods': 'Periodo Nómina',
   'payroll_lines': 'Línea Nómina',
   'einvoice_docs': 'Documento Electrónico DIAN',
+  'DIAN Doc': 'Documento Electrónico DIAN',
+  'inventory_movements': 'Movimiento de Inventario',
   'InventoryMovement': 'Movimiento de Inventario',
+  'warehouses': 'Bodega',
   'Bodega': 'Bodega',
-  'logistica_vehicles': 'Vehículo',
+  'logistica_vehicles': 'Vehículo Flota',
   'logistica_deliveries': 'Entrega/Despacho',
   'crm_deals': 'Oportunidad CRM',
   'crm_interactions': 'Interacción CRM',
-  'PhProperty': 'Unidad/Inmueble',
-  'PhPqr': 'PQR',
+  'ph_properties': 'Unidad/Inmueble PH',
+  'PhProperty': 'Unidad/Inmueble PH',
+  'ph_pqrs': 'PQR Copropiedad',
+  'PhPqr': 'PQR Copropiedad',
+  'purchase_invoices': 'Factura de Compra',
   'PurchaseInvoice': 'Factura de Compra',
+  'invoices': 'Factura de Venta',
   'Invoice': 'Factura de Venta',
-  'SalesConfig': 'Configuración de Ventas',
-  'products': 'Producto',
-  'sistema': 'Sistema',
-  'SalesReservation': 'Reserva de Venta',
-  'POSPromotions': 'Promociones POS',
-  'POSConfig': 'Configuración POS',
-  'PurchaseConfig': 'Configuración de Compras',
-  'CommissionSettings': 'Configuración de Comisiones',
-  'SalesOrder': 'Pedido de Venta',
   'sales_orders': 'Pedido de Venta',
-  'sales_order_lines': 'Línea Pedido de Venta'
+  'SalesOrder': 'Pedido de Venta',
+  'sales_order_lines': 'Línea Pedido de Venta',
+  'SalesReservation': 'Reserva de Importación',
+  'products': 'Producto / Servicio',
+  'Producto': 'Producto / Servicio',
+  'users': 'Usuario del Sistema',
+  'sistema': 'Sistema / Acceso',
+  'SalesConfig': 'Configuración de Ventas',
+  'PurchaseConfig': 'Configuración de Compras',
+  'POSConfig': 'Configuración POS',
+  'POSPromotions': 'Promociones POS',
+  'pos_shifts': 'Turno / Caja POS',
+  'CommissionSettings': 'Configuración de Comisiones',
+  'ConsignmentSettlement': 'Liquidación de Consignación',
+  'Asset': 'Activo Fijo NIIF',
+  'Asset Category': 'Categoría Activo NIIF',
+  'Asset Transfer': 'Traslado Activo NIIF',
+  'Asset Improvement': 'Mejora Activo NIIF',
+  'Impairment adjustment': 'Deterioro Activo NIIF',
+  'Asset Disposal': 'Baja de Activo NIIF',
+  'Depreciation Run': 'Depreciación NIIF'
 };
 
 function translateAuditAction(action: string): string {
@@ -96,18 +119,39 @@ function getAuditDateValue(log) {
 async function renderAuditoria(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando auditoría...</div>`;
   try {
-    // Load first batch to populate action/entity dropdowns
-    const sample = await pb.list('audit_log', { page: 1, perPage: 100, sort: '-event_at' });
-    const actions = [...new Set(sample.items.map(l => l.action).filter(Boolean))].sort();
-    const entities = [...new Set(sample.items.map(l => l.entity).filter(Boolean))].sort();
+    // Cargar muestra de auditoría y catálogo completo de usuarios
+    const [sample, usersList] = await Promise.all([
+      pb.list('audit_log', { page: 1, perPage: 100, sort: '-event_at' }).catch(() => ({ items: [], totalItems: 0 })),
+      pb.listAll('users').catch(() => [])
+    ]);
 
-    AUDIT_STATE = { page: 1, perPage: 100, total: 0 };
+    // Recolectar lista completa de usuarios
+    const userNamesSet = new Set<string>();
+    (usersList || []).forEach((u: any) => {
+      if (u.email) userNamesSet.add(u.email);
+      if (u.username) userNamesSet.add(u.username);
+    });
+    (sample.items || []).forEach((l: any) => {
+      if (l.username) userNamesSet.add(l.username);
+    });
+    const allUsers = [...userNamesSet].sort();
+
+    // Recolectar acciones y entidades conocidas
+    const defaultActions = Object.keys(AUDIT_ACTION_MAP);
+    const dynamicActions = (sample.items || []).map(l => l.action).filter(Boolean);
+    const actions = [...new Set([...defaultActions, ...dynamicActions])].sort();
+
+    const defaultEntities = ['sistema', 'transactions', 'Invoice', 'PurchaseInvoice', 'users', 'products', 'third_parties', 'accounts', 'inventory_movements', 'pos_shifts', 'payroll_periods'];
+    const dynamicEntities = (sample.items || []).map(l => l.entity).filter(Boolean);
+    const entities = [...new Set([...defaultEntities, ...dynamicEntities])].sort();
+
+    AUDIT_STATE = { page: 1, perPage: 100, total: 0, items: [] };
 
     c.innerHTML = `
       <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h3 class="text-lg font-bold" style="color:#0D2137">Auditoría del Sistema</h3>
-          <p class="text-sm" style="color:#6B7280">Trazabilidad completa de acciones de usuarios.</p>
+          <p class="text-sm" style="color:#6B7280">Trazabilidad completa de acciones, inicios de sesión y movimientos contables.</p>
         </div>
         ${can('canExport') ? '<button class="btn btn-outline" id="btn-export-audit"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
       </div>
@@ -125,7 +169,7 @@ async function renderAuditoria(c) {
           </select>
           <select id="audit-user-filter" class="form-input">
             <option value="">Todos los usuarios</option>
-            ${[...new Set(sample.items.map(l => l.username).filter(Boolean))].sort().map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
+            ${allUsers.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
           </select>
         </div>
         <div class="flex gap-3 mt-3 flex-wrap">

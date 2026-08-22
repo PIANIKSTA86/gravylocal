@@ -450,6 +450,7 @@ async function openUserForm(row = null) {
           const errData = await res.json();
           throw new Error(errData.message || 'Error al actualizar usuario');
         }
+        await (window as any).API.logAudit('UPDATE', 'users', row.id, `Usuario ${payload.full_name || row.email} modificado (Rol: ${payload.role}, Estado: ${payload.active ? 'Activo' : 'Inactivo'})`);
       } else {
         const email = getInputVal('uf-email').toLowerCase();
         const pass = getInputVal('uf-pass');
@@ -479,6 +480,7 @@ async function openUserForm(row = null) {
           password: pass,
           passwordConfirm: pass2,
         });
+        await (window as any).API.logAudit('CREATE', 'users', created.id, `Usuario ${email} creado (Rol: ${payload.role})`);
       }
       closeModal();
       showToast('Usuario guardado correctamente', 'success');
@@ -510,6 +512,7 @@ function toggleUser(id, active) {
     async () => {
       try {
         await pb.update('users', id, { active });
+        await (window as any).API.logAudit('STATUS', 'users', id, `Usuario ${active ? 'reactivado' : 'inactivado'}`);
         showToast('Estado actualizado', 'success');
         renderUsuarios($('#page-content'));
       } catch (err) { showToast(err.message, 'error'); }
@@ -529,6 +532,7 @@ function deleteUser(id: string, identifier: string) {
     async () => {
       try {
         await pb.delete('users', id);
+        await (window as any).API.logAudit('DELETE', 'users', id, `Usuario ${identifier} eliminado permanentemente`);
         showToast(`Usuario «${identifier}» eliminado permanentemente`, 'success');
         renderUsuarios($('#page-content'));
       } catch (err: any) {

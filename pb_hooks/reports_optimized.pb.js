@@ -265,7 +265,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
   if (costCenterId === "TODOS" || costCenterId === "TODAS" || costCenterId === "ALL" || costCenterId === "null" || costCenterId === "undefined") costCenterId = "";
 
   let mode = String(queryParams.mode || "cxc").trim();
-  let thirdType = String(queryParams.thirdType || "").trim();
+  let thirdType = String(queryParams.thirdType || "").trim().toUpperCase();
   let sellerId = String(queryParams.sellerId || "").trim();
   let asOfDate = String(queryParams.asOfDate || "").trim();
 
@@ -282,21 +282,31 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
 
     let sqlAging = `
       SELECT
+        l.id,
+        l.debit,
+        l.credit,
+        l.cross_doc_ref,
+        COALESCE(l.cross_doc_date, '') AS line_cross_doc_date,
+        COALESCE(l.due_date, '') AS line_due_date,
         l.account_id,
         a.code AS account_code,
         a.name AS account_name,
+        a.nature AS account_nature,
         a.maneja_cruce AS account_maneja_cruce,
         COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS third_party_id,
-        COALESCE(tp.type, '') AS tp_type,
+        COALESCE(tp.name, 'Sin tercero') AS third_party_name,
+        COALESCE(tp.doc_number, '') AS third_party_doc,
+        COALESCE(tp.type, 'OTRO') AS third_party_type,
         COALESCE(tp.advisor, '') AS tp_advisor,
-        l.cross_doc_ref,
+        COALESCE(seller_tp.name, 'Sin Vendedor') AS seller_name,
+        COALESCE(seller_tp.doc_number, '') AS seller_doc,
         t.date AS tx_date,
-        l.debit,
-        l.credit
+        COALESCE(t.payment_days, tp.payment_days, 0) AS tx_payment_days
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
       INNER JOIN transactions t ON t.id = l.tx_id
       LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+      LEFT JOIN third_parties seller_tp ON seller_tp.id = tp.advisor
       WHERE t.status = 'active'
         AND t.date <= {:asOfDateLimit}
         AND (${filterClause})
@@ -316,23 +326,172 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
     query.bind(binds);
 
     const data = arrayOf(new DynamicModel({
+      id: "",
+      debit: -0,
+      credit: -0,
+      cross_doc_ref: "",
+      line_cross_doc_date: "",
+      line_due_date: "",
       account_id: "",
       account_code: "",
       account_name: "",
+      account_nature: "",
       account_maneja_cruce: 0,
       third_party_id: "",
       third_party_name: "",
       third_party_doc: "",
-      tp_type: "",
+      third_party_type: "",
       tp_advisor: "",
-      cross_doc_ref: "",
+      seller_name: "",
+      seller_doc: "",
       tx_date: "",
-      debit: -0,
-      credit: -0
+      tx_payment_days: 0
     }));
     query.all(data);
 
-    return c.json(200, data);
+    const docs = {};
+    const defaultNature = isCxC ? 'debit' : 'credit';
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      const manejaCruce = row.account_maneja_cruce === 1 || row.account_maneja_cruce === true || row.account_maneja_cruce === "1" || row.account_maneja_cruce === "true";
+      const refRaw = String(row.cross_doc_ref || '').trim();
+      if (!manejaCruce && !refRaw) continue;
+
+      const tpType = String(row.third_party_type || '').toUpperCase();
+      if (thirdType && tpType !== thirdType) continue;
+
+      const currentSellerId = String(row.tp_advisor || '').trim();
+      if (sellerId) {
+        if (sellerId === 'sin_vendedor') {
+          if (currentSellerId) continue;
+        } else if (currentSellerId !== sellerId) {
+          continue;
+        }
+      }
+
+      const accNature = String(row.account_nature || '').toLowerCase() || defaultNature;
+      const ref = refRaw || 'SIN_DOC';
+      const key = `${row.account_id}|${row.third_party_id}|${ref}`;
+      const lineCrossDate = String(row.line_cross_doc_date || '').trim();
+      const lineDueDate = String(row.line_due_date || '').trim();
+      const effectiveDocDate = lineCrossDate || row.tx_date;
+
+      if (!docs[key]) {
+        docs[key] = {
+          account_id: row.account_id,
+          account_code: row.account_code,
+          account_name: row.account_name,
+          nature: accNature,
+          third_id: row.third_party_id,
+          third_name: row.third_party_name,
+          third_doc: row.third_party_doc,
+          third_type: tpType || 'OTRO',
+          seller_id: currentSellerId,
+          seller_name: row.seller_name || 'Sin Vendedor',
+          seller_doc: row.seller_doc || '',
+          doc_ref: ref,
+          doc_date: effectiveDocDate,
+          explicit_due_date: lineDueDate,
+          payment_days: Number(row.tx_payment_days || 0),
+          debit: 0,
+          credit: 0
+        };
+      }
+
+      const doc = docs[key];
+      if (effectiveDocDate < String(doc.doc_date)) {
+        doc.doc_date = effectiveDocDate;
+        doc.payment_days = Number(row.tx_payment_days || 0);
+        if (lineDueDate) {
+          doc.explicit_due_date = lineDueDate;
+        }
+      }
+      doc.debit += Number(row.debit || 0);
+      doc.credit += Number(row.credit || 0);
+    }
+
+    const EPS = 0.0001;
+    const items = [];
+
+    function diffDays(fromDate, toDate) {
+      const from = new Date(fromDate + "T00:00:00");
+      const to = new Date(toDate + "T00:00:00");
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+      return Math.max(0, Math.floor((to.getTime() - from.getTime()) / 86400000));
+    }
+
+    function diffDaysSigned(fromDate, toDate) {
+      const from = new Date(fromDate + "T00:00:00");
+      const to = new Date(toDate + "T00:00:00");
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+      return Math.floor((to.getTime() - from.getTime()) / 86400000);
+    }
+
+    function addDays(dateStr, n) {
+      const d = new Date(dateStr + "T00:00:00");
+      d.setDate(d.getDate() + Number(n || 0));
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const r = String(d.getDate()).padStart(2, "0");
+      return y + "-" + m + "-" + r;
+    }
+
+    function agingBucket(openVal, expiredDays) {
+      if (openVal < -0.0001) return 'saldo_a_favor';
+      if (expiredDays < 0) return 'por_vencer';
+      if (expiredDays <= 30) return 'b0_30';
+      if (expiredDays <= 60) return 'b31_60';
+      if (expiredDays <= 90) return 'b61_90';
+      return 'b90p';
+    }
+
+    const keys = Object.keys(docs);
+    for (let k = 0; k < keys.length; k++) {
+      const d = docs[keys[k]];
+      const open = d.nature === 'debit'
+        ? Number(d.debit || 0) - Number(d.credit || 0)
+        : Number(d.credit || 0) - Number(d.debit || 0);
+
+      if (Math.abs(open) <= EPS) continue;
+
+      const dateOnly = String(d.doc_date).split(" ")[0];
+      const due_date = d.explicit_due_date ? String(d.explicit_due_date).split(" ")[0] : addDays(dateOnly, d.payment_days || 0);
+      const expired_days = diffDaysSigned(due_date, asOfDate);
+      const days = diffDays(dateOnly, asOfDate);
+
+      items.push({
+        account_id: d.account_id,
+        account_code: d.account_code,
+        account_name: d.account_name,
+        nature: d.nature,
+        third_id: d.third_id,
+        third_name: d.third_name,
+        third_doc: d.third_doc,
+        third_type: d.third_type,
+        seller_id: d.seller_id,
+        seller_name: d.seller_name,
+        seller_doc: d.seller_doc,
+        doc_ref: d.doc_ref,
+        doc_date: dateOnly,
+        payment_days: d.payment_days,
+        debit: d.debit,
+        credit: d.credit,
+        open: open,
+        days: days,
+        due_date: due_date,
+        expired_days: expired_days,
+        bucket: agingBucket(open, expired_days)
+      });
+    }
+
+    items.sort((a, b) => {
+      const aKey = `${a.account_code}|${a.third_name}|${a.doc_date}|${a.doc_ref}`;
+      const bKey = `${b.account_code}|${b.third_name}|${b.doc_date}|${b.doc_ref}`;
+      return aKey.localeCompare(bKey);
+    });
+
+    return c.json(200, items);
   } catch (err) {
     return c.json(500, { error: "Error en cartera optimizada: " + err.message });
   }

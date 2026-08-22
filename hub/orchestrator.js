@@ -951,10 +951,30 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
     let soapAction = '';
 
     const isSupportDoc = isDS || isNDS || documentType === 'SupportDocument' || documentType === 'SupportDocumentAdjust';
+    const isNomina = req.body.isNomina || documentType === 'NominaIndividual' || documentType === 'Nomina';
 
     let soapContentType = 'text/xml;charset=UTF-8';
 
-    if (isSupportDoc) {
+    if (isNomina) {
+      const nominaNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
+      endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
+        ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
+        : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
+
+      soapEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${nominaNs}">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <xmlBase64 xsi:type="xsd:string">${xmlBase64}</xmlBase64>
+      </urn:FtechAction.uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+      soapAction = `${nominaNs}#FtechAction.uploadDocument`;
+      soapContentType = 'text/xml;charset=UTF-8';
+    } else if (isSupportDoc) {
       const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
       endpointUrl = ftechEnvironment === '1'
         ? 'https://ws-dse.facturatech.co/v1/pro/'
@@ -1150,10 +1170,27 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     let statusAction = '';
 
     const isSupportDoc = isDS || isNDS || documentType === 'SupportDocument' || documentType === 'SupportDocumentAdjust';
+    const isNomina = req.body.isNomina || documentType === 'NominaIndividual' || documentType === 'Nomina';
 
     let statusContentType = 'text/xml;charset=UTF-8';
 
-    if (isSupportDoc) {
+    if (isNomina) {
+      endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
+        ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
+        : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
+
+      statusEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <transaccionID xsi:type="xsd:string">${transId}</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+      statusAction = 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.documentStatus';
+    } else if (isSupportDoc) {
       const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
       endpointUrl = ftechEnvironment === '1'
         ? 'https://ws-dse.facturatech.co/v1/pro/'
@@ -1283,12 +1320,14 @@ app.post('/api/facturatech/check-status', async (req, res) => {
 
     // If signed/accepted, we proceed to download CUFE & XML
     if (isSigned) {
-      // 3. Download CUFE
+      // 3. Download CUFE / CUNE
       let cufeEnvelope = '';
       let cufeAction = '';
       let cufeContentType = 'text/xml;charset=UTF-8';
 
-      if (isDS || isNDS) {
+      if (isNomina) {
+        // En Nómina el CUNE viene dentro del XML firmado
+      } else if (isDS || isNDS) {
         const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
         endpointUrl = ftechEnvironment === '1'
           ? 'https://ws-dse.facturatech.co/v1/pro/'
@@ -1335,15 +1374,17 @@ app.post('/api/facturatech/check-status', async (req, res) => {
         cufeAction = 'urn:https://ws.facturatech.co/v2/pro/#FtechAction.getCUFEFile';
       }
 
-      console.log(`[GRAVY FTECH] Descargando CUFE para prefijo=${prefix}, folio=${folio}...`);
+      console.log(`[GRAVY FTECH] Descargando CUFE/CUNE para prefijo=${prefix}, folio=${folio}...`);
       let cufe = '';
-      try {
-        const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope, cufeContentType);
-        if (cufeResponse.statusCode === 200) {
-          cufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult') || extractSoapTag(cufeResponse.data, 'code');
+      if (!isNomina) {
+        try {
+          const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope, cufeContentType);
+          if (cufeResponse.statusCode === 200) {
+            cufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult') || extractSoapTag(cufeResponse.data, 'code');
+          }
+        } catch (err) {
+          console.warn(`[GRAVY FTECH] Error al descargar CUFE por SOAP (se intentará fallback regex):`, err.message);
         }
-      } catch (err) {
-        console.warn(`[GRAVY FTECH] Error al descargar CUFE por SOAP (se intentará fallback regex):`, err.message);
       }
 
       // 4. Download signed XML
@@ -1351,7 +1392,24 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       let xmlAction = '';
       let xmlContentType = 'text/xml;charset=UTF-8';
 
-      if (isDS || isNDS) {
+      if (isNomina) {
+        endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
+          ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
+          : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
+
+        xmlEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">${ftechUsername}</username>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
+         <prefix xsi:type="xsd:string">${prefix}</prefix>
+         <number xsi:type="xsd:integer">${folio}</number>
+      </urn:FtechAction.downloadXML>
+   </soapenv:Body>
+</soapenv:Envelope>`;
+        xmlAction = 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.downloadXML';
+      } else if (isDS || isNDS) {
         const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
         endpointUrl = ftechEnvironment === '1'
           ? 'https://ws-dse.facturatech.co/v1/pro/'

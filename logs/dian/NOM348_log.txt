@@ -1,0 +1,28 @@
+
+==================================================
+TIMESTAMP: 2026-08-19T03:26:50.073Z
+ACTION: FACTURATECH UPLOAD-AND-SEND (SIMULATED)
+==================================================
+provider: Facturatech
+documentType: NominaIndividual
+isPOS: undefined
+simulated: true
+transaccionID: FTECH_MOCK_TX_1787110010072
+status: enviada
+message: Documento subido con éxito (Modo Simulado Activo)
+xmlContent: <NominaIndividual></NominaIndividual>
+
+
+==================================================
+TIMESTAMP: 2026-08-19T03:27:08.735Z
+ACTION: FACTURATECH CHECK-STATUS (SIMULATED)
+==================================================
+provider: Facturatech
+transId: FTECH_MOCK_TX_1787110010072
+prefix: NOM
+folio: 348
+simulated: true
+status: aceptada
+cufe: FTECHMOCKCUFE0ED2056D3D8A90F725DC176E4664B642D2ACA999968E30470895
+xmlContent: <Invoice><Note>MOCK SIGNED XML VIA FACTURATECH</Note><CUFE>FTECHMOCKCUFE0ED2056D3D8A90F725DC176E4664B642D2ACA999968E30470895</CUFE></Invoice>
+

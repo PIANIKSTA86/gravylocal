@@ -1,0 +1,27 @@
+
+==================================================
+TIMESTAMP: 2026-08-19T03:49:56.598Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: NominaIndividual
+isPOS: undefined
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+soapAction: urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPCEtLVZlcnNpb24gIzEuMC0tPgo8Tm9taW5hSW5kaXZpZHVhbCB4bWxucz0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwiCiB4bWxuczp4cz0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiCiB4bWxuczpkcz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC8wOS94bWxkc2lnIyIKIHhtbG5zOmV4dD0idXJuOm9hc2lzOm5hbWVzOnNwZWNpZmljYXRpb246dWJsOnNjaGVtYTp4c2Q6Q29tbW9uRXh0ZW5zaW9uQ29tcG9uZW50cy0yIgogeG1sbnM6eGFkZXM9Imh0dHA6Ly91cmkuZXRzaS5vcmcvMDE5MDMvdjEuMy4yIyIKIHhtbG5zOnhhZGVzMTQxPSJodHRwOi8vdXJpLmV0c2kub3JnLzAxOTAzL3YxLjQuMSMiCiB4bWxuczp4c2k9Imh0dHA6Ly93d3cudzMub3JnLzIwMDEvWE1MU2NoZW1hLWluc3RhbmNlIgogU2NoZW1hTG9jYXRpb249IiIKIHhzaTpzY2hlbWFMb2NhdGlvbj0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwgTm9taW5hSW5kaXZpZHVhbEVsZWN0cm9uaWNhWFNELnhzZCI+CjxleHQ6VUJMRXh0ZW5zaW9ucz4KPC9leHQ6VUJMRXh0ZW5zaW9ucz4KPFBlcmlvZG8gRmVjaGFJbmdyZXNvPSIyMDI2LTAxLTAxIiBUaWVtcG9MYWJvcmFkbz0iMzAiIEZlY2hhTGlxdWlkYWNpb25JbmljaW89IjIwMjYtMDctMDEiIEZlY2hhTGlxdWlkYWNpb25GaW49IjIwMjYtMDctMzEiIEZlY2hhR2VuPSIyMDI2LTA4LTE5Ii8+CjxOdW1lcm9TZWN1ZW5jaWFYTUwgQ29kaWdvVHJhYmFqYWRvcj0iMTExMzY0MjEzNSIgUHJlZmlqbz0iTk9NIiBDb25zZWN1dGl2bz0iMzUzIiBOdW1lcm89Ik5PTTM1MyIgLz4KPEx1Z2FyR2VuZXJhY2lvblhNTCBQYWlzPSJDTyIgRGVwYXJ0YW1lbnRvRXN0YWRvPSI3NiIgTXVuaWNpcGlvQ2l1ZGFkPSI3NjAwMSIgSWRpb21hPSJlcyIgLz4KPEluZm9ybWFjaW9uR2VuZXJhbCBWZXJzaW9uPSJWMS4wOiBEb2N1bWVudG8gU29wb3J0ZSBkZSBQYWdvIGRlIE7Ds21pbmEgRWxlY3Ryw7NuaWNhIiBBbWJpZW50ZT0iMSIgQ1VORT0iNzRjMTExZTVjODkzMTU3NjE1YmZlMDgzMDhlODc5NTQ0OTAxYzg1YjdiMjg2NTAxYmIwNzg2ZmE3MDUyYmY4ZWViNTYxMDAyZGU0MDhlZjM4ZTgwZmU3NDBiNzQyMTI1IiBFbmNyaXBDVU5FPSJDVU5FLVNIQTM4NCIgRmVjaGFHZW49IjIwMjYtMDgtMTkiIEhvcmFHZW49IjIxOjE3OjM1LTA1OjAwIiBUaXBvWE1MPSIxMDIiIFBlcmlvZG9Ob21pbmE9IjUiIFRpcG9Nb25lZGE9IkNPUCIgVFJNPSIxLjAwIi8+CjxFbXBsZWFkb3IgUmF6b25Tb2NpYWw9IkRPTUVTVElLTyBTQVMiIE5JVD0iOTAxNDI4ODM0IiBEVj0iMCIgUGFpcz0iQ08iIERlcGFydGFtZW50b0VzdGFkbz0iNzYiIE11bmljaXBpb0NpdWRhZD0iNzYwMDEiIERpcmVjY2lvbj0iQ0wgMjkgNSA1MCIgLz4KPFRyYWJhamFkb3IgVGlwb1RyYWJhamFkb3I9IjAxIiBTdWJUaXBvVHJhYmFqYWRvcj0iMDAiIEFsdG9SaWVzZ29QZW5zaW9uPSJmYWxzZSIgVGlwb0RvY3VtZW50bz0iMTMiIE51bWVyb0RvY3VtZW50bz0iMTExMzY0MjEzNSIgUHJpbWVyQXBlbGxpZG89Ik1BUlRJTkVaIFJFWUVTIiBTZWd1bmRvQXBlbGxpZG89IlJFWUVTIiBQcmltZXJOb21icmU9IkNBVEFMSU5BIiBMdWdhclRyYWJham9QYWlzPSJDTyIgTHVnYXJUcmFiYWpvRGVwYXJ0YW1lbnRvRXN0YWRvPSI3NiIgTHVnYXJUcmFiYWpvTXVuaWNpcGlvQ2l1ZGFkPSI3NjAwMSIgTHVnYXJUcmFiYWpvRGlyZWNjaW9uPSJDUiA5OUIgNDggMjIiIFNhbGFyaW9JbnRlZ3JhbD0iZmFsc2UiIFRpcG9Db250cmF0bz0iMiIgU3VlbGRvPSI3NjMwMjgwLjAwIiBDb2RpZ29UcmFiYWphZG9yPSIxMTEzNjQyMTM1IiAvPgogIDxQYWdvIEZvcm1hPSIxIiBNZXRvZG89IjEwIiAvPgo8RmVjaGFzUGFnb3M+CjxGZWNoYVBhZ28+MjAyNi0wNy0zMTwvRmVjaGFQYWdvPgo8L0ZlY2hhc1BhZ29zPgo8RGV2ZW5nYWRvcz4KICA8QmFzaWNvIERpYXNUcmFiYWphZG9zPSIzMCIgU3VlbGRvVHJhYmFqYWRvPSI3NjMwMjgwLjAwIiAvPgo8L0RldmVuZ2Fkb3M+CjxEZWR1Y2Npb25lcz4KICA8U2FsdWQgUG9yY2VudGFqZT0iNC4wMCIgRGVkdWNjaW9uPSIzMDUyMTEuMjAiIC8+CiAgPEZvbmRvUGVuc2lvbiBQb3JjZW50YWplPSI0LjAwIiBEZWR1Y2Npb249IjMwNTIxMS4yMCIgLz4KICA8Rm9uZG9TUCBQb3JjZW50YWplPSIxLjAwIiBEZWR1Y2Npb25TUD0iNzYzMDIuODAiIERlZHVjY2lvblN1Yj0iMC4wMCIgLz4KICA8UmV0ZW5jaW9uRnVlbnRlPjY2MTcwLjU4PC9SZXRlbmNpb25GdWVudGU+CiAgPERldWRhPjE0MjQ3My4zODwvRGV1ZGE+CjwvRGVkdWNjaW9uZXM+CjxEZXZlbmdhZG9zVG90YWw+OTA2MDI4MC4wMDwvRGV2ZW5nYWRvc1RvdGFsPgo8RGVkdWNjaW9uZXNUb3RhbD43NTI4OTUuNzg8L0RlZHVjY2lvbmVzVG90YWw+CjxDb21wcm9iYW50ZVRvdGFsPjgzMDczODQuMjI8L0NvbXByb2JhbnRlVG90YWw+CjwvTm9taW5hSW5kaXZpZHVhbD4=</xmlBase64>
+      </urn:FtechAction.uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.uploadDocumentResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">404</code><transactionID xsi:type="xsd:string"></transactionID><error xsi:type="xsd:string">El comprobante ha superado el número máximo de 3 intentos</error></return></ns1:FtechAction.uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 404
+parsedTransactionID: 
+parsedMessage: El comprobante ha superado el número máximo de 3 intentos
+

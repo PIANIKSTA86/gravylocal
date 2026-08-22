@@ -135,6 +135,33 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       console.log("[GRAVY SSO] Creado nuevo usuario local para: " + email);
     }
 
+    // Registrar evento de LOGIN server-side en audit_log
+    try {
+      const auditCol = $app.findCollectionByNameOrId("audit_log");
+      let remoteIp = "";
+      try {
+        remoteIp = (typeof e?.remoteIP === "function")
+          ? String(e.remoteIP() || "")
+          : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
+      } catch (_) {}
+
+      const auditPayload = {
+        username: email,
+        user_id: userRecord.id,
+        action: "LOGIN",
+        entity: "sistema",
+        entity_id: userRecord.id,
+        event_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19),
+        details: `Inicio de sesión exitoso vía SSO/HUB para ${fullName || email} (Rol: ${role}) en ${companyName || 'empresa'}`,
+        ip: remoteIp,
+      };
+
+      const logRec = new Record(auditCol, auditPayload);
+      $app.save(logRec);
+    } catch (auditErr) {
+      console.log("[auth-via-hub Audit] Aviso:", auditErr);
+    }
+
     // 4. Retornar la respuesta estándar de autenticación de PocketBase
     $apis.recordAuthResponse(e, userRecord, "password");
 

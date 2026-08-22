@@ -255,7 +255,8 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
       logistica:     { label:'Logística',       color:'#3B82F6' },
       niif:          { label:'NIIF',            color:'#7F7CFF' },
       activos_fijos: { label:'Activos Fijos',   color:'#10B981' },
-      spa:           { label:'Spa',             color:'#F43F5E' },
+      spa:           { label:'Spa Mascotas',    color:'#F43F5E' },
+      'spa-belleza': { label:'Spa Belleza',     color:'#EC4899' },
       conciliacion:  { label:'Conciliación',    color:'#6366F1' },
     };
     const _hasModule = (k: string): boolean => typeof (window as any).hasModule === 'function'

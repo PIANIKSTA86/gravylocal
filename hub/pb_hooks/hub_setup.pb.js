@@ -132,7 +132,7 @@ onBootstrap((e) => {
 
     // Parche dinámico para asegurar que todos los nuevos módulos estén en licenses.module_key si la tabla ya existe
     if (moduleKeyField) {
-      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "conciliacion", "crm", "niif", "activos_fijos"];
+      const needed = ["inmobiliarias", "logistica", "inventarios", "tesoreria", "tienda-virtual", "spa", "spa-belleza", "conciliacion", "crm", "niif", "activos_fijos"];
       const currentVals = moduleKeyField.values || [];
       const valsArray = [];
       for (let j = 0; j < currentVals.length; j++) {
@@ -164,7 +164,7 @@ onBootstrap((e) => {
       deleteRule: "@request.auth.is_superadmin = true",
       fields: [
         { name: "company_id", type: "relation", required: true, collectionId: companies.id, maxSelect: 1 },
-        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","crm","nomina","copropiedades","inmobiliarias","logistica","inventarios","tesoreria","tienda-virtual","spa","conciliacion","niif","activos_fijos","full"] },
+        { name: "module_key", type: "select",   required: true, values: ["core","contabilidad","comercial","crm","nomina","copropiedades","inmobiliarias","logistica","inventarios","tesoreria","tienda-virtual","spa","spa-belleza","conciliacion","niif","activos_fijos","full"] },
         { name: "enabled",    type: "bool",     required: false }, // Se cambia a required: false para permitir valor false sin dar error de "cannot be blank"
         { name: "expires_at", type: "text",     required: false },
         { name: "plan",       type: "select",   required: false, values: ["trial","mensual","anual","perpetua"] },

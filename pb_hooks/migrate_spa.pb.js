@@ -127,6 +127,23 @@ onBootstrap((e) => {
 
       if (changed) $app.save(apptsCol);
     } catch (err) {}
+
+    // 3. Extender licenses.module_key si existe la colección licenses
+    try {
+      const licensesCol = $app.findCollectionByNameOrId("licenses");
+      const moduleKeyField = licensesCol ? licensesCol.fields.findByName("module_key") : null;
+      if (moduleKeyField) {
+        const values = moduleKeyField.values || [];
+        let licChanged = false;
+        if (!values.includes("spa")) { values.push("spa"); licChanged = true; }
+        if (!values.includes("spa-belleza")) { values.push("spa-belleza"); licChanged = true; }
+        if (licChanged) {
+          moduleKeyField.values = values;
+          $app.save(licensesCol);
+          console.log("[GRAVY] Campo module_key de licenses extendido con 'spa-belleza'.");
+        }
+      }
+    } catch (_) {}
   } catch (err) {}
 });
 

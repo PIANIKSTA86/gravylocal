@@ -270,6 +270,25 @@ const pb = {
     if (!res.ok) throw await this._err(res);
     return res.json();
   },
+
+  /** Registro de evento de auditoría */
+  async logAudit(action, entity, entityId = null, details = '') {
+    try {
+      if (!this.authToken) return;
+      await fetch(`${this.baseUrl}/api/audit-event`, {
+        method: 'POST',
+        headers: this.headers(),
+        body: JSON.stringify({
+          action: String(action || ''),
+          entity: String(entity || ''),
+          entity_id: entityId ? String(entityId) : '',
+          details: String(details || ''),
+        }),
+      });
+    } catch (_) {
+      // Tolerar fallos sin romper flujos
+    }
+  },
 };
 
 /* -- Helpers internos de resoluciÃ³n de cuentas ---------------- */
@@ -542,6 +561,10 @@ const API = {
       try { await pb.delete('transactions', tx.id); } catch (_) { }
       throw lineErr;
     }
+
+    try {
+      await this.logAudit('CREATE', 'transactions', tx.id, `Transacción ${tx.number || ''} creada`);
+    } catch (_) {}
 
     return tx;
   },

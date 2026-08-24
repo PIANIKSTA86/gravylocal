@@ -1826,7 +1826,7 @@ async function loadConsultaTxPage() {
                     ${requireRole('superadmin', 'administrador', 'admin', 'contador') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Revertir a Borrador" style="border-color:#D97706;color:#D97706" onclick="revertTxToDraft('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-rotate-left"></i></button>` : ''}
                     ${can('canWrite') && t.status === 'draft' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
-                    ${requireRole('admin', 'administrador', 'superadmin', 'superadministrador') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
+                    ${requireRole('admin', 'administrador', 'superadmin', 'superadministrador', 'contador') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
                 </td>
               </tr>`;
@@ -2669,9 +2669,9 @@ async function saveEditTx(txId) {
   }
 }
 
-// ── Eliminación física (solo admin) ──────────────────────────────────────────
+// ── Eliminación física (admin y contador) ──────────────────────────────────────────
 function deleteTxPhysical(id, number) {
-  if (!requireRole('admin', 'administrador', 'superadmin', 'superadministrador')) return showToast('Solo el administrador o superadministrador puede eliminar transacciones físicamente', 'error');
+  if (!requireRole('admin', 'administrador', 'superadmin', 'superadministrador', 'contador')) return showToast('Solo el administrador, superadministrador o contador puede eliminar transacciones físicamente', 'error');
 
   openModal(
     '<i class="fas fa-spinner fa-spin mr-2"></i>Verificando dependencias...',

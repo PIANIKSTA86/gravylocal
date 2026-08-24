@@ -219,7 +219,7 @@ onBootstrap((e) => {
     viewRule: "@request.auth.id != ''",
     createRule: "@request.auth.collectionName = 'users' && (@request.auth.role != 'auditor' && @request.auth.role != 'viewer')",
     updateRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador')",
-    deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'administrador' || @request.auth.role = 'superadmin' || @request.auth.role = 'superadministrador')",
+    deleteRule: "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'administrador' || @request.auth.role = 'superadmin' || @request.auth.role = 'superadministrador' || @request.auth.role = 'contador')",
     fields: txFields,
     indexes: ["CREATE UNIQUE INDEX idx_transactions_number ON transactions (number)"],
   });
@@ -1161,7 +1161,7 @@ onBootstrap((e) => {
 
   try {
     const txCol = $app.findCollectionByNameOrId("transactions");
-    const targetDeleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'administrador' || @request.auth.role = 'superadmin' || @request.auth.role = 'superadministrador')";
+    const targetDeleteRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'administrador' || @request.auth.role = 'superadmin' || @request.auth.role = 'superadministrador' || @request.auth.role = 'contador')";
     if (txCol.deleteRule !== targetDeleteRule) {
       txCol.deleteRule = targetDeleteRule;
       $app.save(txCol);

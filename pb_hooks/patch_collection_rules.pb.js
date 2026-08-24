@@ -27,7 +27,7 @@ onBootstrap((e) => {
   // Regla para colecciones de operación POS (cajero y vendedor incluidos)
   const writeRulePOS = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar' || @request.auth.role = 'cajero' || @request.auth.role = 'vendedor')";
 
-  const deleteRuleHeader = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin')";
+  const deleteRuleHeader = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador')";
   const deleteRuleLine = "@request.auth.collectionName = 'users' && (@request.auth.role = 'superadmin' || @request.auth.role = 'administrador' || @request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar')";
 
   // Colecciones de operación POS: cajero debe poder crear/actualizar

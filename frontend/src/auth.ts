@@ -10,7 +10,7 @@ const PERMISSIONS = {
   superadmin:    { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
   administrador: { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
   admin:         { canWrite: true,  canDelete: true,  canManageUsers: true,  canViewAudit: true,  canExport: true,  canApprove: true,  canEditDocs: true  },
-  contador:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true,  canEditDocs: true  },
+  contador:      { canWrite: true,  canDelete: true,  canManageUsers: false, canViewAudit: false, canExport: true,  canApprove: true,  canEditDocs: true  },
   auxiliar:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
   cajero:        { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },
   vendedor:      { canWrite: true,  canDelete: false, canManageUsers: false, canViewAudit: false, canExport: false, canApprove: false, canEditDocs: false },

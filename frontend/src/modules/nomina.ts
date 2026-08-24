@@ -2132,18 +2132,36 @@ async function liquidarPeriodoMasivo(periodId) {
       const smmlvVal = config.company_rules?.smmlv || 1750905;
       const isArt114Exempt = !!config.company_rules?.exempt_sena_icbf && (ibc < (smmlvVal * 10));
 
-      const employerHealth = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.085);
-      const employerPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
-      const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = empRule.subtipoTrabajador === 'APRENDIZ' ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
-      const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.02);
-      const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.03);
-      const cajaComp = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
+      const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
 
-      const cesantias = round2(round2(ibc * 0.0833) + n_cesantias);
-      const interesesCes = round2(round2(cesantias * 0.12) + n_interesesCesantias);
-      const prima = round2(round2(ibc * 0.0833) + n_primaServicios);
-      const vacacionesCausadas = round2(ibc * 0.0417);
+      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.085);
+      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
+      const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
+      const employerArl = isAprendiz ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
+      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.02);
+      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.03);
+      const cajaComp = isAprendiz ? 0 : round2(ibc * 0.04);
+
+      // Base para prestaciones sociales (Cesantías y Prima de Servicios):
+      // Art. 7 Ley 1 de 1963: El auxilio de transporte se incorpora a la base para la liquidación de cesantías y prima de servicios.
+      // Empleados con Salario Integral no reciben provisión separada de cesantías ni prima (cubierto por el 30% factor prestacional).
+      // Aprendices SENA reciben apoyo de sostenimiento y no causan prestaciones sociales.
+      const basePrestaciones = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(rawIbc + transportAllowance);
+
+      const cesantias = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrestaciones * 0.0833) + n_cesantias);
+      const interesesCes = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(cesantias * 0.12) + n_interesesCesantias);
+      const prima = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrestaciones * 0.0833) + n_primaServicios);
+      const vacacionesCausadas = isAprendiz
+        ? 0
+        : round2((isIntegralSalary ? (totalEarnings * 0.70) : ibc) * 0.0417);
 
       const conceptAmounts = {
         incapacidades: incapacidadesAmount,
@@ -7951,14 +7969,32 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const smmlvVal = companyRules.smmlv || 1750905;
     const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
 
+    const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
     const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-    const healthEmployerRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.085;
-    const senaRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.02;
-    const icbfRate = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : 0.03;
-    const pensionRate = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : 0.12;
-    const cajaRate = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : 0.04;
+    const healthEmployerRate = (isAprendiz || isArt114Exempt) ? 0 : 0.085;
+    const senaRate = (isAprendiz || isArt114Exempt) ? 0 : 0.02;
+    const icbfRate = (isAprendiz || isArt114Exempt) ? 0 : 0.03;
+    const pensionRate = (isAprendiz || empRule.is_pensioner) ? 0 : 0.12;
+    const cajaRate = isAprendiz ? 0 : 0.04;
     const para = round2(ibc * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate + cajaRate));
-    const prov = round2(ibc * (0.0833 + 0.12 * 0.0833 + 0.0833 + 0.0417));
+
+    // Base prestaciones sociales: IBC + Auxilio de transporte (Art. 7 Ley 1 de 1963)
+    const basePrestaciones = (isIntegralSalary || isAprendiz)
+      ? 0
+      : round2(rawIbc + aux);
+    const cesantiasProv = (isIntegralSalary || isAprendiz)
+      ? 0
+      : round2(basePrestaciones * 0.0833);
+    const intCesProv = (isIntegralSalary || isAprendiz)
+      ? 0
+      : round2(cesantiasProv * 0.12);
+    const primaProv = (isIntegralSalary || isAprendiz)
+      ? 0
+      : round2(basePrestaciones * 0.0833);
+    const vacProv = isAprendiz
+      ? 0
+      : round2((isIntegralSalary ? devengado * 0.70 : ibc) * 0.0417);
+    const prov = round2(cesantiasProv + intCesProv + primaProv + vacProv);
 
     const preview = $('#nomina-preview');
     if (!preview) return;
@@ -8259,17 +8295,31 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const smmlvVal = companyRules.smmlv || 1750905;
       const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
 
-      const employerHealth = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.085);
-      const employerPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
+      const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
+      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.085);
+      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = empRule.subtipoTrabajador === 'APRENDIZ' ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
-      const sena = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.02);
-      const icbf = (empRule.subtipoTrabajador === 'APRENDIZ' || isArt114Exempt) ? 0 : round2(ibc * 0.03);
-      const cajaComp = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
-      const cesantias = round2(baseSalarial * 0.0833) + cesantiasVal;
-      const interesesCes = round2(round2(baseSalarial * 0.0833) * 0.12) + interesesCesVal;
-      const prima = round2(baseSalarial * 0.0833) + primaVal;
-      const vacaciones = round2(baseSalarial * 0.0417);
+      const employerArl = isAprendiz ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
+      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.02);
+      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.03);
+      const cajaComp = isAprendiz ? 0 : round2(ibc * 0.04);
+
+      // Base para prestaciones sociales (Cesantías y Prima): IBC + Auxilio de Transporte (Art. 7 Ley 1 de 1963)
+      const basePrestaciones = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(rawIbc + aux);
+      const cesantias = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrestaciones * 0.0833) + cesantiasVal);
+      const interesesCes = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(cesantias * 0.12) + interesesCesVal);
+      const prima = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrestaciones * 0.0833) + primaVal);
+      const vacaciones = isAprendiz
+        ? 0
+        : round2((isIntegralSalary ? devengado * 0.70 : ibc) * 0.0417);
       const netPay = round2(devengado - deductionHealth - deductionPension - solidarityFund - withholdingTax - deductionOther - extraDedConcepts);
 
       const overtimeBreakdown = {};

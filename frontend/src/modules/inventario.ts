@@ -791,6 +791,7 @@ function renderMovRows(movs, salesMap = new Map(), purchaseMap = new Map()) {
       <td class="text-center">
         <div class="flex justify-center gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="viewMovDetail('${esc(m.id)}')"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm" title="Imprimir comprobante PDF" style="border-color:#334155;color:#334155" onclick="printInventoryMovement('${esc(m.id)}')"><i class="fas fa-print"></i></button>
           ${(m.status === 'draft' || m.status === 'applied') && can('canWrite') ? `
             <button class="btn btn-outline btn-sm text-blue-600 border-blue-200 hover:bg-blue-50" title="Editar movimiento" onclick="editMovement('${esc(m.id)}')"><i class="fas fa-pen-to-square"></i></button>
           ` : ''}
@@ -1006,10 +1007,355 @@ async function viewMovDetail(id) {
           </tfoot>
         </table>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+       <button class="btn btn-primary" onclick="printInventoryMovement('${esc(mov.id)}')"><i class="fas fa-print mr-1.5"></i> Imprimir / PDF</button>`,
       true
     );
   } catch (err) { showToast(err.message, 'error'); }
+}
+
+// ── Impresión / PDF: Comprobante Oficial de Movimiento de Inventario ──────────
+async function printInventoryMovement(id: string) {
+  try {
+    const [mov, lines, linkedSales, linkedPurchases, companyName, companyNit, companyAddress, companyPhone, companyEmail, companyCity] = await Promise.all([
+      pb.get('inventory_movements', id, { expand: 'warehouse_id,dest_warehouse_id,third_party_id,tx_id,concept_id,concept_id.account_id,user_id' }),
+      API.getInventoryMovementLines(id),
+      pb.listAll('invoices', { filter: `inv_movement_id="${pb.escapeFilterValue(id)}"` }).catch(() => []),
+      pb.listAll('purchase_invoices', { filter: `inv_movement_id="${pb.escapeFilterValue(id)}"` }).catch(() => []),
+      API.getSetting('company_name').catch(() => ''),
+      API.getSetting('company_nit').catch(() => ''),
+      API.getSetting('company_address').catch(() => ''),
+      API.getSetting('company_phone').catch(() => ''),
+      API.getSetting('company_email').catch(() => ''),
+      API.getSetting('company_city').catch(() => ''),
+    ]);
+
+    const tm = INV_MOV_TYPES.find(t => t.value === mov.mov_type);
+    const meta = INV_STATUS_META[mov.status] || { label: mov.status, badge: 'badge-gray' };
+    const wh = mov.expand?.warehouse_id;
+    const dest = mov.expand?.dest_warehouse_id;
+    const tp = mov.expand?.third_party_id;
+    const concept = mov.expand?.concept_id;
+    const tx = mov.expand?.tx_id;
+    const createdByName = mov.expand?.user_id?.name || 'Sistema';
+    const printedByName = pb.currentUser?.name || 'Usuario del Sistema';
+
+    // Determinar título y colores institucionales según el tipo de movimiento
+    let docTitle = 'COMPROBANTE DE MOVIMIENTO DE INVENTARIO';
+    let docTypeLabel = tm?.label || mov.mov_type || 'MOVIMIENTO';
+    let headerAccentColor = '#1A4B8C';
+    let badgeBg = '#EEF4FF';
+    let badgeColor = '#1A4B8C';
+
+    if (mov.mov_type === 'ENTRADA') {
+      docTitle = 'COMPROBANTE DE ENTRADA DE ALMACÉN';
+      headerAccentColor = '#065F46';
+      badgeBg = '#ECFDF5';
+      badgeColor = '#065F46';
+    } else if (mov.mov_type === 'SALIDA') {
+      docTitle = 'COMPROBANTE DE SALIDA / REMISIÓN DE INVENTARIO';
+      headerAccentColor = '#991B1B';
+      badgeBg = '#FEF2F2';
+      badgeColor = '#991B1B';
+    } else if (mov.mov_type === 'TRASLADO') {
+      docTitle = 'COMPROBANTE DE TRASLADO ENTRE BODEGAS';
+      headerAccentColor = '#1E3A8A';
+      badgeBg = '#EEF2FF';
+      badgeColor = '#1E3A8A';
+    } else if (mov.mov_type === 'AJUSTE_POSITIVO') {
+      docTitle = 'COMPROBANTE DE AJUSTE POSITIVO DE INVENTARIO';
+      headerAccentColor = '#065F46';
+      badgeBg = '#ECFDF5';
+      badgeColor = '#065F46';
+    } else if (mov.mov_type === 'AJUSTE_NEGATIVO') {
+      docTitle = 'COMPROBANTE DE AJUSTE NEGATIVO DE INVENTARIO';
+      headerAccentColor = '#C2410C';
+      badgeBg = '#FFF7ED';
+      badgeColor = '#C2410C';
+    }
+
+    // Determinar Documento Relacionado
+    let relatedDocText = '—';
+    if (linkedSales.length > 0) {
+      relatedDocText = `Factura de Venta: ${linkedSales.map((s: any) => s.number).join(', ')}`;
+    } else if (linkedPurchases.length > 0) {
+      relatedDocText = `Factura de Compra: ${linkedPurchases.map((p: any) => p.number).join(', ')}`;
+    } else if (tx) {
+      relatedDocText = `Asiento Contable: ${tx.number || ''}`;
+    }
+
+    const sumQty = lines.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
+    const sumCost = lines.reduce((acc, l) => acc + ((Number(l.qty) || 0) * (Number(l.unit_cost) || 0)), 0);
+
+    const now = new Date();
+    const printDate = now.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' }) + ' ' + now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+
+    const linesHtml = lines.map((l, i) => {
+      const p = l.expand?.product_id;
+      const code = p?.code || 'S/C';
+      const name = p?.name || 'Producto sin descripción';
+      const unit = p?.unit || p?.unit_measure || 'UND';
+      const qty = Number(l.qty) || 0;
+      const unitCost = Number(l.unit_cost) || 0;
+      const lineTotal = qty * unitCost;
+      const lineNotes = l.notes || l.details || '';
+
+      return `
+        <tr class="${i % 2 === 0 ? 'row-even' : 'row-odd'}">
+          <td class="col-num">${i + 1}</td>
+          <td class="col-code font-mono">${esc(code)}</td>
+          <td class="col-desc">
+            <div class="prod-name">${esc(name)}</div>
+            ${lineNotes ? `<div class="prod-notes">${esc(lineNotes)}</div>` : ''}
+          </td>
+          <td class="col-unit text-center"><span class="unit-badge">${esc(unit)}</span></td>
+          <td class="col-qty text-right font-bold">${fmtN(qty)}</td>
+          <td class="col-cost text-right">${fmt(unitCost)}</td>
+          <td class="col-subtotal text-right font-bold">${fmt(lineTotal)}</td>
+        </tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>${esc(docTitle)} — ${esc(mov.number)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', Arial, Helvetica, sans-serif; font-size: 9pt; color: #1F2937; background: #fff; padding: 12mm 14mm 14mm 14mm; line-height: 1.35; }
+    
+    /* Toolbar superior (oculta automáticamente al imprimir) */
+    .no-print-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #0F172A; color: #fff; padding: 10px 18px; border-radius: 10px;
+      margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .no-print-toolbar .btn-print {
+      background: #2563EB; color: #fff; border: none; padding: 7px 16px; border-radius: 6px;
+      font-weight: 700; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      transition: background 0.2s;
+    }
+    .no-print-toolbar .btn-print:hover { background: #1D4ED8; }
+    .no-print-toolbar .btn-close {
+      background: #334155; color: #E2E8F0; border: none; padding: 7px 14px; border-radius: 6px;
+      font-weight: 600; font-size: 13px; cursor: pointer;
+    }
+    .no-print-toolbar .btn-close:hover { background: #475569; }
+
+    /* Cabecera Principal */
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid ${headerAccentColor}; padding-bottom: 10px; margin-bottom: 12px; }
+    .company-block { flex: 1; }
+    .company-name { font-size: 14pt; font-weight: 800; color: #0D2137; letter-spacing: -0.2px; }
+    .company-sub { font-size: 8.5pt; color: #4B5563; margin-top: 1.5px; }
+    
+    .doc-block { text-align: right; min-width: 250px; }
+    .doc-type-badge { display: inline-block; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${headerAccentColor}40; padding: 2px 8px; border-radius: 4px; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .doc-number { font-size: 15pt; font-weight: 800; color: ${headerAccentColor}; font-family: monospace; letter-spacing: 0.5px; }
+    .doc-status { margin-top: 3px; }
+    .status-badge { display: inline-block; font-size: 7.5pt; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+    .status-applied { background: #DCFCE7; color: #15803D; border: 1px solid #86EFAC; }
+    .status-draft { background: #FEF3C7; color: #B45309; border: 1px solid #FCD34D; }
+    .status-voided { background: #FEE2E2; color: #B91C1C; border: 1px solid #FCA5A5; }
+
+    /* Cuadrícula de Metadatos */
+    .meta-box { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 9px 12px; margin-bottom: 12px; }
+    .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 20px; font-size: 8.5pt; }
+    .meta-row { display: flex; align-items: baseline; gap: 6px; }
+    .meta-label { font-weight: 700; color: #475569; min-width: 120px; white-space: nowrap; }
+    .meta-val { color: #1E293B; font-weight: 500; }
+    .meta-val-highlight { color: #0F172A; font-weight: 700; }
+    .meta-row-full { grid-column: span 2; display: flex; align-items: baseline; gap: 6px; }
+
+    /* Tabla de Partidas de Inventario */
+    .section-title { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #64748B; margin-bottom: 5px; }
+    table.lines-table { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 12px; }
+    table.lines-table thead tr { background: #0F172A; color: #fff; }
+    table.lines-table thead th { padding: 6px 8px; text-align: left; font-weight: 700; border: 1px solid #0F172A; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.3px; }
+    table.lines-table thead th.text-right { text-align: right; }
+    table.lines-table thead th.text-center { text-align: center; }
+    
+    table.lines-table tbody tr.row-even { background: #F8FAFC; }
+    table.lines-table tbody tr.row-odd { background: #FFFFFF; }
+    table.lines-table tbody td { padding: 5.5px 8px; border: 1px solid #E2E8F0; vertical-align: middle; }
+    
+    .col-num { width: 28px; text-align: center; color: #64748B; font-weight: 600; }
+    .col-code { width: 95px; font-size: 8pt; font-weight: 600; color: #1E3A8A; }
+    .col-desc { min-width: 180px; }
+    .prod-name { font-weight: 600; color: #0F172A; }
+    .prod-notes { font-size: 7.5pt; color: #64748B; margin-top: 1px; font-style: italic; }
+    .col-unit { width: 65px; text-align: center; }
+    .unit-badge { display: inline-block; background: #E2E8F0; color: #334155; font-weight: 700; font-size: 7.5pt; padding: 1px 5px; border-radius: 3px; }
+    .col-qty { width: 85px; text-align: right; font-variant-numeric: tabular-nums; }
+    .col-cost { width: 100px; text-align: right; font-variant-numeric: tabular-nums; color: #475569; }
+    .col-subtotal { width: 110px; text-align: right; font-variant-numeric: tabular-nums; color: #065F46; }
+
+    /* Totales */
+    table.lines-table tfoot td { border: 1.5px solid #CBD5E1; padding: 6px 8px; font-weight: 800; font-size: 9pt; background: #F1F5F9; }
+    .totals-label { text-align: right; color: #0F172A; text-transform: uppercase; font-size: 8pt; }
+    .totals-qty { text-align: right; color: #1E3A8A; }
+    .totals-cost { text-align: right; color: #065F46; font-size: 9.5pt; }
+
+    /* Firmas y Controles */
+    .signatures-section { margin-top: 24px; border-top: 1px solid #CBD5E1; padding-top: 12px; }
+    .sig-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 10px; }
+    .sig-card { border: 1px dashed #94A3B8; border-radius: 6px; padding: 8px 6px; text-align: center; min-height: 75px; display: flex; flex-direction: column; justify-content: space-between; }
+    .sig-name { font-weight: 600; font-size: 8pt; color: #0F172A; }
+    .sig-line { border-top: 1px solid #475569; margin-top: 25px; padding-top: 3px; font-size: 7pt; text-transform: uppercase; font-weight: 700; color: #475569; }
+
+    /* Footer Legal */
+    .footer-bar { margin-top: 18px; display: flex; justify-content: space-between; align-items: center; font-size: 7.5pt; color: #94A3B8; border-top: 1px solid #E2E8F0; padding-top: 6px; }
+
+    @media print {
+      body { padding: 0; }
+      .no-print-toolbar { display: none !important; }
+      @page { margin: 12mm 10mm 10mm 10mm; size: letter portrait; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print-toolbar">
+    <div style="font-size:12px;font-weight:600;">
+      Vista previa de impresión &mdash; <span style="color:#93C5FD">${esc(mov.number)}</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-print" onclick="window.print()">
+        <span>🖨️ Imprimir / Guardar como PDF</span>
+      </button>
+      <button class="btn-close" onclick="window.close()">✕ Cerrar</button>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="company-block">
+      <div class="company-name">${esc(companyName || 'GRAVY')}</div>
+      ${companyNit ? `<div class="company-sub"><strong>NIT:</strong> ${esc(companyNit)}</div>` : ''}
+      ${companyAddress ? `<div class="company-sub"><strong>Dirección:</strong> ${esc(companyAddress)}${companyCity ? ' &mdash; ' + esc(companyCity) : ''}</div>` : ''}
+      ${(companyPhone || companyEmail) ? `<div class="company-sub">${companyPhone ? '<strong>Tel:</strong> ' + esc(companyPhone) : ''}${companyPhone && companyEmail ? ' | ' : ''}${companyEmail ? '<strong>Email:</strong> ' + esc(companyEmail) : ''}</div>` : ''}
+    </div>
+    <div class="doc-block">
+      <div><span class="doc-type-badge">${esc(docTitle)}</span></div>
+      <div class="doc-number">${esc(mov.number || 'SIN NÚMERO')}</div>
+      <div class="doc-status">
+        <span class="status-badge ${mov.status === 'applied' ? 'status-applied' : (mov.status === 'voided' ? 'status-voided' : 'status-draft')}">
+          ${mov.status === 'applied' ? '✓ Aplicado en Kardex' : (mov.status === 'voided' ? '⛔ Anulado / Revertido' : '⚠ Borrador')}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-box">
+    <div class="meta-grid">
+      <div class="meta-row">
+        <span class="meta-label">Fecha Movimiento:</span>
+        <span class="meta-val-highlight">${esc(mov.date || '—')}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Bodega Origen:</span>
+        <span class="meta-val-highlight">${wh ? esc(wh.name) : '—'}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Tipo de Movimiento:</span>
+        <span class="meta-val font-bold" style="color:${badgeColor}">${esc(docTypeLabel)}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Bodega Destino:</span>
+        <span class="meta-val">${dest ? esc(dest.name) : (mov.mov_type === 'TRASLADO' ? '—' : 'N/A')}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Concepto Contable:</span>
+        <span class="meta-val">${concept ? esc(concept.name) + (concept.expand?.account_id ? ` (${esc(concept.expand.account_id.code)})` : '') : '—'}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Tercero / Titular:</span>
+        <span class="meta-val">${tp ? esc(tp.name) + (tp.doc_number ? ' [' + esc(tp.doc_number) + ']' : '') : '—'}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Doc. Relacionado:</span>
+        <span class="meta-val">${esc(relatedDocText)}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Elaborado por:</span>
+        <span class="meta-val">${esc(createdByName)}</span>
+      </div>
+      ${mov.notes ? `
+        <div class="meta-row-full">
+          <span class="meta-label">Observaciones:</span>
+          <span class="meta-val" style="font-style:italic;color:#374151">${esc(mov.notes)}</span>
+        </div>
+      ` : ''}
+    </div>
+  </div>
+
+  <div class="section-title">Detalle de Artículos y Existencias Movidas</div>
+  <table class="lines-table">
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-code">Código</th>
+        <th class="col-desc">Descripción del Producto</th>
+        <th class="col-unit text-center">UM</th>
+        <th class="col-qty text-right">Cantidad</th>
+        <th class="col-cost text-right">Costo Unit.</th>
+        <th class="col-subtotal text-right">Subtotal</th>
+      </tr>
+    </thead>
+    <tbody>${linesHtml}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" class="totals-label">TOTALES DEL COMPROBANTE:</td>
+        <td class="totals-qty font-bold">${fmtN(sumQty)}</td>
+        <td></td>
+        <td class="totals-cost">${fmt(sumCost)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="signatures-section">
+    <div class="section-title" style="margin-bottom:2px;">Control Interno y Firmas de Autorización</div>
+    <div class="sig-grid">
+      <div class="sig-card">
+        <div class="sig-name">${esc(createdByName)}</div>
+        <div class="sig-line">Entregó / Elaboró</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-name">&nbsp;</div>
+        <div class="sig-line">Recibió a Conformidad (C.C.)</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-name">&nbsp;</div>
+        <div class="sig-line">Bodega / Despacho</div>
+      </div>
+      <div class="sig-card">
+        <div class="sig-name">&nbsp;</div>
+        <div class="sig-line">Aprobación / Contabilidad</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <div>GRAVY &mdash; Sistema de Gestión e Inventarios</div>
+    <div>Documento: <strong>${esc(mov.number)}</strong> &mdash; Fecha Doc: ${esc(mov.date || '')}</div>
+    <div>Impreso por: ${esc(printedByName)} (${printDate})</div>
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 250);
+    };
+  <\/script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank', 'width=950,height=750,scrollbars=yes');
+    if (!win) return showToast('El navegador bloqueó la ventana emergente. Por favor, permite ventanas emergentes para imprimir.', 'warning');
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+  } catch (err: any) {
+    showToast('Error al generar comprobante de movimiento: ' + err.message, 'error');
+  }
 }
 
 // ── Aplicar movimiento ────────────────────────────────────────────────────────
@@ -2804,6 +3150,7 @@ async function renderKardexTab(c, ctx = {}) {
 (window as any).renderInventario = renderInventario;
 (window as any).renderMovRows = renderMovRows;
 (window as any).viewMovDetail = viewMovDetail;
+(window as any).printInventoryMovement = printInventoryMovement;
 (window as any)._renderInvPage = _renderInvPage;
 (window as any).INV_MOV_TYPES = INV_MOV_TYPES;
 (window as any).renderKardexTab = renderKardexTab;
@@ -6727,6 +7074,7 @@ async function deleteConsignmentSettlement(id, number) {
 (window as any).renumberInventoryMovements = renumberInventoryMovements;
 (window as any).editMovement = editMovement;
 (window as any).viewMovDetail = viewMovDetail;
+(window as any).printInventoryMovement = printInventoryMovement;
 (window as any).applyMovement = applyMovement;
 (window as any).voidMovement = voidMovement;
 (window as any).openMovForm = openMovForm;

@@ -1,8 +1,5 @@
-/**
- * GRAVY v2.0 — agenda-pagos.ts
- * Programación de pagos, vencimientos CXP e impuestos DIAN con proyecciones.
- */
-'use strict';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 interface AgendaRecord {
   id: string;
@@ -123,26 +120,31 @@ interface AgendaRecord {
           </div>
 
           <!-- Tarjetas KPI -->
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:20px">
-            <div class="stat-card blue">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Total Proyectado</div>
-              <div id="kpi-total-proyectado" style="font-size:24px; font-weight:800; color:var(--text-strong); margin-top:8px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Pagos pendientes + programados</p>
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px">
+            <div class="stat-card blue" style="border-left: 4px solid #10B981">
+              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Cobros Proyectados (CXC)</div>
+              <div id="kpi-total-cxc" style="font-size:22px; font-weight:800; color:#059669; margin-top:6px">$0</div>
+              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Cartera de clientes por recaudar</p>
             </div>
-            <div class="stat-card orange">
+            <div class="stat-card orange" style="border-left: 4px solid #F97316">
               <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">CXP Proveedores</div>
-              <div id="kpi-total-cxp" style="font-size:24px; font-weight:800; color:var(--text-strong); margin-top:8px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Cuentas por pagar pendientes</p>
+              <div id="kpi-total-cxp" style="font-size:22px; font-weight:800; color:#EA580C; margin-top:6px">$0</div>
+              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Locales e Importaciones</p>
             </div>
-            <div class="stat-card green">
+            <div class="stat-card purple" style="border-left: 4px solid #8B5CF6">
               <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Impuestos & DIAN</div>
-              <div id="kpi-total-dian" style="font-size:24px; font-weight:800; color:var(--text-strong); margin-top:8px">$0</div>
+              <div id="kpi-total-dian" style="font-size:22px; font-weight:800; color:#7C3AED; margin-top:6px">$0</div>
               <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Compromisos fiscales</p>
             </div>
-            <div class="stat-card red">
+            <div class="stat-card red" style="border-left: 4px solid #EF4444">
               <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Total Vencido</div>
-              <div id="kpi-total-vencido" style="font-size:24px; font-weight:800; color:#EF4444; margin-top:8px">$0</div>
-              <p style="color:#EF4444; font-size:11px; margin-top:4px">Pagos fuera de plazo</p>
+              <div id="kpi-total-vencido" style="font-size:22px; font-weight:800; color:#DC2626; margin-top:6px">$0</div>
+              <p style="color:#DC2626; font-size:11px; margin-top:4px">Obligaciones fuera de plazo</p>
+            </div>
+            <div class="stat-card green" style="border-left: 4px solid #2563EB">
+              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Flujo Neto Estimado</div>
+              <div id="kpi-total-neto" style="font-size:22px; font-weight:800; color:#1D4ED8; margin-top:6px">$0</div>
+              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Ingresos (CXC) - Egresos (CXP)</p>
             </div>
           </div>
 
@@ -151,10 +153,12 @@ interface AgendaRecord {
             
             <!-- Gráfica de proyección -->
             <div class="stat-card" style="padding:24px;">
-              <h3 class="text-sm font-bold mb-4" style="color:var(--text-strong); text-transform:uppercase; letter-spacing:.5px">
-                <i class="fas fa-chart-line mr-2" style="color:var(--accent-violet)"></i>Proyección Flujo de Caja por Día
-              </h3>
-              <div style="height: 250px; position: relative;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+                <h3 class="text-sm font-bold" style="color:var(--text-strong); text-transform:uppercase; letter-spacing:.5px">
+                  <i class="fas fa-chart-line mr-2" style="color:var(--accent-violet)"></i>Proyección Flujo de Caja Diario (Cobros vs Pagos)
+                </h3>
+              </div>
+              <div style="height: 280px; position: relative;">
                 <canvas id="agenda-projection-chart"></canvas>
               </div>
             </div>
@@ -168,21 +172,19 @@ interface AgendaRecord {
                 <span id="agenda-count-badge" class="badge" style="background:var(--accent-soft); color:var(--accent-cyan-strong); font-size:12px; font-weight:700">0 Items</span>
               </div>
               <div style="overflow-x:auto">
-                <table class="so-lines-tbl w-full text-left" style="border-collapse:collapse">
+                <table class="table" style="width:100%; border-collapse:collapse">
                   <thead>
-                    <tr style="border-bottom:2px solid var(--border-soft); color:var(--text-muted)">
-                      <th style="padding:12px 8px">Tipo</th>
-                      <th style="padding:12px 8px">Vencimiento</th>
-                      <th style="padding:12px 8px">Concepto</th>
-                      <th style="padding:12px 8px">Monto</th>
-                      <th style="padding:12px 8px">Asignado a</th>
-                      <th style="padding:12px 8px">Estado</th>
-                      <th style="padding:12px 8px; text-align:right">Acciones</th>
+                    <tr style="border-bottom: 2px solid var(--border-soft); text-align:left">
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Tipo</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Vencimiento</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Concepto</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Monto</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Asignado a</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase">Estado</th>
+                      <th style="padding:10px 8px; font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; text-align:right">Acciones</th>
                     </tr>
                   </thead>
-                  <tbody id="agenda-items-tbody">
-                    <!-- Dinámico -->
-                  </tbody>
+                  <tbody id="agenda-items-tbody"></tbody>
                 </table>
               </div>
             </div>
@@ -252,7 +254,7 @@ interface AgendaRecord {
       });
 
       // 2. Calcular KPIs
-      let totalProyectado = 0;
+      let totalCxc = 0;
       let totalCxp = 0;
       let totalDian = 0;
       let totalVencido = 0;
@@ -265,10 +267,10 @@ interface AgendaRecord {
           totalVencido += r.amount;
         }
 
-        // Proyectado = Pendientes + Programados + Vencidos (lo que se debe)
         if (r.status !== 'pagado') {
-          totalProyectado += r.amount;
-          if (r.type === 'cxp_proveedor') {
+          if (r.type === 'cxc_cliente') {
+            totalCxc += r.amount;
+          } else if (r.type === 'cxp_proveedor' || r.type === 'cxp_importacion') {
             totalCxp += r.amount;
           } else if (isTax) {
             totalDian += r.amount;
@@ -276,19 +278,26 @@ interface AgendaRecord {
         }
       });
 
+      const totalNeto = totalCxc - totalCxp - totalDian;
+
       // Actualizar valores en UI
       const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
       
-      const elProyectado = document.getElementById('kpi-total-proyectado');
+      const elCxc = document.getElementById('kpi-total-cxc');
       const elCxp = document.getElementById('kpi-total-cxp');
       const elDian = document.getElementById('kpi-total-dian');
       const elVencido = document.getElementById('kpi-total-vencido');
+      const elNeto = document.getElementById('kpi-total-neto');
       const elBadge = document.getElementById('agenda-count-badge');
 
-      if (elProyectado) elProyectado.innerText = formatCOP(totalProyectado);
+      if (elCxc) elCxc.innerText = formatCOP(totalCxc);
       if (elCxp) elCxp.innerText = formatCOP(totalCxp);
       if (elDian) elDian.innerText = formatCOP(totalDian);
       if (elVencido) elVencido.innerText = formatCOP(totalVencido);
+      if (elNeto) {
+        elNeto.innerText = formatCOP(totalNeto);
+        elNeto.style.color = totalNeto >= 0 ? '#10B981' : '#EF4444';
+      }
       if (elBadge) elBadge.innerText = `${filtered.length} Vencimientos`;
 
       // 3. Renderizar Tabla
@@ -479,82 +488,154 @@ interface AgendaRecord {
       const canvas = document.getElementById('agenda-projection-chart') as HTMLCanvasElement;
       if (!canvas) return;
 
-      // Destruir instancia previa de Chart
       if (state.chartInstance) {
         state.chartInstance.destroy();
+        state.chartInstance = null;
       }
 
-      // Agrupar montos pendientes y programados por fecha
-      const dailyMap: Record<string, number> = {};
-      
-      // Llenar el mapa con todas las fechas del rango actual
-      const current = new Date(state.dateFrom);
-      const limit = new Date(state.dateTo);
-      while (current <= limit) {
-        const fStr = fmtDate(current);
-        dailyMap[fStr] = 0;
-        current.setDate(current.getDate() + 1);
-      }
+      // Generar fechas en el rango sin desajuste de zona horaria
+      const dates: string[] = [];
+      try {
+        const [sY, sM, sD] = state.dateFrom.split('-').map(Number);
+        const [eY, eM, eD] = state.dateTo.split('-').map(Number);
+        const curr = new Date(sY, sM - 1, sD, 12, 0, 0);
+        const end = new Date(eY, eM - 1, eD, 12, 0, 0);
+        while (curr <= end) {
+          const y = curr.getFullYear();
+          const m = String(curr.getMonth() + 1).padStart(2, '0');
+          const d = String(curr.getDate()).padStart(2, '0');
+          dates.push(`${y}-${m}-${d}`);
+          curr.setDate(curr.getDate() + 1);
+        }
+      } catch (_) { }
 
-      // Sumar montos por fecha para compromisos no pagados
+      const dailyCxc: Record<string, number> = {};
+      const dailyCxp: Record<string, number> = {};
+      const dailyNet: Record<string, number> = {};
+
+      dates.forEach(d => {
+        dailyCxc[d] = 0;
+        dailyCxp[d] = 0;
+        dailyNet[d] = 0;
+      });
+
       items.forEach(r => {
-        if (r.status !== 'pagado' && dailyMap[r.due_date] !== undefined) {
-          dailyMap[r.due_date] += r.amount;
+        if (r.status !== 'pagado') {
+          const d = r.due_date;
+          if (dailyCxc[d] === undefined) {
+            dailyCxc[d] = 0;
+            dailyCxp[d] = 0;
+            dailyNet[d] = 0;
+            if (!dates.includes(d)) dates.push(d);
+          }
+          if (r.type === 'cxc_cliente') {
+            dailyCxc[d] += r.amount;
+          } else {
+            dailyCxp[d] += r.amount;
+          }
         }
       });
 
-      const labels = Object.keys(dailyMap).sort();
-      const dataValues = labels.map(l => dailyMap[l]);
+      dates.sort();
+      dates.forEach(d => {
+        dailyNet[d] = (dailyCxc[d] || 0) - (dailyCxp[d] || 0);
+      });
+
+      const labels = dates.map(d => {
+        const parts = d.split('-');
+        return `${parts[2]}/${parts[1]}`;
+      });
+
+      const dataCxc = dates.map(d => dailyCxc[d] || 0);
+      const dataCxp = dates.map(d => dailyCxp[d] || 0);
+      const dataNet = dates.map(d => dailyNet[d] || 0);
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const chartGradient = ctx.createLinearGradient(0, 0, 0, 200);
-      chartGradient.addColorStop(0, 'rgba(99, 102, 241, 0.25)');
-      chartGradient.addColorStop(1, 'rgba(99, 102, 241, 0.00)');
-
-      const ChartConstructor = (window as any).Chart;
-      if (!ChartConstructor) return;
-
-      state.chartInstance = new ChartConstructor(canvas, {
-        type: 'bar',
+      state.chartInstance = new Chart(canvas, {
         data: {
-          labels: labels.map(l => {
-            const parts = l.split('-');
-            return `${parts[2]}/${parts[1]}`; // DD/MM format
-          }),
-          datasets: [{
-            label: 'Proyección Pagos ($)',
-            data: dataValues,
-            borderColor: '#6366F1',
-            backgroundColor: '#818CF8',
-            borderRadius: 6,
-            borderWidth: 0,
-            barThickness: 16
-          }]
+          labels,
+          datasets: [
+            {
+              type: 'bar' as const,
+              label: 'Cobros Cartera CXC (+)',
+              data: dataCxc,
+              backgroundColor: '#10B981',
+              hoverBackgroundColor: '#059669',
+              borderRadius: 4,
+              barPercentage: 0.6,
+              categoryPercentage: 0.8,
+              order: 2
+            },
+            {
+              type: 'bar' as const,
+              label: 'Pagos CXP / DIAN (-)',
+              data: dataCxp,
+              backgroundColor: '#F97316',
+              hoverBackgroundColor: '#EA580C',
+              borderRadius: 4,
+              barPercentage: 0.6,
+              categoryPercentage: 0.8,
+              order: 2
+            },
+            {
+              type: 'line' as const,
+              label: 'Flujo Neto Diario',
+              data: dataNet,
+              borderColor: '#2563EB',
+              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+              fill: false,
+              tension: 0.3,
+              pointRadius: 3,
+              pointHoverRadius: 6,
+              borderWidth: 2,
+              order: 1
+            }
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
           plugins: {
-            legend: { display: false },
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                boxWidth: 12,
+                font: { size: 11, weight: 'bold' }
+              }
+            },
             tooltip: {
               callbacks: {
                 label: function (tooltipItem: any) {
-                  return ` Por pagar: $ ${tooltipItem.raw.toLocaleString('es-CO')}`;
+                  const val = tooltipItem.raw || 0;
+                  return ` ${tooltipItem.dataset.label}: $ ${Number(val).toLocaleString('es-CO')}`;
                 }
               }
             }
           },
           scales: {
             x: {
-              grid: { display: false }
+              grid: { display: false },
+              ticks: { font: { size: 10 } }
             },
             y: {
-              grid: { color: 'rgba(0,0,0,0.04)' },
+              grid: { color: 'rgba(0,0,0,0.05)' },
               ticks: {
+                font: { size: 10 },
                 callback: function (val: any) {
-                  return `$ ${val.toLocaleString('es-CO')}`;
+                  if (Math.abs(val) >= 1000000) {
+                    return `$ ${(val / 1000000).toFixed(1)}M`;
+                  }
+                  if (Math.abs(val) >= 1000) {
+                    return `$ ${(val / 1000).toFixed(0)}k`;
+                  }
+                  return `$ ${val}`;
                 }
               }
             }

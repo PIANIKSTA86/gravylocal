@@ -12,9 +12,9 @@ interface OrderStatusDetail {
 }
 
 const ORDER_STATUS: Record<string, OrderStatusDetail> = {
-  pending:   { label: 'Pendiente',   badge: 'badge-orange' },
-  invoiced:  { label: 'Facturado',   badge: 'badge-green'  },
-  cancelled: { label: 'Cancelado',   badge: 'badge-red'    },
+  pending: { label: 'Pendiente', badge: 'badge-orange' },
+  invoiced: { label: 'Facturado', badge: 'badge-green' },
+  cancelled: { label: 'Cancelado', badge: 'badge-red' },
 };
 
 // --- Render Principal ---
@@ -52,10 +52,10 @@ async function _loadPedidosPage(c: HTMLElement) {
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${orderKpi('Total pedidos',     total,                     'fas fa-file-signature',      '#1A4B8C', '#EEF4FF')}
-      ${orderKpi('Pendientes',        pending,                   'fas fa-clock',               '#C46516', '#FFF8F0')}
-      ${orderKpi('Facturados',        invoiced,                  'fas fa-check-double',        '#059669', '#ECFDF5')}
-      ${orderKpi('Valor total activos', (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#F5F3FF')}
+      ${orderKpi('Total pedidos', total, 'fas fa-file-signature', '#1A4B8C', '#EEF4FF')}
+      ${orderKpi('Pendientes', pending, 'fas fa-clock', '#C46516', '#FFF8F0')}
+      ${orderKpi('Facturados', invoiced, 'fas fa-check-double', '#059669', '#ECFDF5')}
+      ${orderKpi('Valor total activos', (window as any).fmt(totalVal), 'fas fa-coins', '#7C3AED', '#F5F3FF')}
     </div>
 
     <!-- Filtros -->
@@ -234,7 +234,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     currentWhStock = await (window as any).API.getInventoryStock({ warehouseId: initialWhId }).catch(() => []);
   }
 
-  (window as any).ordUpdateStockDisplay = async function(idx: number, productId: string) {
+  (window as any).ordUpdateStockDisplay = async function (idx: number, productId: string) {
     const whId = (document.getElementById('ord-warehouse') as HTMLSelectElement)?.value;
     const qtyInput = document.getElementById(`ordl-qty-${idx}`) as HTMLInputElement;
     const qtyRequested = parseFloat(qtyInput?.value || '0') || 0;
@@ -242,7 +242,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     const stockWhLabel = document.getElementById(`ordl-stock-wh-lbl-${idx}`);
     const transitLabel = document.getElementById(`ordl-stock-transit-lbl-${idx}`);
     const stockContainer = document.getElementById(`ordl-stock-container-${idx}`);
-    
+
     if (!stockWhLabel || !transitLabel || !stockContainer) return;
 
     try {
@@ -253,7 +253,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
       const currentWh = stocks.find((s: any) => s.warehouse_id === whId);
       const qtyAvailable = currentWh ? Number(currentWh.qty_on_hand || 0) : 0;
-      
+
       const whName = warehouses.find((w: any) => w.id === whId)?.name || 'Sin bodega';
       if (whId) {
         stockWhLabel.innerHTML = `<i class="fas fa-warehouse mr-0.5"></i> ${whName}: <strong>${(window as any).fmtN(qtyAvailable)}</strong> disp.`;
@@ -276,7 +276,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       } else {
         transitLabel.classList.add('hidden');
       }
-      
+
       stockContainer.classList.remove('hidden');
     } catch (err) {
       console.warn('Error fetching stock for line:', err);
@@ -418,8 +418,8 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
     const performSearch = (val: string) => {
       const query = val.toLowerCase().trim();
-      const filtered = !query 
-        ? customers.slice(0, 30) 
+      const filtered = !query
+        ? customers.slice(0, 30)
         : customers.filter((c: any) => `${c.name} ${c.doc_number} ${c.nit}`.toLowerCase().includes(query)).slice(0, 30);
 
       if (!filtered.length) {
@@ -447,7 +447,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     });
   }
 
-  (window as any).selectOrdCustomer = function(id: string, text: string) {
+  (window as any).selectOrdCustomer = function (id: string, text: string) {
     const hidden = document.getElementById('ord-customer-id') as HTMLInputElement;
     const input = document.getElementById('ord-customer-search') as HTMLInputElement;
     if (hidden && input) {
@@ -456,7 +456,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     }
   };
 
-  (window as any).ordQuickAddCustomer = function() {
+  (window as any).ordQuickAddCustomer = function () {
     if (typeof (window as any).openTerceroForm === 'function') {
       (window as any).openTerceroForm(null, async (createdRecord: any) => {
         try {
@@ -479,27 +479,27 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
   initOrdCustomerSearch();
 
   // Líneas del Pedido
-  (window as any).addOrdLine = function(prod: any = null, preloadedLine: any = null) {
+  (window as any).addOrdLine = function (prod: any = null, preloadedLine: any = null) {
     lineCounter++;
     const idx = lineCounter;
     const tbody = document.getElementById('ord-lines-body');
     if (!tbody) return;
 
-    const productId   = prod?.id   || preloadedLine?.product_id || '';
+    const productId = prod?.id || preloadedLine?.product_id || '';
     const productCode = prod?.code || preloadedLine?._code || '';
     const productName = prod?.name || preloadedLine?._name || preloadedLine?.description || '(producto)';
-    const initQty     = preloadedLine?.qty        ?? 1;
-    const initIva     = preloadedLine?.iva_rate   ?? prod?.iva_rate ?? 19;
+    const initQty = preloadedLine?.qty ?? 1;
+    const initIva = preloadedLine?.iva_rate ?? prod?.iva_rate ?? 19;
 
     let initPrice = 0;
     if (preloadedLine) {
-      initPrice = pricesIncludeIva 
+      initPrice = pricesIncludeIva
         ? Math.round(preloadedLine.unit_price * (1 + (preloadedLine.iva_rate || 0) / 100) * 100) / 100
         : preloadedLine.unit_price;
     } else if (prod) {
       const prodPrice = prod.sales_price || prod.base_price || 0;
       const prodIva = prod.iva_rate ?? 19;
-      initPrice = pricesIncludeIva 
+      initPrice = pricesIncludeIva
         ? Math.round(prodPrice * (1 + prodIva / 100) * 100) / 100
         : prodPrice;
     }
@@ -529,8 +529,8 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       <td><input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.ordRecalcLine(${idx})"></td>
       <td>
         <select id="ordl-iva-${idx}" class="form-input text-right w-full" style="font-size:11px; padding: 4px 18px 4px 4px;" onchange="window.ordRecalcLine(${idx})">
-          <option value="0"  ${initIva == 0  ? 'selected' : ''}>0 %</option>
-          <option value="5"  ${initIva == 5  ? 'selected' : ''}>5 %</option>
+          <option value="0"  ${initIva == 0 ? 'selected' : ''}>0 %</option>
+          <option value="5"  ${initIva == 5 ? 'selected' : ''}>5 %</option>
           <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
         </select>
       </td>
@@ -546,7 +546,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       const transLbl = document.getElementById(`ordl-stock-transit-lbl-${idx}`);
       whLbl?.addEventListener('click', () => (window as any).showStockBreakdownModal(productId, productName));
       transLbl?.addEventListener('click', () => (window as any).showStockBreakdownModal(productId, productName));
-      
+
       if ((window as any).ordUpdateStockDisplay) {
         (window as any).ordUpdateStockDisplay(idx, productId);
       }
@@ -646,7 +646,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
   }
 
-  (window as any).ordGlobalSelectProduct = function(idx: number) {
+  (window as any).ordGlobalSelectProduct = function (idx: number) {
     const filtered: any[] = (window as any).__ordGlobalFilteredProds || [];
     const prod = filtered[idx];
     if (!prod) return;
@@ -659,7 +659,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
   };
 
-  (window as any).ordRecalcLine = function(idx: number) {
+  (window as any).ordRecalcLine = function (idx: number) {
     const qty = parseFloat((document.getElementById(`ordl-qty-${idx}`) as HTMLInputElement)?.value || '0');
     const price = parseFloat((document.getElementById(`ordl-price-${idx}`) as HTMLInputElement)?.value || '0');
     const ivaRate = parseFloat((document.getElementById(`ordl-iva-${idx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement)?.value || '0');
@@ -702,7 +702,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     }
   };
 
-  (window as any).ordRecalcTotals = function() {
+  (window as any).ordRecalcTotals = function () {
     let subtotal = 0;
     let iva = 0;
     let net = 0;
@@ -772,7 +772,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
       const lines: any[] = [];
       const rows = document.querySelectorAll('#ord-lines-body tr');
-      
+
       rows.forEach((row, i) => {
         const idx = row.id.split('-').pop();
         const productId = (document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement)?.value;
@@ -850,7 +850,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         } catch (crmErr: any) {
           console.error("Error al vincular oportunidad CRM:", crmErr);
         }
-      }      (window as any).closeModal();
+      } (window as any).closeModal();
       if (onDone) onDone();
     } catch (err: any) {
       (window as any).showToast(err.message || 'No se pudo registrar el pedido', 'error');
@@ -859,7 +859,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 }
 
 // --- Detalle del Pedido / Cotización ---
-(window as any).viewSalesOrderDetail = async function(orderId: string) {
+(window as any).viewSalesOrderDetail = async function (orderId: string) {
   try {
     const [ord, lines] = await Promise.all([
       (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id,invoice_id,user_id,seller_id' }),
@@ -943,7 +943,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // Editar Pedido
-(window as any).editSalesOrder = function(orderId: string) {
+(window as any).editSalesOrder = function (orderId: string) {
   openOrderForm(orderId, () => {
     const activeContent = document.getElementById('page-content');
     if (activeContent) {
@@ -953,7 +953,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // Anular Pedido
-(window as any).cancelSalesOrderDirect = async function(orderId: string, orderNumber: string) {
+(window as any).cancelSalesOrderDirect = async function (orderId: string, orderNumber: string) {
   const reason = prompt(`¿Estás seguro de que deseas ANULAR el pedido ${orderNumber}?\nEscribe el motivo:`);
   if (reason === null) return;
   if (!reason.trim()) {
@@ -964,7 +964,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
   try {
     await (window as any).API.cancelSalesOrder(orderId, reason.trim());
     (window as any).showToast('Pedido anulado con éxito', 'success');
-    
+
     const activeContent = document.getElementById('page-content');
     if (activeContent) {
       renderPedidos(activeContent);
@@ -975,7 +975,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // Despachar Pedido a Logística
-(window as any).dispatchSalesOrderDirect = async function(orderId: string) {
+(window as any).dispatchSalesOrderDirect = async function (orderId: string) {
   try {
     const [ord, vehicles, lines] = await Promise.all([
       (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' }),
@@ -1073,7 +1073,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // Facturar Pedido desde Pedidos
-(window as any).invoiceSalesOrderDirect = function(orderId: string) {
+(window as any).invoiceSalesOrderDirect = function (orderId: string) {
   (window as any).closeModal();
   // Exponer e ir a ventas cargando el pedido
   (window as any).navigate('ventas');
@@ -1088,7 +1088,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // Ver Factura Asociada
-(window as any).viewSalesInvoiceFromOrder = function(invoiceId: string) {
+(window as any).viewSalesInvoiceFromOrder = function (invoiceId: string) {
   (window as any).closeModal();
   (window as any).navigate('ventas');
   setTimeout(() => {
@@ -1099,7 +1099,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 };
 
 // --- Impresión de Pedidos (Carta y Tirilla) ---
-window.printOrderCarta = async function(orderId: string) {
+window.printOrderCarta = async function (orderId: string) {
   try {
     const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' });
     const lines = await (window as any).API.getSalesOrderLines(orderId);
@@ -1250,7 +1250,7 @@ window.printOrderCarta = async function(orderId: string) {
   }
 };
 
-window.printOrderTirilla = async function(orderId: string) {
+window.printOrderTirilla = async function (orderId: string) {
   try {
     const ord = await (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' });
     const lines = await (window as any).API.getSalesOrderLines(orderId);

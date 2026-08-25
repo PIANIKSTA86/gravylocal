@@ -37,6 +37,8 @@ Si tienes acceso directo (USB o red), simplemente:
      (Ej: C:\GravyLocal\)
   2. Doble clic en: instalar.bat
 
+netstat -ano | findstr :80
+
 ══════════════════════════════════════════════════════════════
  USO DIARIO
 ══════════════════════════════════════════════════════════════

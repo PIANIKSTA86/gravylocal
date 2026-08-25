@@ -397,24 +397,103 @@ export class SupplyChainOrchestrator {
   }
 
   /**
-   * 6. Sincroniza retroactivamente todas las ventas y compras a crédito existentes que no estén en la Agenda de Pagos
+   * 6. Sincroniza retroactivamente todas las ventas, compras a crédito, importaciones y cartera contable existente que no estén en la Agenda de Pagos
    */
   static async syncHistoricalInvoicesToAgenda() {
     let syncedCount = 0;
     try {
-      // 1. Obtener todas las facturas de venta y compra activas/contabilizadas
-      const [allInvoices, existingAgenda] = await Promise.all([
+      const todayStr = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+
+      // 1. Obtener facturas comerciales, importaciones, cartera contable abierta y registros existentes en agenda
+      const [allInvoices, allPurchases, allImports, openCxpDocs, openCxcDocs, existingAgenda] = await Promise.all([
         this.pb.listAll('invoices', {
           filter: 'status!="voided" && status!="draft"',
           expand: 'customer_id',
         }).catch(() => []),
+        this.pb.listAll('purchase_invoices', {
+          filter: 'status!="voided" && status!="draft"',
+          expand: 'supplier_id',
+        }).catch(() => []),
+        this.pb.listAll('imports', {
+          filter: 'status!="anulado"',
+          expand: 'supplier_id',
+        }).catch(() => []),
+        this.pb.send(`/api/gravy/report-portfolio-aging?mode=cxp&asOfDate=${todayStr}`, { method: 'GET' }).catch(() => []),
+        this.pb.send(`/api/gravy/report-portfolio-aging?mode=cxc&asOfDate=${todayStr}`, { method: 'GET' }).catch(() => []),
         this.pb.listAll('agenda_vencimientos').catch(() => [])
       ]);
 
       const existingDescriptions = existingAgenda.map((r: any) => `${r.title || ''} ${r.description || ''}`).join(' ');
 
+      // A. Sincronizar Cartera Contable de Cuentas por Pagar (CXP Proveedores, Acreedores, Importaciones 22, 23, 25)
+      for (const d of (openCxpDocs || [])) {
+        const openAmt = Math.abs(Number(d.open || 0));
+        if (openAmt <= 0) continue;
+
+        const docRef = String(d.doc_ref || '').trim();
+        const thirdDoc = String(d.third_doc || '').trim();
+        const thirdName = String(d.third_name || 'Proveedor').trim();
+        const accCode = String(d.account_code || '').trim();
+
+        // Evitar duplicados por referencia de documento o tercero + cuenta
+        const uniqueKey = `[PORTFOLIO_CXP:${accCode}_${thirdDoc}_${docRef}]`;
+        if (
+          existingDescriptions.includes(uniqueKey) || 
+          (docRef && docRef.length >= 3 && existingDescriptions.includes(docRef))
+        ) {
+          continue;
+        }
+
+        const isImport = accCode.startsWith('2210') || accCode.startsWith('1465');
+        const type = isImport ? 'cxp_importacion' : 'cxp_proveedor';
+        const title = `${isImport ? 'CXP Importación' : 'CXP Proveedor'}: ${thirdName} — Doc. ${docRef || 'Vencimiento'}`;
+        const description = `${uniqueKey} Cuenta: ${accCode} - ${d.account_name || ''} | Tercero: ${thirdName} (${thirdDoc})`;
+
+        const res = await this.safeCreateAgendaRecord({
+          type,
+          title,
+          description,
+          due_date: d.due_date || d.doc_date || todayStr,
+          amount: openAmt,
+          status: 'pendiente',
+        });
+        if (res) syncedCount++;
+      }
+
+      // B. Sincronizar Cartera Contable de Cuentas por Cobrar (CXC Clientes 13)
+      for (const d of (openCxcDocs || [])) {
+        const openAmt = Math.abs(Number(d.open || 0));
+        if (openAmt <= 0) continue;
+
+        const docRef = String(d.doc_ref || '').trim();
+        const thirdDoc = String(d.third_doc || '').trim();
+        const thirdName = String(d.third_name || 'Cliente').trim();
+        const accCode = String(d.account_code || '').trim();
+
+        const uniqueKey = `[PORTFOLIO_CXC:${accCode}_${thirdDoc}_${docRef}]`;
+        if (
+          existingDescriptions.includes(uniqueKey) || 
+          (docRef && docRef.length >= 3 && existingDescriptions.includes(docRef))
+        ) {
+          continue;
+        }
+
+        const title = `Cobro Cartera: ${thirdName} — Doc. ${docRef || 'Factura'}`;
+        const description = `${uniqueKey} Cuenta: ${accCode} - ${d.account_name || ''} | Cliente: ${thirdName} (${thirdDoc})`;
+
+        const res = await this.safeCreateAgendaRecord({
+          type: 'cxc_cliente',
+          title,
+          description,
+          due_date: d.due_date || d.doc_date || todayStr,
+          amount: openAmt,
+          status: 'pendiente',
+        });
+        if (res) syncedCount++;
+      }
+
+      // C. Sincronizar Facturas de Venta Comerciales
       for (const inv of allInvoices) {
-        // Comprobar si ya existe por ID de factura o número
         if (existingDescriptions.includes(inv.id) || (inv.number && existingDescriptions.includes(inv.number))) {
           continue;
         }
@@ -435,6 +514,59 @@ export class SupplyChainOrchestrator {
             description: `[INV:${inv.id}] Cartera comercial correspondiente a la factura de venta ${inv.number}.`,
             due_date: inv.due_date || inv.date,
             amount: Number(inv.payable_total || inv.total || 0),
+            status: 'pendiente',
+          });
+          if (res) syncedCount++;
+        }
+      }
+
+      // D. Sincronizar Facturas de Compra Comerciales
+      for (const pinv of allPurchases) {
+        if (existingDescriptions.includes(pinv.id) || (pinv.number && existingDescriptions.includes(pinv.number))) {
+          continue;
+        }
+
+        const payMethod = String(pinv.payment_method || '').toUpperCase();
+        const payForm = String(pinv.payment_form || '');
+        const isCredit = (
+          payMethod === 'CREDITO' || 
+          payMethod === 'CREDIT' || 
+          payForm === '2' || 
+          (pinv.due_date && pinv.date && pinv.due_date > pinv.date) ||
+          pinv.status === 'posted'
+        );
+
+        const amount = Number(pinv.payable_total ?? pinv.total ?? 0);
+        if (isCredit && amount > 0) {
+          const supplierName = pinv.expand?.supplier_id?.name || pinv.supplier_name || 'Proveedor';
+          const invNum = pinv.number || pinv.supplier_invoice_number || pinv.id;
+          const res = await this.safeCreateAgendaRecord({
+            type: 'cxp_proveedor',
+            title: `CXP Proveedor: ${supplierName} — Fac. ${invNum}`,
+            description: `[PURCHASE_INV:${pinv.id}] Ref Compra: ${pinv.id}\n${pinv.notes || ''}`,
+            due_date: pinv.due_date || pinv.date || todayStr,
+            amount: amount,
+            status: 'pendiente',
+          });
+          if (res) syncedCount++;
+        }
+      }
+
+      // E. Sincronizar Obligaciones de Importaciones Activas
+      for (const imp of allImports) {
+        if (existingDescriptions.includes(imp.id) || (imp.number && existingDescriptions.includes(imp.number))) {
+          continue;
+        }
+
+        const impAmount = Number(imp.final_total_cop || imp.total || (imp.fob_total && imp.exchange_rate ? imp.fob_total * imp.exchange_rate : 0) || 0);
+        if (impAmount > 0 && imp.status !== 'anulado') {
+          const supplierName = imp.expand?.supplier_id?.name || 'Proveedor Exterior';
+          const res = await this.safeCreateAgendaRecord({
+            type: 'cxp_importacion',
+            title: `CXP Importación: ${imp.number} — ${supplierName}`,
+            description: `[IMPORT:${imp.id}] Liquidación de importación ${imp.number} (Incoterm: ${imp.incoterm || 'FOB'}).`,
+            due_date: imp.estimated_arrival || imp.date_created || todayStr,
+            amount: impAmount,
             status: 'pendiente',
           });
           if (res) syncedCount++;

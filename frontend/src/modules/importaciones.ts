@@ -8,6 +8,8 @@
 
 'use strict';
 
+import { SupplyChainOrchestrator } from '../services/supply-chain-orchestrator';
+
 interface ImportStatusDetail {
   label: string;
   badge: string;
@@ -1803,8 +1805,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>...';
       }
 
-      await (window as any).API.postImportStage(importId, stage, supplierId, invoiceNum, amount);
-      (window as any).showToast('Causación contable generada exitosamente.', 'success');
+      await SupplyChainOrchestrator.postImportStageWithPaymentSchedule({
+        importId,
+        stageName: stage as any,
+        supplierId,
+        invoiceNum,
+        amount
+      });
+      (window as any).showToast('Causación contable y vencimiento en Agenda de Pagos generados exitosamente.', 'success');
       
       (window as any).closeModal();
       setTimeout(() => {
@@ -2402,10 +2410,11 @@ async function confirmFinalizarImportacion(importId: string) {
         if (!txTypeId) throw new Error('Por favor selecciona el tipo de comprobante contable.');
         if (!txNumber) throw new Error('Por favor ingresa la numeración del comprobante de compra.');
 
-        // 1. Ejecutar la capitalización contable directa (traslado contable Tránsito -> Bodega y Entrada de Inventario)
-        await (window as any).API.capitalizeImport(importId, whId, txTypeId, txNumber);
+        // 1. Ejecutar la capitalización contable directa y liberar reservas de clientes asociadas
+        const capResult = await SupplyChainOrchestrator.finalizeImportAndReleaseReservations(importId, whId, txTypeId, txNumber);
 
-        (window as any).showToast(`Importación finalizada. Traslado contable y entrada a bodega registrados con éxito.`, 'success');
+        const resMsg = capResult.releasedReservationsCount > 0 ? ` Se liberaron ${capResult.releasedReservationsCount} reservas para despacho inmediato.` : '';
+        (window as any).showToast(`Importación finalizada. Traslado a bodega registrado.${resMsg}`, 'success');
         closeModal();
         
         // Recargar página

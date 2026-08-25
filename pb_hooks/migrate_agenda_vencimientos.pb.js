@@ -11,13 +11,32 @@ onBootstrap((e) => {
   const deleteRule = "@request.auth.id != ''";
 
   try {
-    // Si la colección ya existe, parcheamos el campo amount para que no sea requerido
+    // Si la colección ya existe, parcheamos amount y type values
     const col = $app.findCollectionByNameOrId("agenda_vencimientos");
+    let changed = false;
+
     const amountField = col.fields.getByName("amount");
     if (amountField && amountField.required) {
       amountField.required = false;
+      changed = true;
+    }
+
+    const typeField = col.fields.getByName("type");
+    if (typeField && typeField.values) {
+      const needed = ["cxp_proveedor", "cxp_importacion", "cxc_cliente", "impuesto_dian_iva", "impuesto_dian_retencion", "exogena_dian", "otro"];
+      const currentValues = Array.from(typeField.values);
+      for (const val of needed) {
+        if (!currentValues.includes(val)) {
+          currentValues.push(val);
+          changed = true;
+        }
+      }
+      typeField.values = currentValues;
+    }
+
+    if (changed) {
       $app.save(col);
-      console.log("[GRAVY-AGENDA] Parche de esquema aplicado: campo 'amount' ajustado a required=false.");
+      console.log("[GRAVY-AGENDA] Parche de esquema aplicado: 'amount' y 'type' actualizados.");
     }
   } catch (_) {
     // Si no existe, la creamos desde cero
@@ -31,11 +50,11 @@ onBootstrap((e) => {
         updateRule: writeRule,
         deleteRule: deleteRule,
         fields: [
-          { name: "type", type: "select", required: true, values: ["cxp_proveedor", "impuesto_dian_iva", "impuesto_dian_retencion", "exogena_dian", "otro"] },
+          { name: "type", type: "select", required: true, values: ["cxp_proveedor", "cxp_importacion", "cxc_cliente", "impuesto_dian_iva", "impuesto_dian_retencion", "exogena_dian", "otro"] },
           { name: "title", type: "text", required: true },
           { name: "description", type: "text", required: false },
           { name: "due_date", type: "text", required: true },
-          { name: "amount", type: "number", required: false, min: 0 }, // required: false para permitir pre-cargar impuestos en $0
+          { name: "amount", type: "number", required: false, min: 0 },
           { name: "status", type: "select", required: true, values: ["pendiente", "programado", "pagado", "vencido"] },
           { name: "assigned_roles", type: "json", required: false }
         ]

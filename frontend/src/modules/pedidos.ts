@@ -128,6 +128,10 @@ function renderOrderRow(ord: any) {
   const meta = ORDER_STATUS[ord.status] || { label: ord.status, badge: 'badge-gray' };
   const client = ord.expand?.customer_id;
   const wh = ord.expand?.warehouse_id;
+  const fulfillmentStatus = ord.fulfillment_status;
+  const isEnDespacho = fulfillmentStatus === 'EN_DESPACHO';
+  const isEntregado = fulfillmentStatus === 'ENTREGADO';
+
   return `
     <tr data-ordid="${(window as any).esc(ord.id)}" data-ordstatus="${(window as any).esc(ord.status)}" data-orddate="${(window as any).esc(ord.date)}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(ord.number)}</span></td>
@@ -137,14 +141,23 @@ function renderOrderRow(ord: any) {
       <td class="text-right">${(window as any).fmt(ord.subtotal || 0)}</td>
       <td class="text-right">${ord.iva_total ? (window as any).fmt(ord.iva_total) : '—'}</td>
       <td class="text-right font-semibold">${(window as any).fmt(ord.total || 0)}</td>
-      <td><span class="badge ${meta.badge}">${meta.label}</span></td>
       <td>
-        <div class="flex gap-1">
+        <div class="flex flex-col gap-1 items-start">
+          <span class="badge ${meta.badge}">${meta.label}</span>
+          ${isEnDespacho ? '<span class="badge badge-blue text-[10px]"><i class="fas fa-truck mr-1"></i>En Despacho</span>' : ''}
+          ${isEntregado && ord.status !== 'invoiced' ? '<span class="badge badge-green text-[10px]"><i class="fas fa-check mr-1"></i>Entregado</span>' : ''}
+        </div>
+      </td>
+      <td>
+        <div class="flex gap-1 flex-wrap">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesOrderDetail('${(window as any).esc(ord.id)}')"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
           <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#f97316" title="Imprimir Tirilla" onclick="window.printOrderTirilla('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i></button>
           ${ord.status === 'pending' ? `
             <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
+            ${!isEnDespacho && !isEntregado ? `
+              <button class="btn btn-outline btn-sm text-purple-700" style="border-color:#7C3AED; background:#F5F3FF" title="Despachar a Logística" onclick="window.dispatchSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-truck"></i> Despachar</button>
+            ` : ''}
             <button class="btn btn-primary btn-sm" title="Facturar" onclick="window.invoiceSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i> Facturar</button>
             <button class="btn btn-danger btn-sm" title="Anular" onclick="window.cancelSalesOrderDirect('${(window as any).esc(ord.id)}', '${(window as any).esc(ord.number)}')"><i class="fas fa-ban"></i></button>
           ` : ''}
@@ -958,6 +971,104 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     }
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al anular pedido', 'error');
+  }
+};
+
+// Despachar Pedido a Logística
+(window as any).dispatchSalesOrderDirect = async function(orderId: string) {
+  try {
+    const [ord, vehicles, lines] = await Promise.all([
+      (window as any).pb.get('sales_orders', orderId, { expand: 'customer_id,warehouse_id' }),
+      (window as any).pb.listAll('logistica_vehicles', { filter: 'active=true', sort: 'plate', expand: 'transportista_id' }).catch(() => []),
+      (window as any).API.getSalesOrderLines(orderId),
+    ]);
+
+    const client = ord.expand?.customer_id;
+    const activeVehicles = vehicles.filter((v: any) => v.status === 'DISPONIBLE');
+
+    const modalHtml = `
+      <div class="space-y-4 text-sm" style="color:#374151">
+        <div class="p-3 rounded-xl bg-blue-50 border border-blue-200">
+          <div class="font-bold text-blue-900 mb-1 flex items-center gap-1.5">
+            <i class="fas fa-truck text-blue-600"></i> Despacho de Mercancía — Pedido ${(window as any).esc(ord.number)}
+          </div>
+          <div class="text-xs text-blue-800">
+            Cliente: <strong>${(window as any).esc(client?.name || '—')}</strong> | Total Pedido: <strong>${(window as any).fmt(ord.total || 0)}</strong>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="form-group">
+            <label class="form-label font-bold">Vehículo de Flota</label>
+            <select id="dsp-veh-select" class="form-input">
+              <option value="">-- Sin vehículo asignado aún --</option>
+              ${activeVehicles.map((v: any) => `<option value="${v.id}">${v.plate} — ${(window as any).esc(v.expand?.transportista_id?.name || v.driver)} (${(window as any).fmtN(v.capacity)} Kg)</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label font-bold">Fecha de Despacho <span style="color:#EF4444">*</span></label>
+            <input type="date" id="dsp-date" class="form-input" value="${(window as any).todayStr()}">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Dirección de Entrega / Obra</label>
+          <input type="text" id="dsp-address" class="form-input" value="${(window as any).esc(client?.address || '')}" placeholder="Dirección física de destino...">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Observaciones / Instrucciones de Ruta</label>
+          <textarea id="dsp-notes" class="form-input" rows="2" placeholder="Detalles para el transportista, persona que recibe, teléfono de contacto..."></textarea>
+        </div>
+
+        <div class="border rounded-xl p-3 bg-gray-50">
+          <div class="text-xs font-bold uppercase text-gray-600 mb-2">Ítems a despachar (${lines.length})</div>
+          <div class="max-h-36 overflow-y-auto space-y-1 text-xs">
+            ${lines.map((l: any) => `
+              <div class="flex justify-between border-b pb-1">
+                <span>${(window as any).esc(l.expand?.product_id?.name || l.description)}</span>
+                <span class="font-bold font-mono">${(window as any).fmtN(l.qty)} unds</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-confirm-dispatch-order"><i class="fas fa-truck-ramp-box mr-1"></i> Programar Despacho</button>
+    `;
+
+    (window as any).openModal(`Programar Despacho para Pedido ${ord.number}`, modalHtml, footer, false);
+
+    document.getElementById('btn-confirm-dispatch-order')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-confirm-dispatch-order') as HTMLButtonElement;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Programando...'; }
+      try {
+        const vehicleId = (document.getElementById('dsp-veh-select') as HTMLSelectElement)?.value || null;
+        const date = (document.getElementById('dsp-date') as HTMLInputElement)?.value || (window as any).todayStr();
+        const address = (document.getElementById('dsp-address') as HTMLInputElement)?.value?.trim() || '';
+        const notes = (document.getElementById('dsp-notes') as HTMLTextAreaElement)?.value?.trim() || '';
+
+        await (window as any).SupplyChainOrchestrator.createDeliveryFromSalesOrder(orderId, {
+          vehicleId,
+          date,
+          address,
+          notes,
+        });
+
+        (window as any).showToast(`Despacho programado con éxito para el pedido ${ord.number}`, 'success');
+        (window as any).closeModal();
+        const activeContent = document.getElementById('page-content');
+        if (activeContent) renderPedidos(activeContent);
+      } catch (err: any) {
+        (window as any).showToast(err.message || 'Error al programar despacho', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-truck-ramp-box mr-1"></i> Programar Despacho'; }
+      }
+    });
+  } catch (err: any) {
+    (window as any).showToast('Error al preparar despacho: ' + err.message, 'error');
   }
 };
 

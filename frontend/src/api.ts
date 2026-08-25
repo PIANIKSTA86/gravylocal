@@ -958,10 +958,10 @@ const API = {
 
   /** Movimientos de inventario paginados */
   async getInventoryMovements(opts: any = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    const { page = 1, perPage = 50, filter = '', sort = '-date,-number' } = opts;
     const result = await pb.list('inventory_movements', {
       page, perPage, filter, sort,
-      expand: 'warehouse_id,dest_warehouse_id,third_party_id,tx_id,concept_id,concept_id.account_id',
+      expand: 'warehouse_id,dest_warehouse_id,third_party_id,tx_id,concept_id',
     });
 
     const movs = result.items || [];
@@ -2202,9 +2202,9 @@ const API = {
 
     const isPOS = !!inv.pos_shift_id;
     const immediatePosting = isPOS || !!salesConfig?.operational?.immediate_posting;
-    const pendingDeliveryMode = !!inv.has_pending_delivery;
+    const isImportReservationMode = inv.delivery_fulfillment_status === 'RESERVADO_IMPORTACION' || !!inv.is_import_reservation;
 
-    if (pendingDeliveryMode) {
+    if (isImportReservationMode) {
       await this.createImportReservationForInvoice(invoiceId, { createDelivery: true, allowExisting: true });
     }
 
@@ -2213,7 +2213,7 @@ const API = {
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       if (prod && prod.type === 'BIEN') {
-        if (pendingDeliveryMode) {
+        if (isImportReservationMode) {
           continue;
         }
         if (prod.is_combo) {
@@ -2759,7 +2759,7 @@ const API = {
 
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
-      if (!prod || prod.type !== 'BIEN' || pendingDeliveryMode) continue;
+      if (!prod || prod.type !== 'BIEN' || isImportReservationMode) continue;
 
       const stockRows = inv.warehouse_id ? await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []) : [];
       const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
@@ -6532,3 +6532,5 @@ const API = {
 (window as any).pb = pb;
 (window as any).API = API;
 (window as any).PB_URL = (window as any).PB_URL || window.location.origin;
+
+export { API, pb };

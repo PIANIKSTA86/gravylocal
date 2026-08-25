@@ -5,6 +5,8 @@
 
 'use strict';
 
+import { SupplyChainOrchestrator } from '../services/supply-chain-orchestrator';
+
 interface Vehicle {
   id: string;
   plate: string;
@@ -283,9 +285,14 @@ function _renderDeliveriesTab(deliveries: Delivery[], vehicles: Vehicle[]) {
                   <td class="text-right font-mono text-xs">${d.weight ? (window as any).fmtN(d.weight) : '—'}</td>
                   <td><span class="badge ${meta.badge}">${meta.label}</span></td>
                   <td>
-                    <div class="flex gap-1">
+                    <div class="flex gap-1 flex-wrap">
                       <button class="btn btn-outline btn-sm" title="Imprimir Hoja de Ruta" onclick="window._printHojaRuta('${(window as any).esc(d.id)}')"><i class="fas fa-print"></i></button>
                       <button class="btn btn-outline btn-sm" title="Editar" onclick="window._editDelivery('${(window as any).esc(d.id)}')"><i class="fas fa-pen"></i></button>
+                      ${!d.invoice_id ? `
+                        <button class="btn btn-primary btn-sm" title="Facturar esta entrega" onclick="window.invoiceDeliveryDirect('${(window as any).esc(d.id)}')"><i class="fas fa-file-invoice-dollar mr-1"></i> Facturar</button>
+                      ` : `
+                        <button class="btn btn-outline btn-sm text-green-600" style="border-color:#059669" title="Ver Factura Vinculada" onclick="window.viewSalesInvoiceFromDelivery('${(window as any).esc(d.invoice_id)}')"><i class="fas fa-file-invoice"></i></button>
+                      `}
                       <button class="btn btn-danger btn-sm" title="Eliminar" onclick="window._deleteDelivery('${(window as any).esc(d.id)}', '${(window as any).esc(d.number)}')"><i class="fas fa-trash"></i></button>
                     </div>
                   </td>
@@ -1614,10 +1621,12 @@ async function _openDeliveryForm(del: Delivery | null = null, onDone: any = null
         await (window as any).pb.update('logistica_deliveries', del.id, data);
         (window as any).showToast('Entrega actualizada con éxito', 'success');
         await (window as any).API.logAudit('UPDATE', 'logistica_deliveries', del.id, `Entrega/Despacho "${data.number}" modificado.`);
+        SupplyChainOrchestrator.handleDeliveryStatusChange(del.id, status).catch(() => {});
       } else {
         const created = await (window as any).pb.create('logistica_deliveries', data);
         (window as any).showToast('Entrega programada con éxito', 'success');
         await (window as any).API.logAudit('CREATE', 'logistica_deliveries', created.id, `Entrega/Despacho "${data.number}" programada para cliente.`);
+        SupplyChainOrchestrator.handleDeliveryStatusChange(created.id, status).catch(() => {});
       }
 
       // Guardar interacción de despacho en el historial del CRM si está asociado a factura o pedido de un trato
@@ -1821,6 +1830,37 @@ async function _getAndIncrementDeliveryConsecutive(): Promise<string> {
   `;
 
   (window as any).openModal(`Previsualización de Hoja de Ruta: ${d.number}`, previewHtml, footer, true);
+};
+
+// Facturar Entrega / Despacho directamente en Ventas
+(window as any).invoiceDeliveryDirect = async function(deliveryId: string) {
+  try {
+    const del = await (window as any).pb.get('logistica_deliveries', deliveryId, { expand: 'client_id,sales_order_id' });
+    if (!del) throw new Error('Despacho no encontrado.');
+
+    (window as any).closeModal();
+    (window as any).navigate('ventas');
+    setTimeout(() => {
+      if (typeof (window as any).openSalesForm === 'function') {
+        (window as any).openSalesForm(null, () => {
+          (window as any).navigate('despachos');
+        }, del.sales_order_id || null, null, null, deliveryId);
+      }
+    }, 250);
+  } catch (err: any) {
+    (window as any).showToast('Error al preparar facturación de despacho: ' + err.message, 'error');
+  }
+};
+
+// Ver Factura Vinculada a la Entrega
+(window as any).viewSalesInvoiceFromDelivery = function(invoiceId: string) {
+  (window as any).closeModal();
+  (window as any).navigate('ventas');
+  setTimeout(() => {
+    if (typeof (window as any).viewSalesInvoiceDetail === 'function') {
+      (window as any).viewSalesInvoiceDetail(invoiceId);
+    }
+  }, 250);
 };
 
 // Registrar globalmente

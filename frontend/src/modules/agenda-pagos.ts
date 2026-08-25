@@ -6,7 +6,7 @@
 
 interface AgendaRecord {
   id: string;
-  type: 'cxp_proveedor' | 'impuesto_dian_iva' | 'impuesto_dian_retencion' | 'exogena_dian' | 'otro';
+  type: 'cxp_proveedor' | 'cxp_importacion' | 'cxc_cliente' | 'impuesto_dian_iva' | 'impuesto_dian_retencion' | 'exogena_dian' | 'otro';
   title: string;
   description?: string;
   due_date: string;
@@ -87,7 +87,9 @@ interface AgendaRecord {
                   <label class="form-label" style="font-size:11px">Tipo</label>
                   <select id="agenda-filter-type" class="form-input" style="max-width:180px">
                     <option value="TODOS" ${state.type === 'TODOS' ? 'selected' : ''}>Todos los Vencimientos</option>
-                    <option value="cxp_proveedor" ${state.type === 'cxp_proveedor' ? 'selected' : ''}>CXP Proveedores</option>
+                    <option value="cxp_proveedor" ${state.type === 'cxp_proveedor' ? 'selected' : ''}>CXP Proveedores Locales</option>
+                    <option value="cxp_importacion" ${state.type === 'cxp_importacion' ? 'selected' : ''}>CXP Importaciones (FOB/Fletes/Navieras)</option>
+                    <option value="cxc_cliente" ${state.type === 'cxc_cliente' ? 'selected' : ''}>CXC Clientes (Cartera)</option>
                     <option value="impuesto_dian_iva" ${state.type === 'impuesto_dian_iva' ? 'selected' : ''}>Impuesto IVA (DIAN)</option>
                     <option value="impuesto_dian_retencion" ${state.type === 'impuesto_dian_retencion' ? 'selected' : ''}>Retenciones (DIAN)</option>
                     <option value="exogena_dian" ${state.type === 'exogena_dian' ? 'selected' : ''}>Info Exógena (DIAN)</option>
@@ -107,6 +109,9 @@ interface AgendaRecord {
               </div>
               
               <div style="display:flex; gap:8px">
+                <button id="btn-agenda-sync" class="btn btn-outline" style="border-color:#3b82f6; color:#2563eb" title="Sincronizar facturas de compra y venta a crédito existentes">
+                  <i class="fas fa-arrows-rotate mr-1"></i> Sincronizar Cartera & CXP
+                </button>
                 <button id="btn-agenda-dian" class="btn btn-outline" style="border-color:var(--accent-violet-strong); color:var(--accent-violet-strong)">
                   <i class="fas fa-calendar-plus mr-1"></i> Calendario DIAN 2026
                 </button>
@@ -209,6 +214,29 @@ interface AgendaRecord {
       document.getElementById('btn-agenda-dian')?.addEventListener('click', () => {
         openDianModal();
       });
+      document.getElementById('btn-agenda-sync')?.addEventListener('click', async () => {
+        const syncBtn = document.getElementById('btn-agenda-sync') as HTMLButtonElement;
+        if (syncBtn) {
+          syncBtn.disabled = true;
+          syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Sincronizando...';
+        }
+        try {
+          const orchestrator = (window as any).SupplyChainOrchestrator;
+          if (orchestrator && typeof orchestrator.syncHistoricalInvoicesToAgenda === 'function') {
+            const count = await orchestrator.syncHistoricalInvoicesToAgenda();
+            (window as any).showToast(`Sincronización completada. Se incorporaron ${count} facturas históricas a la agenda.`, 'success');
+            (window as any).renderAgendaPagos(c);
+          } else {
+            throw new Error('Servicio de sincronización no disponible.');
+          }
+        } catch (err: any) {
+          (window as any).showToast('Error al sincronizar facturas: ' + (err.message || err), 'error');
+          if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = '<i class="fas fa-arrows-rotate mr-1"></i> Sincronizar Cartera & CXP';
+          }
+        }
+      });
 
       // Primer render de datos
       updateDataView();
@@ -287,6 +315,8 @@ interface AgendaRecord {
 
       const typeLabels: Record<string, string> = {
         cxp_proveedor: 'CXP Proveedor',
+        cxp_importacion: 'CXP Importación',
+        cxc_cliente: 'CXC Cliente (Cartera)',
         impuesto_dian_iva: 'IVA (DIAN)',
         impuesto_dian_retencion: 'Rete. (DIAN)',
         exogena_dian: 'Exógena (DIAN)',
@@ -295,6 +325,8 @@ interface AgendaRecord {
 
       const typeIcons: Record<string, string> = {
         cxp_proveedor: 'fa-truck-field',
+        cxp_importacion: 'fa-ship',
+        cxc_cliente: 'fa-hand-holding-dollar',
         impuesto_dian_iva: 'fa-percent',
         impuesto_dian_retencion: 'fa-building-columns',
         exogena_dian: 'fa-file-invoice-dollar',
@@ -303,6 +335,8 @@ interface AgendaRecord {
 
       const typeColors: Record<string, string> = {
         cxp_proveedor: '#F97316', // Orange
+        cxp_importacion: '#0284C7', // Sky Blue
+        cxc_cliente: '#10B981', // Green
         impuesto_dian_iva: '#A855F7', // Purple
         impuesto_dian_retencion: '#6366F1', // Indigo
         exogena_dian: '#EF4444', // Red

@@ -1477,6 +1477,14 @@ async function saveTransaction(approve = false) {
     if (approve && can('canApprove')) {
       await API.approveTx(tx.id);
       showToast(`Transacción ${tx.number} guardada y aprobada.`, 'success');
+      
+      // Sincronizar con Agenda de Pagos/Cobros si cruza documentos
+      if (typeof (window as any).SupplyChainOrchestrator?.syncTreasuryTransactionWithAgenda === 'function') {
+        const refs = [txDesc, ...validLines.map(l => l.cross_doc_ref)].filter(Boolean);
+        for (const ref of refs) {
+          (window as any).SupplyChainOrchestrator.syncTreasuryTransactionWithAgenda(ref, tx.id).catch(() => {});
+        }
+      }
     } else {
       showToast(`Transacción ${tx.number} guardada como borrador. Pendiente de aprobación.`, 'success');
     }

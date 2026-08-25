@@ -6,6 +6,8 @@
 
 'use strict';
 
+import { SupplyChainOrchestrator } from '../services/supply-chain-orchestrator';
+
 interface InvoiceStatusDetail {
   label: string;
   badge: string;
@@ -1131,7 +1133,7 @@ window.soSetRetMode = function(isPerLine: boolean) {
 };
 
 // --- Formulario Reactivo de Creación / Edición ---
-async function openSalesForm(invoiceId: string | null = null, onDone: any = null, preloadedOrderId: string | null = null, noteConfig: any = null, preloadedDealId: string | null = null) {
+async function openSalesForm(invoiceId: string | null = null, onDone: any = null, preloadedOrderId: string | null = null, noteConfig: any = null, preloadedDealId: string | null = null, preloadedDeliveryId: string | null = null) {
   let inv: any = null, existingLines: any[] = [];
   let split = { EFECTIVO: 0, TRANSFERENCIA: 0, CREDITO: 0 };
   (window as any).__salesModalEditing = !!invoiceId;
@@ -1186,7 +1188,51 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   }
 
   if (!inv && !invoiceId && !preserved) {
-    if (preloadedOrderId) {
+    if (preloadedDeliveryId) {
+      try {
+        const del = await (window as any).pb.get('logistica_deliveries', preloadedDeliveryId, { expand: 'client_id,sales_order_id' });
+        const delLines = await (window as any).pb.listAll('logistica_delivery_lines', {
+          filter: `delivery_id="${(window as any).pb.escapeFilterValue(preloadedDeliveryId)}"`,
+          expand: 'product_id',
+        }).catch(() => []);
+
+        inv = {
+          customer_id: del.client_id,
+          delivery_id: del.id,
+          sales_order_id: del.sales_order_id || null,
+          notes: del.notes || `Facturación correspondiente al despacho ${del.number}`,
+          date: (window as any).todayStr(),
+          payment_method: 'CREDITO',
+          has_pending_delivery: false,
+          delivery_fulfillment_status: 'ENTREGADO',
+          _delivery_number: del.number,
+          _sales_order_number: del.expand?.sales_order_id?.number || ''
+        };
+
+        if (delLines.length > 0) {
+          existingLines = delLines.map((dl: any) => {
+            const prod = dl.expand?.product_id || products.find((p: any) => p.id === dl.product_id);
+            const price = Number(prod?.sales_price || prod?.base_price || 0);
+            const ivaRate = Number(prod?.iva_rate || 0);
+            const qty = Number(dl.qty_planned || dl.qty_delivered || 1);
+            const subtotal = qty * price;
+            const iva_amount = subtotal * (ivaRate / 100);
+            return {
+              product_id: dl.product_id,
+              qty: qty,
+              unit_price: price,
+              iva_rate: ivaRate,
+              iva_amount: iva_amount,
+              subtotal: subtotal,
+              total: subtotal + iva_amount
+            };
+          });
+        }
+      } catch (err: any) {
+        console.error("Error precargando despacho:", err);
+        (window as any).showToast("Error al precargar datos del despacho: " + err.message, "error");
+      }
+    } else if (preloadedOrderId) {
       try {
         const preloadedOrder = await (window as any).pb.get('sales_orders', preloadedOrderId);
         const lines = await (window as any).API.getSalesOrderLines(preloadedOrderId);
@@ -1622,14 +1668,15 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <label class="so-hdr-label">N.º de Remisión</label>
             <input id="so-remision-number" class="form-input so-compact-inp" placeholder="N.º de remisión" value="${(window as any).esc(inv?.remision_number || '')}">
           </div>
-          <!-- Reserva en importación & Facturación Electrónica (DIAN) -->
+          <!-- Despacho Logístico & Facturación Electrónica (DIAN) -->
           <div class="flex items-center gap-3">
             <div>
               <label class="so-hdr-label" style="visibility:hidden">&nbsp;</label>
-              <label class="inline-flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap so-compact-inp" style="font-size:11px;font-weight:600;color:#9A3412;height:30px" title="Al contabilizar, el sistema reservará unidades en importaciones activas y programará un despacho pendiente automáticamente.">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap so-compact-inp" style="font-size:11px;font-weight:700;color:#9A3412;height:30px" title="Al guardar o contabilizar, el sistema programará automáticamente la orden de transporte en el módulo de Logística y Despachos.">
                 <input id="so-pending-delivery" type="checkbox" ${inv?.has_pending_delivery ? 'checked' : ''}>
-                (reserva en importación)
+                <i class="fas fa-truck text-orange-600"></i> Despacho en Ruta / Logística
               </label>
+              <input type="hidden" id="so-delivery-id" value="${(window as any).esc(inv?.delivery_id || '')}">
             </div>
             ${soConfig.operational.dian_dependent_posting ? `
             <div>
@@ -3118,11 +3165,12 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       tx_type_id: txTypeId,
       dian_resolution_id: inv?.dian_resolution_id || null,
       sales_order_id: salesOrderId || null,
+      delivery_id: (document.getElementById('so-delivery-id') as HTMLInputElement)?.value || inv?.delivery_id || null,
       cross_doc_ref: inv?.cross_doc_ref || null,
       branch_id: inv?.branch_id || targetBranchId || null,
       third_party_branch_id: (document.getElementById('so-customer-branch') as HTMLSelectElement)?.value || inv?.third_party_branch_id || null,
       has_pending_delivery: pendingDelivery,
-      delivery_fulfillment_status: pendingDelivery ? 'PENDIENTE' : 'NO_REQUIERE',
+      delivery_fulfillment_status: inv?.delivery_fulfillment_status || (pendingDelivery ? 'PENDIENTE' : 'NO_REQUIERE'),
       status: 'draft',
       is_electronic: isElectronic,
     };
@@ -3216,6 +3264,11 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         }
       } else {
         (window as any).showToast('Nueva factura de venta guardada en borrador', 'success');
+      }
+
+      // Sincronizar integraciones automáticas (Agenda de Cobros y Logística)
+      if (savedInvoiceId) {
+        SupplyChainOrchestrator.handleInvoiceCreationIntegrations(savedInvoiceId).catch(() => {});
       }
     }
     if (crmDealId && savedInvoiceId) {

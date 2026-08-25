@@ -23,7 +23,7 @@ const INV_STATUS_META = {
 };
 
 // ── Render principal ──────────────────────────────────────────────────────────
-async function renderInventario(c) {
+async function renderInventario(c: any, activeTab = 'stock', ctx: any = {}) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c);
   if (!c) return;
@@ -34,8 +34,8 @@ async function renderInventario(c) {
       API.getInventoryStock(),
       API.getWarehouses(false),
     ]);
-    _renderInvPage(c, 'stock', { stock, warehouses });
-  } catch (err) {
+    _renderInvPage(c, activeTab, { stock, warehouses, ...ctx });
+  } catch (err: any) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
@@ -279,79 +279,152 @@ function filterStockTable() {
   });
 }
 
+// ── Helper para Periodos Contables de Inventario ──────────────────────────────
+const INV_MONTH_NAMES_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function formatInvPeriodLabel(key: string): string {
+  if (!key || !key.includes('-')) return key;
+  const [y, m] = key.split('-');
+  const mIdx = parseInt(m, 10) - 1;
+  const monthName = INV_MONTH_NAMES_ES[mIdx] || m;
+  return `${monthName} ${y}`;
+}
+
+async function _getInvPeriodsList(): Promise<{ key: string; label: string; isCurrent: boolean }[]> {
+  const currentKey = todayStr().slice(0, 7);
+  const periodKeys = new Set<string>();
+  periodKeys.add(currentKey);
+
+  try {
+    const raw = await API.getSetting('periodos_cierre');
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        list.forEach((p: any) => {
+          if (p && p.key) periodKeys.add(p.key);
+        });
+      }
+    }
+  } catch (_) {}
+
+  // Generar al menos los últimos 24 meses hacia atrás
+  const [curY, curM] = currentKey.split('-').map(Number);
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(curY, curM - 1 - i, 1);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    periodKeys.add(k);
+  }
+
+  const sortedKeys = Array.from(periodKeys).sort().reverse();
+  return sortedKeys.map(k => ({
+    key: k,
+    label: formatInvPeriodLabel(k) + (k === currentKey ? ' (Actual)' : ''),
+    isCurrent: k === currentKey,
+  }));
+}
+
+const INV_MOV_STATE = {
+  page: 1,
+  perPage: 50,
+  period: '', // Se inicializa con el mes actual (ej: '2026-08')
+  warehouseId: '',
+  type: '',
+  status: '',
+  q: '',
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB: MOVIMIENTOS
 // ══════════════════════════════════════════════════════════════════════════════
-async function renderMovimientosTab(c, ctx = {}) {
+async function renderMovimientosTab(c: any, ctx: any = {}) {
+  const currentMonthKey = todayStr().slice(0, 7);
+  if (!INV_MOV_STATE.period) {
+    INV_MOV_STATE.period = currentMonthKey;
+  }
+
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando movimientos...</div>`;
+
   try {
-    const [result, warehouses, products] = await Promise.all([
-      API.getInventoryMovements({ perPage: 100 }),
+    const [warehouses, products, periodsList] = await Promise.all([
       ctx.warehouses ? Promise.resolve(ctx.warehouses) : API.getWarehouses(false),
-      API.getProducts({ activeOnly: true }),
+      ctx.products ? Promise.resolve(ctx.products) : API.getProducts({ activeOnly: true }),
+      _getInvPeriodsList(),
     ]);
     ctx.warehouses = warehouses;
     ctx.products   = products;
-    const movs     = result.items || [];
-
-    const totalDocs  = movs.length;
-    const totalUnits = movs.reduce((sum, m) => sum + (Number(m.total_qty) || 0), 0);
-    const totalCost  = movs.reduce((sum, m) => sum + (Number(m.total_cost) || 0), 0);
-
-    // Cargar documentos asociados (Facturas de venta y Facturas de compra)
-    const movIds = movs.map(m => m.id);
-    let salesMap = new Map();
-    let purchaseMap = new Map();
-
-    if (movIds.length > 0) {
-      try {
-        const filterQuery = movIds.map((id: string) => `inv_movement_id="${pb.escapeFilterValue(id)}"`).join('||');
-        const [linkedSales, linkedPurchases] = await Promise.all([
-          pb.listAll('invoices', { filter: filterQuery, fields: 'id,number,inv_movement_id,status,tx_number' }).catch(() => []),
-          pb.listAll('purchase_invoices', { filter: filterQuery, fields: 'id,number,inv_movement_id,status,tx_number' }).catch(() => []),
-        ]);
-        (linkedSales || []).forEach((inv: any) => salesMap.set(inv.inv_movement_id, inv));
-        (linkedPurchases || []).forEach((pur: any) => purchaseMap.set(pur.inv_movement_id, pur));
-      } catch (_) {}
-    }
 
     c.innerHTML = `
       <!-- Tarjetas Resumen (KPIs UX/UI) -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4" id="mov-kpi-container">
-        ${invKpi('Movimientos Registrados', totalDocs,          'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
-        ${invKpi('Total Unidades Movidas',  fmtN(totalUnits),   'fa-cubes',         '#059669', '#ECFDF5')}
-        ${invKpi('Valor Total en Movs.',    fmt(totalCost),     'fa-coins',         '#7C3AED', '#F5F3FF')}
+        ${invKpi('Movimientos Registrados', '...', 'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
+        ${invKpi('Total Unidades Movidas',  '...', 'fa-cubes',         '#059669', '#ECFDF5')}
+        ${invKpi('Valor Total en Movs.',    '...', 'fa-coins',         '#7C3AED', '#F5F3FF')}
       </div>
 
-      <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
-        <div class="flex flex-wrap gap-3 flex-1 items-center">
-          <input id="mov-q" class="form-input" style="min-width:220px" placeholder="Buscar número, nota, tipo, doc...">
-          <select id="mov-type-f" class="form-input" style="max-width:180px">
-            <option value="">Todos los tipos</option>
-            ${INV_MOV_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
-          </select>
-          <select id="mov-status-f" class="form-input" style="max-width:160px">
-            <option value="">Todos los estados</option>
-            <option value="draft">Borrador</option>
-            <option value="applied">Aplicado</option>
-            <option value="voided">Anulado</option>
-          </select>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          ${_pb().currentUser?.role === 'superadmin' ? `
-            <button type="button" class="btn btn-outline text-purple-700 border-purple-200 hover:bg-purple-50" title="Renumerar historial de movimientos al formato mensual" onclick="renumberInventoryMovements()">
-              <i class="fas fa-wand-magic-sparkles mr-1"></i> Renumerar Historial
+      <!-- Barra de Filtros Avanzada por Período y Estado -->
+      <div class="bg-white rounded-2xl border p-3 mb-4 space-y-3" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap gap-2.5 items-center justify-between">
+          <div class="flex flex-wrap gap-2.5 flex-1 items-center">
+            
+            <!-- Selector de Período Contable -->
+            <div class="flex items-center gap-1.5 bg-blue-50/80 px-2.5 py-1 rounded-xl border border-blue-200">
+              <i class="fas fa-calendar-days text-blue-700 text-xs"></i>
+              <span class="text-xs font-bold text-blue-900">Período:</span>
+              <select id="mov-period-f" class="form-input text-xs py-1 px-2 border-blue-300 font-semibold text-blue-900 bg-white" style="min-width:160px">
+                ${periodsList.map(p => `<option value="${esc(p.key)}"${p.key === INV_MOV_STATE.period ? ' selected' : ''}>${esc(p.label)}</option>`).join('')}
+                <option value="ALL"${INV_MOV_STATE.period === 'ALL' ? ' selected' : ''}>🌐 Todos los períodos (Histórico)</option>
+              </select>
+            </div>
+
+            <!-- Selector de Bodega -->
+            <select id="mov-wh-f" class="form-input text-xs" style="max-width:180px">
+              <option value="">Todas las bodegas</option>
+              ${warehouses.map((w: any) => `<option value="${esc(w.id)}"${w.id === INV_MOV_STATE.warehouseId ? ' selected' : ''}>${esc(w.name)}</option>`).join('')}
+            </select>
+
+            <!-- Selector de Tipo -->
+            <select id="mov-type-f" class="form-input text-xs" style="max-width:160px">
+              <option value="">Todos los tipos</option>
+              ${INV_MOV_TYPES.map(t => `<option value="${t.value}"${t.value === INV_MOV_STATE.type ? ' selected' : ''}>${t.label}</option>`).join('')}
+            </select>
+
+            <!-- Selector de Estado -->
+            <select id="mov-status-f" class="form-input text-xs" style="max-width:145px">
+              <option value="">Todos los estados</option>
+              <option value="draft"${INV_MOV_STATE.status === 'draft' ? ' selected' : ''}>Borrador</option>
+              <option value="applied"${INV_MOV_STATE.status === 'applied' ? ' selected' : ''}>Aplicado</option>
+              <option value="voided"${INV_MOV_STATE.status === 'voided' ? ' selected' : ''}>Anulado</option>
+            </select>
+
+            <!-- Búsqueda rápida -->
+            <div class="relative flex-1 min-w-[200px]">
+              <input id="mov-q" class="form-input text-xs w-full pl-8" placeholder="Buscar número, nota, ref..." value="${esc(INV_MOV_STATE.q || '')}">
+              <i class="fas fa-search absolute left-2.5 top-2.5 text-gray-400 text-xs"></i>
+            </div>
+
+            <!-- Botón Limpiar -->
+            <button type="button" class="btn btn-outline text-xs py-1 px-2.5" id="mov-btn-clear" title="Restablecer filtros">
+              <i class="fas fa-eraser mr-1"></i> Limpiar
             </button>
-          ` : ''}
-          ${can('canWrite') ? `
-            <button type="button" class="btn btn-outline text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-manage-concepts" title="Configurar conceptos contables de inventario">
-              <i class="fas fa-tags mr-1"></i> Conceptos
-            </button>
-            <button type="button" class="btn btn-primary" id="btn-new-mov"><i class="fas fa-plus mr-1"></i> Nuevo Movimiento</button>
-          ` : ''}
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            ${_pb().currentUser?.role === 'superadmin' ? `
+              <button type="button" class="btn btn-outline text-xs text-purple-700 border-purple-200 hover:bg-purple-50" title="Renumerar historial de movimientos al formato mensual" onclick="renumberInventoryMovements()">
+                <i class="fas fa-wand-magic-sparkles mr-1"></i> Renumerar Historial
+              </button>
+            ` : ''}
+            ${can('canWrite') ? `
+              <button type="button" class="btn btn-outline text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50" id="btn-manage-concepts" title="Configurar conceptos contables de inventario">
+                <i class="fas fa-tags mr-1"></i> Conceptos
+              </button>
+              <button type="button" class="btn btn-primary text-xs" id="btn-new-mov"><i class="fas fa-plus mr-1"></i> Nuevo Movimiento</button>
+            ` : ''}
+          </div>
         </div>
       </div>
 
+      <!-- Tabla de Movimientos -->
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div class="overflow-x-auto">
           <table class="data-table" id="mov-table">
@@ -372,55 +445,257 @@ async function renderMovimientosTab(c, ctx = {}) {
               </tr>
             </thead>
             <tbody id="mov-tbody">
-              ${movs.length ? renderMovRows(movs, salesMap, purchaseMap) : `<tr><td colspan="12" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-arrows-rotate mr-2"></i>No hay movimientos registrados.</td></tr>`}
+              <tr><td colspan="12" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos...</td></tr>
             </tbody>
           </table>
         </div>
+        
+        <!-- Paginación y Estado Server-Side -->
+        <div id="mov-pagination-bar" class="flex flex-wrap items-center justify-between px-4 py-3 border-t bg-gray-50/60 gap-3" style="border-color:#F0F0F0">
+          <div class="text-xs text-gray-500 font-medium" id="mov-page-info">
+            Cargando registros...
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-1.5 text-xs text-gray-500">
+              <span>Por página:</span>
+              <select id="mov-per-page-select" class="form-input text-xs py-0.5 px-2">
+                <option value="25"${INV_MOV_STATE.perPage === 25 ? ' selected' : ''}>25</option>
+                <option value="50"${INV_MOV_STATE.perPage === 50 ? ' selected' : ''}>50</option>
+                <option value="100"${INV_MOV_STATE.perPage === 100 ? ' selected' : ''}>100</option>
+              </select>
+            </div>
+            <div id="mov-pagination-nav" class="flex items-center gap-1"></div>
+          </div>
+        </div>
       </div>`;
 
-    const applyMovFilter = () => {
-      const q  = (getInputVal('mov-q') || '').toLowerCase();
-      const tp = getSelectVal('mov-type-f');
-      const st = getSelectVal('mov-status-f');
+    // ── Función para Cargar Movimientos desde Backend con Paginación y Filtro ─────
+    const loadMovementsData = async (targetPage = 1) => {
+      INV_MOV_STATE.page = Math.max(1, targetPage);
+      const tbody = document.getElementById('mov-tbody');
+      const pageInfo = document.getElementById('mov-page-info');
+      const pageNav = document.getElementById('mov-pagination-nav');
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center py-8" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando página ${INV_MOV_STATE.page}...</td></tr>`;
+      }
 
-      let filterDocs = 0;
-      let filterUnits = 0;
-      let filterCost = 0;
+      try {
+        const filterParts: string[] = [];
 
-      $$('#mov-table tbody tr[data-movid]').forEach(tr => {
-        const match = (
-          (!q  || tr.textContent.toLowerCase().includes(q)) &&
-          (!tp || tr.dataset.movtype === tp) &&
-          (!st || tr.dataset.movstatus === st)
-        );
-        tr.style.display = match ? '' : 'none';
-
-        if (match) {
-          filterDocs++;
-          filterUnits += parseFloat(tr.dataset.totalqty || '0');
-          filterCost  += parseFloat(tr.dataset.totalcost || '0');
+        // Filtro por Período
+        if (INV_MOV_STATE.period && INV_MOV_STATE.period !== 'ALL') {
+          const [yearStr, monthStr] = INV_MOV_STATE.period.split('-');
+          const y = parseInt(yearStr, 10);
+          const m = parseInt(monthStr, 10);
+          const lastDay = new Date(y, m, 0).getDate();
+          const startDate = `${INV_MOV_STATE.period}-01`;
+          const endDate = `${INV_MOV_STATE.period}-${String(lastDay).padStart(2, '0')}`;
+          filterParts.push(`date >= "${startDate}" && date <= "${endDate}"`);
         }
-      });
 
-      const kpiWrap = $('#mov-kpi-container');
-      if (kpiWrap) {
-        kpiWrap.innerHTML = `
-          ${invKpi('Movimientos Registrados', filterDocs,         'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
-          ${invKpi('Total Unidades Movidas',  fmtN(filterUnits),  'fa-cubes',         '#059669', '#ECFDF5')}
-          ${invKpi('Valor Total en Movs.',    fmt(filterCost),    'fa-coins',         '#7C3AED', '#F5F3FF')}
-        `;
+        // Filtro por Tipo
+        if (INV_MOV_STATE.type) {
+          filterParts.push(`mov_type = "${pb.escapeFilterValue(INV_MOV_STATE.type)}"`);
+        }
+
+        // Filtro por Estado
+        if (INV_MOV_STATE.status) {
+          filterParts.push(`status = "${pb.escapeFilterValue(INV_MOV_STATE.status)}"`);
+        }
+
+        // Filtro por Bodega (origen o destino)
+        if (INV_MOV_STATE.warehouseId) {
+          const whEsc = pb.escapeFilterValue(INV_MOV_STATE.warehouseId);
+          filterParts.push(`(warehouse_id = "${whEsc}" || dest_warehouse_id = "${whEsc}")`);
+        }
+
+        // Búsqueda por texto (número o notas)
+        if (INV_MOV_STATE.q && INV_MOV_STATE.q.trim()) {
+          const qEsc = pb.escapeFilterValue(INV_MOV_STATE.q.trim());
+          filterParts.push(`(number ~ "${qEsc}" || notes ~ "${qEsc}")`);
+        }
+
+        const filterQuery = filterParts.join(' && ');
+
+        const result = await API.getInventoryMovements({
+          page: INV_MOV_STATE.page,
+          perPage: INV_MOV_STATE.perPage,
+          filter: filterQuery,
+          sort: '-date,-number',
+        });
+
+        const movs = result.items || [];
+        const totalItems = result.totalItems || 0;
+        const totalPages = Math.max(1, result.totalPages || 1);
+        const currentPage = result.page || 1;
+
+        // Cargar documentos asociados sólo para los 50 registros de la página activa
+        const movIds = movs.map((m: any) => m.id);
+        const salesMap = new Map();
+        const purchaseMap = new Map();
+
+        if (movIds.length > 0) {
+          try {
+            const idFilterQuery = movIds.map((id: string) => `inv_movement_id="${pb.escapeFilterValue(id)}"`).join('||');
+            const [linkedSales, linkedPurchases] = await Promise.all([
+              pb.listAll('invoices', { filter: idFilterQuery, fields: 'id,number,inv_movement_id,status,tx_number,cost_corrected,cost_corrected_at' }).catch(() => []),
+              pb.listAll('purchase_invoices', { filter: idFilterQuery, fields: 'id,number,inv_movement_id,status,tx_number' }).catch(() => []),
+            ]);
+            (linkedSales || []).forEach((inv: any) => salesMap.set(inv.inv_movement_id, inv));
+            (linkedPurchases || []).forEach((pur: any) => purchaseMap.set(pur.inv_movement_id, pur));
+          } catch (_) {}
+        }
+
+        // Métricas de la página y período
+        const pageUnits = movs.reduce((sum: number, m: any) => sum + (Number(m.total_qty) || 0), 0);
+        const pageCost  = movs.reduce((sum: number, m: any) => sum + (Number(m.total_cost) || 0), 0);
+
+        // Actualizar KPIs
+        const kpiWrap = document.getElementById('mov-kpi-container');
+        if (kpiWrap) {
+          const periodTitle = INV_MOV_STATE.period === 'ALL'
+            ? 'Histórico Completo'
+            : formatInvPeriodLabel(INV_MOV_STATE.period);
+
+          kpiWrap.innerHTML = `
+            ${invKpi('Movimientos del Período', fmtN(totalItems), 'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
+            ${invKpi('Unidades (Pág. ' + currentPage + ')', fmtN(pageUnits), 'fa-cubes', '#059669', '#ECFDF5')}
+            ${invKpi('Valor Total (Pág. ' + currentPage + ')', fmt(pageCost), 'fa-coins', '#7C3AED', '#F5F3FF')}
+          `;
+        }
+
+        // Renderizar Filas de la Tabla
+        if (tbody) {
+          tbody.innerHTML = movs.length
+            ? renderMovRows(movs, salesMap, purchaseMap)
+            : `<tr><td colspan="12" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-arrows-rotate mr-2"></i>No se encontraron movimientos registrados para este período o filtro.</td></tr>`;
+        }
+
+        // Actualizar Barra de Paginación
+        const fromItem = totalItems === 0 ? 0 : (currentPage - 1) * INV_MOV_STATE.perPage + 1;
+        const toItem = Math.min(currentPage * INV_MOV_STATE.perPage, totalItems);
+
+        if (pageInfo) {
+          pageInfo.innerHTML = `Mostrando <strong class="text-gray-700">${fmtN(fromItem)} - ${fmtN(toItem)}</strong> de <strong class="text-gray-700">${fmtN(totalItems)}</strong> movimientos`;
+        }
+
+        if (pageNav) {
+          let navHtml = '';
+          
+          // Botón Primera Página
+          navHtml += `<button class="btn btn-outline btn-sm py-1 px-2 text-xs" ${currentPage <= 1 ? 'disabled' : ''} onclick="window._invMovGoToPage(1)" title="Primera página"><i class="fas fa-angles-left"></i></button>`;
+          
+          // Botón Anterior
+          navHtml += `<button class="btn btn-outline btn-sm py-1 px-2.5 text-xs" ${currentPage <= 1 ? 'disabled' : ''} onclick="window._invMovGoToPage(${currentPage - 1})" title="Página anterior"><i class="fas fa-chevron-left mr-1"></i>Anterior</button>`;
+
+          // Rango de botones numéricos
+          const range: (number | string)[] = [];
+          for (let p = 1; p <= totalPages; p++) {
+            if (p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2) {
+              range.push(p);
+            } else if (range[range.length - 1] !== '…') {
+              range.push('…');
+            }
+          }
+
+          range.forEach(p => {
+            if (p === '…') {
+              navHtml += `<span class="px-2 text-xs text-gray-400">…</span>`;
+            } else {
+              const isCurrent = p === currentPage;
+              navHtml += `<button class="btn btn-sm py-1 px-2.5 text-xs ${isCurrent ? 'btn-primary font-bold' : 'btn-outline'}" onclick="window._invMovGoToPage(${p})">${p}</button>`;
+            }
+          });
+
+          // Botón Siguiente
+          navHtml += `<button class="btn btn-outline btn-sm py-1 px-2.5 text-xs" ${currentPage >= totalPages ? 'disabled' : ''} onclick="window._invMovGoToPage(${currentPage + 1})" title="Página siguiente">Siguiente<i class="fas fa-chevron-right ml-1"></i></button>`;
+
+          // Botón Última Página
+          navHtml += `<button class="btn btn-outline btn-sm py-1 px-2 text-xs" ${currentPage >= totalPages ? 'disabled' : ''} onclick="window._invMovGoToPage(${totalPages})" title="Última página"><i class="fas fa-angles-right"></i></button>`;
+
+          pageNav.innerHTML = navHtml;
+        }
+
+        const tbl = document.getElementById('mov-table') as HTMLTableElement;
+        if (tbl) (window as any).makeTableSortable(tbl);
+
+      } catch (err: any) {
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="12" class="text-center py-8 text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</td></tr>`;
+        }
       }
     };
 
-    $('#mov-q')?.addEventListener('input', debounce(applyMovFilter, 150));
-    $('#mov-type-f')?.addEventListener('change', applyMovFilter);
-    $('#mov-status-f')?.addEventListener('change', applyMovFilter);
-    $('#btn-manage-concepts')?.addEventListener('click', () => openInventoryConceptsModal(() => renderMovimientosTab(c, ctx)));
-    $('#btn-new-mov')?.addEventListener('click', () => openMovForm(null, ctx, () => renderMovimientosTab(c, ctx)));
+    // Exponer función de paginación globalmente para los botones HTML onclick
+    (window as any)._invMovGoToPage = (p: number) => {
+      loadMovementsData(p);
+    };
 
-    const tbl = $('#mov-table') as HTMLTableElement;
-    if (tbl) (window as any).makeTableSortable(tbl);
-  } catch (err) {
+    // ── Listeners de Filtros y Eventos ───────────────────────────────────────────
+    $('#mov-period-f')?.addEventListener('change', (e: any) => {
+      INV_MOV_STATE.period = e.target.value;
+      loadMovementsData(1);
+    });
+
+    $('#mov-wh-f')?.addEventListener('change', (e: any) => {
+      INV_MOV_STATE.warehouseId = e.target.value;
+      loadMovementsData(1);
+    });
+
+    $('#mov-type-f')?.addEventListener('change', (e: any) => {
+      INV_MOV_STATE.type = e.target.value;
+      loadMovementsData(1);
+    });
+
+    $('#mov-status-f')?.addEventListener('change', (e: any) => {
+      INV_MOV_STATE.status = e.target.value;
+      loadMovementsData(1);
+    });
+
+    $('#mov-per-page-select')?.addEventListener('change', (e: any) => {
+      INV_MOV_STATE.perPage = parseInt(e.target.value, 10) || 50;
+      loadMovementsData(1);
+    });
+
+    $('#mov-q')?.addEventListener('input', debounce((e: any) => {
+      INV_MOV_STATE.q = e.target.value;
+      loadMovementsData(1);
+    }, 250));
+
+    $('#mov-btn-clear')?.addEventListener('click', () => {
+      INV_MOV_STATE.period = todayStr().slice(0, 7);
+      INV_MOV_STATE.warehouseId = '';
+      INV_MOV_STATE.type = '';
+      INV_MOV_STATE.status = '';
+      INV_MOV_STATE.q = '';
+      INV_MOV_STATE.page = 1;
+
+      const periodSelect = document.getElementById('mov-period-f') as HTMLSelectElement;
+      if (periodSelect) periodSelect.value = INV_MOV_STATE.period;
+      const whSelect = document.getElementById('mov-wh-f') as HTMLSelectElement;
+      if (whSelect) whSelect.value = '';
+      const typeSelect = document.getElementById('mov-type-f') as HTMLSelectElement;
+      if (typeSelect) typeSelect.value = '';
+      const statusSelect = document.getElementById('mov-status-f') as HTMLSelectElement;
+      if (statusSelect) statusSelect.value = '';
+      const qInput = document.getElementById('mov-q') as HTMLInputElement;
+      if (qInput) qInput.value = '';
+
+      loadMovementsData(1);
+    });
+
+    $('#btn-manage-concepts')?.addEventListener('click', () => {
+      openInventoryConceptsModal(() => loadMovementsData(INV_MOV_STATE.page));
+    });
+
+    $('#btn-new-mov')?.addEventListener('click', () => {
+      openMovForm(null, ctx, () => loadMovementsData(INV_MOV_STATE.page));
+    });
+
+    // Carga inicial
+    loadMovementsData(INV_MOV_STATE.page);
+
+  } catch (err: any) {
     c.innerHTML = `<div class="p-6 text-center" style="color:#EF4444">${esc(err.message)}</div>`;
   }
 }

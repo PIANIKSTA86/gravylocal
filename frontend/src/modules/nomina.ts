@@ -4422,6 +4422,7 @@ async function renderDetailedPayrollReport(year: number, month: number) {
         n_interesesCesantias +
         (conceptAmounts.gastos_representacion || 0) +
         (conceptAmounts.bonificacion || 0) +
+        (conceptAmounts.ajuste_salarial || 0) +
         auxNoSalarial +
         (conceptAmounts.comisiones || 0) +
         (conceptAmounts.dotaciones || 0) +
@@ -4507,8 +4508,10 @@ async function renderDetailedPayrollReport(year: number, month: number) {
         huelga_inicio: '',
         huelga_fin: '',
         huelga_cant: 0,
-        otro_cpt_desc: conceptAmounts.otros_ingresos > 0 ? 'Otros Ingresos' : '',
-        otro_cpt_sal: 0,
+        otro_cpt_desc: (conceptAmounts.ajuste_salarial > 0 && conceptAmounts.otros_ingresos > 0)
+          ? 'Ajuste Salarial / Otros Ingresos'
+          : (conceptAmounts.ajuste_salarial > 0 ? 'Ajuste Salarial (Base IBC)' : (conceptAmounts.otros_ingresos > 0 ? 'Otros Ingresos' : '')),
+        otro_cpt_sal: round2(conceptAmounts.ajuste_salarial || 0),
         otro_cpt_no_sal: round2(conceptAmounts.otros_ingresos || 0),
         compensacion_ord: 0,
         compensacion_ext: 0,
@@ -4832,7 +4835,7 @@ function exportDetailedPayrollExcel(monthLabel: string, year: number, rows: any[
     huelga_fin: '',
     huelga_cant: 0,
     otro_cpt_desc: '',
-    otro_cpt_sal: 0,
+    otro_cpt_sal: rows.reduce((s, r) => s + r.otro_cpt_sal, 0),
     otro_cpt_no_sal: rows.reduce((s, r) => s + r.otro_cpt_no_sal, 0),
     compensacion_ord: 0,
     compensacion_ext: 0,
@@ -5582,6 +5585,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const ca = getNominaConceptAmountsFromLine(l);
       const comisiones = round2(Number(ca.comisiones || 0));
       const bonificaciones = round2(Number(ca.bonificacion || 0));
+      const ajusteSalarial = round2(Number(ca.ajuste_salarial || 0));
       const incapacidades = round2(Number(ca.incapacidades || 0));
       const licencias = round2(Number(ca.licencias || 0));
       const vacacionesDisfrutadas = round2(Number(ca.vacaciones_disfrutadas || 0));
@@ -5618,7 +5622,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const prov = provCesantias + provIntCes + provPrima + provVacaciones;
       const costEmp = dev + para + prov;
 
-      const ibc = round2(proportionalSalary + otAmount + comisiones + incapacidades + licencias + vacacionesDisfrutadas + bonificaciones);
+      const ibc = round2(proportionalSalary + otAmount + comisiones + incapacidades + licencias + vacacionesDisfrutadas + bonificaciones + ajusteSalarial);
 
       const existing = acumuladosPorEmpleado.get(empId);
       if (existing) {
@@ -5640,7 +5644,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         existing.cesantiasMonto += cesantiasPagadas;
         existing.interesesCesantiasMonto += interesesCesPagados;
         existing.dotacionMonto += dotacion;
-        existing.otrosIngresosMonto += otrosIngresos;
+        existing.otrosIngresosMonto += (otrosIngresos + ajusteSalarial);
 
         existing.saludDeduccion += saludDeduccion;
         existing.pensionDeduccion += pensionDeduccion;
@@ -5726,7 +5730,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           cesantiasMonto: cesantiasPagadas,
           interesesCesantiasMonto: interesesCesPagados,
           dotacionMonto: dotacion,
-          otrosIngresosMonto: otrosIngresos,
+          otrosIngresosMonto: otrosIngresos + ajusteSalarial,
           saludDeduccion: saludDeduccion,
           pensionDeduccion: pensionDeduccion,
           solidaridadDeduccion: solidaridad,

@@ -5122,11 +5122,12 @@ async function _analyzeRevaluation() {
       try {
         const raw = await API.getSetting('periodos_cierre');
         if (raw) periodos = JSON.parse(raw);
-      } catch (_) { /* sin periodos configurados: se tratan como cerrados */ }
+      } catch (_) { /* sin periodos configurados */ }
       const isClosedPeriod = (dateStr: string) => {
+        if (!periodos || !periodos.length) return false;
         const key = (dateStr || '').slice(0, 7);
         const found = periodos.find((p: any) => p.key === key);
-        return !found || !!found.closed;
+        return !!(found && found.closed === true);
       };
 
       for (const adj of directCandidateAdjustments) {
@@ -5135,7 +5136,7 @@ async function _analyzeRevaluation() {
         adj.invoiceNumber = inv ? inv.number : null;
         adj.invoiceTxId = inv ? inv.tx_id : null;
         adj.invoiceDate = inv ? inv.date : null;
-        adj.periodClosed = inv ? isClosedPeriod(inv.date) : true;
+        adj.periodClosed = inv ? isClosedPeriod(inv.date) : false;
         adj.directTarget = !!(inv && inv.tx_id && !adj.periodClosed);
         if (inv && String(inv.number || '').startsWith('NC')) {
           adj.isCreditNote = true;
@@ -5341,11 +5342,17 @@ async function _applyRevaluation() {
         affectedMovementIds.add(inv.inv_movement_id);
       }
 
-      // Validar si el periodo contable está cerrado
+      // Validar si el periodo contable está explícitamente cerrado
       let isClosed = false;
-      if (typeof (window as any).isPeriodClosed === 'function') {
-        isClosed = await (window as any).isPeriodClosed(inv.date);
-      }
+      try {
+        const raw = await API.getSetting('periodos_cierre');
+        if (raw) {
+          const periodos = JSON.parse(raw);
+          const key = (inv.date || '').slice(0, 7);
+          const found = periodos.find((p: any) => p.key === key);
+          if (found && found.closed === true) isClosed = true;
+        }
+      } catch (_) {}
       if (isClosed) {
         allConsolidatedDetails.push(...detailsForInv);
         continue;
@@ -5600,9 +5607,9 @@ async function _applyRevaluation() {
     }
 
     const parts: string[] = [];
-    if (directCorrections) parts.push(`${directCorrections} factura(s) corregida(s) directamente en su asiento contable original`);
-    if (consolidatedTxNumber) parts.push(`asiento consolidado ${consolidatedTxNumber} registrado`);
-    showToast(`Revalorización aplicada con éxito: ${parts.join(' y ')}.`, 'success');
+    if (directCorrections) parts.push(`${directCorrections} factura(s) de venta actualizada(s) directamente en sus cuentas 14 (Inventario) y 61 (Costo)`);
+    if (consolidatedTxNumber) parts.push(`asiento de ajuste consolidado ${consolidatedTxNumber} para salidas sin factura`);
+    showToast(`Recálculo de costos aplicado con éxito: ${parts.join(' y ')}.`, 'success');
     closeModal();
     renderInventario(document.getElementById('page-content')!);
   } catch (err: any) {

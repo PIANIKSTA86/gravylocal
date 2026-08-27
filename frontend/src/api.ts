@@ -621,22 +621,57 @@ const API = {
   },
 
   async updateTransaction(txId, txData, lines) {
+    const branchId = txData.branch_id || null;
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx`, {
+        method: 'POST',
+        headers: pb.headers(),
+        body: JSON.stringify({
+          txData: {
+            ...txData,
+            id: txId,
+            branch_id: branchId,
+          },
+          lines: lines.map((l: any, idx: number) => ({
+            ...l,
+            branch_id: l.branch_id || branchId || null,
+            line_order: l.line_order ?? (idx + 1),
+          })),
+        }),
+      });
+
+      if (res.ok) {
+        await this.logAudit('UPDATE', 'transactions', txId, 'Modificación desde consulta de transacciones');
+        return await res.json();
+      }
+
+      if (res.status === 404) {
+        console.warn('[updateTransaction] Endpoint bulk-tx no disponible, usando método fallback.');
+      } else {
+        throw await pb._err(res);
+      }
+    } catch (err: any) {
+      if (err && err.status !== undefined && err.status !== 404) {
+        throw err;
+      }
+      console.warn('[updateTransaction] Bulk endpoint falló, usando fallback:', err?.message || err);
+    }
+
+    // Fallback: Si el endpoint bulk-tx no estuviese disponible
     await pb.update('transactions', txId, txData);
-    // Reemplazar lÃ­neas: eliminar las existentes y crear las nuevas
     const safeId = pb.escapeFilterValue(txId);
     const oldLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeId}"`, ignoreBranch: true });
     for (const l of oldLines) {
       try {
         await pb.delete('tx_lines', l.id);
       } catch (err: any) {
-        // Ignorar 404: la lÃ­nea ya fue eliminada (doble submit, ediciÃ³n concurrente, etc.)
         if (err?.status !== 404 && err?.response?.code !== 404) throw err;
       }
     }
     for (const line of lines) {
       await pb.create('tx_lines', { tx_id: txId, ...line });
     }
-    await this.logAudit('UPDATE', 'transactions', txId, 'ModificaciÃ³n desde consulta de transacciones');
+    await this.logAudit('UPDATE', 'transactions', txId, 'Modificación desde consulta de transacciones');
   },
 
 
@@ -649,55 +684,66 @@ const API = {
     const isSuperAdminOrContador = options.ignoreEinvoiceBlock ?? ['superadmin', 'superadministrador', 'contador'].includes(userRole);
 
     // BLOQUEO: Solo documentos electrónicos ya enviados o aceptados por la DIAN (firmados = inmutables)
-    // Los estados "pendiente" y "rechazada" NO bloquean porque aún no tienen validez fiscal.
-    // SUPERADMINISTRADOR y CONTADOR pueden modificar transacciones asociadas a documentos electrónicos.
-    const einv = await pb.list('einvoice_docs', {
-      filter: `tx_id="${safe}" && (status="enviada" || status="aceptada")`,
-      perPage: 1,
-    });
-    if (einv.totalItems > 0) {
-      const doc = einv.items[0];
-      const estado = doc.status === 'aceptada' ? 'Aceptada por DIAN' : 'Enviada a DIAN';
-      if (isSuperAdminOrContador) {
-        warnings.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Como usuario ${userRole === 'contador' ? 'CONTADOR' : 'SUPERADMINISTRADOR'}, tienes permisos especiales para modificar esta transacción.`);
-      } else {
-        blocks.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Los documentos fiscales ya transmitidos son inalterables por usuarios sin permisos de SUPERADMINISTRADOR o CONTADOR.`);
-      }
-    }
-
-    // ADVERTENCIA: Período de nómina vinculado (informativo - no bloquea)
-    const payP = await pb.list('payroll_periods', { filter: `tx_id="${safe}"`, perPage: 1 });
-    if (payP.totalItems > 0) {
-      const period = payP.items[0];
-      const estadoLabel = { draft: 'Borrador', approved: 'Aprobado', paid: 'Pagado' }[period.status] || period.status;
-      warnings.push(`Este comprobante es el asiento de nómina del período "${period.name}" (${estadoLabel}). Si lo modificas, el asiento contable de nómina quedará desincronizado con las liquidaciones.`);
-    }
-
-    // ADVERTENCIA: Movimientos bancarios conciliados (informativo - no bloquea)
-    const txLines = await pb.listAll('tx_lines', { filter: `tx_id="${safe}"`, ignoreBranch: true });
-    let reconCount = 0;
-    if (txLines.length > 0) {
-      const lineFilter = txLines
-        .map((l: any) => `tx_line_id="${pb.escapeFilterValue(l.id)}"`)
-        .join(' || ');
-      const bm = await pb.list('bank_movements', {
-        filter: `(${lineFilter}) && reconciled=true`,
+    try {
+      const einv = await pb.list('einvoice_docs', {
+        filter: `tx_id="${safe}" && (status="enviada" || status="aceptada")`,
         perPage: 1,
       });
-      reconCount = bm.totalItems;
-    }
-    if (reconCount > 0) {
-      warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliación bancaria después de modificar.`);
-    }
+      if (einv.totalItems > 0) {
+        const doc = einv.items[0];
+        const estado = doc.status === 'aceptada' ? 'Aceptada por DIAN' : 'Enviada a DIAN';
+        if (isSuperAdminOrContador) {
+          warnings.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Como usuario ${userRole === 'contador' ? 'CONTADOR' : 'SUPERADMINISTRADOR'}, tienes permisos especiales para modificar esta transacción.`);
+        } else {
+          blocks.push(`Este comprobante tiene un documento electrónico DIAN con estado "${estado}". Los documentos fiscales ya transmitidos son inalterables por usuarios sin permisos de SUPERADMINISTRADOR o CONTADOR.`);
+        }
+      }
+    } catch (_) {}
+
+    // ADVERTENCIA: Período de nómina vinculado (informativo - no bloquea)
+    try {
+      const payP = await pb.list('payroll_periods', { filter: `tx_id="${safe}"`, perPage: 1 });
+      if (payP.totalItems > 0) {
+        const period = payP.items[0];
+        const estadoLabel = { draft: 'Borrador', approved: 'Aprobado', paid: 'Pagado' }[period.status] || period.status;
+        warnings.push(`Este comprobante es el asiento de nómina del período "${period.name}" (${estadoLabel}). Si lo modificas, el asiento contable de nómina quedará desincronizado con las liquidaciones.`);
+      }
+    } catch (_) {}
+
+    // ADVERTENCIA: Movimientos bancarios conciliados (informativo - no bloquea)
+    try {
+      const txLines = await pb.listAll('tx_lines', { filter: `tx_id="${safe}"`, ignoreBranch: true });
+      let reconCount = 0;
+      if (txLines.length > 0) {
+        // Consultar en lotes de máximo 15 IDs para evitar desbordar los límites de longitud de URL en PocketBase
+        const CHUNK_SIZE = 15;
+        for (let i = 0; i < txLines.length; i += CHUNK_SIZE) {
+          const chunk = txLines.slice(i, i + CHUNK_SIZE);
+          const lineFilter = chunk
+            .map((l: any) => `tx_line_id="${pb.escapeFilterValue(l.id)}"`)
+            .join(' || ');
+          const bm = await pb.list('bank_movements', {
+            filter: `(${lineFilter}) && reconciled=true`,
+            perPage: 1,
+          }).catch(() => ({ totalItems: 0 }));
+          reconCount += (bm.totalItems || 0);
+        }
+      }
+      if (reconCount > 0) {
+        warnings.push(`Tiene ${reconCount} movimiento(s) bancario(s) conciliado(s). Revisa la conciliación bancaria después de modificar.`);
+      }
+    } catch (_) {}
 
     // ADVERTENCIA: Movimientos de inventario asociados
-    const invMovs = await pb.listAll('inventory_movements', { filter: `tx_id="${safe}"` }).catch(() => []);
-    const salesWithMov = await pb.listAll('invoices', { filter: `tx_id="${safe}" && inv_movement_id!=""` }).catch(() => []);
-    const purchasesWithMov = await pb.listAll('purchase_invoices', { filter: `tx_id="${safe}" && inv_movement_id!=""` }).catch(() => []);
-    const totalMovs = new Set([...invMovs.map((m: any) => m.id), ...salesWithMov.map((s: any) => s.inv_movement_id), ...purchasesWithMov.map((p: any) => p.inv_movement_id)]).size;
-    if (totalMovs > 0) {
-      warnings.push(`Se detectaron ${totalMovs} movimiento(s) de inventario asociado(s). La eliminación total revertirá el stock de productos en bodega y erradicará dichos movimientos de inventario.`);
-    }
+    try {
+      const invMovs = await pb.listAll('inventory_movements', { filter: `tx_id="${safe}"` }).catch(() => []);
+      const salesWithMov = await pb.listAll('invoices', { filter: `tx_id="${safe}" && inv_movement_id!=""` }).catch(() => []);
+      const purchasesWithMov = await pb.listAll('purchase_invoices', { filter: `tx_id="${safe}" && inv_movement_id!=""` }).catch(() => []);
+      const totalMovs = new Set([...invMovs.map((m: any) => m.id), ...salesWithMov.map((s: any) => s.inv_movement_id), ...purchasesWithMov.map((p: any) => p.inv_movement_id)]).size;
+      if (totalMovs > 0) {
+        warnings.push(`Se detectaron ${totalMovs} movimiento(s) de inventario asociado(s). La eliminación total revertirá el stock de productos en bodega y erradicará dichos movimientos de inventario.`);
+      }
+    } catch (_) {}
 
     return { blocks, warnings };
   },
@@ -3925,25 +3971,36 @@ const API = {
     // Reordenar
     txLines.forEach((l, i) => { l.line_order = i + 1; });
 
-    // Crear transacciÃ³n contable
+    // Validar sumas de partida doble
+    const totalDebit = txLines.reduce((sum, l) => sum + (l.debit || 0), 0);
+    const totalCredit = txLines.reduce((sum, l) => sum + (l.credit || 0), 0);
+    if (Math.abs(totalDebit - totalCredit) > 1.0) {
+      throw new Error(`Descuadre contable detectado en factura PH. Débito: ${totalDebit}, Crédito: ${totalCredit}.`);
+    }
+
+    // Crear transacción contable atómica (vía bulk-tx)
     const userId = pb.currentUser?.id || '';
-    const tx = await pb.create('transactions', {
+    const txPayload: any = {
       tx_type_id: txType.id,
       number: 'AUTO',
       date: inv.date,
       description: `Factura PH ${inv.number} - ${property?.name || inv.property_id} - ${inv.period}`,
       third_party_id: ownerId || null,
-      cross_enabled: txLines.some(l => !!l.cross_doc_ref),
       status: 'active',
       user_id: userId || undefined,
-    });
-    for (const ln of txLines) {
-      await pb.create('tx_lines', { tx_id: tx.id, ...ln });
-    }
+      branch_id: inv.branch_id || null,
+      cross_enabled: txLines.some(l => !!l.cross_doc_ref),
+      cross_type: 'ph_invoices',
+      cross_number: inv.number,
+      cross_amount: inv.total || 0,
+      cross_purpose: 'Causar',
+    };
+
+    const tx = await this.createTransaction(txPayload, txLines);
 
     // Actualizar factura
     await pb.update('ph_invoices', invoiceId, { status: 'posted', tx_id: tx.id });
-    await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${tx.number}`);
+    await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} -> TX ${tx.number}`);
     return pb.get('ph_invoices', invoiceId, { expand: 'property_id' });
   },
 

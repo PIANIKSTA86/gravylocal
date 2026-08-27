@@ -967,6 +967,7 @@ function resolveNominaTerceroId(conceptKey, line, effectiveRule, companyRules) {
       return effectiveRule.tercero_salud_id || '';
     case 'deduction_pension':
     case 'employer_pension':
+    case 'solidarity_fund':
       return effectiveRule.tercero_pension_id || '';
     case 'employer_arl':
       return effectiveRule.tercero_arl_id || '';
@@ -996,6 +997,11 @@ async function buildNominaAccountingLines(period, payLines, config) {
   const companyRules = config.company_rules || {};
   const periodYYYYMM = (period.date_from || period.date_to || '').slice(0, 7).replace('-', '');
 
+  const periodTitle = String(period.name || '').trim();
+  const periodClean = (periodTitle.toLowerCase().startsWith('nómina') || periodTitle.toLowerCase().startsWith('nomina'))
+    ? periodTitle
+    : `Nómina ${periodTitle}`;
+
   for (const line of payLines) {
     const effectiveRule = getEmployeePayrollRule(config, line.employee_id);
     for (const concept of NOMINA_CONCEPTS) {
@@ -1018,7 +1024,7 @@ async function buildNominaAccountingLines(period, payLines, config) {
             cross_doc_ref: crossDocRef || undefined,
             debit: 0,
             credit: 0,
-            description: `Nómina ${period.name} - ${concept.label}`,
+            description: `${periodClean} - ${concept.label}`,
           };
         }
         if (side === 'debit') buckets[bucketKey].debit = round2(buckets[bucketKey].debit + amount);
@@ -1075,6 +1081,21 @@ async function postNominaPeriodAccounting(periodId) {
     throw new Error('Primero configura los mapeos contables de nómina (botón de engranaje).');
   }
 
+  // Prevenir duplicación: Comprobar si ya existen transacciones activas de este período en el libro diario
+  const periodTitle = String(period.name || '').trim();
+  const periodClean = (periodTitle.toLowerCase().startsWith('nómina') || periodTitle.toLowerCase().startsWith('nomina'))
+    ? periodTitle
+    : `Nómina ${periodTitle}`;
+
+  const existingTxs = await pb.listAll('transactions', {
+    filter: `tx_type_id="${txType.id}" && description ~ "${pb.escapeFilterValue(periodClean)}" && status="active"`,
+  }).catch(() => []);
+
+  if (existingTxs.length > 0) {
+    console.warn(`[NÓMINA] Ya existen ${existingTxs.length} transacciones NM activas para ${periodClean}. Se vincularán sin duplicar.`);
+    return existingTxs.map((t: any) => t.id);
+  }
+
   // Group payLines by employee_id
   const payLinesByEmployee = {};
   payLines.forEach((line) => {
@@ -1091,7 +1112,7 @@ async function postNominaPeriodAccounting(periodId) {
     const txLines = await buildNominaAccountingLines(period, empPayLines, config);
     if (!txLines.length) continue;
 
-    // Phase C: validate requires_third_party and maneja_cruce before posting
+    // Validar requerimientos de tercero y cruce
     const uniqueAccountIds = [...new Set(txLines.map((l) => l.account_id).filter(Boolean))];
     const accountsUsed = await pb.listAll('accounts', {
       filter: uniqueAccountIds.map((id) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
@@ -1129,7 +1150,7 @@ async function postNominaPeriodAccounting(periodId) {
     const tx = await API.createTransaction({
       tx_type_id: txType.id,
       date: period.date_to || todayStr(),
-      description: `Nómina ${period.name} - ${item.employeeName}`,
+      description: `${periodClean} - ${item.employeeName}`,
       third_party_id: item.empId || undefined,
       branch_id: period.branch_id || null,
     }, item.txLines);
@@ -2244,7 +2265,11 @@ async function liquidarPeriodoMasivo(periodId) {
     }
 
     showToast(`Liquidación completada. Creadas: ${creadas}, Actualizadas: ${actualizadas}`, 'success');
-    navigate((window as any).currentPage || 'nomina-liquidacion');
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab((window as any).currentPage || 'nomina-liquidacion');
+    } else {
+      navigate((window as any).currentPage || 'nomina-liquidacion', true);
+    }
   } catch (err) {
     showToast(`Error al liquidar periodo: ${err.message}`, 'error');
   }
@@ -3254,7 +3279,11 @@ async function renderNominaNovedades(c, periods, employees) {
             try {
               await pb.delete('payroll_novelties', id);
               showToast('Novedad eliminada', 'success');
-              renderNomina($('#page-content'));
+              if (typeof (window as any).reloadTab === 'function') {
+                (window as any).reloadTab('nomina-novedades');
+              } else {
+                navigate('nomina-novedades', true);
+              }
             } catch (err) {
               showToast(err.message, 'error');
             }
@@ -3400,7 +3429,11 @@ function openNoveltyForm(periods, employees, novelty = null) {
         showToast('Novedad registrada', 'success');
       }
       closeModal();
-      navigate((window as any).currentPage || 'nomina-novedades');
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab((window as any).currentPage || 'nomina-novedades');
+      } else {
+        navigate((window as any).currentPage || 'nomina-novedades', true);
+      }
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -6670,7 +6703,11 @@ async function setPeriodStatus(id, newStatus) {
       }
       await pb.update('payroll_periods', id, updatePayload);
       showToast('Estado actualizado', 'success');
-      renderNomina($('#page-content'));
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('nomina-periodos');
+      } else {
+        navigate('nomina-periodos', true);
+      }
     } catch (err) { showToast(err.message, 'error'); }
   });
 }
@@ -6691,7 +6728,11 @@ async function deletePayrollPeriod(id, periodName = '') {
       try {
         await pb.delete('payroll_periods', id);
         showToast('Período eliminado', 'success');
-        renderNomina($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('nomina-periodos');
+        } else {
+          navigate('nomina-periodos', true);
+        }
       } catch (err) {
         showToast(err.message || 'No se pudo eliminar el período', 'error');
       }
@@ -6714,7 +6755,11 @@ async function deletePayrollLine(id) {
         await pb.delete('payroll_lines', id);
         showToast('Liquidación eliminada', 'success');
         closeModal();
-        navigate((window as any).currentPage || 'nomina-liquidacion');
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('nomina-liquidacion');
+        } else {
+          navigate('nomina-liquidacion', true);
+        }
       } catch (err) {
         showToast(err.message || 'No se pudo eliminar la liquidación', 'error');
       }
@@ -6905,10 +6950,35 @@ async function printPayrollSlip(id) {
 
     const empName  = l.expand?.employee_id?.name  || '';
     const empDoc   = l.expand?.employee_id?.doc_number || '';
+    const empDocType = l.expand?.employee_id?.doc_type || 'CC';
     const empCargo = l.expand?.employee_id?.notes || '';
-    const period   = l.expand?.period_id?.name  || '';
-    const dateFrom = l.expand?.period_id?.date_from || '';
-    const dateTo   = l.expand?.period_id?.date_to   || '';
+    const periodRec = l.expand?.period_id || {};
+    const period   = periodRec?.name  || '';
+    const dateFrom = periodRec?.date_from || '';
+    const dateTo   = periodRec?.date_to   || '';
+    const periodStatus = periodRec?.status || 'draft';
+    const lqdNumber = 'LQD-' + (l.id || '').toUpperCase();
+
+    // Obtener número de comprobante contable asociado si el período está aprobado/pagado
+    let txNumber = '';
+    const periodTxId = periodRec?.tx_id;
+    if (periodTxId) {
+      const txIds = Array.isArray(periodTxId) ? periodTxId : [periodTxId];
+      if (txIds.length === 1) {
+        const txRec = await pb.get('transactions', txIds[0]).catch(() => null);
+        if (txRec?.number) txNumber = txRec.number;
+      } else if (txIds.length > 1) {
+        const empTxs = await pb.listAll('transactions', {
+          filter: `third_party_id="${pb.escapeFilterValue(l.employee_id)}" && (${txIds.map((tid: string) => `id="${pb.escapeFilterValue(tid)}"`).join(' || ')})`,
+        }).catch(() => []);
+        if (empTxs.length > 0 && empTxs[0].number) {
+          txNumber = empTxs[0].number;
+        } else {
+          const firstTx = await pb.get('transactions', txIds[0]).catch(() => null);
+          if (firstTx?.number) txNumber = firstTx.number;
+        }
+      }
+    }
 
     const fmtCOP = (v) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(v) || 0);
 
@@ -6930,22 +7000,26 @@ async function printPayrollSlip(id) {
       .filter((k) => (conceptAmounts[k] || 0) > 0)
       .map((k) => slipRow(NOMINA_CONCEPT_BY_KEY[k]?.label || k, conceptAmounts[k])).join('');
 
+    const statusBadgeText = periodStatus === 'paid' ? 'Pagada' : (periodStatus === 'approved' ? 'Causada / Aprobada' : 'Borrador');
+    const statusBadgeColor = periodStatus === 'paid' ? '#059669' : (periodStatus === 'approved' ? '#2563EB' : '#D97706');
+
     const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Volante de Nómina — ${empName}</title>
+  <title>Volante de Nómina — ${empName} (${lqdNumber})</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: #fff; }
-    .page { width: 210mm; margin: 0 auto; padding: 14mm 14mm; }
+    .page { width: 210mm; margin: 0 auto; padding: 12mm 14mm; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0D2137; padding-bottom: 10px; margin-bottom: 12px; }
     .company-name { font-size: 16px; font-weight: 700; color: #0D2137; }
     .company-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
     .slip-title { font-size: 14px; font-weight: 700; color: #1A4B8C; text-align: right; }
     .slip-period { font-size: 11px; color: #6B7280; text-align: right; margin-top: 2px; }
-    .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 36px; flex-wrap: wrap; }
-    .emp-field label { font-size: 10px; color: #6B7280; display: block; }
+    .slip-doc-info { font-size: 11px; text-align: right; margin-top: 4px; font-weight: 700; }
+    .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .emp-field label { font-size: 10px; color: #6B7280; display: block; text-transform: uppercase; font-weight: 600; }
     .emp-field span { font-size: 12px; font-weight: 600; color: #0D2137; }
     .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .section { border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden; }
@@ -6956,11 +7030,12 @@ async function printPayrollSlip(id) {
     .neto-bar .n-label { font-size: 11px; color: #065F46; }
     .neto-bar .n-value { font-size: 22px; font-weight: 800; color: #059669; }
     .employer-grid { display: grid; grid-template-columns: 1fr 1fr; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 32px; }
-    .sig-line { border-top: 1px solid #374151; padding-top: 4px; margin-top: 44px; text-align: center; font-size: 10px; color: #6B7280; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 24px; }
+    .sig-line { border-top: 1px solid #374151; padding-top: 4px; margin-top: 40px; text-align: center; font-size: 10px; color: #6B7280; }
+    .audit-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 9px; color: #9CA3AF; border-top: 1px dashed #E5E7EB; padding-top: 6px; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { padding: 10mm 12mm; }
+      .page { padding: 8mm 10mm; }
     }
   </style>
 </head>
@@ -6975,16 +7050,21 @@ async function printPayrollSlip(id) {
     <div>
       <div class="slip-title">VOLANTE DE PAGO DE NÓMINA</div>
       <div class="slip-period">${period}${dateFrom ? ' &nbsp;·&nbsp; Del ' + dateFrom : ''}${dateTo ? ' al ' + dateTo : ''}</div>
+      <div class="slip-doc-info">
+        <span style="color:#1A4B8C">Liquidación: ${lqdNumber}</span>
+        ${txNumber ? `<span style="margin-left:8px;padding:2px 6px;background:#EFF6FF;color:#1D4ED8;border-radius:4px;border:1px solid #BFDBFE">Comprobante: ${txNumber}</span>` : '<span style="margin-left:8px;color:#9CA3AF;font-weight:normal">(Sin causar)</span>'}
+      </div>
     </div>
   </div>
 
   <div class="emp-card">
     <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
-    <div class="emp-field"><label>Documento</label><span>${empDoc || '—'}</span></div>
-    ${empCargo ? `<div class="emp-field"><label>Cargo / Notas</label><span>${empCargo}</span></div>` : ''}
-    <div class="emp-field"><label>Días trabajados ordinarios</label><span>${effectiveDays}</span></div>
+    <div class="emp-field"><label>Identificación</label><span>${empDocType} ${empDoc || '—'}</span></div>
+    ${empCargo ? `<div class="emp-field"><label>Cargo / Puesto</label><span>${empCargo}</span></div>` : ''}
+    <div class="emp-field"><label>Días trabajados</label><span>${effectiveDays}</span></div>
     ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
     <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
+    <div class="emp-field"><label>Estado</label><span style="color:${statusBadgeColor};text-transform:uppercase">${statusBadgeText}</span></div>
   </div>
 
   <div class="cols">
@@ -7004,7 +7084,7 @@ async function printPayrollSlip(id) {
       <table>
         ${slipRow('Salud trabajador (4%)', l.deduction_health || 0)}
         ${slipRow('Pensión trabajador (4%)', l.deduction_pension || 0)}
-        ${extraDed.solidarity > 0 ? slipRow('Fondo de solidaridad', extraDed.solidarity) : ''}
+        ${extraDed.solidarity > 0 ? slipRow('Fondo de solidaridad pensional', extraDed.solidarity) : ''}
         ${extraDed.withholding > 0 ? slipRow('Retención en la fuente', extraDed.withholding) : ''}
         ${(l.deduction_other || 0) > 0 ? slipRow('Otras deducciones', l.deduction_other) : ''}
         ${extraDedSlipRows}
@@ -7042,6 +7122,11 @@ async function printPayrollSlip(id) {
     <div><div class="sig-line">Firma empleador / Representante legal</div></div>
     <div><div class="sig-line">Firma empleado — ${empName}</div></div>
   </div>
+
+  <div class="audit-footer">
+    <div>Documento soporte de liquidación de nómina para fines de control interno y auditoría contable.</div>
+    <div>Expedición: ${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+  </div>
 </div>
 <script>window.onload = function () { window.print(); };<\/script>
 </body>
@@ -7058,6 +7143,7 @@ async function printPayrollSlip(id) {
 
 async function printConsolidatedPayrollSlips(periodId: string) {
   try {
+    const periodRec = await pb.get('payroll_periods', periodId).catch(() => ({}));
     const lines = await pb.listAll('payroll_lines', {
       filter: `period_id="${periodId}"`,
       expand: 'period_id,employee_id',
@@ -7080,6 +7166,24 @@ async function printConsolidatedPayrollSlips(periodId: string) {
       API.getSetting('company_address').catch(() => ''),
     ]);
 
+    // Mapear transacciones contables del período para auditoría
+    const periodTxId = periodRec?.tx_id || lines[0]?.expand?.period_id?.tx_id;
+    const txMapByEmployee = new Map<string, string>();
+    let fallbackTxNumber = '';
+
+    if (periodTxId) {
+      const txIds = Array.isArray(periodTxId) ? periodTxId : [periodTxId];
+      if (txIds.length > 0) {
+        const txList = await pb.listAll('transactions', {
+          filter: txIds.map((tid: string) => `id="${pb.escapeFilterValue(tid)}"`).join(' || '),
+        }).catch(() => []);
+        txList.forEach((tx: any) => {
+          if (tx.third_party_id) txMapByEmployee.set(tx.third_party_id, tx.number || '');
+          if (!fallbackTxNumber && tx.number) fallbackTxNumber = tx.number;
+        });
+      }
+    }
+
     const fmtCOP = (v: any) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(Number(v) || 0);
 
     const slipRow = (label: string, value: any, bold = false) =>
@@ -7087,6 +7191,10 @@ async function printConsolidatedPayrollSlips(periodId: string) {
          <td style="padding:3px 8px;color:#374151;${bold ? 'font-weight:700;' : ''}">${label}</td>
          <td style="padding:3px 8px;text-align:right;${bold ? 'font-weight:700;' : ''}">${typeof value === 'number' ? fmtCOP(value) : value}</td>
        </tr>`;
+
+    const periodStatus = periodRec?.status || lines[0]?.expand?.period_id?.status || 'draft';
+    const statusBadgeText = periodStatus === 'paid' ? 'Pagada' : (periodStatus === 'approved' ? 'Causada / Aprobada' : 'Borrador');
+    const statusBadgeColor = periodStatus === 'paid' ? '#059669' : (periodStatus === 'approved' ? '#2563EB' : '#D97706');
 
     const slipsHtml = lines.map((l: any, index: number) => {
       const meta = getNominaLineMeta(l);
@@ -7104,9 +7212,11 @@ async function printConsolidatedPayrollSlips(periodId: string) {
       const empDoc   = l.expand?.employee_id?.doc_number || '';
       const empDocType = l.expand?.employee_id?.doc_type || 'CC';
       const empCargo = l.expand?.employee_id?.notes || '';
-      const period   = l.expand?.period_id?.name  || '';
-      const dateFrom = l.expand?.period_id?.date_from || '';
-      const dateTo   = l.expand?.period_id?.date_to   || '';
+      const period   = l.expand?.period_id?.name  || periodRec?.name || '';
+      const dateFrom = l.expand?.period_id?.date_from || periodRec?.date_from || '';
+      const dateTo   = l.expand?.period_id?.date_to   || periodRec?.date_to || '';
+      const lqdNumber = 'LQD-' + (l.id || '').toUpperCase();
+      const txNumber = txMapByEmployee.get(l.employee_id) || fallbackTxNumber || '';
 
       const overtimeSlipRows = overtimeMeta.hasBreakdown
         ? overtimeMeta.breakdown.filter((i: any) => i.hours > 0).map((i: any) => slipRow(`${i.label} (${i.hours} h)`, i.amount)).join('')
@@ -7131,16 +7241,21 @@ async function printConsolidatedPayrollSlips(periodId: string) {
             <div>
               <div class="slip-title">VOLANTE DE PAGO DE NÓMINA</div>
               <div class="slip-period">${period}${dateFrom ? ' &nbsp;·&nbsp; Del ' + dateFrom : ''}${dateTo ? ' al ' + dateTo : ''}</div>
+              <div class="slip-doc-info">
+                <span style="color:#1A4B8C">Liquidación: ${lqdNumber}</span>
+                ${txNumber ? `<span style="margin-left:8px;padding:2px 6px;background:#EFF6FF;color:#1D4ED8;border-radius:4px;border:1px solid #BFDBFE">Comprobante: ${txNumber}</span>` : '<span style="margin-left:8px;color:#9CA3AF;font-weight:normal">(Sin causar)</span>'}
+              </div>
             </div>
           </div>
 
           <div class="emp-card">
             <div class="emp-field"><label>Empleado</label><span>${empName}</span></div>
-            <div class="emp-field"><label>Documento</label><span>${empDocType} ${empDoc || '—'}</span></div>
+            <div class="emp-field"><label>Identificación</label><span>${empDocType} ${empDoc || '—'}</span></div>
             ${empCargo ? `<div class="emp-field"><label>Cargo / Notas</label><span>${empCargo}</span></div>` : ''}
             <div class="emp-field"><label>Días trabajados</label><span>${effectiveDays}</span></div>
             ${(meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones) ? `<div class="emp-field"><label>Días vacaciones</label><span>${meta.payroll_meta?.dias_vacaciones || conceptAmounts.dias_vacaciones}</span></div>` : ''}
             <div class="emp-field"><label>Días aux. transporte</label><span>${transportDays}</span></div>
+            <div class="emp-field"><label>Estado</label><span style="color:${statusBadgeColor};text-transform:uppercase">${statusBadgeText}</span></div>
           </div>
 
           <div class="cols">
@@ -7160,7 +7275,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
               <table>
                 ${slipRow('Salud trabajador (4%)', l.deduction_health || 0)}
                 ${slipRow('Pensión trabajador (4%)', l.deduction_pension || 0)}
-                ${extraDed.solidarity > 0 ? slipRow('Fondo de solidaridad', extraDed.solidarity) : ''}
+                ${extraDed.solidarity > 0 ? slipRow('Fondo de solidaridad pensional', extraDed.solidarity) : ''}
                 ${extraDed.withholding > 0 ? slipRow('Retención en la fuente', extraDed.withholding) : ''}
                 ${(l.deduction_other || 0) > 0 ? slipRow('Otras deducciones', l.deduction_other) : ''}
                 ${extraDedSlipRows}
@@ -7198,6 +7313,11 @@ async function printConsolidatedPayrollSlips(periodId: string) {
             <div><div class="sig-line">Firma empleador / Representante legal</div></div>
             <div><div class="sig-line">Firma empleado — ${empName}</div></div>
           </div>
+
+          <div class="audit-footer">
+            <div>Documento soporte de liquidación de nómina para fines de control interno y auditoría contable.</div>
+            <div>Expedición: ${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
         </div>
       `;
     }).join('');
@@ -7210,15 +7330,16 @@ async function printConsolidatedPayrollSlips(periodId: string) {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #111827; background: #fff; }
-    .page { width: 210mm; margin: 0 auto; padding: 14mm 14mm; min-height: 270mm; position: relative; }
+    .page { width: 210mm; margin: 0 auto; padding: 12mm 14mm; min-height: 270mm; position: relative; }
     .page-break { page-break-after: always; break-after: page; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0D2137; padding-bottom: 10px; margin-bottom: 12px; }
     .company-name { font-size: 16px; font-weight: 700; color: #0D2137; }
     .company-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
     .slip-title { font-size: 14px; font-weight: 700; color: #1A4B8C; text-align: right; }
     .slip-period { font-size: 11px; color: #6B7280; text-align: right; margin-top: 2px; }
-    .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 36px; flex-wrap: wrap; }
-    .emp-field label { font-size: 10px; color: #6B7280; display: block; }
+    .slip-doc-info { font-size: 11px; text-align: right; margin-top: 4px; font-weight: 700; }
+    .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 24px; flex-wrap: wrap; }
+    .emp-field label { font-size: 10px; color: #6B7280; display: block; text-transform: uppercase; font-weight: 600; }
     .emp-field span { font-size: 12px; font-weight: 600; color: #0D2137; }
     .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .section { border: 1px solid #E5E7EB; border-radius: 6px; overflow: hidden; }
@@ -7229,11 +7350,12 @@ async function printConsolidatedPayrollSlips(periodId: string) {
     .neto-bar .n-label { font-size: 11px; color: #065F46; }
     .neto-bar .n-value { font-size: 22px; font-weight: 800; color: #059669; }
     .employer-grid { display: grid; grid-template-columns: 1fr 1fr; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 32px; }
-    .sig-line { border-top: 1px solid #374151; padding-top: 4px; margin-top: 44px; text-align: center; font-size: 10px; color: #6B7280; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 24px; }
+    .sig-line { border-top: 1px solid #374151; padding-top: 4px; margin-top: 40px; text-align: center; font-size: 10px; color: #6B7280; }
+    .audit-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 9px; color: #9CA3AF; border-top: 1px dashed #E5E7EB; padding-top: 6px; }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .page { padding: 10mm 12mm; }
+      .page { padding: 8mm 10mm; }
     }
   </style>
 </head>
@@ -8239,6 +8361,15 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         return showToast('El Periodo seleccionado no esta en borrador. No se pueden registrar nuevas liquidaciones.', 'error');
       }
 
+      if (!lineToEdit) {
+        const existingLines = await pb.listAll('payroll_lines', {
+          filter: `period_id="${pb.escapeFilterValue(periodId)}" && employee_id="${pb.escapeFilterValue(employeeId)}"`,
+        }).catch(() => []);
+        if (existingLines.length > 0) {
+          return showToast('Este empleado ya cuenta con una liquidación en este período. Edita la liquidación existente en la lista.', 'warning');
+        }
+      }
+
       const overtimeMeta = getOvertimeFromForm(salary);
       const ot = overtimeMeta.total_amount;
       const conceptAmounts = getConceptAmountsFromForm();
@@ -8389,7 +8520,11 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         showToast('Liquidación registrada', 'success');
       }
       closeModal();
-      navigate((window as any).currentPage || 'nomina-liquidacion');
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab((window as any).currentPage || 'nomina-liquidacion');
+      } else {
+        navigate((window as any).currentPage || 'nomina-liquidacion', true);
+      }
     } catch (err) {
       const details = err?.data?.data
         ? Object.values(err.data.data).map((v) => v?.message).filter(Boolean).join(' | ')
@@ -8526,11 +8661,11 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     await pb.update('payroll_periods', periodId, { status: 'draft', tx_id: '' });
     showToast('Liquidación de período reversada correctamente.', 'success');
 
-    const activeRoute = (window as any).router?.currentRoute;
-    if (activeRoute === 'nomina-periodos') {
-      renderNominaPeriodosPage($('#page-content'));
-    } else if (activeRoute === 'nomina-liquidacion') {
-      renderNominaLiquidacionPage($('#page-content'));
+    const activeRoute = (window as any).currentPage || 'nomina-periodos';
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab(activeRoute);
+    } else {
+      navigate(activeRoute, true);
     }
   } catch (err: any) {
     showToast(`Error al reversar: ${err.message}`, 'error');
@@ -8760,7 +8895,11 @@ async function savePayPayroll() {
 
     closeModal();
     showToast(`Comprobante de Egreso ${txRecord.number} creado y nómina marcada como pagada.`, 'success');
-    navigate((window as any).currentPage || 'nomina-periodos');
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('nomina-periodos');
+    } else {
+      navigate('nomina-periodos', true);
+    }
   } catch (err: any) {
     showToast(`Error al registrar pago: ${err.message}`, 'error');
     if (btn) {
@@ -8960,7 +9099,11 @@ async function savePayPlanilla() {
 
     closeModal();
     showToast(`Comprobante de Egreso ${txRecord.number} creado exitosamente.`, 'success');
-    navigate((window as any).currentPage || 'nomina-periodos');
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('nomina-periodos');
+    } else {
+      navigate('nomina-periodos', true);
+    }
   } catch (err: any) {
     showToast(`Error al registrar pago: ${err.message}`, 'error');
     if (btn) {

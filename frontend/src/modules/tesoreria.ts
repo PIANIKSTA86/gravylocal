@@ -1011,21 +1011,32 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     // Calcular referencia de anticipo según modo
     const anticipoRef = propertyId ? `ANT-${propertyId}` : `ANT-${thirdPartyId}`;
 
-    // Leer cuenta de anticipos desde config PH
+    // Leer cuenta de anticipos desde treasury_rules o config PH
     let anticipoAccountId: string | null = null;
     try {
-      const cfgSets = await pb.listAll('settings', { filter: 'key="ph_config_v1"' });
-      if (cfgSets.length) {
-        const cfg = JSON.parse(cfgSets[0].value || '{}');
-        anticipoAccountId = cfg.anticipo_account_id || null;
+      const tesoSets = await pb.listAll('settings', { filter: 'key="treasury_rules"' });
+      if (tesoSets.length && tesoSets[0].value) {
+        const tesoCfg = JSON.parse(tesoSets[0].value || '{}');
+        if (isRecaudo && tesoCfg.anticipo_cliente_account_id) {
+          anticipoAccountId = tesoCfg.anticipo_cliente_account_id;
+        } else if (!isRecaudo && tesoCfg.anticipo_proveedor_account_id) {
+          anticipoAccountId = tesoCfg.anticipo_proveedor_account_id;
+        }
+      }
+      if (!anticipoAccountId) {
+        const cfgSets = await pb.listAll('settings', { filter: 'key="ph_config_v1"' });
+        if (cfgSets.length) {
+          const cfg = JSON.parse(cfgSets[0].value || '{}');
+          anticipoAccountId = (isRecaudo ? cfg.anticipo_account_id : cfg.anticipo_proveedor_account_id) || null;
+        }
       }
     } catch(_) {}
 
     if (propertyId) {
        const invoices = await pb.listAll('ph_invoices', { filter: `property_id="${propertyId}" && status!="voided"` });
        invoices.forEach((inv: any) => allowedRefs.add(inv.number));
-       if (cruzarAnticipos) allowedRefs.add(anticipoRef);
-       if (allowedRefs.size <= (cruzarAnticipos ? 1 : 0)) { 
+       allowedRefs.add(anticipoRef);
+       if (allowedRefs.size <= 1) { 
          const hasAnticipo = allowedRefs.has(anticipoRef);
          if (!hasAnticipo) {
            c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El inmueble no presenta saldos pendientes.</div>`;
@@ -1035,7 +1046,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     } else {
        // Modo Comercial: Buscar facturas comerciales para permitir su cruce
        try {
-         const commInvoices = await pb.listAll('invoices', { filter: `customer_id="${thirdPartyId}" && status="posted"` });
+         const commInvoices = await pb.listAll('invoices', { filter: `customer_id="${thirdPartyId}" && status!="voided"` });
          commInvoices.forEach((inv: any) => allowedRefs.add(inv.number));
        } catch(_) {}
        
@@ -1061,16 +1072,14 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
       let esCuentaAnticipo = false;
 
       if (isRecaudo) {
-        // En RC: Cruce en Cuentas 13 (excl. 1330), Anticipo en Cuenta 28 o ANT-
+        // En RC: Cruce en Cuentas 13 (excl. 1330), Anticipo en Cuenta 28 o ANT- o configurada
         esCuentaCruce = code.startsWith('13') && !code.startsWith('1330');
         esCuentaAnticipo = code.startsWith('28') || ref === anticipoRef || (anticipoAccountId && l.account_id === anticipoAccountId);
       } else {
-        // En CE: Cruce en Cuentas 22, 23, 25, Anticipo en Cuenta 1330 o ANT-
-        esCuentaCruce = code.startsWith('22') || code.startsWith('23') || code.startsWith('25');
+        // En CE: Cruce en Cuentas 21, 22, 23, 25, Anticipo en Cuenta 1330 o ANT- o configurada
+        esCuentaCruce = code.startsWith('21') || code.startsWith('22') || code.startsWith('23') || code.startsWith('25');
         esCuentaAnticipo = code.startsWith('1330') || ref === anticipoRef || (anticipoAccountId && l.account_id === anticipoAccountId);
       }
-
-      if (!cruzarAnticipos && esCuentaAnticipo) continue;
 
       if (!esCuentaCruce && !esCuentaAnticipo && !l.expand?.account_id?.maneja_cruce) continue;
       
@@ -1078,7 +1087,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
       
       if (propertyId) {
           const isAllowed = allowedRefs.has(ref) || allowedRefs.has(possibleBase);
-          if (!isAllowed) continue;
+          if (!isAllowed && !esCuentaAnticipo) continue;
       } else {
           const isBlocked = blockedRefs.has(ref) || blockedRefs.has(possibleBase);
           if (isBlocked && !esCuentaAnticipo) continue;
@@ -1118,13 +1127,15 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
       return { ...d, saldo, netOpen, isAnticipo };
     });
 
-    const anticipoItems = cruzarAnticipos ? allDocs.filter(d => d.isAnticipo && d.saldo > 0.01) : [];
+    const allAnticipos = allDocs.filter(d => d.isAnticipo && d.saldo > 0.01);
+    const totalAnticipo = allAnticipos.reduce((s, i) => s + i.saldo, 0);
+
+    const anticipoItems = cruzarAnticipos ? allAnticipos : [];
 
     _tesoCurrentOpenItems = allDocs
       .filter(d => !d.isAnticipo && Math.abs(d.saldo) > 0.01)
       .sort((a, b) => a.firstDate.localeCompare(b.firstDate));
 
-    const totalAnticipo = anticipoItems.reduce((s, i) => s + i.saldo, 0);
     const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
 
     if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
@@ -1133,30 +1144,47 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     }
 
     // Banner de saldo a favor (anticipo)
-    const cuentaAnticiposLbl = isRecaudo ? 'Cuenta 28 - Pasivo Clientes' : 'Cuenta 1330 - Activo Proveedores';
-    const anticipoItemsHtml = anticipoItems.map(i => `
-      <div class="flex justify-between items-center text-xs py-1 border-t border-green-200/60 mt-1">
-        <span><i class="fas fa-receipt text-green-600 mr-1.5"></i><strong>${_esc(i.ref)}</strong> <span class="text-green-700 font-medium">(${_esc(i.accountCode || (isRecaudo ? '28' : '1330'))} — ${_esc(i.accountName || 'Anticipos')})</span></span>
-        <span class="font-bold text-green-800">${_fmt(i.saldo)}</span>
+    const cuentaAnticiposLbl = isRecaudo ? 'Cuenta 28 (Pasivo Anticipos de Clientes)' : 'Cuenta 1330 (Activo Anticipos a Proveedores)';
+    const anticipoItemsHtml = allAnticipos.map(i => `
+      <div class="flex justify-between items-center text-xs py-1 border-t ${isRecaudo ? 'border-emerald-200/60' : 'border-amber-200/60'} mt-1">
+        <span><i class="fas fa-receipt ${isRecaudo ? 'text-emerald-600' : 'text-amber-600'} mr-1.5"></i><strong>${_esc(i.ref)}</strong> <span class="${isRecaudo ? 'text-emerald-700' : 'text-amber-700'} font-medium">(${_esc(i.accountCode || (isRecaudo ? '28' : '1330'))} — ${_esc(i.accountName || 'Anticipos')})</span></span>
+        <span class="font-bold ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'}">${_fmt(i.saldo)}</span>
       </div>
     `).join('');
 
     const anticipoBanner = totalAnticipo > 0.01 ? `
-      <div class="p-3.5 rounded-xl mb-3 shadow-xs" style="background:#ECFDF5;border:1.5px solid #6EE7B7">
-        <div class="flex items-center gap-3">
-          <div class="bg-green-600 text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <i class="fas fa-piggy-bank text-sm"></i>
+      <div class="p-3.5 rounded-xl mb-3 shadow-xs transition-all" style="background:${isRecaudo ? '#ECFDF5' : '#FFFBEB'};border:1.5px solid ${isRecaudo ? '#6EE7B7' : '#FCD34D'}">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="${isRecaudo ? 'bg-emerald-600' : 'bg-amber-600'} text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0 shadow-sm">
+              <i class="fas ${isRecaudo ? 'fa-piggy-bank' : 'fa-hand-holding-dollar'} text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <p class="font-bold ${isRecaudo ? 'text-emerald-950' : 'text-amber-950'} text-sm flex items-center gap-2">
+                <span>💡 Saldo a Favor en Anticipos: <strong class="text-base">${_fmt(totalAnticipo)}</strong></span>
+              </p>
+              <p class="text-xs ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'} mt-0.5">
+                El tercero cuenta con <strong>${allAnticipos.length}</strong> registro(s) a su favor en ${cuentaAnticiposLbl}.
+              </p>
+            </div>
           </div>
-          <div class="flex-1">
-            <p class="font-bold text-green-900 text-sm">Saldo a Favor Disponible en Anticipos (${cuentaAnticiposLbl})</p>
-            <p class="text-xs text-green-700">Se detectaron <strong>${anticipoItems.length}</strong> registro(s) de anticipo que suman <strong>${_fmt(totalAnticipo)}</strong> los cuales se aplicarán automáticamente a la cartera.</p>
+          <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border ${isRecaudo ? 'border-emerald-300' : 'border-amber-300'} shadow-2xs">
+            <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-bold ${isRecaudo ? 'text-emerald-900' : 'text-amber-900'}">
+              <input type="checkbox" id="teso-modal-banner-cruzar-anticipos" ${cruzarAnticipos ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" onchange="window._handleToggleBannerCruzarAnticipos(this.checked)">
+              Cruzar / Aplicar Anticipo
+            </label>
           </div>
-          <div class="font-bold text-green-800 text-xl">${_fmt(totalAnticipo)}</div>
         </div>
-        <div class="mt-2 pt-1">
-          <div class="text-[10px] font-bold text-green-800 uppercase tracking-wider mb-1">Desglose de Anticipos Causados:</div>
-          ${anticipoItemsHtml}
-        </div>
+        ${cruzarAnticipos ? `
+          <div class="mt-2 pt-2 border-t ${isRecaudo ? 'border-emerald-200/80' : 'border-amber-200/80'}">
+            <div class="text-[10px] font-bold ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'} uppercase tracking-wider mb-1">Desglose de Anticipos a Cruzar:</div>
+            ${anticipoItemsHtml}
+          </div>
+        ` : `
+          <div class="mt-2 pt-1 text-[11px] ${isRecaudo ? 'text-emerald-700' : 'text-amber-800'} italic">
+            ℹ️ El anticipo <strong>NO</strong> será aplicado a esta transacción. Se liquidará únicamente con los medios de pago ingresados.
+          </div>
+        `}
       </div>
     ` : '';
 
@@ -1483,6 +1511,12 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     }
 
     const totalAbono = modo === 'manual' ? distribucion.reduce((a, b) => a + b.monto, 0) : monto;
+    if (totalAbono <= 0) {
+      _showToast('El valor total de la transacción debe ser mayor a $0', 'warning');
+      if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+      return;
+    }
+
     let netoTransado = totalAbono - retFuenteAmt - retIcaAmt - descuentoAmt;
     if (hasAjustePeso && ajustePesoAmt > 0) {
       if (isRecaudo) {
@@ -2088,11 +2122,28 @@ function _toggleTesoRetenciones() {
   }
 }
 
-(window as any)._toggleTesoCruzarAnticipos = () => {
+(window as any)._handleToggleBannerCruzarAnticipos = (checked: boolean) => {
+  const chkHeader = document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement | null;
+  if (chkHeader) chkHeader.checked = checked;
   if (_tesoCurrentThirdParty) {
     const isRecaudo = !!document.getElementById('modal-rc-wrap');
-    _loadOpenItemsForModal(_tesoCurrentThirdParty.id, isRecaudo, _tesoCurrentPropertyId || undefined);
+    _loadOpenItemsForModal(_tesoCurrentThirdParty.id, isRecaudo, _tesoCurrentPropertyId || undefined).then(() => {
+      const total = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+      const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
+      if (montoEl) {
+        const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+        montoEl.value = total > 0 ? total.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+      }
+      if ((window as any)._applyDefaultRetenciones) (window as any)._applyDefaultRetenciones();
+      else _recalculateTesoNeto();
+    });
   }
+};
+
+(window as any)._toggleTesoCruzarAnticipos = () => {
+  const chkHeader = document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement | null;
+  const isChecked = chkHeader?.checked ?? false;
+  (window as any)._handleToggleBannerCruzarAnticipos(isChecked);
 };
 
 function _updateThirdPartyDetailsShow(t: any) {
@@ -3038,7 +3089,16 @@ async function openTesoreriaConfigModal() {
     const settingsReq = await pb.listAll('settings', { filter: `key="treasury_rules"` });
     const cuentas = await pb.listAll('accounts', { filter: 'level>=3', sort: 'code' });
     
-    let rules: any = { primeroVencido: true, primeroMora: true, interesPrioridad: true, cuentasInteres: [], ajuste_peso_sobrante_account_id: '', ajuste_peso_faltante_account_id: '' };
+    let rules: any = { 
+      primeroVencido: true, 
+      primeroMora: true, 
+      interesPrioridad: true, 
+      cuentasInteres: [], 
+      ajuste_peso_sobrante_account_id: '', 
+      ajuste_peso_faltante_account_id: '',
+      anticipo_cliente_account_id: '',
+      anticipo_proveedor_account_id: ''
+    };
     let recordId = '';
     
     if (settingsReq.length > 0) {
@@ -3080,6 +3140,29 @@ async function openTesoreriaConfigModal() {
                 <span class="block text-xs text-gray-500 mt-1">Busca inmuebles (Ej: APTO A101) para filtrar y pagar solo la cartera de esa unidad.</span>
               </div>
             </label>
+          </div>
+        </div>
+
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 mb-4">
+          <h4 class="font-bold text-gray-800 mb-3"><i class="fas fa-piggy-bank mr-2 text-emerald-600"></i>Cuentas PUC de Anticipos y Saldos a Favor</h4>
+          <p class="text-xs text-gray-500 mb-4">Parametriza las cuentas contables del PUC utilizadas para causar, detectar y cruzar anticipos en Recibos de Caja y Comprobantes de Egreso.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">Anticipos de Clientes (Recibos de Caja - RC)</label>
+              <select id="teso-cfg-anticipo-cliente-account" class="form-input text-xs bg-white w-full border border-gray-300 rounded-lg">
+                <option value="">— Predeterminada (2805 / 28) —</option>
+                ${accountOptionsWithId}
+              </select>
+              <span class="block text-[10px] text-gray-400 mt-1">Cuenta de Pasivo para registrar y cruzar saldos a favor de clientes.</span>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-700 mb-1">Anticipos a Proveedores (Comprobantes de Egreso - CE)</label>
+              <select id="teso-cfg-anticipo-proveedor-account" class="form-input text-xs bg-white w-full border border-gray-300 rounded-lg">
+                <option value="">— Predeterminada (1330 / 133005) —</option>
+                ${accountOptionsWithId}
+              </select>
+              <span class="block text-[10px] text-gray-400 mt-1">Cuenta de Activo para registrar y cruzar anticipos girados a proveedores.</span>
+            </div>
           </div>
         </div>
 
@@ -3171,8 +3254,13 @@ async function openTesoreriaConfigModal() {
 
     const sobranteEl = document.getElementById('teso-cfg-sobrante-account') as HTMLSelectElement;
     const faltanteEl = document.getElementById('teso-cfg-faltante-account') as HTMLSelectElement;
+    const antCliEl = document.getElementById('teso-cfg-anticipo-cliente-account') as HTMLSelectElement;
+    const antProvEl = document.getElementById('teso-cfg-anticipo-proveedor-account') as HTMLSelectElement;
+
     if (sobranteEl && rules.ajuste_peso_sobrante_account_id) sobranteEl.value = rules.ajuste_peso_sobrante_account_id;
     if (faltanteEl && rules.ajuste_peso_faltante_account_id) faltanteEl.value = rules.ajuste_peso_faltante_account_id;
+    if (antCliEl && rules.anticipo_cliente_account_id) antCliEl.value = rules.anticipo_cliente_account_id;
+    if (antProvEl && rules.anticipo_proveedor_account_id) antProvEl.value = rules.anticipo_proveedor_account_id;
 
     document.getElementById('btn-save-cfg')!.onclick = async () => {
       const btn = document.getElementById('btn-save-cfg') as HTMLButtonElement;
@@ -3189,6 +3277,8 @@ async function openTesoreriaConfigModal() {
 
       const ajuste_peso_sobrante_account_id = (document.getElementById('teso-cfg-sobrante-account') as HTMLSelectElement)?.value || '';
       const ajuste_peso_faltante_account_id = (document.getElementById('teso-cfg-faltante-account') as HTMLSelectElement)?.value || '';
+      const anticipo_cliente_account_id = (document.getElementById('teso-cfg-anticipo-cliente-account') as HTMLSelectElement)?.value || '';
+      const anticipo_proveedor_account_id = (document.getElementById('teso-cfg-anticipo-proveedor-account') as HTMLSelectElement)?.value || '';
 
       const payload = {
         key: 'treasury_rules',
@@ -3200,7 +3290,9 @@ async function openTesoreriaConfigModal() {
           cuentasInteres: cuentasArr,
           allowManualDocNumber,
           ajuste_peso_sobrante_account_id,
-          ajuste_peso_faltante_account_id
+          ajuste_peso_faltante_account_id,
+          anticipo_cliente_account_id,
+          anticipo_proveedor_account_id
         })
       };
 

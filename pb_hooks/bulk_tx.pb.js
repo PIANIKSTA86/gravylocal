@@ -95,12 +95,20 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
   }
 
   // ─── 4. Validaciones básicas de txData ─────────────────────────────────────
-  const txTypeId = String(txData.tx_type_id || "").trim();
+  let txRecPre = null;
+  const explicitTxId = String(txData.id || "").trim();
+  if (explicitTxId) {
+    try {
+      txRecPre = $app.findRecordById("transactions", explicitTxId);
+    } catch (_) {}
+  }
+
+  const txTypeId = String(txData.tx_type_id || (txRecPre ? txRecPre.getString("tx_type_id") : "")).trim();
   if (!txTypeId) {
     return e.json(400, { message: "tx_type_id es obligatorio." });
   }
 
-  const txDate = String(txData.date || "").trim();
+  const txDate = String(txData.date || (txRecPre ? txRecPre.getString("date") : "")).trim();
   if (!txDate) {
     return e.json(400, { message: "date es obligatorio (YYYY-MM-DD)." });
   }
@@ -111,7 +119,7 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
     return /^[a-z0-9]{15}$/.test(s) ? s : null;
   };
 
-  const txBranchId = normalizeBranchId(txData.branch_id);
+  const txBranchId = normalizeBranchId(txData.branch_id) || (txRecPre ? normalizeBranchId(txRecPre.getString("branch_id")) : null);
 
   // ─── 6. Crear transacción + líneas en una única transacción SQLite ──────────
   let createdTx = null;
@@ -120,17 +128,21 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
     $app.runInTransaction((txApp) => {
 
       // ── 6a. Resolver número consecutivo y transacción existente ───────────
-      let txNumber = String(txData.number || "AUTO").trim();
+      let txNumber = String(txData.number || "").trim();
       let txRec = null;
 
       // Si se especificó id explícito o número de comprobante, verificar si ya existe
-      if (txData.id && String(txData.id).trim()) {
+      if (explicitTxId) {
         try {
-          txRec = txApp.findRecordById("transactions", String(txData.id).trim());
+          txRec = txApp.findRecordById("transactions", explicitTxId);
         } catch (_) {}
       }
 
-      if (!txNumber || txNumber === "AUTO") {
+      if (txRec) {
+        if (!txNumber || txNumber === "AUTO") {
+          txNumber = txRec.getString("number");
+        }
+      } else if (!txNumber || txNumber === "AUTO") {
         // Generar consecutivo dentro de la misma transacción SQLite
         // para garantizar unicidad aún bajo carga concurrente.
         const txType = txApp.findRecordById("transaction_types", txTypeId);
@@ -158,15 +170,15 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
         }
       } else {
-        // Si no se encontró por ID, buscar si existe un borrador con este número
+        // Si no se encontró por ID, buscar si existe un comprobante con este número
         if (!txRec) {
           try {
             txRec = txApp.findFirstRecordByFilter("transactions", "number = '" + txNumber + "'");
           } catch (_) {}
         }
 
-        // Si ya existe un comprobante con este número y NO está en borrador, reject
-        if (txRec && txRec.getString("status") !== "draft" && (!txData.id || txRec.id !== String(txData.id).trim())) {
+        // Si ya existe un comprobante con este número y NO es el que estamos editando ni es borrador, reject
+        if (txRec && txRec.getString("status") !== "draft" && (!explicitTxId || txRec.id !== explicitTxId)) {
           throw new Error(`El comprobante N° "${txNumber}" ya existe y se encuentra en estado ${txRec.getString("status")}.`);
         }
 
@@ -205,20 +217,28 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
       if (!txRec) {
         txRec = new Record(txCol);
       } else {
-        // Si estamos actualizando una transacción en borrador, eliminar líneas anteriores
+        // Desvincular referencias de bank_movements para evitar errores de integridad
         try {
-          const oldLines = txApp.findRecordsByFilter("tx_lines", "tx_id = '" + txRec.id + "'");
-          for (let k = 0; k < oldLines.length; k++) {
-            txApp.delete(oldLines[k]);
-          }
+          txApp.db().newQuery("UPDATE bank_movements SET tx_line_id = '' WHERE tx_line_id IN (SELECT id FROM tx_lines WHERE tx_id = {:txId})").bind({ txId: txRec.id }).execute();
         } catch (_) {}
+        // Eliminar líneas anteriores atómicamente
+        try {
+          txApp.db().newQuery("DELETE FROM tx_lines WHERE tx_id = {:txId}").bind({ txId: txRec.id }).execute();
+        } catch (_) {
+          try {
+            const oldLines = txApp.findRecordsByFilter("tx_lines", "tx_id = '" + txRec.id + "'");
+            for (let k = 0; k < oldLines.length; k++) {
+              txApp.delete(oldLines[k]);
+            }
+          } catch (_) {}
+        }
       }
 
       txRec.set("tx_type_id",    txTypeId);
       txRec.set("number",        txNumber);
       txRec.set("date",          txDate);
       txRec.set("description",   String(txData.description || ""));
-      txRec.set("status",        String(txData.status || "active"));
+      txRec.set("status",        String(txData.status || (txRec ? txRec.getString("status") : "active") || "active"));
       txRec.set("payment_days",  Number(txData.payment_days || 0));
       txRec.set("cross_enabled", !!txData.cross_enabled);
 
@@ -226,6 +246,7 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
       if (txData.cross_number)  txRec.set("cross_number",  String(txData.cross_number).trim());
       if (txData.cross_amount != null) txRec.set("cross_amount", Number(txData.cross_amount || 0));
       if (txData.cross_purpose) txRec.set("cross_purpose", String(txData.cross_purpose).trim());
+      if (txData.book_type)     txRec.set("book_type",     String(txData.book_type).trim());
 
       if (txData.third_party_id && String(txData.third_party_id).trim()) {
         txRec.set("third_party_id", String(txData.third_party_id).trim());

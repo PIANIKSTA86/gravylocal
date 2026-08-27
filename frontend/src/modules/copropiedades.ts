@@ -470,13 +470,25 @@ function openPhDeletePeriodModal(container) {
   }, 50);
 }
 
-function openPhGenerateModal() {
-  const period = document.getElementById('ph-period-filter')?.value || currentPeriod();
+async function openPhGenerateModal() {
+  const period = (document.getElementById('ph-period-filter') as HTMLInputElement)?.value || currentPeriod();
   // Calcular fecha de vencimiento (día 10 del siguiente mes)
   const [y, m] = period.split('-').map(Number);
   const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
   const dueDateDefault = `${nextMonth.replace('-', '-')}10`.replace(/(\d{4})-(\d{2})(\d{2})/, '$1-$2-$3')
     .replace(/(\d{4}-\d{2})(\d{2})/, '$1-$2');
+
+  let warningNoOwner = '';
+  try {
+    const props = await API.getPhProperties(true);
+    const withoutOwner = props.filter(p => !p.owner_id);
+    if (withoutOwner.length > 0) {
+      warningNoOwner = `<div class="p-3 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-800 flex items-start gap-2">
+        <i class="fas fa-triangle-exclamation mt-0.5 text-amber-600"></i>
+        <span><strong>Aviso contable:</strong> Hay ${withoutOwner.length} unidad(es) sin propietario asignado (${withoutOwner.slice(0, 3).map(p => esc(p.name || p.code)).join(', ')}${withoutOwner.length > 3 ? '...' : ''}). Podrás generar sus borradores, pero para contabilizarlas contablemente requerirán un propietario con NIT asignado.</span>
+      </div>`;
+    }
+  } catch (_) {}
 
   openModal(
     'Generar Facturas del Período',
@@ -485,6 +497,7 @@ function openPhGenerateModal() {
         Se generará una factura en estado <strong>Borrador</strong> para cada unidad activa que no tenga factura en este período.
         Los conceptos y montos se toman de la configuración de <em>Conceptos de Facturación</em>.
       </p>
+      ${warningNoOwner}
       <div class="grid grid-cols-2 gap-4">
         <div class="form-group mb-0">
           <label class="form-label">Período</label>

@@ -616,7 +616,7 @@ function closeAllTabs(): void {
 /**
  * Función Principal de Navegación SPA por Pestañas
  */
-function navigate(page: string): void {
+function navigate(page: string, forceReload: boolean = false): void {
   // Manejo especial de redirección a tienda virtual externa
   if (page === 'tienda-virtual') {
     window.open('/store.html', '_blank');
@@ -660,7 +660,16 @@ function navigate(page: string): void {
   // Verificar si la pestaña ya existe y si su contenedor pane sigue adjunto al DOM
   let tab = openTabs.find(t => t.page === page);
 
-  if (!tab || !tab.pane || !tab.pane.parentNode) {
+  if (forceReload && tab && tab.pane && tab.pane.parentNode) {
+    // Recarga forzada de pestaña existente: limpiar y volver a renderizar con datos frescos
+    try {
+      if (typeof PAGE_RENDERERS[page] === 'function') {
+        PAGE_RENDERERS[page](tab.pane);
+      }
+    } catch (err: any) {
+      console.error(`[Router] Error recargando ${page}:`, err);
+    }
+  } else if (!tab || !tab.pane || !tab.pane.parentNode) {
     // Verificar límite de 8 pestañas abiertas (solo si es una pestaña totalmente nueva)
     if (!tab && openTabs.length >= MAX_TABS) {
       if (typeof showToast === 'function') {
@@ -822,6 +831,11 @@ function openDocumentTab(pageKey: string, title: string, icon: string, formHtml:
   navigate(pageKey);
 }
 
+function reloadTab(page?: string): void {
+  const targetPage = page || currentPage || (window as any).currentPage || 'dashboard';
+  navigate(targetPage, true);
+}
+
 // --- GLOBALS EXPORTS ---
 (window as any).PAGE_RENDERERS = PAGE_RENDERERS;
 (window as any).currentPage = currentPage;
@@ -830,6 +844,8 @@ function openDocumentTab(pageKey: string, title: string, icon: string, formHtml:
 (window as any).MODULE_LABELS = MODULE_LABELS;
 (window as any).showLockedModulePage = showLockedModulePage;
 (window as any).navigate = navigate;
+(window as any).reloadTab = reloadTab;
+(window as any).refreshCurrentTab = reloadTab;
 (window as any).closeTab = closeTab;
 (window as any).closeOtherTabs = closeOtherTabs;
 (window as any).closeAllTabs = closeAllTabs;

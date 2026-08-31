@@ -4618,7 +4618,7 @@ async function renderDetailedPayrollReport(year: number, month: number) {
             <p class="text-gray-500">Período: <strong>${monthLabel} / ${year}</strong> — Liquidaciones Auditadas: <strong>${reportRows.length}</strong></p>
           </div>
           <div class="flex gap-2">
-            <button class="btn btn-primary btn-sm font-bold" id="btn-export-detailed-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel Detallado (112 Columnas)</button>
+            <button class="btn btn-primary btn-sm font-bold" id="btn-export-detailed-excel"><i class="fas fa-file-excel mr-1"></i>Exportar a Excel Detallado (115 Columnas)</button>
           </div>
         </div>
 
@@ -4812,7 +4812,9 @@ function exportDetailedPayrollExcel(monthLabel: string, year: number, rows: any[
   }));
 
   excelData.push({
-    fecha_liq: 'TOTALES',
+    periodo: 'TOTALES',
+    dias_trabajados: rows.reduce((s, r) => s + (Number(r.dias_trabajados) || 0), 0),
+    fecha_liq: '',
     doc_id: 'TOTAL CONSOLIDADO',
     full_name: '',
     sueldo_basico: rows.reduce((s, r) => s + r.sueldo_basico, 0),
@@ -4928,6 +4930,8 @@ function exportDetailedPayrollExcel(monthLabel: string, year: number, rows: any[
   });
 
   const headers = [
+    { key: 'periodo', label: '1.Periodo Liquidado' },
+    { key: 'dias_trabajados', label: '6.Dias Trabajados' },
     { key: 'fecha_liq', label: '7.Fecha Liquidacion' },
     { key: 'doc_id', label: '8.Codigo Trabajador/ No.ID' },
     { key: 'full_name', label: '16.Nombre Completo' },
@@ -5037,6 +5041,7 @@ function exportDetailedPayrollExcel(monthLabel: string, year: number, rows: any[
     { key: 'aporte_salud_patron', label: '162.Aporte Salud 8.5' },
     { key: 'aporte_pension_patron', label: '163.Aporte Pension 12' },
     { key: 'aporte_riesgos', label: '164.Aporte Riesgos' },
+    { key: 'aporte_caja', label: '165.Aporte CCF 4' },
     { key: 'aporte_icbf', label: '166.Aporte ICBF 3' },
     { key: 'aporte_sena', label: '167.Aporte SENA 2' }
   ];

@@ -4,7 +4,7 @@
 
 /// <reference path="../pb_data/types.d.ts" />
 
-onRecordBeforeCreateRequest((e) => {
+onRecordCreateRequest((e) => {
   const employeeId = e.record.get("employee_id");
   const periodId = e.record.get("period_id");
 
@@ -50,9 +50,11 @@ onRecordBeforeCreateRequest((e) => {
       if (err.status === 400) throw err;
     }
   }
+
+  e.next();
 }, "payroll_lines", "payroll_novelties");
 
-onRecordBeforeUpdateRequest((e) => {
+onRecordUpdateRequest((e) => {
   const periodId = e.record.get("period_id");
   const employeeId = e.record.get("employee_id");
 
@@ -80,4 +82,6 @@ onRecordBeforeUpdateRequest((e) => {
       if (err.status === 400) throw err;
     }
   }
+
+  e.next();
 }, "payroll_lines", "payroll_novelties");

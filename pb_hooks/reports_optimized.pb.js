@@ -125,7 +125,7 @@ routerAdd("GET", "/api/gravy/treasury-metrics", (c) => {
         l.account_id,
         a.code AS account_code,
         a.maneja_cruce AS account_maneja_cruce,
-        COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS third_party_id,
+        COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS third_party_id,
         l.cross_doc_ref,
         l.debit,
         l.credit
@@ -293,7 +293,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
         a.name AS account_name,
         a.nature AS account_nature,
         a.maneja_cruce AS account_maneja_cruce,
-        COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS third_party_id,
+        COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS third_party_id,
         COALESCE(tp.name, 'Sin tercero') AS third_party_name,
         COALESCE(tp.doc_number, '') AS third_party_doc,
         COALESCE(tp.type, 'OTRO') AS third_party_type,
@@ -305,7 +305,7 @@ routerAdd("GET", "/api/gravy/report-portfolio-aging", (c) => {
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
       INNER JOIN transactions t ON t.id = l.tx_id
-      LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+      LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
       LEFT JOIN third_parties seller_tp ON seller_tp.id = tp.advisor
       WHERE t.status = 'active'
         AND t.date <= {:asOfDateLimit}
@@ -562,7 +562,7 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
       sql = `
         SELECT
           l.account_id AS accountId,
-          COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS thirdPartyId,
+          COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS thirdPartyId,
           COALESCE(tp.name, 'Sin tercero') AS thirdPartyName,
           COALESCE(tp.doc_number, '') AS thirdPartyDoc,
           SUM(CASE WHEN t.date < {:fromDate1} THEN l.debit - l.credit ELSE 0 END) AS prevBalance,
@@ -571,11 +571,11 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
         FROM tx_lines l
         INNER JOIN transactions t ON t.id = l.tx_id
         INNER JOIN accounts a ON a.id = l.account_id
-        LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+        LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
         WHERE t.status = 'active'
           AND t.date <= {:toDate3}
           ${accountWhere}
-        GROUP BY l.account_id, COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO')
+        GROUP BY l.account_id, COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO')
       `;
     } else {
       sql = `
@@ -670,7 +670,7 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
-      LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+      LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
       LEFT JOIN transaction_types tt ON tt.id = t.tx_type_id
       LEFT JOIN branches b ON b.id = COALESCE(l.branch_id, t.branch_id)
       WHERE t.status = 'active'
@@ -766,7 +766,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
 
     let thirdFilter = "";
     if (thirdId) {
-      thirdFilter = " AND (l.third_party_id = {:thirdId} OR t.third_party_id = {:thirdId}) ";
+      thirdFilter = " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdId} ";
       openingBinds.thirdId = thirdId;
       periodBinds.thirdId = thirdId;
     }
@@ -786,7 +786,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     const sqlOpening = `
       SELECT
         l.account_id AS accountId,
-        COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS thirdId,
+        COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS thirdId,
         (CASE WHEN a.maneja_cruce = 1 OR a.maneja_cruce = 'true' THEN COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), 'SIN_DOC') ELSE 'NO_CRUCE' END) AS docCruce,
         SUM(l.debit - l.credit) AS balance
       FROM tx_lines l
@@ -799,7 +799,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         ` + extraCond + `
       GROUP BY
         l.account_id,
-        COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO'),
+        COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO'),
         (CASE WHEN a.maneja_cruce = 1 OR a.maneja_cruce = 'true' THEN COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), 'SIN_DOC') ELSE 'NO_CRUCE' END)
     `;
 
@@ -823,7 +823,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         a.name AS accountName,
         a.nature AS accountNature,
         a.maneja_cruce AS accountManejaCruce,
-        COALESCE(l.third_party_id, t.third_party_id, 'NO_TERCERO') AS thirdId,
+        COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO') AS thirdId,
         COALESCE(tp.name, 'Sin tercero') AS thirdName,
         COALESCE(tp.doc_number, '') AS thirdDoc,
         COALESCE(TRIM(l.cross_doc_ref), '') AS doc_cruce,
@@ -833,7 +833,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
-      LEFT JOIN third_parties tp ON tp.id = COALESCE(l.third_party_id, t.third_party_id)
+      LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
       WHERE t.status = 'active'
         AND t.date >= {:fromDate}
         AND t.date <= {:toDate}

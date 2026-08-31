@@ -235,7 +235,13 @@ function renderDocRow(d: ElecDoc) {
     support_document: 'fa-file-contract text-purple-500'
   };
 
-  const txNum = d.expand?.transaction_id?.number || '';
+  const tx = d.expand?.transaction_id;
+  const txNum = tx?.number || '';
+  const txStatus = tx?.status || '';
+  const isDraftTx = txStatus === 'draft';
+  const userRole = ((window as any).pb.currentUser?.role || '').toLowerCase();
+  const canApprove = (window as any).can ? (window as any).can('canApprove') : ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
+  const canReverse = ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
 
   return `
     <tr data-id="${d.id}" data-status="${d.status}">
@@ -269,10 +275,21 @@ function renderDocRow(d: ElecDoc) {
               <i class="fas fa-trash-can"></i>
             </button>
           ` : `
-            <span class="text-xs text-emerald-600 font-semibold" title="Transacción: ${txNum}">
-              <i class="fas fa-check-double mr-1"></i>${txNum || 'Listo'}
-            </span>
-            ${['superadmin', 'administrador', 'admin'].includes(((window as any).pb.currentUser?.role || '').toLowerCase()) ? `
+            ${isDraftTx ? `
+              <span class="badge badge-orange text-xs" title="Comprobante en Borrador: ${txNum}">
+                <i class="fas fa-file-pen mr-1"></i>${txNum || 'Borrador'}
+              </span>
+              ${canApprove ? `
+                <button class="btn btn-primary btn-sm text-[10px] py-0.5 px-1.5 transition ml-1" title="Aprobar comprobante contable y aplicar inventario" onclick="window.approveCdeTx('${d.id}', '${tx?.id}')">
+                  <i class="fas fa-check mr-0.5"></i> Aprobar
+                </button>
+              ` : ''}
+            ` : `
+              <span class="text-xs text-emerald-600 font-semibold" title="Transacción Aprobada: ${txNum}">
+                <i class="fas fa-check-double mr-1"></i>${txNum || 'Listo'}
+              </span>
+            `}
+            ${canReverse ? `
               <button class="btn btn-outline btn-sm text-red-500 hover:bg-red-50 text-[10px] py-0.5 px-1.5 transition ml-1" title="Reversar contabilización" onclick="window.reverseDocContabilization('${d.id}')">
                 <i class="fas fa-undo"></i> Reversar
               </button>
@@ -1925,6 +1942,11 @@ async function openDocHomologationModal(id: string) {
         }
       }
 
+      const userRole = ((window as any).pb.currentUser?.role || '').toLowerCase();
+      const canApprove = (window as any).can ? (window as any).can('canApprove') : ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
+      const immediatePosting = await (window as any).API.getSetting('cde_immediate_posting').catch(() => 'false') === 'true';
+      const isApproved = canApprove && immediatePosting;
+
       const txPayload = {
         tx_type_id: txTypeId,
         number: 'AUTO',
@@ -1933,7 +1955,7 @@ async function openDocHomologationModal(id: string) {
         third_party_id: thirdParty.id,
         cross_doc_ref: paymentFormMode === 'CREDITO' ? crossDocRefVal : '',
         cross_enabled: paymentFormMode === 'CREDITO',
-        status: 'active',
+        status: isApproved ? 'active' : 'draft',
         user_id: (window as any).pb.currentUser?.id || ''
       };
 
@@ -2048,7 +2070,9 @@ async function openDocHomologationModal(id: string) {
                 });
               }
 
-              await (window as any).API.applyInventoryMovement(mov.id);
+              if (isApproved) {
+                await (window as any).API.applyInventoryMovement(mov.id);
+              }
             }
           } catch (errMov: any) {
             console.error('[CDE-INVENTARIOS] Error al procesar inventarios:', errMov);
@@ -2063,7 +2087,11 @@ async function openDocHomologationModal(id: string) {
           transaction_id: txRecord.id
         });
 
-        (window as any).showToast('Transacción contabilizada exitosamente', 'success');
+        if (isApproved) {
+          (window as any).showToast(`Transacción ${txRecord.number || ''} contabilizada y aprobada exitosamente`, 'success');
+        } else {
+          (window as any).showToast(`Transacción ${txRecord.number || ''} guardada en Borrador. Pendiente de aprobación por Administrador o Contador.`, 'success');
+        }
         (window as any).closeModal();
 
         renderDocumentosElectronicos();
@@ -2347,13 +2375,14 @@ async function saveOrUpdateRule(ruleType: string, keyValue: string, accountCode:
 
 async function openCdeSettingsModal(parentContainer: HTMLElement) {
   try {
-    const [defExpense, defPayable, defInventory, defIva19, defIva5, defOtherTaxes, rules, allAccounts] = await Promise.all([
+    const [defExpense, defPayable, defInventory, defIva19, defIva5, defOtherTaxes, isImmediatePosting, rules, allAccounts] = await Promise.all([
       (window as any).API.getSetting('cde_default_expense_account').catch(() => '') || '519530',
       (window as any).API.getSetting('cde_default_payable_account').catch(() => '') || '220501',
       (window as any).API.getSetting('cde_default_inventory_account').catch(() => '') || '143501',
       (window as any).API.getSetting('cde_iva_19_account').catch(() => '') || '240810',
       (window as any).API.getSetting('cde_iva_5_account').catch(() => '') || '240805',
       (window as any).API.getSetting('cde_other_taxes_account').catch(() => '') || '240890',
+      (window as any).API.getSetting('cde_immediate_posting').catch(() => '') === 'true',
       (window as any).pb.listAll('homologation_rules', { sort: '-id' }),
       (window as any).API.getAccounts(true)
     ]);
@@ -2416,6 +2445,17 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
                 <div id="cde-cfg-other-taxes-results" class="autocomplete-results hidden absolute z-50 left-0 right-0 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg top-full mt-1"></div>
               </div>
             </div>
+          </div>
+
+          <div class="border-t pt-3 mt-3 space-y-2" style="border-color: #E2E8F0;">
+            <span class="block font-bold text-slate-700 mb-1">Aprobación y Contabilización Directa:</span>
+            <label class="flex items-start gap-3 cursor-pointer select-none text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200 hover:bg-slate-100 transition">
+              <input type="checkbox" id="cde-cfg-immediate-posting" ${isImmediatePosting ? 'checked' : ''} class="w-4 h-4 mt-0.5 accent-indigo-600">
+              <div>
+                <span class="font-bold text-slate-800 text-xs">Contabilización directa / Aprobación automática</span>
+                <p class="text-[11px] text-slate-500 font-normal mt-0.5">Si está activado y el usuario tiene rol de Administrador o Contador, los comprobantes y movimientos de inventario se aprueban inmediatamente (estado Activo). Si está desactivado, se guardan en estado <strong>Borrador</strong> para su debida revisión y visto bueno contable.</p>
+              </div>
+            </label>
           </div>
         </div>
 
@@ -2562,6 +2602,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       const iva19Val = iva19Input.value.split('—')[0].trim();
       const iva5Val = iva5Input.value.split('—')[0].trim();
       const otherTaxesVal = otherTaxesInput.value.split('—')[0].trim();
+      const immediatePostingVal = (document.getElementById('cde-cfg-immediate-posting') as HTMLInputElement)?.checked ? 'true' : 'false';
 
       if (!expenseVal || !inventoryVal || !payableVal || !iva19Val || !iva5Val || !otherTaxesVal) {
         return (window as any).showToast('Todas las cuentas PUC de configuración son obligatorias.', 'error');
@@ -2574,7 +2615,8 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
           (window as any).API.setSetting('cde_default_payable_account', payableVal),
           (window as any).API.setSetting('cde_iva_19_account', iva19Val),
           (window as any).API.setSetting('cde_iva_5_account', iva5Val),
-          (window as any).API.setSetting('cde_other_taxes_account', otherTaxesVal)
+          (window as any).API.setSetting('cde_other_taxes_account', otherTaxesVal),
+          (window as any).API.setSetting('cde_immediate_posting', immediatePostingVal)
         ]);
 
         (window as any).showToast('Configuración del CDE guardada con éxito', 'success');
@@ -2591,11 +2633,41 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
   }
 }
 
+async function approveCdeTx(docId: string, txId: string) {
+  const userRole = ((window as any).pb.currentUser?.role || '').toLowerCase();
+  const canApprove = (window as any).can ? (window as any).can('canApprove') : ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
+  if (!canApprove) {
+    return (window as any).showToast('Solo el contador o administrador pueden aprobar transacciones contables.', 'error');
+  }
+
+  try {
+    const tx = await (window as any).API.approveTx(txId);
+    
+    // Si hay movimientos de inventario en borrador vinculados, aplicarlos
+    const invMovs = await (window as any).pb.listAll('inventory_movements', {
+      filter: `tx_id = "${txId}" && status = "draft"`
+    }).catch(() => []);
+
+    for (const mov of invMovs) {
+      try {
+        await (window as any).API.applyInventoryMovement(mov.id);
+      } catch (errMov: any) {
+        console.warn('Advertencia al aplicar movimiento de inventario al aprobar:', errMov);
+      }
+    }
+
+    (window as any).showToast(`Transacción ${tx.number || ''} aprobada exitosamente y contabilizada en libros.`, 'success');
+    renderDocumentosElectronicos();
+  } catch (err: any) {
+    (window as any).showToast(`Error al aprobar transacción: ${err.message}`, 'error');
+  }
+}
+
 async function reverseDocContabilization(docId: string) {
   const userRole = ((window as any).pb.currentUser?.role || '').toLowerCase();
-  const isAdmin = ['superadmin', 'administrador', 'admin'].includes(userRole);
+  const isAdmin = ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
   if (!isAdmin) {
-    return (window as any).showToast('Solo los usuarios administradores pueden reversar contabilizaciones.', 'error');
+    return (window as any).showToast('Solo los usuarios administradores o contadores pueden reversar contabilizaciones.', 'error');
   }
 
   if (!confirm('¿Estás seguro de reversar la contabilización de este documento? Esto eliminará la transacción contable del PUC y revertirá/eliminará cualquier movimiento de inventario asociado.')) {
@@ -2643,5 +2715,7 @@ async function reverseDocContabilization(docId: string) {
 (window as any).openDocHomologationModal = openDocHomologationModal;
 (window as any).renderDocumentosElectronicos = renderDocumentosElectronicos;
 (window as any).openCdeSettingsModal = openCdeSettingsModal;
+(window as any).approveCdeTx = approveCdeTx;
 (window as any).reverseDocContabilization = reverseDocContabilization;
 (window as any).deleteDocElectronico = deleteDocElectronico;
+

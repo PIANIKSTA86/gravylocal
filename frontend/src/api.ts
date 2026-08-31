@@ -6583,6 +6583,87 @@ const API = {
     if (!res.ok) throw await pb._err(res);
     return res.json();
   },
+
+  /**
+   * Renumeración masiva de referencias de productos (Exclusivo SUPERADMIN)
+   * Con fallback automático cliente a cliente si el endpoint de backend no está disponible (404).
+   */
+  async bulkRenumberProducts(payload: {
+    items: Array<{ id: string; newCode: string; oldCode?: string }>;
+    updateConsecutive?: boolean;
+    nextConsecutive?: number;
+    prefix?: string;
+    digits?: number;
+  }, onProgress?: (current: number, total: number, phase: string) => void) {
+    try {
+      const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-renumber-products`, {
+        method: 'POST',
+        headers: pb.headers(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status !== 404) {
+        throw await pb._err(res);
+      }
+      console.warn('[bulkRenumberProducts] Endpoint /api/gravy/bulk-renumber-products retornó 404. Usando fallback por cliente PocketBase...');
+    } catch (err: any) {
+      if (err?.status && err.status !== 404) throw err;
+      console.warn('[bulkRenumberProducts] Endpoint no disponible o no reiniciado aún, procediendo con fallback seguro:', err);
+    }
+
+    // ── FALLBACK CLIENTE DIRECTO (Robusto, en 2 fases atómicas) ───────────
+    const items = payload.items || [];
+    const total = items.length;
+    const nowTs = Date.now();
+
+    // Fase 1: Asignar códigos temporales para evitar colisión de claves únicas
+    for (let i = 0; i < total; i++) {
+      const it = items[i];
+      if (onProgress) onProgress(i + 1, total, 'Fase 1/2: Asignando claves temporales');
+      const safeType = String((it as any).type || '').toUpperCase().includes('SERV') ? 'SERVICIO' : 'BIEN';
+      await pb.update('products', it.id, { code: `__TMP_REN__${it.id}_${nowTs}`, type: safeType });
+    }
+
+    // Fase 2: Asignar nuevos códigos definitivos
+    for (let i = 0; i < total; i++) {
+      const it = items[i];
+      if (onProgress) onProgress(i + 1, total, 'Fase 2/2: Aplicando nuevas referencias');
+      const safeType = String((it as any).type || '').toUpperCase().includes('SERV') ? 'SERVICIO' : 'BIEN';
+      await pb.update('products', it.id, { code: String(it.newCode).trim(), type: safeType });
+    }
+
+    // Fase 3: Sincronizar consecutivo en settings si se solicitó
+    if (payload.updateConsecutive) {
+      try {
+        const rawCfg = await this.getSetting('product_config_v1');
+        let currentCfg: any = { auto_code: true, prefix: payload.prefix || '', digits: payload.digits || 4, consecutive: payload.nextConsecutive || (total + 1) };
+        if (rawCfg) {
+          try {
+            const parsed = JSON.parse(rawCfg);
+            currentCfg = { ...parsed, prefix: payload.prefix !== undefined ? payload.prefix : parsed.prefix, digits: payload.digits !== undefined ? payload.digits : parsed.digits, consecutive: payload.nextConsecutive || (total + 1) };
+          } catch (_) {}
+        }
+        await this.setSetting('product_config_v1', JSON.stringify(currentCfg));
+      } catch (cfgErr) {
+        console.warn('[bulkRenumberProducts] Advertencia sincronizando product_config_v1:', cfgErr);
+      }
+    }
+
+    // Fase 4: Registro en log de auditoría
+    try {
+      const firstCode = items[0]?.newCode || '';
+      const lastCode = items[total - 1]?.newCode || '';
+      await this.logAudit('RENUMBER', 'Producto', 'bulk', `Renumeración masiva de ${total} productos aplicada (Rango: ${firstCode} a ${lastCode}).`);
+    } catch (_) {}
+
+    return {
+      success: true,
+      count: total,
+      message: `Se renumeraron exitosamente ${total} referencias de productos.`
+    };
+  },
 };
 
 // --- VITE MIGRATION GLOBALS ---

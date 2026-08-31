@@ -134,6 +134,7 @@ let _massTxImportInProgress = false;
 let _massTpImportInProgress = false;
 let _massAccImportInProgress = false;
 let _massPhUnitsImportInProgress = false;
+let _massPhBalancesImportInProgress = false;
 
 /* ── Helper para Generación de Plantillas Excel Multi-hoja (con 'Indicaciones') ── */
 function _generateTemplateXlsx(config: {
@@ -718,6 +719,33 @@ async function renderUtilidades(container) {
             </button>
           </div>
         </div>
+
+        <!-- ── Tarjeta: Renumeración Masiva de Referencias (SOLO SUPERADMIN) ── -->
+        <div class="stat-card purple" id="util-card-renumber-products" style="border-left-color: #8B5CF6;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(139,92,246,.12)">
+                <i class="fas fa-barcode" style="color:#8B5CF6;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Renumeración de referencias</h3>
+                <p class="text-xs" style="color:#8B5CF6;font-weight:600">SOLO SUPERADMIN</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Renumera masivamente los códigos y referencias del catálogo de productos (ej: de 1 a 700)
+            en orden correlativo. <strong>Mantiene intacto</strong> el histórico de ventas, compras, kardex y contabilidad.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-renumber-products-open" class="btn btn-primary btn-sm" style="background:#7C3AED;border-color:#7C3AED">
+              <i class="fas fa-arrow-down-1-9 mr-1"></i> Renumerar referencias
+            </button>
+          </div>
+        </div>
         ` : ''}
 
         ${isAdmin ? `
@@ -914,6 +942,33 @@ async function renderUtilidades(container) {
           </div>
         </div>
 
+        <!-- ── Tarjeta: Carga masiva de saldos iniciales PH ── -->
+        <div class="stat-card purple" id="util-card-mass-ph-balances" style="border-left-color: #7C3AED;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(124,58,237,.12)">
+                <i class="fas fa-file-invoice-dollar" style="color:#7C3AED;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Saldos iniciales PH (Cartera por concepto)</h3>
+                <p class="text-xs" style="color:#7C3AED;font-weight:600">COPROPIEDADES / APERTURA</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Importa la cartera pendiente inicial por unidad y concepto de cobro (Administración, Extraordinarias, Parqueadero, Mora), sincronizando automáticamente las facturas operativas y el comprobante contable de apertura.
+          </p>
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-ph-bal-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-ph-bal-open" class="btn btn-primary btn-sm" style="background:#7C3AED;border-color:#7C3AED;color:#fff">
+              <i class="fas fa-upload"></i> Cargar saldos iniciales
+            </button>
+          </div>
+        </div>
+
         <!-- ── Tarjeta: Carga masiva de productos ───────────── -->
         <div class="stat-card yellow" id="util-card-mass-products">
           <div class="flex items-start justify-between mb-4">
@@ -978,6 +1033,7 @@ async function renderUtilidades(container) {
   _massTpImportInProgress = false;
   _massAccImportInProgress = false;
   _massPhUnitsImportInProgress = false;
+  _massPhBalancesImportInProgress = false;
 
   // Cargar última info de respaldo guardada localmente
   _loadLastBackupInfo();
@@ -999,6 +1055,8 @@ async function renderUtilidades(container) {
   $('#btn-mass-acc-open')?.addEventListener('click', _openMassAccImportModal);
   $('#btn-mass-ph-units-template')?.addEventListener('click', _downloadMassPhUnitsTemplate);
   $('#btn-mass-ph-units-open')?.addEventListener('click', _openMassPhUnitsImportModal);
+  $('#btn-mass-ph-bal-template')?.addEventListener('click', _downloadMassPhBalancesTemplate);
+  $('#btn-mass-ph-bal-open')?.addEventListener('click', _openMassPhBalancesImportModal);
   $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
   $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
 
@@ -1007,6 +1065,7 @@ async function renderUtilidades(container) {
   }
   if (isSuperAdmin) {
     $('#btn-clear-db-execute')?.addEventListener('click', _handleClearDatabase);
+    $('#btn-renumber-products-open')?.addEventListener('click', _openRenumberProductsModal);
   }
   if (isAdmin) {
     $('#btn-clear-period-open')?.addEventListener('click', _handleClearPeriod);
@@ -4025,6 +4084,694 @@ async function _openMassPhUnitsImportModal() {
   });
 }
 
+/* ══════════════════════════════════════════════════════════
+   CARGA MASIVA DE SALDOS INICIALES PH (CARTERA POR CONCEPTO)
+══════════════════════════════════════════════════════════ */
+
+function _downloadMassPhBalancesTemplate() {
+  const headers = [
+    'codigo_unidad', 'periodo_origen', 'fecha_vencimiento',
+    'concepto_codigo', 'concepto_nombre', 'valor_pendiente',
+    'doc_propietario', 'cuenta_cxc', 'cuenta_contrapartida'
+  ];
+
+  const rows = [
+    {
+      codigo_unidad: '101',
+      periodo_origen: '2025-11',
+      fecha_vencimiento: '2025-11-10',
+      concepto_codigo: 'ADMIN',
+      concepto_nombre: 'Cuota Ordinaria Administración',
+      valor_pendiente: 350000,
+      doc_propietario: '900123456',
+      cuenta_cxc: '130505',
+      cuenta_contrapartida: '380505'
+    },
+    {
+      codigo_unidad: '101',
+      periodo_origen: '2025-12',
+      fecha_vencimiento: '2025-12-10',
+      concepto_codigo: 'ADMIN',
+      concepto_nombre: 'Cuota Ordinaria Administración',
+      valor_pendiente: 350000,
+      doc_propietario: '900123456',
+      cuenta_cxc: '130505',
+      cuenta_contrapartida: '380505'
+    },
+    {
+      codigo_unidad: '101',
+      periodo_origen: '2025-12',
+      fecha_vencimiento: '2025-12-10',
+      concepto_codigo: 'MORA',
+      concepto_nombre: 'Intereses de Mora acumulados',
+      valor_pendiente: 15400,
+      doc_propietario: '900123456',
+      cuenta_cxc: '130505',
+      cuenta_contrapartida: '380505'
+    },
+    {
+      codigo_unidad: '201',
+      periodo_origen: '2025-12',
+      fecha_vencimiento: '2025-12-10',
+      concepto_codigo: 'ADMIN',
+      concepto_nombre: 'Cuota Ordinaria Administración',
+      valor_pendiente: 420000,
+      doc_propietario: '800654321',
+      cuenta_cxc: '130505',
+      cuenta_contrapartida: '380505'
+    },
+    {
+      codigo_unidad: '201',
+      periodo_origen: '2025-12',
+      fecha_vencimiento: '2025-12-10',
+      concepto_codigo: 'EXTRA',
+      concepto_nombre: 'Cuota Extraordinaria Fachada',
+      valor_pendiente: 100000,
+      doc_propietario: '800654321',
+      cuenta_cxc: '130505',
+      cuenta_contrapartida: '380505'
+    }
+  ];
+
+  const indications: Array<[string, string, string, string, string]> = [
+    ['codigo_unidad', 'SÍ', 'Texto Alfanumérico', 'Código único de la unidad habitacional o inmueble (debe existir previamente en ph_properties).', '101'],
+    ['periodo_origen', 'SÍ', 'Formato YYYY-MM', 'Año y mes al que corresponde la cuota o cobro adeudado.', '2025-11'],
+    ['fecha_vencimiento', 'NO', 'Formato YYYY-MM-DD', 'Fecha original de vencimiento del cobro. Si se omite, se asigna el día 10 del período.', '2025-11-10'],
+    ['concepto_codigo', 'SÍ', 'Código Alfanumérico', 'Código corto del concepto. Ejemplos: ADMIN (Administración), EXTRA (Extraordinaria), PARQ (Parqueadero), MORA (Interés de mora), SANCION (Multa/Sanción).', 'ADMIN'],
+    ['concepto_nombre', 'NO', 'Texto Libre', 'Descripción legible del concepto para el estado de cuenta.', 'Cuota Ordinaria Administración'],
+    ['valor_pendiente', 'SÍ', 'Número Positivo', 'Valor pendiente de cobro en pesos (COP).', '350000'],
+    ['doc_propietario', 'NO', 'NIT / Documento', 'Documento de identidad del propietario para validación y verificación de cruce.', '900123456'],
+    ['cuenta_cxc', 'NO', 'Código PUC Auxiliar', 'Cuenta contable deudora de cartera (por defecto toma la 130505 configurada en Copropiedades).', '130505'],
+    ['cuenta_contrapartida', 'NO', 'Código PUC Auxiliar', 'Cuenta crédito de apertura / patrimonio (por defecto toma 380505 / 311505 o la indicada en el modal).', '380505']
+  ];
+
+  _generateTemplateXlsx({
+    filename: 'plantilla_saldos_iniciales_ph',
+    sheetName: 'Saldos Iniciales PH',
+    headers,
+    rows,
+    indications
+  });
+}
+
+async function _openMassPhBalancesImportModal() {
+  if (!can('canWrite')) return showToast('No tienes permisos para importar saldos iniciales', 'error');
+  if (_massPhBalancesImportInProgress) return showToast('Importación en curso, espera...', 'warning');
+
+  const [properties, concepts, accounts, txTypes, rawCfg] = await Promise.all([
+    API.getPhProperties(false).catch(() => []),
+    API.getPhBillingConcepts(false).catch(() => []),
+    API.getAccounts(true).catch(() => []),
+    API.getTxTypes().catch(() => []),
+    API.getSetting('ph_config_v1').catch(() => null),
+  ]);
+
+  let phCfg: any = {};
+  try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
+  const defaultCxcCode = String(phCfg?.cxc_code || '130505').trim();
+
+  // Buscar tipos de transacción sugeridos para saldos iniciales
+  const siType = txTypes.find(t => t.code === 'SI' || t.prefix === 'SI')
+    || txTypes.find(t => t.code === 'CF' || t.prefix === 'CF')
+    || txTypes.find(t => t.code === 'CC' || t.prefix === 'CC')
+    || txTypes[0];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  openModal(
+    '<i class="fas fa-file-invoice-dollar mr-2" style="color:#7C3AED"></i>Carga Masiva de Saldos Iniciales PH (Cartera por Concepto)',
+    `
+    <div class="mb-4">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga la cartera pendiente histórica por unidad discriminando cada concepto adeudado (Administración, Extraordinarias, Parqueaderos, Mora).
+        El sistema creará las <strong>Facturas PH históricas</strong> y, opcionalmente, el <strong>Asiento Contable de Apertura</strong> en balance.
+      </p>
+
+      <!-- Parámetros de Sincronización Contable -->
+      <div class="rounded-xl p-4 mb-4" style="background:#F5F3FF;border:1px solid #DDD6FE">
+        <div class="flex items-center gap-2 mb-3">
+          <input type="checkbox" id="mass-ph-bal-sync-acc" checked class="rounded text-purple-600" style="width:16px;height:16px">
+          <label for="mass-ph-bal-sync-acc" class="text-xs font-bold uppercase cursor-pointer" style="color:#6D28D9">
+            Generar comprobante contable de apertura automáticamente (Débito 130505 vs Contrapartida)
+          </label>
+        </div>
+
+        <div id="mass-ph-bal-acc-config" class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div>
+            <label class="form-label font-semibold mb-1" style="color:#4B5563">Cuenta Contrapartida (Crédito)</label>
+            <input id="mass-ph-bal-offset-account" class="form-input text-xs" value="380505" placeholder="Ej: 380505 o 311505">
+            <span class="text-[10px]" style="color:#6B7280">Patrimonio / Saldos iniciales</span>
+          </div>
+          <div>
+            <label class="form-label font-semibold mb-1" style="color:#4B5563">Fecha Asiento Contable</label>
+            <input id="mass-ph-bal-tx-date" type="date" class="form-input text-xs" value="${todayStr}">
+          </div>
+          <div>
+            <label class="form-label font-semibold mb-1" style="color:#4B5563">Tipo de Transacción</label>
+            <select id="mass-ph-bal-tx-type" class="form-select text-xs">
+              ${txTypes.map(t => `<option value="${t.id}" ${t.id === siType?.id ? 'selected' : ''}>[${t.code || t.prefix}] ${t.name || t.code}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <button class="btn btn-outline btn-sm" id="btn-mass-ph-bal-dl-tmpl">
+          <i class="fas fa-download mr-1"></i> Descargar plantilla Excel (.xlsx)
+        </button>
+        <span class="text-xs" style="color:#6B7280">Unidades registradas en sistema: <strong>${properties.length}</strong></span>
+      </div>
+
+      <!-- Zona Dropzone -->
+      <div id="mass-ph-bal-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-8 cursor-pointer transition-all" style="border-color:#DDD6FE;background:#FAF5FF">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-2" style="color:#8B5CF6"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#7C3AED;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">Excel (.xlsx/.xls) o CSV — máx. 8 MB</p>
+        <input type="file" id="mass-ph-bal-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+
+      <!-- Barra de progreso -->
+      <div id="mass-ph-bal-progress-wrap" class="hidden mt-4">
+        <div class="w-full rounded-full h-2" style="background:#E5E7EB">
+          <div id="mass-ph-bal-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#7C3AED,#10B981);width:0%"></div>
+        </div>
+        <p id="mass-ph-bal-progress-text" class="text-xs mt-2" style="color:#6B7280">Procesando...</p>
+      </div>
+
+      <!-- Vista previa -->
+      <div id="mass-ph-bal-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista Previa de Cartera de Apertura</p>
+          <button class="btn btn-outline btn-sm" id="btn-mass-ph-bal-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+
+        <div id="mass-ph-bal-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3"></div>
+
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:280px;overflow-y:auto">
+          <table class="data-table text-xs" id="mass-ph-bal-preview-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Unidad</th>
+                <th>Propietario</th>
+                <th>Período</th>
+                <th>Vencimiento</th>
+                <th>Conceptos / Detalle</th>
+                <th class="text-right">Total Factura</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="mass-ph-bal-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="mass-ph-bal-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>
+    `,
+    `
+    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary hidden" id="btn-mass-ph-bal-run" style="background:#7C3AED;border-color:#7C3AED">
+      <i class="fas fa-bolt mr-1"></i> Ejecutar Carga de Saldos Iniciales
+    </button>
+    `,
+    true
+  );
+
+  const syncAccCheckbox = document.getElementById('mass-ph-bal-sync-acc') as HTMLInputElement | null;
+  const accConfigBox = document.getElementById('mass-ph-bal-acc-config');
+  syncAccCheckbox?.addEventListener('change', () => {
+    if (accConfigBox) accConfigBox.style.display = syncAccCheckbox.checked ? 'grid' : 'none';
+  });
+
+  const dropZone = document.getElementById('mass-ph-bal-drop');
+  const fileInput = document.getElementById('mass-ph-bal-file-input') as HTMLInputElement | null;
+
+  document.getElementById('btn-mass-ph-bal-dl-tmpl')?.addEventListener('click', _downloadMassPhBalancesTemplate);
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (dropZone) { dropZone.style.borderColor = '#7C3AED'; dropZone.style.background = '#EDE9FE'; }
+  });
+  dropZone?.addEventListener('dragleave', () => {
+    if (dropZone) { dropZone.style.borderColor = '#DDD6FE'; dropZone.style.background = '#FAF5FF'; }
+  });
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    if (dropZone) { dropZone.style.borderColor = '#DDD6FE'; dropZone.style.background = '#FAF5FF'; }
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processFile(file);
+  });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput?.files?.[0];
+    if (file) processFile(file);
+  });
+
+  document.getElementById('btn-mass-ph-bal-clear')?.addEventListener('click', () => {
+    parsedGroups = [];
+    document.getElementById('mass-ph-bal-preview')?.classList.add('hidden');
+    document.getElementById('btn-mass-ph-bal-run')?.classList.add('hidden');
+    if (fileInput) fileInput.value = '';
+  });
+
+  let parsedGroups: any[] = [];
+
+  const propByCode = new Map<string, any>();
+  properties.forEach(p => {
+    propByCode.set(String(p.code || '').trim().toUpperCase(), p);
+    propByCode.set(String(p.name || '').trim().toUpperCase(), p);
+  });
+
+  const conceptByCode = new Map<string, any>();
+  concepts.forEach(c => {
+    conceptByCode.set(String(c.code || '').trim().toUpperCase(), c);
+    conceptByCode.set(String(c.name || '').trim().toUpperCase(), c);
+  });
+
+  const accountByCode = new Map<string, any>();
+  accounts.forEach(a => accountByCode.set(String(a.code || '').trim(), a));
+
+  async function processFile(file: File) {
+    if (file.size > 8 * 1024 * 1024) return showToast('El archivo supera 8 MB', 'error');
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    let rawRows: any[] = [];
+    try {
+      if (ext === 'csv') {
+        rawRows = _massTxParseCsv(await file.text());
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
+      } else {
+        return showToast('Formato no soportado. Usa CSV, XLSX o XLS.', 'error');
+      }
+    } catch (e: any) {
+      return showToast('Error al leer el archivo: ' + e.message, 'error');
+    }
+
+    if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');
+
+    parsedGroups = _massPhBalancesBuildDraft(rawRows, propByCode, conceptByCode, defaultCxcCode);
+    renderPreview(parsedGroups);
+  }
+
+  function renderPreview(groups: any[]) {
+    const tbody = document.getElementById('mass-ph-bal-preview-body');
+    const summary = document.getElementById('mass-ph-bal-summary');
+    const kpisBox = document.getElementById('mass-ph-bal-kpis');
+    const runBtn = document.getElementById('btn-mass-ph-bal-run');
+    const preview = document.getElementById('mass-ph-bal-preview');
+
+    const validGroups = groups.filter(g => g.ok);
+    const errorGroups = groups.filter(g => !g.ok);
+
+    const totalCartera = validGroups.reduce((s, g) => s + (g.totalAmount || 0), 0);
+    const totalUnits = new Set(validGroups.map(g => g.propertyCode)).size;
+    const totalLinesCount = validGroups.reduce((s, g) => s + (g.lines?.length || 0), 0);
+
+    if (kpisBox) {
+      kpisBox.innerHTML = `
+        <div class="rounded-xl p-3" style="background:#F5F3FF;border:1px solid #DDD6FE">
+          <p class="text-[11px] font-semibold" style="color:#6D28D9">Total Cartera Inicial</p>
+          <p class="text-lg font-bold" style="color:#5B21B6">${fmt(totalCartera)}</p>
+        </div>
+        <div class="rounded-xl p-3" style="background:#EEF2FF;border:1px solid #C7D2FE">
+          <p class="text-[11px] font-semibold" style="color:#4338CA">Unidades Únicas</p>
+          <p class="text-lg font-bold" style="color:#3730A3">${totalUnits}</p>
+        </div>
+        <div class="rounded-xl p-3" style="background:#ECFDF5;border:1px solid #A7F3D0">
+          <p class="text-[11px] font-semibold" style="color:#047857">Facturas a Crear</p>
+          <p class="text-lg font-bold" style="color:#065F46">${validGroups.length}</p>
+        </div>
+        <div class="rounded-xl p-3" style="background:#FFFBEB;border:1px solid #FDE68A">
+          <p class="text-[11px] font-semibold" style="color:#B45309">Líneas por Concepto</p>
+          <p class="text-lg font-bold" style="color:#92400E">${totalLinesCount}</p>
+        </div>
+      `;
+    }
+
+    if (tbody) {
+      tbody.innerHTML = groups.map((g, idx) => {
+        if (!g.ok) {
+          return `<tr style="background:#FFF7F7">
+            <td>${idx + 1}</td>
+            <td><strong>${esc(g.propertyCode || '—')}</strong></td>
+            <td colspan="5" class="text-xs" style="color:#EF4444">${esc(g.errors.join(' | '))}</td>
+            <td><span class="badge badge-red">Error</span></td>
+          </tr>`;
+        }
+
+        const conceptsBadges = g.lines.map((l: any) =>
+          `<span class="inline-block px-1.5 py-0.5 rounded text-[10.5px] mr-1 mb-1 font-mono" style="background:#F3F4F6;color:#374151">${esc(l.concept_code)}: ${fmt(l.amount)}</span>`
+        ).join('');
+
+        return `<tr>
+          <td>${idx + 1}</td>
+          <td><span class="font-bold" style="color:#7C3AED">${esc(g.propertyName || g.propertyCode)}</span></td>
+          <td>${esc(g.ownerName || '—')}</td>
+          <td><span class="badge badge-blue">${esc(g.period)}</span></td>
+          <td class="text-xs">${esc(g.dueDate)}</td>
+          <td><div class="max-w-[280px] overflow-hidden">${conceptsBadges}</div></td>
+          <td class="text-right font-bold" style="color:#065F46">${fmt(g.totalAmount)}</td>
+          <td><span class="badge badge-green">Válida</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    if (summary) {
+      summary.innerHTML = errorGroups.length
+        ? `<span style="color:#EF4444"><i class="fas fa-triangle-exclamation mr-1"></i>${errorGroups.length} grupo(s) con error serán omitidos.</span>`
+        : `<span style="color:#22C55E"><i class="fas fa-circle-check mr-1"></i>Todas las ${validGroups.length} facturas de apertura son válidas.</span>`;
+    }
+
+    preview?.classList.remove('hidden');
+    if (validGroups.length && runBtn) runBtn.classList.remove('hidden');
+    else if (runBtn) runBtn.classList.add('hidden');
+  }
+
+  document.getElementById('btn-mass-ph-bal-run')?.addEventListener('click', async () => {
+    const validGroups = parsedGroups.filter(g => g.ok);
+    if (!validGroups.length || _massPhBalancesImportInProgress) return;
+
+    const doSyncAcc = syncAccCheckbox?.checked === true;
+    const offsetAccCode = (document.getElementById('mass-ph-bal-offset-account') as HTMLInputElement)?.value.trim() || '380505';
+    const txDateVal = (document.getElementById('mass-ph-bal-tx-date') as HTMLInputElement)?.value || todayStr;
+    const selectedTxTypeId = (document.getElementById('mass-ph-bal-tx-type') as HTMLSelectElement)?.value || siType?.id || '';
+
+    let resolvedOffsetAccId = '';
+    if (doSyncAcc) {
+      const acc = accountByCode.get(offsetAccCode);
+      if (!acc) {
+        return showToast(`La cuenta de contrapartida "${offsetAccCode}" no existe en el PUC.`, 'error');
+      }
+      resolvedOffsetAccId = acc.id;
+    }
+
+    _massPhBalancesImportInProgress = true;
+    const runBtn = document.getElementById('btn-mass-ph-bal-run') as HTMLButtonElement | null;
+    if (runBtn) {
+      runBtn.disabled = true;
+      runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Procesando saldos iniciales...';
+    }
+
+    const progressWrap = document.getElementById('mass-ph-bal-progress-wrap');
+    const progressBar = document.getElementById('mass-ph-bal-progress-bar');
+    const progressText = document.getElementById('mass-ph-bal-progress-text');
+    progressWrap?.classList.remove('hidden');
+
+    try {
+      await _executeMassPhBalancesImport({
+        groups: validGroups,
+        doSyncAcc,
+        selectedTxTypeId,
+        resolvedOffsetAccId,
+        offsetAccCode,
+        txDateVal,
+        accountByCode,
+        defaultCxcCode,
+        onProgress: (done: number, total: number, label: string) => {
+          const pct = Math.round((done / total) * 100);
+          if (progressBar) progressBar.style.width = `${pct}%`;
+          if (progressText) progressText.textContent = `${label} (${done}/${total})`;
+        }
+      });
+
+      closeModal();
+      showToast(`Carga de saldos iniciales PH completada con éxito. ${validGroups.length} facturas causadas.`, 'success', 6000);
+      _loadSysInfo();
+    } catch (err: any) {
+      showToast(`Error al procesar saldos iniciales: ${err.message}`, 'error', 7000);
+    } finally {
+      _massPhBalancesImportInProgress = false;
+      if (runBtn) {
+        runBtn.disabled = false;
+        runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i> Ejecutar Carga de Saldos Iniciales';
+      }
+    }
+  });
+}
+
+function _massPhBalancesBuildDraft(
+  rawRows: any[],
+  propByCode: Map<string, any>,
+  conceptByCode: Map<string, any>,
+  defaultCxcCode: string
+) {
+  const groupsMap = new Map<string, any>();
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const raw = rawRows[i] || {};
+    const rowNo = i + 2;
+
+    const unitCode = _massTxPick(raw, ['codigo_unidad', 'codigo', 'unidad', 'unit_code', 'inmueble', 'apto']).toUpperCase();
+    const periodRaw = _massTxPick(raw, ['periodo_origen', 'periodo', 'period', 'mes']);
+    const dueDateRaw = _massTxPick(raw, ['fecha_vencimiento', 'vencimiento', 'due_date']);
+    const conceptCode = _massTxPick(raw, ['concepto_codigo', 'codigo_concepto', 'concepto', 'concept_code']).toUpperCase();
+    const conceptName = _massTxPick(raw, ['concepto_nombre', 'nombre_concepto', 'descripcion', 'detalle']);
+    const amount = _massTxNum(_massTxPick(raw, ['valor_pendiente', 'saldo', 'valor', 'monto', 'amount', 'total']));
+    const ownerDoc = _massTxPick(raw, ['doc_propietario', 'nit_propietario', 'propietario', 'owner_doc']);
+    const cxcCode = _massTxPick(raw, ['cuenta_cxc', 'cxc_code']) || defaultCxcCode;
+    const contraCode = _massTxPick(raw, ['cuenta_contrapartida', 'contrapartida', 'offset_code']);
+
+    if (!unitCode && !periodRaw && amount === 0) continue;
+
+    // Normalizar período YYYY-MM
+    let period = periodRaw;
+    if (periodRaw && /^\d{4}\d{2}$/.test(periodRaw)) {
+      period = `${periodRaw.slice(0, 4)}-${periodRaw.slice(4, 6)}`;
+    }
+
+    const groupKey = `${unitCode}__${period}`;
+
+    if (!groupsMap.has(groupKey)) {
+      const prop = propByCode.get(unitCode);
+      const errors: string[] = [];
+
+      if (!unitCode) errors.push(`Fila ${rowNo}: Falta código de unidad`);
+      else if (!prop) errors.push(`Fila ${rowNo}: La unidad "${unitCode}" no existe en Copropiedades`);
+
+      if (!period) errors.push(`Fila ${rowNo}: Falta período de origen`);
+      else if (!/^\d{4}-\d{2}$/.test(period)) errors.push(`Fila ${rowNo}: Período inválido ("${period}"). Debe ser YYYY-MM`);
+
+      // Determinar vencimiento por defecto (día 10 del período)
+      let dueDate = dueDateRaw;
+      if (!dueDate && period && /^\d{4}-\d{2}$/.test(period)) {
+        dueDate = `${period}-10`;
+      }
+
+      groupsMap.set(groupKey, {
+        groupKey,
+        propertyCode: unitCode,
+        propertyId: prop?.id || null,
+        propertyName: prop?.name || unitCode,
+        ownerId: prop?.owner_id || null,
+        ownerName: prop?.expand?.owner_id?.name || prop?.owner_name || '—',
+        ownerDoc: ownerDoc || prop?.expand?.owner_id?.doc_number || '',
+        period,
+        dueDate,
+        cxcCode,
+        contraCode,
+        lines: [],
+        errors,
+        totalAmount: 0,
+        ok: errors.length === 0,
+      });
+    }
+
+    const g = groupsMap.get(groupKey);
+
+    if (amount <= 0) {
+      g.errors.push(`Fila ${rowNo}: Monto inválido (${amount}) para el concepto ${conceptCode || '—'}`);
+    }
+    if (!conceptCode && !conceptName) {
+      g.errors.push(`Fila ${rowNo}: Falta código o nombre de concepto`);
+    }
+
+    const matchedConcept = conceptByCode.get(conceptCode) || (conceptName ? conceptByCode.get(conceptName.toUpperCase()) : null);
+    const finalConceptCode = matchedConcept?.code || conceptCode || 'GEN';
+    const finalConceptName = conceptName || matchedConcept?.name || `Cobro ${finalConceptCode}`;
+
+    g.lines.push({
+      rowNo,
+      concept_id: matchedConcept?.id || null,
+      concept_code: finalConceptCode,
+      description: finalConceptName,
+      amount,
+      account_code: cxcCode,
+    });
+
+    g.totalAmount += amount;
+    g.ok = g.errors.length === 0;
+  }
+
+  return Array.from(groupsMap.values());
+}
+
+async function _executeMassPhBalancesImport({
+  groups,
+  doSyncAcc,
+  selectedTxTypeId,
+  resolvedOffsetAccId,
+  offsetAccCode,
+  txDateVal,
+  accountByCode,
+  defaultCxcCode,
+  onProgress
+}: any) {
+  const total = groups.length;
+  let done = 0;
+
+  // Cargar facturas existentes para generar consecutivo único y seguro
+  const existingInvoices = await pb.listAll('ph_invoices', { perPage: 200 }).catch(() => []);
+  const existingNumbers = new Set(existingInvoices.map(i => String(i.number || '').toUpperCase()));
+
+  const createdInvoiceRecords: any[] = [];
+  const allTxLines: any[] = [];
+
+  // Resolver cuenta CxC
+  const cxcAcc = accountByCode.get(defaultCxcCode) || Array.from(accountByCode.values()).find((a: any) => a.code?.startsWith('1305'));
+  if (!cxcAcc && doSyncAcc) throw new Error(`Cuenta CxC ${defaultCxcCode} no encontrada en PUC.`);
+
+  let seqCounter = 1;
+
+  for (const g of groups) {
+    onProgress(done, total, `Creando factura PH para ${g.propertyName} (${g.period})`);
+
+    const periodClean = String(g.period || '').replace('-', '');
+    const prefix = `SI-${periodClean}-`;
+
+    let invoiceNumber = '';
+    while (!invoiceNumber || existingNumbers.has(invoiceNumber)) {
+      const padded = String(seqCounter++).padStart(4, '0');
+      invoiceNumber = `${prefix}${padded}`;
+    }
+    existingNumbers.add(invoiceNumber);
+
+    // 1. Crear registro ph_invoices
+    const safeTotal = Math.max(0, Math.round(g.totalAmount) || 0);
+    const invRec = await pb.create('ph_invoices', {
+      number: invoiceNumber,
+      period: g.period,
+      property_id: g.propertyId,
+      date: `${g.period}-01`,
+      due_date: g.dueDate || `${g.period}-10`,
+      subtotal: safeTotal,
+      total: safeTotal,
+      status: 'posted',
+      notes: 'Saldo inicial de cartera cargado masivamente',
+    });
+
+    createdInvoiceRecords.push(invRec);
+
+    // 2. Crear registros ph_invoice_lines
+    let order = 1;
+    for (const ln of g.lines) {
+      await pb.create('ph_invoice_lines', {
+        invoice_id: invRec.id,
+        concept_id: ln.concept_id,
+        description: ln.description,
+        amount: Math.round(ln.amount),
+        line_order: order++,
+        account_code: ln.account_code || defaultCxcCode,
+      });
+
+      // 3. Preparar líneas contables si se sincroniza con contabilidad
+      if (doSyncAcc && cxcAcc && resolvedOffsetAccId) {
+        const lineCrossDocRef = `${invoiceNumber}-${ln.concept_code}`;
+
+        // Línea Débito CxC Propietario
+        allTxLines.push({
+          account_id: cxcAcc.id,
+          debit: Math.round(ln.amount),
+          credit: 0,
+          third_party_id: g.ownerId || null,
+          description: `Apertura Cartera PH ${invoiceNumber} ${ln.description}`,
+          cross_doc_ref: lineCrossDocRef,
+          cross_doc_date: `${g.period}-01`,
+          due_date: g.dueDate || `${g.period}-10`,
+          invoice_id: invRec.id,
+        });
+
+        // Línea Crédito Contrapartida (Patrimonio / Apertura)
+        allTxLines.push({
+          account_id: resolvedOffsetAccId,
+          debit: 0,
+          credit: Math.round(ln.amount),
+          third_party_id: g.ownerId || null,
+          description: `Contrapartida Apertura Cartera ${invoiceNumber} ${ln.description}`,
+          cross_doc_ref: '',
+          invoice_id: invRec.id,
+        });
+      }
+    }
+
+    done++;
+  }
+
+  // 4. Si se solicitó sincronización contable, registrar la transacción masiva atómica
+  if (doSyncAcc && allTxLines.length >= 2) {
+    onProgress(total, total, 'Generando comprobante contable de apertura en balance...');
+
+    const totalDebit = allTxLines.reduce((s, l) => s + (l.debit || 0), 0);
+    const totalCredit = allTxLines.reduce((s, l) => s + (l.credit || 0), 0);
+
+    if (Math.abs(totalDebit - totalCredit) > 1.0) {
+      throw new Error(`Descuadre contable detectado: Débitos ${totalDebit} vs Créditos ${totalCredit}`);
+    }
+
+    const txPayload = {
+      txData: {
+        tx_type_id: selectedTxTypeId,
+        number: 'AUTO',
+        date: txDateVal,
+        description: `Saldos Iniciales PH — Cartera por conceptos (${groups.length} facturas de apertura)`,
+        user_id: pb.currentUser?.id || undefined,
+        cross_enabled: true,
+        status: 'active',
+      },
+      lines: allTxLines.map((l, i) => ({
+        account_id: l.account_id,
+        debit: l.debit,
+        credit: l.credit,
+        third_party_id: l.third_party_id,
+        description: l.description,
+        cross_doc_ref: l.cross_doc_ref || undefined,
+        cross_doc_date: l.cross_doc_date || undefined,
+        due_date: l.due_date || undefined,
+        line_order: i + 1,
+      })),
+    };
+
+    // Llamar a bulk-tx atómico
+    const txRes = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': pb.authToken || '',
+      },
+      body: JSON.stringify(txPayload),
+    });
+
+    if (!txRes.ok) {
+      const errData = await txRes.json().catch(() => ({}));
+      throw new Error(errData.message || `Error en servidor contable (${txRes.status})`);
+    }
+
+    const createdTx = await txRes.json();
+
+    // Asociar tx_id a todas las facturas PH creadas
+    if (createdTx?.id) {
+      for (const inv of createdInvoiceRecords) {
+        await pb.update('ph_invoices', inv.id, { tx_id: createdTx.id }).catch(() => {});
+      }
+    }
+  }
+
+  await API.logAudit(
+    'IMPORT', 'PhBalances', 'bulk',
+    `Saldos iniciales PH: ${groups.length} facturas de apertura causadas por valor de ${fmt(groups.reduce((s: number, g: any) => s + (g.totalAmount || 0), 0))}`
+  );
+}
+
 function _openBulkReplaceModal() {
   openModal(
     'Reemplazo Masivo de Cuenta Contable',
@@ -4345,7 +5092,478 @@ function initKeyboardAutocomplete({
   input.addEventListener('focus', () => { highlightedIndex = -1; });
 }
 
+/* ══════════════════════════════════════════════════════════
+   RENUMERACIÓN MASIVA DE REFERENCIAS DE PRODUCTOS (SOLO SUPERADMIN)
+══════════════════════════════════════════════════════════ */
+async function _openRenumberProductsModal() {
+  if (!requireRole('superadmin')) {
+    showToast('Solo los usuarios SUPERADMIN pueden acceder a la renumeración de referencias', 'error');
+    return;
+  }
+
+  showToast('Cargando catálogo de productos...', 'info');
+
+  let allProducts: any[] = [];
+  let currentConfig: any = { auto_code: true, prefix: '', consecutive: 1, digits: 4 };
+
+  try {
+    const [prods, rawCfg] = await Promise.all([
+      (window as any).API.getProducts({ activeOnly: false }),
+      (window as any).API.getSetting('product_config_v1').catch(() => null),
+    ]);
+    allProducts = prods || [];
+    if (rawCfg) {
+      try { currentConfig = JSON.parse(rawCfg); } catch (_) {}
+    }
+  } catch (err: any) {
+    showToast('Error al cargar productos: ' + err.message, 'error');
+    return;
+  }
+
+  if (!allProducts.length) {
+    showToast('No hay productos registrados en el sistema', 'warning');
+    return;
+  }
+
+  // Extraer categorías únicas
+  const categoriesSet = new Set<string>();
+  allProducts.forEach(p => {
+    if (p.categoria && String(p.categoria).trim()) {
+      categoriesSet.add(String(p.categoria).trim());
+    }
+  });
+  const categoriesList = Array.from(categoriesSet).sort();
+  const catOptionsHtml = categoriesList.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
+  const defaultPrefix = currentConfig.prefix || '';
+  const defaultDigits = currentConfig.digits !== undefined ? currentConfig.digits : 4;
+
+  let currentPreviewMapping: Array<{
+    id: string;
+    oldCode: string;
+    newCode: string;
+    name: string;
+    categoria: string;
+    type: string;
+    active: boolean;
+  }> = [];
+
+  openModal(
+    'Renumeración Masiva de Referencias (Superadmin)',
+    `
+    <div class="flex flex-col gap-4 max-h-[78vh] overflow-y-auto pr-1">
+      <!-- Banner informativo / advertencia de seguridad -->
+      <div class="p-3.5 rounded-xl border flex items-start gap-3 text-xs" style="background:#F5F3FF;border-color:#DDD6FE;color:#5B21B6">
+        <i class="fas fa-shield-halved text-base mt-0.5" style="color:#7C3AED"></i>
+        <div>
+          <strong class="font-bold block text-sm mb-1" style="color:#4C1D95">Mantenimiento de Integridad Referencial</strong>
+          Esta herramienta reasigna en lote el código visible de negocio (referencia) de los productos. 
+          <strong>No altera</strong> existencias de kardex, transacciones contables, ventas históricas ni facturas DIAN emitidas.
+        </div>
+      </div>
+
+      <!-- Panel de Configuración -->
+      <div class="rounded-xl p-4 flex flex-col gap-3" style="background:#F8F9FB;border:1px solid #E5E7EB">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
+          <i class="fas fa-sliders mr-1 text-purple-600"></i> Parámetros de la Renumeración
+        </h4>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Prefijo (Opcional)</label>
+            <input type="text" id="renum-prod-prefix" class="form-input w-full" placeholder="Ej: REF-, P-, o vacío" value="${esc(defaultPrefix)}">
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Número Inicial <span class="text-red-500">*</span></label>
+            <input type="number" id="renum-prod-start-num" class="form-input w-full" value="1" min="1">
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Relleno de Ceros (Dígitos)</label>
+            <select id="renum-prod-digits" class="form-select w-full">
+              <option value="4" ${defaultDigits === 4 ? 'selected' : ''}>4 dígitos (ej: 0001)</option>
+              <option value="5" ${defaultDigits === 5 ? 'selected' : ''}>5 dígitos (ej: 00001)</option>
+              <option value="6" ${defaultDigits === 6 ? 'selected' : ''}>6 dígitos (ej: 000001)</option>
+              <option value="3" ${defaultDigits === 3 ? 'selected' : ''}>3 dígitos (ej: 001)</option>
+              <option value="0" ${defaultDigits === 0 ? 'selected' : ''}>Sin ceros (ej: 1, 2, 10...)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Cantidad de Productos</label>
+            <div class="flex items-center gap-2">
+              <input type="number" id="renum-prod-limit" class="form-input w-full" value="700" min="1" max="100000">
+            </div>
+            <label class="inline-flex items-center gap-1.5 mt-1 text-xs text-gray-500 cursor-pointer">
+              <input type="checkbox" id="renum-prod-all" class="form-checkbox"> Renumerar todo el catálogo (${allProducts.length})
+            </label>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-gray-200">
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Criterio de Ordenamiento</label>
+            <select id="renum-prod-sort" class="form-select w-full">
+              <option value="code_natural" selected>Código actual (Orden numérico natural)</option>
+              <option value="name_asc">Nombre del producto (A → Z)</option>
+              <option value="category_name">Categoría y luego Nombre</option>
+              <option value="created_asc">Fecha de creación (Más antiguos primero)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Filtro por Categoría</label>
+            <select id="renum-prod-category" class="form-select w-full">
+              <option value="">-- Todas las categorías --</option>
+              ${catOptionsHtml}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Estado de Productos</label>
+            <select id="renum-prod-status" class="form-select w-full">
+              <option value="all" selected>Todos (Activos e Inactivos)</option>
+              <option value="active_only">Solo productos Activos</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Botones de Acción Previa -->
+        <div class="flex justify-between items-center flex-wrap gap-2 pt-2">
+          <button id="btn-renum-prod-generate-preview" class="btn btn-secondary btn-sm" style="background:#4F46E5;color:#fff;border-color:#4F46E5">
+            <i class="fas fa-table-list mr-1"></i> 1. Generar Vista Previa
+          </button>
+          <button id="btn-renum-prod-download-csv" class="btn btn-outline btn-sm" disabled>
+            <i class="fas fa-file-csv mr-1 text-emerald-600"></i> Descargar Mapeo (CSV)
+          </button>
+        </div>
+      </div>
+
+      <!-- Contenedor de Vista Previa -->
+      <div id="renum-prod-preview-wrap" class="hidden flex flex-col gap-3">
+        <!-- KPIs del Dry Run -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="p-3 rounded-xl bg-white border border-gray-200 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+              <i class="fas fa-boxes-stacked"></i>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-semibold">Total a Renumerar</p>
+              <p id="renum-kpi-count" class="text-base font-extrabold text-gray-900">0</p>
+            </div>
+          </div>
+
+          <div class="p-3 rounded-xl bg-white border border-gray-200 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-sm">
+              <i class="fas fa-arrow-down-1-9"></i>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-semibold">Rango Asignado</p>
+              <p id="renum-kpi-range" class="text-sm font-bold text-gray-900 truncate max-w-[200px]">—</p>
+            </div>
+          </div>
+
+          <div class="p-3 rounded-xl bg-white border border-gray-200 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-sm">
+              <i class="fas fa-check-double"></i>
+            </div>
+            <div>
+              <p class="text-xs text-gray-500 font-semibold">Validación Anti-Colisión</p>
+              <p id="renum-kpi-validation" class="text-xs font-bold text-emerald-600">0 Duplicados detectados</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla Scrollable -->
+        <div class="border rounded-xl overflow-hidden bg-white shadow-xs">
+          <div class="px-3 py-2 bg-gray-50 border-b flex justify-between items-center text-xs font-bold text-gray-600">
+            <span><i class="fas fa-list mr-1"></i> Tabla de Equivalencias Propuestas</span>
+            <span id="renum-preview-table-count" class="text-purple-700">0 registros</span>
+          </div>
+          <div class="overflow-x-auto max-h-60 overflow-y-auto">
+            <table class="w-full text-xs text-left" id="renum-preview-table">
+              <thead class="bg-gray-100 text-gray-700 sticky top-0 font-semibold">
+                <tr>
+                  <th class="px-3 py-2">#</th>
+                  <th class="px-3 py-2">Referencia Actual</th>
+                  <th class="px-3 py-2 text-purple-700">Nueva Referencia</th>
+                  <th class="px-3 py-2">Nombre del Producto</th>
+                  <th class="px-3 py-2">Categoría</th>
+                  <th class="px-3 py-2">Tipo</th>
+                  <th class="px-3 py-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="renum-preview-tbody" class="divide-y divide-gray-100">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel de Ejecución y Confirmación de Seguridad -->
+      <div id="renum-prod-exec-panel" class="hidden rounded-xl p-4 flex flex-col gap-3" style="background:#FEF2F2;border:1px solid #FECACA">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-red-700">
+          <i class="fas fa-triangle-exclamation mr-1"></i> Confirmación de Ejecución Definitiva
+        </h4>
+
+        <label class="inline-flex items-center gap-2 text-xs font-semibold text-gray-800 cursor-pointer">
+          <input type="checkbox" id="renum-sync-consecutive" class="form-checkbox text-purple-600" checked>
+          Actualizar consecutivo de autocodificación en Configuración de Productos al siguiente número (<span id="renum-next-consecutive-lbl" class="font-bold text-purple-700">701</span>)
+        </label>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">
+            Para autorizar y aplicar los cambios, escribe la palabra <span class="font-mono font-bold text-red-600 bg-red-100 px-1 rounded">RENUMERAR</span> a continuación:
+          </label>
+          <div class="flex gap-2 items-center">
+            <input type="text" id="renum-confirm-text" class="form-input flex-1" placeholder="Escribe RENUMERAR aquí..." autocomplete="off">
+            <button id="btn-renum-prod-execute" class="btn btn-primary" style="background:#7C3AED;border-color:#7C3AED" disabled>
+              <i class="fas fa-bolt mr-1"></i> Aplicar Renumeración Masiva
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    `
+  );
+
+  // Elementos del DOM
+  const prefixInput = document.getElementById('renum-prod-prefix') as HTMLInputElement;
+  const startNumInput = document.getElementById('renum-prod-start-num') as HTMLInputElement;
+  const digitsSelect = document.getElementById('renum-prod-digits') as HTMLSelectElement;
+  const limitInput = document.getElementById('renum-prod-limit') as HTMLInputElement;
+  const allCheckbox = document.getElementById('renum-prod-all') as HTMLInputElement;
+  const sortSelect = document.getElementById('renum-prod-sort') as HTMLSelectElement;
+  const catSelect = document.getElementById('renum-prod-category') as HTMLSelectElement;
+  const statusSelect = document.getElementById('renum-prod-status') as HTMLSelectElement;
+
+  const btnPreview = document.getElementById('btn-renum-prod-generate-preview') as HTMLButtonElement;
+  const btnDownloadCsv = document.getElementById('btn-renum-prod-download-csv') as HTMLButtonElement;
+  const previewWrap = document.getElementById('renum-prod-preview-wrap') as HTMLDivElement;
+  const execPanel = document.getElementById('renum-prod-exec-panel') as HTMLDivElement;
+  const previewTbody = document.getElementById('renum-preview-tbody') as HTMLTableSectionElement;
+  const kpiCount = document.getElementById('renum-kpi-count') as HTMLParagraphElement;
+  const kpiRange = document.getElementById('renum-kpi-range') as HTMLParagraphElement;
+  const kpiValidation = document.getElementById('renum-kpi-validation') as HTMLParagraphElement;
+  const tableCountLbl = document.getElementById('renum-preview-table-count') as HTMLElement;
+  const nextConsecLbl = document.getElementById('renum-next-consecutive-lbl') as HTMLElement;
+  const confirmTextInput = document.getElementById('renum-confirm-text') as HTMLInputElement;
+  const syncConsecutiveChk = document.getElementById('renum-sync-consecutive') as HTMLInputElement;
+  const btnExecute = document.getElementById('btn-renum-prod-execute') as HTMLButtonElement;
+
+  // Manejar checkbox "Renumerar todo"
+  allCheckbox?.addEventListener('change', () => {
+    if (allCheckbox.checked) {
+      limitInput.disabled = true;
+      limitInput.value = String(allProducts.length);
+    } else {
+      limitInput.disabled = false;
+      limitInput.value = '700';
+    }
+  });
+
+  // Función para construir la vista previa
+  function buildPreview() {
+    const pfx = prefixInput.value.trim();
+    const startNum = Math.max(1, parseInt(startNumInput.value, 10) || 1);
+    const digits = parseInt(digitsSelect.value, 10) || 0;
+    const limit = allCheckbox.checked ? allProducts.length : Math.max(1, parseInt(limitInput.value, 10) || allProducts.length);
+    const sortCriterion = sortSelect.value;
+    const catFilter = catSelect.value;
+    const statusFilter = statusSelect.value;
+
+    // 1. Filtrar productos
+    let filtered = allProducts.filter(p => {
+      if (statusFilter === 'active_only' && !p.active) return false;
+      if (catFilter && p.categoria !== catFilter) return false;
+      return true;
+    });
+
+    // 2. Ordenar productos según el criterio seleccionado
+    filtered.sort((a, b) => {
+      if (sortCriterion === 'name_asc') {
+        return String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
+      } else if (sortCriterion === 'category_name') {
+        const catCmp = String(a.categoria || '').localeCompare(String(b.categoria || ''), 'es', { sensitivity: 'base' });
+        if (catCmp !== 0) return catCmp;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' });
+      } else if (sortCriterion === 'created_asc') {
+        return String(a.created || '').localeCompare(String(b.created || ''));
+      } else {
+        // code_natural (por defecto)
+        return String(a.code || '').localeCompare(String(b.code || ''), 'es', { numeric: true, sensitivity: 'base' });
+      }
+    });
+
+    // 3. Limitar a la cantidad configurada
+    const toProcess = filtered.slice(0, limit);
+
+    if (!toProcess.length) {
+      showToast('Ningún producto coincide con los filtros especificados', 'warning');
+      return;
+    }
+
+    // 4. Asignar los nuevos códigos correlativos
+    const mapping: typeof currentPreviewMapping = [];
+    const usedCodes = new Set<string>();
+    let duplicateCount = 0;
+
+    for (let i = 0; i < toProcess.length; i++) {
+      const p = toProcess[i];
+      const seqNum = startNum + i;
+      const numFormatted = digits > 0 ? String(seqNum).padStart(digits, '0') : String(seqNum);
+      const newCode = `${pfx}${numFormatted}`;
+
+      if (usedCodes.has(newCode)) {
+        duplicateCount++;
+      }
+      usedCodes.add(newCode);
+
+      mapping.push({
+        id: p.id,
+        oldCode: p.code || '—',
+        newCode: newCode,
+        name: p.name || 'Sin Nombre',
+        categoria: p.categoria || 'Sin Categoría',
+        type: p.type || 'BIEN',
+        active: !!p.active,
+      });
+    }
+
+    currentPreviewMapping = mapping;
+
+    // 5. Renderizar KPIs y Tabla
+    kpiCount.textContent = `${mapping.length} productos`;
+    if (mapping.length > 0) {
+      kpiRange.textContent = `${mapping[0].newCode}  →  ${mapping[mapping.length - 1].newCode}`;
+    } else {
+      kpiRange.textContent = '—';
+    }
+
+    if (duplicateCount > 0) {
+      kpiValidation.innerHTML = `<span class="text-red-600 font-bold"><i class="fas fa-circle-exclamation mr-1"></i> ${duplicateCount} Código(s) duplicado(s)</span>`;
+    } else {
+      kpiValidation.innerHTML = `<span class="text-emerald-600 font-bold"><i class="fas fa-circle-check mr-1"></i> Códigos únicos (0 conflictos)</span>`;
+    }
+
+    tableCountLbl.textContent = `${mapping.length} items asignados`;
+    const nextVal = startNum + mapping.length;
+    nextConsecLbl.textContent = String(nextVal);
+
+    // Llenar tabla de vista previa
+    let tbodyHtml = '';
+    mapping.forEach((m, idx) => {
+      const isDifferent = m.oldCode !== m.newCode;
+      const highlightClass = isDifferent ? 'font-bold text-purple-700 bg-purple-50/50' : 'text-gray-600';
+      tbodyHtml += `
+        <tr class="hover:bg-gray-50 transition-colors">
+          <td class="px-3 py-1.5 text-gray-400 font-mono">${idx + 1}</td>
+          <td class="px-3 py-1.5 font-mono text-gray-700 font-medium">${esc(m.oldCode)}</td>
+          <td class="px-3 py-1.5 font-mono ${highlightClass}">${esc(m.newCode)}</td>
+          <td class="px-3 py-1.5 font-medium text-gray-900 truncate max-w-[220px]" title="${esc(m.name)}">${esc(m.name)}</td>
+          <td class="px-3 py-1.5 text-gray-500">${esc(m.categoria)}</td>
+          <td class="px-3 py-1.5"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${m.type === 'BIEN' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}">${esc(m.type)}</span></td>
+          <td class="px-3 py-1.5"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${m.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}">${m.active ? 'Activo' : 'Inactivo'}</span></td>
+        </tr>
+      `;
+    });
+    previewTbody.innerHTML = tbodyHtml;
+
+    previewWrap.classList.remove('hidden');
+    execPanel.classList.remove('hidden');
+    btnDownloadCsv.disabled = false;
+
+    showToast(`Vista previa generada con éxito (${mapping.length} productos)`, 'success');
+  }
+
+  btnPreview?.addEventListener('click', buildPreview);
+
+  // Exportar Mapeo a CSV
+  btnDownloadCsv?.addEventListener('click', () => {
+    if (!currentPreviewMapping.length) return;
+    const header = ['#', 'ID_PocketBase', 'Codigo_Actual', 'Nuevo_Codigo', 'Nombre_Producto', 'Categoria', 'Tipo', 'Estado'];
+    const rows = currentPreviewMapping.map((m, idx) => [
+      idx + 1,
+      m.id,
+      `"${m.oldCode.replace(/"/g, '""')}"`,
+      `"${m.newCode.replace(/"/g, '""')}"`,
+      `"${m.name.replace(/"/g, '""')}"`,
+      `"${m.categoria.replace(/"/g, '""')}"`,
+      m.type,
+      m.active ? 'Activo' : 'Inactivo'
+    ]);
+
+    const csvContent = '\uFEFF' + [header.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Mapeo_Renumeracion_Referencias_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('Archivo CSV de equivalencias descargado', 'info');
+  });
+
+  // Validar texto de confirmación
+  confirmTextInput?.addEventListener('input', () => {
+    const val = confirmTextInput.value.trim().toUpperCase();
+    if (val === 'RENUMERAR' && currentPreviewMapping.length > 0) {
+      btnExecute.disabled = false;
+    } else {
+      btnExecute.disabled = true;
+    }
+  });
+
+  // Ejecución final
+  btnExecute?.addEventListener('click', async () => {
+    if (!currentPreviewMapping.length) {
+      showToast('Primero genera la vista previa de la renumeración', 'warning');
+      return;
+    }
+
+    if (confirmTextInput.value.trim().toUpperCase() !== 'RENUMERAR') {
+      showToast('Debes escribir RENUMERAR para confirmar la operación', 'warning');
+      return;
+    }
+
+    const startNum = Math.max(1, parseInt(startNumInput.value, 10) || 1);
+    const pfx = prefixInput.value.trim();
+    const digits = parseInt(digitsSelect.value, 10) || 0;
+    const nextConsecutive = startNum + currentPreviewMapping.length;
+    const updateConsecutive = syncConsecutiveChk.checked;
+
+    btnExecute.disabled = true;
+    btnExecute.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Aplicando cambios...`;
+
+    try {
+      const payload = {
+        items: currentPreviewMapping.map(m => ({ id: m.id, newCode: m.newCode, oldCode: m.oldCode })),
+        updateConsecutive,
+        nextConsecutive,
+        prefix: pfx,
+        digits
+      };
+
+      const result = await (window as any).API.bulkRenumberProducts(payload, (curr: number, tot: number, phase: string) => {
+        btnExecute.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> ${phase} (${curr}/${tot})...`;
+      });
+
+      showToast(result?.message || 'Renumeración masiva aplicada exitosamente', 'success');
+
+      // Cerrar modal tras 1 segundo
+      setTimeout(() => {
+        closeModal();
+      }, 1200);
+
+    } catch (err: any) {
+      showToast('Error al ejecutar la renumeración: ' + (err.message || err), 'error');
+      btnExecute.disabled = false;
+      btnExecute.innerHTML = `<i class="fas fa-bolt mr-1"></i> Aplicar Renumeración Masiva`;
+    }
+  });
+}
+
 // --- VITE MIGRATION GLOBALS ---
+(window as any)._openRenumberProductsModal = _openRenumberProductsModal;
 (window as any).initKeyboardAutocomplete = initKeyboardAutocomplete;
 (window as any)._loadLastBackupInfo = _loadLastBackupInfo;
 (window as any).renderUtilidades = renderUtilidades;
@@ -4363,6 +5581,7 @@ function initKeyboardAutocomplete({
 (window as any)._massPhUnitsImportInProgress = _massPhUnitsImportInProgress;
 (window as any)._downloadMassTpTemplate = _downloadMassTpTemplate;
 (window as any)._downloadMassTxTemplate = _downloadMassTxTemplate;
+(window as any)._massTpImportInProgress = _massTpImportInProgress;
 (window as any)._massTpImportInProgress = _massTpImportInProgress;
 (window as any).BACKUP_COLLECTIONS = BACKUP_COLLECTIONS;
 (window as any)._massTxNum = _massTxNum;
@@ -4387,4 +5606,7 @@ function initKeyboardAutocomplete({
 (window as any)._loadSysInfo = _loadSysInfo;
 (window as any)._executeMassTpImport = _executeMassTpImport;
 (window as any)._openRenumberTxModal = _openRenumberTxModal;
+(window as any)._downloadMassPhBalancesTemplate = _downloadMassPhBalancesTemplate;
+(window as any)._openMassPhBalancesImportModal = _openMassPhBalancesImportModal;
+(window as any)._massPhBalancesImportInProgress = _massPhBalancesImportInProgress;
 

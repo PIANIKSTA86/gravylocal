@@ -67,7 +67,7 @@ export interface Product {
   id: string;
   sku: string;
   name: string;
-  category: 'Beverages' | 'Dry Goods' | 'Perishables' | 'Cleaning';
+  category: string;
   price: number;
   stock: number;
   unit: string;
@@ -92,6 +92,7 @@ export interface Order {
   customerNit?: string;
   date: string;
   deliveryDate?: string;
+  reservationExpiresAt?: string; // Fecha límite de vigencia de la reserva
   items: CartItem[];
   subtotal: number;
   tax: number;
@@ -103,11 +104,39 @@ export interface Order {
   createdBySeller?: string;
 }
 
+export type VisitStatus = 'PROGRAMADA' | 'EN_CURSO' | 'COMPLETADA_PEDIDO' | 'COMPLETADA_RECAUDO' | 'NO_EFECTIVA' | 'REPROGRAMADA';
+export type VisitObjective = 'VENTA' | 'COBRO' | 'SEGUIMIENTO' | 'PROSPECCION';
+
+export interface VendorVisit {
+  id: string;
+  sellerId: string;
+  sellerName?: string;
+  customerId: string;
+  customerName: string;
+  customerAddress?: string;
+  customerPhone?: string;
+  customerCity?: string;
+  date: string;
+  orderSeq: number;
+  status: VisitStatus;
+  objective: VisitObjective;
+  checkinTime?: string;
+  checkoutTime?: string;
+  geoLat?: number;
+  geoLng?: number;
+  salesOrderId?: string;
+  salesOrderNumber?: string;
+  noOrderReason?: 'STOCK_SUFICIENTE' | 'LOCAL_CERRADO' | 'ENCARGADO_NO_DISPONIBLE' | 'PRECIO' | 'OTRO' | string;
+  notes?: string;
+  customerBalanceDue?: number;
+  customerCreditLimit?: number;
+}
+
 export interface SyncState {
   isOnline: boolean;
   lastSyncedTime: string;
   pendingOrdersCount: number;
   pendingPaymentsCount: number;
-  erpSystem: 'SAP S/4HANA' | 'Dynamics 365' | 'Odoo Enterprise';
+  pendingVisitsCount?: number;
+  erpSystem: string;
 }
-

@@ -49,6 +49,7 @@ declare var renderComisiones: any;
 declare var renderInmobiliarias: any;
 declare var renderCRM: any;
 declare var renderDespachos: any;
+declare var renderRutasVisitas: any;
 
 const MAX_TABS = 8;
 
@@ -110,6 +111,7 @@ const PAGE_TITLES: Record<string, string> = {
   'inmo-liquidacion': 'Liquidación de Arrendamiento',
   crm:               'Seguimiento de Ventas (CRM)',
   despachos:         'Gestión de Despachos y Entregas',
+  'rutas-vendedores':'Rutas y Agenda de Vendedores',
   niif:              'Gestión NIIF (IFRS)',
   'niif-diagnostico': 'Diagnóstico NIIF',
   'niif-politicas':   'Políticas Contables NIIF',
@@ -164,6 +166,7 @@ const PAGE_ICONS: Record<string, string> = {
   importaciones: 'fa-ship',
   'reservas-logistica': 'fa-clipboard-check',
   despachos: 'fa-truck',
+  'rutas-vendedores': 'fa-route',
   'nomina-empleados': 'fa-users-gear',
   'nomina-contratos': 'fa-file-contract',
   'nomina-periodos': 'fa-calendar-days',
@@ -236,6 +239,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'inmo-liquidacion':  'inmobiliarias',
   'crm':               'crm',
   'despachos':         'logistica',
+  'rutas-vendedores':  'logistica',
   'niif':              'niif',
   'niif-diagnostico':  'niif',
   'niif-politicas':    'niif',
@@ -328,6 +332,7 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'inmo-liquidacion': (c) => typeof (window as any).renderInmoLiquidacionPage === 'function' && (window as any).renderInmoLiquidacionPage(c),
   crm:                (c) => typeof renderCRM              === 'function' && renderCRM(c),
   despachos:          (c) => typeof renderDespachos        === 'function' && renderDespachos(c),
+  'rutas-vendedores': (c) => typeof renderRutasVisitas     === 'function' && renderRutasVisitas(c),
   niif:               () => navigate('niif-diagnostico'),
   'niif-diagnostico': (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'diagnostico'),
   'niif-politicas':   (c) => typeof (window as any).renderNIIF === 'function' && (window as any).renderNIIF(c, 'politicas'),
@@ -731,8 +736,9 @@ function navigate(page: string, forceReload: boolean = false): void {
     document.body.classList.add('pos-active-page');
   }
 
-  // Actualizar Sidebar activo
+  // Actualizar Sidebar activo y Bottom Navigation Móvil
   $$('#nav-menu .nav-item').forEach((n: any) => n.classList.toggle('active', n.dataset.page === page));
+  $$('#mobile-bottom-nav .mob-nav-btn').forEach((n: any) => n.classList.toggle('active', n.dataset.page === page));
 
   // Auto-expandir menú lateral
   const activeItem = document.querySelector(`#nav-menu .nav-item[data-page="${page}"]`);

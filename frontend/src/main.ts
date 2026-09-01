@@ -46,6 +46,7 @@ import './modules/superadmin.ts';
 import './modules/inmobiliarias.ts';
 import './modules/crm.ts';
 import './modules/despachos.ts';
+import './modules/rutas-visitas.ts';
 import './modules/niif.ts';
 
 import './app.ts';

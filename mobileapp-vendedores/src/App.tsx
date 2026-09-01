@@ -31,6 +31,7 @@ function MainAppContent() {
     invoices,
     orders,
     paymentReceipts,
+    visits,
     syncState,
     syncData,
     toastMessage,
@@ -39,6 +40,8 @@ function MainAppContent() {
     handleConfirmPaymentReceipt,
     handleApproveReceipt,
     handleRejectReceipt,
+    handleCheckIn,
+    handleCheckOut,
     isLoading,
   } = useApp();
 
@@ -102,15 +105,25 @@ function MainAppContent() {
             currentCustomer={activeCust}
             invoices={invoices}
             orders={orders}
+            visits={visits}
             onSelectCustomer={(c) => {
               setCurrentCustomer(c);
               setActiveTab('customers');
             }}
+            onNavigateTab={(tab) => {
+              if (tab === 'sync') setIsSyncModalOpen(true);
+              else setActiveTab(tab);
+            }}
             onOpenOrderBuilder={() => setIsOrderBuilderOpen(true)}
-            onOpenPaymentModal={() => setIsPaymentModalOpen(true)}
+            onOpenPaymentModal={(inv) => {
+              if (inv) setSelectedInvoiceForPayment(inv);
+              setIsPaymentModalOpen(true);
+            }}
             onOpenSync={() => setIsSyncModalOpen(true)}
             onOpenNotifications={() => setIsNotificationsOpen(true)}
             onOpenAiAssistant={() => setIsAiAssistantOpen(true)}
+            onCheckIn={handleCheckIn}
+            onCheckOut={handleCheckOut}
           />
         )}
 

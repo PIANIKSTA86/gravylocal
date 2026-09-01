@@ -120,6 +120,7 @@ function applyModuleVisibility(): void {
     'tienda-virtual':   'tienda-virtual',
     'crm':              'crm',
     'despachos':        'logistica',
+    'rutas-vendedores': 'logistica',
     'niif':             'niif',
     'niif-diagnostico': 'niif',
     'niif-politicas':   'niif',
@@ -144,7 +145,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'productos', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'productos', 'rutas-vendedores', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {
@@ -962,8 +963,17 @@ async function showApp() {
 
   // Ocultar login, mostrar app
   $$('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
-  $('#screen-app').style.display = 'flex';
-  $('#screen-app').classList.add('active');
+  const appEl = $('#screen-app');
+  if (appEl) {
+    appEl.style.display = 'flex';
+    appEl.classList.add('active');
+    const userRole = user.role || 'viewer';
+    appEl.setAttribute('data-role', userRole);
+    document.body.setAttribute('data-role', userRole);
+    if (typeof (window as any).initRoleBottomNav === 'function') {
+      (window as any).initRoleBottomNav(userRole);
+    }
+  }
 
   // Cargar alertas de vencimientos de forma global al iniciar
   if (typeof (window as any).checkUpcomingVencimientos === 'function') {

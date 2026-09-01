@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Product, CartItem, Customer, OrderType, Order } from '../types';
 import { formatCOP } from '../lib/utils';
-import { X, Plus, Minus, ShoppingBag, Search, AlertTriangle, CheckCircle, ShieldAlert, Tag, Clock } from 'lucide-react';
+import { X, Plus, Minus, ShoppingBag, Search, AlertTriangle, CheckCircle, ShieldAlert, Tag, Clock, Bookmark, Layers } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 interface OrderBuilderModalProps {
@@ -22,6 +22,7 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [cart, setCart] = useState<{ [productId: string]: number }>({});
   const [documentType, setDocumentType] = useState<OrderType>('Pedido');
+  const [reservationDays, setReservationDays] = useState<number>(2); // 2 días por defecto
   const [paymentTerms, setPaymentTerms] = useState<string>('Crédito 30 Días');
   const [deliveryDate, setDeliveryDate] = useState<string>('En 3 Días Hábiles');
   const [notes, setNotes] = useState<string>('');
@@ -57,10 +58,12 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
   };
 
   // Cart calculations
-  const cartItems: CartItem[] = Object.entries(cart).map(([prodId, qty]) => {
-    const product = products.find((p) => p.id === prodId)!;
-    return { product, quantity: Number(qty) };
-  }).filter((item) => item.product);
+  const cartItems: CartItem[] = Object.entries(cart)
+    .map(([prodId, qty]) => {
+      const product = products.find((p) => p.id === prodId)!;
+      return { product, quantity: Number(qty) };
+    })
+    .filter((item) => item.product);
 
   const subtotal = cartItems.reduce(
     (acc, item) => acc + item.product.price * item.quantity,
@@ -76,9 +79,18 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
     if (cartItems.length === 0) return;
     setIsSubmitting(true);
 
-    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const timeStr = new Date().toTimeString().slice(0, 5).replace(':', '');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const timeStr = now.toTimeString().slice(0, 5).replace(':', '');
     const newOrderNumber = `${documentType === 'Reserva' ? 'RES' : 'PED'}-${dateStr}-${timeStr}`;
+
+    // Calcular expiración si es reserva
+    let reservationExpiresAt: string | undefined = undefined;
+    if (documentType === 'Reserva') {
+      const expDate = new Date();
+      expDate.setDate(expDate.getDate() + reservationDays);
+      reservationExpiresAt = expDate.toISOString().slice(0, 10);
+    }
 
     const newOrder: Order = {
       id: `ord_${Date.now()}`,
@@ -86,8 +98,10 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
       documentType,
       customerId: customer.id,
       customerName: customer.name,
+      customerNit: customer.nit,
       date: new Date().toLocaleDateString('es-CO', { dateStyle: 'short' }),
       deliveryDate,
+      reservationExpiresAt,
       items: cartItems,
       subtotal,
       tax,
@@ -107,27 +121,79 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100">
+      <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl h-[94vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100">
+        
         {/* Modal Header */}
-        <div className="p-4 bg-[#191c1e] text-white flex items-center justify-between shrink-0">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] font-black uppercase tracking-widest bg-cyan-400/20 text-cyan-300 px-2 py-0.5 rounded-full">
-                Emisión Móvil
-              </span>
-              <span className="text-xs text-gray-400 font-medium">NIT: {customer?.nit}</span>
+        <div className="p-4 bg-[#191c1e] text-white shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-black uppercase tracking-widest bg-cyan-400/20 text-cyan-300 px-2 py-0.5 rounded-full">
+                  Emisión Comercial
+                </span>
+                <span className="text-xs text-gray-400 font-medium">NIT: {customer?.nit}</span>
+              </div>
+              <h2 className="text-lg font-extrabold text-white truncate max-w-[260px] mt-0.5">
+                {customer?.name}
+              </h2>
             </div>
-            <h2 className="text-lg font-extrabold text-white truncate max-w-[240px]">
-              {customer?.name}
-            </h2>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-300 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-gray-300 hover:text-white"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          {/* Document Type Switcher: Pedido vs Reserva */}
+          <div className="grid grid-cols-2 gap-2 mt-3 bg-white/10 p-1 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setDocumentType('Pedido')}
+              className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center space-x-1.5 ${
+                documentType === 'Pedido'
+                  ? 'bg-white text-gray-900 shadow-md'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" />
+              <span>Pedido de Venta</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDocumentType('Reserva')}
+              className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center space-x-1.5 ${
+                documentType === 'Reserva'
+                  ? 'bg-amber-400 text-gray-900 shadow-md'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+              <span>Reserva de Stock</span>
+            </button>
+          </div>
         </div>
+
+        {/* Reserva Configuration Pill if Active */}
+        {documentType === 'Reserva' && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between text-xs text-amber-900 shrink-0 animate-in fade-in">
+            <div className="flex items-center space-x-1.5">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="font-bold">Vigencia Reserva:</span>
+            </div>
+            <select
+              value={reservationDays}
+              onChange={(e) => setReservationDays(Number(e.target.value))}
+              className="bg-white border border-amber-300 text-amber-900 font-black text-xs rounded-xl px-2 py-1 outline-none"
+            >
+              <option value={1}>24 Horas (1 Día)</option>
+              <option value={2}>48 Horas (2 Días)</option>
+              <option value={3}>72 Horas (3 Días)</option>
+              <option value={7}>1 Semana (7 Días)</option>
+            </select>
+          </div>
+        )}
 
         {/* Search & Category Header */}
         <div className="p-3 bg-gray-50 border-b border-gray-200 shrink-0 space-y-2">
@@ -161,51 +227,57 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
 
         {/* Product Catalog List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-gray-100/50">
-          {filteredProducts.map((prod) => {
-            const qty = cart[prod.id] || 0;
-            return (
-              <div
-                key={prod.id}
-                className="bg-white rounded-xl p-3 border border-gray-200 shadow-2xs flex items-center justify-between"
-              >
-                <div className="flex-1 pr-2">
-                  <div className="flex items-center space-x-1.5">
-                    <span className="text-[9px] font-black text-[#5355a9] bg-indigo-50 px-1.5 py-0.5 rounded">
-                      {prod.sku}
-                    </span>
-                    <span className="text-[10px] font-bold text-gray-400">
-                      Stock: {prod.stock} {prod.unit}s
+          {filteredProducts.length === 0 ? (
+            <div className="bg-white rounded-2xl p-8 text-center text-gray-400 text-xs">
+              No se encontraron productos coincidentes.
+            </div>
+          ) : (
+            filteredProducts.map((prod) => {
+              const qty = cart[prod.id] || 0;
+              return (
+                <div
+                  key={prod.id}
+                  className="bg-white rounded-2xl p-3.5 border border-gray-200 shadow-2xs flex items-center justify-between"
+                >
+                  <div className="flex-1 pr-2">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-[9px] font-black text-[#5355a9] bg-indigo-50 px-1.5 py-0.5 rounded">
+                        {prod.sku}
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                        Stock: {prod.stock} {prod.unit}s
+                      </span>
+                    </div>
+                    <h4 className="font-extrabold text-xs text-gray-900 mt-1">
+                      {prod.name}
+                    </h4>
+                    <span className="text-xs font-black text-[#006876] block mt-0.5">
+                      {formatCOP(prod.price)}
                     </span>
                   </div>
-                  <h4 className="font-extrabold text-xs text-gray-900 mt-0.5">
-                    {prod.name}
-                  </h4>
-                  <span className="text-xs font-black text-[#006876] block mt-0.5">
-                    {formatCOP(prod.price)}
-                  </span>
-                </div>
 
-                <div className="flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-xl p-1 shrink-0">
-                  <button
-                    onClick={() => updateQuantity(prod.id, -1)}
-                    disabled={qty === 0}
-                    className="w-7 h-7 rounded-lg bg-white shadow-2xs flex items-center justify-center text-gray-700 disabled:opacity-30"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="w-5 text-center text-xs font-extrabold text-gray-900">
-                    {qty}
-                  </span>
-                  <button
-                    onClick={() => updateQuantity(prod.id, 1)}
-                    className="w-7 h-7 rounded-lg bg-[#006876] text-white shadow-2xs flex items-center justify-center active:scale-95"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center space-x-2 bg-gray-50 border border-gray-200 rounded-xl p-1 shrink-0">
+                    <button
+                      onClick={() => updateQuantity(prod.id, -1)}
+                      disabled={qty === 0}
+                      className="w-7 h-7 rounded-lg bg-white shadow-2xs flex items-center justify-center text-gray-700 disabled:opacity-30 active:scale-95"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="w-5 text-center text-xs font-extrabold text-gray-900">
+                      {qty}
+                    </span>
+                    <button
+                      onClick={() => updateQuantity(prod.id, 1)}
+                      className="w-7 h-7 rounded-lg bg-[#006876] text-white shadow-2xs flex items-center justify-center active:scale-95"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Footer Order Summary & Submit */}
@@ -220,24 +292,35 @@ export const OrderBuilderModal: React.FC<OrderBuilderModalProps> = ({
               <span>{formatCOP(tax)}</span>
             </div>
             <div className="flex justify-between items-center text-base font-black text-gray-900 pt-1 border-t border-gray-100">
-              <span>Total Pedido:</span>
+              <span>{documentType === 'Reserva' ? 'Total Reserva:' : 'Total Pedido:'}</span>
               <span className="text-[#006876] text-lg">{formatCOP(total)}</span>
             </div>
 
-            {isCreditExceeded && (
+            {isCreditExceeded && documentType === 'Pedido' && (
               <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-bold flex items-center space-x-2">
                 <ShieldAlert className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>Excede cupo disponible ({formatCOP(availableCredit)})</span>
+                <span>Excede cupo de crédito disponible ({formatCOP(availableCredit)})</span>
               </div>
             )}
 
             <button
               onClick={handleCreateOrder}
               disabled={isSubmitting}
-              className="w-full py-3 bg-[#006876] text-white font-extrabold text-sm rounded-xl shadow-lg flex items-center justify-center space-x-2 active:scale-98 transition-all disabled:opacity-50"
+              className={`w-full py-3 text-white font-extrabold text-sm rounded-xl shadow-lg flex items-center justify-center space-x-2 active:scale-98 transition-all disabled:opacity-50 ${
+                documentType === 'Reserva' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-[#006876] hover:bg-[#004f5a]'
+              }`}
             >
-              <ShoppingBag className="w-4 h-4" />
-              <span>{isSubmitting ? 'Procesando...' : 'Confirmar y Guardar Pedido'}</span>
+              {documentType === 'Reserva' ? (
+                <>
+                  <Bookmark className="w-4 h-4 text-amber-200" />
+                  <span>{isSubmitting ? 'Guardando Reserva...' : `Confirmar Reserva (${reservationDays} días)`}</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="w-4 h-4 text-cyan-200" />
+                  <span>{isSubmitting ? 'Emitiendo...' : 'Confirmar Pedido de Venta'}</span>
+                </>
+              )}
             </button>
           </div>
         )}

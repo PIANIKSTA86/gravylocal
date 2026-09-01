@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Customer, Invoice, Order, PaymentReceipt, Product, SyncState } from '../types';
+import { Customer, Invoice, Order, PaymentReceipt, Product, SyncState, VendorVisit, VisitStatus } from '../types';
 import { CustomerRepository } from '../repositories/CustomerRepository';
 import { InvoiceRepository } from '../repositories/InvoiceRepository';
 import { OrderRepository } from '../repositories/OrderRepository';
 import { PaymentRepository } from '../repositories/PaymentRepository';
 import { ProductRepository } from '../repositories/ProductRepository';
+import { VisitRepository } from '../repositories/VisitRepository';
 import { AuthService } from '../services/AuthService';
 import { SyncService } from '../services/SyncService';
 
@@ -23,6 +24,7 @@ interface AppContextType {
   orders: Order[];
   products: Product[];
   paymentReceipts: PaymentReceipt[];
+  visits: VendorVisit[];
   
   // Estado de sincronización & Conexión
   syncState: SyncState;
@@ -37,6 +39,9 @@ interface AppContextType {
   handleConfirmPaymentReceipt: (receipt: PaymentReceipt) => Promise<void>;
   handleApproveReceipt: (receiptId: string, notes?: string) => Promise<void>;
   handleRejectReceipt: (receiptId: string, notes: string) => Promise<void>;
+  handleCheckIn: (visit: VendorVisit) => Promise<void>;
+  handleCheckOut: (visitId: string, outcome: { status: VisitStatus; noOrderReason?: string; notes?: string }) => Promise<void>;
+  handleCreateVisit: (visit: Partial<VendorVisit>) => Promise<void>;
 
   // Cargando
   isLoading: boolean;
@@ -55,6 +60,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [paymentReceipts, setPaymentReceipts] = useState<PaymentReceipt[]>([]);
+  const [visits, setVisits] = useState<VendorVisit[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -64,6 +70,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     lastSyncedTime: 'Hoy 08:00 AM',
     pendingOrdersCount: 0,
     pendingPaymentsCount: 0,
+    pendingVisitsCount: 0,
     erpSystem: 'GRAVY ERP (PocketBase / Postgres)',
   });
 
@@ -99,11 +106,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!AuthService.isAuthenticated()) return;
     setIsLoading(true);
     try {
-      const [cList, pList, oList, rList] = await Promise.all([
+      const [cList, pList, oList, rList, vList] = await Promise.all([
         CustomerRepository.getCustomers(),
         ProductRepository.getProducts(),
         OrderRepository.getOrders(),
         PaymentRepository.getPaymentReceipts(),
+        VisitRepository.getVisits(),
       ]);
 
       setCustomers(cList);
@@ -114,6 +122,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProducts(pList);
       setOrders(oList);
       setPaymentReceipts(rList);
+      setVisits(vList);
 
       if (cList.length > 0) {
         const invList = await InvoiceRepository.getInvoicesByCustomer();
@@ -161,6 +170,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(null);
     setCustomers([]);
     setCurrentCustomer(null);
+    setVisits([]);
   };
 
   const syncData = async () => {
@@ -174,11 +184,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const handleOrderCreated = async (newOrder: Order) => {
     if (!syncState.isOnline) {
       SyncService.enqueueOfflineItem('ORDER', newOrder);
-      showToast(`Pedido ${newOrder.orderNumber} guardado en cola offline.`);
+      showToast(`${newOrder.documentType} ${newOrder.orderNumber} guardado en cola offline.`);
     } else {
       await OrderRepository.createOrder(newOrder);
-      showToast(`¡Pedido ${newOrder.orderNumber} registrado con éxito!`);
+      showToast(`¡${newOrder.documentType} ${newOrder.orderNumber} registrado con éxito!`);
     }
+
+    // Si había una visita en curso con este cliente, vincularla
+    const activeVisit = visits.find((v) => v.customerId === newOrder.customerId && v.status === 'EN_CURSO');
+    if (activeVisit) {
+      await VisitRepository.performCheckOut(activeVisit.id, {
+        status: 'COMPLETADA_PEDIDO',
+        salesOrderId: newOrder.id,
+        notes: `Generado ${newOrder.documentType} #${newOrder.orderNumber} por ${newOrder.total}`,
+      });
+    }
+
     await refreshData();
   };
 
@@ -190,6 +211,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await PaymentRepository.createPaymentReceipt(receipt);
       showToast(`¡Recibo ${receipt.receiptNumber} enviado a revisión de Tesorería!`);
     }
+
+    // Si había una visita en curso con este cliente, vincularla
+    const activeVisit = visits.find((v) => v.customerId === receipt.customerId && v.status === 'EN_CURSO');
+    if (activeVisit) {
+      await VisitRepository.performCheckOut(activeVisit.id, {
+        status: 'COMPLETADA_RECAUDO',
+        notes: `Recaudo RC #${receipt.receiptNumber} por ${receipt.totalAmount}`,
+      });
+    }
+
     await refreshData();
   };
 
@@ -202,6 +233,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const handleRejectReceipt = async (receiptId: string, notes: string) => {
     await PaymentRepository.rejectReceipt(receiptId, notes);
     showToast('Recaudo devuelto con observaciones.');
+    await refreshData();
+  };
+
+  const handleCheckIn = async (visit: VendorVisit) => {
+    const res = await VisitRepository.performCheckIn(visit.id);
+    showToast(`Check-In registrado en ${visit.customerName}`);
+    // Actualizar cliente activo
+    const targetCust = customers.find((c) => c.id === visit.customerId);
+    if (targetCust) {
+      setCurrentCustomer(targetCust);
+    }
+    await refreshData();
+  };
+
+  const handleCheckOut = async (
+    visitId: string,
+    outcome: { status: VisitStatus; noOrderReason?: string; notes?: string }
+  ) => {
+    await VisitRepository.performCheckOut(visitId, outcome);
+    showToast('Visita cerrada exitosamente.');
+    await refreshData();
+  };
+
+  const handleCreateVisit = async (visit: Partial<VendorVisit>) => {
+    await VisitRepository.createVisit(visit);
+    showToast('Nueva visita agregada a la agenda.');
     await refreshData();
   };
 
@@ -219,6 +276,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         orders,
         products,
         paymentReceipts,
+        visits,
         syncState,
         syncData,
         toastMessage,
@@ -227,6 +285,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleConfirmPaymentReceipt,
         handleApproveReceipt,
         handleRejectReceipt,
+        handleCheckIn,
+        handleCheckOut,
+        handleCreateVisit,
         isLoading,
         refreshData,
       }}

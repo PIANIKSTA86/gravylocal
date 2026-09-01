@@ -133,9 +133,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  // ── Backdrop para Drawer Móvil ─────────────────────────────
+  let backdrop = document.getElementById('sidebar-backdrop');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'sidebar-backdrop';
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', () => {
+      _sidebar?.classList.remove('open');
+      backdrop?.classList.remove('show');
+    });
+  }
+
   // ── Sidebar navegación ─────────────────────────────────────
   $$('#nav-menu .nav-item').forEach(n =>
-    n.addEventListener('click', () => navigate(n.dataset.page))
+    n.addEventListener('click', () => {
+      if (window.innerWidth <= 768) {
+        _sidebar?.classList.remove('open');
+        backdrop?.classList.remove('show');
+      }
+      navigate(n.dataset.page);
+    })
   );
 
   // ── Toggle sidebar móvil ───────────────────────────────────
@@ -165,7 +183,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Topbar hamburguesa → colapsa (desktop) | abre overlay (móvil)
   $('#btn-menu-toggle')?.addEventListener('click', () => {
     if (window.innerWidth <= 768) {
-      _sidebar?.classList.toggle('open');
+      const isOpen = _sidebar?.classList.toggle('open');
+      backdrop?.classList.toggle('show', !!isOpen);
     } else {
       setSidebarCollapsed(!_sidebar?.classList.contains('collapsed'));
     }
@@ -173,6 +192,78 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Hamburguesa del sidebar → siempre expande
   $('#sidebar-hamburger')?.addEventListener('click', () => setSidebarCollapsed(false));
+
+  // ── Bottom Navigation Bar Móvil Exclusiva para Vendedores y Propietarios ──
+  function initRoleBottomNav(role: string) {
+    let bottomNav = document.getElementById('mobile-bottom-nav');
+    if (role !== 'vendedor' && role !== 'propietario') {
+      if (bottomNav) bottomNav.remove();
+      return;
+    }
+
+    if (!bottomNav) {
+      bottomNav = document.createElement('nav');
+      bottomNav.id = 'mobile-bottom-nav';
+      document.getElementById('screen-app')?.appendChild(bottomNav);
+    }
+
+    const cur = (window as any).currentPage || 'dashboard';
+
+    if (role === 'vendedor') {
+      bottomNav.innerHTML = `
+        <button data-page="dashboard" class="mob-nav-btn ${cur === 'dashboard' ? 'active' : ''}">
+          <i class="fas fa-gauge-high"></i>
+          <span>Inicio</span>
+        </button>
+        <button data-page="productos" class="mob-nav-btn ${cur === 'productos' ? 'active' : ''}">
+          <i class="fas fa-box-open"></i>
+          <span>Catálogo</span>
+        </button>
+        <button data-page="pedidos" class="mob-nav-btn ${cur === 'pedidos' ? 'active' : ''}">
+          <i class="fas fa-file-signature"></i>
+          <span>Pedidos</span>
+        </button>
+        <button data-page="ventas" class="mob-nav-btn ${cur === 'ventas' ? 'active' : ''}">
+          <i class="fas fa-receipt"></i>
+          <span>Ventas</span>
+        </button>
+        <button data-page="rutas-vendedores" class="mob-nav-btn ${cur === 'rutas-vendedores' ? 'active' : ''}">
+          <i class="fas fa-route"></i>
+          <span>Rutas</span>
+        </button>
+      `;
+    } else if (role === 'propietario') {
+      bottomNav.innerHTML = `
+        <button data-page="dashboard" class="mob-nav-btn ${cur === 'dashboard' ? 'active' : ''}">
+          <i class="fas fa-gauge-high"></i>
+          <span>Inicio</span>
+        </button>
+        <button data-page="copro-reservas" class="mob-nav-btn ${cur === 'copro-reservas' ? 'active' : ''}">
+          <i class="fas fa-calendar-days"></i>
+          <span>Reservas</span>
+        </button>
+        <button data-page="copro-pqrs" class="mob-nav-btn ${cur === 'copro-pqrs' ? 'active' : ''}">
+          <i class="fas fa-comments"></i>
+          <span>PQRs</span>
+        </button>
+        <button data-page="copro-cartera" class="mob-nav-btn ${cur === 'copro-cartera' ? 'active' : ''}">
+          <i class="fas fa-wallet"></i>
+          <span>Cartera</span>
+        </button>
+      `;
+    }
+
+    bottomNav.querySelectorAll('.mob-nav-btn').forEach((btn: any) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.preventDefault();
+        const page = btn.dataset.page;
+        if (page && typeof (window as any).navigate === 'function') {
+          (window as any).navigate(page);
+        }
+      });
+    });
+  }
+  (window as any).initRoleBottomNav = initRoleBottomNav;
 
   // ── Tooltips fixed para nav-items en modo colapsado ────────
   (function () {

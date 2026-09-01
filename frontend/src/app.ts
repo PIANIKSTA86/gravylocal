@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <i class="fas fa-receipt"></i>
           <span>Ventas</span>
         </button>
-        <button data-page="rutas-vendedores" class="mob-nav-btn ${cur === 'rutas-vendedores' ? 'active' : ''}">
+        <button data-page="mis-rutas" class="mob-nav-btn ${cur === 'mis-rutas' || cur === 'rutas-vendedores' ? 'active' : ''}">
           <i class="fas fa-route"></i>
           <span>Rutas</span>
         </button>

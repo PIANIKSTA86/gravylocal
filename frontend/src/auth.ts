@@ -120,6 +120,8 @@ function applyModuleVisibility(): void {
     'tienda-virtual':   'tienda-virtual',
     'crm':              'crm',
     'despachos':        'logistica',
+    'mis-rutas':        'logistica',
+    'rutas-gestion':    'logistica',
     'rutas-vendedores': 'logistica',
     'niif':             'niif',
     'niif-diagnostico': 'niif',
@@ -145,7 +147,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'productos', 'rutas-vendedores', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {

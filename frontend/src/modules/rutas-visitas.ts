@@ -73,16 +73,48 @@ export async function renderMiAgendaRutas(container: HTMLElement, initialDate?: 
 
   try {
     const currentUserId = pb?.currentUser?.id || '';
-    const currentUserName = pb?.currentUser?.full_name || pb?.currentUser?.name || 'Vendedor';
+    const currentUserName = (pb?.currentUser?.full_name || pb?.currentUser?.name || pb?.currentUser?.email?.split('@')[0] || '').toLowerCase().trim();
+    const currentUserEmail = (pb?.currentUser?.email || '').toLowerCase().trim();
+    const currentTpId = pb?.currentUser?.third_party_id || '';
+    const isVendedor = pb?.currentUser?.role === 'vendedor';
 
-    // Consultar visitas del vendedor para la fecha
-    const visits: VendorVisit[] = await pb.listAll('vendor_visits', {
-      filter: `visit_date = "${targetDate}"`,
-      expand: 'seller_id,client_id,sales_order_id',
-      sort: 'order_seq',
-    }).catch(() => []);
+    // Buscar si el usuario actual corresponde a un tercero vendedor
+    const [allVisits, allSellers] = await Promise.all([
+      pb.listAll('vendor_visits', {
+        filter: `visit_date = "${targetDate}"`,
+        expand: 'seller_id,client_id,sales_order_id',
+        sort: 'order_seq',
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="VENDEDOR" || type="EMPLEADO"',
+        fields: 'id,name,email,doc_number'
+      }).catch(() => []),
+    ]);
 
-    _renderVendorAgendaUI(container, visits, targetDate, currentUserName);
+    const matchedSeller = allSellers.find((s: any) => 
+      s.id === currentTpId || 
+      (s.email && s.email.toLowerCase().trim() === currentUserEmail) ||
+      (currentUserName && s.name && s.name.toLowerCase().includes(currentUserName)) ||
+      (currentUserName && s.name && currentUserName.includes(s.name.toLowerCase()))
+    );
+
+    const sellerIds = [currentUserId];
+    if (currentTpId) sellerIds.push(currentTpId);
+    if (matchedSeller) sellerIds.push(matchedSeller.id);
+
+    let visits: VendorVisit[] = allVisits;
+    if (isVendedor && sellerIds.length > 0) {
+      const myVisits = allVisits.filter((v: any) => {
+        if (!v.seller_id) return true; // Si no tiene vendedor asignado explícitamente, está disponible
+        if (sellerIds.includes(v.seller_id)) return true;
+        const sName = (v.expand?.seller_id?.name || '').toLowerCase();
+        if (currentUserName && sName && (sName.includes(currentUserName) || currentUserName.includes(sName))) return true;
+        return false;
+      });
+      visits = myVisits.length > 0 ? myVisits : allVisits;
+    }
+
+    _renderVendorAgendaUI(container, visits, targetDate, currentUserName || 'Vendedor');
   } catch (err: any) {
     container.innerHTML = `
       <div class="p-6 text-center text-red-500 bg-red-50 rounded-2xl m-4 border border-red-200">
@@ -110,7 +142,7 @@ function _renderVendorAgendaUI(container: HTMLElement, visits: VendorVisit[], ac
   const dateFormatted = dateObj.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 
   container.innerHTML = `
-    <div class="p-3 sm:p-5 max-w-2xl mx-auto space-y-4 pb-20">
+    <div class="p-3 sm:p-5 max-w-2xl mx-auto space-y-4 pb-32 sm:pb-36">
       
       <!-- Selector de Fecha & Cabecera de Ruta -->
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
@@ -398,9 +430,18 @@ function _bindVisitCardActions(container: HTMLElement, activeDate: string) {
   // Tomar Pedido Shortcut
   container.querySelectorAll('.btn-do-order').forEach((btn: any) => {
     btn.addEventListener('click', () => {
+      const clientId = btn.dataset.clientid;
       const clientName = btn.dataset.client;
-      if (typeof (window as any).navigate === 'function') {
-        (window as any).navigate('pedidos');
+      if ((window as any).SalesCart && clientId) {
+        (window as any).SalesCart.setActiveCustomer({ id: clientId, name: clientName });
+      }
+      if (typeof (window as any).openECommerceOrderModal === 'function') {
+        (window as any).openECommerceOrderModal({
+          preselectedCustomerId: clientId,
+          onDone: () => renderMiAgendaRutas(container, activeDate)
+        });
+      } else if (typeof (window as any).navigate === 'function') {
+        (window as any).navigate('productos');
         (window as any).showToast(`Iniciando pedido para ${clientName}...`);
       }
     });

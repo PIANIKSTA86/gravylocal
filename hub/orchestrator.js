@@ -6,6 +6,7 @@ const forge = require('node-forge');
 const AdmZip = require('adm-zip');
 const https = require('https');
 const http = require('http');
+const net = require('net');
 const PDFDocument = require('pdfkit');
 const backupService = require('./backup-service');
 const crypto = require('crypto');
@@ -120,6 +121,35 @@ if (!fs.existsSync(EMPRESAS_DIR)) {
 
 // Store active processes
 const activeProcesses = {};
+
+function getPocketbaseBinaryPath() {
+  const isWin = process.platform === 'win32';
+  const binName = isWin ? 'pocketbase.exe' : 'pocketbase';
+  const primaryPath = path.join(BASE_DIR, binName);
+  if (fs.existsSync(primaryPath)) return primaryPath;
+  const altPath = path.join(BASE_DIR, isWin ? 'pocketbase' : 'pocketbase.exe');
+  if (fs.existsSync(altPath)) return altPath;
+  return primaryPath;
+}
+
+function killProcessOnPort(port) {
+  return new Promise((resolve) => {
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
+      exec(killCmd, (err, stdout) => {
+        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${(stdout || '').trim()}`);
+        resolve();
+      });
+    } else {
+      const killCmd = `lsof -ti :${port} | xargs kill -9 2>/dev/null || true`;
+      exec(killCmd, (err, stdout) => {
+        console.log(`[ORCHESTRATOR] Detener proceso resultado en puerto ${port} (Unix)`);
+        resolve();
+      });
+    }
+  });
+}
 
 app.post('/api/orchestrate/create', async (req, res) => {
   try {
@@ -339,8 +369,8 @@ onBootstrap((e) => {
     }
 
     // Spawn PocketBase
-    const pbExe = path.join(BASE_DIR, 'pocketbase.exe');
-    console.log(`Starting PocketBase for ${name} on port ${port}...`);
+    const pbExe = getPocketbaseBinaryPath();
+    console.log(`Starting PocketBase for ${name} on port ${port}... (Binary: ${pbExe})`);
     
     const bindIp = process.env.GRAVY_BIND_IP || '127.0.0.1';
     const pbProcess = spawn(pbExe, [
@@ -360,22 +390,6 @@ onBootstrap((e) => {
 
     // Register active process
     activeProcesses[port] = { port, pid: pbProcess.pid };
-    
-    // Add to start.bat if it exists (so it survives reboots in manual dev modes)
-    const startBatPath = path.join(BASE_DIR, 'start.bat');
-    if (fs.existsSync(startBatPath)) {
-      try {
-        let startBat = fs.readFileSync(startBatPath, 'utf8');
-        const startCmd = `echo  Iniciando Empresa: ${name} (localhost:${port})...\r\nstart "Gravy Empresa ${port}" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:${port} --dir="%ROOT%empresas\\empresa_${port}\\pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%empresas\\empresa_${port}\\pb_hooks" --migrationsDir="%ROOT%pb_migrations""`;
-        
-        if (!startBat.includes(`empresa_${port}`)) {
-          startBat = startBat.replace('echo.\r\necho  URLs locales:', `${startCmd}\r\n\r\necho.\r\necho  URLs locales:`);
-          fs.writeFileSync(startBatPath, startBat);
-        }
-      } catch (err) {
-        console.warn('[GRAVY ORCHESTRATOR] Warning updating start.bat:', err.message);
-      }
-    }
 
     res.json({
       success: true,
@@ -398,14 +412,8 @@ app.post('/api/orchestrate/delete', async (req, res) => {
 
     console.log(`[ORCHESTRATOR] Solicitando eliminación completa de la empresa en el puerto ${port}...`);
 
-    // 1. Detener el proceso que escucha en ese puerto en Windows
-    await new Promise((resolve) => {
-      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
-      exec(killCmd, (err, stdout) => {
-        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${stdout.trim()}`);
-        resolve();
-      });
-    });
+    // 1. Detener el proceso que escucha en ese puerto (Multiplataforma Windows / macOS / Linux)
+    await killProcessOnPort(port);
 
     // Remover del registro de procesos internos si existe
     if (activeProcesses[port]) {
@@ -420,20 +428,6 @@ app.post('/api/orchestrate/delete', async (req, res) => {
     if (fs.existsSync(companyDir)) {
       console.log(`[ORCHESTRATOR] Eliminando carpeta física: ${companyDir}`);
       fs.rmSync(companyDir, { recursive: true, force: true });
-    }
-
-    // 4. Remover la empresa del archivo start.bat si existe
-    const startBatPath = path.join(BASE_DIR, 'start.bat');
-    if (fs.existsSync(startBatPath)) {
-      try {
-        let startBat = fs.readFileSync(startBatPath, 'utf8');
-        const lines = startBat.split('\r\n');
-        const filteredLines = lines.filter(line => !line.includes(`empresa_${port}`));
-        fs.writeFileSync(startBatPath, filteredLines.join('\r\n'));
-        console.log(`[ORCHESTRATOR] start.bat actualizado.`);
-      } catch (err) {
-        console.warn(`[ORCHESTRATOR] Error actualizando start.bat: ${err.message}`);
-      }
     }
 
     res.json({ success: true, message: `Empresa del puerto ${port} eliminada por completo.` });
@@ -2992,7 +2986,26 @@ app.post('/api/dian/generate-pdf', async (req, res) => {
 
 const ORCHESTRATOR_PORT = 8088;
 
-function startExistingCompanies() {
+function isPortInUse(port, host = '127.0.0.1') {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(400);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.on('error', () => {
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+
+async function startExistingCompanies() {
   try {
     if (!fs.existsSync(EMPRESAS_DIR)) {
       console.log(`[GRAVY ORCHESTRATOR] Directorio de empresas no encontrado: ${EMPRESAS_DIR}`);
@@ -3001,10 +3014,10 @@ function startExistingCompanies() {
     
     const bindIp = process.env.GRAVY_BIND_IP || '127.0.0.1';
     const files = fs.readdirSync(EMPRESAS_DIR);
-    const pbExe = path.join(BASE_DIR, 'pocketbase.exe');
+    const pbExe = getPocketbaseBinaryPath();
     
     if (!fs.existsSync(pbExe)) {
-      console.error(`[GRAVY ORCHESTRATOR] pocketbase.exe no encontrado en ${pbExe}`);
+      console.error(`[GRAVY ORCHESTRATOR] Binario de PocketBase no encontrado en ${pbExe}`);
       return;
     }
     
@@ -3024,7 +3037,7 @@ function startExistingCompanies() {
         try {
           const hookFiles = fs.readdirSync(PB_HOOKS_DIR);
           for (const hFile of hookFiles) {
-            if (hFile === 'setup.pb.js' || hFile === 'zz_seed_user.pb.js') continue;
+            if (hFile === 'setup.pb.js' || hFile === 'zz_seed_user.pb.js' || hFile === 'zz_clean_on_first_run.pb.js') continue;
             const srcPath = path.join(PB_HOOKS_DIR, hFile);
             const destPath = path.join(companyPbHooks, hFile);
             if (fs.statSync(srcPath).isFile()) {
@@ -3035,6 +3048,13 @@ function startExistingCompanies() {
         } catch (syncErr) {
           console.warn(`[GRAVY ORCHESTRATOR] Advertencia al sincronizar hooks para empresa ${port}:`, syncErr.message);
         }
+      }
+
+      const inUse = await isPortInUse(port, '127.0.0.1');
+      if (inUse) {
+        console.log(`[GRAVY ORCHESTRATOR] Empresa en puerto ${port} ya está activa/escuchando.`);
+        activeProcesses[port] = { port, pid: null };
+        continue;
       }
 
       console.log(`[GRAVY ORCHESTRATOR] Auto-arrancando empresa existente en puerto ${port} (bind: ${bindIp})...`);
@@ -3060,12 +3080,27 @@ function startExistingCompanies() {
   }
 }
 
+function cleanupSpawnedProcesses() {
+  console.log('[GRAVY ORCHESTRATOR] Deteniendo subprocesos de empresas activas...');
+  for (const [port, procInfo] of Object.entries(activeProcesses)) {
+    try {
+      if (procInfo && procInfo.pid) {
+        process.kill(procInfo.pid);
+      }
+    } catch (_) {}
+  }
+}
+process.on('SIGINT', () => { cleanupSpawnedProcesses(); process.exit(0); });
+process.on('SIGTERM', () => { cleanupSpawnedProcesses(); process.exit(0); });
+
 // Registrar rutas y programador de respaldos desatendidos
 backupService.registerRoutes(app);
 backupService.setupScheduler(2); // Ejecutar respaldo automático diario a las 2:00 AM
 
 // Iniciar inquilinos registrados antes de escuchar
-startExistingCompanies();
+startExistingCompanies().catch(err => {
+  console.error('[GRAVY ORCHESTRATOR] Error al iniciar inquilinos:', err);
+});
 
 app.listen(ORCHESTRATOR_PORT, () => {
   console.log(`GRAVY Orchestrator running on port ${ORCHESTRATOR_PORT}`);

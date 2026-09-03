@@ -2093,11 +2093,16 @@ const API = {
   // â”€â”€ Ventas y POS (Comercial) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de facturas de venta / recibos POS */
-  async getInvoices(opts = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+  async getInvoices(opts: any = {}) {
+    let { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    if (pb.currentUser?.role === 'vendedor') {
+      const uid = pb.currentUser.id;
+      const sellerFilter = `(seller_id="${uid}" || user_id="${uid}")`;
+      filter = filter ? `(${filter}) && ${sellerFilter}` : sellerFilter;
+    }
     return pb.list('invoices', {
       page, perPage, filter, sort,
-      expand: 'customer_id,warehouse_id,tx_type_id,pos_shift_id',
+      expand: 'customer_id,warehouse_id,tx_type_id,pos_shift_id,seller_id',
     });
   },
 
@@ -4739,11 +4744,16 @@ const API = {
   // â”€â”€ Pedidos y Cotizaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Lista paginada de pedidos de venta */
-  async getSalesOrders(opts = {}) {
-    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+  async getSalesOrders(opts: any = {}) {
+    let { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    if (pb.currentUser?.role === 'vendedor') {
+      const uid = pb.currentUser.id;
+      const sellerFilter = `(user_id="${uid}" || seller_id="${uid}")`;
+      filter = filter ? `(${filter}) && ${sellerFilter}` : sellerFilter;
+    }
     return pb.list('sales_orders', {
       page, perPage, filter, sort,
-      expand: 'customer_id,warehouse_id,invoice_id,user_id',
+      expand: 'customer_id,warehouse_id,invoice_id,user_id,seller_id',
     });
   },
 
@@ -4847,19 +4857,34 @@ const API = {
     let recordId = "";
     try {
       const res = await pb.list('settings', { filter: 'key="order_consecutive"', perPage: 1 });
-      if (res.items.length) {
+      if (res.items && res.items.length) {
         currentConsecutive = parseInt(res.items[0].value || '0', 10);
         recordId = res.items[0].id;
       }
     } catch (_) {}
 
+    // Fallback: calcular a partir del mayor número en sales_orders si settings no es accesible
+    if (currentConsecutive === 0) {
+      try {
+        const lastOrders = await pb.list('sales_orders', { sort: '-created', perPage: 1 });
+        if (lastOrders.items && lastOrders.items.length) {
+          const lastNumStr = String(lastOrders.items[0].number || '').replace(/\D/g, '');
+          currentConsecutive = parseInt(lastNumStr || '0', 10);
+        }
+      } catch (_) {}
+    }
+
     const next = currentConsecutive + 1;
     const nextStr = String(next);
     
-    if (recordId) {
-      await pb.update('settings', recordId, { value: nextStr });
-    } else {
-      await pb.create('settings', { key: 'order_consecutive', value: nextStr });
+    try {
+      if (recordId) {
+        await pb.update('settings', recordId, { value: nextStr });
+      } else {
+        await pb.create('settings', { key: 'order_consecutive', value: nextStr });
+      }
+    } catch (_) {
+      // Ignorar si el rol vendedor no tiene permisos de escritura en la colección settings
     }
 
     return `PED-${String(next).padStart(8, '0')}`;
@@ -5099,19 +5124,31 @@ const API = {
     let recordId = "";
     try {
       const res = await pb.list('settings', { filter: 'key="sales_reservation_consecutive"', perPage: 1 });
-      if (res.items.length) {
+      if (res.items && res.items.length) {
         currentConsecutive = parseInt(res.items[0].value || '0', 10);
         recordId = res.items[0].id;
       }
     } catch (_) {}
 
+    if (currentConsecutive === 0) {
+      try {
+        const lastRes = await pb.list('sales_reservations', { sort: '-created', perPage: 1 });
+        if (lastRes.items && lastRes.items.length) {
+          const lastNumStr = String(lastRes.items[0].number || '').replace(/\D/g, '');
+          currentConsecutive = parseInt(lastNumStr || '0', 10);
+        }
+      } catch (_) {}
+    }
+
     const next = currentConsecutive + 1;
     const nextStr = String(next);
-    if (recordId) {
-      await pb.update('settings', recordId, { value: nextStr });
-    } else {
-      await pb.create('settings', { key: 'sales_reservation_consecutive', value: nextStr });
-    }
+    try {
+      if (recordId) {
+        await pb.update('settings', recordId, { value: nextStr });
+      } else {
+        await pb.create('settings', { key: 'sales_reservation_consecutive', value: nextStr });
+      }
+    } catch (_) {}
 
     return `RES-${String(next).padStart(6, '0')}`;
   },
@@ -5122,7 +5159,7 @@ const API = {
     let recordId = "";
     try {
       const res = await pb.list('settings', { filter: 'key="delivery_consecutive"', perPage: 1 });
-      if (res.items.length) {
+      if (res.items && res.items.length) {
         currentConsecutive = parseInt(res.items[0].value || '0', 10);
         recordId = res.items[0].id;
       }
@@ -5130,11 +5167,13 @@ const API = {
 
     const next = currentConsecutive + 1;
     const nextStr = String(next);
-    if (recordId) {
-      await pb.update('settings', recordId, { value: nextStr });
-    } else {
-      await pb.create('settings', { key: 'delivery_consecutive', value: nextStr });
-    }
+    try {
+      if (recordId) {
+        await pb.update('settings', recordId, { value: nextStr });
+      } else {
+        await pb.create('settings', { key: 'delivery_consecutive', value: nextStr });
+      }
+    } catch (_) {}
 
     return `DESP-${String(next).padStart(5, '0')}`;
   },

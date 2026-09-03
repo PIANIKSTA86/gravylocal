@@ -5,7 +5,7 @@ if (Get-Command pm2 -ErrorAction SilentlyContinue) {
     pm2 stop gravy-orchestrator 2>$null | Out-Null
 }
 
-$ports = 8089, 8090, 8091, 8085, 8088
+$ports = 8080..8150
 foreach ($p in $ports) {
     $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique
     if ($pids) {

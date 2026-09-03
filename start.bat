@@ -50,13 +50,13 @@ echo  -----------------------------------------------
 echo   Iniciando GRAVY v2.0 en Modo: !MODE!
 echo  -----------------------------------------------
 
-:: 1. Limpieza de procesos en puertos de GRAVY (8088, 8089, 8090, 8091)
-echo  [1/5] Cerrando procesos anteriores en puertos 8088, 8089, 8090, 8091...
+:: 1. Limpieza de procesos en puertos de GRAVY (8080-8150)
+echo  [1/5] Cerrando procesos anteriores en puertos 8080-8150...
 if exist "%ROOT%\kill.ps1" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\kill.ps1" >nul 2>&1
 ) else (
     where pm2 >nul 2>nul && pm2 stop gravy-orchestrator >nul 2>nul
-    PowerShell -NoProfile -ExecutionPolicy Bypass -Command "$ports = 8088,8089,8090,8091; foreach ($p in $ports) { $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } } }" >nul 2>&1
+    PowerShell -NoProfile -ExecutionPolicy Bypass -Command "$ports = 8080..8150; foreach ($p in $ports) { $pids = Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($pids) { $pids | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } } }" >nul 2>&1
 )
 
 timeout /t 1 >nul
@@ -69,11 +69,8 @@ if /i "!MODE!" == "lan" (
     set "BIND_IP=0.0.0.0"
     for /f %%I in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$ip=(Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object { $_.IPAddress -notlike '127.*' -and $_.InterfaceAlias -notmatch 'Loopback^|vEthernet^|WSL^|Hyper-V' } ^| Select-Object -First 1 -ExpandProperty IPAddress); if(-not $ip){$ip='localhost'}; Write-Output $ip"') do set "LOCAL_IP=%%I"
     
-    echo  Configurando reglas de Firewall para acceso LAN...
-    netsh advfirewall firewall add rule name="Gravy Orchestrator 8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
-    netsh advfirewall firewall add rule name="Gravy Hub 8089" dir=in action=allow protocol=TCP localport=8089 >nul 2>&1
-    netsh advfirewall firewall add rule name="Gravy PocketBase 8090" dir=in action=allow protocol=TCP localport=8090 >nul 2>&1
-    netsh advfirewall firewall add rule name="Gravy PocketBase 8091" dir=in action=allow protocol=TCP localport=8091 >nul 2>&1
+    echo  Configurando reglas de Firewall para acceso LAN (Rango 8080-8150)...
+    netsh advfirewall firewall add rule name="Gravy Suite (8080-8150)" dir=in action=allow protocol=TCP localport=8080-8150 >nul 2>&1
 )
 
 :: 3. Iniciar GRAVY HUB (Puerto 8089)
@@ -104,12 +101,10 @@ if /i "!MODE!" == "portable" (
     )
 )
 
-:: 5. Iniciar Empresas PocketBase (8090, 8091)
-echo  [4/5] Iniciando Empresa Demo (!BIND_IP!:8090)...
-start "Gravy Empresa Demo" cmd /k "pocketbase.exe serve --http=!BIND_IP!:8090 --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks""
-
-echo  [4/5] Iniciando Empresa 4PATAS (!BIND_IP!:8091)...
-start "Gravy Empresa 4PATAS" cmd /k "pocketbase.exe serve --http=!BIND_IP!:8091 --dir="%ROOT%\empresas\empresa_8091\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\empresas\empresa_8091\pb_hooks" --migrationsDir="%ROOT%\pb_migrations""
+:: 5. Iniciar Empresa Principal (8090) y Empresas Registradas
+echo  [4/5] Iniciando Empresa Principal (!BIND_IP!:8090)...
+start "Gravy Empresa Principal" cmd /k "pocketbase.exe serve --http=!BIND_IP!:8090 --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks""
+echo    - El Orquestador auto-arranca y supervisa todas las sub-empresas en 'empresas\'...
 
 :: 6. Si es modo Cloud, iniciar Cloudflare Tunnel
 if /i "!MODE!" == "cloud" (

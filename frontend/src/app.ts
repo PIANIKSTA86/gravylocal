@@ -219,13 +219,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           <i class="fas fa-box-open"></i>
           <span>Catálogo</span>
         </button>
+        <button data-page="mis-reservas" class="mob-nav-btn ${cur === 'mis-reservas' ? 'active' : ''}">
+          <i class="fas fa-boxes-packing"></i>
+          <span>Reservas</span>
+        </button>
         <button data-page="pedidos" class="mob-nav-btn ${cur === 'pedidos' ? 'active' : ''}">
           <i class="fas fa-file-signature"></i>
           <span>Pedidos</span>
-        </button>
-        <button data-page="ventas" class="mob-nav-btn ${cur === 'ventas' ? 'active' : ''}">
-          <i class="fas fa-receipt"></i>
-          <span>Ventas</span>
         </button>
         <button data-page="mis-rutas" class="mob-nav-btn ${cur === 'mis-rutas' || cur === 'rutas-vendedores' ? 'active' : ''}">
           <i class="fas fa-route"></i>

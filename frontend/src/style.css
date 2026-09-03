@@ -310,11 +310,22 @@
 
     [data-role="vendedor"] .content-area,
     [data-role="propietario"] .content-area {
-      padding: 12px 14px 76px 14px !important;
+      padding: 12px 14px 110px 14px !important;
       width: 100% !important;
       max-width: 100% !important;
       overflow-x: hidden !important;
       height: calc(100dvh - 56px) !important;
+    }
+
+    /* Barra Flotante de Carrito: Siempre flotando encima del Bottom Nav */
+    #ecom-floating-cart-bar {
+      position: fixed !important;
+      bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 8px) !important;
+      left: 12px !important;
+      right: 12px !important;
+      max-width: 560px !important;
+      margin: 0 auto !important;
+      z-index: 850 !important;
     }
 
     /* Bottom Navigation Bar Fija */

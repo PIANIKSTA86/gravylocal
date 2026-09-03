@@ -96,7 +96,14 @@ async function _loadPedidosPage(c: HTMLElement) {
     </div>
   `;
 
-  document.getElementById('btn-new-order')?.addEventListener('click', () => openOrderForm(null, () => _loadPedidosPage(c)));
+    document.getElementById('btn-new-order')?.addEventListener('click', () => {
+      const isMobile = window.innerWidth <= 768 || (window as any).pb?.currentUser?.role === 'vendedor';
+      if (isMobile && typeof (window as any).openECommerceOrderModal === 'function') {
+        (window as any).openECommerceOrderModal({ onDone: () => _loadPedidosPage(c) });
+      } else {
+        openOrderForm(null, () => _loadPedidosPage(c));
+      }
+    });
 
   const applyFilter = () => filterOrderTable();
   document.getElementById('ord-q')?.addEventListener('input', applyFilter);
@@ -1337,5 +1344,622 @@ window.printOrderTirilla = async function (orderId: string) {
   }
 };
 
-// Exponer renderPedidos globalmente
+// ── Modal de Toma de Pedidos en Cards Estilo E-Commerce para Móvil ─────────────
+export async function openECommerceOrderModal(opts: {
+  orderId?: string | null;
+  preselectedCustomerId?: string | null;
+  onDone?: () => void;
+} = {}) {
+  const { orderId = null, preselectedCustomerId = null, onDone = null } = opts;
+
+  (window as any).showToast('Cargando catálogo para toma de pedido...', 'info');
+
+  try {
+    const [customers, warehouses, products, stockRows, incomingRows, rawSalesCfg, rawPosCfg] = await Promise.all([
+      (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
+      (window as any).API.getWarehouses(true),
+      (window as any).API.getProducts({ activeOnly: true }),
+      (window as any).API.getInventoryStock().catch(() => []),
+      (window as any).pb.listAll('import_items', { expand: 'import_id', filter: 'qty_available > 0' }).catch(() => []),
+      (window as any).API.getSetting('sales_settings_v2').catch(() => null),
+      (window as any).API.getSetting('pos_settings_v1').catch(() => null),
+    ]);
+
+    const salesConfig = rawSalesCfg ? JSON.parse(rawSalesCfg) : null;
+    const posConfig = rawPosCfg ? JSON.parse(rawPosCfg) : null;
+    const pricesIncludeIva = (salesConfig?.operational?.prices_include_iva === true) || (posConfig?.special?.prices_include_iva === true);
+
+    // Mapeo de stock físico por producto
+    const stockMap: Record<string, number> = {};
+    (stockRows || []).forEach((s: any) => {
+      stockMap[s.product_id] = (stockMap[s.product_id] || 0) + Number(s.qty_on_hand || 0);
+    });
+
+    // Mapeo de unidades en tránsito de importación
+    const incomingMap: Record<string, { qty: number; eta: string; importNumber: string }> = {};
+    (incomingRows || []).forEach((inc: any) => {
+      const pid = inc.product_id;
+      const q = Number(inc.qty_available ?? inc.qty ?? 0);
+      if (q > 0) {
+        const prev = incomingMap[pid]?.qty || 0;
+        const eta = inc.expand?.import_id?.estimated_arrival ? (window as any).fmtDate(inc.expand.import_id.estimated_arrival) : '';
+        const impNumber = inc.expand?.import_id?.number || '';
+        incomingMap[pid] = { qty: prev + q, eta, importNumber };
+      }
+    });
+
+    // Estado del carrito: { [productId]: { product, qty, price, ivaRate } }
+    const cart: Record<string, { product: any; qty: number; price: number; ivaRate: number }> = {};
+    let activeCategory = '';
+    let searchQuery = '';
+
+    const categorias = [...new Set(products.map((p: any) => p.categoria).filter(Boolean))].sort();
+
+    const esc = (window as any).esc;
+    const fmt = (window as any).fmt;
+    const fmtN = (window as any).fmtN;
+
+    const preselectedCust = preselectedCustomerId ? customers.find((c: any) => c.id === preselectedCustomerId) : null;
+    const initialCustDisplay = preselectedCust ? `${preselectedCust.name} (${preselectedCust.doc_number || preselectedCust.nit || 'S/N'})` : '';
+
+    const modalHtml = `
+      <div class="flex flex-col h-full max-h-[85vh] text-slate-800 -m-4 sm:-m-6 relative select-none" id="ecom-order-app">
+        
+        <!-- Header Superior: Cliente y Bodega -->
+        <div class="p-3.5 bg-slate-900 text-white flex flex-col gap-2 rounded-t-2xl shadow-md">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-7 h-7 rounded-lg bg-[#006876] flex items-center justify-center text-xs text-white">
+                <i class="fas fa-bag-shopping"></i>
+              </span>
+              <span class="font-extrabold text-sm tracking-tight text-white">Toma de Pedido Móvil</span>
+            </div>
+            <button type="button" class="text-slate-400 hover:text-white p-1 text-sm" onclick="window.closeModal()">
+              <i class="fas fa-xmark text-lg"></i>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+            <!-- Selector Dinámico de Cliente -->
+            <div class="relative">
+              <div class="relative flex items-center">
+                <input type="text" id="ecom-customer-search-inp" autocomplete="off"
+                       placeholder="🔍 Buscar cliente (NIT, nombre, ciudad)..." 
+                       value="${esc(initialCustDisplay)}"
+                       class="w-full bg-slate-800 text-white placeholder-slate-400 text-xs font-semibold pl-3 pr-8 py-2 rounded-xl border border-slate-700 outline-none focus:border-teal-500">
+                <input type="hidden" id="ecom-customer-id" value="${esc(preselectedCustomerId || '')}">
+                
+                <button type="button" id="ecom-customer-clear-btn" class="absolute right-2 text-slate-400 hover:text-rose-400 p-1 ${preselectedCustomerId ? '' : 'hidden'}" title="Limpiar Cliente">
+                  <i class="fas fa-times-circle text-xs"></i>
+                </button>
+              </div>
+
+              <!-- Dropdown Flotante Dinámico de Resultados -->
+              <div id="ecom-customer-results" class="hidden absolute left-0 right-0 top-full mt-1 max-h-52 overflow-y-auto bg-white text-slate-800 border border-slate-200 rounded-xl shadow-2xl z-50 divide-y divide-slate-100">
+              </div>
+            </div>
+
+            <!-- Selector Bodega y Modo -->
+            <div class="flex gap-2">
+              <select id="ecom-warehouse-sel" class="flex-1 bg-slate-800 text-white text-xs font-semibold px-2 py-2 rounded-xl border border-slate-700 outline-none">
+                <option value="">— Bodega Principal —</option>
+                ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+              </select>
+              <select id="ecom-mode-sel" class="bg-slate-800 text-white text-xs font-bold px-2 py-2 rounded-xl border border-slate-700 outline-none">
+                <option value="venta">🛍️ Venta</option>
+                <option value="reserva">📦 Reserva</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Buscador y Slider de Categorías -->
+        <div class="p-3 bg-white border-b border-slate-200 shadow-2xs space-y-2 sticky top-0 z-20">
+          <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input id="ecom-search-input" 
+                   type="text" 
+                   placeholder="Buscar producto, referencia o código..." 
+                   class="w-full pl-8 pr-8 py-2 bg-slate-100 text-xs rounded-xl border-none font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-teal-600">
+            <button id="ecom-clear-search" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs hidden">
+              <i class="fas fa-circle-xmark"></i>
+            </button>
+          </div>
+
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs" id="ecom-pills-slider">
+            <button class="ecom-cat-btn px-3 py-1 rounded-full font-extrabold whitespace-nowrap bg-teal-900 text-white shadow-2xs transition-all" data-cat="">
+              Todos
+            </button>
+            ${categorias.map((cat: string) => `
+              <button class="ecom-cat-btn px-3 py-1 rounded-full font-semibold whitespace-nowrap bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all" data-cat="${esc(cat)}">
+                ${esc(cat)}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Grid de Tarjetas E-Commerce de Producto -->
+        <div class="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50" id="ecom-products-scroll" style="min-height: 280px; max-height: calc(85vh - 240px);">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-3" id="ecom-cards-list">
+            <!-- Dynamic Cards -->
+          </div>
+        </div>
+
+        <!-- Barra Flotante de Carrito -->
+        <div class="p-3 bg-white border-t border-slate-200 shadow-lg flex items-center justify-between gap-3 sticky bottom-0 z-30 rounded-b-2xl" id="ecom-cart-bottom-bar">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-teal-800 text-white flex items-center justify-center font-extrabold text-sm relative shadow-xs">
+              <i class="fas fa-cart-shopping"></i>
+              <span id="ecom-cart-badge" class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-extrabold border-2 border-white">0</span>
+            </div>
+            <div>
+              <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block">Total Pedido</span>
+              <span id="ecom-cart-total-txt" class="text-sm sm:text-base font-extrabold text-slate-900">$ 0</span>
+            </div>
+          </div>
+
+          <button id="ecom-btn-open-drawer" class="btn btn-primary px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 bg-[#006876] hover:bg-[#004F5A] text-white shadow-md">
+            <span>Ver Pedido</span>
+            <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+
+        <!-- Bottom Sheet / Drawer de Confirmación de Pedido -->
+        <div id="ecom-drawer-overlay" style="display:none" class="absolute inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex flex-col justify-end">
+          <div class="bg-white rounded-t-3xl max-h-[90%] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-200">
+            <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-8 h-8 rounded-xl bg-teal-50 text-teal-800 flex items-center justify-center text-sm font-bold">
+                  <i class="fas fa-receipt"></i>
+                </span>
+                <div>
+                  <h4 class="font-extrabold text-sm text-slate-900">Resumen del Pedido</h4>
+                  <p class="text-[10px] text-slate-500 font-semibold" id="ecom-drawer-client-lbl">Cliente: Selecciona uno arriba</p>
+                </div>
+              </div>
+              <button id="ecom-btn-close-drawer" class="text-slate-400 hover:text-slate-700 p-1.5 text-base">
+                <i class="fas fa-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Lista de Ítems en Carrito -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-2.5 divide-y divide-slate-100" id="ecom-drawer-items" style="max-height: 42vh">
+              <!-- Item rows -->
+            </div>
+
+            <!-- Totales y Confirmar -->
+            <div class="p-4 bg-slate-50 border-t border-slate-200 space-y-3">
+              <input id="ecom-drawer-notes" type="text" placeholder="Observaciones / Instrucciones de entrega..." class="w-full form-input text-xs py-2">
+              
+              <div class="flex justify-between items-baseline pt-1">
+                <span class="text-xs font-bold text-slate-600">Total Neto a Registrar:</span>
+                <span id="ecom-drawer-total-sum" class="text-lg font-extrabold text-blue-900">$ 0</span>
+              </div>
+
+              <button id="ecom-btn-save-final" class="w-full btn btn-primary py-3 rounded-xl font-extrabold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg flex items-center justify-center gap-2">
+                <i class="fas fa-circle-check"></i>
+                <span>Confirmar y Guardar Pedido</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+    (window as any).openModal('Toma de Pedido Móvil', modalHtml, '', true);
+
+    const cardsContainer = document.getElementById('ecom-cards-list');
+    const searchInput = document.getElementById('ecom-search-input') as HTMLInputElement;
+    const clearSearchBtn = document.getElementById('ecom-clear-search');
+    const badgeEl = document.getElementById('ecom-cart-badge');
+    const totalTxtEl = document.getElementById('ecom-cart-total-txt');
+    const drawerOverlay = document.getElementById('ecom-drawer-overlay');
+    const drawerItemsEl = document.getElementById('ecom-drawer-items');
+    const drawerTotalSum = document.getElementById('ecom-drawer-total-sum');
+    const drawerClientLbl = document.getElementById('ecom-drawer-client-lbl');
+
+    const custSearchInput = document.getElementById('ecom-customer-search-inp') as HTMLInputElement;
+    const custHiddenId = document.getElementById('ecom-customer-id') as HTMLInputElement;
+    const custClearBtn = document.getElementById('ecom-customer-clear-btn') as HTMLButtonElement;
+    const custResults = document.getElementById('ecom-customer-results') as HTMLElement;
+
+    const renderCustResults = (query: string) => {
+      const q = (query || '').toLowerCase().trim();
+      const filtered = !q 
+        ? customers.slice(0, 25) 
+        : customers.filter((c: any) => {
+            const matchStr = `${c.name || ''} ${c.doc_number || ''} ${c.nit || ''} ${c.city || ''} ${c.phone || ''}`.toLowerCase();
+            return matchStr.includes(q);
+          }).slice(0, 25);
+
+      if (!filtered.length) {
+        custResults.innerHTML = `
+          <div class="p-3 text-center text-xs text-slate-400">
+            <i class="fas fa-user-slash mr-1"></i> No se encontraron clientes
+          </div>
+        `;
+        custResults.classList.remove('hidden');
+        return;
+      }
+
+      custResults.innerHTML = filtered.map((c: any) => `
+        <div class="p-2.5 hover:bg-teal-50 cursor-pointer flex items-center justify-between gap-2 transition-colors item-cust-pick" data-id="${esc(c.id)}">
+          <div class="min-w-0">
+            <h5 class="font-extrabold text-xs text-slate-900 truncate">${esc(c.name)}</h5>
+            <p class="text-[10px] text-slate-500 truncate">
+              Doc: <span class="font-mono font-bold text-slate-700">${esc(c.doc_number || c.nit || 'S/N')}</span>
+              ${c.city ? ` · 📍 ${esc(c.city)}` : ''}
+              ${c.phone ? ` · 📞 ${esc(c.phone)}` : ''}
+            </p>
+          </div>
+          <span class="text-[10px] bg-slate-100 text-teal-700 font-bold px-2 py-0.5 rounded-md flex-shrink-0">Seleccionar</span>
+        </div>
+      `).join('');
+
+      custResults.querySelectorAll('.item-cust-pick').forEach((item: any) => {
+        item.addEventListener('click', () => {
+          const selId = item.dataset.id;
+          const selCust = customers.find((c: any) => c.id === selId);
+          if (selCust) {
+            custHiddenId.value = selCust.id;
+            custSearchInput.value = `${selCust.name} (${selCust.doc_number || selCust.nit || 'S/N'})`;
+            custClearBtn.classList.remove('hidden');
+            custResults.classList.add('hidden');
+            if (drawerClientLbl) drawerClientLbl.textContent = selCust.name;
+          }
+        });
+      });
+
+      custResults.classList.remove('hidden');
+    };
+
+    custSearchInput?.addEventListener('focus', () => renderCustResults(custSearchInput.value));
+    custSearchInput?.addEventListener('input', () => {
+      custHiddenId.value = '';
+      custClearBtn.classList.toggle('hidden', !custSearchInput.value);
+      renderCustResults(custSearchInput.value);
+    });
+
+    custClearBtn?.addEventListener('click', () => {
+      custHiddenId.value = '';
+      custSearchInput.value = '';
+      custClearBtn.classList.add('hidden');
+      if (drawerClientLbl) drawerClientLbl.textContent = 'Cliente no seleccionado';
+      custSearchInput.focus();
+      renderCustResults('');
+    });
+
+    document.addEventListener('click', (ev: any) => {
+      if (!ev.target.closest('#ecom-customer-search-inp') && !ev.target.closest('#ecom-customer-results')) {
+        custResults?.classList.add('hidden');
+      }
+    });
+
+    // Render Cards in Catalog
+    function renderCards() {
+      if (!cardsContainer) return;
+      const q = searchQuery.toLowerCase().trim();
+
+      const filtered = products.filter((p: any) => {
+        const matchesCat = !activeCategory || p.categoria === activeCategory;
+        const matchesQ = !q || `${p.name} ${p.code} ${p.ean_code || ''}`.toLowerCase().includes(q);
+        return matchesCat && matchesQ;
+      });
+
+      if (!filtered.length) {
+        cardsContainer.innerHTML = `
+          <div class="col-span-full py-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200">
+            <i class="fas fa-box-open text-3xl mb-2 text-slate-300"></i>
+            <p class="text-xs font-semibold">No se encontraron productos con estos criterios.</p>
+          </div>
+        `;
+        return;
+      }
+
+      cardsContainer.innerHTML = filtered.map((p: any) => {
+        const onHand = Number(stockMap[p.id] || 0);
+        const incoming = incomingMap[p.id];
+        const currentQty = cart[p.id]?.qty || 0;
+        const imageUrl = p.image 
+          ? `${(window as any).PB_URL}/api/files/products/${p.id}/${p.image}?thumb=300x300${(window as any).pb.authToken ? '&token=' + (window as any).pb.authToken : ''}`
+          : '';
+
+        let stockBadge = '';
+        if (p.type === 'SERVICIO') {
+          stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800">Servicio</span>`;
+        } else if (onHand > 10) {
+          stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800"><i class="fas fa-circle-check mr-1"></i>${fmtN(onHand)} en bodega</span>`;
+        } else if (onHand > 0) {
+          stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800"><i class="fas fa-triangle-exclamation mr-1"></i>Últimas ${fmtN(onHand)}</span>`;
+        } else if (incoming && incoming.qty > 0) {
+          stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-blue-100 text-blue-800"><i class="fas fa-ship mr-1"></i>Reserva (+${fmtN(incoming.qty)})</span>`;
+        } else {
+          stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-800"><i class="fas fa-ban mr-1"></i>Agotado</span>`;
+        }
+
+        return `
+          <div class="ecom-p-card bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200 shadow-xs flex flex-col justify-between" data-id="${p.id}">
+            <div>
+              <div class="relative w-full aspect-square bg-slate-50 rounded-xl overflow-hidden mb-2 border border-slate-100 flex items-center justify-center">
+                ${imageUrl ? `
+                  <img src="${imageUrl}" alt="${esc(p.name)}" class="w-full h-full object-cover">
+                ` : `
+                  <i class="fas fa-box-open text-slate-300 text-2xl"></i>
+                `}
+                ${incoming && incoming.qty > 0 ? `
+                  <span class="absolute top-1.5 left-1.5 text-[8px] font-bold bg-blue-600 text-white px-1.5 py-0.5 rounded-md shadow-2xs" title="Llega: ${incoming.eta || 'Pronto'}">
+                    <i class="fas fa-ship mr-0.5"></i>ETA ${incoming.eta?.slice(0, 5) || 'Pronto'}
+                  </span>
+                ` : ''}
+              </div>
+
+              <div class="mb-1">
+                ${stockBadge}
+              </div>
+
+              <p class="text-[9px] font-mono text-slate-400 uppercase truncate">${esc(p.code)}</p>
+              <h4 class="font-extrabold text-xs text-slate-900 leading-snug line-clamp-2 mt-0.5">${esc(p.name)}</h4>
+            </div>
+
+            <div class="mt-2 pt-2 border-t border-slate-100">
+              <div class="flex items-baseline justify-between mb-2">
+                <span class="text-xs sm:text-sm font-extrabold text-blue-900">${p.base_price ? fmt(p.base_price) : '$ 0'}</span>
+                <span class="text-[9px] font-bold text-slate-400">IVA ${p.iva_rate ?? 0}%</span>
+              </div>
+
+              <!-- Stepper Táctil [ - ] [ Cantidad ] [ + ] -->
+              <div class="flex items-center justify-between bg-slate-100 rounded-xl p-1">
+                <button type="button" class="btn-step-minus w-7 h-7 rounded-lg bg-white text-slate-700 font-extrabold flex items-center justify-center shadow-xs active:scale-90" data-id="${p.id}">
+                  <i class="fas fa-minus text-[10px]"></i>
+                </button>
+                <span class="font-extrabold text-xs text-slate-900 px-2 stepper-qty-val-${p.id}">
+                  ${currentQty}
+                </span>
+                <button type="button" class="btn-step-plus w-7 h-7 rounded-lg bg-[#006876] text-white font-extrabold flex items-center justify-center shadow-xs active:scale-90" data-id="${p.id}">
+                  <i class="fas fa-plus text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Wire Stepper Buttons
+      cardsContainer.querySelectorAll('.btn-step-plus').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const pid = btn.dataset.id;
+          const prod = products.find((p: any) => p.id === pid);
+          if (!prod) return;
+          if (!cart[pid]) {
+            cart[pid] = { product: prod, qty: 0, price: Number(prod.base_price || 0), ivaRate: Number(prod.iva_rate || 0) };
+          }
+          cart[pid].qty += 1;
+          updateCartUI();
+        });
+      });
+
+      cardsContainer.querySelectorAll('.btn-step-minus').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const pid = btn.dataset.id;
+          if (cart[pid]) {
+            cart[pid].qty -= 1;
+            if (cart[pid].qty <= 0) {
+              delete cart[pid];
+            }
+            updateCartUI();
+          }
+        });
+      });
+    }
+
+    // Update Totals & Floating Bar UI
+    function updateCartUI() {
+      let totalItems = 0;
+      let totalMonto = 0;
+
+      Object.keys(cart).forEach((pid) => {
+        const item = cart[pid];
+        const qty = item.qty;
+        const p = item.price;
+        const iva = item.ivaRate;
+        totalItems += qty;
+
+        const lineTotal = pricesIncludeIva ? (qty * p) : (qty * p * (1 + iva / 100));
+        totalMonto += lineTotal;
+
+        // Update stepper badge on screen
+        const qtyEl = document.querySelector(`.stepper-qty-val-${pid}`);
+        if (qtyEl) qtyEl.textContent = String(qty);
+      });
+
+      // Clear zeroed items
+      products.forEach((p: any) => {
+        if (!cart[p.id]) {
+          const qtyEl = document.querySelector(`.stepper-qty-val-${p.id}`);
+          if (qtyEl) qtyEl.textContent = '0';
+        }
+      });
+
+      if (badgeEl) badgeEl.textContent = String(totalItems);
+      if (totalTxtEl) totalTxtEl.textContent = fmt(totalMonto);
+      if (drawerTotalSum) drawerTotalSum.textContent = fmt(totalMonto);
+    }
+
+    // Render Drawer items
+    function renderDrawer() {
+      if (!drawerItemsEl) return;
+      const items = Object.values(cart).filter(i => i.qty > 0);
+
+      const custName = custSearchInput.value;
+      if (drawerClientLbl) {
+        drawerClientLbl.textContent = custName ? `Cliente: ${custName}` : '⚠️ Sin cliente seleccionado';
+      }
+
+      if (!items.length) {
+        drawerItemsEl.innerHTML = `
+          <div class="py-8 text-center text-slate-400">
+            <i class="fas fa-cart-arrow-down text-2xl mb-1 text-slate-300"></i>
+            <p class="text-xs font-semibold">El carrito está vacío. Agrega productos desde el catálogo.</p>
+          </div>
+        `;
+        return;
+      }
+
+      drawerItemsEl.innerHTML = items.map(item => {
+        const p = item.product;
+        const lineTotal = pricesIncludeIva ? (item.qty * item.price) : (item.qty * item.price * (1 + item.ivaRate / 100));
+
+        return `
+          <div class="pt-2.5 first:pt-0 flex items-center justify-between gap-3">
+            <div class="flex-1 min-w-0">
+              <h5 class="font-extrabold text-xs text-slate-900 truncate">${esc(p.name)}</h5>
+              <p class="text-[10px] text-slate-500 font-mono">${esc(p.code)} · ${fmt(item.price)} c/u</p>
+            </div>
+
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="flex items-center bg-slate-100 rounded-lg p-0.5">
+                <button type="button" class="drawer-step-min w-6 h-6 rounded bg-white text-slate-700 font-bold text-[10px] flex items-center justify-center shadow-xs" data-id="${p.id}">-</button>
+                <span class="font-extrabold text-xs px-2">${item.qty}</span>
+                <button type="button" class="drawer-step-plus w-6 h-6 rounded bg-[#006876] text-white font-bold text-[10px] flex items-center justify-center shadow-xs" data-id="${p.id}">+</button>
+              </div>
+              <span class="font-extrabold text-xs text-blue-900 w-16 text-right">${fmt(lineTotal)}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      drawerItemsEl.querySelectorAll('.drawer-step-plus').forEach((b: any) => {
+        b.addEventListener('click', () => {
+          const pid = b.dataset.id;
+          if (cart[pid]) {
+            cart[pid].qty += 1;
+            updateCartUI();
+            renderDrawer();
+          }
+        });
+      });
+
+      drawerItemsEl.querySelectorAll('.drawer-step-min').forEach((b: any) => {
+        b.addEventListener('click', () => {
+          const pid = b.dataset.id;
+          if (cart[pid]) {
+            cart[pid].qty -= 1;
+            if (cart[pid].qty <= 0) delete cart[pid];
+            updateCartUI();
+            renderDrawer();
+          }
+        });
+      });
+    }
+
+    // Category slider events
+    document.querySelectorAll('.ecom-cat-btn').forEach((btn: any) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.ecom-cat-btn').forEach((b: any) => {
+          b.className = 'ecom-cat-btn px-3 py-1 rounded-full font-semibold whitespace-nowrap bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all';
+        });
+        btn.className = 'ecom-cat-btn px-3 py-1 rounded-full font-extrabold whitespace-nowrap bg-teal-900 text-white shadow-2xs transition-all';
+        activeCategory = btn.dataset.cat || '';
+        renderCards();
+      });
+    });
+
+    // Search events
+    searchInput?.addEventListener('input', () => {
+      searchQuery = searchInput.value;
+      if (clearSearchBtn) clearSearchBtn.style.display = searchQuery ? 'block' : 'none';
+      renderCards();
+    });
+
+    clearSearchBtn?.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      clearSearchBtn.style.display = 'none';
+      renderCards();
+    });
+
+    // Drawer open / close
+    document.getElementById('ecom-btn-open-drawer')?.addEventListener('click', () => {
+      renderDrawer();
+      if (drawerOverlay) drawerOverlay.style.display = 'flex';
+    });
+
+    document.getElementById('ecom-btn-close-drawer')?.addEventListener('click', () => {
+      if (drawerOverlay) drawerOverlay.style.display = 'none';
+    });
+
+    // Final Order Save
+    document.getElementById('ecom-btn-save-final')?.addEventListener('click', async () => {
+      try {
+        const customerId = custHiddenId.value;
+        if (!customerId) throw new Error('Por favor selecciona un cliente para el pedido.');
+
+        const items = Object.values(cart).filter(i => i.qty > 0);
+        if (!items.length) throw new Error('El pedido debe tener al menos un producto.');
+
+        const warehouseId = (document.getElementById('ecom-warehouse-sel') as HTMLSelectElement)?.value || null;
+        const mode = (document.getElementById('ecom-mode-sel') as HTMLSelectElement)?.value || 'venta';
+        const notes = (document.getElementById('ecom-drawer-notes') as HTMLInputElement)?.value.trim() || (mode === 'reserva' ? 'Reserva de stock en preventa' : '');
+
+        const lines: any[] = items.map(item => {
+          const p = item.product;
+          const qty = item.qty;
+          const price = item.price;
+          const ivaRate = item.ivaRate;
+          const unitPriceDb = pricesIncludeIva ? (price / (1 + ivaRate / 100)) : price;
+          const subtotal = qty * unitPriceDb;
+          const ivaAmount = subtotal * (ivaRate / 100);
+          const total = subtotal + ivaAmount;
+
+          return {
+            product_id: p.id,
+            description: p.name,
+            qty,
+            unit_price: unitPriceDb,
+            iva_rate: ivaRate,
+            iva_amount: ivaAmount,
+            subtotal,
+            total,
+          };
+        });
+
+        const header = {
+          customer_id: customerId,
+          warehouse_id: warehouseId,
+          date: (window as any).todayStr(),
+          due_date: (window as any).addDaysToDateStr((window as any).todayStr(), mode === 'reserva' ? 7 : 3),
+          notes,
+        };
+
+        const saveBtn = document.getElementById('ecom-btn-save-final') as HTMLButtonElement;
+        if (saveBtn) {
+          saveBtn.disabled = true;
+          saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando Pedido...';
+        }
+
+        const createdOrder = await (window as any).API.createSalesOrder(header, lines);
+        (window as any).showToast(`Pedido #${createdOrder.number} registrado con éxito`, 'success');
+        (window as any).closeModal();
+        if (onDone) onDone();
+      } catch (err: any) {
+        (window as any).showToast(err.message || 'Error al guardar el pedido', 'error');
+        const saveBtn = document.getElementById('ecom-btn-save-final') as HTMLButtonElement;
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="fas fa-circle-check"></i> <span>Confirmar y Guardar Pedido</span>';
+        }
+      }
+    });
+
+    // Initial render of cards
+    renderCards();
+
+  } catch (err: any) {
+    (window as any).showToast('Error al inicializar toma de pedido e-commerce: ' + err.message, 'error');
+  }
+}
+
+// Exponer globalmente
+(window as any).openECommerceOrderModal = openECommerceOrderModal;
 (window as any).renderPedidos = renderPedidos;

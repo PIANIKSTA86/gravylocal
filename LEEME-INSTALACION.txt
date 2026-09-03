@@ -3,8 +3,8 @@
 ╚══════════════════════════════════════════════════════════════╝
 
 REQUISITOS:
-  - Windows 10 o Windows 11
-  - NO necesita instalar nada más (Node.js y PocketBase van incluidos)
+  - Windows: Windows 10 o Windows 11 (Node.js y PocketBase van incluidos)
+  - Mac: macOS 11+ (Ver archivo 'LEEME-INSTALACION-MAC.md')
 
 ══════════════════════════════════════════════════════════════
  MÉTODO 1 — INSTALACIÓN DESDE ZIP (Recomendado)

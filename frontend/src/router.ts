@@ -50,6 +50,7 @@ declare var renderInmobiliarias: any;
 declare var renderCRM: any;
 declare var renderDespachos: any;
 declare var renderRutasVisitas: any;
+declare var renderMisReservasVendedor: any;
 
 const MAX_TABS = 8;
 
@@ -92,6 +93,7 @@ const PAGE_TITLES: Record<string, string> = {
   'compra-sugerida':  'Compra Sugerida',
   ventas:            'Ventas y Facturación Comercial',
   pedidos:           'Pedidos y Cotizaciones',
+  'mis-reservas':    'Mis Reservas de Preventa',
   'reservas-logistica':'Reservas de Importación',
   'tienda-virtual':  'Tienda Virtual',
   pos:               'Punto de Venta POS',
@@ -166,6 +168,7 @@ const PAGE_ICONS: Record<string, string> = {
   'inmo-contratos': 'fa-file-signature',
   'inmo-liquidacion': 'fa-file-invoice-dollar',
   importaciones: 'fa-ship',
+  'mis-reservas': 'fa-boxes-packing',
   'reservas-logistica': 'fa-clipboard-check',
   despachos: 'fa-truck',
   'mis-rutas': 'fa-route',
@@ -208,6 +211,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'doc-soporte':      'contabilidad',
   'ventas':           'comercial',
   'pedidos':          'comercial',
+  'mis-reservas':     'comercial',
   'reservas-logistica':'logistica',
   'tienda-virtual':   'tienda-virtual',
   'compras':          'inventarios',
@@ -311,6 +315,7 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'compra-sugerida':  (c) => typeof (window as any).renderCompraSugerida === 'function' && (window as any).renderCompraSugerida(c),
   ventas:             (c) => typeof renderVentas            === 'function' && renderVentas(c),
   pedidos:            (c) => typeof renderPedidos           === 'function' && renderPedidos(c),
+  'mis-reservas':     (c) => typeof renderMisReservasVendedor === 'function' ? renderMisReservasVendedor(c) : (typeof (window as any).renderReservasImportacion === 'function' && (window as any).renderReservasImportacion(c)),
   'reservas-logistica': (c) => typeof (window as any).renderReservasImportacion === 'function' && (window as any).renderReservasImportacion(c),
   'tienda-virtual':   () => {},
   pos:                (c) => typeof renderPOS               === 'function' && renderPOS(c),

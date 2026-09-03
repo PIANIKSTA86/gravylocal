@@ -25,26 +25,26 @@ echo  IP detectada: %LOCAL_IP%
 echo  Backend URL:  %PB_URL%
 echo.
 
-echo  Cerrando procesos anteriores en puertos 8088, 8089, 8090, 8091...
-PowerShell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort 8088,8089,8090,8091 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
+echo  Cerrando procesos anteriores en puertos 8080-8150...
+if exist "%ROOT%kill.ps1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%kill.ps1" >nul 2>&1
+) else (
+  PowerShell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort (8080..8150) -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"
+)
 
-echo  Intentando habilitar firewall para 8088, 8089, 8090, 8091...
-netsh advfirewall firewall add rule name="Gravy Orchestrator 8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
-netsh advfirewall firewall add rule name="Gravy Hub 8089" dir=in action=allow protocol=TCP localport=8089 >nul 2>&1
-netsh advfirewall firewall add rule name="Gravy PocketBase 8090" dir=in action=allow protocol=TCP localport=8090 >nul 2>&1
-netsh advfirewall firewall add rule name="Gravy PocketBase 8091" dir=in action=allow protocol=TCP localport=8091 >nul 2>&1
+echo  Intentando habilitar firewall para rango 8080-8150...
+netsh advfirewall firewall add rule name="Gravy Suite (8080-8150)" dir=in action=allow protocol=TCP localport=8080-8150 >nul 2>&1
 
-echo  Iniciando GRAVY HUB (LAN)...
+echo  Iniciando GRAVY HUB (LAN: 8089)...
 start "Gravy HUB LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8089 --dir="%ROOT%hub\pb_data" --hooksDir="%ROOT%hub\pb_hooks""
 
-echo  Iniciando GRAVY Orquestador (LAN)...
+echo  Iniciando GRAVY Orquestador (LAN: 8088)...
+set "GRAVY_BIND_IP=0.0.0.0"
 start "Gravy Orchestrator LAN" /B cmd /c "cd /d "%ROOT%" && node hub\orchestrator.js"
 
-echo  Iniciando Empresa Demo (LAN)...
-start "Gravy Empresa Demo LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
-
-echo  Iniciando Empresa: 4PATAS (LAN: 8091)...
-start "Gravy Empresa 8091 LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8091 --dir="%ROOT%empresas\empresa_8091\pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%empresas\empresa_8091\pb_hooks" --migrationsDir="%ROOT%pb_migrations""
+echo  Iniciando Empresa Principal (LAN: 8090)...
+start "Gravy Empresa Principal LAN" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=0.0.0.0:8090 --dir="%ROOT%pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%pb_hooks""
+echo    - Las demas empresas registradas se inician automaticamente via Orquestador.
 
 echo.
 echo  Accesos:

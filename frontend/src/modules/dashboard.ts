@@ -85,6 +85,11 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
   c = getContainer(c);
   if (!c) return;
 
+  const pb = (window as any).pb;
+  if (pb?.currentUser?.role === 'vendedor') {
+    return renderVendedorDashboard(c);
+  }
+
   // ── Greeting dinámico
   const now       = new Date();
   const hour      = now.getHours();
@@ -1049,6 +1054,468 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
   }
 }
 
+// ── DASHBOARD COMERCIAL DEDICADO PARA EL VENDEDOR ─────────────────────────────
+async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
+  const pb = (window as any).pb;
+  const esc = (window as any).esc || ((s: any) => String(s || ''));
+  const fmt = (window as any).fmt || ((n: number) => `$ ${Number(n || 0).toLocaleString('es-CO')}`);
+  const fmtN = (window as any).fmtN || ((n: number) => Number(n || 0).toLocaleString('es-CO'));
+  const today = (window as any).todayStr ? (window as any).todayStr() : new Date().toISOString().slice(0, 10);
+  const uid = pb?.currentUser?.id || '';
+  const userName = pb?.currentUser?.name || pb?.currentUser?.email?.split('@')[0] || 'Vendedor';
+
+  // Greeting dinámico
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+
+  c.innerHTML = `
+    <div class="p-8 text-center text-slate-400">
+      <i class="fas fa-spinner fa-spin mr-2 text-xl text-teal-600"></i>
+      <span class="font-bold text-sm">Cargando cabina comercial...</span>
+    </div>
+  `;
+
+  try {
+    const curMonthPrefix = today.slice(0, 7); // 'YYYY-MM'
+
+    // Buscar si el usuario actual corresponde a un tercero vendedor
+    const currentUserName = (pb?.currentUser?.full_name || pb?.currentUser?.name || pb?.currentUser?.email?.split('@')[0] || '').toLowerCase().trim();
+    const currentUserEmail = (pb?.currentUser?.email || '').toLowerCase().trim();
+    const currentTpId = pb?.currentUser?.third_party_id || '';
+
+    // Fetch en paralelo de la información del vendedor
+    const [ordersRes, invoicesRes, reservations, resLines, allVisits, allSellers] = await Promise.all([
+      (window as any).API.getSalesOrders({ perPage: 100, sort: '-date,-created' }).catch(() => ({ items: [] })),
+      (window as any).API.getInvoices({ perPage: 100, sort: '-date,-created' }).catch(() => ({ items: [] })),
+      pb.listAll('sales_reservations', {
+        sort: '-created',
+        expand: 'customer_id,sales_order_id,invoice_id',
+      }).catch(() => []),
+      pb.listAll('sales_reservation_lines', {
+        expand: 'product_id,import_id,import_line_id',
+      }).catch(() => []),
+      pb.listAll('vendor_visits', {
+        filter: `visit_date = "${today}"`,
+        sort: 'order_seq,created',
+        expand: 'client_id,sales_order_id,seller_id',
+      }).catch(() => []),
+      pb.listAll('third_parties', {
+        filter: 'type="VENDEDOR" || type="EMPLEADO"',
+        fields: 'id,name,email,doc_number'
+      }).catch(() => []),
+    ]);
+
+    const matchedSeller = allSellers.find((s: any) => 
+      s.id === currentTpId || 
+      (s.email && s.email.toLowerCase().trim() === currentUserEmail) ||
+      (currentUserName && s.name && s.name.toLowerCase().includes(currentUserName)) ||
+      (currentUserName && s.name && currentUserName.includes(s.name.toLowerCase()))
+    );
+
+    const sellerIds = [uid];
+    if (currentTpId) sellerIds.push(currentTpId);
+    if (matchedSeller) sellerIds.push(matchedSeller.id);
+
+    const orders = ordersRes.items || [];
+    const invoices = invoicesRes.items || [];
+
+    // Filtrar reservas del vendedor
+    const userReservations = reservations.filter((r: any) => 
+      !r.created_by || r.created_by === uid || (r.expand?.sales_order_id?.user_id && sellerIds.includes(r.expand.sales_order_id.user_id))
+    );
+
+    // 1. Métricas de Ventas y Facturas
+    const monthlyInvoices = invoices.filter((i: any) => (i.date || '').startsWith(curMonthPrefix) && i.status !== 'voided');
+    const totalSalesMonth = monthlyInvoices.reduce((sum: number, i: any) => sum + Number(i.payable_total ?? i.total ?? 0), 0);
+
+    // Meta Comercial Mensual (por defecto 35M o la configurada en el perfil)
+    const monthlyTarget = Number(pb.currentUser?.monthly_target || 35000000);
+    const targetPct = Math.min(100, Math.round((totalSalesMonth / monthlyTarget) * 100));
+
+    // 2. Métricas de Pedidos Activos
+    const pendingOrders = orders.filter((o: any) => o.status === 'pending');
+    const pendingOrdersVal = pendingOrders.reduce((sum: number, o: any) => sum + Number(o.total || 0), 0);
+
+    // 3. Métricas de Reservas de Importación
+    const linesByResId: Record<string, any[]> = {};
+    for (const l of resLines) {
+      if (!l.reservation_id) continue;
+      if (!linesByResId[l.reservation_id]) linesByResId[l.reservation_id] = [];
+      linesByResId[l.reservation_id].push(l);
+    }
+
+    const activeReservations = userReservations.filter((r: any) => r.status === 'active' || r.status === 'partial');
+    const reservationsVal = activeReservations.reduce((sum: number, r: any) => {
+      const rlines = linesByResId[r.id] || [];
+      return sum + rlines.reduce((s: number, l: any) => s + (Number(l.qty_reserved || 0) * Number(l.expand?.product_id?.base_price || 0)), 0);
+    }, 0);
+    const reservasVal = reservationsVal;
+
+    // Reservas próximas a arribar (ETA)
+    const upcomingEtaRes = activeReservations.filter((r: any) => {
+      const rlines = linesByResId[r.id] || [];
+      return rlines.some((l: any) => !!l.expand?.import_id?.eta);
+    }).slice(0, 3);
+
+    // 4. Métricas de Agenda y Visitas de Hoy
+    let todayVisits = allVisits;
+    if (sellerIds.length > 0) {
+      const myVisits = allVisits.filter((v: any) => {
+        if (!v.seller_id) return true;
+        if (sellerIds.includes(v.seller_id)) return true;
+        const sName = (v.expand?.seller_id?.name || '').toLowerCase();
+        if (currentUserName && sName && (sName.includes(currentUserName) || currentUserName.includes(sName))) return true;
+        return false;
+      });
+      todayVisits = myVisits.length > 0 ? myVisits : allVisits;
+    }
+    const completedVisits = todayVisits.filter((v: any) => v.status === 'COMPLETADA_PEDIDO' || v.status === 'COMPLETADA_RECAUDO');
+
+    // RENDERIZADO DEL DASHBOARD COMERCIAL
+    c.innerHTML = `
+      <div class="max-w-6xl mx-auto space-y-6 pb-24 anim-fade">
+        
+        <!-- HERO BANNER: Saludo, Rol y Barra de Meta Comercial -->
+        <div class="relative overflow-hidden bg-gradient-to-br from-[#003B46] via-[#004F5A] to-[#075E6D] rounded-3xl p-6 sm:p-8 text-white shadow-xl">
+          <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div class="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-teal-200 border border-white/10 mb-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Vendedor Comercial Autorizado</span>
+              </div>
+              <h1 class="text-2xl sm:text-3xl font-black tracking-tight">
+                ${greeting}, <span class="text-teal-200">${esc(userName)}</span> 👋
+              </h1>
+              <p class="text-xs sm:text-sm text-teal-100/80 mt-1 max-w-xl">
+                Impulsa tus ventas de stock físico y preventas de importación en ruta. Consulta tus metas y agenda del día.
+              </p>
+            </div>
+
+            <!-- Progreso de Meta del Mes -->
+            <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/15 min-w-[280px]">
+              <div class="flex items-center justify-between text-xs font-bold text-teal-100 mb-1.5">
+                <span>🎯 Meta Comercial Mes</span>
+                <span class="text-emerald-300 font-extrabold text-sm">${targetPct}% Logrado</span>
+              </div>
+              
+              <!-- Progress bar -->
+              <div class="w-full h-3.5 bg-black/30 rounded-full overflow-hidden p-0.5 border border-white/10">
+                <div class="h-full bg-gradient-to-r from-emerald-400 to-teal-300 rounded-full transition-all duration-700 shadow-sm" style="width: ${targetPct}%"></div>
+              </div>
+
+              <div class="flex items-center justify-between text-[11px] font-mono text-teal-200 mt-2">
+                <span>Vendido: <strong>${fmt(totalSalesMonth)}</strong></span>
+                <span class="opacity-75">Meta: ${fmt(monthlyTarget)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 KPIS CLAVE COMERCIALES -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          
+          <!-- KPI 1: Ventas Mes -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Ventas del Mes</span>
+              <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-black">
+                <i class="fas fa-receipt"></i>
+              </div>
+            </div>
+            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${fmt(totalSalesMonth)}</div>
+            <div class="text-[11px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+              <i class="fas fa-check-circle text-xs"></i>
+              <span>${monthlyInvoices.length} facturas emitidas</span>
+            </div>
+          </div>
+
+          <!-- KPI 2: Pedidos Activos -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('pedidos')">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Pedidos en Curso</span>
+              <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-black">
+                <i class="fas fa-file-signature"></i>
+              </div>
+            </div>
+            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${pendingOrders.length}</div>
+            <div class="text-[11px] text-blue-600 font-bold mt-1 truncate">
+              <span>${fmt(pendingOrdersVal)} por facturar</span>
+            </div>
+          </div>
+
+          <!-- KPI 3: Reservas en Preventa -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('mis-reservas')">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Reservas Tránsito</span>
+              <div class="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-sm font-black">
+                <i class="fas fa-boxes-packing"></i>
+              </div>
+            </div>
+            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${activeReservations.length}</div>
+            <div class="text-[11px] text-teal-700 font-bold mt-1 truncate">
+              <span>${fmt(reservasVal)} apartado</span>
+            </div>
+          </div>
+
+          <!-- KPI 4: Visitas de Hoy -->
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('mis-rutas')">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Visitas de Hoy</span>
+              <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-black">
+                <i class="fas fa-route"></i>
+              </div>
+            </div>
+            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${completedVisits.length} / ${todayVisits.length}</div>
+            <div class="text-[11px] text-indigo-600 font-bold mt-1">
+              <span>${todayVisits.length - completedVisits.length} visitas pendientes</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ACTION HUB: Accesos Rápidos Táctiles en 1 Toque -->
+        <div>
+          <h3 class="text-xs font-black uppercase text-slate-400 tracking-wider mb-3">Acciones Rápidas del Vendedor</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            
+            <button type="button" onclick="navigate('productos')" class="bg-gradient-to-br from-[#006876] to-[#004F5A] text-white p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md active:scale-95 transition-all">
+              <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-lg">
+                <i class="fas fa-box-open"></i>
+              </div>
+              <div>
+                <span class="font-extrabold text-sm block leading-tight">Tomar Pedido</span>
+                <span class="text-[11px] text-teal-100 opacity-80">Catálogo interactivo</span>
+              </div>
+            </button>
+
+            <button type="button" onclick="navigate('mis-reservas')" class="bg-white border border-teal-200 text-teal-900 p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md hover:bg-teal-50/50 active:scale-95 transition-all">
+              <div class="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center text-lg">
+                <i class="fas fa-boxes-packing"></i>
+              </div>
+              <div>
+                <span class="font-extrabold text-sm block leading-tight">Mis Reservas</span>
+                <span class="text-[11px] text-slate-500">Stock en preventa</span>
+              </div>
+            </button>
+
+            <button type="button" onclick="navigate('mis-rutas')" class="bg-white border border-slate-200 text-slate-900 p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md hover:bg-slate-50 active:scale-95 transition-all">
+              <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-lg">
+                <i class="fas fa-route"></i>
+              </div>
+              <div>
+                <span class="font-extrabold text-sm block leading-tight">Mi Agenda Hoy</span>
+                <span class="text-[11px] text-slate-500">Rutas de clientes</span>
+              </div>
+            </button>
+
+            <button type="button" onclick="navigate('pedidos')" class="bg-white border border-slate-200 text-slate-900 p-4 rounded-2xl flex flex-col items-start justify-between gap-3 text-left shadow-xs hover:shadow-md hover:bg-slate-50 active:scale-95 transition-all">
+              <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center text-lg">
+                <i class="fas fa-file-signature"></i>
+              </div>
+              <div>
+                <span class="font-extrabold text-sm block leading-tight">Mis Pedidos</span>
+                <span class="text-[11px] text-slate-500">Historial y estados</span>
+              </div>
+            </button>
+
+          </div>
+        </div>
+
+        <!-- 2 COLUMNAS PRINCIPALES: Agenda de Hoy + Alertas de Preventa -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          
+          <!-- COLUMNA 1: Agenda de Visitas de Hoy -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">
+                  <i class="fas fa-location-dot"></i>
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-sm text-slate-900">Agenda de Visitas de Hoy</h3>
+                  <p class="text-[11px] text-slate-400 font-semibold">${todayVisits.length} clientes agendados para hoy</p>
+                </div>
+              </div>
+              <button type="button" onclick="navigate('mis-rutas')" class="text-xs font-extrabold text-indigo-600 hover:underline">
+                Ver Todo <i class="fas fa-arrow-right ml-1"></i>
+              </button>
+            </div>
+
+            <div class="space-y-2.5 max-h-80 overflow-y-auto">
+              ${todayVisits.length === 0 ? `
+                <div class="p-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                  <i class="fas fa-calendar-check text-slate-300 text-3xl mb-2"></i>
+                  <p class="text-xs font-bold text-slate-600">No tienes visitas agendadas para hoy</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Puedes crear una nueva ruta o visitar clientes directamente.</p>
+                  <button type="button" onclick="navigate('mis-rutas')" class="btn btn-outline btn-sm mt-3 text-xs">
+                    <i class="fas fa-plus mr-1"></i> Planear Ruta
+                  </button>
+                </div>
+              ` : todayVisits.map((v: any, idx: number) => {
+                const client = v.expand?.client_id || {};
+                const isDone = v.status === 'completed';
+                return `
+                  <div class="p-3 rounded-2xl border ${isDone ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-slate-200'} flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <div class="w-7 h-7 rounded-lg ${isDone ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'} flex items-center justify-center text-xs font-mono font-bold flex-shrink-0">
+                        ${isDone ? '<i class="fas fa-check text-[10px]"></i>' : (idx + 1)}
+                      </div>
+                      <div class="min-w-0">
+                        <h4 class="font-extrabold text-xs text-slate-900 truncate">${esc(client.name || 'Cliente')}</h4>
+                        <p class="text-[10px] text-slate-400 truncate">${esc(client.address || client.city || 'Sin dirección')}</p>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                      ${client.phone ? `
+                        <a href="tel:${esc(client.phone)}" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-xs" title="Llamar">
+                          <i class="fas fa-phone"></i>
+                        </a>
+                      ` : ''}
+                      <button type="button" onclick="window.SalesCart?.setActiveCustomer(${JSON.stringify(client).replace(/"/g, '&quot;')}); navigate('productos');" class="btn btn-primary btn-sm py-1 px-2.5 rounded-lg text-[11px] font-bold bg-[#006876] hover:bg-[#004F5A] text-white">
+                        <i class="fas fa-cart-plus mr-1"></i> Pedir
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- COLUMNA 2: Alertas de Embarques de Preventa (ETA) -->
+          <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-sm font-bold">
+                  <i class="fas fa-ship"></i>
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-sm text-slate-900">Preventas en Tránsito (ETA)</h3>
+                  <p class="text-[11px] text-slate-400 font-semibold">Mercancía en camino para tus clientes</p>
+                </div>
+              </div>
+              <button type="button" onclick="navigate('mis-reservas')" class="text-xs font-extrabold text-teal-600 hover:underline">
+                Ver Todas <i class="fas fa-arrow-right ml-1"></i>
+              </button>
+            </div>
+
+            <div class="space-y-2.5 max-h-80 overflow-y-auto">
+              ${upcomingEtaRes.length === 0 ? `
+                <div class="p-8 text-center bg-slate-50 rounded-2xl border border-slate-100">
+                  <i class="fas fa-boxes-packing text-slate-300 text-3xl mb-2"></i>
+                  <p class="text-xs font-bold text-slate-600">No tienes reservas activas de preventa</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Ofrece los productos en tránsito desde el catálogo para ganar preventas.</p>
+                  <button type="button" onclick="window.SalesCart?.setCartMode('reserva'); navigate('productos');" class="btn btn-outline btn-sm mt-3 text-xs text-teal-800 border-teal-300">
+                    <i class="fas fa-ship mr-1"></i> Ver Catálogo en Preventa
+                  </button>
+                </div>
+              ` : upcomingEtaRes.map((r: any) => {
+                const cust = r.expand?.customer_id || {};
+                const rlines = linesByResId[r.id] || [];
+                const firstLine = rlines[0];
+                const eta = firstLine?.expand?.import_id?.eta || 'Pronto';
+                const impNum = firstLine?.expand?.import_id?.number || 'IMP';
+
+                const waPhone = (cust.phone || '').replace(/\D/g, '');
+                const waMsg = encodeURIComponent(`Hola ${cust.name || 'Cliente'}, te saludamos de GRAVY. Te recordamos que tu reserva de preventa #RES-${r.id.slice(-6).toUpperCase()} viene en el embarque ${impNum} con fecha estimada de arribo ${eta}. ¡Te avisaremos cuando ingrese a bodega!`);
+                const waUrl = waPhone ? `https://wa.me/57${waPhone}?text=${waMsg}` : `https://wa.me/?text=${waMsg}`;
+
+                return `
+                  <div class="p-3.5 rounded-2xl border border-slate-200 bg-teal-50/20 space-y-2">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-2">
+                        <span class="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded-md">#RES-${esc(r.id.slice(-6).toUpperCase())}</span>
+                        <span class="font-extrabold text-xs text-slate-800">${esc(cust.name || 'Cliente')}</span>
+                      </div>
+                      <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-teal-100 text-teal-800 border border-teal-200">
+                        <i class="fas fa-calendar-day mr-1"></i>ETA ${eta}
+                      </span>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs pt-1 border-t border-slate-100">
+                      <span class="text-slate-500 font-mono text-[11px]">${rlines.length} producto(s) en preventa</span>
+                      <a href="${waUrl}" target="_blank" class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+                        <i class="fab fa-whatsapp"></i> WhatsApp
+                      </a>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+        </div>
+
+        <!-- SECCIÓN 3: Últimos Pedidos Registrados del Vendedor -->
+        <div class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h3 class="font-extrabold text-sm text-slate-900">Mis Últimos Pedidos</h3>
+              <p class="text-[11px] text-slate-400 font-semibold">Historial reciente de pedidos y cotizaciones</p>
+            </div>
+            <button type="button" onclick="navigate('pedidos')" class="text-xs font-extrabold text-blue-600 hover:underline">
+              Ver Todos los Pedidos <i class="fas fa-arrow-right ml-1"></i>
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-100">
+                  <th class="pb-2">Número</th>
+                  <th class="pb-2">Fecha</th>
+                  <th class="pb-2">Cliente</th>
+                  <th class="pb-2 text-right">Total</th>
+                  <th class="pb-2 text-center">Estado</th>
+                  <th class="pb-2 text-right">Acción</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${orders.slice(0, 5).map((o: any) => {
+                  const cust = o.expand?.customer_id || {};
+                  const isPending = o.status === 'pending';
+                  return `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                      <td class="py-2.5 font-mono font-bold text-slate-900">${esc(o.number)}</td>
+                      <td class="py-2.5 text-slate-500 font-mono text-[11px]">${esc(o.date)}</td>
+                      <td class="py-2.5 font-bold text-slate-800">${esc(cust.name || '—')}</td>
+                      <td class="py-2.5 text-right font-mono font-bold text-slate-900">${fmt(o.total)}</td>
+                      <td class="py-2.5 text-center">
+                        <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold ${isPending ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}">
+                          ${isPending ? 'Pendiente' : 'Procesado'}
+                        </span>
+                      </td>
+                      <td class="py-2.5 text-right">
+                        <button type="button" onclick="navigate('pedidos')" class="text-slate-400 hover:text-slate-700">
+                          <i class="fas fa-chevron-right text-xs"></i>
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    `;
+
+  } catch (err: any) {
+    console.error('[VendedorDashboard] Error:', err);
+    c.innerHTML = `
+      <div class="p-8 text-center text-rose-600 bg-rose-50 rounded-2xl border border-rose-200 max-w-lg mx-auto">
+        <i class="fas fa-circle-exclamation text-3xl mb-2"></i>
+        <h4 class="font-extrabold text-sm text-slate-900">Error al cargar el dashboard comercial</h4>
+        <p class="text-xs text-slate-500 mt-1">${esc(err.message)}</p>
+        <button onclick="renderDashboard(document.getElementById('page-content'))" class="btn btn-outline btn-sm mt-3">
+          <i class="fas fa-rotate-right mr-1"></i> Reintentar
+        </button>
+      </div>
+    `;
+  }
+}
+
 async function viewTransaction(id: string): Promise<void> {
   navigate('consulta-tx');
   setTimeout(() => {
@@ -1060,4 +1527,5 @@ async function viewTransaction(id: string): Promise<void> {
 
 // --- VITE MIGRATION GLOBALS ---
 (window as any).renderDashboard  = renderDashboard;
+(window as any).renderVendedorDashboard = renderVendedorDashboard;
 (window as any).viewTransaction  = viewTransaction;

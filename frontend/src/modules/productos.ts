@@ -575,14 +575,73 @@ async function renderProductos(c) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c);
   if (!c) return;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando productos...</div>`;
+  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando catálogo de productos y stock en tránsito...</div>`;
 
   try {
-    const [products, accounts, catalog] = await Promise.all([
+    const [products, accounts, catalog, stockRows, importLines, reservationLines] = await Promise.all([
       API.getProducts({ activeOnly: false }),
       API.getAccounts(false),
       loadProductCatalog(),
+      API.getInventoryStock().catch(() => []),
+      pb.listAll('import_lines', {
+        filter: 'import_id.status="transito" || import_id.status="nacionalizacion"',
+        expand: 'import_id',
+      }).catch(() => []),
+      pb.listAll('sales_reservation_lines', {
+        filter: 'import_line_id!="" && (status="active" || status="partial") && (reservation_id.status="active" || reservation_id.status="partial")',
+      }).catch(() => []),
     ]);
+
+    // Mapeo de stock físico por producto
+    const stockMap: Record<string, number> = {};
+    (stockRows || []).forEach((s: any) => {
+      stockMap[s.product_id] = (stockMap[s.product_id] || 0) + Number(s.qty_on_hand || 0);
+    });
+
+    // Mapeo de reservas comprometidas por línea de importación
+    const committedByLine: Record<string, number> = {};
+    for (const r of (reservationLines || [])) {
+      const il = String(r.import_line_id || '').trim();
+      if (!il) continue;
+      const committed = Math.max(0, Number(r.qty_reserved || 0) - Number(r.qty_dispatched || 0) - Number(r.qty_released || 0));
+      committedByLine[il] = (committedByLine[il] || 0) + committed;
+    }
+
+    // Mapeo estructurado de unidades en tránsito y lotes por producto
+    const incomingMap: Record<string, { totalQty: number; totalAvailable: number; lots: any[] }> = {};
+    (importLines || []).forEach((line: any) => {
+      const pid = line.product_id;
+      if (!pid) return;
+      const qty = Number(line.qty || 0);
+      const committed = Number(committedByLine[line.id] || 0);
+      const available = Math.max(0, qty - committed);
+      const eta = line.expand?.import_id?.estimated_arrival ? (window as any).fmtDate(line.expand.import_id.estimated_arrival) : 'Por definir';
+      const rawEta = line.expand?.import_id?.estimated_arrival || '9999-99-99';
+      const importNumber = line.expand?.import_id?.number || 'IMP';
+      const importStatus = line.expand?.import_id?.status === 'transito' ? 'En Tránsito Marítimo' : 'En Puerto / Nacionalización';
+
+      if (!incomingMap[pid]) {
+        incomingMap[pid] = { totalQty: 0, totalAvailable: 0, lots: [] };
+      }
+      incomingMap[pid].totalQty += qty;
+      incomingMap[pid].totalAvailable += available;
+      incomingMap[pid].lots.push({
+        id: line.id,
+        import_id: line.import_id,
+        importNumber,
+        importStatus,
+        rawEta,
+        eta,
+        qty,
+        committed,
+        available,
+      });
+    });
+
+    // Ordenar lotes de cada producto por ETA más próximo
+    Object.values(incomingMap).forEach((item) => {
+      item.lots.sort((a, b) => a.rawEta.localeCompare(b.rawEta));
+    });
 
     const activeCount    = products.filter(p => p.active).length;
     const bienesCount    = products.filter(p => p.type === 'BIEN').length;
@@ -592,16 +651,48 @@ async function renderProductos(c) {
     const categorias = [...new Set(products.map(p => p.categoria).filter(Boolean))].sort();
     const lineas     = [...new Set(products.map(p => p.linea).filter(Boolean))].sort();
 
+    const isMobile = window.innerWidth <= 768 || pb.currentUser?.role === 'vendedor';
+    const savedView = localStorage.getItem('products_view_mode') || (isMobile ? 'cards' : 'table');
+    const cartMode = (window as any).SalesCart?.activeMode || 'venta';
+
     c.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h3 class="text-lg font-bold" style="color:#0D2137">Productos y Servicios</h3>
-          <p class="text-sm" style="color:#6B7280">Catálogo maestro — base de Facturación, CRM e Inventarios.</p>
+          <h3 class="text-lg font-bold" style="color:#0D2137">Catálogo Comercial & Preventa</h3>
+          <p class="text-sm" style="color:#6B7280">Consulta de existencias en bodega y reservas de embarques en tránsito.</p>
         </div>
-        <div class="flex flex-wrap gap-2">
-          ${can('canWrite') ? '<button class="btn btn-outline" id="btn-config-codificacion" onclick="window._openConfigCodificacionModal()"><i class="fas fa-gear"></i> Configurar Codificación</button>' : ''}
-          ${can('canWrite') ? '<button class="btn btn-outline" id="btn-catalog-manager"><i class="fas fa-tags"></i> Categorías / Líneas</button>' : ''}
-          ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-product"><i class="fas fa-plus"></i> Nuevo Producto/Servicio</button>' : ''}
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Toggle Vista Cards ↔ Tabla -->
+          <div class="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs font-bold">
+            <button id="btn-view-cards" class="px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${savedView === 'cards' ? 'bg-white shadow-xs text-teal-800' : 'text-slate-600 hover:text-slate-900'}">
+              <i class="fas fa-border-all"></i> Cards
+            </button>
+            <button id="btn-view-table" class="px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${savedView === 'table' ? 'bg-white shadow-xs text-teal-800' : 'text-slate-600 hover:text-slate-900'}">
+              <i class="fas fa-list"></i> Tabla
+            </button>
+          </div>
+
+          ${can('canWrite') ? '<button class="btn btn-outline" id="btn-config-codificacion" onclick="window._openConfigCodificacionModal()"><i class="fas fa-gear"></i> Codificación</button>' : ''}
+          ${can('canWrite') ? '<button class="btn btn-outline" id="btn-catalog-manager"><i class="fas fa-tags"></i> Categorías</button>' : ''}
+          ${can('canWrite') ? '<button class="btn btn-primary" id="btn-new-product"><i class="fas fa-plus"></i> Nuevo Producto</button>' : ''}
+        </div>
+      </div>
+
+      <!-- Selector Estricto de Modo Comercial (No Mezcla de Naturaleza) -->
+      <div class="mb-4 bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div class="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs font-bold w-full sm:w-auto">
+          <button id="btn-mode-venta" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'venta' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            <i class="fas fa-boxes-stacked"></i> 🛍️ Venta Inmediata (Stock Físico)
+          </button>
+          <button id="btn-mode-reserva" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'reserva' ? 'bg-[#006876] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+            <i class="fas fa-ship"></i> 🚢 Preventa & Reservas (En Tránsito)
+          </button>
+        </div>
+
+        <div class="text-xs font-semibold px-2">
+          ${cartMode === 'reserva'
+            ? '<span class="text-teal-800 font-bold"><i class="fas fa-circle-info mr-1"></i>Modo Reserva Activo: Solo se aparta mercancía en camino con fecha ETA.</span>'
+            : '<span class="text-slate-600"><i class="fas fa-circle-check text-emerald-600 mr-1"></i>Modo Venta Inmediata: Stock físico en bodega para despacho ya.</span>'}
         </div>
       </div>
 
@@ -609,40 +700,47 @@ async function renderProductos(c) {
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         ${kpiCard('Total catálogo', products.length, 'fas fa-box-open', '#1A4B8C', '#EEF4FF')}
         ${kpiCard('Activos', activeCount, 'fas fa-circle-check', '#059669', '#ECFDF5')}
-        ${kpiCard('Bienes', bienesCount, 'fas fa-boxes-stacked', '#C46516', '#FFF8F0')}
+        ${kpiCard('Bienes (Físicos)', bienesCount, 'fas fa-boxes-stacked', '#C46516', '#FFF8F0')}
         ${kpiCard('Servicios', serviciosCount, 'fas fa-handshake', '#7C3AED', '#F5F3FF')}
       </div>
 
       <!-- Filtros -->
-      <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
+      <div class="bg-white rounded-2xl border p-4 mb-4 shadow-xs" style="border-color:#F0F0F0">
         <div class="flex flex-wrap gap-3">
-          <input id="prod-q" class="form-input flex-1 min-w-48" placeholder="Buscar por código o nombre...">
-          <select id="prod-type" class="form-input" style="max-width:200px">
+          <input id="prod-q" class="form-input flex-1 min-w-48 text-xs py-2" placeholder="Buscar por código, referencia o nombre...">
+          <select id="prod-type" class="form-input text-xs" style="max-width:180px">
             <option value="">Todos los tipos</option>
             ${PRODUCT_TYPES.map(t => `<option value="${t.value}">${t.label}</option>`).join('')}
           </select>
-          <select id="prod-iva" class="form-input" style="max-width:180px">
-            <option value="">Todas las tarifas IVA</option>
-            ${IVA_RATES.map(r => `<option value="${r.value}">${r.value}%</option>`).join('')}
-          </select>
-          <select id="prod-categoria" class="form-input" style="max-width:180px">
+          <select id="prod-categoria" class="form-input text-xs" style="max-width:180px">
             <option value="">Todas las categorías</option>
             ${categorias.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
           </select>
-          <select id="prod-linea" class="form-input" style="max-width:160px">
+          <select id="prod-linea" class="form-input text-xs" style="max-width:160px">
             <option value="">Todas las líneas</option>
             ${lineas.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')}
           </select>
-          <select id="prod-status" class="form-input" style="max-width:160px">
-            <option value="">Todos los estados</option>
+          <select id="prod-iva" class="form-input text-xs" style="max-width:150px">
+            <option value="">Tarifas IVA</option>
+            ${IVA_RATES.map(r => `<option value="${r.value}">${r.value}%</option>`).join('')}
+          </select>
+          <select id="prod-status" class="form-input text-xs" style="max-width:140px">
+            <option value="">Todos</option>
             <option value="true">Activos</option>
             <option value="false">Inactivos</option>
           </select>
         </div>
       </div>
 
-      <!-- Tabla -->
-      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+      <!-- Vista 1: Grid de Tarjetas E-Commerce -->
+      <div id="prod-cards-view" style="${savedView === 'cards' ? '' : 'display:none'}" class="pb-36 sm:pb-44">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4" id="prod-cards-grid">
+          ${products.length ? renderProductCards(products, stockMap, incomingMap) : '<div class="col-span-full p-8 text-center text-gray-400 bg-white rounded-2xl">No hay productos que coincidan con los filtros.</div>'}
+        </div>
+      </div>
+
+      <!-- Vista 2: Tabla Administrativa de Escritorio -->
+      <div id="prod-table-view" style="${savedView === 'table' ? '' : 'display:none'}" class="bg-white rounded-2xl border overflow-hidden pb-24" style="border-color:#F0F0F0">
         <div class="overflow-x-auto">
           <table class="data-table" id="prod-table">
             <thead>
@@ -651,8 +749,8 @@ async function renderProductos(c) {
                 <th>Nombre</th>
                 <th>Tipo</th>
                 <th>Categoría</th>
-                <th>Línea</th>
-                <th>Unidad</th>
+                <th>Stock Bodega</th>
+                <th>En Tránsito</th>
                 <th class="text-right">IVA %</th>
                 <th class="text-right">Precio base</th>
                 <th>Estado</th>
@@ -660,14 +758,86 @@ async function renderProductos(c) {
               </tr>
             </thead>
             <tbody id="prod-tbody">
-              ${products.length ? renderProductRows(products) : emptyRow(10)}
+              ${products.length ? renderProductRows(products, stockMap, incomingMap) : emptyRow(10)}
             </tbody>
           </table>
         </div>
-      </div>`;
+      </div>
 
-    // ── Eventos ───────────────────────────────────────────────
-    const applyFilter = () => filterProductTable();
+      <!-- Barra Flotante Global de Carrito (Sticky sobre el Bottom Nav) -->
+      <div id="ecom-floating-cart-bar" class="fixed bottom-[70px] sm:bottom-[74px] left-3 right-3 max-w-xl mx-auto bg-slate-900/95 backdrop-blur-md text-white rounded-2xl p-3 shadow-2xl border border-slate-700/80 z-[880] flex items-center justify-between gap-3 transition-all" style="display:none">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-[#006876] text-white flex items-center justify-center font-extrabold text-sm relative shadow-sm">
+            <i class="fas fa-cart-shopping"></i>
+            <span id="ecom-floating-badge" class="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-extrabold border-2 border-slate-900">0</span>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase tracking-wider font-bold text-slate-400 block" id="ecom-floating-count-lbl">0 productos</span>
+            <span id="ecom-floating-total-lbl" class="text-sm sm:text-base font-extrabold text-emerald-400">$ 0</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button id="ecom-btn-clear-cart" class="p-2 text-slate-400 hover:text-rose-400 text-xs rounded-xl" title="Vaciar Carrito">
+            <i class="fas fa-trash"></i>
+          </button>
+          <button id="ecom-btn-checkout" class="btn btn-primary px-4 py-2.5 rounded-xl font-extrabold text-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md">
+            <span>Finalizar Pedido</span>
+            <i class="fas fa-arrow-right"></i>
+          </button>
+        </div>
+      </div>
+      `;
+
+    // ── Eventos de Cambio de Modo Comercial (Venta vs Reserva) ──
+    $('#btn-mode-venta')?.addEventListener('click', () => {
+      const ok = (window as any).SalesCart?.setCartMode('venta');
+      if (ok) renderProductos($('#page-content'));
+    });
+
+    $('#btn-mode-reserva')?.addEventListener('click', () => {
+      const ok = (window as any).SalesCart?.setCartMode('reserva');
+      if (ok) renderProductos($('#page-content'));
+    });
+
+    // ── Sincronización Reactiva de la Barra Flotante de Carrito ──
+    function syncFloatingCartUI() {
+      const bar = document.getElementById('ecom-floating-cart-bar');
+      const badge = document.getElementById('ecom-floating-badge');
+      const countLbl = document.getElementById('ecom-floating-count-lbl');
+      const totalLbl = document.getElementById('ecom-floating-total-lbl');
+      if (!bar) return;
+
+      const summary = (window as any).SalesCart?.getSummary();
+      if (!summary || summary.totalProducts === 0) {
+        bar.style.display = 'none';
+        return;
+      }
+
+      bar.style.display = 'flex';
+      const modeTxt = summary.activeMode === 'reserva' ? '📦 Reserva' : '🛍️ Venta';
+      if (badge) badge.textContent = String(summary.totalProducts);
+      if (countLbl) countLbl.textContent = `${modeTxt}: ${summary.totalProducts} prod (${fmtN(summary.totalUnits)} unid)`;
+      if (totalLbl) totalLbl.textContent = fmt(summary.total);
+    }
+
+    window.addEventListener('gravy-cart-updated', syncFloatingCartUI);
+    syncFloatingCartUI();
+
+    $('#ecom-btn-clear-cart')?.addEventListener('click', () => {
+      if (confirm('¿Deseas vaciar todos los productos del carrito de pedido?')) {
+        (window as any).SalesCart?.clear();
+        $$('.input-ecom-qty').forEach((inp: any) => { inp.value = '0'; });
+        $$('.ecom-equiv-box').forEach((box: any) => { box.innerHTML = ''; box.classList.add('hidden'); });
+      }
+    });
+
+    $('#ecom-btn-checkout')?.addEventListener('click', () => {
+      openCheckoutDrawer(() => renderProductos($('#page-content')));
+    });
+
+    // ── Eventos Filtros ───────────────────────────────────────
+    const applyFilter = () => filterProductCatalog();
     $('#prod-q')?.addEventListener('input', debounce(applyFilter, 150));
     $('#prod-type')?.addEventListener('change', applyFilter);
     $('#prod-categoria')?.addEventListener('change', applyFilter);
@@ -685,9 +855,747 @@ async function renderProductos(c) {
     const tbl = $('#prod-table') as HTMLTableElement;
     if (tbl) (window as any).makeTableSortable(tbl);
 
+    // Conectar inputs de tarjetas
+    _bindProductCardCartEvents(products, incomingMap);
+
   } catch (err) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
+}
+
+// ── Renderizado de Tarjetas E-Commerce con Metrología Variable y Stock ETA ─────
+function renderProductCards(products, stockMap = {}, incomingMap = {}) {
+  const cart = (window as any).SalesCart;
+  const currentMode = cart?.activeMode || 'venta';
+
+  return products.map(p => {
+    const onHand = Number(stockMap[p.id] || 0);
+    const incoming = incomingMap[p.id];
+    const transitAvail = Number(incoming?.totalAvailable || 0);
+    const cartItem = cart?.getItem(p.id);
+    const currentQty = cartItem?.qty || 0;
+    const selectedUnit = cartItem?.unit || p.unit || 'UND';
+
+    const isService = p.type === 'SERVICIO';
+    const maxAllowedQty = isService ? 999999 : (currentMode === 'reserva' ? transitAvail : onHand);
+    const isBlocked = !isService && maxAllowedQty <= 0;
+
+    const imageUrl = p.image 
+      ? `${(window as any).PB_URL}/api/files/products/${p.id}/${p.image}?thumb=300x300${(window as any).pb.authToken ? '&token=' + (window as any).pb.authToken : ''}`
+      : '';
+
+    const hasDimensions = (Number(p.largo_cm) > 0 && Number(p.ancho_cm) > 0) || Number(p.und_empaque) > 0 || String(p.unit).toUpperCase() === 'M2';
+
+    // Semáforo dinámico según el modo activo
+    let stockBadge = '';
+    if (isService) {
+      stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-800"><i class="fas fa-handshake mr-1"></i>Servicio</span>`;
+    } else if (currentMode === 'reserva') {
+      // MODO RESERVA: destaca mercancía en tránsito
+      if (transitAvail > 0) {
+        const nearestEta = incoming.lots[0]?.eta || 'Pronto';
+        stockBadge = `
+          <button type="button" class="btn-show-transit-lots text-left w-full px-2 py-1 rounded-lg text-[10px] font-extrabold bg-blue-100 text-blue-900 border border-blue-300 hover:bg-blue-200 transition-colors flex items-center justify-between" data-id="${p.id}">
+            <span><i class="fas fa-ship mr-1"></i>${fmtN(transitAvail)} en camino</span>
+            <span class="text-[9px] bg-blue-600 text-white px-1.5 py-0.2 rounded">ETA ${nearestEta}</span>
+          </button>
+        `;
+      } else {
+        stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500"><i class="fas fa-circle-xmark mr-1"></i>Sin embarques en tránsito</span>`;
+      }
+    } else {
+      // MODO VENTA INMEDIATA: destaca stock físico en bodega
+      if (onHand > 10) {
+        stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-800"><i class="fas fa-circle-check mr-1"></i>${fmtN(onHand)} en bodega</span>`;
+      } else if (onHand > 0) {
+        stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800"><i class="fas fa-triangle-exclamation mr-1"></i>Últimas ${fmtN(onHand)} unid</span>`;
+      } else if (transitAvail > 0) {
+        stockBadge = `
+          <button type="button" class="btn-switch-reserva-item text-left w-full px-2 py-1 rounded-lg text-[10px] font-extrabold bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition-colors" data-id="${p.id}">
+            <i class="fas fa-ship mr-1 text-blue-600"></i>0 en bodega · <strong>+${fmtN(transitAvail)} en Tránsito</strong>
+          </button>
+        `;
+      } else {
+        stockBadge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-800"><i class="fas fa-ban mr-1"></i>Agotado</span>`;
+      }
+    }
+
+    return `
+      <div class="prod-ecom-card bg-white rounded-2xl p-3 border ${currentMode === 'reserva' ? 'border-teal-300 bg-teal-50/20' : 'border-slate-200'} shadow-xs flex flex-col justify-between hover:shadow-md transition-all group"
+           data-id="${p.id}"
+           data-type="${esc(p.type)}" 
+           data-iva="${p.iva_rate ?? ''}" 
+           data-active="${p.active}" 
+           data-categoria="${esc(p.categoria || '')}" 
+           data-linea="${esc(p.linea || '')}">
+        
+        <div>
+          <!-- Imagen del Producto -->
+          <div class="relative w-full h-24 sm:h-28 bg-slate-50 rounded-xl overflow-hidden mb-2 border border-slate-100 flex items-center justify-center cursor-pointer"
+               onclick="window.viewProductDetail('${p.id}')">
+            ${imageUrl ? `
+              <img src="${imageUrl}" alt="${esc(p.name)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            ` : `
+              <div class="text-slate-300 text-2xl group-hover:scale-110 transition-transform">
+                <i class="fas fa-box-open"></i>
+              </div>
+            `}
+            <span class="absolute top-1.5 right-1.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded-full ${p.active ? 'bg-emerald-500 text-white' : 'bg-slate-500 text-white'} shadow-2xs">
+              ${p.active ? 'Activo' : 'Inactivo'}
+            </span>
+          </div>
+
+          <!-- Stock Semáforo Interactivo -->
+          <div class="mb-1.5">
+            ${stockBadge}
+          </div>
+
+          <!-- Referencia y Categoría -->
+          <p class="text-[10px] font-mono text-slate-500 uppercase tracking-tight truncate">
+            ${esc(p.code)} ${p.categoria ? `· <span class="font-sans">${esc(p.categoria)}</span>` : ''}
+          </p>
+
+          <!-- Nombre -->
+          <h4 class="font-extrabold text-xs text-slate-900 leading-snug line-clamp-2 mt-0.5 cursor-pointer hover:text-teal-700"
+              onclick="window.viewProductDetail('${p.id}')">
+            ${esc(p.name)}
+          </h4>
+        </div>
+
+        <div class="mt-2.5 pt-2 border-t border-slate-100 space-y-2">
+          
+          <!-- Selector de Unidad si tiene Metrología Variable -->
+          ${hasDimensions ? `
+            <div class="flex items-center justify-between gap-1 text-[10px]">
+              <span class="text-slate-500 font-bold">Unidad:</span>
+              <select class="ecom-unit-sel font-bold bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200 outline-none" data-id="${p.id}">
+                <option value="M2"${selectedUnit === 'M2' ? ' selected' : ''}>M²</option>
+                <option value="CJ"${selectedUnit === 'CJ' ? ' selected' : ''}>Caja</option>
+                <option value="UND"${selectedUnit === 'UND' ? ' selected' : ''}>Ficha / Und</option>
+                <option value="KG"${selectedUnit === 'KG' ? ' selected' : ''}>Kg</option>
+              </select>
+            </div>
+            <!-- Equivalencias calculadas en vivo -->
+            <div class="ecom-equiv-box text-[9px] text-teal-800 font-mono bg-teal-50/70 border border-teal-200/50 p-1 rounded-md ${currentQty > 0 ? '' : 'hidden'}" id="ecom-equiv-${p.id}"></div>
+          ` : ''}
+
+          <!-- Precio -->
+          <div class="flex items-baseline justify-between">
+            <span class="text-sm font-extrabold text-blue-900">${p.base_price ? fmt(p.base_price) : '$ 0'}</span>
+            <span class="text-[10px] font-bold text-slate-400">IVA ${p.iva_rate ?? 0}%</span>
+          </div>
+
+          <!-- Control Stepper Decimal Táctil + Input Directo con Bloqueo de Stock -->
+          ${isBlocked ? `
+            <div class="flex items-center justify-between bg-slate-100 rounded-xl p-1 gap-1 opacity-60" title="${currentMode === 'reserva' ? 'Sin embarques disponibles para reserva' : 'Agotado en bodega'}">
+              <button type="button" disabled class="w-7 h-7 rounded-lg bg-slate-200 text-slate-400 font-extrabold flex items-center justify-center cursor-not-allowed">
+                <i class="fas fa-minus text-[10px]"></i>
+              </button>
+              <input type="number" disabled class="flex-1 w-12 text-center font-extrabold text-xs bg-slate-200 border border-slate-300 rounded-lg py-1 text-slate-500 cursor-not-allowed" value="0" placeholder="0">
+              <button type="button" disabled class="w-7 h-7 rounded-lg bg-slate-200 text-slate-400 font-extrabold flex items-center justify-center cursor-not-allowed">
+                <i class="fas fa-plus text-[10px]"></i>
+              </button>
+            </div>
+          ` : `
+            <div class="flex items-center justify-between bg-slate-100 rounded-xl p-1 gap-1">
+              <button type="button" class="btn-card-minus w-7 h-7 rounded-lg bg-white text-slate-700 font-extrabold flex items-center justify-center shadow-xs active:scale-90" data-id="${p.id}">
+                <i class="fas fa-minus text-[10px]"></i>
+              </button>
+              <input type="number" step="any" min="0" max="${maxAllowedQty}" inputmode="decimal" 
+                     class="input-ecom-qty flex-1 w-12 text-center font-extrabold text-xs bg-white border border-slate-200 rounded-lg py-1 text-slate-900 outline-none focus:ring-1 focus:ring-teal-600" 
+                     value="${currentQty > 0 ? currentQty : '0'}" 
+                     placeholder="0" 
+                     data-id="${p.id}"
+                     data-max="${maxAllowedQty}">
+              <button type="button" class="btn-card-plus w-7 h-7 rounded-lg bg-[#006876] text-white font-extrabold flex items-center justify-center shadow-xs active:scale-90" data-id="${p.id}">
+                <i class="fas fa-plus text-[10px]"></i>
+              </button>
+            </div>
+          `}
+
+        </div>
+
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Modal de Detalle de Embarques y Lotes en Tránsito (ETA) ───────────────────
+function _showTransitLotsModal(product: any, incomingInfo: any) {
+  const lots = incomingInfo?.lots || [];
+  const esc = (window as any).esc;
+  const fmt = (window as any).fmt;
+  const fmtN = (window as any).fmtN;
+
+  const html = `
+    <div class="space-y-4 text-slate-800 -m-2 sm:-m-4">
+      <div class="bg-blue-50 p-3.5 rounded-2xl border border-blue-200 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg">
+          <i class="fas fa-ship"></i>
+        </div>
+        <div>
+          <h4 class="font-extrabold text-sm text-blue-900">${esc(product.name)}</h4>
+          <p class="text-xs text-blue-700 font-mono">Cód: ${esc(product.code)} · Total en camino: <strong>${fmtN(incomingInfo.totalAvailable)} ${esc(product.unit || 'und')}</strong></p>
+        </div>
+      </div>
+
+      <div class="space-y-2.5 max-h-72 overflow-y-auto">
+        ${lots.length === 0 ? `
+          <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-2xl border border-slate-200">
+            <i class="fas fa-box-open text-2xl mb-1 text-slate-300"></i>
+            <p class="text-xs font-semibold">No hay lotes con unidades disponibles en este momento.</p>
+          </div>
+        ` : lots.map((lot: any, idx: number) => {
+          const isLotExhausted = Number(lot.available || 0) <= 0;
+          return `
+            <div class="bg-white p-3.5 rounded-2xl border ${isLotExhausted ? 'border-slate-200 opacity-60 bg-slate-50' : 'border-slate-200 shadow-xs'} space-y-2">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono font-bold text-xs bg-slate-900 text-white px-2 py-0.5 rounded-md">${esc(lot.importNumber)}</span>
+                  <span class="text-[11px] font-semibold text-slate-600">${esc(lot.importStatus)}</span>
+                </div>
+                <span class="text-xs font-extrabold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+                  <i class="fas fa-calendar-day mr-1"></i>ETA: ${lot.eta}
+                </span>
+              </div>
+
+              <div class="flex items-center justify-between text-xs pt-1">
+                <div>
+                  <span class="text-slate-400 text-[10px] block">Disponibilidad en este lote:</span>
+                  <span class="font-extrabold text-sm ${isLotExhausted ? 'text-slate-500' : 'text-emerald-700'} font-mono">${fmtN(lot.available)} ${esc(product.unit || 'und')} libres</span>
+                </div>
+
+                ${isLotExhausted ? `
+                  <button type="button" disabled class="btn btn-sm px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed">
+                    <i class="fas fa-ban mr-1"></i>Agotado
+                  </button>
+                ` : `
+                  <button type="button" class="btn-pick-lot btn btn-primary btn-sm px-3 py-1.5 rounded-xl font-bold text-xs bg-[#006876] hover:bg-[#004F5A] text-white flex items-center gap-1.5" data-lotid="${lot.id}">
+                    <i class="fas fa-plus"></i> Reservar de este Lote
+                  </button>
+                `}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+
+  (window as any).openModal('Lotes en Tránsito — ' + product.name, html, '<button class="btn btn-outline" onclick="window.closeModal()">Cerrar</button>', true);
+
+  $$('.btn-pick-lot').forEach((btn: any) => {
+    btn.addEventListener('click', () => {
+      const lotId = btn.dataset.lotid;
+      const targetLot = lots.find((l: any) => l.id === lotId);
+      if (!targetLot || Number(targetLot.available || 0) <= 0) {
+        (window as any).showToast('Este lote no tiene unidades disponibles.', 'warning');
+        return;
+      }
+      const ok = (window as any).SalesCart?.setCartMode('reserva');
+      if (ok) {
+        (window as any).SalesCart?.setItem(product, 1, product.unit || 'UND', undefined, targetLot);
+        (window as any).closeModal();
+        (window as any).showToast(`Añadido 1 ${product.unit || 'und'} a la reserva del lote ${targetLot?.importNumber || ''}`, 'success');
+        renderProductos($('#page-content'));
+      }
+    });
+  });
+}
+
+// ── Enlazar Eventos de Carrito en Tarjetas del Catálogo ────────────────────────
+function _bindProductCardCartEvents(products: any[], incomingMap: any = {}) {
+  const cart = (window as any).SalesCart;
+
+  const updateCardEquiv = (pid: string, prod: any, qty: number, unit: string) => {
+    const box = document.getElementById(`ecom-equiv-${pid}`);
+    if (!box) return;
+    if (qty <= 0) {
+      box.innerHTML = '';
+      box.classList.add('hidden');
+      return;
+    }
+    const conv = (window as any).convertProductQty(qty, unit, prod);
+    const parts: string[] = [];
+    if (conv.cajas != null) parts.push(`<strong>${conv.cajas}</strong> Cajas`);
+    if (conv.m2 != null) parts.push(`<strong>${conv.m2}</strong> m²`);
+    if (conv.unidades != null) parts.push(`<strong>${conv.unidades}</strong> Fichas`);
+    if (conv.pesoKg != null) parts.push(`<strong>${conv.pesoKg}</strong> Kg`);
+
+    box.innerHTML = `ℹ️ ${parts.join(' · ')}`;
+    box.classList.remove('hidden');
+  };
+
+  // Botón Ver Lotes en Tránsito
+  $$('.btn-show-transit-lots').forEach((btn: any) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const pid = btn.dataset.id;
+      const prod = products.find(p => p.id === pid);
+      if (prod && incomingMap[pid]) {
+        _showTransitLotsModal(prod, incomingMap[pid]);
+      }
+    });
+  });
+
+  // Botón Cambiar a Modo Reserva
+  $$('.btn-switch-reserva-item').forEach((btn: any) => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const ok = cart?.setCartMode('reserva');
+      if (ok) renderProductos($('#page-content'));
+    });
+  });
+
+  $$('.btn-card-plus').forEach((btn: any) => {
+    btn.addEventListener('click', () => {
+      const pid = btn.dataset.id;
+      const prod = products.find(p => p.id === pid);
+      if (!prod) return;
+
+      const input = document.querySelector(`.input-ecom-qty[data-id="${pid}"]`) as HTMLInputElement;
+      const unitSel = document.querySelector(`.ecom-unit-sel[data-id="${pid}"]`) as HTMLSelectElement;
+      const unit = unitSel ? unitSel.value : (prod.unit || 'UND');
+
+      const maxAllowed = parseFloat(input?.dataset.max || '999999');
+      let cur = parseFloat(input?.value || '0') || 0;
+
+      if (cur + 1 > maxAllowed && prod.type !== 'SERVICIO') {
+        (window as any).showToast(`Disponibilidad máxima alcanzada (${maxAllowed} ${unit}). No es posible agregar más.`, 'warning');
+        return;
+      }
+
+      cur += 1;
+      if (input) input.value = String(cur);
+
+      cart?.setItem(prod, cur, unit);
+      updateCardEquiv(pid, prod, cur, unit);
+    });
+  });
+
+  $$('.btn-card-minus').forEach((btn: any) => {
+    btn.addEventListener('click', () => {
+      const pid = btn.dataset.id;
+      const prod = products.find(p => p.id === pid);
+      if (!prod) return;
+
+      const input = document.querySelector(`.input-ecom-qty[data-id="${pid}"]`) as HTMLInputElement;
+      const unitSel = document.querySelector(`.ecom-unit-sel[data-id="${pid}"]`) as HTMLSelectElement;
+      const unit = unitSel ? unitSel.value : (prod.unit || 'UND');
+
+      let cur = parseFloat(input?.value || '0') || 0;
+      cur = Math.max(0, cur - 1);
+      if (input) input.value = String(cur);
+
+      cart?.setItem(prod, cur, unit);
+      updateCardEquiv(pid, prod, cur, unit);
+    });
+  });
+
+  $$('.input-ecom-qty').forEach((inp: any) => {
+    inp.addEventListener('input', () => {
+      const pid = inp.dataset.id;
+      const prod = products.find(p => p.id === pid);
+      if (!prod) return;
+
+      const unitSel = document.querySelector(`.ecom-unit-sel[data-id="${pid}"]`) as HTMLSelectElement;
+      const unit = unitSel ? unitSel.value : (prod.unit || 'UND');
+      const maxAllowed = parseFloat(inp.dataset.max || '999999');
+
+      let val = parseFloat(inp.value || '0') || 0;
+
+      if (val > maxAllowed && prod.type !== 'SERVICIO') {
+        val = maxAllowed;
+        inp.value = String(maxAllowed);
+        (window as any).showToast(`Cantidad ajustada al límite disponible (${maxAllowed} ${unit}).`, 'warning');
+      } else if (val < 0) {
+        val = 0;
+        inp.value = '0';
+      }
+
+      cart?.setItem(prod, val, unit);
+      updateCardEquiv(pid, prod, val, unit);
+    });
+  });
+
+  $$('.ecom-unit-sel').forEach((sel: any) => {
+    sel.addEventListener('change', () => {
+      const pid = sel.dataset.id;
+      const prod = products.find(p => p.id === pid);
+      if (!prod) return;
+
+      const input = document.querySelector(`.input-ecom-qty[data-id="${pid}"]`) as HTMLInputElement;
+      const val = parseFloat(input?.value || '0') || 0;
+      cart?.setItem(prod, val, sel.value);
+      updateCardEquiv(pid, prod, val, sel.value);
+    });
+  });
+}
+
+// ── Modal / Drawer de Checkout de Cierre de Pedido ─────────────────────────────
+async function openCheckoutDrawer(onDone: any = null) {
+  const cart = (window as any).SalesCart;
+  const summary = cart?.getSummary();
+  if (!summary || summary.totalProducts === 0) {
+    (window as any).showToast('El carrito está vacío. Agrega productos desde el catálogo.', 'warning');
+    return;
+  }
+
+  const [customers, warehouses] = await Promise.all([
+    (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
+    (window as any).API.getWarehouses(true),
+  ]);
+
+  const preselectedCust = summary.activeCustomer;
+  const preselectedCustId = preselectedCust?.id || '';
+  const initialCustDisplay = preselectedCust ? `${preselectedCust.name} (${preselectedCust.doc_number || preselectedCust.nit || 'S/N'})` : '';
+
+  const drawerHtml = `
+    <div class="space-y-4 text-slate-800 -m-2 sm:-m-4">
+      
+      <!-- Top: Cliente y Destino -->
+      <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+        <!-- Buscador Dinámico de Clientes / Terceros -->
+        <div class="relative">
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-extrabold text-slate-700">Cliente Adquirente <span class="text-red-500">*</span></label>
+            <button type="button" id="chk-customer-add-btn" class="text-[11px] text-teal-700 hover:text-teal-900 font-bold flex items-center gap-1">
+              <i class="fas fa-user-plus text-xs"></i> <span>+ Nuevo Cliente</span>
+            </button>
+          </div>
+          
+          <div class="relative flex items-center">
+            <input type="text" id="chk-customer-search-inp" autocomplete="off"
+                   placeholder="🔍 Buscar por nombre, NIT, teléfono o ciudad..." 
+                   value="${esc(initialCustDisplay)}"
+                   class="w-full form-input text-xs font-semibold py-2 pl-3 pr-8 rounded-xl border border-slate-300 focus:border-teal-600 focus:ring-1 focus:ring-teal-600">
+            <input type="hidden" id="chk-customer-id" value="${esc(preselectedCustId)}">
+            
+            <button type="button" id="chk-customer-clear-btn" class="absolute right-2 text-slate-400 hover:text-rose-500 p-1 ${preselectedCustId ? '' : 'hidden'}" title="Limpiar Selección">
+              <i class="fas fa-times-circle text-sm"></i>
+            </button>
+          </div>
+
+          <!-- Dropdown Flotante Dinámico de Resultados -->
+          <div id="chk-customer-results" class="hidden absolute left-0 right-0 top-full mt-1 max-h-52 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] font-bold text-slate-500 mb-1">Bodega de Despacho</label>
+            <select id="chk-warehouse-sel" class="w-full form-input text-xs py-1.5">
+              <option value="">— Bodega Principal —</option>
+              ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold text-slate-500 mb-1">Tipo de Operación</label>
+            <select id="chk-mode-sel" class="w-full form-input text-xs py-1.5 font-bold">
+              <option value="venta">🛍️ Venta Inmediata</option>
+              <option value="reserva">📦 Reserva de Stock</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Resumen de Artículos con Metrología -->
+      <div class="border border-slate-200 rounded-2xl overflow-hidden">
+        <div class="bg-slate-100 px-3 py-2 border-b border-slate-200 font-extrabold text-xs text-slate-700 flex justify-between">
+          <span>Artículos en Pedido (${summary.totalProducts})</span>
+          <span>${fmtN(summary.totalUnits)} Unidades Totales</span>
+        </div>
+
+        <div class="max-h-60 overflow-y-auto divide-y divide-slate-100 p-2" id="chk-lines-list">
+          ${summary.items.map((item: any) => {
+            const p = item.product;
+            const conv = item.equivalences;
+            const equivParts: string[] = [];
+            if (conv?.cajas != null && item.unit !== 'CJ') equivParts.push(`${conv.cajas} Cajas`);
+            if (conv?.m2 != null && item.unit !== 'M2') equivParts.push(`${conv.m2} m²`);
+            if (conv?.pesoKg != null && item.unit !== 'KG') equivParts.push(`${conv.pesoKg} Kg`);
+
+            return `
+              <div class="p-2 flex items-center justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <h5 class="font-extrabold text-xs text-slate-900 truncate">${esc(p.name)}</h5>
+                  <p class="text-[10px] text-slate-500">
+                    <span class="font-mono font-bold">${item.qty} ${item.unit}</span> x ${fmt(item.unitPrice)}
+                    ${equivParts.length ? `· <span class="text-teal-700 font-semibold font-mono">(${equivParts.join(' · ')})</span>` : ''}
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="font-extrabold text-xs text-blue-900 font-mono">${fmt(item.total)}</span>
+                  <button type="button" class="btn-chk-del text-slate-400 hover:text-rose-600 p-1" data-id="${p.id}" title="Quitar">
+                    <i class="fas fa-trash-can text-xs"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Notas e Instrucciones -->
+      <div>
+        <label class="block text-[10px] font-bold text-slate-500 mb-1">Observaciones / Instrucciones de Entrega</label>
+        <input id="chk-order-notes" type="text" placeholder="Ej: Entregar en obra bloque B, cliente retira en bodega..." class="w-full form-input text-xs py-2">
+      </div>
+
+      <!-- Totales -->
+      <div class="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-baseline shadow-md">
+        <div>
+          <span class="text-[10px] uppercase font-bold text-slate-400 block">Subtotal: ${fmt(summary.subtotal)} · IVA: ${fmt(summary.iva)}</span>
+          <span class="text-xs font-bold text-slate-300">TOTAL NETO DEL PEDIDO:</span>
+        </div>
+        <span class="text-xl font-extrabold text-emerald-400 font-mono">${fmt(summary.total)}</span>
+      </div>
+
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline" onclick="window.closeModal()">Seguir Comprando</button>
+    <button class="btn btn-primary bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold" id="btn-chk-save-order">
+      <i class="fas fa-circle-check"></i> Emitir Pedido
+    </button>
+  `;
+
+  (window as any).openModal('Checkout — Finalizar Pedido', drawerHtml, footer, true);
+
+  // ── Lógica del Buscador Dinámico de Clientes ──
+  const custSearchInput = document.getElementById('chk-customer-search-inp') as HTMLInputElement;
+  const custHiddenId = document.getElementById('chk-customer-id') as HTMLInputElement;
+  const custClearBtn = document.getElementById('chk-customer-clear-btn') as HTMLButtonElement;
+  const custResults = document.getElementById('chk-customer-results') as HTMLElement;
+  const custAddBtn = document.getElementById('chk-customer-add-btn') as HTMLButtonElement;
+
+  const renderCustResults = (query: string) => {
+    const q = (query || '').toLowerCase().trim();
+    const filtered = !q 
+      ? customers.slice(0, 25) 
+      : customers.filter((c: any) => {
+          const matchStr = `${c.name || ''} ${c.doc_number || ''} ${c.nit || ''} ${c.city || ''} ${c.phone || ''}`.toLowerCase();
+          return matchStr.includes(q);
+        }).slice(0, 25);
+
+    if (!filtered.length) {
+      custResults.innerHTML = `
+        <div class="p-3 text-center text-xs text-slate-400">
+          <i class="fas fa-user-slash mr-1"></i> No se encontraron clientes con "${esc(query)}"
+        </div>
+      `;
+      custResults.classList.remove('hidden');
+      return;
+    }
+
+    custResults.innerHTML = filtered.map((c: any) => `
+      <div class="p-2.5 hover:bg-teal-50 cursor-pointer flex items-center justify-between gap-2 transition-colors item-cust-pick" data-id="${esc(c.id)}">
+        <div class="min-w-0">
+          <h5 class="font-extrabold text-xs text-slate-900 truncate">${esc(c.name)}</h5>
+          <p class="text-[10px] text-slate-500 truncate">
+            Doc: <span class="font-mono font-bold text-slate-700">${esc(c.doc_number || c.nit || 'S/N')}</span>
+            ${c.city ? ` · 📍 ${esc(c.city)}` : ''}
+            ${c.phone ? ` · 📞 ${esc(c.phone)}` : ''}
+          </p>
+        </div>
+        <span class="text-[10px] bg-slate-100 text-teal-700 font-bold px-2 py-0.5 rounded-md flex-shrink-0">Seleccionar</span>
+      </div>
+    `).join('');
+
+    custResults.querySelectorAll('.item-cust-pick').forEach((item: any) => {
+      item.addEventListener('click', () => {
+        const selId = item.dataset.id;
+        const selCust = customers.find((c: any) => c.id === selId);
+        if (selCust) {
+          custHiddenId.value = selCust.id;
+          custSearchInput.value = `${selCust.name} (${selCust.doc_number || selCust.nit || 'S/N'})`;
+          custClearBtn.classList.remove('hidden');
+          custResults.classList.add('hidden');
+          cart.setActiveCustomer(selCust);
+        }
+      });
+    });
+
+    custResults.classList.remove('hidden');
+  };
+
+  custSearchInput?.addEventListener('focus', () => renderCustResults(custSearchInput.value));
+  custSearchInput?.addEventListener('input', () => {
+    custHiddenId.value = '';
+    custClearBtn.classList.toggle('hidden', !custSearchInput.value);
+    renderCustResults(custSearchInput.value);
+  });
+
+  custClearBtn?.addEventListener('click', () => {
+    custHiddenId.value = '';
+    custSearchInput.value = '';
+    custClearBtn.classList.add('hidden');
+    cart.setActiveCustomer(null);
+    custSearchInput.focus();
+    renderCustResults('');
+  });
+
+  // Cerrar dropdown al hacer click fuera
+  document.addEventListener('click', (ev: any) => {
+    if (!ev.target.closest('#chk-customer-search-inp') && !ev.target.closest('#chk-customer-results')) {
+      custResults?.classList.add('hidden');
+    }
+  });
+
+  // Botón Crear Nuevo Cliente Rápido
+  custAddBtn?.addEventListener('click', () => {
+    if (typeof (window as any).openTerceroForm === 'function') {
+      (window as any).openTerceroForm(null, (createdCustomer: any) => {
+        if (createdCustomer && createdCustomer.id) {
+          customers.unshift(createdCustomer);
+          custHiddenId.value = createdCustomer.id;
+          custSearchInput.value = `${createdCustomer.name} (${createdCustomer.doc_number || createdCustomer.nit || 'S/N'})`;
+          custClearBtn.classList.remove('hidden');
+          cart.setActiveCustomer(createdCustomer);
+        }
+      });
+    }
+  });
+
+  // Botones de eliminar línea
+  $$('.btn-chk-del').forEach((btn: any) => {
+    btn.addEventListener('click', () => {
+      cart.removeItem(btn.dataset.id);
+      openCheckoutDrawer(onDone);
+    });
+  });
+
+  // Guardar Pedido Final
+  $('#btn-chk-save-order')?.addEventListener('click', async () => {
+    try {
+      const customerId = (document.getElementById('chk-customer-id') as HTMLInputElement)?.value;
+      if (!customerId) throw new Error('Por favor busca y selecciona un cliente para el pedido.');
+
+      const currentSummary = cart.getSummary();
+      if (!currentSummary.items.length) throw new Error('No hay artículos en el carrito.');
+
+      const warehouseId = (document.getElementById('chk-warehouse-sel') as HTMLSelectElement)?.value || null;
+      const mode = (document.getElementById('chk-mode-sel') as HTMLSelectElement)?.value || 'venta';
+      const notes = (document.getElementById('chk-order-notes') as HTMLInputElement)?.value.trim() || (mode === 'reserva' ? 'Reserva de stock en preventa' : '');
+
+      const lines = currentSummary.items.map((item: any) => {
+        const p = item.product;
+        return {
+          product_id: p.id,
+          description: `${p.name} [${item.qty} ${item.unit}]`,
+          qty: item.qty,
+          unit_price: item.unitPrice,
+          iva_rate: item.ivaRate,
+          iva_amount: item.iva,
+          subtotal: item.subtotal,
+          total: item.total,
+        };
+      });
+
+      const isReserva = (mode === 'reserva') || (currentSummary.activeMode === 'reserva');
+
+      // ── Validación Estricta Anti-Saldos Negativos en Tiempo Real ──
+      for (const item of currentSummary.items) {
+        const p = item.product;
+        if (p.type === 'SERVICIO') continue;
+
+        if (isReserva) {
+          const incoming = await (window as any).API.getIncomingStockForProduct(p.id).catch(() => []);
+          const totalTransitAvail = (incoming || []).reduce((s: number, l: any) => s + Number(l.qty_available ?? l.qty ?? 0), 0);
+          if (item.qty > totalTransitAvail) {
+            throw new Error(`No es posible procesar la reserva. El producto "${p.name}" supera las unidades libres en tránsito (Solicitado: ${item.qty} ${item.unit}, Disponibles: ${totalTransitAvail} ${item.unit}).`);
+          }
+        } else {
+          const stockRows = await (window as any).API.getInventoryStock().catch(() => []);
+          const prodStock = (stockRows || []).filter((s: any) => s.product_id === p.id && (!warehouseId || s.warehouse_id === warehouseId));
+          const onHand = prodStock.reduce((s: number, r: any) => s + Number(r.qty_on_hand || 0), 0);
+          if (item.qty > onHand) {
+            throw new Error(`No es posible procesar el pedido. El producto "${p.name}" supera el stock físico en bodega (Solicitado: ${item.qty} ${item.unit}, Disponible: ${onHand} ${item.unit}).`);
+          }
+        }
+      }
+
+      const header = {
+        customer_id: customerId,
+        warehouse_id: warehouseId,
+        date: (window as any).todayStr(),
+        due_date: (window as any).addDaysToDateStr((window as any).todayStr(), isReserva ? 15 : 3),
+        notes: isReserva ? `[PREVENTA - RESERVA EN TRÁNSITO] ${notes}` : notes,
+      };
+
+      const btnSave = document.getElementById('btn-chk-save-order') as HTMLButtonElement;
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
+      }
+
+      const createdOrder = await (window as any).API.createSalesOrder(header, lines);
+
+      if (isReserva) {
+        // Crear registro oficial de reserva en PocketBase
+        try {
+          const resNumber = await (window as any).API.nextSalesReservationConsecutive().catch(() => `RES-${Date.now().toString().slice(-6)}`);
+          const resHeader: any = {
+            number: resNumber,
+            customer_id: customerId,
+            sales_order_id: createdOrder.id,
+            status: 'active',
+            notes: notes || 'Reserva de Importación - Preventa desde Catálogo Móvil',
+            created_by: (window as any).pb.currentUser?.id || null,
+          };
+          const createdRes = await (window as any).pb.create('sales_reservations', resHeader);
+
+          // Crear líneas de reserva asignadas a la importación
+          for (const item of currentSummary.items) {
+            const p = item.product;
+            const targetLot = item.targetLot;
+            let importLineId = targetLot?.id || '';
+            let importId = targetLot?.import_id || '';
+            let eta = targetLot?.rawEta || null;
+
+            if (!importLineId) {
+              const incoming = await (window as any).API.getIncomingStockForProduct(p.id).catch(() => []);
+              const lot = incoming.find((l: any) => Number(l.qty_available ?? l.qty ?? 0) > 0);
+              if (lot) {
+                importLineId = lot.id;
+                importId = lot.import_id;
+                eta = lot.expand?.import_id?.estimated_arrival || null;
+              }
+            }
+
+            await (window as any).pb.create('sales_reservation_lines', {
+              reservation_id: createdRes.id,
+              product_id: p.id,
+              import_id: importId || null,
+              import_line_id: importLineId || null,
+              qty_reserved: item.qty,
+              qty_dispatched: 0,
+              qty_released: 0,
+              status: 'active',
+              eta_snapshot: eta,
+            }).catch(() => {});
+          }
+        } catch (resErr: any) {
+          console.warn('Error al vincular líneas de reserva:', resErr);
+        }
+      }
+
+      cart.clear();
+      (window as any).showToast(`¡${isReserva ? 'Reserva de Preventa' : 'Pedido'} #${createdOrder.number} generado con éxito!`, 'success');
+      (window as any).closeModal();
+      if (onDone) onDone();
+    } catch (err: any) {
+      console.error('Error al emitir pedido:', err);
+      const errMsg = err?.data?.message || err?.message || 'Error al guardar pedido';
+      (window as any).showToast(errMsg, 'error');
+      const btnSave = document.getElementById('btn-chk-save-order') as HTMLButtonElement;
+      if (btnSave) {
+        btnSave.disabled = false;
+        btnSave.innerHTML = '<i class="fas fa-circle-check"></i> Emitir Pedido';
+      }
+    }
+  });
 }
 
 // ── Helpers de renderizado ────────────────────────────────────────────────────
@@ -701,7 +1609,7 @@ function kpiCard(label, value, icon, color, bg) {
   </div>`;
 }
 
-function renderProductRows(products) {
+function renderProductRows(products, stockMap = {}, incomingMap = {}) {
   return products.map(p => {
     const typeBadge = p.type === 'BIEN'
       ? '<span class="badge badge-blue">Bien</span>'
@@ -709,14 +1617,16 @@ function renderProductRows(products) {
     const statusBadge = p.active
       ? '<span class="badge badge-green">Activo</span>'
       : '<span class="badge badge-gray">Inactivo</span>';
-    const incomeAcct = p.expand?.income_account_id;
+    const onHand = Number(stockMap[p.id] || 0);
+    const incoming = incomingMap[p.id];
+
     return `<tr data-type="${esc(p.type)}" data-iva="${p.iva_rate ?? ''}" data-active="${p.active}" data-categoria="${esc(p.categoria || '')}" data-linea="${esc(p.linea || '')}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(p.code)}</span></td>
       <td class="font-medium">${esc(p.name)}</td>
       <td>${typeBadge}</td>
       <td class="text-sm">${esc(p.categoria || '—')}</td>
-      <td class="text-sm">${esc(p.linea || '—')}</td>
-      <td><span class="font-mono text-xs" title="${esc(getUnitName(p.unit || ''))}"><span style="color:#1A4B8C">${esc(p.unit || '—')}</span>${p.unit ? `<span style="color:#9CA3AF;font-size:10px;margin-left:4px">${esc(getUnitName(p.unit))}</span>` : ''}</span></td>
+      <td class="font-mono text-xs font-bold ${onHand > 0 ? 'text-emerald-700' : 'text-slate-400'}">${p.type === 'BIEN' ? `${fmtN(onHand)} ${esc(p.unit || '')}` : '—'}</td>
+      <td class="text-xs">${incoming ? `<span class="badge badge-blue font-mono text-[10px]">+${fmtN(incoming.qty)}</span> <span class="text-[10px] text-gray-500">${incoming.eta || ''}</span>` : '—'}</td>
       <td class="text-right">${p.iva_rate ?? 0}%</td>
       <td class="text-right font-mono text-xs">
         <div class="font-semibold text-gray-900">${p.base_price ? fmt(p.base_price) : '—'}</div>
@@ -742,8 +1652,8 @@ function emptyRow(cols) {
   </td></tr>`;
 }
 
-// ── Filtro cliente ────────────────────────────────────────────────────────────
-function filterProductTable() {
+// ── Filtro cliente (Aplica tanto a Tabla como a Cards) ────────────────────────
+function filterProductCatalog() {
   const q        = (getInputVal('prod-q') || '').toLowerCase();
   const type     = getSelectVal('prod-type');
   const categoria = getSelectVal('prod-categoria');
@@ -751,6 +1661,7 @@ function filterProductTable() {
   const iva      = getSelectVal('prod-iva');
   const status   = getSelectVal('prod-status');
 
+  // Filtro en filas de tabla
   $$('#prod-table tbody tr[data-type]').forEach(tr => {
     const text    = tr.textContent.toLowerCase();
     const okQ     = !q        || text.includes(q);
@@ -761,7 +1672,21 @@ function filterProductTable() {
     const okStat  = !status   || tr.dataset.active    === status;
     tr.style.display = okQ && okType && okCat && okLinea && okIva && okStat ? '' : 'none';
   });
+
+  // Filtro en Cards E-Commerce
+  $$('.prod-ecom-card').forEach(card => {
+    const text    = card.textContent.toLowerCase();
+    const okQ     = !q        || text.includes(q);
+    const okType  = !type     || card.dataset.type      === type;
+    const okCat   = !categoria || card.dataset.categoria === categoria;
+    const okLinea = !linea    || card.dataset.linea     === linea;
+    const okIva   = !iva      || card.dataset.iva       === iva;
+    const okStat  = !status   || card.dataset.active    === status;
+    (card as HTMLElement).style.display = okQ && okType && okCat && okLinea && okIva && okStat ? 'flex' : 'none';
+  });
 }
+
+function filterProductTable() { filterProductCatalog(); }
 
 // ── Ver detalle ───────────────────────────────────────────────────────────────
 async function viewProductDetail(id) {

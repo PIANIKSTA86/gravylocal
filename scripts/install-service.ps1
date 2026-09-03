@@ -62,16 +62,11 @@ if (Test-Path "$hubPath\package.json") {
 }
 
 Write-Host ""
-Write-Host "[3/6] Habilitando Firewall de Windows para tráfico local/LAN..." -ForegroundColor $cyan
-$ports = @(8088, 8089, 8090, 8091)
-foreach ($port in $ports) {
-    $ruleName = "Gravy Port $port"
-    # Eliminar regla vieja si existe
-    netsh advfirewall firewall delete rule name="$ruleName" > $null 2>&1
-    # Crear nueva regla
-    netsh advfirewall firewall add rule name="$ruleName" dir=in action=allow protocol=TCP localport=$port > $null 2>&1
-    Write-Host "    [✔] Puerto $port permitido en el Firewall." -ForegroundColor $green
-}
+Write-Host "[3/6] Habilitando Firewall de Windows para tráfico local/LAN (Rango 8080-8150)..." -ForegroundColor $cyan
+$ruleName = "Gravy Suite (8080-8150)"
+netsh advfirewall firewall delete rule name="$ruleName" > $null 2>&1
+netsh advfirewall firewall add rule name="$ruleName" dir=in action=allow protocol=TCP localport="8080-8150" > $null 2>&1
+Write-Host "    [✔] Rango de puertos 8080-8150 permitido en el Firewall." -ForegroundColor $green
 
 Write-Host ""
 Write-Host "[4/6] Registrando servicio en el Programador de Tareas (Task Scheduler)..." -ForegroundColor $cyan

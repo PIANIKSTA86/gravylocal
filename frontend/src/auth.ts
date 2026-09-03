@@ -85,6 +85,7 @@ function applyModuleVisibility(): void {
     'exogena':          'contabilidad',
     'ventas':           'comercial',
     'pedidos':          'comercial',
+    'mis-reservas':     'comercial',
     'compras':          'inventarios',
     'productos':        'inventarios',
     'inventario':       'inventarios',
@@ -147,7 +148,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'mis-reservas', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {

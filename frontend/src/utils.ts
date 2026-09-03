@@ -1745,4 +1745,180 @@ function reapplyTableSort(table: HTMLTableElement) {
 (window as any).getPageContainer = getPageContainer;
 (window as any).getActivePane = getActivePane;
 
+/* ── Conversión de Metrología Variable y Presentaciones (Pisos, Cajas, M2, Kg) ── */
+export function convertProductQty(qty: number, fromUnit: string, product: any) {
+  const largoCm = Number(product.largo_cm || 0);
+  const anchoCm = Number(product.ancho_cm || 0);
+  const undEmpaque = Number(product.und_empaque || 0);
+  const pesoBruto = Number(product.peso_bruto || product.peso_x_und_empaque || product.peso || 0);
+  const baseUnit = String(product.unit || 'UND').toUpperCase();
+
+  const areaPorFicha = (largoCm > 0 && anchoCm > 0) ? (largoCm * anchoCm) / 10000 : 0;
+  const areaPorCaja = (areaPorFicha > 0 && undEmpaque > 0) ? (areaPorFicha * undEmpaque) : 0;
+
+  // 1. Convertir a M2 si tiene dimensiones
+  let qtyInM2 = 0;
+  if (fromUnit === 'M2') {
+    qtyInM2 = qty;
+  } else if (fromUnit === 'CJ' && areaPorCaja > 0) {
+    qtyInM2 = qty * areaPorCaja;
+  } else if (fromUnit === 'UND' && areaPorFicha > 0) {
+    qtyInM2 = qty * areaPorFicha;
+  } else if (fromUnit === 'KG' && pesoBruto > 0 && areaPorCaja > 0) {
+    qtyInM2 = (qty / pesoBruto) * areaPorCaja;
+  } else {
+    qtyInM2 = areaPorFicha > 0 ? (qty * areaPorFicha) : qty;
+  }
+
+  // 2. Convertir a la unidad base de inventario
+  let baseQty = qty;
+  if (baseUnit === 'M2' && areaPorFicha > 0) {
+    baseQty = qtyInM2;
+  } else if (baseUnit === 'UND' && areaPorFicha > 0) {
+    baseQty = qtyInM2 / areaPorFicha;
+  } else if (baseUnit === 'CJ' && areaPorCaja > 0) {
+    baseQty = qtyInM2 / areaPorCaja;
+  } else if (baseUnit === 'KG' && pesoBruto > 0 && areaPorCaja > 0) {
+    baseQty = (qtyInM2 / areaPorCaja) * pesoBruto;
+  } else {
+    baseQty = qty;
+  }
+
+  return {
+    baseQty: Math.round(baseQty * 10000) / 10000,
+    m2: areaPorFicha > 0 ? Math.round(qtyInM2 * 100) / 100 : null,
+    cajas: areaPorCaja > 0 ? Math.round((qtyInM2 / areaPorCaja) * 100) / 100 : null,
+    unidades: areaPorFicha > 0 ? Math.round((qtyInM2 / areaPorFicha) * 10) / 10 : null,
+    pesoKg: (areaPorCaja > 0 && pesoBruto > 0) ? Math.round(((qtyInM2 / areaPorCaja) * pesoBruto) * 10) / 10 : null,
+  };
+}
+
+/* ── Carrito Global de Venta y Preventa (Frictionless E-Commerce Cart) ── */
+class GlobalSalesCart {
+  items: Record<string, any> = {};
+  activeCustomer: any = null;
+  activeWarehouse: string | null = null;
+  activeMode: 'venta' | 'reserva' = 'venta';
+
+  constructor() {
+    this.loadFromStorage();
+  }
+
+  loadFromStorage() {
+    try {
+      const raw = sessionStorage.getItem('gravy_sales_cart');
+      if (raw) {
+        const data = JSON.parse(raw);
+        this.items = data.items || {};
+        this.activeCustomer = data.activeCustomer || null;
+        this.activeWarehouse = data.activeWarehouse || null;
+        this.activeMode = data.activeMode || 'venta';
+      }
+    } catch (_) {}
+  }
+
+  saveToStorage() {
+    try {
+      sessionStorage.setItem('gravy_sales_cart', JSON.stringify({
+        items: this.items,
+        activeCustomer: this.activeCustomer,
+        activeWarehouse: this.activeWarehouse,
+        activeMode: this.activeMode,
+      }));
+      window.dispatchEvent(new CustomEvent('gravy-cart-updated'));
+    } catch (_) {}
+  }
+
+  setCartMode(newMode: 'venta' | 'reserva'): boolean {
+    const list = Object.values(this.items);
+    if (this.activeMode !== newMode && list.length > 0) {
+      const modeLabel = newMode === 'reserva' ? 'Reserva de Importación (Preventa)' : 'Venta Inmediata (Stock Físico)';
+      const oldLabel = this.activeMode === 'reserva' ? 'Reserva' : 'Venta Inmediata';
+      const confirmed = confirm(`Tienes productos en el carrito en modo ${oldLabel}. No es posible mezclar pedidos de entrega inmediata con reservas de mercancía en tránsito en un mismo documento.\n\n¿Deseas cambiar a ${modeLabel} y reiniciar el carrito?`);
+      if (!confirmed) return false;
+      this.clear();
+    }
+    this.activeMode = newMode;
+    this.saveToStorage();
+    return true;
+  }
+
+  setItem(product: any, qty: number, unit?: string, customPrice?: number, targetLot?: any) {
+    const pid = product.id;
+    if (qty <= 0) {
+      delete this.items[pid];
+      this.saveToStorage();
+      return;
+    }
+
+    const selectedUnit = unit || product.unit || 'UND';
+    const conv = convertProductQty(qty, selectedUnit, product);
+    const unitPrice = customPrice !== undefined ? customPrice : Number(product.base_price || 0);
+    const ivaRate = Number(product.iva_rate || 0);
+
+    const subtotal = qty * unitPrice;
+    const iva = subtotal * (ivaRate / 100);
+    const total = subtotal + iva;
+
+    this.items[pid] = {
+      product,
+      qty,
+      unit: selectedUnit,
+      baseQty: conv.baseQty,
+      unitPrice,
+      ivaRate,
+      subtotal,
+      iva,
+      total,
+      equivalences: conv,
+      mode: this.activeMode,
+      targetLot: targetLot || this.items[pid]?.targetLot || null,
+    };
+    this.saveToStorage();
+  }
+
+  getItem(productId: string) {
+    return this.items[productId] || null;
+  }
+
+  removeItem(productId: string) {
+    delete this.items[productId];
+    this.saveToStorage();
+  }
+
+  clear() {
+    this.items = {};
+    this.saveToStorage();
+  }
+
+  setActiveCustomer(cust: any) {
+    this.activeCustomer = cust;
+    this.saveToStorage();
+  }
+
+  getSummary() {
+    const list = Object.values(this.items);
+    const totalProducts = list.length;
+    const totalUnits = list.reduce((s: number, i: any) => s + Number(i.qty || 0), 0);
+    const subtotal = list.reduce((s: number, i: any) => s + Number(i.subtotal || 0), 0);
+    const iva = list.reduce((s: number, i: any) => s + Number(i.iva || 0), 0);
+    const total = list.reduce((s: number, i: any) => s + Number(i.total || 0), 0);
+
+    return {
+      totalProducts,
+      totalUnits,
+      subtotal,
+      iva,
+      total,
+      items: list,
+      activeCustomer: this.activeCustomer,
+      activeWarehouse: this.activeWarehouse,
+      activeMode: this.activeMode,
+    };
+  }
+}
+
+(window as any).SalesCart = new GlobalSalesCart();
+(window as any).convertProductQty = convertProductQty;
+
 

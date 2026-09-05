@@ -64,6 +64,35 @@ let TX_STATE = {
   accountMap: new Map(),
 };
 
+let PH_PROPERTIES_CACHE: any[] = [];
+let PH_PROPERTIES_PROMISE: Promise<any[]> | null = null;
+
+async function ensurePhPropertiesForTx(): Promise<any[]> {
+  const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+  if (!isPhActive) {
+    PH_PROPERTIES_CACHE = [];
+    return [];
+  }
+  if (PH_PROPERTIES_CACHE.length) return PH_PROPERTIES_CACHE;
+  if (PH_PROPERTIES_PROMISE) return PH_PROPERTIES_PROMISE;
+
+  PH_PROPERTIES_PROMISE = pb.listAll('ph_properties', {
+    filter: 'active=true',
+    expand: 'owner_id',
+    sort: 'code',
+  }).then(list => {
+    PH_PROPERTIES_CACHE = list || [];
+    return PH_PROPERTIES_CACHE;
+  }).catch(() => {
+    PH_PROPERTIES_CACHE = [];
+    return [];
+  }).finally(() => {
+    PH_PROPERTIES_PROMISE = null;
+  });
+
+  return PH_PROPERTIES_PROMISE;
+}
+
 function thirdDisplay(t) {
   return `${t?.doc_number || ''} - ${t?.name || ''}`.trim();
 }
@@ -76,14 +105,31 @@ function getThirdById(state, thirdId) {
 function renderThirdSearchResults(state, query) {
   const list = Array.isArray(state?.terceros) ? state.terceros : [];
   const q = String(query || '').toLowerCase().trim();
-  if (!q) return list.slice(0, 30);
-  const terms = q.split(/\s+/).filter(Boolean);
-  return list
-    .filter(t => {
+  const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+
+  let propResults: any[] = [];
+  if (isPhActive && PH_PROPERTIES_CACHE.length && q) {
+    const terms = q.split(/\s+/).filter(Boolean);
+    propResults = PH_PROPERTIES_CACHE.filter(p => {
+      const ownerName = p.expand?.owner_id?.name || '';
+      const ownerDoc = p.expand?.owner_id?.doc_number || '';
+      const hay = `${p.code || ''} ${p.name || ''} ${p.apartment || ''} ${p.tower || ''} ${ownerName} ${ownerDoc}`.toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }).slice(0, 12);
+  }
+
+  let thirdResults: any[] = [];
+  if (!q) {
+    thirdResults = list.slice(0, 30);
+  } else {
+    const terms = q.split(/\s+/).filter(Boolean);
+    thirdResults = list.filter(t => {
       const hay = `${t.doc_number || ''} ${t.name || ''}`.toLowerCase();
       return terms.every(term => hay.includes(term));
-    })
-    .slice(0, 30);
+    }).slice(0, 30);
+  }
+
+  return { propResults, thirdResults };
 }
 
 function initThirdSearchInput({ state, hiddenId, inputId, resultsId, onSelected }) {
@@ -94,17 +140,41 @@ function initThirdSearchInput({ state, hiddenId, inputId, resultsId, onSelected 
   if (!wrap || !hidden || !input || !results) return;
 
   const paint = (query = '') => {
-    const found = renderThirdSearchResults(state, query);
-    if (!found.length) {
+    const { propResults, thirdResults } = renderThirdSearchResults(state, query);
+    if (!propResults.length && !thirdResults.length) {
       results.innerHTML = '<div class="px-3 py-2 text-xs" style="color:#9CA3AF">Sin resultados</div>';
       return;
     }
-    results.innerHTML = found.map(t => `
-      <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
-        <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
-        <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
-      </button>
-    `).join('');
+
+    let html = '';
+    if (propResults.length) {
+      html += `<div class="px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style="background:#EFF6FF;color:#1E40AF;border-bottom:1px solid #DBEAFE"><i class="fas fa-building mr-1"></i> Inmuebles / Unidades PH</div>`;
+      html += propResults.map(p => {
+        const owner = p.expand?.owner_id;
+        const ownerLabel = owner ? `${owner.name} (NIT: ${owner.doc_number || 'S/N'})` : 'Sin propietario registrado';
+        const pTag = p.code || p.name || 'Unidad';
+        return `
+          <button type="button" data-third-id="${esc(p.owner_id || '')}" data-prop-tag="${esc(pTag)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#F8FAFC;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">
+            <div style="font-weight:700;color:#1E40AF"><i class="fas fa-house-chimney mr-1.5" style="color:#3B82F6"></i>${esc(p.code || '')} - ${esc(p.name || '')}</div>
+            <div style="font-size:11.5px;color:#4B5563">Propietario: <strong>${esc(ownerLabel)}</strong></div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    if (thirdResults.length) {
+      if (propResults.length) {
+        html += `<div class="px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style="background:#F1F5F9;color:#475569;border-bottom:1px solid #E2E8F0"><i class="fas fa-user-tag mr-1"></i> Terceros / Personas</div>`;
+      }
+      html += thirdResults.map(t => `
+        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F8FAFC">
+          <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
+          <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
+        </button>
+      `).join('');
+    }
+
+    results.innerHTML = html;
   };
 
   const show = () => {
@@ -130,11 +200,16 @@ function initThirdSearchInput({ state, hiddenId, inputId, resultsId, onSelected 
     const btn = ev.target.closest('[data-third-id]');
     if (!btn) return;
     const id = btn.getAttribute('data-third-id') || '';
+    const propTag = btn.getAttribute('data-prop-tag') || '';
     const third = getThirdById(state, id);
     hidden.value = id;
-    input.value = third ? thirdDisplay(third) : '';
+    if (propTag && third) {
+      input.value = `[${propTag}] ${thirdDisplay(third)}`;
+    } else {
+      input.value = third ? thirdDisplay(third) : '';
+    }
     hide();
-    if (typeof onSelected === 'function') onSelected(id);
+    if (typeof onSelected === 'function') onSelected(id, propTag);
   };
 
   if (input._thirdOutsideHandler) document.removeEventListener('click', input._thirdOutsideHandler);
@@ -154,18 +229,41 @@ function initLineThirdSearchInput({ state, hidden, input, results, onSelected })
   if (!hidden || !input || !results) return;
 
   const paint = (query = '') => {
-    const found = renderThirdSearchResults(state, query);
-    results.innerHTML = `
+    const { propResults, thirdResults } = renderThirdSearchResults(state, query);
+    let html = `
       <button type="button" data-third-id="" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">
         Usar tercero del encabezado
       </button>
-      ${found.map(t => `
-        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer">
+    `;
+
+    if (propResults.length) {
+      html += `<div class="px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style="background:#EFF6FF;color:#1E40AF;border-bottom:1px solid #DBEAFE"><i class="fas fa-building mr-1"></i> Inmuebles / Unidades PH</div>`;
+      html += propResults.map(p => {
+        const owner = p.expand?.owner_id;
+        const ownerLabel = owner ? `${owner.name} (NIT: ${owner.doc_number || 'S/N'})` : 'Sin propietario registrado';
+        const pTag = p.code || p.name || 'Unidad';
+        return `
+          <button type="button" data-third-id="${esc(p.owner_id || '')}" data-prop-tag="${esc(pTag)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#F8FAFC;color:#0D2137;cursor:pointer;border-bottom:1px solid #F1F5F9">
+            <div style="font-weight:700;color:#1E40AF"><i class="fas fa-house-chimney mr-1.5" style="color:#3B82F6"></i>${esc(p.code || '')} - ${esc(p.name || '')}</div>
+            <div style="font-size:11.5px;color:#4B5563">Propietario: <strong>${esc(ownerLabel)}</strong></div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    if (thirdResults.length) {
+      if (propResults.length) {
+        html += `<div class="px-3 py-1.5 text-xs font-bold uppercase tracking-wider" style="background:#F1F5F9;color:#475569;border-bottom:1px solid #E2E8F0"><i class="fas fa-user-tag mr-1"></i> Terceros / Personas</div>`;
+      }
+      html += thirdResults.map(t => `
+        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 text-sm" style="border:none;background:#fff;color:#0D2137;cursor:pointer;border-bottom:1px solid #F8FAFC">
           <div style="font-weight:600">${esc(t.doc_number || 'SIN DOC')}</div>
           <div style="font-size:12px;color:#6B7280">${esc(t.name || '')}</div>
         </button>
-      `).join('')}
-    `;
+      `).join('');
+    }
+
+    results.innerHTML = html;
   };
 
   const syncInputFromHidden = () => {
@@ -190,11 +288,16 @@ function initLineThirdSearchInput({ state, hidden, input, results, onSelected })
     const btn = ev.target.closest('[data-third-id]');
     if (!btn) return;
     const id = btn.getAttribute('data-third-id') || '';
+    const propTag = btn.getAttribute('data-prop-tag') || '';
     hidden.value = id;
     const third = getThirdById(state, id);
-    input.value = third ? thirdDisplay(third) : '';
+    if (propTag && third) {
+      input.value = `[${propTag}] ${thirdDisplay(third)}`;
+    } else {
+      input.value = third ? thirdDisplay(third) : '';
+    }
     results.style.display = 'none';
-    if (typeof onSelected === 'function') onSelected(id);
+    if (typeof onSelected === 'function') onSelected(id, propTag);
   };
 
   (window as any).initKeyboardAutocomplete({
@@ -211,17 +314,30 @@ function bindTxLineThirdSearches(mode = 'new') {
 
   state.lines.forEach((_, i) => {
     const base = isEdit ? `edit-tx-line-third-${i}` : `tx-line-third-${i}`;
-    const hidden = document.getElementById(base);
-    const input = document.getElementById(`${base}-search`);
+    const hidden = document.getElementById(base) as HTMLInputElement;
+    const input = document.getElementById(`${base}-search`) as HTMLInputElement;
     const results = document.getElementById(`${base}-results`);
     initLineThirdSearchInput({
       state,
       hidden,
       input,
       results,
-      onSelected: (id) => {
+      onSelected: (id, propTag) => {
         if (isEdit) updateEditTxLine(i, 'third_party_id', id);
         else updateTxLine(i, 'third_party_id', id);
+
+        if (propTag) {
+          const line = state.lines[i];
+          if (line) {
+            const currentDesc = String(line.description || '').trim();
+            if (!currentDesc.startsWith('[')) {
+              const newDesc = currentDesc ? `[${propTag}] ${currentDesc}` : `[${propTag}] `;
+              if (isEdit) updateEditTxLine(i, 'description', newDesc);
+              else updateTxLine(i, 'description', newDesc);
+            }
+          }
+        }
+
         if (id) {
           setTimeout(() => {
             const debitInput = document.getElementById(isEdit ? `edit-tx-line-debit-${i}` : `tx-line-debit-${i}`);
@@ -350,6 +466,7 @@ async function openNuevaTxModal() {
       API.getTerceros({}),
       pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
+      ensurePhPropertiesForTx(),
     ]);
     const user = pb.currentUser;
     let allowedBranches = branches;
@@ -542,7 +659,8 @@ function _closeTxModal() {
       API.getTxLines(originalTxId),
       API.getAccounts(true),
       API.getTxTypes(),
-      API.getTerceros({})
+      API.getTerceros({}),
+      ensurePhPropertiesForTx(),
     ]);
 
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
@@ -682,6 +800,7 @@ async function renderNuevaTx(c) {
       API.getAccounts(true),
       API.getTxTypes(),
       API.getTerceros({}),
+      ensurePhPropertiesForTx(),
     ]);
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
     const postableAccountIds = new Set(
@@ -2203,6 +2322,7 @@ async function editTx(id) {
       API.getTerceros({}),
       pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
+      ensurePhPropertiesForTx(),
     ]);
 
     if (tx.status !== 'draft') {

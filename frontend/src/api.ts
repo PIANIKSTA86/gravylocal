@@ -3858,18 +3858,19 @@ const API = {
     // Propietario de la unidad (para third_party en asiento)
     const property = inv.expand?.property_id;
     const ownerId = property?.owner_id || null;
+    const propTag = (property?.code || property?.name) ? `[${property.code || property.name}] ` : '';
 
     const accountByIdCache = {};
     const accountByCodeCache = {};
     const getAccById = async (id) => {
       const key = String(id || '').trim();
-      if (!key) throw new Error('Cuenta contable invÃ¡lida.');
+      if (!key) throw new Error('Cuenta contable inválida.');
       if (!accountByIdCache[key]) accountByIdCache[key] = await pb.get('accounts', key);
       return accountByIdCache[key];
     };
     const findAccByCode = async (code) => {
       const key = String(code || '').trim();
-      if (!key) throw new Error('CÃ³digo de cuenta invÃ¡lido.');
+      if (!key) throw new Error('Código de cuenta inválido.');
       if (accountByCodeCache[key]) return accountByCodeCache[key];
       const safeCode = pb.escapeFilterValue(key);
       const res = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
@@ -3880,7 +3881,7 @@ const API = {
       return acc;
     };
 
-    // Buscar cuentas base por cÃ³digo
+    // Buscar cuentas base por código
     const cxcAccount = await findAccByCode(cxcCode);
     const incomeDefaultAccount = await findAccByCode(incomeCode);
 
@@ -3942,7 +3943,7 @@ const API = {
       return line;
     };
 
-    // Construir lÃ­neas del asiento contable
+    // Construir líneas del asiento contable
     const txLines = [];
 
     // Líneas de ingreso por concepto (crédito)
@@ -3965,11 +3966,14 @@ const API = {
         incomeAccountId = concept.account_id;
       }
 
+      const rawDesc = String(ln.description || '').trim();
+      const finalDesc = rawDesc.startsWith('[') ? rawDesc : `${propTag}${rawDesc}`;
+
       txLines.push(await buildTxLine({
         accountId: incomeAccountId,
         debit: 0,
         credit: Number(ln.amount || 0),
-        description: ln.description,
+        description: finalDesc,
         thirdPartyId: ownerId || null,
         crossDocRef: refPorConcepto,
       }));
@@ -3979,12 +3983,14 @@ const API = {
     for (const ln of lines) {
       const conceptCode = resolveLineConceptCode(ln);
       const refPorConcepto = `${crossRef}-${conceptCode}`;
+      const rawDesc = String(ln.description || '').trim();
+      const finalDesc = rawDesc.startsWith('[') ? rawDesc : `${propTag}${rawDesc}`;
 
       txLines.unshift(await buildTxLine({
         accountId: cxcAccount.id,
         debit: Number(ln.amount || 0),
         credit: 0,
-        description: ln.description,
+        description: finalDesc,
         thirdPartyId: ownerId || null,
         crossDocRef: refPorConcepto,
       }));

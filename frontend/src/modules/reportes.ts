@@ -1469,7 +1469,8 @@ async function renderTrialBalance() {
 
     try {
       const { accounts } = await ensureAccountsSaldos();
-      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
+      const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+      const url = `/api/gravy/report-trial-balance?fromDate=${fromDate}&toDate=${toDate}&includeThird=${includeThird}${isPhActive && includeThird ? '&includeProperty=true' : ''}${accountPrefix ? `&accountPrefix=${encodeURIComponent(accountPrefix)}` : ''}${getScopeQueryParams()}`;
       const data: any[] = await pb.send(url, { method: 'GET' });
 
       const accountById = new Map(accounts.map(a => [a.id, {
@@ -1511,12 +1512,35 @@ async function renderTrialBalance() {
           const thirdId = row.thirdPartyId || 'NO_TERCERO';
           const thirdName = row.thirdPartyName || 'Sin tercero';
           const doc = row.thirdPartyDoc || '';
-          const nameWithDoc = doc ? `${thirdName} (NIT: ${doc})` : thirdName;
+          const propId = (row.propertyId || '').trim();
+          const propCode = (row.propertyCode || '').trim();
+          const propName = (row.propertyName || '').trim();
 
-          if (!acc.third.has(thirdId)) {
-            acc.third.set(thirdId, { id: thirdId, name: nameWithDoc, prev: 0, debit: 0, credit: 0, current: 0 });
+          const propKey = isPhActive && propId ? `__PROP_${propId}` : '';
+          const compositeKey = `${thirdId}${propKey}`;
+
+          let nameWithDoc = doc ? `${thirdName} (NIT: ${doc})` : thirdName;
+          if (isPhActive && (propCode || propName)) {
+            const propTag = propCode && propName
+              ? (propName.toLowerCase().includes(propCode.toLowerCase()) ? propName : `${propCode} - ${propName}`)
+              : (propCode || propName);
+            nameWithDoc = `[${propTag}] ${nameWithDoc}`;
           }
-          const t = acc.third.get(thirdId);
+
+          if (!acc.third.has(compositeKey)) {
+            acc.third.set(compositeKey, {
+              id: compositeKey,
+              name: nameWithDoc,
+              propertyId: propId,
+              propertyCode: propCode,
+              propertyName: propName,
+              prev: 0,
+              debit: 0,
+              credit: 0,
+              current: 0
+            });
+          }
+          const t = acc.third.get(compositeKey);
           t.prev += prev;
           t.debit += debit;
           t.credit += credit;
@@ -1652,6 +1676,7 @@ async function renderTrialBalance() {
         toDate,
         accountPrefix,
         includeThird,
+        isPhActive,
         includeSignatures,
         displayRows: displayRows.map(r => ({ ...r })),
         totals: { ...totals },
@@ -1694,7 +1719,7 @@ async function renderTrialBalance() {
               <tr>
                 <th>Cuenta</th>
                 <th>Descripción</th>
-                ${includeThird ? '<th>Tercero</th>' : ''}
+                ${includeThird ? `<th>${isPhActive ? 'Inmueble / Tercero' : 'Tercero'}</th>` : ''}
                 <th>Saldo Anterior</th>
                 <th>Mov. Débito</th>
                 <th>Mov. Crédito</th>
@@ -1746,11 +1771,12 @@ async function renderTrialBalance() {
     const accTag = lastTrialPdf?.accountPrefix ? `_cuenta_${lastTrialPdf.accountPrefix}` : '';
     const fromDate = getInputVal('trial-from') || todayStr();
     const toDate = getInputVal('trial-to') || todayStr();
+    const isPh = Boolean(lastTrialPdf?.isPhActive);
     exportToExcel(lastExportRows, [
       { key: 'codigo', label: 'CUENTA' },
       { key: 'descripcion', label: 'DESCRIPCIÓN' },
       { key: 'nivel', label: 'NIVEL' },
-      { key: 'tercero', label: 'TERCERO' },
+      { key: 'tercero', label: isPh ? 'INMUEBLE / TERCERO' : 'TERCERO' },
       { key: 'saldo_anterior', label: 'BALANCE ANTERIOR' },
       { key: 'mov_debito', label: 'DÉBITOS' },
       { key: 'mov_credito', label: 'CRÉDITOS' },
@@ -1783,7 +1809,7 @@ async function renderTrialBalance() {
       });
 
       const cols = lastTrialPdf.includeThird
-        ? ['Cuenta', 'Descripcion', 'Tercero', 'Saldo Anterior', 'Mov. Debito', 'Mov. Credito', 'Saldo Actual']
+        ? ['Cuenta', 'Descripcion', lastTrialPdf.isPhActive ? 'Inmueble / Tercero' : 'Tercero', 'Saldo Anterior', 'Mov. Debito', 'Mov. Credito', 'Saldo Actual']
         : ['Cuenta', 'Descripcion', 'Saldo Anterior', 'Mov. Debito', 'Mov. Credito', 'Saldo Actual'];
 
       const body = lastTrialPdf.displayRows.map(r => {

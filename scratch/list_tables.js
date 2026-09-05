@@ -1,7 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./pb_data/data.db');
-db.all(`SELECT name FROM sqlite_master WHERE type='table'`, (err, tables) => {
+const db = new sqlite3.Database('pb_data/data.db');
+db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name", (err, rows) => {
   if (err) console.error(err);
-  else console.log(tables.map(t => t.name));
+  else console.log(rows.map(r => r.name));
   db.close();
 });

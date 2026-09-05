@@ -139,6 +139,7 @@ function buildPhEmailHtml({
   companyPhone,
   companyEmail,
   companyCity,
+  companyLogo,
   totalActual
 }) {
   const numberText = invoice.getString("number");
@@ -152,10 +153,10 @@ function buildPhEmailHtml({
     
     tableRowsHtml += `
       <tr style="height: 22px;">
-        <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left;">${c.description}</td>
-        <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right;">${sAnt}</td>
-        <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right;">${cMes}</td>
-        <td style="padding: 4px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold;">${sAct}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left; background-color: #ffffff;">${c.description}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${sAnt}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${cMes}</td>
+        <td style="padding: 5px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold; background-color: #ffffff;">${sAct}</td>
       </tr>`;
   }
 
@@ -164,12 +165,12 @@ function buildPhEmailHtml({
   const notes = invoice.getString("notes");
   if (notes && notes.trim()) {
     notesHtml = `
-      <div style="margin-top: 15px; font-size: 11px; color: #000; font-style: italic; line-height: 1.4; border-top: 1px dashed #cbd5e1; padding-top: 8px; text-align: left;">
+      <div style="margin-top: 14px; font-size: 10.5px; color: #000; font-style: italic; line-height: 1.4; border-top: 1px dashed #000; padding-top: 8px; text-align: left;">
         ${notes.replace(/\n/g, '<br>')}
       </div>`;
   }
 
-  const phoneSection = companyPhone ? `CELULAR PORTERIA ${companyPhone}` : "";
+  const phoneSection = companyPhone ? `TEL / PORTERÍA: ${companyPhone}` : "";
   const addressSection = companyAddress ? `<div style="font-size: 10px; color: #000;">${companyAddress}</div>` : "";
   const contactSection = phoneSection ? `<div style="font-size: 10px; color: #000;">${phoneSection}</div>` : "";
   const emailSection = companyEmail ? `<div style="font-size: 10px; color: #000;">${companyEmail}</div>` : "";
@@ -182,120 +183,129 @@ function buildPhEmailHtml({
   <meta charset="utf-8">
   <title>Cuenta de Cobro No. ${numberText}</title>
 </head>
-<body style="font-family: Arial, sans-serif; color: #000; background-color: #f8fafc; margin: 0; padding: 20px; -webkit-text-size-adjust: 100%;">
-  <div style="max-width: 700px; margin: 0 auto; background: #ffffff; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+<body style="font-family: Arial, Helvetica, sans-serif; color: #000; background-color: #f1f5f9; margin: 0; padding: 20px; -webkit-text-size-adjust: 100%;">
+  <div style="max-width: 720px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #cbd5e1;">
     
-    <!-- Encabezado Principal -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+    <!-- Encabezado Principal: Logo, Datos Copropiedad y Caja de Documento -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 10px;">
       <tr>
-        <td style="width: 65%; text-align: center; vertical-align: top; line-height: 1.3; padding-right: 20px;">
-          <div style="font-size: 15px; font-weight: bold; color: #000; text-transform: uppercase;">${companyName}</div>
+        <td style="width: 25%; vertical-align: middle; text-align: left; padding-right: 10px;">
+          ${companyLogo 
+            ? `<img src="data:image/png;base64,${companyLogo}" style="max-height: 75px; max-width: 170px; object-fit: contain; display: block;" alt="Logo Copropiedad" />`
+            : `<div style="font-size: 20px; font-weight: 900; color: #000; font-family: sans-serif; letter-spacing: -0.5px;">${companyName.substring(0, 4)}</div>`
+          }
+        </td>
+        <td style="width: 45%; text-align: center; vertical-align: top; line-height: 1.3; padding: 0 10px;">
+          <div style="font-size: 14.5px; font-weight: bold; color: #000; text-transform: uppercase;">${companyName}</div>
           <div style="font-size: 11px; font-weight: bold; color: #000; margin-top: 2px;">NIT ${companyNit}</div>
           ${addressSection}
           ${contactSection}
           ${emailSection}
           ${citySection}
         </td>
-        <td style="width: 35%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+        <td style="width: 30%; vertical-align: top; text-align: right;">
+          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
             <tr>
-              <td style="padding: 5px; text-align: center; font-size: 10px; font-weight: bold; color: #000; background-color: #e0e0e0; border: 1px solid #000; text-transform: uppercase;">CUENTA DE COBRO No.</td>
+              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; text-transform: uppercase; letter-spacing: 0.5px;">CUENTA DE COBRO No.</td>
             </tr>
             <tr>
-              <td style="padding: 10px; text-align: center; font-size: 18px; font-weight: bold; color: #000; border: 1px solid #000;">${numberText}</td>
+              <td style="padding: 8px; text-align: center; font-size: 17px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; font-family: monospace;">${numberText}</td>
+            </tr>
+            <tr>
+              <td style="padding: 3px; text-align: center; font-size: 9.5px; font-weight: bold; color: #000; background-color: #ffffff; text-transform: uppercase;">PERÍODO: ${getMonthNameUpper(invoice.getString("period"))}</td>
             </tr>
           </table>
         </td>
       </tr>
     </table>
 
-    <!-- Ficha de Datos / Metadatos -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+    <!-- Ficha de Datos / Metadatos (Fondo Blanco Puro) -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
       <tr>
         <!-- Columna 1: Info del Propietario -->
-        <td style="width: 60%; vertical-align: top; padding-right: 15px;">
+        <td style="width: 55%; vertical-align: top; padding-right: 15px;">
           <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
             <tr>
-              <td style="width: 18%; font-weight: bold; padding: 4px 0; color: #000;">Nombre.</td>
-              <td style="width: 82%; padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerName}</td>
+              <td style="width: 22%; font-weight: bold; padding: 3.5px 0; color: #000;">Nombre:</td>
+              <td style="width: 78%; padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerName}</td>
             </tr>
             <tr>
-              <td style="font-weight: bold; padding: 4px 0; color: #000;">Direccion.</td>
-              <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerAddress || propertyName}</td>
+              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Dirección:</td>
+              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerAddress || propertyName}</td>
             </tr>
             <tr>
-              <td style="font-weight: bold; padding: 4px 0; color: #000;">Contacto.</td>
-              <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">—</td>
+              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Contacto:</td>
+              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">—</td>
             </tr>
             <tr>
-              <td style="font-weight: bold; padding: 4px 0; color: #000;">Cod.Int.</td>
-              <td style="padding: 4px 0; border-bottom: 1px solid #000;">
+              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Cód. Unidad:</td>
+              <td style="padding: 3.5px 0; border-bottom: 1px solid #000;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
-                    <td style="border: none; padding: 0; font-weight: bold; color: #000;">${propertyCode}</td>
-                    <td style="width: 25%; background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; color: #000;">NIT / Id.</td>
-                    <td style="width: 35%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">—</td>
+                    <td style="border: none; padding: 0; font-weight: bold; color: #000;">${propertyCode || propertyName}</td>
+                    <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; color: #000; background-color: #ffffff;">NIT / C.C.</td>
+                    <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">—</td>
                   </tr>
                 </table>
               </td>
             </tr>
             <tr>
-              <td style="font-weight: bold; padding: 4px 0; color: #000;">Correo.</td>
-              <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${invoice.getString("email_sent_to") || '—'}</td>
+              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Correo:</td>
+              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${invoice.getString("email_sent_to") || '—'}</td>
             </tr>
           </table>
         </td>
         
-        <!-- Columna 2: Matricula / Ref.Banco -->
-        <td style="width: 20%; vertical-align: top; padding-right: 15px;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+        <!-- Columna 2: Matrícula / Ref. Banco -->
+        <td style="width: 22%; vertical-align: top; padding-right: 12px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
             <tr>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000;">Matricula</td>
+              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Matrícula</td>
             </tr>
             <tr>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000;">&nbsp;</td>
+              <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">&nbsp;</td>
             </tr>
             <tr>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000;">Ref.Banco</td>
+              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Ref. Banco</td>
             </tr>
             <tr>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px; color: #000;">${propertyName}</td>
+              <td style="padding: 5px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyName}</td>
             </tr>
           </table>
         </td>
 
         <!-- Columna 3: Fechas / Mes -->
-        <td style="width: 20%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+        <td style="width: 23%; vertical-align: top;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
             <tr>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%; color: #000;">Fecha Emision</td>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%; color: #000;">Fecha Vencimiento</td>
+              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Emisión</td>
+              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Vencimiento</td>
             </tr>
             <tr>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; color: #000;">${invoice.getString("date")}</td>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; color: #000;">${invoice.getString("due_date") || invoice.getString("date")}</td>
+              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${invoice.getString("date")}</td>
+              <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${invoice.getString("due_date") || invoice.getString("date")}</td>
             </tr>
             <tr>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000;">Area Und.Privada</td>
-              <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000;">Mes</td>
+              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Área (m²)</td>
+              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Mes</td>
             </tr>
             <tr>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000;">&nbsp;</td>
-              <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px; color: #000;">${getMonthNameUpper(invoice.getString("period"))}</td>
+              <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">&nbsp;</td>
+              <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${getMonthNameUpper(invoice.getString("period"))}</td>
             </tr>
           </table>
         </td>
       </tr>
     </table>
 
-    <!-- Tabla de Conceptos -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 15px;">
+    <!-- Tabla de Conceptos (100% de Ancho, Fondo Blanco) -->
+    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 14px;">
       <thead>
-        <tr style="background-color: #e0e0e0; border-bottom: 1.5px solid #000;">
-          <th style="padding: 6px 8px; border: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: left; width: 45%;">Concepto</th>
-          <th style="padding: 6px 8px; border: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%;">Saldo Anterior</th>
-          <th style="padding: 6px 8px; border: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%;">Cobros del MES</th>
-          <th style="padding: 6px 8px; border: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 19%;">Saldo Actual</th>
+        <tr style="border-bottom: 1.5px solid #000;">
+          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: left; width: 46%; background-color: #ffffff;">CONCEPTO</th>
+          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO ANTERIOR</th>
+          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">COBROS DEL MES</th>
+          <th style="padding: 6px 8px; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO TOTAL</th>
         </tr>
       </thead>
       <tbody>
@@ -303,24 +313,24 @@ function buildPhEmailHtml({
       </tbody>
     </table>
 
-    <!-- Totales y Nota de Pago -->
-    <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+    <!-- Totales y Nota de Pago (Sin Rellenos de Color) -->
+    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
       <tr>
-        <td style="width: 65%; vertical-align: top; text-align: left;">
-          <div style="background-color: #f8fafc; padding: 6px 8px; border: 1px solid #000; margin-bottom: 8px; font-size: 11px; font-weight: bold; color: #000; text-transform: uppercase;">
+        <td style="width: 65%; vertical-align: top; text-align: left; padding-right: 15px;">
+          <div style="background-color: #ffffff; padding: 6px 8px; border: 1px solid #000; margin-bottom: 8px; font-size: 10.5px; font-weight: bold; color: #000; text-transform: uppercase;">
             ${numeroALetras(totalActual)}
           </div>
           <div style="font-size: 10px; font-weight: bold; color: #000; line-height: 1.4; font-style: italic; text-transform: uppercase;">
-            ${notes ? notes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD UTILIZANDO SU REFERENCIA DE UNIDAD COMO IDENTIFICACIÓN.'}
+            ${notes ? notes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
           </div>
         </td>
         <td style="width: 35%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
-            <tr style="background-color: #e0e0e0;">
-              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; border-bottom: 1px solid #000; text-transform: uppercase;">Total FACTURA</td>
+          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
+            <tr>
+              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; border-bottom: 1px solid #000; text-transform: uppercase; background-color: #ffffff;">TOTAL A PAGAR</td>
             </tr>
             <tr>
-              <td style="padding: 10px; font-size: 18px; font-weight: bold; color: #000; border: 1px solid #000;">
+              <td style="padding: 9px 10px; font-size: 18px; font-weight: bold; color: #000; background-color: #ffffff;">
                 <div style="float: left;">$</div>
                 <div style="float: right;">${cleanFmt(totalActual)}</div>
                 <div style="clear: both;"></div>
@@ -334,8 +344,8 @@ function buildPhEmailHtml({
     ${notesHtml}
 
     <!-- Pie de Software -->
-    <div style="border-top: 1px solid #cbd5e1; margin-top: 25px; padding-top: 8px; font-size: 9px; color: #64748b; text-align: center;">
-      Impreso por Software GRAVY v2.0 / NIT. 901.442.115-3 — Sistema de Gestión y Control de Propiedad Horizontal.
+    <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
+      Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
     </div>
 
   </div>
@@ -467,6 +477,7 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     const companyPhone = getSetting("company_phone", "");
     const companyEmail = getSetting("company_email", "");
     const companyCity = getSetting("company_city", "");
+    const companyLogo = getSetting("company_logo", "");
 
     // Generar plantilla de correo
     const htmlContent = buildPhEmailHtml({
@@ -482,6 +493,7 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       companyPhone,
       companyEmail,
       companyCity,
+      companyLogo,
       totalActual
     });
 
@@ -561,6 +573,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     const companyPhone = getSetting("company_phone", "");
     const companyEmail = getSetting("company_email", "");
     const companyCity = getSetting("company_city", "");
+    const companyLogo = getSetting("company_logo", "");
 
     let sent = 0;
     let skipped = 0;
@@ -671,6 +684,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           companyPhone,
           companyEmail,
           companyCity,
+          companyLogo,
           totalActual
         });
 

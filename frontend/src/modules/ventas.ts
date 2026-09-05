@@ -1329,6 +1329,10 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         try {
           const state = JSON.parse(savedState);
           inv = state.inv;
+          if (inv && !invoiceId) {
+            // Asegurar que facturas nuevas NUNCA carguen un número residual del borrador
+            delete inv.number;
+          }
           const activeProductIds = new Set(products.map((p: any) => p.id));
           existingLines = (state.lines || []).filter((l: any) => activeProductIds.has(l.product_id));
           restoredFromLocal = true;
@@ -2221,23 +2225,48 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     }
 
     const today = new Date();
-    const candidates = resolutions.filter((r: any) => {
+    let candidates = resolutions.filter((r: any) => {
       if (String(r.prefix || '').toUpperCase() !== prefix) return false;
       if (Number(r.current_number || 0) >= Number(r.number_to || 0)) return false;
       if (r.expiration_date && new Date(r.expiration_date.slice(0, 10)) < today) return false;
       return true;
     }).sort((a: any, b: any) => new Date(a.expiration_date || 0).getTime() - new Date(b.expiration_date || 0).getTime());
 
-    if (!candidates.length) {
-      el.value = '';
-      el.placeholder = 'Sin resolución vigente';
+    let res = candidates[0];
+    if (!res) {
+      // Fallback: buscar resolución activa por tipo de comprobante compatible
+      const txCode = String(txType.code || '').toUpperCase();
+      let matchDocType = 'FV';
+      if (txCode === 'NC' || prefix === 'NC') matchDocType = 'NC';
+      else if (txCode === 'ND' || prefix === 'ND') matchDocType = 'ND';
+      else if (txCode === 'POS' || prefix === 'POS') matchDocType = 'POS';
+      
+      const fallbackCandidates = resolutions.filter((r: any) => {
+        if (r.document_type !== matchDocType) return false;
+        if (Number(r.current_number || 0) >= Number(r.number_to || 0)) return false;
+        if (r.expiration_date && new Date(r.expiration_date.slice(0, 10)) < today) return false;
+        return true;
+      });
+      if (fallbackCandidates.length) {
+        res = fallbackCandidates[0];
+      }
+    }
+
+    if (res) {
+      const current = Number(res.current_number || 0);
+      const from = Number(res.number_from || 0);
+      const nextNum = current >= from ? current + 1 : from;
+      const pfxStr = res.prefix ? `${res.prefix}-` : '';
+      el.value = `${pfxStr}${String(nextNum).padStart(8, '0')}`;
+      el.placeholder = '';
       return;
     }
-    const res = candidates[0];
-    const current = Number(res.current_number || 0);
-    const from = Number(res.number_from || 0);
-    const nextNum = current >= from ? current + 1 : from;
-    el.value = `${res.prefix}-${String(nextNum).padStart(8, '0')}`;
+
+    // Si no hay resolución DIAN vinculada, estimar según consecutivo interno de la serie contable (ej: Remisiones RM)
+    const currentConsec = Number(txType.consecutive || 0);
+    const nextConsec = currentConsec + 1;
+    const pfxStr = txType.prefix ? `${txType.prefix}-` : (txType.code ? `${txType.code}-` : '');
+    el.value = `${pfxStr}${String(nextConsec).padStart(8, '0')}`;
     el.placeholder = '';
   };
 
@@ -2770,7 +2799,9 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     });
 
     const currentInvId = (document.getElementById('so-invoice-id') as HTMLInputElement)?.value || null;
-    const currentInvNum = (document.getElementById('so-invoice-number') as HTMLInputElement)?.value || (document.getElementById('so-consecutivo-display') as HTMLInputElement)?.value || '';
+    const currentInvNum = currentInvId 
+      ? ((document.getElementById('so-invoice-number') as HTMLInputElement)?.value || (document.getElementById('so-consecutivo-display') as HTMLInputElement)?.value || '')
+      : '';
 
     return {
       inv: {
@@ -3294,6 +3325,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     }
     localStorage.removeItem('__soTempState');
     (window as any).soSaveTempState = null;
+    (window as any).__salesModalOpen = false;
     (window as any).closeModal();
     if (typeof onDone === 'function') onDone();
   } catch (err: any) {

@@ -555,8 +555,12 @@ async function openPhInvoiceDetail(invoiceId) {
     const prop  = inv.expand?.property_id;
     const owner = prop?.expand?.owner_id;
     const meta  = PH_STATUS[inv.status] || PH_STATUS.draft;
-    const canEditDraftLines = inv.status === 'draft';
-    const isLateLine = (line) => /inter[eé]s de mora/i.test(String(line?.description || ''));
+    const isLateLine = (line) => {
+      const code = String(line?.expand?.concept_id?.code || '').trim().toUpperCase();
+      if (code === 'MORA') return true;
+      const desc = String(line?.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return desc.includes('interes') || desc.includes('mora');
+    };
     const isEditableManualLine = (line) => canEditDraftLines && !line?.concept_id && !isLateLine(line);
 
     openModal(
@@ -3547,27 +3551,29 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
       const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
       tableRowsHtml += `
         <tr style="height: 22px;">
-          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: left;">${(window as any).esc(c.description)}</td>
-          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right;">${sAnt}</td>
-          <td style="padding: 4px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right;">${cMes}</td>
-          <td style="padding: 4px 8px; border-bottom: 1px solid #000; text-align: right; font-weight: bold;">${sAct}</td>
+          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: left; background: #ffffff;">${(window as any).esc(c.description)}</td>
+          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right; background: #ffffff;">${sAnt}</td>
+          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right; background: #ffffff;">${cMes}</td>
+          <td style="padding: 5px 8px; border-bottom: 1px solid #000; text-align: right; font-weight: bold; background: #ffffff;">${sAct}</td>
         </tr>`;
     });
+
+    const docTypeLabel = type === 'statement' ? 'ESTADO DE CUENTA' : 'CUENTA DE COBRO';
 
     const htmlContent = `
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Cuenta de Cobro No. ${inv.number}</title>
+        <title>${docTypeLabel} No. ${inv.number}</title>
         <style>
-          body { font-family: Arial, sans-serif; color: #000; margin: 20px; font-size: 11px; line-height: 1.35; background: #ffffff; }
-          .container { max-width: 700px; margin: 0 auto; position: relative; }
-          .data-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11px; }
-          .data-table th { background-color: #e0e0e0; border: 1px solid #000; padding: 6px; font-weight: bold; text-align: center; }
-          .data-table td { border: 1px solid #000; padding: 4px 8px; }
+          body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 20px; font-size: 11px; line-height: 1.35; background: #ffffff; }
+          .container { max-width: 720px; margin: 0 auto; position: relative; background: #ffffff; }
+          .data-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11px; background: #ffffff; }
+          .data-table th { background-color: #ffffff; border: 1px solid #000; padding: 6px 8px; font-weight: bold; text-align: center; text-transform: uppercase; font-size: 10.5px; }
+          .data-table td { border: 1px solid #000; padding: 5px 8px; background: #ffffff; }
           
           @media print {
-            body { margin: 10px; }
+            body { margin: 10px; background: #ffffff; }
             .no-print { display: none; }
           }
         </style>
@@ -3575,153 +3581,154 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
       <body>
         <div class="container">
           
-          <!-- Encabezado -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+          <!-- Encabezado Principal: Logo, Datos Copropiedad y Caja de Control -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 10px;">
             <tr>
-              <td style="width: 65%; text-align: center; vertical-align: top; line-height: 1.3; padding-right: 20px;">
-                <div style="font-size: 15px; font-weight: bold; text-transform: uppercase;">${(window as any).esc(compName)}</div>
-                <div style="font-size: 11px; font-weight: bold; margin-top: 2px;">NIT ${(window as any).esc(compNit)}</div>
-                ${compAddress ? `<div style="font-size: 10px;">${(window as any).esc(compAddress)}</div>` : ''}
-                ${compPhone ? `<div style="font-size: 10px;">CELULAR PORTERIA ${(window as any).esc(compPhone)}</div>` : ''}
-                ${compEmail ? `<div style="font-size: 10px;">${(window as any).esc(compEmail)}</div>` : ''}
-                ${compCity ? `<div style="font-size: 10px;">${(window as any).esc(compCity)}</div>` : ''}
+              <!-- Logotipo de la Copropiedad (Limpio, sin fondos de color) -->
+              <td style="width: 25%; vertical-align: middle; text-align: left; padding-right: 10px;">
+                ${logoBase64 
+                  ? `<img src="data:image/png;base64,${logoBase64}" style="max-height: 80px; max-width: 175px; object-fit: contain; display: block;" alt="Logo Copropiedad" />`
+                  : `<div style="font-size: 20px; font-weight: 900; color: #000; font-family: sans-serif; letter-spacing: -0.5px;">${(window as any).esc(compName.substring(0, 4))}</div>`
+                }
               </td>
-              <td style="width: 35%; vertical-align: top;">
-                <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+              <!-- Información de la Copropiedad (Centro) -->
+              <td style="width: 45%; text-align: center; vertical-align: top; line-height: 1.3; padding: 0 10px;">
+                <div style="font-size: 14.5px; font-weight: bold; text-transform: uppercase; color: #000;">${(window as any).esc(compName)}</div>
+                <div style="font-size: 11px; font-weight: bold; margin-top: 2px; color: #000;">NIT ${(window as any).esc(compNit)}</div>
+                ${compAddress ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compAddress)}</div>` : ''}
+                ${compPhone ? `<div style="font-size: 10px; color: #111;">TEL / PORTERÍA: ${(window as any).esc(compPhone)}</div>` : ''}
+                ${compEmail ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compEmail)}</div>` : ''}
+                ${compCity ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compCity)}</div>` : ''}
+              </td>
+              <!-- Caja de Control: Tipo de Documento y Consecutivo (Derecha) -->
+              <td style="width: 30%; vertical-align: top; text-align: right;">
+                <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background: #ffffff;">
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; padding: 5px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase;">CUENTA DE COBRO No.</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; background: #ffffff;">${docTypeLabel} No.</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 10px; text-align: center; font-size: 18px; font-weight: bold;">${inv.number}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 8px; text-align: center; font-size: 17px; font-weight: 800; font-family: monospace; background: #ffffff;">${inv.number}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 3px; text-align: center; font-size: 9.5px; font-weight: bold; text-transform: uppercase; background: #ffffff;">PERÍODO: ${getMonthNameUpper(inv.period)}</td>
                   </tr>
                 </table>
               </td>
             </tr>
           </table>
 
-          <!-- Ficha de Datos / Metadatos -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+          <!-- Ficha de Datos / Metadatos (Sin rellenos de color) -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
             <tr>
               <!-- Columna 1: Info del Propietario -->
-              <td style="width: 60%; vertical-align: top; padding-right: 15px;">
+              <td style="width: 55%; vertical-align: top; padding-right: 15px;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
                   <tr>
-                    <td style="width: 18%; font-weight: bold; padding: 4px 0;">Nombre.</td>
-                    <td style="width: 82%; padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.name || 'Copropietario')}</td>
+                    <td style="width: 22%; font-weight: bold; padding: 3.5px 0;">Nombre:</td>
+                    <td style="width: 78%; padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.name || 'Copropietario')}</td>
                   </tr>
                   <tr>
-                    <td style="font-weight: bold; padding: 4px 0;">Direccion.</td>
-                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.address || prop?.name || '')}</td>
+                    <td style="font-weight: bold; padding: 3.5px 0;">Dirección:</td>
+                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.address || prop?.name || '')}</td>
                   </tr>
                   <tr>
-                    <td style="font-weight: bold; padding: 4px 0;">Contacto.</td>
-                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.phone || owner?.celular || '')}</td>
+                    <td style="font-weight: bold; padding: 3.5px 0;">Contacto:</td>
+                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.phone || owner?.celular || '—')}</td>
                   </tr>
                   <tr>
-                    <td style="font-weight: bold; padding: 4px 0;">Cod.Int.</td>
-                    <td style="padding: 4px 0; border-bottom: 1px solid #000;">
+                    <td style="font-weight: bold; padding: 3.5px 0;">Cód. Unidad:</td>
+                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000;">
                       <table style="width: 100%; border-collapse: collapse;">
                         <tr>
-                          <td style="border: none; padding: 0; font-weight: bold;">${(window as any).esc(prop?.code || '')}</td>
-                          <td style="width: 25%; background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase;">NIT / Id.</td>
-                          <td style="width: 35%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(owner?.nit || owner?.document || '')}</td>
+                          <td style="border: none; padding: 0; font-weight: bold;">${(window as any).esc(prop?.code || prop?.name || '')}</td>
+                          <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; background: #ffffff;">NIT / C.C.</td>
+                          <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(owner?.nit || owner?.document || '—')}</td>
                         </tr>
                       </table>
                     </td>
                   </tr>
                   <tr>
-                    <td style="font-weight: bold; padding: 4px 0;">Correo.</td>
-                    <td style="padding: 4px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.email || owner?.correo || '—')}</td>
+                    <td style="font-weight: bold; padding: 3.5px 0;">Correo:</td>
+                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.email || owner?.correo || '—')}</td>
                   </tr>
                 </table>
               </td>
               
-              <!-- Columna 2: Matricula / Ref.Banco -->
-              <td style="width: 20%; vertical-align: top; padding-right: 15px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+              <!-- Columna 2: Matrícula / Ref. Banco -->
+              <td style="width: 22%; vertical-align: top; padding-right: 12px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background: #ffffff;">
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Matricula</td>
+                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; background: #ffffff; text-transform: uppercase;">Matrícula</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold;">${(window as any).esc(prop?.matricula || '') || '&nbsp;'}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; background: #ffffff;">${(window as any).esc(prop?.matricula || '') || '&nbsp;'}</td>
                   </tr>
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Ref.Banco</td>
+                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; background: #ffffff; text-transform: uppercase;">Ref. Banco</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px;">${(window as any).esc(prop?.name || '') || '&nbsp;'}</td>
+                    <td style="padding: 5px; text-align: center; font-weight: bold; height: 18px; background: #ffffff;">${(window as any).esc(prop?.name || prop?.code || '') || '&nbsp;'}</td>
                   </tr>
                 </table>
               </td>
 
-              <!-- Columna 3: Fechas / Mes -->
-              <td style="width: 20%; vertical-align: top;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000;">
+              <!-- Columna 3: Fechas / Área -->
+              <td style="width: 23%; vertical-align: top;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background: #ffffff;">
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%;">Fecha Emision</td>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; width: 50%;">Fecha Vencimiento</td>
+                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; background: #ffffff;">Emisión</td>
+                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; background: #ffffff;">Vencimiento</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">${(window as any).fmtDate(inv.date)}</td>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">${(window as any).fmtDate(inv.due_date || inv.date)}</td>
+                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; background: #ffffff;">${(window as any).fmtDate(inv.date)}</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; background: #ffffff;">${(window as any).fmtDate(inv.due_date || inv.date)}</td>
                   </tr>
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Area Und.Privada</td>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; padding: 4px; text-align: center;">Mes</td>
+                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; background: #ffffff;">Área (m²)</td>
+                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; background: #ffffff;">Coeficiente</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold;">${(window as any).esc(prop?.area || '') || '&nbsp;'}</td>
-                    <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold; height: 18px;">${getMonthNameUpper(inv.period)}</td>
+                    <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; background: #ffffff;">${(window as any).esc(prop?.area_m2 || prop?.area || '') || '&nbsp;'}</td>
+                    <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; background: #ffffff;">${prop?.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : '—'}</td>
                   </tr>
                 </table>
               </td>
             </tr>
           </table>
 
-          <!-- Tabla de Conceptos con Banner Vertical -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
-            <tr>
-              <td style="width: 96%; vertical-align: top;">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="width: 45%; text-align: left;">Concepto</th>
-                      <th style="width: 18%; text-align: right;">Saldo Anterior</th>
-                      <th style="width: 18%; text-align: right;">Cobros del MES</th>
-                      <th style="width: 19%; text-align: right;">Saldo Actual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${tableRowsHtml}
-                  </tbody>
-                </table>
-              </td>
-              <td style="width: 4%; vertical-align: middle; text-align: center; padding-left: 8px;">
-                <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 8px; white-space: nowrap; color: #000; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px;">
-                  Factura Impresa por Software GRAVY v2.0 / NIT. 901.442.115-3
-                </div>
-              </td>
-            </tr>
+          <!-- Tabla de Conceptos (100% de Ancho, Sin Columna Lateral Rotada) -->
+          <table class="data-table" style="margin-bottom: 14px;">
+            <thead>
+              <tr style="border-bottom: 1.5px solid #000;">
+                <th style="width: 46%; text-align: left; border-right: 1px solid #000;">CONCEPTO</th>
+                <th style="width: 18%; text-align: right; border-right: 1px solid #000;">SALDO ANTERIOR</th>
+                <th style="width: 18%; text-align: right; border-right: 1px solid #000;">COBROS DEL MES</th>
+                <th style="width: 18%; text-align: right;">SALDO TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRowsHtml}
+            </tbody>
           </table>
 
-          <!-- Totales y Nota de Pago -->
-          <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+          <!-- Totales y Nota de Pago (Sin Rellenos de Color) -->
+          <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
             <tr>
               <td style="width: 65%; vertical-align: top; padding-right: 15px;">
-                <div style="border: 1px solid #000; padding: 6px 8px; font-weight: bold; background-color: #f8fafc; font-size: 11px; margin-bottom: 8px; text-transform: uppercase;">
+                <div style="border: 1px solid #000; padding: 6px 8px; font-weight: bold; background: #ffffff; font-size: 10.5px; margin-bottom: 8px; text-transform: uppercase;">
                   ${numeroALetras(totalActual)}
                 </div>
-                <div style="font-size: 10px; line-height: 1.4; font-style: italic; text-align: left; text-transform: uppercase; font-family: Arial, sans-serif; font-weight: bold; color: #000;">
-                  ${inv.notes ? (window as any).esc(inv.notes).replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD UTILIZANDO SU REFERENCIA DE UNIDAD COMO IDENTIFICACIÓN.'}
+                <div style="font-size: 10px; line-height: 1.4; font-style: italic; text-align: left; text-transform: uppercase; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #000;">
+                  ${inv.notes ? (window as any).esc(inv.notes).replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
                 </div>
               </td>
               <td style="width: 35%; vertical-align: top;">
-                <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background: #ffffff;">
                   <tr>
-                    <td style="background-color: #e0e0e0; border: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase;">Total FACTURA</td>
+                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #ffffff;">TOTAL A PAGAR</td>
                   </tr>
                   <tr>
-                    <td style="border: 1px solid #000; padding: 10px; font-size: 18px; font-weight: bold;">
+                    <td style="padding: 9px 10px; font-size: 18px; font-weight: bold; background: #ffffff;">
                       <div style="float: left;">$</div>
                       <div style="float: right;">${cleanFmt(totalActual)}</div>
                       <div style="clear: both;"></div>
@@ -3731,6 +3738,11 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
               </td>
             </tr>
           </table>
+
+          <!-- Pie de Página Institucional Discreto -->
+          <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
+            Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
+          </div>
 
         </div>
 

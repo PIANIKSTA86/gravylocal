@@ -75,7 +75,7 @@ const resolutionHandler = (e) => {
     return;
   }
 
-  // Si el número enviado por el cliente/frontend ya es un consecutivo oficial (ej: FV-00003766),
+  // Si el número enviado por el cliente/frontend ya es un consecutivo oficial (ej: FV-00003766, DS101, etc.),
   // verificamos si YA existe en la BD. Si NO existe, lo respetamos y actualizamos la resolución.
   if (currentNum && !currentNum.startsWith("BORR-")) {
     let alreadyExists = false;
@@ -92,20 +92,64 @@ const resolutionHandler = (e) => {
     }
 
     if (!alreadyExists) {
-      const parts = currentNum.split("-");
-      const numVal = parseInt(parts[parts.length - 1], 10) || 0;
+      // Extracción universal de dígitos terminales y prefijo
+      let numVal = 0;
+      let prefixLocal = "";
+      const matchDigits = String(currentNum).match(/(\d+)$/);
+      if (matchDigits) {
+        numVal = parseInt(matchDigits[1], 10) || 0;
+        const pfxMatch = String(currentNum).slice(0, matchDigits.index).replace(/-+$/, "").trim().toUpperCase();
+        prefixLocal = pfxMatch;
+      } else {
+        const parts = currentNum.split("-");
+        numVal = parseInt(parts[parts.length - 1], 10) || 0;
+        if (parts.length > 1) prefixLocal = parts[0].toUpperCase().trim();
+      }
+
+      const rawTxTypeId = record.get("tx_type_id");
+      const txTypeIdLocal = String(Array.isArray(rawTxTypeId) ? (rawTxTypeId[0] || "") : (rawTxTypeId || "")).trim();
+      let txTypeRecordLocal = null;
+      if (txTypeIdLocal) {
+        try { txTypeRecordLocal = $app.findRecordById("transaction_types", txTypeIdLocal); } catch (_) {}
+      }
+
+      // Detectar document_type real
+      let docTypeLocal = "FV";
+      const txCodeLocal = (txTypeRecordLocal ? txTypeRecordLocal.getString("code") : "").toUpperCase().trim();
+      const txPfxLocal = (txTypeRecordLocal ? txTypeRecordLocal.getString("prefix") : "").toUpperCase().trim();
+      const txNameLocal = (txTypeRecordLocal ? txTypeRecordLocal.getString("name") : "").toUpperCase();
+
+      if (collectionName === "purchase_invoices") {
+        if (txCodeLocal === "NDS" || txPfxLocal === "NDS") docTypeLocal = "NDS";
+        else if (txCodeLocal === "DS" || txPfxLocal === "DS" || prefixLocal === "DS") docTypeLocal = "DS";
+        else docTypeLocal = "DS";
+      } else {
+        if (txCodeLocal === "NC" || txPfxLocal === "NC" || prefixLocal === "NC" || txNameLocal.includes("CRÉDITO") || txNameLocal.includes("CREDITO")) {
+          docTypeLocal = "NC";
+        } else if (txCodeLocal === "ND" || txPfxLocal === "ND" || prefixLocal === "ND" || txNameLocal.includes("DÉBITO") || txNameLocal.includes("DEBITO")) {
+          docTypeLocal = "ND";
+        } else if (record.getString("pos_shift_id") || txCodeLocal === "POS" || txPfxLocal === "POS" || prefixLocal === "POS") {
+          docTypeLocal = "POS";
+        } else {
+          docTypeLocal = "FV";
+        }
+      }
+
+      if (!prefixLocal && txPfxLocal) {
+        prefixLocal = txPfxLocal;
+      }
       
       e.next();
 
       if (numVal > 0) {
         try {
-          const docTypeLocal = collectionName === "purchase_invoices" ? "DS" : (record.getString("pos_shift_id") ? "POS" : "FV");
-          const prefixLocal = currentNum.includes("-") ? parts[0].toUpperCase() : "";
-          let filterLocal = "active = true && document_type = '" + docTypeLocal + "'";
-          if (prefixLocal) filterLocal += " && prefix = '" + prefixLocal + "'";
-          
           let resolutionLocal = null;
-          try { resolutionLocal = $app.findFirstRecordByFilter("dian_resolutions", filterLocal); } catch (_) {}
+          if (prefixLocal) {
+            try { resolutionLocal = $app.findFirstRecordByFilter("dian_resolutions", "active = true && document_type = '" + docTypeLocal + "' && prefix = '" + prefixLocal + "'"); } catch (_) {}
+            if (!resolutionLocal) {
+              try { resolutionLocal = $app.findFirstRecordByFilter("dian_resolutions", "active = true && prefix = '" + prefixLocal + "'"); } catch (_) {}
+            }
+          }
           if (!resolutionLocal) {
             try { resolutionLocal = $app.findFirstRecordByFilter("dian_resolutions", "active = true && document_type = '" + docTypeLocal + "'"); } catch (_) {}
           }
@@ -113,19 +157,32 @@ const resolutionHandler = (e) => {
           if (resolutionLocal) {
             const currentResNum = resolutionLocal.getInt("current_number");
             if (numVal > currentResNum) {
-              $app.runInTransaction((txApp) => {
-                const res = txApp.findRecordById("dian_resolutions", resolutionLocal.id);
-                if (numVal > res.getInt("current_number")) {
-                  res.set("current_number", numVal);
-                  txApp.save(res);
-                  console.log("[GRAVY-RESOLUCIONES] Consecutivo de resolución DIAN actualizado a: " + numVal);
-                }
-              });
+              let updatedRes = false;
+              try {
+                $app.runInTransaction((txApp) => {
+                  const res = txApp.findRecordById("dian_resolutions", resolutionLocal.id);
+                  if (numVal > res.getInt("current_number")) {
+                    res.set("current_number", numVal);
+                    txApp.save(res);
+                    updatedRes = true;
+                    console.log("[GRAVY-RESOLUCIONES] Consecutivo de resolución DIAN actualizado a: " + numVal);
+                  }
+                });
+              } catch (_) {}
+              if (!updatedRes) {
+                try {
+                  const freshRes = $app.findRecordById("dian_resolutions", resolutionLocal.id);
+                  if (numVal > freshRes.getInt("current_number")) {
+                    freshRes.set("current_number", numVal);
+                    $app.save(freshRes);
+                    console.log("[GRAVY-RESOLUCIONES] Consecutivo de resolución DIAN guardado directo a: " + numVal);
+                  }
+                } catch (_) {}
+              }
             }
           }
-          const rawTxTypeId = record.get("tx_type_id");
-          const txTypeIdLocal = String(Array.isArray(rawTxTypeId) ? (rawTxTypeId[0] || "") : (rawTxTypeId || "")).trim();
           if (txTypeIdLocal) {
+            const parts = currentNum.split("-");
             try {
               $app.runInTransaction((txApp) => {
                 const tt = txApp.findRecordById("transaction_types", txTypeIdLocal);
@@ -142,7 +199,15 @@ const resolutionHandler = (e) => {
                   txApp.save(tt);
                 }
               });
-            } catch (_) {}
+            } catch (_) {
+              try {
+                const ttDirect = $app.findRecordById("transaction_types", txTypeIdLocal);
+                if (numVal > Number(ttDirect.get("consecutive") || 0)) {
+                  ttDirect.set("consecutive", numVal);
+                  $app.save(ttDirect);
+                }
+              } catch (_) {}
+            }
           }
         } catch (errSync) {
           console.log("[GRAVY-RESOLUCIONES] Error sincronizando consecutivo DIAN: " + errSync);
@@ -578,6 +643,7 @@ const resolutionHandler = (e) => {
 
   // Si tiene éxito y hay una resolución a actualizar, incrementamos el consecutivo en DB
   if (resolutionIdToUpdate && nextNumberToSave > 0) {
+    let updated = false;
     try {
       $app.runInTransaction((txApp) => {
         const res = txApp.findRecordById("dian_resolutions", resolutionIdToUpdate);
@@ -585,11 +651,32 @@ const resolutionHandler = (e) => {
         if (nextNumberToSave > currentNum) {
           res.set("current_number", nextNumberToSave);
           txApp.save(res);
+          updated = true;
           console.log("[GRAVY-RESOLUCIONES] Consecutivo guardado en resolución DIAN: " + formattedNumberLog);
         }
       });
     } catch (err) {
       console.log("[GRAVY-RESOLUCIONES] Error al guardar consecutivo en resolucion post-creacion: " + err);
+    }
+    if (!updated) {
+      try {
+        const freshRes = $app.findRecordById("dian_resolutions", resolutionIdToUpdate);
+        if (nextNumberToSave > freshRes.getInt("current_number")) {
+          freshRes.set("current_number", nextNumberToSave);
+          $app.save(freshRes);
+          console.log("[GRAVY-RESOLUCIONES] Consecutivo guardado directo en resolución DIAN: " + formattedNumberLog);
+        }
+      } catch (_) {}
+    }
+
+    if (txTypeId) {
+      try {
+        const tt = $app.findRecordById("transaction_types", txTypeId);
+        if (nextNumberToSave > Number(tt.get("consecutive") || 0)) {
+          tt.set("consecutive", nextNumberToSave);
+          $app.save(tt);
+        }
+      } catch (_) {}
     }
   }
 };

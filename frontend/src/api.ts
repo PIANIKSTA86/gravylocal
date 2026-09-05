@@ -3463,6 +3463,8 @@ const API = {
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
     const lateFeeRate = Number(phCfg?.late_fee_rate || 0);
+    const lateFeeIncomeCode = String(phCfg?.late_fee_income_code || '').trim();
+    const moraConcept = (concepts || []).find(c => String(c?.code || '').trim().toUpperCase() === 'MORA');
     const lateConceptIds = Array.isArray(phCfg?.late_fee_concepts)
       ? phCfg.late_fee_concepts.map(v => String(v || '')).filter(Boolean)
       : [];
@@ -3564,10 +3566,11 @@ const API = {
           const roundedLate = Math.round(lateAmount);
           total += roundedLate;
           lines.push({
-            concept_id: null,
+            concept_id: moraConcept ? moraConcept.id : null,
             description: `Interés de mora a ${asOfStr}`,
             amount: roundedLate,
             line_order: order++,
+            account_code: lateFeeIncomeCode,
           });
         }
       }
@@ -3881,6 +3884,33 @@ const API = {
     const cxcAccount = await findAccByCode(cxcCode);
     const incomeDefaultAccount = await findAccByCode(incomeCode);
 
+    // Determinar el código de concepto de una línea con prioridad en el código del concepto
+    const resolveLineConceptCode = (ln) => {
+      // 1. Si está vinculado a un concepto del catálogo, su código manda
+      const conceptCode = String(ln.expand?.concept_id?.code || '').trim().toUpperCase();
+      if (conceptCode) return conceptCode;
+
+      // 2. Si la línea tiene account_code asignado y coincide con la cuenta de mora configurada
+      if (ln.account_code && String(ln.account_code).trim() === lateFeeIncomeCode) {
+        return 'MORA';
+      }
+
+      // 3. Prefijo formal [CODIGO] (ej. [MORA], [INT])
+      const m = String(ln.description || '').match(/^\[([A-Z0-9_-]+)\]/);
+      if (m) return m[1].toUpperCase();
+
+      // 4. Detección por texto normalizado sin acentos
+      const normDesc = String(ln.description || '')
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      if (normDesc.includes('interes') || normDesc.includes('mora')) {
+        return 'MORA';
+      }
+
+      return 'GEN';
+    };
+
     const buildTxLine = async ({ accountId, debit = 0, credit = 0, description = '', thirdPartyId = null, crossDocRef = '' }) => {
       const acc = await getAccById(accountId);
       const line = {
@@ -3915,31 +3945,26 @@ const API = {
     // Construir lÃ­neas del asiento contable
     const txLines = [];
 
-    // LÃ­neas de ingreso por concepto (crÃ©dito)
+    // Líneas de ingreso por concepto (crédito)
     for (const ln of lines) {
       const concept = ln.expand?.concept_id;
-      let conceptCode = concept?.code || 'GEN';
-      if (!concept) {
-        if (/inter[eÃ©]s de mora/i.test(String(ln.description || ''))) {
-          conceptCode = 'MORA';
-        } else {
-          const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
-          if (m) conceptCode = m[1];
-        }
-      }
+      const conceptCode = resolveLineConceptCode(ln);
       const refPorConcepto = `${crossRef}-${conceptCode}`;
 
       let incomeAccountId = incomeDefaultAccount.id;
       if (ln.account_code) {
-        // Override directo en la lÃ­nea (conceptos individuales manuales)
+        // Override directo en la línea
         const overrideAcc = await findAccByCode(ln.account_code);
         incomeAccountId = overrideAcc.id;
-      } else if (concept?.account_id) {
-        incomeAccountId = concept.account_id;
       } else if (conceptCode === 'MORA') {
+        // Concepto de mora -> cuenta de ingreso para intereses de mora
         const lateAcc = await findAccByCode(lateFeeIncomeCode);
         incomeAccountId = lateAcc.id;
+      } else if (concept?.account_id) {
+        // Cuenta específica del concepto
+        incomeAccountId = concept.account_id;
       }
+
       txLines.push(await buildTxLine({
         accountId: incomeAccountId,
         debit: 0,
@@ -3950,18 +3975,9 @@ const API = {
       }));
     }
 
-    // LÃ­nea de dÃ©bito a CxC (una lÃ­nea por cada concepto para permitir trazabilidad en recaudo)
+    // Línea de débito a CxC (una línea por cada concepto para permitir trazabilidad en recaudo)
     for (const ln of lines) {
-      const concept = ln.expand?.concept_id;
-      let conceptCode = concept?.code || 'GEN';
-      if (!concept) {
-        if (/inter[eÃ©]s de mora/i.test(String(ln.description || ''))) {
-          conceptCode = 'MORA';
-        } else {
-          const m = String(ln.description || '').match(/^\[([A-Z0-9]+)\]/);
-          if (m) conceptCode = m[1];
-        }
-      }
+      const conceptCode = resolveLineConceptCode(ln);
       const refPorConcepto = `${crossRef}-${conceptCode}`;
 
       txLines.unshift(await buildTxLine({
@@ -4197,8 +4213,8 @@ const API = {
     if (!txt) return 'Concepto';
 
     // Unifica variantes de interes de mora con fecha de corte incrustada.
-    const moraDatePattern = /^inter[eÃ©]s\s+de\s+mora\s+a\s+\d{4}-\d{2}-\d{2}$/i;
-    if (moraDatePattern.test(txt)) return 'InterÃ©s de mora';
+    const norm = txt.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (norm.includes('interes') && norm.includes('mora')) return 'Interés de mora';
 
     return txt;
   },
@@ -4307,8 +4323,11 @@ const API = {
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
 
-        // 1. Intentar abono especÃ­fico por concepto (ej: CF-001-ADMIN)
-        const conceptCode = (line.expand?.concept_id?.code || (/inter[eÃ©]s/i.test(line.description) ? 'MORA' : 'GEN')).toUpperCase();
+        // 1. Intentar abono específico por concepto (ej: CF-001-ADMIN)
+        const cCode = String(line.expand?.concept_id?.code || '').trim().toUpperCase();
+        const normDesc = String(line.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const isMora = cCode === 'MORA' || normDesc.includes('interes') || normDesc.includes('mora');
+        const conceptCode = (cCode || (isMora ? 'MORA' : 'GEN')).toUpperCase();
         const specificRef = `${invNumber}-${conceptCode}`;
         let abonoAplicado = abonosMap.get(specificRef) || 0;
 

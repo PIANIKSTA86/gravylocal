@@ -3671,13 +3671,13 @@ const API = {
   },
 
   /**
-   * Contabiliza en lote la liquidaciÃ³n de un perÃ­odo PH.
+   * Contabiliza en lote la liquidación de un período PH.
    * Solo procesa facturas en draft; omite posted/paid/voided.
    */
   async postPhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
 
     let posted = 0;
     let skipped = 0;
@@ -3702,7 +3702,7 @@ const API = {
       'POST_PERIOD',
       'PhInvoices',
       period,
-      `PerÃ­odo ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
+      `Período ${period}: contabilizadas ${posted}, omitidas ${skipped}, fallidas ${failed}`,
     );
 
     return { period, total: invoices.length, posted, skipped, failed, failures };
@@ -3710,103 +3710,167 @@ const API = {
 
   /**
    * Descontabiliza una sola factura PH (posted/paid -> draft).
-   * Intenta pasar el asiento a draft; si falla, lo anula.
+   * Elimina completamente el comprobante contable asociado en el módulo de contabilidad.
    */
   async unpostPhInvoice(invoiceId) {
     const inv = await pb.get('ph_invoices', invoiceId);
-    if (inv.status === 'draft') throw new Error('La factura ya estÃ¡ en borrador.');
-    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada y no se puede descontabilizar.');
+    if (inv.status === 'draft') throw new Error('La factura ya está en borrador.');
+    if (inv.status === 'voided') throw new Error('La factura está anulada y no se puede descontabilizar.');
 
-    let txAction = 'none';
-    if (inv.tx_id) {
+    let txDeleted = false;
+    let txIdToDelete = inv.tx_id;
+    if (!txIdToDelete && inv.number) {
       try {
-        await pb.update('transactions', inv.tx_id, { status: 'draft' });
-        txAction = 'draft';
-      } catch (_) {
-        await pb.update('transactions', inv.tx_id, { status: 'voided' });
-        txAction = 'voided';
+        const foundTx = await pb.getFirstListItem('transactions', `cross_type="ph_invoices" && cross_number="${pb.escapeFilterValue(inv.number)}"`);
+        if (foundTx) txIdToDelete = foundTx.id;
+      } catch (_) {}
+    }
+
+    if (txIdToDelete) {
+      try {
+        await pb.delete('transactions', txIdToDelete);
+        txDeleted = true;
+      } catch (delErr) {
+        console.warn(`No se pudo eliminar físicamente la transacción ${txIdToDelete}, anulando...`, delErr);
+        try {
+          await pb.update('transactions', txIdToDelete, { status: 'voided' });
+        } catch (_) {}
       }
     }
 
     await pb.update('ph_invoices', invoiceId, { status: 'draft', tx_id: null });
-    await this.logAudit('UNPOST', 'PhInvoice', invoiceId, `Descontabilizada ${inv.number || invoiceId} | TX->${txAction}`);
-    return { invoiceId, txAction };
+    await this.logAudit('UNPOST', 'PhInvoice', invoiceId, `Descontabilizada ${inv.number || invoiceId} | TX eliminada: ${txDeleted}`);
+    return { invoiceId, txDeleted };
   },
 
   /**
-   * Descontabiliza completamente la liquidaciÃ³n de un perÃ­odo PH.
-   * - Facturas posted/paid pasan a draft y se desvinculan del asiento (tx_id = null).
-   * - El asiento asociado se intenta pasar a borrador; si falla, se anula.
+   * Descontabiliza completamente la liquidación de un período PH.
+   * - Elimina permanentemente los comprobantes contables en el módulo de contabilidad.
+   * - Regresa las facturas a borrador (draft) y desvincula tx_id.
    */
   async unpostPhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
+    if (!invoices.length) throw new Error(`No hay facturas para el período ${period}.`);
 
     let reverted = 0;
     let skipped = 0;
-    let txDraft = 0;
+    let txDeleted = 0;
     let txVoided = 0;
+    const txIdsToDelete = new Set<string>();
 
     for (const inv of invoices) {
-      if (inv.status === 'draft') {
+      if (inv.status === 'draft' || inv.status === 'voided') {
         skipped++;
-        continue;
-      }
-      if (inv.status === 'voided') {
-        skipped++;
+        if (inv.tx_id) txIdsToDelete.add(inv.tx_id);
         continue;
       }
 
       if (inv.tx_id) {
+        txIdsToDelete.add(inv.tx_id);
+      } else if (inv.number) {
         try {
-          await pb.update('transactions', inv.tx_id, { status: 'draft' });
-          txDraft++;
-        } catch (_) {
-          await pb.update('transactions', inv.tx_id, { status: 'voided' });
-          txVoided++;
-        }
+          const foundTx = await pb.getFirstListItem('transactions', `cross_type="ph_invoices" && cross_number="${pb.escapeFilterValue(inv.number)}"`);
+          if (foundTx) txIdsToDelete.add(foundTx.id);
+        } catch (_) {}
       }
 
       await pb.update('ph_invoices', inv.id, { status: 'draft', tx_id: null });
       reverted++;
     }
 
+    // Buscar también cualquier transacción huérfana de este período con cross_type="ph_invoices"
+    try {
+      const orphanTxs = await pb.listAll('transactions', {
+        filter: `cross_type="ph_invoices" && date >= "${safePeriod}-01" && date <= "${safePeriod}-31"`,
+        perPage: 200
+      });
+      for (const otx of orphanTxs) {
+        txIdsToDelete.add(otx.id);
+      }
+    } catch (_) {}
+
+    // Eliminar físicamente los comprobantes en el módulo de contabilidad
+    for (const txId of txIdsToDelete) {
+      try {
+        await pb.delete('transactions', txId);
+        txDeleted++;
+      } catch (delErr) {
+        console.warn(`No se pudo eliminar físicamente la transacción ${txId}, anulando...`, delErr);
+        try {
+          await pb.update('transactions', txId, { status: 'voided' });
+          txVoided++;
+        } catch (_) {}
+      }
+    }
+
     await this.logAudit(
       'UNPOST_PERIOD',
       'PhInvoices',
       period,
-      `PerÃ­odo ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX->draft ${txDraft}, TX->voided ${txVoided}`,
+      `Período ${period}: descontabilizadas ${reverted}, omitidas ${skipped}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
     );
 
-    return { period, total: invoices.length, reverted, skipped, txDraft, txVoided };
+    return { period, total: invoices.length, reverted, skipped, txDeleted, txVoided };
   },
 
   /**
-   * Elimina toda la liquidaciÃ³n de un perÃ­odo PH.
-   * - Intenta eliminar transacciones asociadas.
-   * - Si no puede eliminarlas, las anula para no dejar efecto contable.
+   * Elimina toda la liquidación de un período PH.
+   * - Elimina permanentemente todos los comprobantes contables asociados en contabilidad.
+   * - Elimina cabeceras y líneas de facturas del período.
    */
   async deletePhInvoicesByPeriod(period) {
     const safePeriod = pb.escapeFilterValue(period);
     const invoices = await pb.listAll('ph_invoices', { filter: `period="${safePeriod}"`, perPage: 200 });
-    if (!invoices.length) throw new Error(`No hay facturas para el perÃ­odo ${period}.`);
+
+    const txIdsToDelete = new Set<string>();
+
+    for (const inv of invoices) {
+      if (inv.tx_id) {
+        txIdsToDelete.add(inv.tx_id);
+      } else if (inv.number) {
+        try {
+          const foundTx = await pb.getFirstListItem('transactions', `cross_type="ph_invoices" && cross_number="${pb.escapeFilterValue(inv.number)}"`);
+          if (foundTx) txIdsToDelete.add(foundTx.id);
+        } catch (_) {}
+      }
+    }
+
+    // Buscar transacciones con cross_type='ph_invoices' en el rango de fechas del período
+    try {
+      const periodTxs = await pb.listAll('transactions', {
+        filter: `cross_type="ph_invoices" && date >= "${safePeriod}-01" && date <= "${safePeriod}-31"`,
+        perPage: 200
+      });
+      for (const ptx of periodTxs) {
+        txIdsToDelete.add(ptx.id);
+      }
+    } catch (_) {}
+
+    if (!invoices.length && txIdsToDelete.size === 0) {
+      throw new Error(`No hay facturas ni transacciones para el período ${period}.`);
+    }
 
     let deleted = 0;
     let txDeleted = 0;
     let txVoided = 0;
 
-    for (const inv of invoices) {
-      if (inv.tx_id) {
+    // 1. Eliminar permanentemente los comprobantes contables en contabilidad
+    for (const txId of txIdsToDelete) {
+      try {
+        await pb.delete('transactions', txId);
+        txDeleted++;
+      } catch (delErr) {
+        console.warn(`No se pudo eliminar físicamente la transacción ${txId}, anulando...`, delErr);
         try {
-          await pb.delete('transactions', inv.tx_id);
-          txDeleted++;
-        } catch (_) {
-          await pb.update('transactions', inv.tx_id, { status: 'voided' });
+          await pb.update('transactions', txId, { status: 'voided' });
           txVoided++;
-        }
+        } catch (_) {}
       }
+    }
 
+    // 2. Eliminar facturas del período (sus líneas se eliminan en cascada)
+    for (const inv of invoices) {
       await pb.delete('ph_invoices', inv.id);
       deleted++;
     }
@@ -3815,7 +3879,7 @@ const API = {
       'DELETE_PERIOD',
       'PhInvoices',
       period,
-      `PerÃ­odo ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
+      `Período ${period}: facturas eliminadas ${deleted}, TX eliminadas ${txDeleted}, TX anuladas ${txVoided}`,
     );
 
     return { period, total: invoices.length, deleted, txDeleted, txVoided };
@@ -4011,7 +4075,7 @@ const API = {
       tx_type_id: txType.id,
       number: 'AUTO',
       date: inv.date,
-      description: `Factura PH ${inv.number} - ${property?.name || inv.property_id} - ${inv.period}`,
+      description: `${property?.name || inv.property_id} - Factura PH ${inv.number}`,
       third_party_id: ownerId || null,
       status: 'active',
       user_id: userId || undefined,

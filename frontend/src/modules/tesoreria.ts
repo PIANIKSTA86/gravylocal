@@ -3769,15 +3769,41 @@ function _downloadPlantillaRC() {
 
 async function _openMassRCModal() {
   const pb = _pb();
-  const metodosPago = await pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' });
+  const [metodosPago, txTypes] = await Promise.all([
+    pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' }),
+    pb.listAll('transaction_types', { filter: 'active=true && (code="RC" || code ~ "RC%" || prefix ~ "RC%")', sort: 'code,prefix' })
+  ]);
   if (!metodosPago.length) { _showToast('No hay cuentas bancarias activas', 'warning'); return; }
+  let rcTypes = txTypes || [];
+  if (!rcTypes.length) {
+    rcTypes = await pb.listAll('transaction_types', { filter: 'code="RC"', sort: 'code' });
+  }
+
   let _massRows: any[] = [];
   const optsPago = metodosPago.map((c:any) => `<option value="${_esc(c.id)}" data-account="${_esc(c.account_id)}">${_esc(c.name)} (${_esc(c.bank)})</option>`).join('');
+  const optsTxType = rcTypes.map((t:any) => `<option value="${_esc(t.id)}">[${_esc(t.prefix || t.code)}] ${_esc(t.name)} (${t.numbering_mode === 'period' ? 'Mensual' : 'Continuo'})</option>`).join('');
+
   const bodyHtml = `<div style="font-family:'Segoe UI',sans-serif">
     <div id="mass-rc-step1">
       <p class="text-sm text-gray-600 mb-3">Descarga la plantilla, completa los datos y súbela para registrar múltiples recaudos automáticamente.</p>
-      <div class="form-group"><label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-university mr-1"></i>Método de Pago (aplica a todos)</label>
-        <select id="mass-rc-cuenta" class="form-input"><option value="">-- Seleccionar --</option>${optsPago}</select></div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <div class="form-group">
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-receipt mr-1"></i>Tipo de Comprobante / Serie</label>
+          <select id="mass-rc-tx-type" class="form-input">${optsTxType || '<option value="">-- No hay series RC activas --</option>'}</select>
+        </div>
+        <div class="form-group">
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-university mr-1"></i>Método de Pago (aplica a todos)</label>
+          <select id="mass-rc-cuenta" class="form-input"><option value="">-- Seleccionar --</option>${optsPago}</select>
+        </div>
+      </div>
+
+      <div class="form-group mb-3">
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-comment-dots mr-1"></i>Concepto General (si la fila no trae observación)</label>
+        <input type="text" id="mass-rc-concepto" class="form-input text-sm" placeholder="Ej: Recaudo cuota de administración" value="Recaudo cuota de administración">
+        <p class="text-xs text-gray-400 mt-1">El comentario iniciará obligatoriamente con el código del apartamento/unidad: <code>[Apartamento] - [Propietario] - [Concepto] (Ref: ...)</code></p>
+      </div>
+
       <div id="mass-rc-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all mt-3" style="border-color:#D1D5DB;background:#FAFAFA">
         <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
         <p class="text-sm font-medium text-gray-700">Arrastra el archivo aquí o <span style="color:#1D6F42;text-decoration:underline">haz clic</span></p>
@@ -3792,9 +3818,14 @@ async function _openMassRCModal() {
       </div>
       <div class="border border-gray-200 rounded-xl overflow-hidden" style="max-height:340px;overflow-y:auto">
         <table class="data-table w-full text-xs"><thead class="bg-gray-50"><tr>
-          <th class="p-2">Fila</th><th class="p-2 text-left">Unidad</th><th class="p-2 text-left">Propietario</th>
-          <th class="p-2 text-left">Fecha</th><th class="p-2 text-right">Valor</th><th class="p-2 text-left">Ref.</th>
-          <th class="p-2 text-center">Estado</th><th class="p-2 text-left">Detalle</th>
+          <th class="p-2">Fila</th>
+          <th class="p-2 text-left">Unidad</th>
+          <th class="p-2 text-left">Propietario</th>
+          <th class="p-2 text-left">Fecha</th>
+          <th class="p-2 text-right">Valor</th>
+          <th class="p-2 text-left">Comentario a generar</th>
+          <th class="p-2 text-center">Estado</th>
+          <th class="p-2 text-left">Detalle</th>
         </tr></thead><tbody id="mass-rc-tbody"></tbody></table>
       </div>
     </div>
@@ -3813,6 +3844,7 @@ async function _openMassRCModal() {
   </div>`;
   const footerHtml = `<button class="btn btn-outline" onclick="closeModal()"><i class="fas fa-times mr-1"></i>Cancelar</button>
     <button class="btn btn-outline" onclick="window._downloadPlantillaRC()"><i class="fas fa-download mr-1"></i>Plantilla</button>
+    <button class="btn btn-outline text-amber-700" onclick="window._normalizeLegacyMassRCTransactions()" title="Renumerar y corregir glosas de comprobantes generados previamente con número RC-MASIVO-"><i class="fas fa-wand-magic-sparkles mr-1"></i>Corregir Anteriores</button>
     <button class="btn btn-primary hidden" id="mass-rc-btn-next"></button>`;
   (window as any).openModal('Carga Masiva de Recaudos PH', bodyHtml, footerHtml, true);
   setTimeout(() => {
@@ -3826,14 +3858,23 @@ async function _openMassRCModal() {
     drop?.addEventListener('drop', e => { e.preventDefault(); hilite(false); const f=(e as DragEvent).dataTransfer?.files?.[0]; if(f) processFile(f); });
     fileInp?.addEventListener('change', () => { if(fileInp.files?.[0]) processFile(fileInp.files[0]); });
     btnNext?.addEventListener('click', () => execute());
+
     async function processFile(file: File) {
       if (file.size > 8*1024*1024) { _showToast('El archivo supera 8 MB','error'); return; }
       const XLSX = (window as any).XLSX;
       if (!XLSX) { _showToast('Librería XLSX no cargada','error'); return; }
+      const txTypeSel = document.getElementById('mass-rc-tx-type') as HTMLSelectElement;
       const cuentaSel = document.getElementById('mass-rc-cuenta') as HTMLSelectElement;
+      const conceptoInp = document.getElementById('mass-rc-concepto') as HTMLInputElement;
+
+      if (!txTypeSel?.value) { _showToast('Selecciona una serie de comprobante primero','warning'); return; }
       if (!cuentaSel?.value) { _showToast('Selecciona un método de pago primero','warning'); return; }
+
+      const selectedTxTypeId = txTypeSel.value;
       const bankAccountId = cuentaSel.value;
       const cuentaAccId = cuentaSel.options[cuentaSel.selectedIndex]?.dataset?.account||'';
+      const conceptoGeneral = (conceptoInp?.value || '').trim();
+
       const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const raw = XLSX.utils.sheet_to_json(ws, { defval:'' }) as any[];
@@ -3842,8 +3883,7 @@ async function _openMassRCModal() {
       if (!rows.length) { _showToast('No se encontraron filas con datos','warning'); return; }
       const props = await pb.listAll('ph_properties', { filter:'active=true', expand:'owner_id', sort:'code' });
       const propByCode = new Map(props.map((p:any) => [String(p.code||'').trim().toUpperCase(), p]));
-      const typeRes = await pb.listAll('transaction_types', { filter:'code="RC"' });
-      const txTypeId = typeRes[0]?.id||'';
+      
       _massRows = rows.map((r:any, i:number) => {
         const codigo = String(r.codigo_unidad||r.codigo||r.unidad||'').toUpperCase().trim();
         const raw_f  = r.fecha||r.date||'';
@@ -3855,12 +3895,45 @@ async function _openMassRCModal() {
         else { const s=String(raw_f).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)){fecha=s;} else if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){const[d,m,y]=s.split('/');fecha=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;} else {const d=new Date(s);if(!isNaN(d.getTime()))fecha=(window as any).getColombiaDateStr(d);} }
         const valor = Number(String(raw_v).replace(/[^0-9.]/g,''))||0;
         const prop  = propByCode.get(codigo);
+        const owner = prop?.expand?.owner_id || null;
         const errs: string[] = [];
-        if(!codigo) errs.push('Falta código'); else if(!prop) errs.push(`Unidad "${codigo}" no encontrada`); else if(!prop.expand?.owner_id) errs.push('Sin propietario');
+        if(!codigo) errs.push('Falta código'); else if(!prop) errs.push(`Unidad "${codigo}" no encontrada`); else if(!owner) errs.push('Sin propietario');
         if(!fecha) errs.push('Fecha inválida');
         if(valor<=0) errs.push('Valor debe ser > 0');
-        return {rowNo:i+2,codigo,fecha,valor,ref,obs,prop,txTypeId,bankAccountId,cuentaAccId,owner:prop?.expand?.owner_id||null,ok:errs.length===0,errors:errs};
+
+        // Construir glosa contable: OBLIGATORIAMENTE el primer dato es el apartamento / código de unidad
+        const parts: string[] = [];
+        parts.push(codigo || 'Sin Unidad');
+        if (owner?.name) {
+          parts.push(owner.name);
+        }
+        const detalle = obs || conceptoGeneral || 'Recaudo cuota de administración';
+        if (detalle) {
+          parts.push(detalle);
+        }
+        let generatedDescription = parts.join(' - ');
+        if (ref) {
+          generatedDescription += ` (Ref: ${ref})`;
+        }
+
+        return {
+          rowNo: i+2,
+          codigo,
+          fecha,
+          valor,
+          ref,
+          obs,
+          prop,
+          txTypeId: selectedTxTypeId,
+          bankAccountId,
+          cuentaAccId,
+          owner,
+          description: generatedDescription,
+          ok: errs.length===0,
+          errors: errs
+        };
       });
+
       document.getElementById('mass-rc-step1')?.classList.add('hidden');
       document.getElementById('mass-rc-step2')?.classList.remove('hidden');
       const ok=_massRows.filter(r=>r.ok).length; const bad=_massRows.length-ok;
@@ -3873,12 +3946,13 @@ async function _openMassRCModal() {
         <td class="p-2">${_esc(r.owner?.name||'—')}</td>
         <td class="p-2">${_esc(r.fecha||'—')}</td>
         <td class="p-2 text-right font-bold">${_fmt(r.valor)}</td>
-        <td class="p-2 text-xs text-gray-500">${_esc(r.ref||'—')}</td>
+        <td class="p-2 text-xs font-medium text-gray-700" title="${_esc(r.description)}"><div class="truncate" style="max-width:280px">${_esc(r.description)}</div></td>
         <td class="p-2 text-center">${r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>'}</td>
-        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.ok?(r.obs||'Listo'):r.errors.join(' · ')}</td>
+        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.ok?'Listo':r.errors.join(' · ')}</td>
       </tr>`).join('');
       if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s)`;}
     }
+
     async function execute() {
       const valids=_massRows.filter(r=>r.ok); if(!valids.length) return;
       document.getElementById('mass-rc-step2')?.classList.add('hidden');
@@ -3886,18 +3960,37 @@ async function _openMassRCModal() {
       btnNext.classList.add('hidden');
       const bar=document.getElementById('mass-rc-bar'); const status=document.getElementById('mass-rc-status'); const detail=document.getElementById('mass-rc-detail');
       let created=0; let failed=0; const errList:string[]=[];
+
       for(let i=0;i<valids.length;i++){
         const r=valids[i];
         if(bar) bar.style.width=`${Math.round((i/valids.length)*100)}%`;
         if(status) status.textContent=`Procesando ${i+1} de ${valids.length}...`;
         if(detail) detail.textContent=`Unidad ${r.codigo} — ${_fmt(r.valor)}`;
         try {
-          await pb.create('transactions',{tx_type_id:r.txTypeId,number:`RC-MASIVO-${Date.now()}-${i}`,date:r.fecha,third_party_id:r.owner.id,
-            description:r.obs||`Recaudo carga masiva${r.ref?' Ref: '+r.ref:''}`,status:'active',teso_mode:'auto',
-            teso_params:JSON.stringify({third_party_id:r.owner.id,ph_property_id:r.prop.id,amount:r.valor,contrapartida_account_id:r.cuentaAccId,reglas:{primeroVencido:true,primeroMora:true}})});
+          // number: 'AUTO' delega al hook de backend para aplicar el parámetro de la serie (lineal o mensual) y actualizar consecutivo
+          await pb.create('transactions',{
+            tx_type_id: r.txTypeId,
+            number: 'AUTO',
+            date: r.fecha,
+            third_party_id: r.owner.id,
+            description: r.description,
+            status: 'active',
+            teso_mode: 'auto',
+            teso_params: JSON.stringify({
+              third_party_id: r.owner.id,
+              ph_property_id: r.prop.id,
+              amount: r.valor,
+              contrapartida_account_id: r.cuentaAccId,
+              reglas: { primeroVencido: true, primeroMora: true }
+            })
+          });
           created++;
-        } catch(err:any){ failed++; errList.push(`Unidad ${r.codigo}: ${err.message}`); }
+        } catch(err:any){
+          failed++;
+          errList.push(`Unidad ${r.codigo}: ${err.message}`);
+        }
       }
+
       if(bar) bar.style.width='100%'; if(status) status.textContent='Proceso completado'; if(detail) detail.textContent='';
       document.getElementById('mass-rc-spin')?.classList.add('hidden');
       document.getElementById('mass-rc-done-icon')?.classList.remove('hidden');
@@ -3914,8 +4007,99 @@ async function _openMassRCModal() {
   }, 120);
 }
 
+// Función utilitaria para normalizar transacciones creadas previamente con formato legacy RC-MASIVO-*
+async function _normalizeLegacyMassRCTransactions() {
+  const pb = _pb();
+  try {
+    const legacyTx = await pb.listAll('transactions', {
+      filter: 'number ~ "RC-MASIVO-%"',
+      sort: 'date,created'
+    });
+    if (!legacyTx.length) {
+      _showToast('No se encontraron transacciones con prefijo RC-MASIVO-', 'info');
+      return;
+    }
+    const confirmed = confirm(`Se encontraron ${legacyTx.length} transacción(es) con número "RC-MASIVO-". ¿Deseas renumerarlas según la serie configurada y corregir su comentario para que comience con la unidad?`);
+    if (!confirmed) return;
+
+    _showToast(`Normalizando ${legacyTx.length} transacciones...`, 'info');
+    let fixed = 0;
+    for (const tx of legacyTx) {
+      let params: any = {};
+      try { params = JSON.parse(tx.teso_params || '{}'); } catch (_) {}
+      let codigoUnidad = '';
+      if (params.ph_property_id) {
+        try {
+          const prop = await pb.get('ph_properties', params.ph_property_id);
+          codigoUnidad = prop.code || '';
+        } catch (_) {}
+      }
+      let ownerName = '';
+      if (tx.third_party_id) {
+        try {
+          const tp = await pb.get('third_parties', tx.third_party_id);
+          ownerName = tp.name || '';
+        } catch (_) {}
+      }
+      const refMatch = String(tx.description || '').match(/Ref:\s*([^\s]+)/i);
+      const ref = refMatch ? refMatch[1] : '';
+      
+      const parts: string[] = [];
+      if (codigoUnidad) parts.push(codigoUnidad);
+      if (ownerName) parts.push(ownerName);
+      parts.push('Recaudo cuota de administración');
+      let newDesc = parts.join(' - ');
+      if (ref) newDesc += ` (Ref: ${ref})`;
+
+      // Renumerar respetando la serie
+      const txTypeId = tx.tx_type_id;
+      let newNumber = '';
+      try {
+        const txType = await pb.get('transaction_types', txTypeId);
+        const prefix = String(txType.prefix || txType.code || 'RC').trim().toUpperCase();
+        if (txType.numbering_mode === 'period') {
+          const periodTag = String(tx.date || '').slice(0, 7).replace('-', '');
+          let counters = typeof txType.period_counters === 'string' ? JSON.parse(txType.period_counters || '{}') : (txType.period_counters || {});
+          let next = Number(counters[periodTag]) || 0;
+          while (true) {
+            next++;
+            newNumber = `${prefix}-${periodTag}-${String(next).padStart(6, '0')}`;
+            const exists = await pb.listAll('transactions', { filter: `number="${newNumber}" && id!="${tx.id}"` });
+            if (!exists.length) break;
+          }
+          counters[periodTag] = next;
+          await pb.update('transaction_types', txTypeId, { period_counters: JSON.stringify(counters) });
+        } else {
+          let next = Number(txType.consecutive || 0);
+          while (true) {
+            next++;
+            newNumber = `${prefix}-${String(next).padStart(8, '0')}`;
+            const exists = await pb.listAll('transactions', { filter: `number="${newNumber}" && id!="${tx.id}"` });
+            if (!exists.length) break;
+          }
+          await pb.update('transaction_types', txTypeId, { consecutive: next });
+        }
+      } catch (_) {
+        newNumber = `RC-${Date.now()}`;
+      }
+
+      await pb.update('transactions', tx.id, {
+        number: newNumber,
+        description: newDesc
+      });
+      fixed++;
+    }
+    _showToast(`${fixed} transacciones normalizadas correctamente`, 'success');
+    const cont = document.getElementById('teso-content');
+    if (cont) renderTesoListado(cont, 'RC');
+  } catch (err: any) {
+    _showToast('Error al normalizar: ' + err.message, 'error');
+  }
+}
+
 (window as any)._openMassRCModal     = _openMassRCModal;
 (window as any)._downloadPlantillaRC = _downloadPlantillaRC;
+(window as any)._normalizeLegacyMassRCTransactions = _normalizeLegacyMassRCTransactions;
 
 // ─── GESTIÓN DINÁMICA DE CONCEPTOS DE CAJA (EGRESOS / RECAUDOS) ─────────────
 

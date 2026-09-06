@@ -353,6 +353,87 @@ function buildPhEmailHtml({
 </html>`;
 }
 
+// Helper para generar y obtener archivo PDF del orquestador (puerto 8088)
+function generatePhPdfAttachment({
+  invoice,
+  conceptsList,
+  propertyName,
+  propertyCode,
+  propertyArea,
+  propertyCoef,
+  propertyMatricula,
+  ownerName,
+  ownerNit,
+  ownerAddress,
+  ownerPhone,
+  ownerEmail,
+  companyName,
+  companyNit,
+  companyAddress,
+  companyPhone,
+  companyEmail,
+  companyCity,
+  companyLogo,
+  totalActual,
+  type,
+  notes
+}) {
+  const numberText = invoice.getString("number") || "cuenta";
+  const docType = type || 'invoice';
+  const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}`;
+
+  try {
+    const orchestratorRes = $http.send({
+      url: "http://127.0.0.1:8088/api/ph/generate-pdf",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: filename,
+        statementData: {
+          companyName,
+          companyNit,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          companyCity,
+          companyLogo,
+          docType,
+          docNumber: numberText,
+          period: invoice.getString("period"),
+          date: invoice.getString("date"),
+          dueDate: invoice.getString("due_date") || invoice.getString("date"),
+          propertyName,
+          propertyCode,
+          propertyArea,
+          propertyCoef,
+          propertyMatricula,
+          ownerName,
+          ownerNit,
+          ownerAddress,
+          ownerPhone,
+          ownerEmail,
+          conceptsList,
+          totalActual,
+          notes
+        }
+      })
+    });
+
+    if (orchestratorRes.statusCode === 200) {
+      const data = JSON.parse(orchestratorRes.raw);
+      if (data.success && data.pdfPath) {
+        return {
+          filename: data.filename || `${filename}.pdf`,
+          pdfPath: data.pdfPath
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[GRAVY PH EMAIL] No se pudo generar PDF en el orquestador:", err);
+  }
+  return null;
+}
+
 // ──────────────────────────────────────────────────────────
 // ROUTE: Envío individual de Factura / Estado de cuenta
 // ──────────────────────────────────────────────────────────
@@ -500,7 +581,7 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
     const emailSubject = customSubject || `${companyName} - ${docLabel} No. ${invoice.getString("number")} - Unidad ${prop.getString("name")}`;
 
-    // Intentar enviar el correo electrónico
+    // Intentar enviar el correo electrónico con adjunto PDF
     try {
       const message = new MailerMessage({
         from: {
@@ -511,6 +592,43 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
         subject: emailSubject,
         html: htmlContent,
       });
+
+      // Generar y adjuntar el archivo PDF oficial
+      const pdfAttachment = generatePhPdfAttachment({
+        invoice,
+        conceptsList,
+        propertyName: prop.getString("name") || prop.getString("code") || "Unidad",
+        propertyCode: prop.getString("code") || "",
+        propertyArea: prop.getString("area_m2") || prop.getString("area") || "",
+        propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
+        propertyMatricula: prop.getString("matricula") || "",
+        ownerName: owner ? owner.getString("name") : "Copropietario",
+        ownerNit: owner ? (owner.getString("doc_number") || owner.getString("nit") || "—") : "—",
+        ownerAddress: owner ? owner.getString("address") : "",
+        ownerPhone: owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—",
+        ownerEmail: targetEmail,
+        companyName,
+        companyNit,
+        companyAddress,
+        companyPhone,
+        companyEmail,
+        companyCity,
+        companyLogo,
+        totalActual,
+        type,
+        notes: invoice.getString("notes") || ""
+      });
+
+      if (pdfAttachment && pdfAttachment.pdfPath) {
+        try {
+          const pdfFile = $filesystem.fileFromPath(pdfAttachment.pdfPath);
+          message.attachments = {
+            [pdfAttachment.filename]: pdfFile.reader.open()
+          };
+        } catch (attErr) {
+          console.warn("[GRAVY PH EMAIL] Error al adjuntar archivo PDF individual:", attErr);
+        }
+      }
 
       $app.newMailClient().send(message);
     } catch (mailErr) {
@@ -691,6 +809,32 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
         const emailSubject = customSubject || `${companyName} - ${docLabel} No. ${inv.getString("number")} - Unidad ${prop.getString("name")}`;
 
+        // Generar y adjuntar archivo PDF oficial de copropiedad
+        const pdfAttachment = generatePhPdfAttachment({
+          invoice: inv,
+          conceptsList,
+          propertyName: prop.getString("name") || prop.getString("code") || "Unidad",
+          propertyCode: prop.getString("code") || "",
+          propertyArea: prop.getString("area_m2") || prop.getString("area") || "",
+          propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
+          propertyMatricula: prop.getString("matricula") || "",
+          ownerName: owner.getString("name") || "Copropietario",
+          ownerNit: owner.getString("doc_number") || owner.getString("nit") || "—",
+          ownerAddress: owner.getString("address") || "",
+          ownerPhone: owner.getString("phone") || owner.getString("celular") || "—",
+          ownerEmail: email,
+          companyName,
+          companyNit,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          companyCity,
+          companyLogo,
+          totalActual,
+          type,
+          notes: inv.getString("notes") || ""
+        });
+
         // Enviar usando el cliente mailer de PocketBase
         const message = new MailerMessage({
           from: {
@@ -702,9 +846,29 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           html: htmlContent,
         });
 
+        if (pdfAttachment && pdfAttachment.pdfPath) {
+          try {
+            const pdfFile = $filesystem.fileFromPath(pdfAttachment.pdfPath);
+            message.attachments = {
+              [pdfAttachment.filename]: pdfFile.reader.open()
+            };
+          } catch (attErr) {
+            console.warn("[GRAVY PH EMAIL] Error al adjuntar PDF en lote:", attErr);
+          }
+        }
+
         $app.newMailClient().send(message);
         sent++;
-        details.push({ number: inv.getString("number"), unit: prop.getString("name"), email, status: "sent" });
+        details.push({
+          number: inv.getString("number"),
+          unit: prop.getString("name"),
+          email,
+          status: "sent",
+          pdfAttached: !!(pdfAttachment && pdfAttachment.pdfPath)
+        });
+
+        // Pausa defensiva (Throttling de 350ms) entre envíos para respetar límites de tasa y anti-spam de Gmail SMTP
+        sleep(350);
 
       } catch (err) {
         failed++;

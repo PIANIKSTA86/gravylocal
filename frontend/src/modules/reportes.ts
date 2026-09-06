@@ -1717,13 +1717,13 @@ async function renderTrialBalance() {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Cuenta</th>
-                <th>Descripción</th>
-                ${includeThird ? `<th>${isPhActive ? 'Inmueble / Tercero' : 'Tercero'}</th>` : ''}
-                <th>Saldo Anterior</th>
-                <th>Mov. Débito</th>
-                <th>Mov. Crédito</th>
-                <th>Saldo Actual</th>
+                <th style="width: 85px; min-width: 80px;">Cuenta</th>
+                <th style="width: ${includeThird ? '20%' : '38%'}; min-width: 140px; max-width: 200px;">Descripción</th>
+                ${includeThird ? `<th style="width: 32%; min-width: 270px;">${isPhActive ? 'Inmueble / Tercero' : 'Tercero'}</th>` : ''}
+                <th style="text-align: right; min-width: 110px;">Saldo Anterior</th>
+                <th style="text-align: right; min-width: 100px;">Mov. Débito</th>
+                <th style="text-align: right; min-width: 100px;">Mov. Crédito</th>
+                <th style="text-align: right; min-width: 110px;">Saldo Actual</th>
               </tr>
             </thead>
             <tbody>
@@ -1870,13 +1870,13 @@ async function renderTrialBalance() {
         headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: lastTrialPdf.includeThird
           ? {
-            0: { cellWidth: 62 },
-            1: { cellWidth: 242 },
-            2: { cellWidth: 140 },
-            3: { cellWidth: 80, halign: 'right' },
-            4: { cellWidth: 80, halign: 'right' },
-            5: { cellWidth: 80, halign: 'right' },
-            6: { cellWidth: 80, halign: 'right' },
+            0: { cellWidth: 55 },
+            1: { cellWidth: 155 },
+            2: { cellWidth: 234 },
+            3: { cellWidth: 79, halign: 'right' },
+            4: { cellWidth: 79, halign: 'right' },
+            5: { cellWidth: 79, halign: 'right' },
+            6: { cellWidth: 79, halign: 'right' },
           }
           : {
             0: { cellWidth: 70 },
@@ -4000,12 +4000,17 @@ async function generateAuxiliaryRows() {
       }
     }
 
+    const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+
     // ── Filas del período ──
     const rows = periodLines.map(l => {
       const isCruce = l.accountManejaCruce === 1 || l.accountManejaCruce === true;
       const thirdName = l.thirdName || 'Sin tercero';
       const thirdDoc = l.thirdDoc || '';
-      const thirdDisplay = thirdDoc ? `${thirdDoc} - ${thirdName}` : thirdName;
+      const propTag = (isPhActive && (l.propertyCode || l.propertyName))
+        ? `[${l.propertyCode || ''}${l.propertyCode && l.propertyName ? ' - ' : ''}${l.propertyName || ''}] `
+        : '';
+      const thirdDisplay = `${propTag}${thirdDoc ? `${thirdDoc} - ${thirdName}` : thirdName}`;
 
       return {
         fecha:         l.fecha || '',
@@ -4060,8 +4065,8 @@ async function generateAuxiliaryRows() {
 
     const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
     const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta'  : 'keyTercero';
-    const primaryLabel   = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? 'Tercero' : 'Cuenta');
-    const secondaryLabel = mode === 'cuenta-sin-tercero' ? 'Sin Terceros' : (mode === 'tercero-cuenta' ? 'Cuenta' : 'Tercero');
+    const primaryLabel   = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? (isPhActive ? 'Inmueble / Tercero' : 'Tercero') : 'Cuenta');
+    const secondaryLabel = mode === 'cuenta-sin-tercero' ? 'Sin Terceros' : (mode === 'tercero-cuenta' ? 'Cuenta' : (isPhActive ? 'Inmueble / Tercero' : 'Tercero'));
 
     if (mode === 'cuenta-sin-tercero') {
       rows.sort((a, b) => {
@@ -4310,7 +4315,18 @@ async function generateAuxiliaryRows() {
       </div>
       <div class="overflow-x-auto" style="max-height:420px">
         <table class="data-table">
-          <thead><tr><th>CUENTA</th><th>TERCERO</th><th>FECHA</th><th>CRUCE</th><th>DETALLE DOCTO.</th><th>COMPROBANTE</th><th>SALDO ANTERIOR</th><th>DEBITO</th><th>CREDITO</th><th>NUEVO SALDO</th></tr></thead>
+          <thead><tr>
+            <th style="width: 70px; min-width: 65px;">CUENTA</th>
+            <th style="width: 25%; min-width: 240px;">${isPhActive ? 'INMUEBLE / TERCERO' : 'TERCERO'}</th>
+            <th style="width: 78px; min-width: 72px;">FECHA</th>
+            <th style="width: 82px; min-width: 78px;">CRUCE</th>
+            <th style="width: 17%; min-width: 130px; max-width: 190px;">DETALLE DOCTO.</th>
+            <th style="width: 85px; min-width: 80px;">COMPROBANTE</th>
+            <th style="text-align: right; min-width: 95px;">SALDO ANTERIOR</th>
+            <th style="text-align: right; min-width: 85px;">DEBITO</th>
+            <th style="text-align: right; min-width: 85px;">CREDITO</th>
+            <th style="text-align: right; min-width: 95px;">NUEVO SALDO</th>
+          </tr></thead>
           <tbody>${groupedHtml}</tbody>
         </table>
       </div>`;
@@ -4491,7 +4507,7 @@ async function generateAuxiliaryRows() {
         doc.autoTable({
           startY: 66,
           head: [[
-            'CUENTA', 'TERCERO', 'FECHA', 'CRUCE', 'DETALLE DOCTO.', 'COMPROBANTE',
+            'CUENTA', isPhActive ? 'INMUEBLE / TERCERO' : 'TERCERO', 'FECHA', 'CRUCE', 'DETALLE DOCTO.', 'COMPROBANTE',
             'SALDO ANTERIOR', 'DEBITO', 'CREDITO', 'NUEVO SALDO',
           ]],
           body,
@@ -4513,12 +4529,12 @@ async function generateAuxiliaryRows() {
             lineWidth: { top: 0, right: 0, bottom: 0.25, left: 0 },
           },
           columnStyles: {
-            0: { cellWidth: 42 },
-            1: { cellWidth: 70 },
+            0: { cellWidth: 38 },
+            1: { cellWidth: 110 },
             2: { cellWidth: 42 },
             3: { cellWidth: 32 },
-            4: { cellWidth: 92 },
-            5: { cellWidth: 48 },
+            4: { cellWidth: 54 },
+            5: { cellWidth: 46 },
             6: { cellWidth: 58, halign: 'right' },
             7: { cellWidth: 56, halign: 'right' },
             8: { cellWidth: 56, halign: 'right' },

@@ -867,12 +867,30 @@ onRecordCreateRequest((e) => {
       const docDate = String(rec.get("date") || "").trim();
       periodTag = docDate.slice(0, 7).replace("-", ""); // "2026-05" -> "202605"
       const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
-      next = (Number(counters[periodTag]) || 0) + 1;
-      txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
+      next = Number(counters[periodTag]) || 0;
+      while (true) {
+        next++;
+        txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
+        let found = false;
+        try {
+          $app.findFirstRecordByFilter("transactions", "number = '" + txNumber + "'");
+          found = true;
+        } catch (_) {}
+        if (!found) break;
+      }
     } else {
       const consecutiveRaw = Number(txType.get("consecutive") || 0);
-      next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
-      txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+      next = Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0;
+      while (true) {
+        next++;
+        txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+        let found = false;
+        try {
+          $app.findFirstRecordByFilter("transactions", "number = '" + txNumber + "'");
+          found = true;
+        } catch (_) {}
+        if (!found) break;
+      }
     }
   } catch (err) {
     throw new BadRequestError("No se pudo generar consecutivo de transaccion: " + err);

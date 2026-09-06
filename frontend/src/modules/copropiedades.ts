@@ -391,8 +391,7 @@ function openPhUnpostPeriodModal(container) {
       </p>
       <ul class="text-sm list-disc pl-5" style="color:#6B7280">
         <li>Facturas en estado Contabilizada/Pagada pasarán a Borrador.</li>
-        <li>Se desvincularán de su asiento contable.</li>
-        <li>Los asientos se intentarán pasar a borrador; si no es posible, se anularán.</li>
+        <li>Se eliminarán completamente los comprobantes contables asociados en el módulo de Contabilidad.</li>
       </ul>
       <div class="form-group mb-0">
         <label class="form-label">Confirma escribiendo el período</label>
@@ -435,7 +434,7 @@ function openPhDeletePeriodModal(container) {
       </p>
       <ul class="text-sm list-disc pl-5" style="color:#DC2626">
         <li>Se eliminarán cabeceras y líneas de factura del período.</li>
-        <li>Se intentará eliminar los asientos asociados; si no es posible, se anularán.</li>
+        <li>Se eliminarán definitivamente los comprobantes contables en el módulo de Contabilidad.</li>
         <li>Esta acción no se puede deshacer.</li>
       </ul>
       <div class="form-group mb-0">
@@ -739,7 +738,7 @@ async function markPhPaidConfirm(invoiceId, btn) {
 }
 
 async function unpostPhInvoiceConfirm(invoiceId, btn) {
-  if (!confirm('¿Descontabilizar esta factura? Volverá a estado Borrador y se desligará del asiento.')) return;
+  if (!confirm('¿Descontabilizar esta factura? Volverá a estado Borrador y se eliminará su comprobante contable.')) return;
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
   try {
     await API.unpostPhInvoice(invoiceId);
@@ -3770,6 +3769,10 @@ async function openPhInvoiceEmailModal(invoiceId: string) {
       'Enviar Documento por Correo',
       `<div class="space-y-4">
         <p class="text-xs text-gray-500">Envía la factura o estado de cuenta al propietario de la unidad <strong>${(window as any).esc(prop?.name || '')}</strong>.</p>
+        <div class="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs text-blue-700 flex items-center gap-2">
+          <i class="fas fa-file-pdf text-red-500 text-base"></i>
+          <span>Se adjuntará automáticamente el archivo <strong>PDF oficial</strong> de cobro en el correo.</span>
+        </div>
         <div class="form-group mb-0">
           <label class="form-label">Correo Destinatario <span class="text-red-500">*</span></label>
           <input id="ph-email-dest" type="email" class="form-input" value="${(window as any).esc(defaultEmail)}" placeholder="correo@ejemplo.com">
@@ -3831,11 +3834,15 @@ async function openPhBulkEmailModal() {
   const period = document.getElementById('ph-period-filter')?.value || (window as any).currentPeriod();
 
   (window as any).openModal(
-    'Envío Masivo por Correo',
+    'Envío Masivo por Correo (Con PDF)',
     `<div class="space-y-4">
       <p class="text-sm text-gray-600">
-        Esta acción enviará las facturas o estados de cuenta a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(period)}</strong> y cuenten con correo registrado.
+        Esta acción generará y enviará las facturas o estados de cuenta con su respectivo <strong>archivo PDF adjunto</strong> a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(period)}</strong> y cuenten con correo registrado.
       </p>
+      <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+        <i class="fas fa-shield-alt text-amber-600 text-base"></i>
+        <span>El proceso aplica control de ráfagas (rate limiting) para garantizar la compatibilidad con el servidor <strong>SMTP de Gmail</strong> sin bloqueos de cuenta.</span>
+      </div>
       <div class="grid grid-cols-2 gap-4">
         <div class="form-group mb-0">
           <label class="form-label">Período</label>
@@ -3887,7 +3894,7 @@ async function openPhBulkEmailModal() {
       confirmBtn.disabled = true;
       cancelBtn.disabled = true;
       progressContainer.classList.remove('hidden');
-      log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Solicitando envío masivo al servidor...</p>`;
+      log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Generando PDFs y enviando correos por Gmail SMTP...</p>`;
 
       try {
         const res = await (window as any).API.sendPhBulkEmails(period, type, subject, '');
@@ -3897,12 +3904,13 @@ async function openPhBulkEmailModal() {
         progressBar.style.width = '100%';
 
         let logContent = `<p class="text-green-600 font-bold mb-1">¡Proceso de envío masivo finalizado!</p>`;
-        logContent += `<p class="text-xs font-semibold text-gray-600 mb-2">Resumen: ${res.sent} enviados, ${res.skipped} omitidos, ${res.failed} fallidos.</p>`;
+        logContent += `<p class="text-xs font-semibold text-gray-600 mb-2">Resumen: ${res.sent} enviados (con PDF adjunto), ${res.skipped} omitidos, ${res.failed} fallidos.</p>`;
         
         if (res.details && res.details.length > 0) {
           res.details.forEach((det: any) => {
             if (det.status === 'sent') {
-              logContent += `<p class="text-green-500">[ENV] Unidad ${det.unit} — Enviado a ${det.email}</p>`;
+              const pdfTag = det.pdfAttached ? '<span style="color:#10b981;font-weight:bold;">[+PDF]</span>' : '';
+              logContent += `<p class="text-green-600">[ENV] Unidad ${det.unit} — Enviado a ${det.email} ${pdfTag}</p>`;
             } else if (det.status === 'skipped') {
               logContent += `<p class="text-orange-500">[OMI] Factura ${det.number} ${det.unit ? 'Unidad ' + det.unit : ''} — Omitido: ${det.reason}</p>`;
             } else {
@@ -3913,7 +3921,7 @@ async function openPhBulkEmailModal() {
         log.innerHTML = logContent;
         log.scrollTop = log.scrollHeight;
 
-        (window as any).showToast(`Envío masivo completo. ${res.sent} enviados, ${res.skipped} omitidos, ${res.failed} fallidos.`, res.failed > 0 ? 'warning' : 'success');
+        (window as any).showToast(`Envío masivo completo. ${res.sent} enviados con PDF, ${res.skipped} omitidos, ${res.failed} fallidos.`, res.failed > 0 ? 'warning' : 'success');
         
         confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Finalizado';
         cancelBtn.disabled = false;

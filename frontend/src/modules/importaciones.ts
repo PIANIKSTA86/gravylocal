@@ -145,13 +145,26 @@ function importKpi(title: string, value: any, icon: string, color: string, bg: s
 function renderImportRow(imp: any) {
   const meta = IMPORT_STATUS[imp.status] || { label: imp.status, badge: 'badge-gray' };
   const supplier = imp.expand?.supplier_id;
+  const forwarder = imp.expand?.forwarder_supplier_id;
   const transport = TRANSPORTS.find(t => t.value === imp.transport_type)?.label || imp.transport_type || '—';
-  
+
+  let supplierHtml = '';
+  if (imp.is_consolidated) {
+    supplierHtml = `
+      <div>
+        <span class="badge badge-blue text-[10px] font-bold"><i class="fas fa-boxes-packing mr-1"></i>Consolidada</span>
+        ${supplier ? `<div class="text-xs font-semibold text-slate-700 mt-0.5">${(window as any).esc(supplier.name)}</div>` : (forwarder ? `<div class="text-xs text-slate-500 mt-0.5">Agente: ${(window as any).esc(forwarder.name)}</div>` : '<div class="text-[10px] text-gray-400 mt-0.5">Multi-Proveedor</div>')}
+      </div>
+    `;
+  } else {
+    supplierHtml = supplier ? (window as any).esc(supplier.name) : '—';
+  }
+
   return `
     <tr data-impid="${(window as any).esc(imp.id)}" data-impstatus="${(window as any).esc(imp.status)}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(imp.number)}</span></td>
       <td>${(window as any).esc(imp.date_created)}</td>
-      <td class="font-medium">${supplier ? (window as any).esc(supplier.name) : '—'}</td>
+      <td class="font-medium">${supplierHtml}</td>
       <td class="font-mono text-sm">${(window as any).esc(imp.bl_awb || '—')}</td>
       <td>${transport}</td>
       <td class="font-semibold" style="color:#4B5563">${(window as any).esc(imp.estimated_arrival || '—')}</td>
@@ -200,6 +213,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   currentUploadedFiles = {};
   let imp: any = null;
   let existingLines: any[] = [];
+  let localInvoices: any[] = [];
+  let localPalletConfigs: Record<string, any[]> = {};
 
   const [suppliers, products] = await Promise.all([
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
@@ -215,10 +230,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   };
 
   if (importId) {
-    [imp, existingLines] = await Promise.all([
+    const [impRes, linesRes, invsRes, palletsRes] = await Promise.all([
       (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
       (window as any).API.getImportLines(importId),
+      (window as any).API.getImportInvoices(importId).catch(() => []),
+      (window as any).API.getImportPalletConfigs(importId).catch(() => []),
     ]);
+    imp = impRes;
+    existingLines = linesRes || [];
+    localInvoices = invsRes || [];
+    if (palletsRes && palletsRes.length) {
+      palletsRes.forEach((pc: any) => {
+        const key = pc.import_line_id || pc.product_id;
+        if (!localPalletConfigs[key]) localPalletConfigs[key] = [];
+        localPalletConfigs[key].push(pc);
+      });
+    }
   }
 
   let lineCounter = 0;
@@ -230,16 +257,29 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       
       <!-- 1. Datos Generales -->
       <div class="p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
-        <h4 class="font-bold mb-3" style="color:#0D2137"><i class="fas fa-circle-info mr-1 text-blue-700"></i> Información General</h4>
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-circle-info mr-1 text-blue-700"></i> Información General</h4>
+          
+          <!-- Switch Modo Consolidado -->
+          <label class="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm hover:border-blue-300 transition-colors">
+            <input type="checkbox" id="imp-is-consolidated" class="rounded w-4 h-4 text-blue-600 focus:ring-blue-500" ${imp?.is_consolidated ? 'checked' : ''} onchange="window.impToggleConsolidatedMode(this.checked)">
+            <span class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+              <i class="fas fa-boxes-packing text-blue-600"></i> Importación Consolidada (Multi-Proveedor)
+            </span>
+          </label>
+        </div>
         
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div class="form-group col-span-1 md:col-span-2">
-            <label class="form-label font-bold">Proveedor Internacional <span style="color:#EF4444">*</span></label>
+            <label class="form-label font-bold" id="lbl-imp-supplier-title">Proveedor Internacional Principal <span id="imp-supplier-req-star" style="color:#EF4444">${imp?.is_consolidated ? '' : '*'}</span></label>
             <div id="imp-supplier-search-wrap" class="relative">
               <input id="imp-supplier-search" class="form-input" autocomplete="off" placeholder="Buscar proveedor por NIT o nombre...">
               <input id="imp-supplier-id" type="hidden" value="${(window as any).esc(imp?.supplier_id || '')}">
               <div id="imp-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:180px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
             </div>
+            <p class="text-[11px] text-gray-500 mt-1" id="lbl-imp-supplier-hint">
+              ${imp?.is_consolidated ? 'Proveedor general, consolidador o agente de carga principal.' : 'Proveedor internacional emisor de la mercancía.'}
+            </p>
           </div>
           
           <div class="form-group">
@@ -290,6 +330,42 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <label class="form-label font-bold">Notas / Comentarios</label>
             <input id="imp-notes" class="form-input" placeholder="Observaciones generales..." value="${(window as any).esc(imp?.notes || '')}">
           </div>
+        </div>
+      </div>
+
+      <!-- Sección de Facturas Comerciales Consolidadas (Visible en modo consolidado) -->
+      <div id="imp-consolidated-invoices-wrap" class="p-4 rounded-xl border ${imp?.is_consolidated ? '' : 'hidden'}" style="background:#F0F7FF;border-color:#BFDBFE">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div>
+            <h4 class="font-bold text-sm text-blue-950 flex items-center gap-2">
+              <i class="fas fa-file-invoice-dollar text-blue-600"></i> Facturas Comerciales de Proveedores Internacionales
+            </h4>
+            <p class="text-xs text-blue-700">Gestiona cada factura comercial con su respectivo proveedor extranjero y fecha de vencimiento para la Agenda de Pagos (CXP 220505).</p>
+          </div>
+          <button type="button" class="btn btn-primary btn-xs flex items-center gap-1" onclick="window.impOpenInvoiceModal()">
+            <i class="fas fa-plus"></i> Agregar Factura Comercial
+          </button>
+        </div>
+
+        <div class="overflow-x-auto bg-white rounded-lg border border-blue-200">
+          <table class="w-full text-xs text-left border-collapse" id="imp-invoices-table">
+            <thead>
+              <tr class="bg-blue-50/80 text-blue-900 font-semibold border-b border-blue-200">
+                <th class="py-2 px-3">Proveedor Exterior</th>
+                <th class="py-2 px-3">Factura Nro.</th>
+                <th class="py-2 px-3">Fecha Emisión</th>
+                <th class="py-2 px-3">Vencimiento (Agenda)</th>
+                <th class="py-2 px-3 text-right">Monto FOB USD</th>
+                <th class="py-2 px-3 text-right">Monto FOB COP</th>
+                <th class="py-2 px-3 text-center">Soporte PDF</th>
+                <th class="py-2 px-3 text-center">Estado Contable</th>
+                <th class="py-2 px-3 text-center" style="width:100px">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="imp-invoices-tbody" class="divide-y divide-gray-100">
+              <!-- Rendered by impRenderInvoicesTable -->
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -438,20 +514,21 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           </div>
         </div>
 
-        <div style="overflow-x:auto;max-height:280px;overflow-y:auto">
-          <table class="data-table" id="imp-lines-table" style="min-width:1220px">
+        <div style="overflow-x:auto;max-height:360px;overflow-y:auto">
+          <table class="data-table" id="imp-lines-table" style="min-width:1160px">
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
-                <th style="min-width:220px;background:#F4F8FF">Producto</th>
-                <th class="text-right" style="width:120px;background:#F4F8FF">Cant.</th>
-                <th class="text-right" style="width:160px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
-                <th class="text-right" style="width:120px;background:#F4F8FF">Arancel %</th>
-                <th class="text-right" style="width:120px;background:#F4F8FF">IVA %</th>
-                <th style="min-width:180px;background:#F4F8FF">Nro. Manifiesto</th>
-                <th style="width:170px;background:#F4F8FF">Archivo Manifiesto (PDF)</th>
+                <th style="min-width:250px;background:#F4F8FF">Producto & Control Lote/Estibas</th>
+                <th class="col-consolidated-th ${imp?.is_consolidated ? '' : 'hidden'}" style="min-width:170px;background:#F4F8FF">Proveedor / Factura</th>
+                <th class="text-right" style="width:105px;background:#F4F8FF">Cant. Total</th>
+                <th class="text-right" style="width:130px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
+                <th class="text-right" style="width:85px;background:#F4F8FF">Arancel %</th>
+                <th class="text-right" style="width:80px;background:#F4F8FF">IVA %</th>
+                <th style="min-width:130px;background:#F4F8FF">Nro. Manifiesto</th>
+                <th style="width:125px;background:#F4F8FF">Archivo PDF</th>
                 <th class="text-right" style="width:115px;background:#F4F8FF">Costo Est. (COP)</th>
-                <th class="text-right" style="width:115px;background:#F4F8FF">Total (COP)</th>
-                <th style="width:58px;background:#F4F8FF">Acción</th>
+                <th class="text-right" style="width:120px;background:#F4F8FF">Total (COP)</th>
+                <th style="width:45px;background:#F4F8FF">Acción</th>
               </tr>
             </thead>
             <tbody id="imp-lines-body"></tbody>
@@ -575,27 +652,37 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                         <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('fob')">
                           <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full ${imp?.tx_fob_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            FOB Mercancía <span class="text-[10px] text-slate-400 font-normal" id="lbl-fob-currency">(USD)</span>
+                            <span>FOB Mercancía</span>
+                            <span class="text-[10px] text-slate-400 font-normal" id="lbl-fob-currency">(USD)</span>
+                            <span id="lbl-fob-consolidated-indicator" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold ${imp?.is_consolidated ? '' : 'hidden'}">Consolidado</span>
                           </td>
                           <td class="py-2.5 px-3">
-                            <span class="font-medium text-xs text-slate-700" id="stage-fob-supplier-name">${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}</span>
+                            <span class="font-medium text-xs text-slate-700" id="stage-fob-supplier-name">
+                              ${imp?.is_consolidated ? 'Múltiples Proveedores (Ver tab)' : (imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba')}
+                            </span>
                           </td>
                           <td class="py-2.5 px-3">
-                            <input type="text" id="imp-supplier-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.supplier_invoice_num || '')}" ${imp?.tx_fob_id ? 'disabled' : ''}>
+                            <input type="text" id="imp-supplier-invoice-num" class="form-input text-xs py-1 font-mono ${imp?.is_consolidated ? 'hidden' : ''}" placeholder="Factura Nro" value="${(window as any).esc(imp?.supplier_invoice_num || '')}" ${imp?.tx_fob_id ? 'disabled' : ''}>
+                            <span id="imp-consolidated-inv-count-badge" class="text-xs text-blue-700 font-semibold ${imp?.is_consolidated ? '' : 'hidden'}">Ver Facturas</span>
                           </td>
                           <td class="py-2.5 px-3">
                             <input type="number" id="imp-fob-total" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.fob_total || '0'}" readonly style="background:#F3F4F6">
                           </td>
                           <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_fob_id ? `
-                              <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_fob_id}')">
-                                <i class="fas fa-receipt mr-1"></i> Asiento
-                              </button>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-fob" onclick="window.triggerStageCausacion('fob')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
+                            <div id="wrap-fob-single-action" class="${imp?.is_consolidated ? 'hidden' : ''}">
+                              ${imp?.tx_fob_id ? `
+                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_fob_id}')">
+                                  <i class="fas fa-receipt mr-1"></i> Asiento
+                                </button>
+                              ` : `
+                                <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-fob" onclick="window.triggerStageCausacion('fob')">
+                                  <i class="fas fa-calculator mr-1"></i> Causar
+                                </button>
+                              `}
+                            </div>
+                            <button type="button" id="btn-fob-goto-tab" class="btn btn-outline btn-xs text-blue-700 w-full ${imp?.is_consolidated ? '' : 'hidden'}" onclick="window.switchImpStageTab('fob')">
+                              <i class="fas fa-list-check mr-1"></i> Ver Detalle
+                            </button>
                           </td>
                         </tr>
 
@@ -831,25 +918,55 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                       </div>
                       <div>
                         <h5 class="font-bold text-sm text-slate-800">Etapa 1: FOB Mercancía</h5>
-                        <p class="text-[11px] text-slate-400">Factura comercial del proveedor internacional de mercancía</p>
+                        <p class="text-[11px] text-slate-400">Factura comercial y causación contable a cuentas por pagar proveedor exterior (PUC 220505)</p>
                       </div>
                     </div>
-                    <span class="badge ${imp?.tx_fob_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
+                    <span id="badge-fob-header-status" class="badge ${imp?.tx_fob_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
                       ${imp?.tx_fob_id ? '✓ Causado' : '⏳ Pendiente'}
                     </span>
                   </div>
 
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <label class="block font-semibold text-slate-700 mb-1">Proveedor Internacional:</label>
-                      <div class="p-2 bg-slate-50 rounded-lg border border-slate-200 font-bold text-slate-800">
-                        ${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}
+                  <!-- Vista Estándar: Proveedor Único -->
+                  <div id="imp-fob-single-view" class="${imp?.is_consolidated ? 'hidden' : ''}">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Proveedor Internacional:</label>
+                        <div class="p-2 bg-slate-50 rounded-lg border border-slate-200 font-bold text-slate-800" id="stage-fob-supplier-detail-name">
+                          ${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label class="block font-semibold text-slate-700 mb-1">Nro. Factura / Commercial Invoice:</label>
+                        <p class="text-[11px] text-slate-400 mb-1">Edita el número en la vista general o matriz.</p>
                       </div>
                     </div>
+                  </div>
 
-                    <div>
-                      <label class="block font-semibold text-slate-700 mb-1">Nro. Factura / Comercial Invoice:</label>
-                      <p class="text-[11px] text-slate-400 mb-1">Edita el número en la vista general o matriz.</p>
+                  <!-- Vista Consolidada: Tabla de Facturas Comerciales por Proveedor -->
+                  <div id="imp-fob-consolidated-view" class="${imp?.is_consolidated ? '' : 'hidden'} space-y-3">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-bold text-slate-800">Causación Individual por Factura Comercial:</span>
+                      <button type="button" class="btn btn-outline btn-xs" onclick="window.impOpenInvoiceModal()">
+                        <i class="fas fa-plus mr-1"></i> Nueva Factura
+                      </button>
+                    </div>
+                    <div class="border rounded-lg overflow-hidden">
+                      <table class="w-full text-xs text-left">
+                        <thead class="bg-slate-50 text-slate-600 border-b">
+                          <tr>
+                            <th class="py-2 px-2.5">Proveedor</th>
+                            <th class="py-2 px-2.5">Factura Nro.</th>
+                            <th class="py-2 px-2.5">Vencimiento</th>
+                            <th class="py-2 px-2.5 text-right">FOB (USD)</th>
+                            <th class="py-2 px-2.5 text-right">FOB (COP)</th>
+                            <th class="py-2 px-2.5 text-center">Acción Contable</th>
+                          </tr>
+                        </thead>
+                        <tbody id="imp-fob-stage-invoices-body" class="divide-y divide-slate-100">
+                          <!-- Injected by impRenderInvoicesTable -->
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 </div>
@@ -858,7 +975,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   <div>
                     <h6 class="font-bold text-xs text-indigo-900 uppercase tracking-wider mb-2">Impacto Contable FOB</h6>
                     <p class="text-xs text-indigo-700/80 leading-relaxed">
-                      El costo FOB se carga a la cuenta de <strong>Inventario en Tránsito (PUC 1465)</strong> en contrapartida de la <strong>Cuentas por Pagar al Proveedor Exterior (PUC 2210)</strong>.
+                      El costo FOB se carga a la cuenta de <strong>Inventario en Tránsito (PUC 146505)</strong> en contrapartida de <strong>Proveedores del Exterior (PUC 220505)</strong> con programación automática en la Agenda de Pagos.
                     </p>
                   </div>
                   <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
@@ -1203,27 +1320,41 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       {
         "Codigo": "PROD-001",
         "Producto": "Televisor Smart LED 55",
-        "Cantidad": 10,
+        "Cantidad": 160,
         "Precio_FOB": 350.00,
         "Arancel_Pct": 10,
         "IVA_Pct": 19,
-        "Nro_Manifiesto": "2026-MAN-001"
+        "Nro_Manifiesto": "2026-MAN-001",
+        "Factura_Comercial": "INV-US-8921",
+        "Lote": "LOT-2026A",
+        "Fecha_Fabricacion": "2026-01-15",
+        "Fecha_Vencimiento": "2028-01-15",
+        "Pallets_Cant": 10,
+        "Cajas_Por_Pallet": 16,
+        "Unidades_Por_Caja": 1
       },
       {
         "Codigo": "PROD-002",
         "Producto": "Monitor Gamer 27 144Hz",
-        "Cantidad": 25,
+        "Cantidad": 48,
         "Precio_FOB": 185.50,
         "Arancel_Pct": 5,
         "IVA_Pct": 19,
-        "Nro_Manifiesto": "2026-MAN-002"
+        "Nro_Manifiesto": "2026-MAN-002",
+        "Factura_Comercial": "INV-HK-5510",
+        "Lote": "LOT-2026B",
+        "Fecha_Fabricacion": "2026-02-01",
+        "Fecha_Vencimiento": "2028-02-01",
+        "Pallets_Cant": 2,
+        "Cajas_Por_Pallet": 24,
+        "Unidades_Por_Caja": 1
       }
     ];
     const ws = (window as any).XLSX.utils.json_to_sheet(sampleData);
     const wb = (window as any).XLSX.utils.book_new();
     (window as any).XLSX.utils.book_append_sheet(wb, ws, "Productos Importacion");
     (window as any).XLSX.writeFile(wb, "Plantilla_Importacion_Productos.xlsx");
-    (window as any).showToast('Plantilla Excel descargada.', 'success');
+    (window as any).showToast('Plantilla Excel descargada con soporte de lotes y pallets.', 'success');
   };
 
   // Carga masiva de líneas desde Excel / CSV
@@ -1269,11 +1400,25 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
           const rawCode = String(getVal(['codigo', 'code', 'ref', 'referencia', 'ean'])).trim();
           const rawName = String(getVal(['producto', 'nombre', 'item', 'descripcion'])).trim();
-          const qty = parseFloat(String(getVal(['cantidad', 'cant', 'qty', 'unidades'])).replace(/,/g, '.')) || 0;
+          const rawQty = parseFloat(String(getVal(['cantidad', 'cant', 'qty', 'unidades'])).replace(/,/g, '.')) || 0;
           const fobPrice = parseFloat(String(getVal(['precio_fob', 'precio fob', 'precio', 'fob', 'costo', 'price'])).replace(/,/g, '.')) || 0;
           const arancelRate = parseFloat(String(getVal(['arancel_pct', 'arancel %', 'arancel', 'arancel_rate'])).replace(/,/g, '.')) || 0;
           const ivaRate = parseFloat(String(getVal(['iva_pct', 'iva %', 'iva', 'iva_rate'])).replace(/,/g, '.')) || 19;
           const manifestNumber = String(getVal(['nro_manifiesto', 'manifiesto', 'manifest'])).trim();
+
+          const lotNumber = String(getVal(['lote', 'lot', 'batch', 'nro_lote'])).trim();
+          const mfgDate = String(getVal(['fecha_fabricacion', 'fabricacion', 'mfg', 'mfg_date'])).trim();
+          const expDate = String(getVal(['fecha_vencimiento', 'vencimiento', 'exp', 'expiry_date'])).trim();
+          const invoiceNumber = String(getVal(['factura_comercial', 'factura', 'invoice', 'invoice_num'])).trim();
+
+          const palletsCant = parseFloat(String(getVal(['pallets_cant', 'pallets', 'estibas', 'cant_pallets'])).replace(/,/g, '.')) || 0;
+          const cajasPorPallet = parseFloat(String(getVal(['cajas_por_pallet', 'cajas_pallet', 'cajas_estiba'])).replace(/,/g, '.')) || 0;
+          const unidadesPorCaja = parseFloat(String(getVal(['unidades_por_caja', 'unidades_caja', 'units_box'])).replace(/,/g, '.')) || 1;
+
+          let computedQty = rawQty;
+          if (palletsCant > 0 && cajasPorPallet > 0) {
+            computedQty = palletsCant * cajasPorPallet * unidadesPorCaja;
+          }
 
           let match = null;
           if (rawCode) {
@@ -1290,15 +1435,44 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           }
 
           if (match) {
+            // Find invoice if specified
+            let matchedInvoiceId = '';
+            if (invoiceNumber && localInvoices.length) {
+              const matchedInv = localInvoices.find((i: any) => i.invoice_number?.toLowerCase() === invoiceNumber.toLowerCase());
+              if (matchedInv) matchedInvoiceId = matchedInv.id;
+            }
+
             const lineData: any = {
               product_id: match.id,
-              qty: qty > 0 ? qty : 1,
+              qty: computedQty > 0 ? computedQty : 1,
               fob_price: fobPrice >= 0 ? fobPrice : 0,
               arancel_rate: arancelRate >= 0 ? arancelRate : (match.arancel_rate_default ?? match.arancel_rate ?? 10),
               iva_rate: ivaRate >= 0 ? ivaRate : (match.iva_rate ?? 19),
               manifest_number: manifestNumber,
+              lot_number: lotNumber || null,
+              manufacturing_date: mfgDate || null,
+              expiry_date: expDate || null,
+              import_invoice_id: matchedInvoiceId || null,
             };
+
             (window as any).addImpLine(match, lineData);
+            const currentLineIdx = lineCounter;
+
+            // If pallet info was in Excel, save config
+            if (palletsCant > 0 && cajasPorPallet > 0) {
+              localPalletConfigs[currentLineIdx] = [{
+                pallet_qty: palletsCant,
+                boxes_per_pallet: cajasPorPallet,
+                units_per_box: unidadesPorCaja,
+                pallet_type: 'ESTANDAR_120x100',
+                height_cm: 150,
+                gross_weight_kg: 200,
+                lot_number: lotNumber || null
+              }];
+              const lbl = document.getElementById(`lbl-pallet-${currentLineIdx}`);
+              if (lbl) lbl.textContent = `${palletsCant} plts (${palletsCant * cajasPorPallet} cjs)`;
+            }
+
             loadedCount++;
           } else if (rawCode || rawName) {
             unmatchedCount++;
@@ -1343,6 +1517,36 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     (window as any).impRecalcTotals();
   };
 
+  // Helpers para control de Lotes en línea
+  (window as any).impToggleLotFields = function(idx: number) {
+    const wrap = document.getElementById(`wrap-lot-fields-${idx}`);
+    if (wrap) {
+      wrap.classList.toggle('hidden');
+      if (!wrap.classList.contains('hidden')) {
+        const lotInput = document.getElementById(`impl-lot-${idx}`) as HTMLInputElement;
+        lotInput?.focus();
+      }
+    }
+  };
+
+  (window as any).impUpdateLotLabel = function(idx: number) {
+    const lotInput = document.getElementById(`impl-lot-${idx}`) as HTMLInputElement;
+    const btn = document.getElementById(`btn-toggle-lot-${idx}`);
+    const lbl = document.getElementById(`lbl-lot-btn-${idx}`);
+    if (lotInput && btn && lbl) {
+      const val = lotInput.value.trim();
+      if (val) {
+        lbl.textContent = `Lote: ${val}`;
+        btn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-300', 'font-bold');
+        btn.classList.remove('text-gray-600');
+      } else {
+        lbl.textContent = '+ Lote';
+        btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-300', 'font-bold');
+        btn.classList.add('text-gray-600');
+      }
+    }
+  };
+
   // Agregar línea de artículo
   (window as any).addImpLine = function(prod: any = null, preloadedLine: any = null) {
     lineCounter++;
@@ -1382,6 +1586,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const baseAnchoCm = preloadedLine?.ancho_cm ?? prod?.ancho_cm ?? 0;
     const baseAltoCm = preloadedLine?.alto_cm ?? prod?.alto_cm ?? 0;
 
+    const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
+
+    // Preload pallet configs if exists
+    const existingPcs = (lineId && localPalletConfigs[lineId]) || (productId && localPalletConfigs[productId]) || [];
+    if (existingPcs.length && !localPalletConfigs[idx]) {
+      localPalletConfigs[idx] = JSON.parse(JSON.stringify(existingPcs));
+    }
+
     const tr = document.createElement('tr');
     tr.id = `imp-row-${idx}`;
     tr.setAttribute('data-lineid', lineId);
@@ -1396,14 +1608,50 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         <div class="flex flex-col">
           <div class="flex items-center gap-1 flex-wrap">
             <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
-            <span class="text-xs font-semibold text-gray-800 truncate" style="max-width:180px" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            <span class="text-xs font-semibold text-gray-800 truncate" style="max-width:200px" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
             ${prod?.visto_bueno_required ? `
               <span class="badge badge-red text-[9px] py-0.5 px-1.5 ml-1 animate-pulse" style="font-size:9px" title="Requiere Visto Bueno ante ${prod.visto_bueno_entidad} - Registro: ${prod.registro_sanitario || 'Sin Registro'}">⚠️ V.B. ${prod.visto_bueno_entidad}</span>
             ` : ''}
           </div>
+
+          <!-- Metadatos técnicos (Posición arancelaria, certificado, país) -->
+          <div class="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
+            ${(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria) ? `<span>Pos: <span class="font-mono text-slate-700">${(window as any).esc(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria)}</span></span>` : ''}
+            ${preloadedLine?.pais_origen ? `<span>Origen: ${(window as any).esc(preloadedLine.pais_origen)}</span>` : ''}
+          </div>
+
+          <!-- Barra de controles compactos para Lotes y Estibas -->
+          <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md ${preloadedLine?.lot_number ? 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' : 'text-gray-600 hover:text-blue-700'}" id="btn-toggle-lot-${idx}" onclick="window.impToggleLotFields(${idx})" title="Gestionar lote de fabricación y fecha de vencimiento">
+              <i class="fas fa-barcode mr-1 text-indigo-500"></i><span id="lbl-lot-btn-${idx}">${preloadedLine?.lot_number ? `Lote: ${(window as any).esc(preloadedLine.lot_number)}` : '+ Lote'}</span>
+            </button>
+
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-pallet-${idx}" onclick="window.impOpenPalletModal(${idx})" title="Configurar desglose por pallets/estibas">
+              <i class="fas fa-boxes-stacked text-blue-600 mr-1"></i><span id="lbl-pallet-${idx}">Estibas</span>
+            </button>
+          </div>
+
+          <!-- Micro-formulario expandible de lote -->
+          <div id="wrap-lot-fields-${idx}" class="${preloadedLine?.lot_number ? '' : 'hidden'} mt-1.5 p-2 bg-indigo-50/70 border border-indigo-100 rounded-lg space-y-1">
+            <div class="flex items-center gap-1">
+              <span class="text-[9px] text-indigo-900 font-bold uppercase w-9 flex-shrink-0">Lote:</span>
+              <input type="text" id="impl-lot-${idx}" class="form-input font-mono text-[10px] py-0.5 px-1.5 h-6 flex-1 bg-white" placeholder="Nro Lote..." value="${(window as any).esc(preloadedLine?.lot_number || '')}" oninput="window.impUpdateLotLabel(${idx})">
+            </div>
+            <div class="grid grid-cols-2 gap-1 text-[9px]">
+              <div>
+                <span class="text-[8px] text-gray-500 uppercase block">Fabr.</span>
+                <input type="date" id="impl-mfg-${idx}" class="form-input text-[9px] p-0.5 h-6 bg-white" value="${preloadedLine?.manufacturing_date ? preloadedLine.manufacturing_date.split(' ')[0] : ''}">
+              </div>
+              <div>
+                <span class="text-[8px] text-gray-500 uppercase block">Venc.</span>
+                <input type="date" id="impl-exp-${idx}" class="form-input text-[9px] p-0.5 h-6 bg-white" value="${preloadedLine?.expiry_date ? preloadedLine.expiry_date.split(' ')[0] : ''}">
+              </div>
+            </div>
+          </div>
+
           <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
 
-          <!-- Campos técnicos ocultos (prorrateo/cumplimiento), ya definidos en maestro o carga masiva -->
+          <!-- Campos técnicos ocultos (prorrateo/cumplimiento) -->
           <input type="hidden" id="impl-pos-arancel-${idx}" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || prod?.posicion_arancelaria || '')}">
           <input type="hidden" id="impl-pais-origen-${idx}" value="${(window as any).esc(preloadedLine?.pais_origen || prod?.pais_origen || '')}">
           <input type="hidden" id="impl-cert-origen-${idx}" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}">
@@ -1415,6 +1663,21 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           <input type="hidden" id="impl-cbm-${idx}" value="${preloadedLine?.cubic_meters_total ?? '0.0000'}">
         </div>
       </td>
+
+      <!-- Columna Proveedor / Factura Consolidada -->
+      <td class="col-consolidated-td ${isConsolidated ? '' : 'hidden'}">
+        <select id="impl-invoice-${idx}" class="form-input text-xs py-1" onchange="window.impOnLineInvoiceChange(${idx})">
+          <option value="">— Seleccionar Factura —</option>
+          ${localInvoices.map((inv: any) => `
+            <option value="${inv.id}" ${inv.id === (preloadedLine?.import_invoice_id || '') ? 'selected' : ''}>
+              ${(window as any).esc(inv.invoice_number)} (${(window as any).esc(inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Prov.')})
+            </option>
+          `).join('')}
+        </select>
+        <input type="hidden" id="impl-supplier-${idx}" value="${preloadedLine?.supplier_id || ''}">
+      </td>
+
+      <!-- Cantidad Total -->
       <td><input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals()"></td>
       <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
       <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()"></td>
@@ -1441,6 +1704,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     `;
     tbody.appendChild(tr);
 
+    // Initial label for pallets if preloaded
+    if (localPalletConfigs[idx] && localPalletConfigs[idx].length) {
+      const pcs = localPalletConfigs[idx];
+      const sumPlts = pcs.reduce((s: number, p: any) => s + (Number(p.pallet_qty) || 0), 0);
+      const sumBxs = pcs.reduce((s: number, p: any) => s + ((Number(p.pallet_qty) || 0) * (Number(p.boxes_per_pallet) || 0)), 0);
+      const lbl = document.getElementById(`lbl-pallet-${idx}`);
+      const btn = document.getElementById(`btn-pallet-${idx}`);
+      if (lbl) lbl.textContent = `${sumPlts} plts (${sumBxs} cjs)`;
+      if (btn) btn.classList.add('bg-blue-50', 'text-blue-700', 'border-blue-400', 'font-bold');
+    }
+
     (window as any).impRecalcTotals();
   };
 
@@ -1453,6 +1727,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const transporteNacional = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
     const otrosGastos = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
     const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
+    const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
 
     const totalCIFExpensesCOP = (freightCost + insuranceCost) * exchangeRate;
     const totalLocalExpensesCOP = gastosNacionalizacion + transporteNacional + otrosGastos;
@@ -1461,6 +1736,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     let totalFOB = 0;
     let totalWeight = 0;
     let totalVolume = 0;
+
+    // Reset computed FOB on localInvoices if in consolidated mode
+    if (isConsolidated) {
+      localInvoices.forEach(inv => { inv._computed_fob = 0; });
+    }
     
     // First pass: update weights if not overridden, and calculate totals
     const rows = document.querySelectorAll('#imp-lines-body tr');
@@ -1491,11 +1771,27 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         : 0;
 
       const cbmInput = document.getElementById(`impl-cbm-${idx}`) as HTMLInputElement;
-      if (cbmInput) cbmInput.value = lineCbm.toFixed(4);
+      if (cbmInput && cbmInput.value === '0.0000' && lineCbm > 0) {
+        cbmInput.value = lineCbm.toFixed(4);
+      }
+
+      const activeCbm = parseFloat(cbmInput?.value || '0') || lineCbm;
 
       totalFOB += (qty * price);
       totalWeight += pesoBrutoLine;
-      totalVolume += lineCbm;
+      totalVolume += activeCbm;
+
+      // Consolidate line FOB into its commercial invoice
+      if (isConsolidated) {
+        const invSelect = document.getElementById(`impl-invoice-${idx}`) as HTMLSelectElement;
+        const invId = invSelect?.value;
+        if (invId) {
+          const invObj = localInvoices.find(i => i.id === invId);
+          if (invObj) {
+            invObj._computed_fob = (invObj._computed_fob || 0) + (qty * price);
+          }
+        }
+      }
     });
 
     const totalFOBCop = totalFOB * exchangeRate;
@@ -1554,18 +1850,31 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (lblResTotal) lblResTotal.textContent = (window as any).fmt(totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP);
     if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
 
-    // Update Seen entities Vustos Buenos warnings box
+    // Update invoices table labels if present
+    if (isConsolidated) {
+      localInvoices.forEach(inv => {
+        const invFob = inv._computed_fob ?? inv.fob_amount ?? 0;
+        const usdCell = document.getElementById(`inv-fob-usd-${inv.id}`);
+        const copCell = document.getElementById(`inv-fob-cop-${inv.id}`);
+        const stageUsdCell = document.getElementById(`stage-inv-fob-usd-${inv.id}`);
+        const stageCopCell = document.getElementById(`stage-inv-fob-cop-${inv.id}`);
+
+        if (usdCell) usdCell.textContent = (window as any).fmtN(invFob) + ' ' + (inv.currency || currency);
+        if (copCell) copCell.textContent = (window as any).fmt(invFob * (inv.exchange_rate || exchangeRate));
+        if (stageUsdCell) stageUsdCell.textContent = (window as any).fmtN(invFob) + ' ' + (inv.currency || currency);
+        if (stageCopCell) stageCopCell.textContent = (window as any).fmt(invFob * (inv.exchange_rate || exchangeRate));
+      });
+    }
+
+    // Update Seen entities Vistos Buenos warnings box
     const vbAlertsList = document.getElementById('imp-vb-alerts-list');
     const vbAlertsWrap = document.getElementById('imp-vb-alerts-wrap');
     if (vbAlertsList && vbAlertsWrap) {
       const activeVbs: string[] = [];
       rows.forEach((tr: any) => {
-        const rowId = tr.id.split('-').pop();
-        const prodName = tr.querySelector('.truncate')?.textContent || 'Producto';
-        
-        // Find if this product has seen visto bueno by looking at the badge
         const badge = tr.querySelector('.badge-red');
         if (badge) {
+          const prodName = tr.querySelector('.truncate')?.textContent || 'Producto';
           const title = badge.getAttribute('title') || `Requiere visto bueno`;
           activeVbs.push(`<strong>${prodName}</strong>: ${title}`);
         }
@@ -1577,6 +1886,656 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       } else {
         vbAlertsWrap.classList.add('hidden');
       }
+    }
+  };
+
+  // --- Handlers de Modo Consolidado, Facturas Comerciales y Palletizado ---
+
+  (window as any).impToggleConsolidatedMode = function(isConsolidated: boolean) {
+    const invWrap = document.getElementById('imp-consolidated-invoices-wrap');
+    const thSupp = document.querySelectorAll('.col-consolidated-th');
+    const tdSupp = document.querySelectorAll('.col-consolidated-td');
+    const suppStar = document.getElementById('imp-supplier-req-star');
+    const suppHint = document.getElementById('lbl-imp-supplier-hint');
+    const fobConsolidatedBadge = document.getElementById('lbl-fob-consolidated-indicator');
+    const suppInvNumInput = document.getElementById('imp-supplier-invoice-num');
+    const invCountBadge = document.getElementById('imp-consolidated-inv-count-badge');
+    const singleActionWrap = document.getElementById('wrap-fob-single-action');
+    const btnGotoTab = document.getElementById('btn-fob-goto-tab');
+    const singleFobView = document.getElementById('imp-fob-single-view');
+    const consolidatedFobView = document.getElementById('imp-fob-consolidated-view');
+    const stageFobSuppName = document.getElementById('stage-fob-supplier-name');
+
+    if (isConsolidated) {
+      invWrap?.classList.remove('hidden');
+      thSupp.forEach(el => el.classList.remove('hidden'));
+      tdSupp.forEach(el => el.classList.remove('hidden'));
+      if (suppStar) suppStar.textContent = '';
+      if (suppHint) suppHint.textContent = 'Proveedor general, consolidador o agente de carga principal.';
+      fobConsolidatedBadge?.classList.remove('hidden');
+      suppInvNumInput?.classList.add('hidden');
+      invCountBadge?.classList.remove('hidden');
+      singleActionWrap?.classList.add('hidden');
+      btnGotoTab?.classList.remove('hidden');
+      singleFobView?.classList.add('hidden');
+      consolidatedFobView?.classList.remove('hidden');
+      if (stageFobSuppName) stageFobSuppName.textContent = 'Múltiples Proveedores (Ver tab)';
+    } else {
+      invWrap?.classList.add('hidden');
+      thSupp.forEach(el => el.classList.add('hidden'));
+      tdSupp.forEach(el => el.classList.add('hidden'));
+      if (suppStar) suppStar.textContent = '*';
+      if (suppHint) suppHint.textContent = 'Proveedor internacional emisor de la mercancía.';
+      fobConsolidatedBadge?.classList.add('hidden');
+      suppInvNumInput?.classList.remove('hidden');
+      invCountBadge?.classList.add('hidden');
+      singleActionWrap?.classList.remove('hidden');
+      btnGotoTab?.classList.add('hidden');
+      singleFobView?.classList.remove('hidden');
+      consolidatedFobView?.classList.add('hidden');
+      const supplierInput = document.getElementById('imp-supplier-search') as HTMLInputElement;
+      if (stageFobSuppName && supplierInput) {
+        stageFobSuppName.textContent = supplierInput.value ? supplierInput.value.split(' - ').pop() || 'Definido arriba' : 'Definido arriba';
+      }
+    }
+
+    (window as any).impRenderInvoicesTable();
+    (window as any).impRecalcTotals();
+  };
+
+  (window as any).impRenderInvoicesTable = function() {
+    const tbody = document.getElementById('imp-invoices-tbody');
+    const stageTbody = document.getElementById('imp-fob-stage-invoices-body');
+    const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
+    const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
+
+    if (tbody) {
+      if (!localInvoices.length) {
+        tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">No hay facturas comerciales agregadas aún. Haz clic en <strong>Agregar Factura Comercial</strong> arriba.</td></tr>`;
+      } else {
+        tbody.innerHTML = localInvoices.map((inv: any, i: number) => {
+          const suppName = inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Proveedor Extranjero';
+          const invDueDate = inv.payment_due_date || inv.due_date || '—';
+          const invFob = inv._computed_fob ?? inv.fob_amount ?? 0;
+          const invFobCop = invFob * (inv.exchange_rate || exchangeRate);
+          const isCaused = Boolean(inv.tx_fob_id);
+
+          return `
+            <tr class="hover:bg-blue-50/50">
+              <td class="py-2.5 px-3 font-semibold text-slate-800">${(window as any).esc(suppName)}</td>
+              <td class="py-2.5 px-3 font-mono font-bold text-blue-900">${(window as any).esc(inv.invoice_number)}</td>
+              <td class="py-2.5 px-3 text-slate-600">${(window as any).esc(inv.invoice_date || '—')}</td>
+              <td class="py-2.5 px-3 font-bold text-amber-700">${(window as any).esc(invDueDate)}</td>
+              <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-800" id="inv-fob-usd-${inv.id}">${(window as any).fmtN(invFob)} ${inv.currency || currency}</td>
+              <td class="py-2.5 px-3 text-right font-mono font-semibold text-slate-600" id="inv-fob-cop-${inv.id}">${(window as any).fmt(invFobCop)}</td>
+              <td class="py-2.5 px-3 text-center">
+                ${inv.invoice_file ? `
+                  <a href="${(window as any).PB_URL}/api/files/import_invoices/${inv.id}/${inv.invoice_file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="text-blue-600 hover:underline font-bold" title="Ver documento adjunto">
+                    <i class="fas fa-file-pdf"></i> PDF
+                  </a>
+                ` : (inv._newFile ? `<span class="text-emerald-600 font-bold" title="${(window as any).esc(inv._newFile.name)}">📄 Por subir</span>` : '<span class="text-gray-400">—</span>')}
+              </td>
+              <td class="py-2.5 px-3 text-center">
+                ${isCaused ? `<span class="badge badge-emerald text-[11px]"><i class="fas fa-check-circle mr-1"></i>Causado</span>` : `<span class="badge badge-slate text-[11px]">⏳ Pendiente</span>`}
+              </td>
+              <td class="py-2.5 px-3 text-center">
+                <div class="flex items-center justify-center gap-1">
+                  <button type="button" class="btn btn-outline btn-xs p-1 text-blue-600" onclick="window.impOpenInvoiceModal('${inv.id}')" title="Editar Factura"><i class="fas fa-pen"></i></button>
+                  ${!isCaused ? `
+                    <button type="button" class="btn btn-outline btn-xs p-1 text-red-600 border-red-200 hover:bg-red-50" onclick="window.impDeleteInvoice('${inv.id}')" title="Eliminar"><i class="fas fa-trash-can"></i></button>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    if (stageTbody) {
+      if (!localInvoices.length) {
+        stageTbody.innerHTML = `<tr><td colspan="6" class="p-3 text-center text-gray-400">No hay facturas comerciales configuradas.</td></tr>`;
+      } else {
+        stageTbody.innerHTML = localInvoices.map((inv: any) => {
+          const suppName = inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Proveedor Extranjero';
+          const invDueDate = inv.payment_due_date || inv.due_date || '—';
+          const invFob = inv._computed_fob ?? inv.fob_amount ?? 0;
+          const invFobCop = invFob * (inv.exchange_rate || exchangeRate);
+          const isCaused = Boolean(inv.tx_fob_id);
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="py-2 px-2.5 font-semibold">${(window as any).esc(suppName)}</td>
+              <td class="py-2 px-2.5 font-mono text-blue-900">${(window as any).esc(inv.invoice_number)}</td>
+              <td class="py-2 px-2.5 font-semibold text-amber-700">${(window as any).esc(invDueDate)}</td>
+              <td class="py-2 px-2.5 text-right font-mono font-bold" id="stage-inv-fob-usd-${inv.id}">${(window as any).fmtN(invFob)} ${inv.currency || currency}</td>
+              <td class="py-2 px-2.5 text-right font-mono" id="stage-inv-fob-cop-${inv.id}">${(window as any).fmt(invFobCop)}</td>
+              <td class="py-2 px-2.5 text-center">
+                ${isCaused ? `
+                  <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${inv.tx_fob_id}')">
+                    <i class="fas fa-receipt mr-1"></i> Asiento
+                  </button>
+                ` : `
+                  <button type="button" class="btn btn-primary btn-xs w-full" onclick="window.triggerConsolidatedInvoiceCausacion('${inv.id}')">
+                    <i class="fas fa-calculator mr-1"></i> Causar FOB
+                  </button>
+                `}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    // Refresh all line invoice dropdowns
+    const rows = document.querySelectorAll('#imp-lines-body tr');
+    rows.forEach((tr: any) => {
+      const rowIdx = tr.id.split('-').pop();
+      const select = document.getElementById(`impl-invoice-${rowIdx}`) as HTMLSelectElement;
+      if (select) {
+        const currentVal = select.value;
+        select.innerHTML = `<option value="">— Seleccionar Factura —</option>` + localInvoices.map((inv: any) => `
+          <option value="${inv.id}" ${inv.id === currentVal ? 'selected' : ''}>
+            ${(window as any).esc(inv.invoice_number)} (${(window as any).esc(inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Prov.')})
+          </option>
+        `).join('');
+      }
+    });
+  };
+
+  (window as any).impOnLineInvoiceChange = function(lineIdx: number) {
+    const select = document.getElementById(`impl-invoice-${lineIdx}`) as HTMLSelectElement;
+    const suppHidden = document.getElementById(`impl-supplier-${lineIdx}`) as HTMLInputElement;
+    if (select && suppHidden) {
+      const invId = select.value;
+      const inv = localInvoices.find(i => i.id === invId);
+      if (inv) {
+        suppHidden.value = inv.supplier_id || inv.third_party_id || '';
+      }
+    }
+    (window as any).impRecalcTotals();
+  };
+
+  (window as any).impOpenInvoiceModal = function(editInvoiceId: string | null = null) {
+    const isEditing = Boolean(editInvoiceId);
+    const inv = isEditing ? localInvoices.find(i => i.id === editInvoiceId) : null;
+    const currentCurrency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
+    const currentExchangeRate = (document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000.00';
+
+    const existingOverlay = document.getElementById('imp-invoice-modal-overlay');
+    if (existingOverlay) existingOverlay.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'imp-invoice-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-w-lg w-full animate-in fade-in zoom-in-95 duration-150">
+        <div class="p-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <i class="fas fa-file-invoice-dollar text-blue-300 text-lg"></i>
+            <h3 class="font-bold text-sm text-white">${isEditing ? 'Editar Factura Comercial' : 'Nueva Factura Comercial de Proveedor'}</h3>
+          </div>
+          <button type="button" class="text-slate-300 hover:text-white text-lg p-1" id="inv-modal-close"><i class="fas fa-xmark"></i></button>
+        </div>
+
+        <div class="p-5 space-y-4 text-xs">
+          <div class="form-group">
+            <label class="form-label font-bold">Proveedor Internacional <span class="text-red-500">*</span></label>
+            <select id="inv-modal-supplier" class="form-input text-xs">
+              ${getSupplierOptions(inv?.supplier_id || inv?.third_party_id || '')}
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-group">
+              <label class="form-label font-bold">Nro. Factura Comercial <span class="text-red-500">*</span></label>
+              <input type="text" id="inv-modal-number" class="form-input font-mono font-bold text-xs" placeholder="Ej: INV-2026-001" value="${(window as any).esc(inv?.invoice_number || '')}">
+            </div>
+            <div class="form-group">
+              <label class="form-label font-bold">Fecha Emisión</label>
+              <input type="date" id="inv-modal-date" class="form-input text-xs" value="${inv?.invoice_date ? inv.invoice_date.split(' ')[0] : new Date().toISOString().split('T')[0]}">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-group">
+              <label class="form-label font-bold text-blue-900">Fecha Vencimiento (Agenda CXP) <span class="text-red-500">*</span></label>
+              <input type="date" id="inv-modal-due-date" class="form-input text-xs font-semibold" value="${inv?.payment_due_date ? inv.payment_due_date.split(' ')[0] : (inv?.due_date ? inv.due_date.split(' ')[0] : '')}">
+            </div>
+            <div class="form-group">
+              <label class="form-label font-bold">Tasa Cambio (TRM)</label>
+              <input type="number" id="inv-modal-exchange-rate" class="form-input text-xs text-right" min="1" step="0.01" value="${inv?.exchange_rate || currentExchangeRate}">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Adjuntar Factura PDF / Imagen</label>
+            <input type="file" id="inv-modal-file" class="form-input text-xs" accept="application/pdf,image/*">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label font-bold">Notas / Observaciones</label>
+            <input type="text" id="inv-modal-notes" class="form-input text-xs" placeholder="Detalles de pago o puerto de embarque..." value="${(window as any).esc(inv?.notes || '')}">
+          </div>
+        </div>
+
+        <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" class="btn btn-outline" id="inv-modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="inv-modal-save">
+            <i class="fas fa-check mr-1"></i> Guardar Factura
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    overlay.querySelector('#inv-modal-close')?.addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#inv-modal-cancel')?.addEventListener('click', () => overlay.remove());
+
+    overlay.querySelector('#inv-modal-save')?.addEventListener('click', () => {
+      const suppId = (document.getElementById('inv-modal-supplier') as HTMLSelectElement)?.value;
+      const invNum = (document.getElementById('inv-modal-number') as HTMLInputElement)?.value.trim();
+      const invDate = (document.getElementById('inv-modal-date') as HTMLInputElement)?.value;
+      const dueDate = (document.getElementById('inv-modal-due-date') as HTMLInputElement)?.value;
+      const exRate = parseFloat((document.getElementById('inv-modal-exchange-rate') as HTMLInputElement)?.value) || 1;
+      const notesVal = (document.getElementById('inv-modal-notes') as HTMLInputElement)?.value.trim();
+      const fileInput = document.getElementById('inv-modal-file') as HTMLInputElement;
+
+      if (!suppId) { (window as any).showToast('Selecciona el proveedor internacional de la factura.', 'warning'); return; }
+      if (!invNum) { (window as any).showToast('Ingresa el número de factura comercial.', 'warning'); return; }
+      if (!dueDate) { (window as any).showToast('Ingresa la fecha de vencimiento para la Agenda de Pagos.', 'warning'); return; }
+
+      const suppObj = suppliers.find((s: any) => s.id === suppId);
+
+      if (isEditing && inv) {
+        inv.supplier_id = suppId;
+        inv.third_party_id = suppId;
+        inv.invoice_number = invNum;
+        inv.invoice_date = invDate;
+        inv.payment_due_date = dueDate;
+        inv.due_date = dueDate;
+        inv.exchange_rate = exRate;
+        inv.notes = notesVal;
+        inv.expand = { supplier_id: suppObj, third_party_id: suppObj };
+        if (fileInput?.files?.[0]) {
+          inv._newFile = fileInput.files[0];
+        }
+      } else {
+        const newInv: any = {
+          id: `temp-${Date.now()}`,
+          supplier_id: suppId,
+          third_party_id: suppId,
+          invoice_number: invNum,
+          invoice_date: invDate,
+          payment_due_date: dueDate,
+          due_date: dueDate,
+          currency: currentCurrency,
+          exchange_rate: exRate,
+          fob_amount: 0,
+          notes: notesVal,
+          expand: { supplier_id: suppObj, third_party_id: suppObj }
+        };
+        if (fileInput?.files?.[0]) {
+          newInv._newFile = fileInput.files[0];
+        }
+        localInvoices.push(newInv);
+      }
+
+      (window as any).impRenderInvoicesTable();
+      (window as any).impRecalcTotals();
+      (window as any).showToast(`Factura ${invNum} guardada.`, 'success');
+      overlay.remove();
+    });
+  };
+
+  (window as any).impDeleteInvoice = function(invId: string) {
+    const targetIdx = localInvoices.findIndex(i => i.id === invId);
+    if (targetIdx < 0) return;
+    const inv = localInvoices[targetIdx];
+
+    if (inv.tx_fob_id) {
+      (window as any).showToast('No puedes eliminar una factura que ya ha sido causada contablemente.', 'warning');
+      return;
+    }
+
+    (window as any).confirmDialog(
+      'Eliminar Factura Comercial',
+      `¿Deseas eliminar la factura <strong>${inv.invoice_number}</strong>? Se desvinculará de las líneas que la utilicen.`,
+      () => {
+        localInvoices.splice(targetIdx, 1);
+        const rows = document.querySelectorAll('#imp-lines-body tr');
+        rows.forEach((tr: any) => {
+          const rowIdx = tr.id.split('-').pop();
+          const select = document.getElementById(`impl-invoice-${rowIdx}`) as HTMLSelectElement;
+          if (select && select.value === invId) {
+            select.value = '';
+          }
+        });
+        (window as any).impRenderInvoicesTable();
+        (window as any).impRecalcTotals();
+        (window as any).showToast('Factura eliminada.', 'success');
+      }
+    );
+  };
+
+  // --- Modal de Desglose de Pallets Heterogéneos (WMS) ---
+  (window as any).impOpenPalletModal = function(lineIdx: number) {
+    const tr = document.getElementById(`imp-row-${lineIdx}`);
+    if (!tr) return;
+    const prodName = tr.querySelector('.truncate')?.textContent || 'Producto';
+    const prodCode = tr.querySelector('.font-mono')?.textContent || '';
+    const lotInput = document.getElementById(`impl-lot-${lineIdx}`) as HTMLInputElement;
+    const currentLot = lotInput?.value || '';
+
+    let configs = localPalletConfigs[lineIdx] ? JSON.parse(JSON.stringify(localPalletConfigs[lineIdx])) : [];
+    if (!configs.length) {
+      configs.push({
+        pallet_qty: 10,
+        boxes_per_pallet: 16,
+        units_per_box: 1,
+        pallet_type: 'ESTANDAR_120x100',
+        height_cm: 150,
+        gross_weight_kg: 250,
+        lot_number: currentLot
+      });
+    }
+
+    const existingOverlay = document.getElementById('imp-pallet-modal-overlay');
+    if (existingOverlay) existingOverlay.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'imp-pallet-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const renderModalContent = () => {
+      let totalPallets = 0;
+      let totalBoxes = 0;
+      let totalUnits = 0;
+      let totalCbm = 0;
+      let totalWeight = 0;
+
+      const rowsHtml = configs.map((c: any, cIdx: number) => {
+        const pQty = Number(c.pallet_qty) || 0;
+        const bPerP = Number(c.boxes_per_pallet) || 0;
+        const uPerB = Number(c.units_per_box) || 0;
+        const subBoxes = pQty * bPerP;
+        const subUnits = subBoxes * uPerB;
+        const height = Number(c.height_cm) || 0;
+        const isEuropallet = c.pallet_type === 'EUROPALLET_120x80';
+        const cbmPerPallet = (1.2 * (isEuropallet ? 0.8 : 1.0) * (height / 100));
+        const subCbm = cbmPerPallet * pQty;
+        const subWeight = (Number(c.gross_weight_kg) || 0) * pQty;
+
+        totalPallets += pQty;
+        totalBoxes += subBoxes;
+        totalUnits += subUnits;
+        totalCbm += subCbm;
+        totalWeight += subWeight;
+
+        return `
+          <tr class="border-b border-gray-100 hover:bg-slate-50" data-cidx="${cIdx}">
+            <td class="p-2">
+              <input type="number" class="form-input text-right font-bold w-20 p-1 text-xs plt-field" data-field="pallet_qty" min="1" step="1" value="${pQty}">
+            </td>
+            <td class="p-2">
+              <input type="number" class="form-input text-right font-semibold w-20 p-1 text-xs plt-field" data-field="boxes_per_pallet" min="1" step="1" value="${bPerP}">
+            </td>
+            <td class="p-2">
+              <input type="number" class="form-input text-right font-semibold w-20 p-1 text-xs plt-field" data-field="units_per_box" min="1" step="1" value="${uPerB}">
+            </td>
+            <td class="p-2 text-right font-mono font-bold text-slate-700">${subBoxes}</td>
+            <td class="p-2 text-right font-mono font-bold text-blue-700">${subUnits.toLocaleString()}</td>
+            <td class="p-2">
+              <select class="form-input text-xs p-1 plt-field" data-field="pallet_type">
+                <option value="ESTANDAR_120x100" ${c.pallet_type === 'ESTANDAR_120x100' ? 'selected' : ''}>Estándar (120x100)</option>
+                <option value="EUROPALLET_120x80" ${c.pallet_type === 'EUROPALLET_120x80' ? 'selected' : ''}>Europallet (120x80)</option>
+              </select>
+            </td>
+            <td class="p-2">
+              <input type="number" class="form-input text-right w-16 p-1 text-xs plt-field" data-field="height_cm" min="10" step="1" value="${height}">
+            </td>
+            <td class="p-2 text-right font-mono text-xs text-slate-600">${subCbm.toFixed(3)} m³</td>
+            <td class="p-2">
+              <input type="number" class="form-input text-right w-20 p-1 text-xs plt-field" data-field="gross_weight_kg" min="0" step="0.1" value="${c.gross_weight_kg || 0}">
+            </td>
+            <td class="p-2 text-center">
+              <button type="button" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50 border-red-200 plt-btn-del" data-delidx="${cIdx}" title="Eliminar fila">
+                <i class="fas fa-trash-can"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      overlay.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-w-4xl w-full max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+          <div class="p-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-200">
+                <i class="fas fa-boxes-stacked text-base"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-sm text-white">Desglose Heterogéneo de Pallets / Estibas (WMS)</h3>
+                <p class="text-xs text-blue-200/80">${(window as any).esc(prodCode)} — ${(window as any).esc(prodName)}</p>
+              </div>
+            </div>
+            <button type="button" class="text-slate-300 hover:text-white text-lg p-1" id="plt-modal-close"><i class="fas fa-xmark"></i></button>
+          </div>
+
+          <div class="p-4 overflow-y-auto flex-1 space-y-4">
+            <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+              <i class="fas fa-circle-info text-blue-600 mt-0.5 flex-shrink-0"></i>
+              <span>
+                Configura cómo viene embalado el producto en el contenedor. Si el proveedor envió pallets no uniformes (ej: <strong>10 pallets de 16 cajas</strong> y <strong>2 pallets de 24 cajas</strong>), agrégalos como filas independientes. Se calculará automáticamente el cubicaje real, peso bruto y unidades totales.
+              </span>
+            </div>
+
+            <div class="border rounded-xl overflow-hidden">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-slate-100 text-slate-700 font-semibold border-b">
+                  <tr>
+                    <th class="p-2">Estibas (Cant.)</th>
+                    <th class="p-2">Cajas / Estiba</th>
+                    <th class="p-2">Unid. / Caja</th>
+                    <th class="p-2 text-right">Total Cajas</th>
+                    <th class="p-2 text-right">Total Unidades</th>
+                    <th class="p-2">Tipo Estiba</th>
+                    <th class="p-2 text-right">Alto (cm)</th>
+                    <th class="p-2 text-right">CBM (m³)</th>
+                    <th class="p-2 text-right">Peso/Estiba (Kg)</th>
+                    <th class="p-2 text-center" style="width:40px"></th>
+                  </tr>
+                </thead>
+                <tbody id="plt-modal-tbody">
+                  ${rowsHtml}
+                </tbody>
+              </table>
+            </div>
+
+            <button type="button" class="btn btn-outline btn-xs flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50" id="plt-modal-add-row">
+              <i class="fas fa-plus"></i> Agregar Otra Configuración de Pallet
+            </button>
+
+            <!-- Métricas Resumen -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+              <div>
+                <span class="text-slate-500 font-bold uppercase text-[10px]">Total Estibas</span>
+                <p class="text-base font-extrabold text-slate-800 font-mono">${totalPallets}</p>
+              </div>
+              <div>
+                <span class="text-slate-500 font-bold uppercase text-[10px]">Total Cajas</span>
+                <p class="text-base font-extrabold text-slate-800 font-mono">${totalBoxes}</p>
+              </div>
+              <div>
+                <span class="text-slate-500 font-bold uppercase text-[10px]">Total Unidades</span>
+                <p class="text-base font-extrabold text-blue-700 font-mono">${totalUnits.toLocaleString()}</p>
+              </div>
+              <div>
+                <span class="text-slate-500 font-bold uppercase text-[10px]">Cubicaje Total</span>
+                <p class="text-base font-extrabold text-emerald-700 font-mono">${totalCbm.toFixed(3)} m³</p>
+              </div>
+              <div>
+                <span class="text-slate-500 font-bold uppercase text-[10px]">Peso Bruto</span>
+                <p class="text-base font-extrabold text-indigo-700 font-mono">${totalWeight.toFixed(1)} Kg</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+            <button type="button" class="btn btn-outline" id="plt-modal-cancel">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="plt-modal-save">
+              <i class="fas fa-check mr-1"></i> Aplicar a Línea de Importación
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Bindings
+      overlay.querySelectorAll('.plt-field').forEach((input: any) => {
+        input.addEventListener('input', (e: any) => {
+          const row = e.target.closest('tr');
+          const cIdx = parseInt(row.getAttribute('data-cidx'), 10);
+          const field = e.target.getAttribute('data-field');
+          configs[cIdx][field] = field === 'pallet_type' ? e.target.value : parseFloat(e.target.value) || 0;
+          renderModalContent();
+        });
+      });
+
+      overlay.querySelectorAll('.plt-btn-del').forEach((btn: any) => {
+        btn.addEventListener('click', () => {
+          const delIdx = parseInt(btn.getAttribute('data-delidx'), 10);
+          configs.splice(delIdx, 1);
+          if (!configs.length) {
+            configs.push({ pallet_qty: 1, boxes_per_pallet: 1, units_per_box: 1, pallet_type: 'ESTANDAR_120x100', height_cm: 120, gross_weight_kg: 50 });
+          }
+          renderModalContent();
+        });
+      });
+
+      overlay.querySelector('#plt-modal-add-row')?.addEventListener('click', () => {
+        configs.push({
+          pallet_qty: 2,
+          boxes_per_pallet: 24,
+          units_per_box: configs[0]?.units_per_box || 1,
+          pallet_type: 'ESTANDAR_120x100',
+          height_cm: 180,
+          gross_weight_kg: 350,
+          lot_number: currentLot
+        });
+        renderModalContent();
+      });
+
+      overlay.querySelector('#plt-modal-close')?.addEventListener('click', () => overlay.remove());
+      overlay.querySelector('#plt-modal-cancel')?.addEventListener('click', () => overlay.remove());
+
+      overlay.querySelector('#plt-modal-save')?.addEventListener('click', () => {
+        // Guardar configs en estado local
+        localPalletConfigs[lineIdx] = configs;
+
+        // Calcular totales
+        let sumUnits = 0;
+        let sumBoxes = 0;
+        let sumPallets = 0;
+        let sumCbm = 0;
+        let sumWeight = 0;
+
+        configs.forEach((c: any) => {
+          const pQty = Number(c.pallet_qty) || 0;
+          const bPerP = Number(c.boxes_per_pallet) || 0;
+          const uPerB = Number(c.units_per_box) || 0;
+          const totalB = pQty * bPerP;
+          const totalU = totalB * uPerB;
+          const height = Number(c.height_cm) || 0;
+          const isEuro = c.pallet_type === 'EUROPALLET_120x80';
+          const cbm = (1.2 * (isEuro ? 0.8 : 1.0) * (height / 100)) * pQty;
+          const wt = (Number(c.gross_weight_kg) || 0) * pQty;
+
+          sumPallets += pQty;
+          sumBoxes += totalB;
+          sumUnits += totalU;
+          sumCbm += cbm;
+          sumWeight += wt;
+        });
+
+        // Actualizar inputs de la línea
+        const qtyInput = document.getElementById(`impl-qty-${lineIdx}`) as HTMLInputElement;
+        const cbmInput = document.getElementById(`impl-cbm-${lineIdx}`) as HTMLInputElement;
+        const grossInput = document.getElementById(`impl-peso-bruto-${lineIdx}`) as HTMLInputElement;
+        const btnPallet = document.getElementById(`btn-pallet-${lineIdx}`);
+        const lblPallet = document.getElementById(`lbl-pallet-${lineIdx}`);
+
+        if (qtyInput && sumUnits > 0) qtyInput.value = String(sumUnits);
+        if (cbmInput) cbmInput.value = sumCbm.toFixed(4);
+        if (grossInput) {
+          grossInput.value = sumWeight.toFixed(2);
+          grossInput.dataset.overridden = 'true';
+        }
+
+        if (lblPallet) {
+          lblPallet.textContent = `${sumPallets} plts (${sumBoxes} cjs)`;
+        }
+        if (btnPallet) {
+          btnPallet.classList.add('bg-blue-50', 'text-blue-700', 'border-blue-400');
+        }
+
+        (window as any).impRecalcTotals();
+        (window as any).showToast(`Palletizado aplicado: ${sumPallets} estibas, ${sumBoxes} cajas, ${sumUnits} unidades.`, 'success');
+        overlay.remove();
+      });
+    };
+
+    document.body.appendChild(overlay);
+    renderModalContent();
+  };
+
+  // --- Causación Individual por Factura Comercial Consolidada ---
+  (window as any).triggerConsolidatedInvoiceCausacion = async function(invoiceId: string) {
+    if (!importId) {
+      (window as any).showToast('Por favor guarda la importación primero como Borrador antes de realizar causaciones.', 'warning');
+      return;
+    }
+
+    const inv = localInvoices.find(i => i.id === invoiceId);
+    if (!inv) {
+      (window as any).showToast('No se encontró la factura comercial.', 'error');
+      return;
+    }
+
+    if (inv.tx_fob_id) {
+      (window as any).viewStageTx(inv.tx_fob_id);
+      return;
+    }
+
+    try {
+      const exchangeRateVal = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
+      const invFob = inv._computed_fob ?? inv.fob_amount ?? 0;
+      const amountCOP = invFob * (inv.exchange_rate || exchangeRateVal);
+
+      if (amountCOP <= 0) {
+        throw new Error('El monto FOB de la factura debe ser mayor a cero para poder causarla.');
+      }
+
+      await SupplyChainOrchestrator.postImportStageWithPaymentSchedule({
+        importId,
+        stageName: 'fob',
+        supplierId: inv.supplier_id || inv.third_party_id,
+        invoiceNum: inv.invoice_number,
+        amount: amountCOP,
+        dueDate: inv.payment_due_date || inv.due_date,
+        invoiceId: inv.id,
+        notes: `Causación FOB Factura Comercial ${inv.invoice_number} — Importación ${consecutive}`
+      });
+
+      (window as any).showToast(`Causación contable y vencimiento generados para la factura ${inv.invoice_number}.`, 'success');
+      (window as any).closeModal();
+      setTimeout(() => {
+        openImportForm(importId, onDone);
+      }, 300);
+
+    } catch (err: any) {
+      (window as any).showToast(err.message, 'error');
     }
   };
 
@@ -1684,6 +2643,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
   initImpGlobalProductSearch();
   
+  // Inicializar modo consolidado y tabla de facturas
+  (window as any).impToggleConsolidatedMode(Boolean(imp?.is_consolidated));
+  (window as any).impRenderInvoicesTable();
+
   // Ejecutar primera calculadora al abrir
   setTimeout(() => (window as any).impUpdateCurrencyLabel(), 100);
   setTimeout(() => (window as any).impUpdateTransitAccountInfo(), 150);
@@ -1904,7 +2867,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     }
 
     try {
-      const supplierId = (document.getElementById('imp-supplier-id') as HTMLInputElement)?.value;
+      const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked || false;
+      const supplierId = (document.getElementById('imp-supplier-id') as HTMLInputElement)?.value || (localInvoices[0]?.supplier_id || localInvoices[0]?.third_party_id || null);
       const status = (document.getElementById('imp-status') as HTMLSelectElement)?.value || 'planeacion';
       const incoterm = (document.getElementById('imp-incoterm') as HTMLSelectElement)?.value || null;
       const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
@@ -1936,7 +2900,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const localCarrierInvoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim() || null;
       const localOtherInvoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim() || null;
 
-      // Nuevos campos cumplimiento y prorrateo
+      // Cumplimiento y prorrateo
       const vuceRegistroNum = (document.getElementById('imp-vuce-registro') as HTMLInputElement)?.value.trim() || null;
       const modalidadImportacion = (document.getElementById('imp-modalidad-importacion') as HTMLSelectElement)?.value || null;
       const canalInspeccion = (document.getElementById('imp-canal-inspeccion') as HTMLSelectElement)?.value || null;
@@ -1946,7 +2910,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const dianLevanteDate = (document.getElementById('imp-dian-levante-date') as HTMLInputElement)?.value || null;
       const dianTrm = parseFloat((document.getElementById('imp-dian-trm') as HTMLInputElement)?.value) || null;
 
-      if (!supplierId) throw new Error('Por favor selecciona un proveedor internacional.');
+      if (!isConsolidated && !supplierId) throw new Error('Por favor selecciona un proveedor internacional.');
+      if (isConsolidated && !localInvoices.length) throw new Error('En modo consolidado debes registrar al menos una factura comercial de proveedor.');
       if (exchangeRate <= 0) throw new Error('La tasa de cambio debe ser un número positivo.');
 
       // Totales
@@ -1978,6 +2943,18 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const anchoCm = parseFloat((document.getElementById(`impl-ancho-cm-${idx}`) as HTMLInputElement)?.value || '0');
         const altoCm = parseFloat((document.getElementById(`impl-alto-cm-${idx}`) as HTMLInputElement)?.value || '0');
 
+        // Campos lote y factura
+        const lotNumber = (document.getElementById(`impl-lot-${idx}`) as HTMLInputElement)?.value.trim() || null;
+        const manufacturingDate = (document.getElementById(`impl-mfg-${idx}`) as HTMLInputElement)?.value || null;
+        const expiryDate = (document.getElementById(`impl-exp-${idx}`) as HTMLInputElement)?.value || null;
+        const invoiceSelectVal = (document.getElementById(`impl-invoice-${idx}`) as HTMLSelectElement)?.value || null;
+        let lineSupplierId = (document.getElementById(`impl-supplier-${idx}`) as HTMLInputElement)?.value || supplierId;
+
+        if (invoiceSelectVal) {
+          const invObj = localInvoices.find(inv => inv.id === invoiceSelectVal);
+          if (invObj) lineSupplierId = invObj.supplier_id || invObj.third_party_id;
+        }
+
         if (!productId) {
           throw new Error(`Por favor selecciona un producto válido en la línea ${i + 1}.`);
         }
@@ -1997,9 +2974,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         }
 
         const lineFOBCop = qty * fobPrice * exchangeRate;
-        const lineCbm = (largoCm > 0 && anchoCm > 0 && altoCm > 0 && qty > 0)
-          ? ((largoCm * anchoCm * altoCm * qty) / 1000000)
-          : 0;
+        const rawCbmInput = parseFloat((document.getElementById(`impl-cbm-${idx}`) as HTMLInputElement)?.value || '0');
+        const lineCbm = rawCbmInput > 0 ? rawCbmInput : (
+          (largoCm > 0 && anchoCm > 0 && altoCm > 0 && qty > 0) ? ((largoCm * anchoCm * altoCm * qty) / 1000000) : 0
+        );
+
         totalFOB += (qty * fobPrice);
         totalVolume += lineCbm;
 
@@ -2021,6 +3000,13 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           alto_cm: altoCm,
           cubic_meters_total: lineCbm,
           lineFOBCop,
+          supplier_id: lineSupplierId,
+          import_invoice_id: invoiceSelectVal && !invoiceSelectVal.startsWith('temp-') ? invoiceSelectVal : null,
+          _temp_invoice_id: invoiceSelectVal && invoiceSelectVal.startsWith('temp-') ? invoiceSelectVal : null,
+          lot_number: lotNumber,
+          manufacturing_date: manufacturingDate,
+          expiry_date: expiryDate,
+          _row_idx: idx,
         });
       });
 
@@ -2055,6 +3041,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const grandTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
 
       const header: any = {
+        is_consolidated: isConsolidated,
         supplier_id: supplierId,
         status,
         incoterm,
@@ -2089,7 +3076,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         local_carrier_invoice_num: localCarrierInvoiceNum,
         local_other_invoice_num: localOtherInvoiceNum,
 
-        // Nuevos campos DIAN/VUCE y prorrateo
+        // Campos DIAN/VUCE y prorrateo
         vuce_registro_num: vuceRegistroNum,
         modalidad_importacion: modalidadImportacion,
         canal_inspeccion: canalInspeccion,
@@ -2115,14 +3102,91 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
       header.number = impNumber;
 
+      let savedImport: any = null;
       if (importId) {
-        await (window as any).API.updateImport(importId, header, lines, currentUploadedFiles);
-        (window as any).showToast('Importación actualizada correctamente', 'success');
+        savedImport = await (window as any).API.updateImport(importId, header, lines, currentUploadedFiles);
       } else {
-        await (window as any).API.createImport(header, lines, currentUploadedFiles);
-        (window as any).showToast('Importación guardada correctamente', 'success');
+        savedImport = await (window as any).API.createImport(header, lines, currentUploadedFiles);
+      }
+      const finalImportId = importId || savedImport?.id;
+
+      // 1. Guardar facturas comerciales consolidadas
+      if (isConsolidated && localInvoices.length) {
+        for (const inv of localInvoices) {
+          const invData: any = {
+            import_id: finalImportId,
+            supplier_id: inv.supplier_id || inv.third_party_id,
+            invoice_number: inv.invoice_number,
+            invoice_date: inv.invoice_date || null,
+            payment_due_date: inv.payment_due_date || inv.due_date || null,
+            currency: inv.currency || currency,
+            exchange_rate: inv.exchange_rate || exchangeRate,
+            fob_amount: inv._computed_fob ?? inv.fob_amount ?? 0,
+            notes: inv.notes || '',
+          };
+
+          if (inv.id && !inv.id.startsWith('temp-')) {
+            await (window as any).API.updateImportInvoice(inv.id, invData, inv._newFile);
+          } else {
+            const createdInv = await (window as any).API.createImportInvoice(finalImportId, invData, inv._newFile);
+            // Relacionar líneas temporales con la factura recién creada
+            const savedLines = await (window as any).API.getImportLines(finalImportId);
+            for (const sl of savedLines) {
+              const matching = lines.find(l => l.product_id === sl.product_id && l._temp_invoice_id === inv.id);
+              if (matching) {
+                await (window as any).pb.update('import_lines', sl.id, {
+                  import_invoice_id: createdInv.id,
+                  supplier_id: invData.supplier_id
+                });
+              }
+            }
+          }
+        }
       }
 
+      // 2. Guardar configuraciones heterogéneas de pallets (WMS)
+      const savedLines = await (window as any).API.getImportLines(finalImportId);
+      const allPalletConfigsToSave: any[] = [];
+
+      lines.forEach((l) => {
+        const rowIdx = l._row_idx;
+        const pcs = localPalletConfigs[rowIdx] || [];
+        const matchingSavedLine = savedLines.find((sl: any) => sl.product_id === l.product_id);
+        const lineIdToLink = matchingSavedLine?.id || l.id || null;
+
+        pcs.forEach((pc: any) => {
+          const pQty = Number(pc.pallet_qty) || 1;
+          const bPerP = Number(pc.boxes_per_pallet) || 1;
+          const uPerB = Number(pc.units_per_box) || 1;
+          const tBoxes = pQty * bPerP;
+          const tUnits = tBoxes * uPerB;
+          const height = Number(pc.height_cm) || 120;
+          const isEuro = pc.pallet_type === 'EUROPALLET_120x80';
+          const cbm = (1.2 * (isEuro ? 0.8 : 1.0) * (height / 100)) * pQty;
+
+          allPalletConfigsToSave.push({
+            import_id: finalImportId,
+            product_id: l.product_id,
+            import_line_id: lineIdToLink,
+            pallet_qty: pQty,
+            boxes_per_pallet: bPerP,
+            units_per_box: uPerB,
+            total_boxes: tBoxes,
+            total_units: tUnits,
+            pallet_type: pc.pallet_type || 'ESTANDAR_120x100',
+            height_cm: height,
+            cubic_meters: cbm,
+            gross_weight_kg: Number(pc.gross_weight_kg) || 0,
+            lot_number: l.lot_number || pc.lot_number || null,
+          });
+        });
+      });
+
+      if (allPalletConfigsToSave.length) {
+        await (window as any).API.saveImportPalletConfigs(finalImportId, allPalletConfigsToSave);
+      }
+
+      (window as any).showToast(importId ? 'Importación actualizada correctamente.' : 'Importación guardada correctamente.', 'success');
       closeModal();
       if (onDone) onDone();
     } catch (err: any) {
@@ -2139,11 +3203,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 // --- Detalle e Historial de Importación ---
 async function viewImportDetail(importId: string) {
   try {
-    const [imp, lines] = await Promise.all([
+    const [imp, lines, invoices, palletConfigs, inventoryPallets] = await Promise.all([
       (window as any).pb.get('imports', importId, {
         expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id'
       }),
       (window as any).API.getImportLines(importId),
+      (window as any).API.getImportInvoices(importId).catch(() => []),
+      (window as any).API.getImportPalletConfigs(importId).catch(() => []),
+      (window as any).API.getInventoryPallets(importId).catch(() => []),
     ]);
 
     const meta = IMPORT_STATUS[imp.status] || { label: imp.status, badge: 'badge-gray' };
@@ -2170,21 +3237,75 @@ async function viewImportDetail(importId: string) {
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl" style="background:#F4F8FF;border:1px solid #DBEAFE">
           <div>
             <div class="text-xs text-gray-500 uppercase font-bold">Consecutivo</div>
-            <div class="text-base font-extrabold text-blue-900">${(window as any).esc(imp.number)}</div>
+            <div class="text-base font-extrabold text-blue-900 flex items-center gap-2">
+              <span>${(window as any).esc(imp.number)}</span>
+              ${imp.is_consolidated ? `<span class="badge badge-blue text-[10px] py-0 px-1.5">Consolidada</span>` : ''}
+            </div>
           </div>
           <div>
             <div class="text-xs text-gray-500 uppercase font-bold">Estado</div>
             <div class="mt-1"><span class="badge ${meta.badge}">${meta.label}</span></div>
           </div>
           <div>
-            <div class="text-xs text-gray-500 uppercase font-bold">Proveedor</div>
-            <div class="text-sm font-semibold">${supplier ? (window as any).esc(supplier.name) : '—'}</div>
+            <div class="text-xs text-gray-500 uppercase font-bold">${imp.is_consolidated ? 'Agente / Forwarder' : 'Proveedor'}</div>
+            <div class="text-sm font-semibold">${supplier ? (window as any).esc(supplier.name) : (imp.is_consolidated ? 'Múltiples Proveedores' : '—')}</div>
           </div>
           <div>
             <div class="text-xs text-gray-500 uppercase font-bold">Fecha Registro</div>
             <div class="text-sm font-semibold">${(window as any).esc(imp.date_created)}</div>
           </div>
         </div>
+
+        <!-- Facturas Comerciales de Proveedores Consolidados (si aplica) -->
+        ${imp.is_consolidated && invoices.length ? `
+          <div class="p-4 rounded-xl border" style="background:#F0F7FF;border-color:#BFDBFE">
+            <h4 class="font-bold mb-2 text-xs uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+              <i class="fas fa-file-invoice-dollar text-blue-600"></i> Facturas Comerciales de Proveedores Internacionales (${invoices.length})
+            </h4>
+            <div class="overflow-x-auto bg-white rounded-lg border border-blue-100">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-blue-50/70 text-blue-900 font-semibold border-b border-blue-200">
+                  <tr>
+                    <th class="py-2 px-3">Proveedor Exterior</th>
+                    <th class="py-2 px-3">Factura Nro.</th>
+                    <th class="py-2 px-3">Fecha Emisión</th>
+                    <th class="py-2 px-3">Vencimiento (Agenda)</th>
+                    <th class="py-2 px-3 text-right">Monto FOB USD</th>
+                    <th class="py-2 px-3 text-right">Monto FOB COP</th>
+                    <th class="py-2 px-3 text-center">Estado Contable</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                  ${invoices.map((inv: any) => {
+                    const suppName = inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Proveedor Extranjero';
+                    const invDueDate = inv.payment_due_date || inv.due_date || '—';
+                    const invFob = inv.fob_amount || 0;
+                    const invFobCop = invFob * (inv.exchange_rate || imp.exchange_rate);
+                    const isCaused = Boolean(inv.tx_fob_id);
+
+                    return `
+                      <tr>
+                        <td class="py-2 px-3 font-semibold text-slate-800">${(window as any).esc(suppName)}</td>
+                        <td class="py-2 px-3 font-mono font-bold text-blue-900">${(window as any).esc(inv.invoice_number)}</td>
+                        <td class="py-2 px-3 text-slate-600">${(window as any).esc(inv.invoice_date || '—')}</td>
+                        <td class="py-2 px-3 font-bold text-amber-700">${(window as any).esc(invDueDate)}</td>
+                        <td class="py-2 px-3 text-right font-mono font-bold text-slate-800">${(window as any).fmtN(invFob)} ${inv.currency || imp.currency}</td>
+                        <td class="py-2 px-3 text-right font-mono text-slate-600">${(window as any).fmt(invFobCop)}</td>
+                        <td class="py-2 px-3 text-center">
+                          ${isCaused ? `
+                            <button onclick="closeModal(); window.viewStageTx('${inv.tx_fob_id}')" class="badge badge-emerald text-[11px] font-bold hover:underline cursor-pointer border-0">
+                              <i class="fas fa-receipt mr-1"></i> Asiento
+                            </button>
+                          ` : `<span class="badge badge-slate text-[11px]">⏳ Pendiente</span>`}
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ''}
 
         <!-- Bloque Logístico, Aduanero y Contabilidad -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -2229,7 +3350,7 @@ async function viewImportDetail(importId: string) {
                 <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100 font-semibold text-gray-700">
                   <span>Estado Contable:</span>
                   ${imp.status === 'recibido' ? `
-                    <span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i> Capitalizado</span>
+                    <span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i> Capitalizado en Bodega</span>
                   ` : `
                     <span class="badge badge-orange"><i class="fas fa-clock mr-1"></i> Tránsito / Pendiente</span>
                   `}
@@ -2248,16 +3369,18 @@ async function viewImportDetail(importId: string) {
           </div>
         </div>
 
-        <!-- Tabla de Artículos Prorrateados -->
+        <!-- Tabla de Artículos con Lotes y Palletizado -->
         <div class="border rounded-xl overflow-hidden" style="border-color:#E5E7EB">
-          <div class="px-4 py-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
-            <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes-packing mr-1 text-blue-700"></i> Detalle de Artículos y Manifiestos</span>
+          <div class="px-4 py-2 flex items-center justify-between" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
+            <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes-packing mr-1 text-blue-700"></i> Detalle de Mercancía y Hoja de Costos</span>
+            <span class="text-xs text-gray-500">${lines.length} líneas registradas</span>
           </div>
           <div style="overflow-x:auto">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Código - Producto</th>
+                  <th style="min-width:240px">Producto & Especificaciones</th>
+                  ${imp.is_consolidated ? `<th style="min-width:160px">Proveedor Exterior</th>` : ''}
                   <th class="text-right">Cant.</th>
                   <th class="text-right">FOB (${imp.currency})</th>
                   <th class="text-right">Arancel %</th>
@@ -2271,23 +3394,48 @@ async function viewImportDetail(importId: string) {
               <tbody>
                 ${lines.map((l: any) => {
                   const prod = l.expand?.product_id;
+                  const supp = l.expand?.supplier_id;
                   const manifestLink = l.manifest_file ? `
                     <a href="${(window as any).PB_URL}/api/files/import_lines/${l.id}/${l.manifest_file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="text-blue-600 font-bold hover:underline" title="Ver manifiesto">
                       <i class="fas fa-file-pdf"></i> PDF
                     </a>
                   ` : '—';
 
+                  // Pallets count for this line
+                  const linePallets = palletConfigs.filter((pc: any) => pc.import_line_id === l.id || pc.product_id === l.product_id);
+                  const totalPlts = linePallets.reduce((s: number, p: any) => s + (p.pallet_qty || 0), 0);
+                  const totalBxs = linePallets.reduce((s: number, p: any) => s + (p.total_boxes || (p.pallet_qty * p.boxes_per_pallet) || 0), 0);
+
                   return `
                     <tr>
                       <td class="font-medium">
-                        ${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}
-                        <div class="text-[10px] text-gray-500 mt-0.5">
-                          <span>Origen: ${(window as any).esc(l.pais_origen || '—')}</span> | 
-                          <span>Cert: ${(window as any).esc(l.certificado_origen_num || '—')}</span> | 
-                          <span>Pos: ${(window as any).esc(l.posicion_arancelaria || '—')}</span> | 
+                        <div class="font-bold text-slate-900">${prod ? `${(window as any).esc(prod.code)} - ${(window as any).esc(prod.name)}` : (window as any).esc(l.description || '—')}</div>
+                        <div class="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
+                          <span>Origen: ${(window as any).esc(l.pais_origen || '—')}</span>
+                          <span>Cert: ${(window as any).esc(l.certificado_origen_num || '—')}</span>
+                          <span>Pos: ${(window as any).esc(l.posicion_arancelaria || '—')}</span>
                           <span>P.Bruto: ${(l.peso_bruto_total || 0).toFixed(2)} Kg</span>
+                          ${l.cubic_meters_total ? `<span>CBM: ${(l.cubic_meters_total).toFixed(3)} m³</span>` : ''}
                         </div>
+                        ${(l.lot_number || totalPlts > 0) ? `
+                          <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                            ${l.lot_number ? `
+                              <span class="badge badge-blue text-[10px] font-mono py-0 px-1.5 font-bold">
+                                <i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(l.lot_number)}
+                              </span>
+                              ${l.expiry_date ? `<span class="text-[10px] text-rose-700 font-semibold">Vence: ${(window as any).esc(l.expiry_date.split(' ')[0])}</span>` : ''}
+                            ` : ''}
+                            ${totalPlts > 0 ? `
+                              <span class="badge badge-purple text-[10px] font-mono py-0 px-1.5 font-bold" style="background:#F5F3FF;color:#6D28D9;border:1px solid #DDD6FE">
+                                <i class="fas fa-boxes-stacked mr-1"></i>${totalPlts} plts (${totalBxs} cjs)
+                              </span>
+                            ` : ''}
+                          </div>
+                        ` : ''}
                       </td>
+                      ${imp.is_consolidated ? `
+                        <td class="text-xs font-semibold text-slate-700">${supp ? (window as any).esc(supp.name) : '—'}</td>
+                      ` : ''}
                       <td class="text-right font-semibold">${(window as any).fmtN(l.qty)}</td>
                       <td class="text-right">${(window as any).fmt(l.fob_price).replace('COP', '')}</td>
                       <td class="text-right text-gray-500">${l.arancel_rate}%</td>
@@ -2327,7 +3475,12 @@ async function viewImportDetail(importId: string) {
 
     const footer = `
       <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
-      <button class="btn btn-secondary text-blue-700" style="border-color:#3b82f6" onclick="window.viewImportTraceability('${imp.id}')"><i class="fas fa-chart-line mr-1"></i> Trazabilidad</button>
+      <button class="btn btn-secondary text-indigo-700" style="border-color:#6366f1" onclick="window.viewImportPalletsLabels('${imp.id}')">
+        <i class="fas fa-qrcode mr-1"></i> Rótulos de Estibas (LPN)
+      </button>
+      <button class="btn btn-secondary text-blue-700" style="border-color:#3b82f6" onclick="window.viewImportTraceability('${imp.id}')">
+        <i class="fas fa-chart-line mr-1"></i> Trazabilidad
+      </button>
       ${imp.status !== 'recibido' && imp.status !== 'anulado' && (window as any).can('canWrite') ? `
         <button class="btn btn-secondary" onclick="closeModal(); window.editImport('${imp.id}')"><i class="fas fa-pen"></i> Editar</button>
         <button class="btn btn-primary" onclick="closeModal(); window.confirmFinalizarImportacion('${imp.id}')"><i class="fas fa-check-double"></i> Recibir e Ingresar a Bodega</button>
@@ -2339,6 +3492,160 @@ async function viewImportDetail(importId: string) {
     (window as any).showToast('Error al abrir detalle: ' + err.message, 'error');
   }
 }
+
+// --- Vista e Impresión de Rótulos / Etiquetas de Estibas (LPN/QR) ---
+async function viewImportPalletsLabels(importId: string) {
+  try {
+    const [imp, lines, palletConfigs, inventoryPallets] = await Promise.all([
+      (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
+      (window as any).API.getImportLines(importId),
+      (window as any).API.getImportPalletConfigs(importId).catch(() => []),
+      (window as any).API.getInventoryPallets(importId).catch(() => []),
+    ]);
+
+    // Construir lista de pallets a rotular (reales si ya existen, o proyectados según palletConfigs)
+    let displayPallets: any[] = [];
+
+    if (inventoryPallets && inventoryPallets.length) {
+      displayPallets = inventoryPallets.map((ip: any) => {
+        const prod = ip.expand?.product_id;
+        const lot = ip.expand?.inventory_lot_id;
+        return {
+          lpn: ip.pallet_code,
+          productCode: prod?.code || '',
+          productName: prod?.name || 'Producto',
+          lotNumber: lot?.lot_number || 'S/L',
+          expiryDate: lot?.expiry_date ? lot.expiry_date.split(' ')[0] : '—',
+          boxes: ip.boxes_current ?? ip.boxes_initial ?? 1,
+          unitsPerBox: ip.units_per_box || 1,
+          totalUnits: ip.units_available || ((ip.boxes_current || 1) * (ip.units_per_box || 1)),
+          palletType: ip.pallet_type || 'ESTANDAR_120x100',
+          status: ip.status || 'disponible'
+        };
+      });
+    } else if (palletConfigs && palletConfigs.length) {
+      let lpnSeq = 1;
+      palletConfigs.forEach((pc: any) => {
+        const line = lines.find((l: any) => l.id === pc.import_line_id || l.product_id === pc.product_id);
+        const prod = line?.expand?.product_id;
+        const count = Number(pc.pallet_qty) || 1;
+
+        for (let i = 0; i < count; i++) {
+          const lpnCode = `PLT-${imp.number || 'IMP'}-${String(lpnSeq).padStart(3, '0')}`;
+          displayPallets.push({
+            lpn: lpnCode,
+            productCode: prod?.code || '',
+            productName: prod?.name || 'Producto',
+            lotNumber: pc.lot_number || line?.lot_number || 'S/L',
+            expiryDate: line?.expiry_date ? line.expiry_date.split(' ')[0] : '—',
+            boxes: pc.boxes_per_pallet || 1,
+            unitsPerBox: pc.units_per_box || 1,
+            totalUnits: (pc.boxes_per_pallet || 1) * (pc.units_per_box || 1),
+            palletType: pc.pallet_type || 'ESTANDAR_120x100',
+            status: 'proyectado'
+          });
+          lpnSeq++;
+        }
+      });
+    }
+
+    if (!displayPallets.length) {
+      (window as any).showToast('Esta importación no tiene configuraciones de pallets registradas.', 'warning');
+      return;
+    }
+
+    const labelsHtml = displayPallets.map((p, idx) => `
+      <div class="border-2 border-slate-900 rounded-xl p-4 bg-white shadow-sm flex flex-col justify-between print:break-inside-avoid print:border-black" style="min-height:260px">
+        <div>
+          <!-- Header de etiqueta -->
+          <div class="flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-2">
+            <div>
+              <span class="text-[10px] uppercase font-extrabold tracking-widest text-slate-500">GRAVY WMS · UNIDAD LOGÍSTICA</span>
+              <h3 class="text-sm font-black text-slate-900 leading-tight">IMPORTACIÓN #${(window as any).esc(imp.number)}</h3>
+            </div>
+            <div class="text-right">
+              <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-300">ESTIBA #${idx + 1}/${displayPallets.length}</span>
+            </div>
+          </div>
+
+          <!-- LPN Grande y Código de Barras -->
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center my-2">
+            <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">License Plate Number (LPN / SSCC)</div>
+            <div class="text-xl font-black font-mono tracking-wider text-blue-950">${p.lpn}</div>
+            
+            <!-- Simulación visual de código de barras Code128 -->
+            <div class="flex items-center justify-center gap-[2px] h-9 my-1">
+              ${[...Array(38)].map((_, bIdx) => `
+                <div style="width:${(bIdx % 3 === 0 || bIdx % 7 === 0) ? '3px' : '1.5px'}; height:100%; background:#000;"></div>
+              `).join('')}
+            </div>
+            <div class="text-[10px] font-mono text-slate-700 tracking-widest">${p.lpn}</div>
+          </div>
+
+          <!-- Información del Producto y Lote -->
+          <div class="space-y-1.5 text-xs mt-3">
+            <div class="flex items-baseline justify-between">
+              <span class="font-bold text-slate-500 text-[10px] uppercase">PRODUCTO:</span>
+              <span class="font-mono font-extrabold text-blue-900">[${p.productCode || 'S/C'}]</span>
+            </div>
+            <div class="font-black text-sm text-slate-900 truncate">${(window as any).esc(p.productName)}</div>
+
+            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 mt-2">
+              <div>
+                <span class="text-[10px] text-slate-500 font-bold uppercase block">Lote Fabr.</span>
+                <span class="font-mono font-extrabold text-xs text-indigo-900">${(window as any).esc(p.lotNumber)}</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-500 font-bold uppercase block">Fecha Venc.</span>
+                <span class="font-mono font-extrabold text-xs text-rose-700">${(window as any).esc(p.expiryDate)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer del rótulo con empaque -->
+        <div class="pt-2 border-t-2 border-slate-900 mt-3 flex items-center justify-between text-xs">
+          <div>
+            <span class="text-[10px] text-slate-500 font-bold uppercase block">Empaque</span>
+            <span class="font-black text-slate-900">${p.boxes} Cajas × ${p.unitsPerBox} Und</span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] text-slate-500 font-bold uppercase block">Total Estiba</span>
+            <span class="text-base font-black text-emerald-800 font-mono">${p.totalUnits.toLocaleString()} Und</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    const modalContent = `
+      <div class="space-y-4">
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-print text-blue-600 text-base"></i>
+            <div>
+              <p class="font-bold">Rótulos Estándar de Almacenamiento (WMS / LPN) — ${displayPallets.length} Estibas</p>
+              <p class="text-[11px] text-blue-700">Imprime estas etiquetas adhesivas para colocarlas en los cuatro costados de cada pallet al desembarcar del contenedor.</p>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary btn-sm flex items-center gap-1.5" onclick="window.print()">
+            <i class="fas fa-print"></i> Imprimir Rótulos
+          </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="print-labels-container">
+          ${labelsHtml}
+        </div>
+      </div>
+    `;
+
+    (window as any).openModal(`Rótulos de Estibas — Importación ${imp.number}`, modalContent, `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print mr-1"></i> Imprimir</button>`, true);
+
+  } catch (err: any) {
+    (window as any).showToast('Error cargando rótulos de estibas: ' + err.message, 'error');
+  }
+}
+(window as any).viewImportPalletsLabels = viewImportPalletsLabels;
+
 
 // --- Acción: Finalizar e Ingresar a Bodega (Capitalización) ---
 async function confirmFinalizarImportacion(importId: string) {

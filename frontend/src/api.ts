@@ -5010,18 +5010,163 @@ const API = {
     const { page = 1, perPage = 50, filter = '', sort = '-date_created' } = opts;
     return pb.list('imports', {
       page, perPage, filter, sort,
-      expand: 'supplier_id,user_id,purchase_invoice_id',
+      expand: 'supplier_id,forwarder_supplier_id,user_id,purchase_invoice_id',
     });
   },
 
-  /** LÃ­neas de una importaciÃ³n */
+  /** Líneas de una importación */
   async getImportLines(importId: string) {
     const safe = pb.escapeFilterValue(importId);
     return pb.listAll('import_lines', {
       filter: `import_id="${safe}"`,
       sort: 'line_order',
-      expand: 'product_id',
+      expand: 'product_id,supplier_id,import_invoice_id',
     });
+  },
+
+  /** Facturas comerciales de proveedores internacionales (Importación Consolidada) */
+  async getImportInvoices(importId: string) {
+    const safe = pb.escapeFilterValue(importId);
+    return pb.listAll('import_invoices', {
+      filter: `import_id="${safe}"`,
+      sort: 'created',
+      expand: 'supplier_id,tx_fob_id',
+    });
+  },
+
+  async createImportInvoice(importIdOrData: string | any, dataOrFile?: any, file?: File | null) {
+    let importId = '';
+    let data: any = {};
+    let actualFile: File | null | undefined = null;
+
+    if (typeof importIdOrData === 'string') {
+      importId = importIdOrData;
+      data = dataOrFile || {};
+      actualFile = file;
+    } else if (importIdOrData && typeof importIdOrData === 'object') {
+      data = importIdOrData;
+      importId = data.import_id || '';
+      actualFile = dataOrFile;
+    }
+
+    const formData = new FormData();
+    if (importId) formData.append('import_id', importId);
+    for (const key of Object.keys(data)) {
+      if (key !== 'import_id' && data[key] !== undefined && data[key] !== null) {
+        formData.append(key, String(data[key]));
+      }
+    }
+    if (actualFile) {
+      formData.append('invoice_file', actualFile);
+    }
+    return pb.create('import_invoices', formData);
+  },
+
+  async updateImportInvoice(invoiceId: string, data: any, file?: File | null) {
+    const formData = new FormData();
+    for (const key of Object.keys(data)) {
+      if (data[key] !== undefined && data[key] !== null) {
+        formData.append(key, String(data[key]));
+      }
+    }
+    if (file) {
+      formData.append('invoice_file', file);
+    } else if (file === null) {
+      formData.append('invoice_file', '');
+    }
+    return pb.update('import_invoices', invoiceId, formData);
+  },
+
+  async deleteImportInvoice(invoiceId: string) {
+    const inv = await pb.get('import_invoices', invoiceId);
+    if (inv.tx_fob_id) {
+      throw new Error('No se puede eliminar una factura comercial que ya tiene causación contable activa.');
+    }
+    return pb.delete('import_invoices', invoiceId);
+  },
+
+  /** Configuraciones de palletizado / estibas */
+  async getImportPalletConfigs(importId: string) {
+    const safe = pb.escapeFilterValue(importId);
+    return pb.listAll('import_pallet_configs', {
+      filter: `import_id="${safe}"`,
+      sort: 'created',
+      expand: 'product_id,import_line_id',
+    });
+  },
+
+  async saveImportPalletConfigs(importId: string, configs: any[]) {
+    const existing = await this.getImportPalletConfigs(importId);
+    const existingIds = new Set(existing.map((e: any) => e.id));
+    const keepIds = new Set();
+
+    for (const cfg of configs) {
+      const payload: any = {
+        import_id: importId,
+        product_id: cfg.product_id,
+        pallet_qty: Number(cfg.pallet_qty || 1),
+        boxes_per_pallet: Number(cfg.boxes_per_pallet || 1),
+        units_per_box: Number(cfg.units_per_box || 1),
+        total_boxes: Number(cfg.pallet_qty || 1) * Number(cfg.boxes_per_pallet || 1),
+        total_units: Number(cfg.pallet_qty || 1) * Number(cfg.boxes_per_pallet || 1) * Number(cfg.units_per_box || 1),
+        pallet_type: cfg.pallet_type || 'ESTANDAR_120x100',
+        height_cm: Number(cfg.height_cm || 0),
+        gross_weight_kg: Number(cfg.gross_weight_kg || 0),
+        lot_number: cfg.lot_number || '',
+        notes: cfg.notes || '',
+      };
+      if (cfg.import_line_id) {
+        payload.import_line_id = cfg.import_line_id;
+      }
+      if (cfg.id && existingIds.has(cfg.id)) {
+        await pb.update('import_pallet_configs', cfg.id, payload);
+        keepIds.add(cfg.id);
+      } else {
+        const created = await pb.create('import_pallet_configs', payload);
+        keepIds.add(created.id);
+      }
+    }
+
+    for (const old of existing) {
+      if (!keepIds.has(old.id)) {
+        await pb.delete('import_pallet_configs', old.id);
+      }
+    }
+  },
+
+  /** Consulta de Lotes de Inventario */
+  async getInventoryLots(opts: any = {}) {
+    const { productId = '', warehouseId = '', status = '', filter = '' } = opts;
+    const conds: string[] = [];
+    if (productId) conds.push(`product_id="${pb.escapeFilterValue(productId)}"`);
+    if (warehouseId) conds.push(`warehouse_id="${pb.escapeFilterValue(warehouseId)}"`);
+    if (status) conds.push(`status="${pb.escapeFilterValue(status)}"`);
+    if (filter) conds.push(`(${filter})`);
+    return pb.listAll('inventory_lots', {
+      filter: conds.join(' && '),
+      sort: 'expiry_date,manufacturing_date,created',
+      expand: 'product_id,warehouse_id,supplier_id,import_id',
+    });
+  },
+
+  /** Consulta y Gestión de Estibas / Pallets WMS */
+  async getInventoryPallets(opts: any = {}) {
+    const { warehouseId = '', productId = '', importId = '', status = '', filter = '' } = opts;
+    const conds: string[] = [];
+    if (warehouseId) conds.push(`warehouse_id="${pb.escapeFilterValue(warehouseId)}"`);
+    if (productId) conds.push(`product_id="${pb.escapeFilterValue(productId)}"`);
+    if (importId) conds.push(`import_id="${pb.escapeFilterValue(importId)}"`);
+    if (status) conds.push(`status="${pb.escapeFilterValue(status)}"`);
+    if (filter) conds.push(`(${filter})`);
+    return pb.listAll('inventory_pallets', {
+      filter: conds.join(' && '),
+      sort: 'pallet_code',
+      expand: 'product_id,warehouse_id,lot_id,import_id',
+    });
+  },
+
+  async updateInventoryPallet(palletId: string, data: any) {
+    return pb.update('inventory_pallets', palletId, data);
   },
 
   /** Crea una importaciÃ³n con FormData para soporte de archivos */
@@ -5089,6 +5234,21 @@ const API = {
       if (l.cubic_meters_total !== undefined && l.cubic_meters_total !== null) {
         lineData.append('cubic_meters_total', String(l.cubic_meters_total));
       }
+      if (l.supplier_id) {
+        lineData.append('supplier_id', l.supplier_id);
+      }
+      if (l.import_invoice_id) {
+        lineData.append('import_invoice_id', l.import_invoice_id);
+      }
+      if (l.lot_number) {
+        lineData.append('lot_number', l.lot_number);
+      }
+      if (l.manufacturing_date) {
+        lineData.append('manufacturing_date', l.manufacturing_date);
+      }
+      if (l.expiry_date) {
+        lineData.append('expiry_date', l.expiry_date);
+      }
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);
       }
@@ -5146,6 +5306,11 @@ const API = {
       lineData.append('ancho_cm', String(l.ancho_cm || 0));
       lineData.append('alto_cm', String(l.alto_cm || 0));
       lineData.append('cubic_meters_total', String(l.cubic_meters_total || 0));
+      lineData.append('supplier_id', l.supplier_id || '');
+      lineData.append('import_invoice_id', l.import_invoice_id || '');
+      lineData.append('lot_number', l.lot_number || '');
+      lineData.append('manufacturing_date', l.manufacturing_date || '');
+      lineData.append('expiry_date', l.expiry_date || '');
 
       if (files[`manifest_file_${i}`]) {
         lineData.append('manifest_file', files[`manifest_file_${i}`]);
@@ -5642,18 +5807,18 @@ const API = {
     };
   },
 
-  /** Causa contabilidad individual de una etapa de importaciÃ³n */
-  async postImportStage(importId: string, stageName: string, supplierId: string, invoiceNum: string, amount: number) {
-    if (!importId) throw new Error('Se requiere el ID de la importaciÃ³n.');
+  /** Causa contabilidad individual de una etapa de importación */
+  async postImportStage(importId: string, stageName: string, supplierId: string, invoiceNum: string, amount: number, opts: any = {}) {
+    if (!importId) throw new Error('Se requiere el ID de la importación.');
     if (!stageName) throw new Error('Se requiere el nombre de la etapa.');
     if (!supplierId) throw new Error('Se requiere el ID del proveedor.');
-    if (!invoiceNum) throw new Error('Se requiere el nÃºmero de factura/soporte.');
+    if (!invoiceNum) throw new Error('Se requiere el número de factura/soporte.');
     if (amount <= 0) throw new Error('El monto a causar debe ser mayor a cero.');
 
     const imp = await pb.get('imports', importId);
     
     const mappings: Record<string, { txField: string; supplierField: string; invoiceField: string; label: string }> = {
-      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB MercancÃ­a' },
+      fob: { txField: 'tx_fob_id', supplierField: 'supplier_id', invoiceField: 'supplier_invoice_num', label: 'FOB Mercancía' },
       freight: { txField: 'tx_freight_id', supplierField: 'freight_supplier_id', invoiceField: 'freight_invoice_num', label: 'Flete Internacional' },
       insurance: { txField: 'tx_insurance_id', supplierField: 'insurance_supplier_id', invoiceField: 'insurance_invoice_num', label: 'Seguro Internacional' },
       customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
@@ -5662,10 +5827,16 @@ const API = {
     };
 
     const map = mappings[stageName];
-    if (!map) throw new Error(`Etapa '${stageName}' no es vÃ¡lida.`);
+    if (!map) throw new Error(`Etapa '${stageName}' no es válida.`);
 
-    if (imp[map.txField]) {
-      throw new Error(`La etapa ${map.label} ya tiene una causaciÃ³n contable registrada.`);
+    let targetInvoiceRecord: any = null;
+    if (stageName === 'fob' && opts.invoiceId) {
+      targetInvoiceRecord = await pb.get('import_invoices', opts.invoiceId);
+      if (targetInvoiceRecord.tx_fob_id) {
+        throw new Error(`La factura comercial ${targetInvoiceRecord.invoice_number} ya tiene causación contable.`);
+      }
+    } else if (imp[map.txField]) {
+      throw new Error(`La etapa ${map.label} ya tiene una causación contable registrada.`);
     }
 
     const cfg = await this.getImportConfig();
@@ -5688,7 +5859,7 @@ const API = {
     });
 
     const txTypes = await pb.listAll('transaction_types', { filter: 'code="FC"', perPage: 1 });
-    if (!txTypes.length) throw new Error('Tipo de transacciÃ³n FC (Factura de Compra) no encontrado en el sistema.');
+    if (!txTypes.length) throw new Error('Tipo de transacción FC (Factura de Compra) no encontrado en el sistema.');
     const txTypeId = txTypes[0].id;
 
     let lines: any[] = [];
@@ -5707,7 +5878,7 @@ const API = {
             third_party_id: supplierId,
             debit: amount,
             credit: 0,
-            description: `CausaciÃ³n Aduana/DIAN - ImportaciÃ³n ${imp.number}`,
+            description: `Causación Aduana/DIAN - Importación ${imp.number}`,
             line_order: 1
           },
           {
@@ -5715,7 +5886,7 @@ const API = {
             third_party_id: supplierId,
             debit: 0,
             credit: customsAmt,
-            description: `Gastos Nac. - ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}`,
+            description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}`,
             line_order: 2,
             cross_doc_ref: invoiceNum
           },
@@ -5724,7 +5895,7 @@ const API = {
             third_party_id: supplierId,
             debit: 0,
             credit: arancelAmt,
-            description: `Aranceles DIAN - ImportaciÃ³n ${imp.number}`,
+            description: `Aranceles DIAN - Importación ${imp.number}`,
             line_order: 3,
             cross_doc_ref: invoiceNum
           }
@@ -5739,7 +5910,7 @@ const API = {
           third_party_id: supplierId,
           debit: amount,
           credit: 0,
-          description: `CausaciÃ³n ${map.label} - ImportaciÃ³n ${imp.number}`,
+          description: `Causación ${map.label} - Importación ${imp.number}`,
           line_order: 1
         },
         {
@@ -5747,7 +5918,7 @@ const API = {
           third_party_id: supplierId,
           debit: 0,
           credit: amount,
-          description: `CausaciÃ³n ${map.label} - ImportaciÃ³n ${imp.number} | Factura ${invoiceNum}`,
+          description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}`,
           line_order: 2,
           cross_doc_ref: invoiceNum
         }
@@ -5758,20 +5929,32 @@ const API = {
       tx_type_id: txTypeId,
       number: 'AUTO',
       date: new Date().toISOString().slice(0, 10),
-      description: `CausaciÃ³n ${map.label} ImportaciÃ³n ${imp.number}`,
+      description: `Causación ${map.label} Importación ${imp.number}${opts.invoiceId ? ` - Factura ${invoiceNum}` : ''}`,
       third_party_id: supplierId,
       status: 'active'
     };
 
     const tx = await this.createTransaction(txData, lines);
 
-    const updateData: Record<string, any> = {};
-    updateData[map.txField] = tx.id;
-    updateData[map.supplierField] = supplierId;
-    updateData[map.invoiceField] = invoiceNum;
+    if (stageName === 'fob' && opts.invoiceId) {
+      await pb.update('import_invoices', opts.invoiceId, { tx_fob_id: tx.id });
+      // Si todas las facturas de la importación consolidada ya fueron causadas, reflejarlo en la cabecera
+      try {
+        const allInvs = await pb.listAll('import_invoices', { filter: `import_id="${pb.escapeFilterValue(importId)}"` });
+        const allCaused = allInvs.length > 0 && allInvs.every((iv: any) => iv.id === opts.invoiceId || !!iv.tx_fob_id);
+        if (allCaused && !imp.tx_fob_id) {
+          await pb.update('imports', importId, { tx_fob_id: tx.id });
+        }
+      } catch (_) {}
+    } else {
+      const updateData: Record<string, any> = {};
+      updateData[map.txField] = tx.id;
+      updateData[map.supplierField] = supplierId;
+      updateData[map.invoiceField] = invoiceNum;
+      await pb.update('imports', importId, updateData);
+    }
 
-    await pb.update('imports', importId, updateData);
-    await this.logAudit('POST_STAGE', 'imports', importId, `CausaciÃ³n contable etapa ${map.label} realizada. TransacciÃ³n: ${tx.number}`);
+    await this.logAudit('POST_STAGE', 'imports', importId, `Causación contable etapa ${map.label} realizada. Transacción: ${tx.number}`);
 
     return tx;
   },
@@ -5898,21 +6081,23 @@ const API = {
       throw new Error('El valor total acumulado de la importaciÃ³n debe ser mayor a cero para capitalizar.');
     }
 
+    const thirdPartyCapitalize = imp.supplier_id || imp.forwarder_supplier_id || (lines.length ? lines[0].supplier_id : '') || pb.currentUser?.id || '';
+
     const txLines = [
       {
         account_id: accInventario.id,
-        third_party_id: imp.supplier_id,
+        third_party_id: thirdPartyCapitalize,
         debit: totalAmount,
         credit: 0,
-        description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number} - Ingreso a Bodega`,
+        description: `Capitalización Importación ${imp.number} - Ingreso a Bodega`,
         line_order: 1
       },
       {
         account_id: accTransito.id,
-        third_party_id: imp.supplier_id,
+        third_party_id: thirdPartyCapitalize,
         debit: 0,
         credit: totalAmount,
-        description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number} - Cierre Cuenta TrÃ¡nsito`,
+        description: `Capitalización Importación ${imp.number} - Cierre Cuenta Tránsito`,
         line_order: 2
       }
     ];
@@ -5921,8 +6106,8 @@ const API = {
       tx_type_id: txTypeId,
       number: txNumber,
       date: new Date().toISOString().slice(0, 10),
-      description: `CapitalizaciÃ³n ImportaciÃ³n ${imp.number}`,
-      third_party_id: imp.supplier_id,
+      description: `Capitalización Importación ${imp.number}`,
+      third_party_id: thirdPartyCapitalize,
       status: 'active'
     };
 
@@ -5935,8 +6120,8 @@ const API = {
       mov_type: 'ENTRADA',
       date: movToday,
       warehouse_id: warehouseId,
-      third_party_id: imp.supplier_id,
-      notes: `Ingreso fÃ­sico por capitalizaciÃ³n de ImportaciÃ³n ${imp.number}. TransacciÃ³n contable: ${tx.number}`,
+      third_party_id: thirdPartyCapitalize,
+      notes: `Ingreso físico por capitalización de Importación ${imp.number}. Transacción contable: ${tx.number}`,
       status: 'draft',
       tx_id: tx.id
     };
@@ -5950,9 +6135,94 @@ const API = {
         product_id: l.product_id,
         qty: l.qty,
         unit_cost: l.unit_cost_cop || 0,
-        notes: `ImportaciÃ³n ${imp.number} - LÃ­nea ${i + 1}`,
+        notes: `Importación ${imp.number} - Línea ${i + 1}${l.lot_number ? ` (Lote: ${l.lot_number})` : ''}`,
         line_order: i + 1
       });
+
+      // Registrar o actualizar lote en inventory_lots
+      if (l.lot_number) {
+        try {
+          const existingLots = await pb.listAll('inventory_lots', {
+            filter: `product_id="${pb.escapeFilterValue(l.product_id)}" && warehouse_id="${pb.escapeFilterValue(warehouseId)}" && lot_number="${pb.escapeFilterValue(l.lot_number)}"`,
+            perPage: 1
+          });
+          if (existingLots.length) {
+            const exLot = existingLots[0];
+            const currentLotQty = Number(exLot.qty_on_hand || 0);
+            const addQty = Number(l.qty || 0);
+            const newQty = currentLotQty + addQty;
+            const newCost = newQty > 0 ? (((currentLotQty * Number(exLot.unit_cost || 0)) + (addQty * Number(l.unit_cost_cop || 0))) / newQty) : Number(l.unit_cost_cop || 0);
+            await pb.update('inventory_lots', exLot.id, {
+              qty_on_hand: newQty,
+              unit_cost: Math.round(newCost * 100) / 100,
+              status: 'active'
+            });
+          } else {
+            await pb.create('inventory_lots', {
+              product_id: l.product_id,
+              warehouse_id: warehouseId,
+              lot_number: l.lot_number,
+              manufacturing_date: l.manufacturing_date || '',
+              expiry_date: l.expiry_date || '',
+              initial_qty: Number(l.qty || 0),
+              qty_on_hand: Number(l.qty || 0),
+              unit_cost: Number(l.unit_cost_cop || 0),
+              import_id: importId,
+              supplier_id: l.supplier_id || imp.supplier_id || '',
+              status: 'active'
+            });
+          }
+        } catch (lotErr) {
+          console.warn('[CapitalizeImport] Aviso al actualizar inventory_lots:', lotErr);
+        }
+      }
+    }
+
+    // Generar estibas físicas en inventory_pallets si existen configuraciones de palletizado
+    try {
+      const palletConfigs = await pb.listAll('import_pallet_configs', {
+        filter: `import_id="${pb.escapeFilterValue(importId)}"`,
+        sort: 'created'
+      });
+      if (palletConfigs.length) {
+        const impCleanNum = String(imp.number || '').replace(/^[^\d]+/, '') || '001';
+        let palletSeq = 1;
+        for (const cfg of palletConfigs) {
+          const numPallets = Number(cfg.pallet_qty || 1);
+          let matchingLotId = '';
+          if (cfg.lot_number) {
+            const lotMatch = await pb.listAll('inventory_lots', {
+              filter: `product_id="${pb.escapeFilterValue(cfg.product_id)}" && warehouse_id="${pb.escapeFilterValue(warehouseId)}" && lot_number="${pb.escapeFilterValue(cfg.lot_number)}"`,
+              perPage: 1
+            }).catch(() => []);
+            if (lotMatch.length) matchingLotId = lotMatch[0].id;
+          }
+
+          for (let p = 1; p <= numPallets; p++) {
+            const palletCode = `PLT-${impCleanNum}-${String(palletSeq).padStart(3, '0')}`;
+            await pb.create('inventory_pallets', {
+              pallet_code: palletCode,
+              warehouse_id: warehouseId,
+              location_code: '',
+              product_id: cfg.product_id,
+              lot_id: matchingLotId || null,
+              boxes_initial: Number(cfg.boxes_per_pallet || 0),
+              boxes_current: Number(cfg.boxes_per_pallet || 0),
+              units_per_box: Number(cfg.units_per_box || 1),
+              units_available: Number(cfg.boxes_per_pallet || 0) * Number(cfg.units_per_box || 1),
+              pallet_type: cfg.pallet_type || 'ESTANDAR_120x100',
+              height_cm: Number(cfg.height_cm || 0),
+              gross_weight_kg: Number(cfg.gross_weight_kg || 0),
+              import_id: importId,
+              status: 'full',
+              notes: `Estiba ${p} de ${numPallets}${cfg.lot_number ? ` | Lote: ${cfg.lot_number}` : ''}`
+            }).catch(() => {});
+            palletSeq++;
+          }
+        }
+      }
+    } catch (palletErr) {
+      console.warn('[CapitalizeImport] Aviso al generar inventory_pallets:', palletErr);
     }
 
     await this.applyInventoryMovement(mov.id);
@@ -5961,7 +6231,7 @@ const API = {
       status: 'recibido'
     });
 
-    await this.logAudit('CAPITALIZE', 'imports', importId, `ImportaciÃ³n capitalizada y trasladada a bodega. TransacciÃ³n: ${tx.number}. Movimiento: ${mov.number}`);
+    await this.logAudit('CAPITALIZE', 'imports', importId, `Importación capitalizada y trasladada a bodega. Transacción: ${tx.number}. Movimiento: ${mov.number}`);
 
     return { tx, mov };
   },

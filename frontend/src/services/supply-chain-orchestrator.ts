@@ -15,6 +15,7 @@ export interface PostImportExpenseScheduleParams {
   invoiceNum: string;
   amount: number;
   dueDate?: string;
+  invoiceId?: string;
 }
 
 export class SupplyChainOrchestrator {
@@ -61,14 +62,14 @@ export class SupplyChainOrchestrator {
    * 1. Causa etapa de importación contablemente y crea vencimiento automático en la Agenda de Pagos (CXP / DIAN)
    */
   static async postImportStageWithPaymentSchedule(params: PostImportExpenseScheduleParams) {
-    const { importId, stageName, supplierId, invoiceNum, amount, dueDate } = params;
+    const { importId, stageName, supplierId, invoiceNum, amount, dueDate, invoiceId } = params;
 
     // A. Ejecutar causación contable oficial
-    const tx = await API.postImportStage(importId, stageName, supplierId, invoiceNum, amount);
+    const tx = await API.postImportStage(importId, stageName, supplierId, invoiceNum, amount, { invoiceId });
 
     // B. Crear registro en Agenda de Vencimientos / Programación de Pagos
     try {
-      const imp = await this.pb.get('imports', importId, { expand: 'supplier_id' });
+      const imp = await this.pb.get('imports', importId, { expand: 'supplier_id,forwarder_supplier_id' });
       const stageLabels: Record<string, string> = {
         fob: 'FOB Mercancía',
         freight: 'Flete Internacional',
@@ -84,7 +85,7 @@ export class SupplyChainOrchestrator {
       await this.safeCreateAgendaRecord({
         type,
         title: `Pago ${stageLabels[stageName] || 'Gasto'} — Imp. ${imp.number} (Fac. ${invoiceNum})`,
-        description: `[IMP:${importId}] [TX:${tx.id}] [SUPP:${supplierId}] Causación contable ${tx.number || 'FC'} asociada a la importación ${imp.number}.`,
+        description: `[IMP:${importId}] [TX:${tx.id}] [SUPP:${supplierId}]${invoiceId ? ` [INVOICE:${invoiceId}]` : ''} Causación contable ${tx.number || 'FC'} asociada a la importación ${imp.number}.`,
         due_date: targetDueDate,
         amount: amount,
         status: 'pendiente',

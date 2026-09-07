@@ -5259,13 +5259,14 @@ const API = {
     return record;
   },
 
-  /** Actualiza cabecera, lÃ­neas e incorpora nuevos adjuntos subidos */
+  /** Actualiza cabecera, líneas e incorpora nuevos adjuntos subidos */
   async updateImport(importId: string, header: any, lines: any[], files: any = {}) {
     const formData = new FormData();
     for (const key of Object.keys(header)) {
-      if (header[key] !== undefined && header[key] !== null) {
-        formData.append(key, String(header[key]));
-      }
+      const val = header[key];
+      if (val === undefined || val === null) continue;
+      if (typeof val === 'number' && isNaN(val)) continue;
+      formData.append(key, String(val));
     }
     if (files.bl_document) {
       formData.append('bl_document', files.bl_document);

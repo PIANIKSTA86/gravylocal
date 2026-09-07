@@ -61,6 +61,35 @@ onBootstrap((e) => {
         impChanged = true;
       }
 
+      // local_carrier_trm & local_other_trm (number)
+      if (!impFieldNames.has("local_carrier_trm")) {
+        impCol.fields.add(new NumberField({ name: "local_carrier_trm", required: false }));
+        impChanged = true;
+      }
+      if (!impFieldNames.has("local_other_trm")) {
+        impCol.fields.add(new NumberField({ name: "local_other_trm", required: false }));
+        impChanged = true;
+      }
+      if (!impFieldNames.has("freight_exchange_rate")) {
+        impCol.fields.add(new NumberField({ name: "freight_exchange_rate", required: false }));
+        impChanged = true;
+      }
+      if (!impFieldNames.has("insurance_exchange_rate")) {
+        impCol.fields.add(new NumberField({ name: "insurance_exchange_rate", required: false }));
+        impChanged = true;
+      }
+      if (!impFieldNames.has("customs_exchange_rate")) {
+        impCol.fields.add(new NumberField({ name: "customs_exchange_rate", required: false }));
+        impChanged = true;
+      }
+
+      // Asegurar columnas SQLite
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN local_carrier_trm REAL DEFAULT 0").execute(); } catch (_) {}
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN local_other_trm REAL DEFAULT 0").execute(); } catch (_) {}
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN freight_exchange_rate REAL DEFAULT 0").execute(); } catch (_) {}
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN insurance_exchange_rate REAL DEFAULT 0").execute(); } catch (_) {}
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN customs_exchange_rate REAL DEFAULT 0").execute(); } catch (_) {}
+
       // supplier_id: asegurar que no sea estrictamente required si es consolidada
       const suppField = impCol.fields.getByName("supplier_id");
       if (suppField && suppField.required === true) {

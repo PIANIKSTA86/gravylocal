@@ -22,68 +22,56 @@ const INV_STATUS_META = {
   voided:  { label: 'Anulado',   badge: 'badge-orange' },
 };
 
-// ── Render principal ──────────────────────────────────────────────────────────
-async function renderInventario(c: any, activeTab = 'stock', ctx: any = {}) {
+// ── Metadatos y Render por Secciones Independientes ─────────────────────────
+const INV_SECTION_META: Record<string, { title: string; subtitle: string; icon: string }> = {
+  stock:          { title: 'Stock de Inventario',           subtitle: 'Existencias actuales por bodega, valorización estimada y filtros por producto.',               icon: 'fa-boxes-stacked' },
+  lotes:          { title: 'Lotes y Vencimientos',         subtitle: 'Control de fechas de caducidad, trazabilidad de lotes y alertas de vencimiento temprano.',     icon: 'fa-barcode' },
+  pallets:        { title: 'Embalaje',                     subtitle: 'Control de almacenamiento por estibas, pallets, ubicaciones físicas y capacidad de carga.', icon: 'fa-pallet' },
+  movimientos:    { title: 'Movimientos de Inventario',    subtitle: 'Registro y trazabilidad de entradas, salidas, traslados y ajustes.',                           icon: 'fa-arrows-rotate' },
+  kardex:         { title: 'Kardex Valorizado',            subtitle: 'Seguimiento valorizado de movimientos por producto (PEPS / Promedio Ponderado).',               icon: 'fa-table-list' },
+  bodegas:        { title: 'Gestión de Bodegas y Almacenes', subtitle: 'Administración de almacenes, puntos de despacho y configuración de ubicaciones.',            icon: 'fa-warehouse' },
+  consignaciones: { title: 'Inventario en Consignación',   subtitle: 'Control de mercancía entregada en consignación a terceros o recibida de proveedores.',          icon: 'fa-handshake' },
+};
+
+async function renderInventarioSection(c: any, sectionId = 'stock', ctx: any = {}) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
   c = getContainer(c);
   if (!c) return;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando inventario...</div>`;
 
-  try {
-    const [stock, warehouses] = await Promise.all([
-      API.getInventoryStock(),
-      API.getWarehouses(false),
-    ]);
-    _renderInvPage(c, activeTab, { stock, warehouses, ...ctx });
-  } catch (err: any) {
-    c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
-  }
-}
-
-function _renderInvPage(c, activeTab, ctx = {}) {
-  const tabs = [
-    { id: 'stock',          label: 'Stock actual',         icon: 'fa-boxes-stacked' },
-    { id: 'lotes',          label: 'Lotes y Vencimientos', icon: 'fa-barcode'       },
-    { id: 'pallets',        label: 'Estibas y Pallets',    icon: 'fa-pallet'        },
-    { id: 'movimientos',    label: 'Movimientos',          icon: 'fa-arrows-rotate' },
-    { id: 'kardex',         label: 'Kardex',               icon: 'fa-table'         },
-    { id: 'bodegas',        label: 'Bodegas',              icon: 'fa-warehouse'     },
-    { id: 'consignaciones', label: 'Consignaciones',       icon: 'fa-handshake'     },
-    { id: 'reportes',       label: 'Reportes',             icon: 'fa-file-invoice'  },
-  ];
+  const meta = INV_SECTION_META[sectionId] || { title: 'Gestión de Inventarios', subtitle: 'Stock actual, lotes, movimientos y bodegas.', icon: 'fa-warehouse' };
 
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5 w-full">
-      <div>
-        <h3 class="text-lg font-bold" style="color:#0D2137">Gestión de Inventarios</h3>
-        <p class="text-sm" style="color:#6B7280">Stock actual, lotes, estibas WMS, movimientos, bodegas y reportes.</p>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#EEF4FF;color:#1A4B8C">
+          <i class="fas ${meta.icon} text-lg"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold" style="color:#0D2137">${meta.title}</h3>
+          <p class="text-xs" style="color:#6B7280">${meta.subtitle}</p>
+        </div>
       </div>
     </div>
-    <div class="flex gap-1 mb-5 border-b" style="border-color:#E5E7EB">
-      ${tabs.map(t => `
-        <button class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg${t.id === activeTab ? ' active' : ''}" data-tab="${t.id}">
-          <i class="fas ${t.icon} mr-1.5"></i>${t.label}
-        </button>`).join('')}
-    </div>
-    <div id="inv-tab-content"></div>`;
+    <div id="inv-section-content"></div>`;
 
-  const tabContent = c.querySelector('#inv-tab-content');
+  const content = c.querySelector('#inv-section-content') || c;
 
-  function switchTab(tabId) {
-    c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
-    if (tabId === 'stock')          renderStockTab(tabContent, ctx);
-    if (tabId === 'lotes')          renderLotesTab(tabContent, ctx);
-    if (tabId === 'pallets')        renderPalletsTab(tabContent, ctx);
-    if (tabId === 'movimientos')     renderMovimientosTab(tabContent, ctx);
-    if (tabId === 'kardex')          renderKardexTab(tabContent, ctx);
-    if (tabId === 'bodegas')         renderBodegasTab(tabContent, ctx);
-    if (tabId === 'consignaciones')  renderConsignacionesTab(tabContent, ctx);
-    if (tabId === 'reportes')        renderReportesTab(tabContent, ctx);
-  }
-
-  c.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
-  switchTab(activeTab);
+  if (sectionId === 'stock')          return renderStockTab(content, ctx);
+  if (sectionId === 'lotes')          return renderLotesTab(content, ctx);
+  if (sectionId === 'pallets')        return renderPalletsTab(content, ctx);
+  if (sectionId === 'movimientos')     return renderMovimientosTab(content, ctx);
+  if (sectionId === 'kardex')          return renderKardexTab(content, ctx);
+  if (sectionId === 'bodegas')         return renderBodegasTab(content, ctx);
+  if (sectionId === 'consignaciones')  return renderConsignacionesTab(content, ctx);
+  return renderStockTab(content, ctx);
 }
+
+async function renderInventario(c: any, activeTab = 'stock', ctx: any = {}) {
+  return renderInventarioSection(c, activeTab, ctx);
+}
+
+(window as any).renderInventarioSection = renderInventarioSection;
+(window as any).renderInventario = renderInventario;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB: STOCK ACTUAL
@@ -3155,7 +3143,7 @@ async function renderKardexTab(c, ctx = {}) {
 (window as any).renderMovRows = renderMovRows;
 (window as any).viewMovDetail = viewMovDetail;
 (window as any).printInventoryMovement = printInventoryMovement;
-(window as any)._renderInvPage = _renderInvPage;
+(window as any)._renderInvPage = renderInventarioSection;
 (window as any).INV_MOV_TYPES = INV_MOV_TYPES;
 (window as any).renderKardexTab = renderKardexTab;
 

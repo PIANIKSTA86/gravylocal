@@ -1024,6 +1024,84 @@ async function renderUtilidades(container) {
         </div>
         ` : ''}
 
+        <!-- ── Tarjeta: Toma de Inventario Físico (Ajuste Contable) ── -->
+        <div class="stat-card blue" id="util-card-inv-physical-count" style="border-left-color: #2563EB;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(37,99,235,.12)">
+                <i class="fas fa-boxes-packing" style="color:#2563EB;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Toma de Inventario Físico</h3>
+                <p class="text-xs" style="color:#6B7280">Auditoría física y ajuste contable automático</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Permite cerrar el inventario previo de las referencias contadas en la bodega elegida y genera automáticamente el comprobante contable de ajuste balanceado por faltantes o sobrantes.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-inv-toma-fisica" class="btn btn-primary btn-sm" style="background:#2563EB;border-color:#2563EB;color:#fff">
+              <i class="fas fa-boxes-packing mr-1"></i> Iniciar Toma Física
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Tarjeta: Recálculo y Revalorización de Costos ── -->
+        <div class="stat-card purple" id="util-card-inv-reval-cost" style="border-left-color: #7C3AED;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(124,58,237,.12)">
+                <i class="fas fa-calculator" style="color:#7C3AED;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Recálculo y Revalorización de Costos</h3>
+                <p class="text-xs" style="color:#6B7280">Ajuste de Costo Promedio Ponderado (CPP)</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Recalcula el costo promedio ponderado de los productos y genera ajustes contables retroactivos para corregir desfases de costo ocurridos en el período.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-inv-reval-cost" class="btn btn-primary btn-sm" style="background:#7C3AED;border-color:#7C3AED;color:#fff">
+              <i class="fas fa-calculator mr-1"></i> Iniciar Recálculo
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Tarjeta: Carga Masiva de Saldos Iniciales de Inventario ── -->
+        <div class="stat-card orange" id="util-card-inv-mass-stock" style="border-left-color: #D97706;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(217,119,6,.12)">
+                <i class="fas fa-file-import" style="color:#D97706;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga Masiva de Inventario (Excel)</h3>
+                <p class="text-xs" style="color:#6B7280">Saldos iniciales y entradas en lote</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Carga cantidades y costos unitarios en lote desde una plantilla Excel para registrar entradas de inventario o saldos iniciales con su asiento contable.
+          </p>
+
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-inv-mass-stock" class="btn btn-primary btn-sm" style="background:#D97706;border-color:#D97706;color:#fff">
+              <i class="fas fa-file-import mr-1"></i> Importar desde Excel
+            </button>
+          </div>
+        </div>
+
       </div>
     </div>`;
 
@@ -1059,6 +1137,23 @@ async function renderUtilidades(container) {
   $('#btn-mass-ph-bal-open')?.addEventListener('click', _openMassPhBalancesImportModal);
   $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
   $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
+
+  // Listeners de Utilidades de Inventario
+  $('#btn-inv-toma-fisica')?.addEventListener('click', () => {
+    if (typeof (window as any)._openTomaFisicaModal === 'function') {
+      (window as any)._openTomaFisicaModal();
+    }
+  });
+  $('#btn-inv-reval-cost')?.addEventListener('click', () => {
+    if (typeof (window as any)._openRevalorizacionModal === 'function') {
+      (window as any)._openRevalorizacionModal();
+    }
+  });
+  $('#btn-inv-mass-stock')?.addEventListener('click', () => {
+    if (typeof (window as any)._openImportInventarioModal === 'function') {
+      (window as any)._openImportInventarioModal();
+    }
+  });
 
   if (canRenumber) {
     $('#btn-renumber-tx-open')?.addEventListener('click', _openRenumberTxModal);

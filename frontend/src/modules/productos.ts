@@ -1622,7 +1622,13 @@ function renderProductRows(products, stockMap = {}, incomingMap = {}) {
 
     return `<tr data-type="${esc(p.type)}" data-iva="${p.iva_rate ?? ''}" data-active="${p.active}" data-categoria="${esc(p.categoria || '')}" data-linea="${esc(p.linea || '')}">
       <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(p.code)}</span></td>
-      <td class="font-medium">${esc(p.name)}</td>
+      <td class="font-medium">
+        <div>${esc(p.name)}</div>
+        <div class="flex items-center gap-1 mt-0.5">
+          ${p.track_lots ? '<span class="badge text-[9px] px-1.5 py-0.2" style="background:#F3E8FF;color:#7E22CE" title="Control por Lote y Vencimiento"><i class="fas fa-barcode mr-0.5"></i>LOTE</span>' : ''}
+          ${p.track_pallets ? '<span class="badge text-[9px] px-1.5 py-0.2" style="background:#E0F2FE;color:#0369A1" title="Control de Embalaje y Estibas"><i class="fas fa-pallet mr-0.5"></i>ESTIBA</span>' : ''}
+        </div>
+      </td>
       <td>${typeBadge}</td>
       <td class="text-sm">${esc(p.categoria || '—')}</td>
       <td class="font-mono text-xs font-bold ${onHand > 0 ? 'text-emerald-700' : 'text-slate-400'}">${p.type === 'BIEN' ? `${fmtN(onHand)} ${esc(p.unit || '')}` : '—'}</td>
@@ -1760,6 +1766,8 @@ async function viewProductDetail(id) {
           <div><span class="form-label">Cód. EAN/barras</span><p class="font-mono">${esc(p.ean_code || '—')}</p></div>
           <div><span class="form-label">Stock Mínimo (Alerta)</span><p class="font-semibold text-orange-700">${p.stock_min !== null && p.stock_min !== undefined ? fmtN(p.stock_min) : '—'}</p></div>
           <div><span class="form-label">Stock Máximo (Alerta)</span><p class="font-semibold text-blue-700">${p.stock_max !== null && p.stock_max !== undefined ? fmtN(p.stock_max) : '—'}</p></div>
+          <div><span class="form-label">Control por Lote</span><p>${p.track_lots ? '<span class="badge text-xs" style="background:#F3E8FF;color:#7E22CE"><i class="fas fa-barcode mr-1"></i>Sí (FEFO)</span>' : '<span class="text-gray-400">No</span>'}</p></div>
+          <div><span class="form-label">Control Embalaje / Estiba</span><p>${p.track_pallets ? '<span class="badge text-xs" style="background:#E0F2FE;color:#0369A1"><i class="fas fa-pallet mr-1"></i>Sí (WMS)</span>' : '<span class="text-gray-400">No</span>'}</p></div>
           ${p.description ? `<div class="col-span-2 md:col-span-3"><span class="form-label">Descripción</span><p>${esc(p.description)}</p></div>` : ''}
           <div class="col-span-2 md:col-span-3 border-t pt-3 mt-1" style="border-color:#F0F0F0">
             <span class="form-label">Cuentas contables</span>
@@ -2077,6 +2085,31 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       <div class="form-group">
         <label class="form-label">Stock Máximo (Alerta)</label>
         <input id="pf-stock-max" type="number" min="0" step="0.0001" class="form-input text-right font-semibold text-blue-700" value="${row?.stock_max ?? ''}" placeholder="0">
+      </div>
+
+      <!-- Control Logístico y Trazabilidad Física -->
+      <div class="form-group md:col-span-3 border p-3.5 rounded-xl bg-slate-50/80" style="border-color:#E2E8F0">
+        <p class="form-label mb-2" style="font-weight:700;color:#0D2137"><i class="fas fa-boxes-stacked mr-2 text-blue-700"></i>Control Logístico y Trazabilidad Física</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex items-start gap-2.5 p-3 rounded-lg border bg-white shadow-xs" style="border-color:#E5E7EB">
+            <input type="checkbox" id="pf-track-lots" class="rounded text-purple-600 focus:ring-purple-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_lots ? 'checked' : ''}>
+            <div>
+              <label for="pf-track-lots" class="font-bold text-xs cursor-pointer block text-gray-800">
+                <i class="fas fa-barcode mr-1 text-purple-600"></i> Control por Lote y Vencimiento
+              </label>
+              <p class="text-[11px] text-gray-500 mt-0.5">Exige o sugiere número de lote, fecha de fabricación y caducidad (FEFO) en entradas y salidas por venta.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5 p-3 rounded-lg border bg-white shadow-xs" style="border-color:#E5E7EB">
+            <input type="checkbox" id="pf-track-pallets" class="rounded text-blue-600 focus:ring-blue-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_pallets ? 'checked' : ''}>
+            <div>
+              <label for="pf-track-pallets" class="font-bold text-xs cursor-pointer block text-gray-800">
+                <i class="fas fa-pallet mr-1 text-blue-600"></i> Control de Embalaje y Estibas (WMS)
+              </label>
+              <p class="text-[11px] text-gray-500 mt-0.5">Controla almacenamiento por estibas, cajas y ubicación física en rack en recepción y despacho.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="form-group md:col-span-3">
@@ -2729,6 +2762,8 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       formData.append('is_consigned', String((document.getElementById('pf-is-consigned') as HTMLInputElement)?.checked || false));
       formData.append('consignment_supplier_id', (document.getElementById('pf-consignment-supplier') as HTMLInputElement)?.value || '');
       formData.append('consignment_cost', String(parseFloat((document.getElementById('pf-consignment-cost') as HTMLInputElement)?.value || '0') || 0));
+      formData.append('track_lots', String((document.getElementById('pf-track-lots') as HTMLInputElement)?.checked || false));
+      formData.append('track_pallets', String((document.getElementById('pf-track-pallets') as HTMLInputElement)?.checked || false));
 
       const filePdf = (document.getElementById('pf-manifest-pdf') as HTMLInputElement)?.files?.[0];
       if (filePdf) {

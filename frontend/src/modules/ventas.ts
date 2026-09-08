@@ -2272,6 +2272,244 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   initSoSupplierSearch();
 
+  // --- Modal y Gestión de Lote y Estiba en la Línea de Venta ---
+  (window as any).soUpdateLineLotBadge = function(idx: number) {
+    const lotNumEl = document.getElementById(`sol-lot-number-${idx}`) as HTMLInputElement;
+    const palletCodeEl = document.getElementById(`sol-pallet-code-${idx}`) as HTMLInputElement;
+    const summaryEl = document.getElementById(`sol-lot-summary-${idx}`);
+    if (!summaryEl) return;
+
+    const lotNum = lotNumEl?.value?.trim() || '';
+    const palletCode = palletCodeEl?.value?.trim() || '';
+
+    const badges: string[] = [];
+    if (lotNum) {
+      badges.push(`<span class="badge text-[9px] px-1.5 py-0.5" style="background:#F3E8FF;color:#7E22CE"><i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(lotNum)}</span>`);
+    }
+    if (palletCode) {
+      badges.push(`<span class="badge text-[9px] px-1.5 py-0.5" style="background:#E0F2FE;color:#0369A1"><i class="fas fa-pallet mr-1"></i>${(window as any).esc(palletCode)}</span>`);
+    }
+    if (!lotNum && !palletCode) {
+      const row = document.getElementById(`so-row-${idx}`);
+      const trackLots = row?.dataset?.trackLots === 'true';
+      if (trackLots) {
+        badges.push(`<span class="text-[9px] text-purple-600 font-semibold italic">(Auto FEFO)</span>`);
+      }
+    }
+    summaryEl.innerHTML = badges.join(' ');
+  };
+
+  (window as any).soOpenLineLotPalletModal = async function(idx: number) {
+    const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+    const whId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
+
+    if (!whId) {
+      (window as any).showToast('Selecciona primero la bodega en el encabezado de la venta.', 'warning');
+      return;
+    }
+
+    const prodsCache = (window as any).__soProductsCache || [];
+    const prod = prodsCache.find((p: any) => p.id === prodId);
+    const prodName = prod?.name || 'Producto';
+    const prodUnit = prod?.unit || 'UND';
+    const lineQty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '1') || 1;
+
+    const currentLotId = (document.getElementById(`sol-lot-id-${idx}`) as HTMLInputElement)?.value || '';
+    const currentPalletId = (document.getElementById(`sol-pallet-id-${idx}`) as HTMLInputElement)?.value || '';
+
+    (window as any).openModal(
+      `Selección de Lote / Estiba — ${prodName}`,
+      `<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando lotes y estibas disponibles...</div>`,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      true
+    );
+
+    try {
+      const data = await (window as any).API.getAvailableLotsAndPallets(prodId, whId);
+      const lots: any[] = data.lots || [];
+      const pallets: any[] = data.pallets || [];
+
+      const today = (window as any).todayStr();
+      const calcDaysLeft = (exp: string) => {
+        if (!exp) return null;
+        const diff = new Date(exp).getTime() - new Date(today).getTime();
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+      };
+
+      let html = `
+        <div class="space-y-4 text-xs" style="color:#374151">
+          <!-- Encabezado contextual -->
+          <div class="p-3 rounded-xl border bg-slate-50 flex items-center justify-between" style="border-color:#E5E7EB">
+            <div>
+              <span class="text-gray-500 font-medium">Producto:</span>
+              <span class="font-bold text-gray-900">${(window as any).esc(prodName)}</span>
+              <span class="font-mono text-blue-700 font-bold ml-1">(${(window as any).esc(prod?.code || '')})</span>
+            </div>
+            <div>
+              <span class="text-gray-500 font-medium">Cantidad requerida:</span>
+              <span class="font-mono font-extrabold text-sm text-purple-700">${lineQty} ${prodUnit}</span>
+            </div>
+          </div>
+
+          <!-- Pestaña / Sección 1: Lotes Disponibles (FEFO) -->
+          <div class="rounded-xl border p-3.5 bg-white" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between mb-2.5">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold bg-purple-100 text-purple-800">
+                  <i class="fas fa-barcode"></i>
+                </span>
+                <span class="font-bold text-sm text-gray-900">Lotes Activos (FEFO)</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-xs text-[11px]" onclick="window.soSetLineLot('${idx}', '', '')">
+                <i class="fas fa-wand-magic-sparkles mr-1 text-purple-600"></i> Automático (FEFO)
+              </button>
+            </div>
+
+            ${lots.length === 0 ? `
+              <div class="p-4 text-center text-gray-400 bg-gray-50 rounded-lg">
+                <i class="fas fa-info-circle mr-1"></i>No hay lotes con saldo activo registrados en esta bodega.
+              </div>
+            ` : `
+              <div class="overflow-x-auto">
+                <table class="data-table w-full text-xs">
+                  <thead>
+                    <tr style="background:#FAF5FF">
+                      <th>N° Lote</th>
+                      <th>Vencimiento</th>
+                      <th>Estado FEFO</th>
+                      <th class="text-right">Disponible</th>
+                      <th class="text-center">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${lots.map((l: any) => {
+                      const isSelected = l.id === currentLotId;
+                      const dLeft = calcDaysLeft(l.expiry_date);
+                      let fefoBadge = '<span class="badge badge-gray">Sin fecha</span>';
+                      if (dLeft !== null) {
+                        if (dLeft < 0) fefoBadge = `<span class="badge badge-red font-bold">Vencido (${Math.abs(dLeft)} d)</span>`;
+                        else if (dLeft <= 60) fefoBadge = `<span class="badge badge-orange font-bold">Vence en ${dLeft} d</span>`;
+                        else fefoBadge = `<span class="badge badge-green">Vigente (${dLeft} d)</span>`;
+                      }
+                      return `
+                        <tr style="${isSelected ? 'background:#F3E8FF;font-weight:bold;' : ''}">
+                          <td class="font-mono font-bold text-purple-900">${(window as any).esc(l.lot_number)}</td>
+                          <td>${l.expiry_date || '—'}</td>
+                          <td>${fefoBadge}</td>
+                          <td class="text-right font-mono font-bold">${(window as any).fmtN(l.qty_on_hand)} ${prodUnit}</td>
+                          <td class="text-center">
+                            ${isSelected ? `
+                              <span class="badge badge-purple text-xs"><i class="fas fa-check mr-1"></i>Asignado</span>
+                            ` : `
+                              <button type="button" class="btn btn-outline btn-xs" onclick="window.soSetLineLot('${idx}', '${l.id}', '${(window as any).esc(l.lot_number)}')">
+                                Elegir
+                              </button>
+                            `}
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+
+          <!-- Pestaña / Sección 2: Estibas y Pallets en Bodega (WMS) -->
+          <div class="rounded-xl border p-3.5 bg-white" style="border-color:#E5E7EB">
+            <div class="flex items-center justify-between mb-2.5">
+              <div class="flex items-center gap-2">
+                <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-800">
+                  <i class="fas fa-pallet"></i>
+                </span>
+                <span class="font-bold text-sm text-gray-900">Estibas y Pallets en Almacén</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-xs text-[11px]" onclick="window.soSetLinePallet('${idx}', '', '', 0)">
+                <i class="fas fa-xmark mr-1 text-gray-500"></i> Sin Estiba Fija
+              </button>
+            </div>
+
+            ${pallets.length === 0 ? `
+              <div class="p-4 text-center text-gray-400 bg-gray-50 rounded-lg">
+                <i class="fas fa-info-circle mr-1"></i>No hay estibas físicas con existencia registradas en esta bodega.
+              </div>
+            ` : `
+              <div class="overflow-x-auto">
+                <table class="data-table w-full text-xs">
+                  <thead>
+                    <tr style="background:#F0F9FF">
+                      <th>LPN Estiba</th>
+                      <th>Ubicación Rack</th>
+                      <th>Cajas Actuales</th>
+                      <th class="text-right">Unidades Disp.</th>
+                      <th class="text-center">Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${pallets.map((plt: any) => {
+                      const isSelected = plt.id === currentPalletId;
+                      return `
+                        <tr style="${isSelected ? 'background:#E0F2FE;font-weight:bold;' : ''}">
+                          <td class="font-mono font-bold text-blue-900">${(window as any).esc(plt.pallet_code)}</td>
+                          <td>
+                            ${plt.location_code ? `<span class="badge badge-gray font-mono"><i class="fas fa-location-dot mr-1 text-blue-500"></i>${(window as any).esc(plt.location_code)}</span>` : '<span class="text-gray-400">Sin rack</span>'}
+                          </td>
+                          <td class="font-mono">${plt.boxes_current || 0} cjs (${plt.units_per_box || 1} u/cj)</td>
+                          <td class="text-right font-mono font-bold">${(window as any).fmtN(plt.units_available || 0)} ${prodUnit}</td>
+                          <td class="text-center">
+                            ${isSelected ? `
+                              <span class="badge badge-blue text-xs"><i class="fas fa-check mr-1"></i>Asignado</span>
+                            ` : `
+                              <button type="button" class="btn btn-outline btn-xs" onclick="window.soSetLinePallet('${idx}', '${plt.id}', '${(window as any).esc(plt.pallet_code)}', ${plt.boxes_current || 1})">
+                                Despachar
+                              </button>
+                            `}
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+
+      (window as any).openModal(
+        `Selección de Lote / Estiba — ${prodName}`,
+        html,
+        `<button class="btn btn-primary" onclick="closeModal()"><i class="fas fa-check mr-1"></i>Listo</button>`,
+        true
+      );
+    } catch (err: any) {
+      (window as any).showToast('Error consultando lotes: ' + err.message, 'error');
+      (window as any).closeModal();
+    }
+  };
+
+  (window as any).soSetLineLot = function(idx: number, lotId: string, lotNumber: string) {
+    const lotIdEl = document.getElementById(`sol-lot-id-${idx}`) as HTMLInputElement;
+    const lotNumEl = document.getElementById(`sol-lot-number-${idx}`) as HTMLInputElement;
+    if (lotIdEl) lotIdEl.value = lotId || '';
+    if (lotNumEl) lotNumEl.value = lotNumber || '';
+    (window as any).soUpdateLineLotBadge(idx);
+    (window as any).closeModal();
+    (window as any).showToast(lotNumber ? `Lote "${lotNumber}" asignado a la línea` : 'Asignación automática por FEFO configurada', 'success');
+  };
+
+  (window as any).soSetLinePallet = function(idx: number, palletId: string, palletCode: string, boxes: number) {
+    const palletIdEl = document.getElementById(`sol-pallet-id-${idx}`) as HTMLInputElement;
+    const palletCodeEl = document.getElementById(`sol-pallet-code-${idx}`) as HTMLInputElement;
+    const boxesEl = document.getElementById(`sol-boxes-qty-${idx}`) as HTMLInputElement;
+    if (palletIdEl) palletIdEl.value = palletId || '';
+    if (palletCodeEl) palletCodeEl.value = palletCode || '';
+    if (boxesEl) boxesEl.value = String(boxes || 0);
+    (window as any).soUpdateLineLotBadge(idx);
+    (window as any).closeModal();
+    (window as any).showToast(palletCode ? `Estiba "${palletCode}" asignada a la línea` : 'Estiba desvinculada', 'success');
+  };
+
   // --- Manejo de Líneas (sin buscador por fila — se usa el buscador global) ---
   (window as any).addSoInvoiceLine = async function(prod: any = null, preloadedLine: any = null) {
     // Datos del producto (viene del buscador global o de una línea existente al editar)
@@ -2391,6 +2629,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       }
     }
 
+    const trackLots = !!(prodObj?.track_lots || preloadedLine?.lot_id || preloadedLine?.lot_number);
+    const trackPallets = !!(prodObj?.track_pallets || preloadedLine?.pallet_id || preloadedLine?.pallet_code);
+    const initialLotId = preloadedLine?.lot_id || '';
+    const initialLotNum = preloadedLine?.lot_number || '';
+    const initialPalletId = preloadedLine?.pallet_id || '';
+    const initialPalletCode = preloadedLine?.pallet_code || '';
+    const initialBoxesQty = preloadedLine?.boxes_qty || 0;
+
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
     tr.dataset.baseUnit = baseUnit;
@@ -2399,6 +2645,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     tr.dataset.undEmpaque = String(undEmpaque);
     tr.dataset.pesoBruto = String(pesoBruto);
     tr.dataset.hasConversions = String(hasConversions);
+    tr.dataset.trackLots = String(trackLots);
+    tr.dataset.trackPallets = String(trackPallets);
 
     tr.innerHTML = `
       <td>
@@ -2417,6 +2665,24 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             </span>
           </div>
           <div class="text-[10px] text-gray-500 font-semibold mt-1 hidden" style="line-height:1.2" id="sol-equiv-lbl-${idx}"></div>
+
+          <!-- Barra interactiva de Lote y Embalaje si el producto tiene control de lote o embalaje -->
+          ${(trackLots || trackPallets) ? `
+            <div class="flex flex-wrap items-center gap-1.5 mt-1.5" id="sol-lot-pallet-bar-${idx}">
+              <button type="button" class="btn btn-outline btn-xs px-2 py-0.5 text-[10px] font-bold rounded-md flex items-center gap-1 cursor-pointer"
+                id="sol-lot-btn-${idx}"
+                style="color:#7E22CE;border-color:#D8B4FE;background:#FAF5FF"
+                onclick="window.soOpenLineLotPalletModal(${idx})">
+                <i class="fas fa-barcode"></i> <span>${trackLots && trackPallets ? 'Lote / Estiba' : trackLots ? 'Lote FEFO' : 'Estiba WMS'}</span>
+              </button>
+              <span id="sol-lot-summary-${idx}" class="text-[10px] font-mono font-bold" style="color:#6B7280"></span>
+            </div>
+          ` : ''}
+          <input type="hidden" id="sol-lot-id-${idx}" value="${(window as any).esc(initialLotId)}">
+          <input type="hidden" id="sol-lot-number-${idx}" value="${(window as any).esc(initialLotNum)}">
+          <input type="hidden" id="sol-pallet-id-${idx}" value="${(window as any).esc(initialPalletId)}">
+          <input type="hidden" id="sol-pallet-code-${idx}" value="${(window as any).esc(initialPalletCode)}">
+          <input type="hidden" id="sol-boxes-qty-${idx}" value="${initialBoxesQty}">
         </div>
       </td>
       <td>
@@ -2537,6 +2803,9 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
       if ((window as any).soUpdateStockDisplay) {
         (window as any).soUpdateStockDisplay(idx, productId);
+      }
+      if (typeof (window as any).soUpdateLineLotBadge === 'function') {
+        (window as any).soUpdateLineLotBadge(idx);
       }
     }, 20);
 
@@ -2785,6 +3054,12 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
       const isLoss = !!(document.getElementById(`sol-is-loss-${idx}`) as HTMLInputElement)?.checked;
 
+      const lotId = (document.getElementById(`sol-lot-id-${idx}`) as HTMLInputElement)?.value || '';
+      const lotNumber = (document.getElementById(`sol-lot-number-${idx}`) as HTMLInputElement)?.value || '';
+      const palletId = (document.getElementById(`sol-pallet-id-${idx}`) as HTMLInputElement)?.value || '';
+      const palletCode = (document.getElementById(`sol-pallet-code-${idx}`) as HTMLInputElement)?.value || '';
+      const boxesQty = parseFloat((document.getElementById(`sol-boxes-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+
       lines.push({
         product_id: prodId,
         _name: prodName,
@@ -2795,6 +3070,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         ret_rule_id: retRuleId,
         description: descriptionText,
         is_loss: isLoss,
+        lot_id: lotId || null,
+        lot_number: lotNumber || '',
+        pallet_id: palletId || null,
+        pallet_code: palletCode || '',
+        boxes_qty: boxesQty,
       });
     });
 
@@ -2991,6 +3271,12 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
       const isLoss = !!(document.getElementById(`sol-is-loss-${idx}`) as HTMLInputElement)?.checked;
 
+      const lotId = (document.getElementById(`sol-lot-id-${idx}`) as HTMLInputElement)?.value || '';
+      const lotNumber = (document.getElementById(`sol-lot-number-${idx}`) as HTMLInputElement)?.value || '';
+      const palletId = (document.getElementById(`sol-pallet-id-${idx}`) as HTMLInputElement)?.value || '';
+      const palletCode = (document.getElementById(`sol-pallet-code-${idx}`) as HTMLInputElement)?.value || '';
+      const boxesQty = parseFloat((document.getElementById(`sol-boxes-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
+
       lines.push({
         product_id: prodId,
         qty: roundDec(qty),
@@ -3003,6 +3289,11 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         discount_pct: discPct,
         ret_rule_id: retRuleId,
         is_loss: isLoss,
+        lot_id: lotId || null,
+        lot_number: lotNumber || '',
+        pallet_id: palletId || null,
+        pallet_code: palletCode || '',
+        boxes_qty: boxesQty,
       });
     });
 
@@ -3983,11 +4274,14 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
             <tbody>
               ${lines.map(l => {
                 const discountPct = l.discount_rate || l.discount_pct || 0;
+                const lotBadge = l.lot_number ? `<span style="font-size: 8px; font-family: monospace; background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">LOTE: ${(window as any).esc(l.lot_number)}</span>` : '';
+                const palletBadge = l.pallet_code ? `<span style="font-size: 8px; font-family: monospace; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">ESTIBA: ${(window as any).esc(l.pallet_code)}</span>` : '';
                 return `
                   <tr>
                     <td style="font-weight:600">
                       ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}
                       ${discountPct > 0 ? `<span style="font-size: 11px; color: #dc2626; font-weight: normal; margin-left: 8px;">(Dto. ${discountPct}%)</span>` : ''}
+                      ${lotBadge}${palletBadge}
                     </td>
                     <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
                     <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
@@ -4115,11 +4409,14 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
             <tbody>
               ${lines.map(l => {
                 const discountPct = l.discount_rate || l.discount_pct || 0;
+                const lotBadge = l.lot_number ? `<span style="font-size: 8px; font-family: monospace; background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">LOTE: ${(window as any).esc(l.lot_number)}</span>` : '';
+                const palletBadge = l.pallet_code ? `<span style="font-size: 8px; font-family: monospace; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 1px 4px; border-radius: 3px; margin-left: 4px;">ESTIBA: ${(window as any).esc(l.pallet_code)}</span>` : '';
                 return `
                   <tr>
                     <td style="font-weight:600">
                       ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}
                       ${discountPct > 0 ? `<span style="font-size: 9px; color: #dc2626; font-weight: normal; margin-left: 6px;">(Dto. ${discountPct}%)</span>` : ''}
+                      ${lotBadge}${palletBadge}
                     </td>
                     <td style="text-align:right">${(window as any).fmtN(l.qty)}</td>
                     <td style="text-align:right">${(window as any).fmt(l.unit_price)}</td>
@@ -4306,11 +4603,14 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
                 const prodName = baseName + (l.expand?.product_id?.name && l.description && l.expand.product_id.name !== l.description ? ' - ' + l.description : '');
                 const prodRef = l.expand?.product_id?.presentacion || '—';
                 const prodUnit = l.expand?.product_id?.unit || 'UND';
+                const lotBadge = l.lot_number ? `<span style="display:inline-block; margin-top:2px; font-size:8px; font-weight:bold; color:#6b21a8; background:#f3e8ff; border:1px solid #d8b4fe; border-radius:3px; padding:1px 4px; font-family:monospace; margin-right:4px;">LOTE: ${(window as any).esc(l.lot_number)}</span>` : '';
+                const palletBadge = l.pallet_code ? `<span style="display:inline-block; margin-top:2px; font-size:8px; font-weight:bold; color:#0369a1; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:3px; padding:1px 4px; font-family:monospace;">ESTIBA: ${(window as any).esc(l.pallet_code)}</span>` : '';
+                const traceabilityHtml = (lotBadge || palletBadge) ? `<div style="margin-top:2px;">${lotBadge}${palletBadge}</div>` : '';
                 return `
                   <tr>
                     <td style="text-align:center; font-family:monospace;">${iteNum}</td>
                     <td style="font-family:monospace;">${(window as any).esc(prodCode)}</td>
-                    <td style="font-weight:600;">${(window as any).esc(prodName)}</td>
+                    <td style="font-weight:600;">${(window as any).esc(prodName)}${traceabilityHtml}</td>
                     <td>${(window as any).esc(prodRef)}</td>
                     <td style="text-align:center;">${(window as any).esc(prodUnit)}</td>
                     <td style="text-align:right;">${(window as any).fmtN(l.qty)}</td>
@@ -4550,7 +4850,11 @@ window.viewSalesInvoiceDetail = async function(id: string) {
             <tbody>
               ${lines.map((l: any) => `
                 <tr>
-                  <td><span class="font-mono text-xs text-blue-500 mr-1">[${(window as any).esc(l.expand?.product_id?.code || 'S/C')}]</span> ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}</td>
+                  <td>
+                    <span class="font-mono text-xs text-blue-500 mr-1">[${(window as any).esc(l.expand?.product_id?.code || 'S/C')}]</span> ${(window as any).esc((l.expand?.product_id?.name || l.description || 'Línea de Venta') + (l.expand?.product_id?.name && l.description ? ' ' + l.description : ''))}
+                    ${l.lot_number ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1.5" style="background:#F3E8FF;color:#7E22CE"><i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(l.lot_number)}</span>` : ''}
+                    ${l.pallet_code ? `<span class="badge text-[10px] px-1.5 py-0.5 ml-1" style="background:#E0F2FE;color:#0369A1"><i class="fas fa-pallet mr-1"></i>Estiba: ${(window as any).esc(l.pallet_code)}</span>` : ''}
+                  </td>
                   <td class="text-right">${(window as any).fmtN(l.qty)}</td>
                   <td class="text-right">${(window as any).fmt(l.unit_price)}</td>
                   <td class="text-right">${l.iva_rate}%</td>

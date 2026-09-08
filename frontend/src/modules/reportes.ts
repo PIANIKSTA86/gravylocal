@@ -222,6 +222,21 @@ async function renderReportes(c) {
         ${reportCard('consecutive-audit', 'Auditoría de Consecutivos', 'Verifica la secuencia de numeración de comprobantes en un período: detecta faltantes y descuadres.')}
         ${reportCard('budget-execution', 'Ejecución Presupuestal Detallada', 'Seguimiento mensual detallado y transacciones de la ejecución presupuestal.')}
       </div>
+    </div>
+
+    <!-- Categoría 5: Inventarios y Almacén -->
+    <div class="mb-6">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+        <i class="fas fa-boxes-stacked"></i> Inventarios y Almacén
+      </h4>
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-inventory">
+        ${reportCard('inv-general', 'Reporte General de Inventarios', 'Consolidado valorizado con costos promedio o último, filtros por bodega, categoría y línea.')}
+        ${reportCard('inv-comparativo', 'Comparativo de Existencias', 'Matriz de existencias cruzadas por producto entre todas las bodegas creadas.')}
+        ${reportCard('inv-conteo', 'Listado para Conteo Físico', 'Planilla de auditoría para toma física de inventario en campo (modalidad ciega o con saldo).')}
+        ${reportCard('inv-precios', 'Lista de Precios Vigentes', 'Consulta y exportación de precios de venta (Precio base, Lista 2 y Lista 3).')}
+        ${reportCard('inv-alertas', 'Alertas de Stock Mínimo y Máximo', 'Control de puntos de reorden, reposición requerida y sobreabastecimiento.')}
+        ${reportCard('inv-rotacion', 'Análisis de Rotación de Inventarios', 'Indicadores de rotación y días promedio de permanencia por referencia.')}
+      </div>
     </div>`;
 
   $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
@@ -248,6 +263,210 @@ async function renderReportes(c) {
   $('#btn-report-financial-notes')?.addEventListener('click', () => launchReportModal('Notas a los Estados Financieros', () => renderFinancialNotesManager()));
   $('#btn-report-consecutive-audit')?.addEventListener('click', () => launchReportModal('Auditoría de Consecutivos de Comprobantes', () => renderConsecutiveAuditReport()));
   $('#btn-report-estado-cuenta-tercero')?.addEventListener('click', () => launchReportModal('Estado de Cuenta por Tercero', () => renderAccountStatementReport()));
+
+  // ── Listeners de Reportes de Inventario ──
+  $('#btn-report-inv-general')?.addEventListener('click', () => openInvGeneralModal());
+  $('#btn-report-inv-comparativo')?.addEventListener('click', () => openInvComparativoModal());
+  $('#btn-report-inv-conteo')?.addEventListener('click', () => openInvConteoModal());
+  $('#btn-report-inv-precios')?.addEventListener('click', () => openInvPreciosModal());
+  $('#btn-report-inv-alertas')?.addEventListener('click', () => openInvAlertasModal());
+  $('#btn-report-inv-rotacion')?.addEventListener('click', () => {
+    if (typeof (window as any)._openRotacionModal === 'function') {
+      (window as any)._openRotacionModal();
+    }
+  });
+}
+
+// ── Modales de Configuración para Reportes de Inventarios ───────────────
+async function openInvGeneralModal() {
+  openModal(
+    '<i class="fas fa-clipboard-list mr-2" style="color:#1A4B8C"></i>Reporte General de Inventarios',
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando filtros...</div>',
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+
+  try {
+    const [products, warehouses] = await Promise.all([
+      API.getProducts({ activeOnly: false }),
+      API.getWarehouses(false)
+    ]);
+    const categorias = [...new Set(products.map((p: any) => p.categoria).filter(Boolean))].sort() as string[];
+    const lineas = [...new Set(products.map((p: any) => p.linea).filter(Boolean))].sort() as string[];
+
+    const modalBody = $('#modal-body');
+    if (!modalBody) return;
+
+    modalBody.innerHTML = `
+      <div class="space-y-4 text-left p-2">
+        <p class="text-xs text-gray-500">Genera el listado consolidado de productos con existencias y costos a una fecha determinada.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha de Corte <span class="text-blue-600">(Opcional)</span></label>
+            <input type="date" id="rep-gen-date" class="form-input text-xs w-full" value="${todayStr()}">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Costo a Reportar</label>
+            <select id="rep-gen-cost" class="form-input text-xs w-full">
+              <option value="promedio">Costo Promedio (Kardex a Fecha)</option>
+              <option value="ultimo">Último Costo del Producto</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+          <select id="rep-gen-wh" class="form-input text-xs w-full">
+            <option value="">Todas las bodegas (Consolidado)</option>
+            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Categoría (Opcional)</label>
+            <select id="rep-gen-cat" class="form-input text-xs w-full">
+              <option value="">Todas las categorías</option>
+              ${categorias.map((cat: string) => `<option value="${esc(cat)}">${esc(cat)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Línea (Opcional)</label>
+            <select id="rep-gen-line" class="form-input text-xs w-full">
+              <option value="">Todas las líneas</option>
+              ${lineas.map((lin: string) => `<option value="${esc(lin)}">${esc(lin)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
+          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('general')"><i class="fas fa-print mr-1.5"></i>Imprimir Reporte</button>
+          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('general')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+        </div>
+      </div>
+    `;
+  } catch (err: any) {
+    const modalBody = $('#modal-body');
+    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
+  }
+}
+
+function openInvComparativoModal() {
+  openModal(
+    '<i class="fas fa-columns mr-2" style="color:#059669"></i>Comparativo de Existencias entre Bodegas',
+    `
+    <div class="space-y-4 text-left p-2">
+      <p class="text-sm text-gray-600">Genera una matriz comparativa cruzada con las existencias de todos los productos en cada una de las bodegas activas del sistema.</p>
+      <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
+        <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('comparativo')"><i class="fas fa-print mr-1.5"></i>Imprimir Comparativo</button>
+        <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('comparativo')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+      </div>
+    </div>
+    `,
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+}
+
+async function openInvConteoModal() {
+  openModal(
+    '<i class="fas fa-list-check mr-2" style="color:#D97706"></i>Listado para Conteo Físico',
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando bodegas...</div>',
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+
+  try {
+    const warehouses = await API.getWarehouses(false);
+    const modalBody = $('#modal-body');
+    if (!modalBody) return;
+
+    modalBody.innerHTML = `
+      <div class="space-y-4 text-left p-2">
+        <p class="text-xs text-gray-500">Planilla imprimible para toma física de inventario en almacén y verificación de existencias.</p>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega a Auditar <span class="text-red-500">*</span></label>
+          <select id="rep-conteo-wh" class="form-input text-xs w-full">
+            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="space-y-2 pt-1">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="rep-conteo-show-stock" class="w-4 h-4 text-blue-600 rounded">
+            <label for="rep-conteo-show-stock" class="text-xs text-gray-700">Mostrar existencias del sistema (Inventario No Ciego)</label>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="rep-conteo-only-mov-stock" class="w-4 h-4 text-blue-600 rounded" checked>
+            <label for="rep-conteo-only-mov-stock" class="text-xs text-gray-700">Listar solo referencias con movimientos o saldo previo</label>
+          </div>
+        </div>
+        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
+          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('conteo')"><i class="fas fa-print mr-1.5"></i>Imprimir Planilla</button>
+          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('conteo')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+        </div>
+      </div>
+    `;
+  } catch (err: any) {
+    const modalBody = $('#modal-body');
+    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
+  }
+}
+
+function openInvPreciosModal() {
+  openModal(
+    '<i class="fas fa-tags mr-2" style="color:#7C3AED"></i>Lista de Precios Vigentes',
+    `
+    <div class="space-y-4 text-left p-2">
+      <p class="text-sm text-gray-600">Consulta y exporta el catálogo completo de tarifas comerciales vigentes (Precio Base, Precio 2 y Precio 3) de todos los productos y servicios.</p>
+      <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
+        <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('precios')"><i class="fas fa-print mr-1.5"></i>Imprimir Catálogo</button>
+        <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('precios')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+      </div>
+    </div>
+    `,
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+}
+
+async function openInvAlertasModal() {
+  openModal(
+    '<i class="fas fa-triangle-exclamation mr-2" style="color:#C46516"></i>Alertas de Stock Mínimo y Máximo',
+    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando bodegas...</div>',
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
+
+  try {
+    const warehouses = await API.getWarehouses(false);
+    const modalBody = $('#modal-body');
+    if (!modalBody) return;
+
+    modalBody.innerHTML = `
+      <div class="space-y-4 text-left p-2">
+        <p class="text-xs text-gray-500">Identifica productos que requieren reposición urgente (bajo stock mínimo) o referencias con sobreabastecimiento (sobre stock máximo).</p>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+          <select id="rep-alert-wh" class="form-input text-xs w-full">
+            <option value="">Todas las bodegas (Consolidado)</option>
+            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Filtrar Tipo de Desvío</label>
+          <select id="rep-alert-type" class="form-input text-xs w-full">
+            <option value="">Todos los desvíos (Bajo mínimo y Sobre máximo)</option>
+            <option value="bajo_min">Solo bajo mínimo (Reposición requerida)</option>
+            <option value="sobre_max">Solo sobre máximo (Sobreabastecido)</option>
+          </select>
+        </div>
+        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
+          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('alertas')"><i class="fas fa-print mr-1.5"></i>Imprimir Alertas</button>
+          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('alertas')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+        </div>
+      </div>
+    `;
+  } catch (err: any) {
+    const modalBody = $('#modal-body');
+    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
+  }
 }
 
 function getReportViewHost() {

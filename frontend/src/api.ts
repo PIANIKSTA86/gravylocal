@@ -1208,7 +1208,7 @@ const API = {
     }
   },
 
-  /** Aplica un movimiento: actualiza stock + genera asiento contable si procede */
+  /** Aplica un movimiento: actualiza stock + lotes + estibas (WMS) + genera asiento contable si procede */
   async applyInventoryMovement(movId: string) {
     const mov = await pb.get('inventory_movements', movId, { expand: 'warehouse_id,dest_warehouse_id' });
     if (mov.status === 'applied') throw new Error('El movimiento ya fue aplicado.');
@@ -1225,6 +1225,11 @@ const API = {
     const isOut = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
     const isTran = mov.mov_type === 'TRASLADO';
 
+    // Cargar productos relacionados para verificar flags track_lots y track_pallets
+    const prodIds = [...new Set(lines.map((l: any) => l.product_id).filter(Boolean))];
+    const prods = await Promise.all(prodIds.map((pid: string) => pb.get('products', pid).catch(() => null)));
+    const prodMap = new Map(prods.filter(Boolean).map((p: any) => [p.id, p]));
+
     for (const line of lines) {
       const delta = isIn ? line.qty : isOut ? -line.qty : 0;
       if (isTran) {
@@ -1237,6 +1242,125 @@ const API = {
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today, mov.branch_id || null);
       }
+
+      // ── Control condicional de Lotes y Estibas por producto ──
+      const prod = prodMap.get(line.product_id);
+      if (prod) {
+        // 1. SALIDAS / VENTAS
+        if (isOut) {
+          // A. Lotes
+          if (prod.track_lots) {
+            if (line.lot_id) {
+              try {
+                const lot = await pb.get('inventory_lots', line.lot_id);
+                const curQty = Number(lot.qty_on_hand || 0);
+                const newQty = Math.max(0, curQty - line.qty);
+                await pb.update('inventory_lots', lot.id, {
+                  qty_on_hand: newQty,
+                  status: newQty <= 0 ? 'depleted' : 'active'
+                });
+              } catch (err) {
+                console.warn('[applyInventoryMovement] Error al descontar lote asignado:', err);
+              }
+            } else if (mov.warehouse_id) {
+              // Asignación FEFO automática
+              try {
+                const lots = await pb.listAll('inventory_lots', {
+                  filter: `product_id="${pb.escapeFilterValue(prod.id)}" && warehouse_id="${pb.escapeFilterValue(mov.warehouse_id)}" && status="active" && qty_on_hand > 0`,
+                  sort: 'expiry_date,created'
+                });
+                let pendingQty = line.qty;
+                for (const lot of lots) {
+                  if (pendingQty <= 0) break;
+                  const curQty = Number(lot.qty_on_hand || 0);
+                  const deduct = Math.min(curQty, pendingQty);
+                  const newQty = Math.max(0, curQty - deduct);
+                  await pb.update('inventory_lots', lot.id, {
+                    qty_on_hand: newQty,
+                    status: newQty <= 0 ? 'depleted' : 'active'
+                  });
+                  pendingQty -= deduct;
+                }
+              } catch (err) {
+                console.warn('[applyInventoryMovement] Error en FEFO auto:', err);
+              }
+            }
+          }
+
+          // B. Estibas / Pallets (WMS)
+          if (prod.track_pallets) {
+            if (line.pallet_id) {
+              try {
+                const plt = await pb.get('inventory_pallets', line.pallet_id);
+                const curUnits = Number(plt.units_available || 0);
+                const newUnits = Math.max(0, curUnits - line.qty);
+                const uBox = Number(plt.units_per_box || 1);
+                const newBoxes = Math.ceil(newUnits / uBox);
+                await pb.update('inventory_pallets', plt.id, {
+                  units_available: newUnits,
+                  boxes_current: newBoxes,
+                  status: newUnits <= 0 ? 'depleted' : 'partial'
+                });
+              } catch (err) {
+                console.warn('[applyInventoryMovement] Error al descontar estiba asignada:', err);
+              }
+            } else if (mov.warehouse_id) {
+              // Asignación automática de estibas (priorizando parciales y luego más antiguas)
+              try {
+                const pallets = await pb.listAll('inventory_pallets', {
+                  filter: `product_id="${pb.escapeFilterValue(prod.id)}" && warehouse_id="${pb.escapeFilterValue(mov.warehouse_id)}" && status!="depleted" && units_available > 0`,
+                  sort: 'status,created'
+                });
+                let pendingQty = line.qty;
+                for (const plt of pallets) {
+                  if (pendingQty <= 0) break;
+                  const curUnits = Number(plt.units_available || 0);
+                  const deduct = Math.min(curUnits, pendingQty);
+                  const newUnits = Math.max(0, curUnits - deduct);
+                  const uBox = Number(plt.units_per_box || 1);
+                  const newBoxes = Math.ceil(newUnits / uBox);
+                  await pb.update('inventory_pallets', plt.id, {
+                    units_available: newUnits,
+                    boxes_current: newBoxes,
+                    status: newUnits <= 0 ? 'depleted' : 'partial'
+                  });
+                  pendingQty -= deduct;
+                }
+              } catch (err) {
+                console.warn('[applyInventoryMovement] Error en asignación auto estibas:', err);
+              }
+            }
+          }
+        }
+
+        // 2. ENTRADAS / DEVOLUCIONES / REINGRESOS
+        if (isIn) {
+          if (prod.track_lots && line.lot_id) {
+            try {
+              const lot = await pb.get('inventory_lots', line.lot_id);
+              const newQty = Number(lot.qty_on_hand || 0) + line.qty;
+              await pb.update('inventory_lots', lot.id, {
+                qty_on_hand: newQty,
+                status: 'active'
+              });
+            } catch (_) {}
+          }
+          if (prod.track_pallets && line.pallet_id) {
+            try {
+              const plt = await pb.get('inventory_pallets', line.pallet_id);
+              const newUnits = Number(plt.units_available || 0) + line.qty;
+              const uBox = Number(plt.units_per_box || 1);
+              const newBoxes = Math.ceil(newUnits / uBox);
+              const initialBoxes = Number(plt.boxes_initial || newBoxes);
+              await pb.update('inventory_pallets', plt.id, {
+                units_available: newUnits,
+                boxes_current: newBoxes,
+                status: newBoxes >= initialBoxes ? 'full' : 'partial'
+              });
+            } catch (_) {}
+          }
+        }
+      }
     }
 
     await pb.update('inventory_movements', movId, { status: 'applied' });
@@ -1244,7 +1368,7 @@ const API = {
     return mov;
   },
 
-  /** Anula un movimiento aplicado revirtiendo el stock */
+  /** Anula un movimiento aplicado revirtiendo stock, lotes y estibas */
   async voidInventoryMovement(movId, reason = '') {
     const mov = await pb.get('inventory_movements', movId);
     if (mov.status !== 'applied') throw new Error('Solo se pueden anular movimientos ya aplicados.');
@@ -1263,6 +1387,31 @@ const API = {
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, null, today, mov.branch_id || null);
       }
+
+      // Revertir lotes y estibas si era una salida que se está anulando
+      if (isOut) {
+        if (line.lot_id) {
+          try {
+            const lot = await pb.get('inventory_lots', line.lot_id);
+            const newQty = Number(lot.qty_on_hand || 0) + line.qty;
+            await pb.update('inventory_lots', lot.id, { qty_on_hand: newQty, status: 'active' });
+          } catch (_) {}
+        }
+        if (line.pallet_id) {
+          try {
+            const plt = await pb.get('inventory_pallets', line.pallet_id);
+            const newUnits = Number(plt.units_available || 0) + line.qty;
+            const uBox = Number(plt.units_per_box || 1);
+            const newBoxes = Math.ceil(newUnits / uBox);
+            const initialBoxes = Number(plt.boxes_initial || newBoxes);
+            await pb.update('inventory_pallets', plt.id, {
+              units_available: newUnits,
+              boxes_current: newBoxes,
+              status: newBoxes >= initialBoxes ? 'full' : 'partial'
+            });
+          } catch (_) {}
+        }
+      }
     }
 
     await pb.update('inventory_movements', movId, { status: 'voided' });
@@ -1270,6 +1419,26 @@ const API = {
       await this.voidTransaction(mov.tx_id, `Anulación automática por anulación de movimiento ${mov.number}`).catch(() => {});
     }
     await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type} - ${mov.number}${reason ? ` | Motivo: ${reason}` : ''}`);
+  },
+
+  /** Obtiene lotes activos y estibas físicas disponibles de un producto en una bodega para selección en ventas */
+  async getAvailableLotsAndPallets(productId: string, warehouseId: string) {
+    if (!productId || !warehouseId) return { lots: [], pallets: [] };
+    const safeProd = pb.escapeFilterValue(productId);
+    const safeWh = pb.escapeFilterValue(warehouseId);
+
+    const [lots, pallets] = await Promise.all([
+      pb.listAll('inventory_lots', {
+        filter: `product_id="${safeProd}" && warehouse_id="${safeWh}" && status="active" && qty_on_hand > 0`,
+        sort: 'expiry_date,created'
+      }).catch(() => []),
+      pb.listAll('inventory_pallets', {
+        filter: `product_id="${safeProd}" && warehouse_id="${safeWh}" && status!="depleted" && units_available > 0`,
+        sort: 'status,created'
+      }).catch(() => [])
+    ]);
+
+    return { lots, pallets };
   },
 
   /** Valida si revertir un movimiento dejaría existencias negativas en bodega */
@@ -2347,6 +2516,11 @@ const API = {
               qty: lineQty,
               unit_cost: rDec(avgCost),
               notes: line.description || `${docLabel} ${inv.number}`,
+              lot_id: line.lot_id || null,
+              lot_number: line.lot_number || '',
+              pallet_id: line.pallet_id || null,
+              pallet_code: line.pallet_code || '',
+              boxes_qty: Number(line.boxes_qty || 0),
             });
           }
         }

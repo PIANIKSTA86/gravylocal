@@ -3987,6 +3987,7 @@ async function _saveTomaFisica() {
     ]);
 
     const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+    let stock: any[] = [];
     
     if (type === 'general') {
       const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
@@ -3996,7 +3997,6 @@ async function _saveTomaFisica() {
       const catVal = getSelectVal('rep-gen-cat');
       const lineVal = getSelectVal('rep-gen-line');
 
-      let stock = [];
       if (isToday) {
         stock = await API.getInventoryStock();
       } else {
@@ -4091,6 +4091,7 @@ async function _saveTomaFisica() {
       _printHTMLReport('Reporte General de Inventarios', html);
 
     } else if (type === 'comparativo') {
+      stock = await API.getInventoryStock();
       const activeWarehouses = warehouses.filter((w: any) => w.active);
       const stockMap = new Map();
       for (const s of stock) {
@@ -4134,6 +4135,7 @@ async function _saveTomaFisica() {
       _printHTMLReport('Reporte Comparativo de Existencias por Bodega', html);
 
     } else if (type === 'conteo') {
+      stock = await API.getInventoryStock();
       const whId = getSelectVal('rep-conteo-wh');
       const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
       const onlyMovStock = (document.getElementById('rep-conteo-only-mov-stock') as HTMLInputElement).checked;
@@ -4224,6 +4226,7 @@ async function _saveTomaFisica() {
       _printHTMLReport('Lista de Precios Vigente', html);
 
     } else if (type === 'alertas') {
+      stock = await API.getInventoryStock();
       const whId = getSelectVal('rep-alert-wh');
       const alertType = getSelectVal('rep-alert-type'); // bajo_min, sobre_max or empty
       
@@ -4383,6 +4386,7 @@ async function _saveTomaFisica() {
     ]);
 
     const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+    let stock: any[] = [];
 
     if (type === 'general') {
       const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
@@ -4392,7 +4396,6 @@ async function _saveTomaFisica() {
       const catVal = getSelectVal('rep-gen-cat');
       const lineVal = getSelectVal('rep-gen-line');
 
-      let stock = [];
       if (isToday) {
         stock = await API.getInventoryStock();
       } else {
@@ -4520,6 +4523,7 @@ async function _saveTomaFisica() {
       showToast('Reporte exportado a Excel.', 'success');
 
     } else if (type === 'comparativo') {
+      stock = await API.getInventoryStock();
       const activeWarehouses = warehouses.filter((w: any) => w.active);
       const stockMap = new Map();
       for (const s of stock) {
@@ -4554,6 +4558,7 @@ async function _saveTomaFisica() {
       showToast('Comparativo exportado a Excel.', 'success');
 
     } else if (type === 'conteo') {
+      stock = await API.getInventoryStock();
       const whId = getSelectVal('rep-conteo-wh');
       const showStock = (document.getElementById('rep-conteo-show-stock') as HTMLInputElement).checked;
       const onlyMovStock = (document.getElementById('rep-conteo-only-mov-stock') as HTMLInputElement).checked;
@@ -4622,6 +4627,7 @@ async function _saveTomaFisica() {
       showToast('Lista de precios exportada a Excel.', 'success');
 
     } else if (type === 'alertas') {
+      stock = await API.getInventoryStock();
       const whId = getSelectVal('rep-alert-wh');
       const alertType = getSelectVal('rep-alert-type'); // bajo_min, sobre_max or empty
       
@@ -4746,7 +4752,12 @@ async function _saveTomaFisica() {
 
 function _printHTMLReport(title: string, htmlContent: string) {
   const w = window.open('', '_blank', 'width=950,height=750');
-  if (!w) return;
+  if (!w) {
+    if (typeof showToast === 'function') {
+      showToast('El navegador bloqueó la ventana emergente de impresión. Habilite popups para imprimir.', 'warning');
+    }
+    return;
+  }
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
     <style>
       body { font-family: 'Segoe UI', Arial, sans-serif; padding: 25px; font-size: 11.5px; color: #333; }

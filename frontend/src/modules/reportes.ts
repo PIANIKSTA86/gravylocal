@@ -265,208 +265,1559 @@ async function renderReportes(c) {
   $('#btn-report-estado-cuenta-tercero')?.addEventListener('click', () => launchReportModal('Estado de Cuenta por Tercero', () => renderAccountStatementReport()));
 
   // ── Listeners de Reportes de Inventario ──
-  $('#btn-report-inv-general')?.addEventListener('click', () => openInvGeneralModal());
-  $('#btn-report-inv-comparativo')?.addEventListener('click', () => openInvComparativoModal());
-  $('#btn-report-inv-conteo')?.addEventListener('click', () => openInvConteoModal());
-  $('#btn-report-inv-precios')?.addEventListener('click', () => openInvPreciosModal());
-  $('#btn-report-inv-alertas')?.addEventListener('click', () => openInvAlertasModal());
-  $('#btn-report-inv-rotacion')?.addEventListener('click', () => {
-    if (typeof (window as any)._openRotacionModal === 'function') {
-      (window as any)._openRotacionModal();
-    }
-  });
+  $('#btn-report-inv-general')?.addEventListener('click', () => launchReportModal('Reporte General de Inventarios', () => renderInventoryGeneralReport()));
+  $('#btn-report-inv-comparativo')?.addEventListener('click', () => launchReportModal('Comparativo de Existencias entre Bodegas', () => renderInventoryComparativoReport()));
+  $('#btn-report-inv-conteo')?.addEventListener('click', () => launchReportModal('Listado para Conteo Físico', () => renderInventoryConteoReport()));
+  $('#btn-report-inv-precios')?.addEventListener('click', () => launchReportModal('Lista de Precios Vigentes', () => renderInventoryPreciosReport()));
+  $('#btn-report-inv-alertas')?.addEventListener('click', () => launchReportModal('Alertas de Stock Mínimo y Máximo', () => renderInventoryAlertasReport()));
+  $('#btn-report-inv-rotacion')?.addEventListener('click', () => launchReportModal('Análisis de Rotación de Inventarios', () => renderInventoryRotacionReport()));
 }
 
-// ── Modales de Configuración para Reportes de Inventarios ───────────────
-async function openInvGeneralModal() {
-  openModal(
-    '<i class="fas fa-clipboard-list mr-2" style="color:#1A4B8C"></i>Reporte General de Inventarios',
-    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando filtros...</div>',
-    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
-    true
-  );
+// ── Vistas Interactivas para Reportes de Inventarios ───────────────────────
+
+async function renderInventoryGeneralReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha de Corte</label>
+            <input type="date" id="rep-gen-date" class="form-input text-xs w-full" value="${todayStr()}">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega</label>
+            <select id="rep-gen-wh" class="form-input text-xs w-full">
+              <option value="">— Todas las bodegas (Consolidado) —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Tipo de Costo</label>
+            <select id="rep-gen-cost" class="form-input text-xs w-full">
+              <option value="promedio">Costo Promedio Kardex (CPP)</option>
+              <option value="ultimo">Último Costo de Compra</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Categoría</label>
+            <select id="rep-gen-cat" class="form-input text-xs w-full">
+              <option value="">— Todas las categorías —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Línea</label>
+            <select id="rep-gen-line" class="form-input text-xs w-full">
+              <option value="">— Todas las líneas —</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-4 pt-3 border-t border-gray-200">
+          <div class="flex items-center gap-2 flex-1 max-w-xs">
+            <i class="fas fa-search text-gray-400 text-xs"></i>
+            <input type="text" id="rep-gen-filter" class="form-input text-xs w-full" placeholder="Buscar por código, nombre...">
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-gen-inv" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-arrows-rotate"></i> Generar Reporte
+            </button>
+            <button type="button" id="btn-exp-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Exportar Excel
+            </button>
+            <button type="button" id="btn-print-inv" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="rep-gen-results">
+        <div class="p-12 text-center text-gray-400">
+          <i class="fas fa-boxes-stacked text-3xl mb-2 text-gray-300"></i>
+          <p class="text-xs">Selecciona los criterios y haz clic en <strong>Generar Reporte</strong>.</p>
+        </div>
+      </div>
+    </div>
+  `;
 
   try {
     const [products, warehouses] = await Promise.all([
       API.getProducts({ activeOnly: false }),
       API.getWarehouses(false)
     ]);
+    const whSelect = $('#rep-gen-wh') as HTMLSelectElement;
+    if (whSelect) {
+      warehouses.forEach((w: any) => {
+        const opt = document.createElement('option');
+        opt.value = w.id;
+        opt.textContent = w.name;
+        whSelect.appendChild(opt);
+      });
+    }
     const categorias = [...new Set(products.map((p: any) => p.categoria).filter(Boolean))].sort() as string[];
+    const catSelect = $('#rep-gen-cat') as HTMLSelectElement;
+    if (catSelect) {
+      categorias.forEach((c: string) => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        catSelect.appendChild(opt);
+      });
+    }
     const lineas = [...new Set(products.map((p: any) => p.linea).filter(Boolean))].sort() as string[];
+    const lineSelect = $('#rep-gen-line') as HTMLSelectElement;
+    if (lineSelect) {
+      lineas.forEach((l: string) => {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l;
+        lineSelect.appendChild(opt);
+      });
+    }
+  } catch (err: any) {
+    console.warn("Error cargando filtros de inventario:", err);
+  }
 
-    const modalBody = $('#modal-body');
-    if (!modalBody) return;
+  let cachedReportRows: any[] = [];
+  let filteredRows: any[] = [];
 
-    modalBody.innerHTML = `
-      <div class="space-y-4 text-left p-2">
-        <p class="text-xs text-gray-500">Genera el listado consolidado de productos con existencias y costos a una fecha determinada.</p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha de Corte <span class="text-blue-600">(Opcional)</span></label>
-            <input type="date" id="rep-gen-date" class="form-input text-xs w-full" value="${todayStr()}">
+  const executeGeneralReport = async () => {
+    const resultsContainer = $('#rep-gen-results');
+    const expBtn = $('#btn-exp-inv') as HTMLButtonElement;
+    const printBtn = $('#btn-print-inv') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-inv') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Generando...';
+    }
+    resultsContainer.innerHTML = `
+      <div class="p-12 text-center text-gray-500">
+        <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
+        <p class="text-xs">Calculando existencias y valorización contable...</p>
+      </div>
+    `;
+
+    try {
+      const asOfDateVal = (getInputVal('rep-gen-date') || todayStr()).slice(0, 10);
+      const isToday = (asOfDateVal === todayStr());
+      const whId = getSelectVal('rep-gen-wh');
+      const costType = getSelectVal('rep-gen-cost');
+      const catVal = getSelectVal('rep-gen-cat');
+      const lineVal = getSelectVal('rep-gen-line');
+
+      const [products, warehouses, stock] = await Promise.all([
+        pb.listAll('products', { filter: 'active=true', sort: 'code' }),
+        API.getWarehouses(false),
+        isToday ? API.getInventoryStock() : API.getInventoryStockAsOf({ asOfDate: asOfDateVal })
+      ]);
+
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) {
+          stockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+        }
+        const entry = stockByProd.get(pid);
+        entry.qty += Number(s.qty_on_hand || 0);
+        if (Number(s.avg_cost || 0) > 0) {
+          entry.costSum += Number(s.avg_cost);
+          entry.costCount++;
+        }
+      }
+
+      let filteredProducts = products;
+      if (catVal) filteredProducts = filteredProducts.filter((p: any) => p.categoria === catVal);
+      if (lineVal) filteredProducts = filteredProducts.filter((p: any) => p.linea === lineVal);
+
+      cachedReportRows = filteredProducts.map((p: any) => {
+        const st = stockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+        let unitCost = 0;
+        if (costType === 'promedio') {
+          unitCost = st.costCount > 0 ? (st.costSum / st.costCount) : Number(p.cost_price || 0);
+        } else {
+          unitCost = Number(p.cost_price || 0);
+        }
+        unitCost = Math.round(unitCost * 100) / 100;
+        const totalVal = Math.round((st.qty * unitCost) * 100) / 100;
+
+        return {
+          id: p.id,
+          code: p.code || '',
+          name: p.name || '',
+          categoria: p.categoria || '—',
+          linea: p.linea || '—',
+          unit: p.unit || '—',
+          qty: st.qty,
+          unitCost,
+          totalVal
+        };
+      });
+
+      renderReportTable();
+      if (expBtn) expBtn.disabled = !cachedReportRows.length;
+      if (printBtn) printBtn.disabled = !cachedReportRows.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Generar Reporte';
+      }
+    }
+  };
+
+  const renderReportTable = () => {
+    const resultsContainer = $('#rep-gen-results');
+    if (!resultsContainer) return;
+
+    const term = (getInputVal('rep-gen-filter') || '').toLowerCase().trim();
+    filteredRows = term
+      ? cachedReportRows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term))
+      : cachedReportRows;
+
+    const totalQty = filteredRows.reduce((sum, r) => sum + r.qty, 0);
+    const totalVal = filteredRows.reduce((sum, r) => sum + r.totalVal, 0);
+
+    resultsContainer.innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Total Referencias</div>
+          <div class="text-xl font-extrabold text-blue-950 mt-0.5">${fmtN(filteredRows.length)}</div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Unidades en Stock</div>
+          <div class="text-xl font-extrabold text-emerald-950 mt-0.5">${fmtN(totalQty)}</div>
+        </div>
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-indigo-700 uppercase tracking-wider">Valor Total Inventario</div>
+          <div class="text-xl font-extrabold text-indigo-950 mt-0.5">${fmt(totalVal)}</div>
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[500px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+            <tr>
+              <th class="p-2.5 text-left">Código</th>
+              <th class="p-2.5 text-left">Producto</th>
+              <th class="p-2.5 text-left">Categoría</th>
+              <th class="p-2.5 text-left">Línea</th>
+              <th class="p-2.5 text-left">Unidad</th>
+              <th class="p-2.5 text-right">Existencia</th>
+              <th class="p-2.5 text-right">Costo Unitario</th>
+              <th class="p-2.5 text-right">Valor Estimado</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${filteredRows.length ? filteredRows.map(r => `
+              <tr class="hover:bg-gray-50">
+                <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(r.code)}</td>
+                <td class="p-2.5 font-medium text-gray-800">${esc(r.name)}</td>
+                <td class="p-2.5 text-gray-500">${esc(r.categoria)}</td>
+                <td class="p-2.5 text-gray-500">${esc(r.linea)}</td>
+                <td class="p-2.5 text-gray-500">${esc(r.unit)}</td>
+                <td class="p-2.5 text-right font-semibold ${r.qty <= 0 ? 'text-red-500' : 'text-gray-800'}">${fmtN(r.qty)}</td>
+                <td class="p-2.5 text-right text-gray-700">${fmt(r.unitCost)}</td>
+                <td class="p-2.5 text-right font-bold text-gray-900">${fmt(r.totalVal)}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="8" class="p-8 text-center text-gray-400">No se encontraron productos bajo estos criterios.</td></tr>
+            `}
+          </tbody>
+          <tfoot class="bg-gray-100 font-bold sticky bottom-0 border-t border-gray-300">
+            <tr>
+              <td colspan="5" class="p-2.5 text-gray-900">TOTALES CONSOLIDADOS (${filteredRows.length} ítems)</td>
+              <td class="p-2.5 text-right text-emerald-800">${fmtN(totalQty)}</td>
+              <td class="p-2.5 text-right"></td>
+              <td class="p-2.5 text-right text-indigo-900 font-extrabold text-sm">${fmt(totalVal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+  };
+
+  $('#btn-gen-inv')?.addEventListener('click', executeGeneralReport);
+  $('#rep-gen-filter')?.addEventListener('input', () => renderReportTable());
+
+  $('#btn-exp-inv')?.addEventListener('click', () => {
+    if (!cachedReportRows.length) return;
+    const exportData = (filteredRows.length ? filteredRows : cachedReportRows).map(r => ({
+      codigo: r.code,
+      producto: r.name,
+      categoria: r.categoria,
+      linea: r.linea,
+      unidad: r.unit,
+      existencia: r.qty,
+      costo_unitario: r.unitCost,
+      valor_total: r.totalVal
+    }));
+    exportToExcel(exportData, [
+      { key: 'codigo', label: 'Código' },
+      { key: 'producto', label: 'Producto' },
+      { key: 'categoria', label: 'Categoría' },
+      { key: 'linea', label: 'Línea' },
+      { key: 'unidad', label: 'Unidad' },
+      { key: 'existencia', label: 'Existencia' },
+      { key: 'costo_unitario', label: 'Costo Unitario' },
+      { key: 'valor_total', label: 'Valor Estimado' },
+    ], `Reporte_General_Inventarios_${todayStr()}`);
+  });
+
+  $('#btn-print-inv')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('general');
+    }
+  });
+
+  setTimeout(() => executeGeneralReport(), 50);
+}
+
+async function renderInventoryComparativoReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-search text-gray-400 text-xs"></i>
+              <input type="text" id="rep-comp-search" class="form-input text-xs w-64" placeholder="Buscar por código o producto...">
+            </div>
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+              <input type="checkbox" id="rep-comp-hide-zero" class="w-4 h-4 text-blue-600 rounded" checked>
+              <span>Ocultar referencias con stock 0 total</span>
+            </label>
           </div>
-          <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Costo a Reportar</label>
-            <select id="rep-gen-cost" class="form-input text-xs w-full">
-              <option value="promedio">Costo Promedio (Kardex a Fecha)</option>
-              <option value="ultimo">Último Costo del Producto</option>
-            </select>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-gen-comp" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-arrows-rotate"></i> Actualizar
+            </button>
+            <button type="button" id="btn-exp-comp" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Exportar Excel
+            </button>
+            <button type="button" id="btn-print-comp" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
           </div>
         </div>
-        <div>
-          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
-          <select id="rep-gen-wh" class="form-input text-xs w-full">
-            <option value="">Todas las bodegas (Consolidado)</option>
-            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
-          </select>
+      </div>
+
+      <div id="rep-comp-results">
+        <div class="p-12 text-center text-gray-500">
+          <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
+          <p class="text-xs">Cargando matriz comparativa entre bodegas...</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      </div>
+    </div>
+  `;
+
+  let cachedCompProducts: any[] = [];
+  let cachedWarehouses: any[] = [];
+  let cachedStockMap = new Map();
+
+  const executeComparativo = async () => {
+    const resultsContainer = $('#rep-comp-results');
+    const expBtn = $('#btn-exp-comp') as HTMLButtonElement;
+    const printBtn = $('#btn-print-comp') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-comp') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Cargando...';
+    }
+
+    try {
+      const [products, warehouses, stock] = await Promise.all([
+        pb.listAll('products', { filter: 'active=true && type="BIEN"', sort: 'code' }),
+        API.getWarehouses(false),
+        API.getInventoryStock()
+      ]);
+
+      cachedWarehouses = warehouses.filter((w: any) => w.active);
+      cachedStockMap = new Map();
+      for (const s of stock) {
+        cachedStockMap.set(`${s.product_id}_${s.warehouse_id}`, Number(s.qty_on_hand || 0));
+      }
+
+      cachedCompProducts = products.map((p: any) => {
+        let total = 0;
+        const whQuantities: Record<string, number> = {};
+        cachedWarehouses.forEach((w: any) => {
+          const qty = cachedStockMap.get(`${p.id}_${w.id}`) || 0;
+          whQuantities[w.id] = qty;
+          total += qty;
+        });
+        return {
+          id: p.id,
+          code: p.code || '',
+          name: p.name || '',
+          unit: p.unit || '—',
+          whQuantities,
+          total
+        };
+      });
+
+      renderCompTable();
+      if (expBtn) expBtn.disabled = !cachedCompProducts.length;
+      if (printBtn) printBtn.disabled = !cachedCompProducts.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Actualizar';
+      }
+    }
+  };
+
+  const renderCompTable = () => {
+    const resultsContainer = $('#rep-comp-results');
+    if (!resultsContainer) return;
+
+    const term = (getInputVal('rep-comp-search') || '').toLowerCase().trim();
+    const hideZero = ($('#rep-comp-hide-zero') as HTMLInputElement)?.checked ?? true;
+
+    let list = cachedCompProducts;
+    if (hideZero) {
+      list = list.filter(p => p.total > 0);
+    }
+    if (term) {
+      list = list.filter(p => p.code.toLowerCase().includes(term) || p.name.toLowerCase().includes(term));
+    }
+
+    const whTotals: Record<string, number> = {};
+    cachedWarehouses.forEach(w => { whTotals[w.id] = 0; });
+    let grandTotal = 0;
+
+    list.forEach(p => {
+      cachedWarehouses.forEach(w => {
+        whTotals[w.id] += (p.whQuantities[w.id] || 0);
+      });
+      grandTotal += p.total;
+    });
+
+    resultsContainer.innerHTML = `
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[520px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+            <tr>
+              <th class="p-2.5 text-left">Código</th>
+              <th class="p-2.5 text-left min-w-[200px]">Producto</th>
+              <th class="p-2.5 text-left">Unidad</th>
+              ${cachedWarehouses.map(w => `<th class="p-2.5 text-right font-bold text-gray-800">${esc(w.name)}</th>`).join('')}
+              <th class="p-2.5 text-right font-extrabold text-blue-900 bg-blue-50/50">Total General</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${list.length ? list.map(p => `
+              <tr class="hover:bg-gray-50">
+                <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(p.code)}</td>
+                <td class="p-2.5 font-medium text-gray-800">${esc(p.name)}</td>
+                <td class="p-2.5 text-gray-500">${esc(p.unit)}</td>
+                ${cachedWarehouses.map(w => {
+                  const qty = p.whQuantities[w.id] || 0;
+                  return `<td class="p-2.5 text-right ${qty > 0 ? 'font-semibold text-gray-800' : 'text-gray-300'}">${qty > 0 ? fmtN(qty) : '—'}</td>`;
+                }).join('')}
+                <td class="p-2.5 text-right font-bold text-blue-900 bg-blue-50/30">${fmtN(p.total)}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="${3 + cachedWarehouses.length + 1}" class="p-8 text-center text-gray-400">No hay referencias que coincidan con la búsqueda.</td></tr>
+            `}
+          </tbody>
+          <tfoot class="bg-gray-100 font-bold sticky bottom-0 border-t border-gray-300">
+            <tr>
+              <td colspan="3" class="p-2.5 text-gray-900">TOTALES POR BODEGA (${list.length} referencias)</td>
+              ${cachedWarehouses.map(w => `<td class="p-2.5 text-right font-extrabold text-emerald-800">${fmtN(whTotals[w.id] || 0)}</td>`).join('')}
+              <td class="p-2.5 text-right font-black text-blue-950 text-sm bg-blue-100/50">${fmtN(grandTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+  };
+
+  $('#btn-gen-comp')?.addEventListener('click', executeComparativo);
+  $('#rep-comp-search')?.addEventListener('input', () => renderCompTable());
+  $('#rep-comp-hide-zero')?.addEventListener('change', () => renderCompTable());
+
+  $('#btn-exp-comp')?.addEventListener('click', () => {
+    if (!cachedCompProducts.length) return;
+    const hideZero = ($('#rep-comp-hide-zero') as HTMLInputElement)?.checked ?? true;
+    const term = (getInputVal('rep-comp-search') || '').toLowerCase().trim();
+    let exportList = cachedCompProducts;
+    if (hideZero) exportList = exportList.filter(p => p.total > 0);
+    if (term) exportList = exportList.filter(p => p.code.toLowerCase().includes(term) || p.name.toLowerCase().includes(term));
+
+    const exportRows = exportList.map(p => {
+      const r: any = {
+        codigo: p.code,
+        producto: p.name,
+        unidad: p.unit,
+      };
+      cachedWarehouses.forEach(w => {
+        r[w.id] = p.whQuantities[w.id] || 0;
+      });
+      r.total = p.total;
+      return r;
+    });
+
+    const headers = [
+      { key: 'codigo', label: 'Código' },
+      { key: 'producto', label: 'Producto' },
+      { key: 'unidad', label: 'Unidad' },
+      ...cachedWarehouses.map(w => ({ key: w.id, label: w.name })),
+      { key: 'total', label: 'Total Existencia' }
+    ];
+
+    exportToExcel(exportRows, headers, `Comparativo_Existencias_${todayStr()}`);
+  });
+
+  $('#btn-print-comp')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('comparativo');
+    }
+  });
+
+  setTimeout(() => executeComparativo(), 50);
+}
+
+async function renderInventoryConteoReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Categoría (Opcional)</label>
-            <select id="rep-gen-cat" class="form-input text-xs w-full">
-              <option value="">Todas las categorías</option>
-              ${categorias.map((cat: string) => `<option value="${esc(cat)}">${esc(cat)}</option>`).join('')}
-            </select>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega a Auditar <span class="text-red-500">*</span></label>
+            <select id="rep-conteo-wh" class="form-input text-xs w-full"></select>
           </div>
-          <div>
-            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Línea (Opcional)</label>
-            <select id="rep-gen-line" class="form-input text-xs w-full">
-              <option value="">Todas las líneas</option>
-              ${lineas.map((lin: string) => `<option value="${esc(lin)}">${esc(lin)}</option>`).join('')}
-            </select>
+          <div class="space-y-1">
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+              <input type="checkbox" id="rep-conteo-show-stock" class="w-4 h-4 text-blue-600 rounded">
+              <span>Mostrar existencias del sistema (No ciego)</span>
+            </label>
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+              <input type="checkbox" id="rep-conteo-only-mov" class="w-4 h-4 text-blue-600 rounded" checked>
+              <span>Solo referencias con movimiento o saldo</span>
+            </label>
+          </div>
+          <div class="flex items-center gap-2">
+            <i class="fas fa-search text-gray-400 text-xs"></i>
+            <input type="text" id="rep-conteo-search" class="form-input text-xs w-full" placeholder="Filtrar por código, nombre...">
+          </div>
+          <div class="flex items-center gap-2 justify-end">
+            <button type="button" id="btn-gen-conteo" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-clipboard-check"></i> Generar Planilla
+            </button>
+            <button type="button" id="btn-exp-conteo" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Excel
+            </button>
+            <button type="button" id="btn-print-conteo" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
           </div>
         </div>
-        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
-          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('general')"><i class="fas fa-print mr-1.5"></i>Imprimir Reporte</button>
-          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('general')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+      </div>
+
+      <div id="rep-conteo-results">
+        <div class="p-12 text-center text-gray-400">
+          <i class="fas fa-clipboard-list text-3xl mb-2 text-gray-300"></i>
+          <p class="text-xs">Selecciona la bodega a auditar y presiona <strong>Generar Planilla</strong>.</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  let cachedWarehouses: any[] = [];
+  try {
+    cachedWarehouses = await API.getWarehouses(false);
+    const whSel = $('#rep-conteo-wh') as HTMLSelectElement;
+    if (whSel) {
+      cachedWarehouses.forEach((w: any) => {
+        const opt = document.createElement('option');
+        opt.value = w.id;
+        opt.textContent = w.name;
+        whSel.appendChild(opt);
+      });
+    }
+  } catch (_) {}
+
+  let cachedConteoRows: any[] = [];
+
+  const executeConteo = async () => {
+    const resultsContainer = $('#rep-conteo-results');
+    const expBtn = $('#btn-exp-conteo') as HTMLButtonElement;
+    const printBtn = $('#btn-print-conteo') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-conteo') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+    const whId = getSelectVal('rep-conteo-wh');
+    if (!whId) return showToast('Selecciona una bodega para generar la planilla de conteo.', 'warning');
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Generando...';
+    }
+
+    try {
+      const [products, stock] = await Promise.all([
+        pb.listAll('products', { filter: 'active=true && type="BIEN"', sort: 'code' }),
+        API.getInventoryStock()
+      ]);
+
+      const filteredStock = stock.filter((s: any) => s.warehouse_id === whId);
+      const stockMap = new Map(filteredStock.map((s: any) => [s.product_id, Number(s.qty_on_hand || 0)]));
+      const onlyMov = ($('#rep-conteo-only-mov') as HTMLInputElement)?.checked ?? true;
+
+      let list = products;
+      if (onlyMov) {
+        list = list.filter((p: any) => stockMap.has(p.id));
+      }
+
+      cachedConteoRows = list.map((p: any) => ({
+        id: p.id,
+        code: p.code || '',
+        name: p.name || '',
+        unit: p.unit || '—',
+        sysQty: stockMap.get(p.id) || 0
+      }));
+
+      renderConteoTable();
+      if (expBtn) expBtn.disabled = !cachedConteoRows.length;
+      if (printBtn) printBtn.disabled = !cachedConteoRows.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-clipboard-check"></i> Generar Planilla';
+      }
+    }
+  };
+
+  const renderConteoTable = () => {
+    const resultsContainer = $('#rep-conteo-results');
+    if (!resultsContainer) return;
+
+    const showStock = ($('#rep-conteo-show-stock') as HTMLInputElement)?.checked ?? false;
+    const term = (getInputVal('rep-conteo-search') || '').toLowerCase().trim();
+    const list = term
+      ? cachedConteoRows.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term))
+      : cachedConteoRows;
+
+    const whId = getSelectVal('rep-conteo-wh');
+    const whObj = cachedWarehouses.find(w => w.id === whId);
+    const whName = whObj ? whObj.name : 'Bodega';
+
+    resultsContainer.innerHTML = `
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm text-left">
+        <div class="flex items-center justify-between pb-3 mb-3 border-b border-gray-200">
+          <div>
+            <h4 class="font-bold text-gray-800 text-sm">Planilla para Toma Física — ${esc(whName)}</h4>
+            <p class="text-xs text-gray-500">Modalidad: ${showStock ? 'Inventario Verificado (Con saldo en sistema)' : 'Inventario Ciego (Auditoría rigurosa)'} | Fecha: ${todayStr()}</p>
+          </div>
+          <span class="text-xs px-2.5 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg font-bold">${list.length} referencias</span>
+        </div>
+
+        <div class="overflow-x-auto max-h-[480px] overflow-y-auto">
+          <table class="w-full text-xs data-table">
+            <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+              <tr>
+                <th class="p-2.5 text-left w-28">Código</th>
+                <th class="p-2.5 text-left">Producto / Referencia</th>
+                <th class="p-2.5 text-left w-20">Unidad</th>
+                ${showStock ? '<th class="p-2.5 text-right w-28">Stock Sistema</th>' : ''}
+                <th class="p-2.5 text-center w-36 bg-amber-50/50">Conteo Físico</th>
+                <th class="p-2.5 text-left w-48">Observaciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${list.length ? list.map(r => `
+                <tr class="hover:bg-gray-50">
+                  <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(r.code)}</td>
+                  <td class="p-2.5 font-medium text-gray-800">${esc(r.name)}</td>
+                  <td class="p-2.5 text-gray-500">${esc(r.unit)}</td>
+                  ${showStock ? `<td class="p-2.5 text-right font-bold text-gray-700">${fmtN(r.sysQty)}</td>` : ''}
+                  <td class="p-2.5 text-center border-b border-gray-300" style="min-height:30px">
+                    <span class="inline-block w-24 border-b border-dashed border-gray-400"></span>
+                  </td>
+                  <td class="p-2.5 border-b border-gray-300">
+                    <span class="inline-block w-full border-b border-dashed border-gray-300"></span>
+                  </td>
+                </tr>
+              `).join('') : `
+                <tr><td colspan="${showStock ? 6 : 5}" class="p-8 text-center text-gray-400">No hay referencias en la bodega elegida.</td></tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid grid-cols-2 gap-8 pt-8 mt-6 border-t border-gray-200">
+          <div class="text-center">
+            <div class="border-t border-gray-400 w-48 mx-auto mb-1"></div>
+            <p class="text-xs font-bold text-gray-700">Firma Responsable Conteo</p>
+            <p class="text-[10px] text-gray-400">C.C. _______________________</p>
+          </div>
+          <div class="text-center">
+            <div class="border-t border-gray-400 w-48 mx-auto mb-1"></div>
+            <p class="text-xs font-bold text-gray-700">Firma Revisor / Auditor</p>
+            <p class="text-[10px] text-gray-400">C.C. _______________________</p>
+          </div>
         </div>
       </div>
     `;
-  } catch (err: any) {
-    const modalBody = $('#modal-body');
-    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
-  }
+  };
+
+  $('#btn-gen-conteo')?.addEventListener('click', executeConteo);
+  $('#rep-conteo-search')?.addEventListener('input', () => renderConteoTable());
+  $('#rep-conteo-show-stock')?.addEventListener('change', () => renderConteoTable());
+
+  $('#btn-exp-conteo')?.addEventListener('click', () => {
+    if (!cachedConteoRows.length) return;
+    const showStock = ($('#rep-conteo-show-stock') as HTMLInputElement)?.checked ?? false;
+    const whId = getSelectVal('rep-conteo-wh');
+    const whObj = cachedWarehouses.find(w => w.id === whId);
+    const whName = whObj ? whObj.name : 'Bodega';
+
+    const exportRows = cachedConteoRows.map(r => {
+      const row: any = {
+        codigo: r.code,
+        producto: r.name,
+        unidad: r.unit
+      };
+      if (showStock) row.stock_sistema = r.sysQty;
+      row.conteo_fisico = '';
+      row.observacion = '';
+      return row;
+    });
+
+    const headers = [
+      { key: 'codigo', label: 'Código' },
+      { key: 'producto', label: 'Producto' },
+      { key: 'unidad', label: 'Unidad' },
+    ];
+    if (showStock) headers.push({ key: 'stock_sistema', label: 'Stock Sistema' });
+    headers.push({ key: 'conteo_fisico', label: 'Conteo Físico' });
+    headers.push({ key: 'observacion', label: 'Observación' });
+
+    exportToExcel(exportRows, headers, `Planilla_Conteo_${whName}_${todayStr()}`);
+  });
+
+  $('#btn-print-conteo')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('conteo');
+    }
+  });
+
+  setTimeout(() => executeConteo(), 50);
 }
 
-function openInvComparativoModal() {
-  openModal(
-    '<i class="fas fa-columns mr-2" style="color:#059669"></i>Comparativo de Existencias entre Bodegas',
-    `
-    <div class="space-y-4 text-left p-2">
-      <p class="text-sm text-gray-600">Genera una matriz comparativa cruzada con las existencias de todos los productos en cada una de las bodegas activas del sistema.</p>
-      <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
-        <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('comparativo')"><i class="fas fa-print mr-1.5"></i>Imprimir Comparativo</button>
-        <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('comparativo')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+async function renderInventoryPreciosReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-search text-gray-400 text-xs"></i>
+              <input type="text" id="rep-prec-search" class="form-input text-xs w-64" placeholder="Buscar por código, nombre...">
+            </div>
+            <select id="rep-prec-cat" class="form-input text-xs w-48">
+              <option value="">— Todas las categorías —</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-gen-prec" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-arrows-rotate"></i> Actualizar
+            </button>
+            <button type="button" id="btn-exp-prec" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Exportar Excel
+            </button>
+            <button type="button" id="btn-print-prec" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="rep-prec-results">
+        <div class="p-12 text-center text-gray-500">
+          <i class="fas fa-spinner fa-spin text-3xl text-purple-600 mb-3"></i>
+          <p class="text-xs">Cargando lista de precios comerciales...</p>
+        </div>
       </div>
     </div>
-    `,
-    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
-    true
-  );
+  `;
+
+  let cachedProducts: any[] = [];
+
+  const executePrecios = async () => {
+    const resultsContainer = $('#rep-prec-results');
+    const expBtn = $('#btn-exp-prec') as HTMLButtonElement;
+    const printBtn = $('#btn-print-prec') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-prec') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Cargando...';
+    }
+
+    try {
+      cachedProducts = await pb.listAll('products', { filter: 'active=true', sort: 'code' });
+
+      const categorias = [...new Set(cachedProducts.map((p: any) => p.categoria).filter(Boolean))].sort() as string[];
+      const catSel = $('#rep-prec-cat') as HTMLSelectElement;
+      if (catSel && catSel.options.length <= 1) {
+        categorias.forEach((c: string) => {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = c;
+          catSel.appendChild(opt);
+        });
+      }
+
+      renderPreciosTable();
+      if (expBtn) expBtn.disabled = !cachedProducts.length;
+      if (printBtn) printBtn.disabled = !cachedProducts.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Actualizar';
+      }
+    }
+  };
+
+  const renderPreciosTable = () => {
+    const resultsContainer = $('#rep-prec-results');
+    if (!resultsContainer) return;
+
+    const term = (getInputVal('rep-prec-search') || '').toLowerCase().trim();
+    const cat = getSelectVal('rep-prec-cat');
+
+    let list = cachedProducts;
+    if (cat) list = list.filter((p: any) => p.categoria === cat);
+    if (term) list = list.filter((p: any) => (p.code || '').toLowerCase().includes(term) || (p.name || '').toLowerCase().includes(term));
+
+    resultsContainer.innerHTML = `
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[520px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+            <tr>
+              <th class="p-2.5 text-left">Código</th>
+              <th class="p-2.5 text-left min-w-[200px]">Producto / Servicio</th>
+              <th class="p-2.5 text-left">Categoría</th>
+              <th class="p-2.5 text-left">Unidad</th>
+              <th class="p-2.5 text-right font-bold text-gray-800">Precio Base (1)</th>
+              <th class="p-2.5 text-right font-bold text-gray-800">Precio 2</th>
+              <th class="p-2.5 text-right font-bold text-gray-800">Precio 3</th>
+              <th class="p-2.5 text-right">Tarifa IVA</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${list.length ? list.map((p: any) => `
+              <tr class="hover:bg-gray-50">
+                <td class="p-2.5 font-mono text-purple-800 font-semibold">${esc(p.code)}</td>
+                <td class="p-2.5 font-medium text-gray-800">${esc(p.name)}</td>
+                <td class="p-2.5 text-gray-500">${esc(p.categoria || '—')}</td>
+                <td class="p-2.5 text-gray-500">${esc(p.unit || '—')}</td>
+                <td class="p-2.5 text-right font-bold text-gray-900">${fmt(p.base_price || 0)}</td>
+                <td class="p-2.5 text-right text-gray-700">${p.precio_venta_2 ? fmt(p.precio_venta_2) : '—'}</td>
+                <td class="p-2.5 text-right text-gray-700">${p.precio_venta_3 ? fmt(p.precio_venta_3) : '—'}</td>
+                <td class="p-2.5 text-right font-semibold text-gray-600">${p.iva_rate ? p.iva_rate + '%' : 'Exento'}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="8" class="p-8 text-center text-gray-400">No se encontraron productos en la lista de precios.</td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+
+  $('#btn-gen-prec')?.addEventListener('click', executePrecios);
+  $('#rep-prec-search')?.addEventListener('input', () => renderPreciosTable());
+  $('#rep-prec-cat')?.addEventListener('change', () => renderPreciosTable());
+
+  $('#btn-exp-prec')?.addEventListener('click', () => {
+    if (!cachedProducts.length) return;
+    const cat = getSelectVal('rep-prec-cat');
+    const term = (getInputVal('rep-prec-search') || '').toLowerCase().trim();
+    let exportList = cachedProducts;
+    if (cat) exportList = exportList.filter((p: any) => p.categoria === cat);
+    if (term) exportList = exportList.filter((p: any) => (p.code || '').toLowerCase().includes(term) || (p.name || '').toLowerCase().includes(term));
+
+    const exportRows = exportList.map((p: any) => ({
+      codigo: p.code,
+      producto: p.name,
+      categoria: p.categoria || '—',
+      unidad: p.unit || '—',
+      precio_base: p.base_price || 0,
+      precio_2: p.precio_venta_2 || 0,
+      precio_3: p.precio_venta_3 || 0,
+      tarifa_iva: p.iva_rate ? p.iva_rate + '%' : 'Exento'
+    }));
+
+    exportToExcel(exportRows, [
+      { key: 'codigo', label: 'Código' },
+      { key: 'producto', label: 'Producto' },
+      { key: 'categoria', label: 'Categoría' },
+      { key: 'unidad', label: 'Unidad' },
+      { key: 'precio_base', label: 'Precio Base (1)' },
+      { key: 'precio_2', label: 'Precio 2' },
+      { key: 'precio_3', label: 'Precio 3' },
+      { key: 'tarifa_iva', label: 'IVA' },
+    ], `Lista_Precios_${todayStr()}`);
+  });
+
+  $('#btn-print-prec')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('precios');
+    }
+  });
+
+  setTimeout(() => executePrecios(), 50);
 }
 
-async function openInvConteoModal() {
-  openModal(
-    '<i class="fas fa-list-check mr-2" style="color:#D97706"></i>Listado para Conteo Físico',
-    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando bodegas...</div>',
-    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
-    true
-  );
+async function renderInventoryAlertasReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega</label>
+            <select id="rep-alert-wh" class="form-input text-xs w-full">
+              <option value="">— Todas las bodegas (Consolidado) —</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Tipo de Alerta</label>
+            <select id="rep-alert-type" class="form-input text-xs w-full">
+              <option value="">Todos los desvíos (Mínimos y Máximos)</option>
+              <option value="bajo_min">Solo bajo mínimo (Reposición Requerida)</option>
+              <option value="sobre_max">Solo sobre máximo (Sobreabastecido)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Filtrar</label>
+            <input type="text" id="rep-alert-search" class="form-input text-xs w-full" placeholder="Buscar por código, nombre...">
+          </div>
+          <div class="flex items-center gap-2 justify-end">
+            <button type="button" id="btn-gen-alert" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-arrows-rotate"></i> Consultar
+            </button>
+            <button type="button" id="btn-exp-alert" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Excel
+            </button>
+            <button type="button" id="btn-print-alert" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="rep-alert-results">
+        <div class="p-12 text-center text-gray-500">
+          <i class="fas fa-spinner fa-spin text-3xl text-orange-500 mb-3"></i>
+          <p class="text-xs">Evaluando niveles de stock mínimo y máximo...</p>
+        </div>
+      </div>
+    </div>
+  `;
 
   try {
     const warehouses = await API.getWarehouses(false);
-    const modalBody = $('#modal-body');
-    if (!modalBody) return;
+    const whSel = $('#rep-alert-wh') as HTMLSelectElement;
+    if (whSel) {
+      warehouses.forEach((w: any) => {
+        const opt = document.createElement('option');
+        opt.value = w.id;
+        opt.textContent = w.name;
+        whSel.appendChild(opt);
+      });
+    }
+  } catch (_) {}
 
-    modalBody.innerHTML = `
-      <div class="space-y-4 text-left p-2">
-        <p class="text-xs text-gray-500">Planilla imprimible para toma física de inventario en almacén y verificación de existencias.</p>
-        <div>
-          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega a Auditar <span class="text-red-500">*</span></label>
-          <select id="rep-conteo-wh" class="form-input text-xs w-full">
-            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
-          </select>
+  let cachedAlertRows: any[] = [];
+
+  const executeAlertas = async () => {
+    const resultsContainer = $('#rep-alert-results');
+    const expBtn = $('#btn-exp-alert') as HTMLButtonElement;
+    const printBtn = $('#btn-print-alert') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-alert') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Consultando...';
+    }
+
+    try {
+      const whId = getSelectVal('rep-alert-wh');
+      const [products, stock] = await Promise.all([
+        pb.listAll('products', { filter: 'active=true && type="BIEN"', sort: 'code' }),
+        API.getInventoryStock()
+      ]);
+
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const stockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!stockByProd.has(pid)) stockByProd.set(pid, 0);
+        stockByProd.set(pid, stockByProd.get(pid) + Number(s.qty_on_hand || 0));
+      }
+
+      cachedAlertRows = [];
+      for (const p of products) {
+        const qty = stockByProd.get(p.id) || 0;
+        const stockMin = p.stock_min !== null && p.stock_min !== undefined ? Number(p.stock_min) : null;
+        const stockMax = p.stock_max !== null && p.stock_max !== undefined ? Number(p.stock_max) : null;
+
+        let isAlert = false;
+        let alertLabel = '';
+        let badgeColor = '';
+        let diff = 0;
+        let diffText = '';
+
+        if (qty <= 0) {
+          isAlert = true;
+          alertLabel = 'Agotado';
+          badgeColor = 'bg-red-100 text-red-800 border-red-200';
+          const reqMin = stockMin !== null ? stockMin : 0;
+          diff = -reqMin;
+          diffText = reqMin > 0 ? `Déficit: -${fmtN(reqMin)}` : 'Sin existencias';
+        } else if (stockMin !== null && qty < stockMin) {
+          isAlert = true;
+          alertLabel = 'Bajo Mínimo';
+          badgeColor = 'bg-orange-100 text-orange-800 border-orange-200';
+          diff = qty - stockMin;
+          diffText = `Déficit: ${fmtN(diff)}`;
+        } else if (stockMax !== null && qty > stockMax) {
+          isAlert = true;
+          alertLabel = 'Sobre Máximo';
+          badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+          diff = qty - stockMax;
+          diffText = `Exceso: +${fmtN(diff)}`;
+        }
+
+        if (isAlert) {
+          cachedAlertRows.push({
+            id: p.id,
+            code: p.code || '',
+            name: p.name || '',
+            unit: p.unit || '—',
+            stockMin: stockMin !== null ? stockMin : '—',
+            stockMax: stockMax !== null ? stockMax : '—',
+            qty,
+            diff,
+            diffText,
+            alertLabel,
+            badgeColor
+          });
+        }
+      }
+
+      renderAlertasTable();
+      if (expBtn) expBtn.disabled = !cachedAlertRows.length;
+      if (printBtn) printBtn.disabled = !cachedAlertRows.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-arrows-rotate"></i> Consultar';
+      }
+    }
+  };
+
+  const renderAlertasTable = () => {
+    const resultsContainer = $('#rep-alert-results');
+    if (!resultsContainer) return;
+
+    const alertType = getSelectVal('rep-alert-type');
+    const term = (getInputVal('rep-alert-search') || '').toLowerCase().trim();
+
+    let list = cachedAlertRows;
+    if (alertType === 'bajo_min') {
+      list = list.filter(r => r.alertLabel === 'Bajo Mínimo' || r.alertLabel === 'Agotado');
+    } else if (alertType === 'sobre_max') {
+      list = list.filter(r => r.alertLabel === 'Sobre Máximo');
+    }
+    if (term) {
+      list = list.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    }
+
+    const underStockCount = cachedAlertRows.filter(r => r.alertLabel === 'Bajo Mínimo' || r.alertLabel === 'Agotado').length;
+    const overStockCount = cachedAlertRows.filter(r => r.alertLabel === 'Sobre Máximo').length;
+
+    resultsContainer.innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+        <div class="bg-amber-50 border border-amber-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Total Alertas Detectadas</div>
+          <div class="text-xl font-extrabold text-amber-950 mt-0.5">${fmtN(cachedAlertRows.length)}</div>
         </div>
-        <div class="space-y-2 pt-1">
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="rep-conteo-show-stock" class="w-4 h-4 text-blue-600 rounded">
-            <label for="rep-conteo-show-stock" class="text-xs text-gray-700">Mostrar existencias del sistema (Inventario No Ciego)</label>
-          </div>
-          <div class="flex items-center gap-2">
-            <input type="checkbox" id="rep-conteo-only-mov-stock" class="w-4 h-4 text-blue-600 rounded" checked>
-            <label for="rep-conteo-only-mov-stock" class="text-xs text-gray-700">Listar solo referencias con movimientos o saldo previo</label>
-          </div>
+        <div class="bg-red-50 border border-red-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-red-700 uppercase tracking-wider">Reposición Urgente (Bajo Mínimo)</div>
+          <div class="text-xl font-extrabold text-red-950 mt-0.5">${fmtN(underStockCount)}</div>
         </div>
-        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
-          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('conteo')"><i class="fas fa-print mr-1.5"></i>Imprimir Planilla</button>
-          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('conteo')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 text-left">
+          <div class="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Sobreabastecidos (Sobre Máximo)</div>
+          <div class="text-xl font-extrabold text-blue-950 mt-0.5">${fmtN(overStockCount)}</div>
         </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[500px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-gray-100 sticky top-0 z-10 border-b border-gray-200 text-gray-700">
+            <tr>
+              <th class="p-2.5 text-left">Código</th>
+              <th class="p-2.5 text-left min-w-[200px]">Producto</th>
+              <th class="p-2.5 text-left">Unidad</th>
+              <th class="p-2.5 text-right">Stock Mínimo</th>
+              <th class="p-2.5 text-right">Stock Máximo</th>
+              <th class="p-2.5 text-right font-bold text-gray-800">Stock Actual</th>
+              <th class="p-2.5 text-right font-bold">Desviación</th>
+              <th class="p-2.5 text-center">Estado Alerta</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${list.length ? list.map(r => `
+              <tr class="hover:bg-gray-50">
+                <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(r.code)}</td>
+                <td class="p-2.5 font-medium text-gray-800">${esc(r.name)}</td>
+                <td class="p-2.5 text-gray-500">${esc(r.unit)}</td>
+                <td class="p-2.5 text-right text-gray-600">${typeof r.stockMin === 'number' ? fmtN(r.stockMin) : r.stockMin}</td>
+                <td class="p-2.5 text-right text-gray-600">${typeof r.stockMax === 'number' ? fmtN(r.stockMax) : r.stockMax}</td>
+                <td class="p-2.5 text-right font-bold ${r.qty <= 0 ? 'text-red-600' : 'text-gray-900'}">${fmtN(r.qty)}</td>
+                <td class="p-2.5 text-right font-bold ${r.diff < 0 ? 'text-red-600' : 'text-blue-700'}">${esc(r.diffText)}</td>
+                <td class="p-2.5 text-center">
+                  <span class="inline-block px-2.5 py-0.5 rounded-full text-[10.5px] font-bold border ${r.badgeColor}">${esc(r.alertLabel)}</span>
+                </td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="8" class="p-8 text-center text-gray-400">No se detectaron desvíos bajo los filtros seleccionados.</td></tr>
+            `}
+          </tbody>
+        </table>
       </div>
     `;
-  } catch (err: any) {
-    const modalBody = $('#modal-body');
-    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
-  }
+  };
+
+  $('#btn-gen-alert')?.addEventListener('click', executeAlertas);
+  $('#rep-alert-search')?.addEventListener('input', () => renderAlertasTable());
+  $('#rep-alert-type')?.addEventListener('change', () => renderAlertasTable());
+
+  $('#btn-exp-alert')?.addEventListener('click', () => {
+    if (!cachedAlertRows.length) return;
+    const alertType = getSelectVal('rep-alert-type');
+    const term = (getInputVal('rep-alert-search') || '').toLowerCase().trim();
+
+    let exportList = cachedAlertRows;
+    if (alertType === 'bajo_min') {
+      exportList = exportList.filter(r => r.alertLabel === 'Bajo Mínimo' || r.alertLabel === 'Agotado');
+    } else if (alertType === 'sobre_max') {
+      exportList = exportList.filter(r => r.alertLabel === 'Sobre Máximo');
+    }
+    if (term) {
+      exportList = exportList.filter(r => r.code.toLowerCase().includes(term) || r.name.toLowerCase().includes(term));
+    }
+
+    const exportRows = exportList.map(r => ({
+      codigo: r.code,
+      producto: r.name,
+      unidad: r.unit,
+      stock_minimo: r.stockMin,
+      stock_maximo: r.stockMax,
+      stock_actual: r.qty,
+      desviacion: r.diffText,
+      estado_alerta: r.alertLabel
+    }));
+
+    exportToExcel(exportRows, [
+      { key: 'codigo', label: 'Código' },
+      { key: 'producto', label: 'Producto' },
+      { key: 'unidad', label: 'Unidad' },
+      { key: 'stock_minimo', label: 'Stock Mínimo' },
+      { key: 'stock_maximo', label: 'Stock Máximo' },
+      { key: 'stock_actual', label: 'Stock Actual' },
+      { key: 'desviacion', label: 'Desviación' },
+      { key: 'estado_alerta', label: 'Estado Alerta' },
+    ], `Alertas_Stock_${todayStr()}`);
+  });
+
+  $('#btn-print-alert')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('alertas');
+    }
+  });
+
+  setTimeout(() => executeAlertas(), 50);
 }
 
-function openInvPreciosModal() {
-  openModal(
-    '<i class="fas fa-tags mr-2" style="color:#7C3AED"></i>Lista de Precios Vigentes',
-    `
-    <div class="space-y-4 text-left p-2">
-      <p class="text-sm text-gray-600">Consulta y exporta el catálogo completo de tarifas comerciales vigentes (Precio Base, Precio 2 y Precio 3) de todos los productos y servicios.</p>
-      <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
-        <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('precios')"><i class="fas fa-print mr-1.5"></i>Imprimir Catálogo</button>
-        <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('precios')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
+async function renderInventoryRotacionReport() {
+  const host = getReportViewHost();
+  if (!host) return;
+
+  const firstDay = (window as any).getColombiaFirstDayOfMonth ? (window as any).getColombiaFirstDayOfMonth() : todayStr().slice(0, 8) + '01';
+  const today = todayStr();
+
+  host.innerHTML = `
+    <div class="space-y-4 text-left">
+      <div class="bg-blue-50/70 border border-blue-100 rounded-xl p-3 text-xs text-blue-900 flex items-start gap-2.5">
+        <i class="fas fa-circle-info mt-0.5 text-blue-600 text-sm"></i>
+        <div>
+          <span class="font-bold">Índice de Rotación y Días de Permanencia (DSI)</span><br>
+          Mide el número de veces que se renuevan las existencias en el período seleccionado. Los días de inventario (DSI) estiman el tiempo promedio que tarda una referencia en venderse o consumirse.
+        </div>
+      </div>
+
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha Inicio <span class="text-red-500">*</span></label>
+            <input type="date" id="rot-start-date" class="form-input text-xs w-full" value="${firstDay}">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Fecha Fin <span class="text-red-500">*</span></label>
+            <input type="date" id="rot-end-date" class="form-input text-xs w-full" value="${today}">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
+            <select id="rot-wh" class="form-input text-xs w-full">
+              <option value="">— Todas las Bodegas (Consolidado) —</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2 justify-end">
+            <button type="button" id="btn-gen-rot" class="btn btn-primary text-xs px-4 py-2 flex items-center gap-1.5">
+              <i class="fas fa-arrows-spin"></i> Ejecutar Análisis
+            </button>
+            <button type="button" id="btn-exp-rot" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-file-excel text-emerald-600"></i> Excel
+            </button>
+            <button type="button" id="btn-print-rot" class="btn btn-outline text-xs px-4 py-2 flex items-center gap-1.5" disabled>
+              <i class="fas fa-print text-blue-600"></i> Imprimir
+            </button>
+          </div>
+        </div>
+        <div class="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 max-w-xs">
+          <i class="fas fa-search text-gray-400 text-xs"></i>
+          <input type="text" id="rot-search" class="form-input text-xs w-full" placeholder="Buscar producto...">
+        </div>
+      </div>
+
+      <div id="rot-report-results">
+        <div class="p-12 text-center text-gray-400">
+          <i class="fas fa-chart-line text-3xl mb-2 text-gray-300"></i>
+          <p class="text-xs">Define el rango de fechas y presiona <strong>Ejecutar Análisis</strong>.</p>
+        </div>
       </div>
     </div>
-    `,
-    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
-    true
-  );
-}
-
-async function openInvAlertasModal() {
-  openModal(
-    '<i class="fas fa-triangle-exclamation mr-2" style="color:#C46516"></i>Alertas de Stock Mínimo y Máximo',
-    '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando bodegas...</div>',
-    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
-    true
-  );
+  `;
 
   try {
     const warehouses = await API.getWarehouses(false);
-    const modalBody = $('#modal-body');
-    if (!modalBody) return;
+    const whSel = $('#rot-wh') as HTMLSelectElement;
+    if (whSel) {
+      warehouses.forEach((w: any) => {
+        const opt = document.createElement('option');
+        opt.value = w.id;
+        opt.textContent = w.name;
+        whSel.appendChild(opt);
+      });
+    }
+  } catch (_) {}
 
-    modalBody.innerHTML = `
-      <div class="space-y-4 text-left p-2">
-        <p class="text-xs text-gray-500">Identifica productos que requieren reposición urgente (bajo stock mínimo) o referencias con sobreabastecimiento (sobre stock máximo).</p>
-        <div>
-          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Bodega (Opcional)</label>
-          <select id="rep-alert-wh" class="form-input text-xs w-full">
-            <option value="">Todas las bodegas (Consolidado)</option>
-            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label class="block text-[11px] font-bold text-gray-600 uppercase tracking-wider mb-1">Filtrar Tipo de Desvío</label>
-          <select id="rep-alert-type" class="form-input text-xs w-full">
-            <option value="">Todos los desvíos (Bajo mínimo y Sobre máximo)</option>
-            <option value="bajo_min">Solo bajo mínimo (Reposición requerida)</option>
-            <option value="sobre_max">Solo sobre máximo (Sobreabastecido)</option>
-          </select>
-        </div>
-        <div class="flex gap-2 justify-end pt-3 border-t mt-4" style="border-color:#E5E7EB">
-          <button class="btn btn-outline py-2 px-4 text-xs" onclick="window._printReport('alertas')"><i class="fas fa-print mr-1.5"></i>Imprimir Alertas</button>
-          <button class="btn btn-primary py-2 px-4 text-xs" onclick="window._exportReport('alertas')"><i class="fas fa-file-excel mr-1.5"></i>Exportar Excel</button>
-        </div>
+  let cachedRotRows: any[] = [];
+
+  const executeRotacion = async () => {
+    const resultsContainer = $('#rot-report-results');
+    const expBtn = $('#btn-exp-rot') as HTMLButtonElement;
+    const printBtn = $('#btn-print-rot') as HTMLButtonElement;
+    const genBtn = $('#btn-gen-rot') as HTMLButtonElement;
+
+    if (!resultsContainer) return;
+    const startDate = getInputVal('rot-start-date');
+    const endDate = getInputVal('rot-end-date');
+    const whId = getSelectVal('rot-wh');
+
+    if (!startDate || !endDate) {
+      return showToast('Por favor selecciona las fechas de inicio y fin.', 'warning');
+    }
+
+    if (genBtn) {
+      genBtn.disabled = true;
+      genBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Analizando...';
+    }
+    resultsContainer.innerHTML = `
+      <div class="p-12 text-center text-gray-500">
+        <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-3"></i>
+        <p class="text-xs">Calculando flujos de inventario, costo de ventas e índices de permanencia...</p>
       </div>
     `;
-  } catch (err: any) {
-    const modalBody = $('#modal-body');
-    if (modalBody) modalBody.innerHTML = `<div class="p-4 text-center text-red-500">${esc(err.message)}</div>`;
-  }
+
+    try {
+      const [products, stock, warehouses] = await Promise.all([
+        pb.listAll('products', { filter: 'active=true && type="BIEN"', sort: 'code' }),
+        API.getInventoryStock(),
+        API.getWarehouses(false)
+      ]);
+
+      const filteredStock = whId ? stock.filter((s: any) => s.warehouse_id === whId) : stock;
+      const currentStockByProd = new Map();
+      for (const s of filteredStock) {
+        const pid = s.product_id;
+        if (!currentStockByProd.has(pid)) currentStockByProd.set(pid, { qty: 0, costSum: 0, costCount: 0 });
+        const entry = currentStockByProd.get(pid);
+        entry.qty += Number(s.qty_on_hand || 0);
+        if (Number(s.avg_cost || 0) > 0) {
+          entry.costSum += Number(s.avg_cost);
+          entry.costCount++;
+        }
+      }
+
+      let lines: any[] = [];
+      try {
+        lines = await pb.listAll('inventory_movement_lines', {
+          filter: `movement_id.status = "applied" && movement_id.date >= "${startDate}"`,
+          expand: 'movement_id'
+        });
+      } catch (lineErr) {
+        console.warn("Fallo filtro relacional en movement_lines, intentando fallback:", lineErr);
+        lines = await pb.listAll('inventory_movement_lines', { expand: 'movement_id' }).catch(() => []);
+      }
+
+      const prodFlow = new Map();
+      for (const line of lines) {
+        const mov = line.expand?.movement_id;
+        if (!mov || mov.status !== 'applied') continue;
+
+        const pid = line.product_id;
+        if (!prodFlow.has(pid)) {
+          prodFlow.set(pid, { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 });
+        }
+        const flow = prodFlow.get(pid);
+        const qty = Number(line.qty || 0);
+        const unitCost = Number(line.unit_cost || 0);
+        const date = mov.date || '';
+
+        const isPostPeriod = date > endDate;
+        let isInput = false;
+        let isOutput = false;
+
+        if (whId) {
+          if (mov.mov_type === 'TRASLADO') {
+            if (mov.dest_warehouse_id === whId) isInput = true;
+            else if (mov.warehouse_id === whId) isOutput = true;
+          } else if (mov.warehouse_id === whId) {
+            isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+            isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+          }
+        } else {
+          if (mov.mov_type !== 'TRASLADO') {
+            isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
+            isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
+          }
+        }
+
+        if (isInput) {
+          if (isPostPeriod) flow.postIn += qty;
+          else flow.periodIn += qty;
+        } else if (isOutput) {
+          if (isPostPeriod) flow.postOut += qty;
+          else {
+            flow.periodOut += qty;
+            flow.outCostSum += (qty * unitCost);
+          }
+        }
+      }
+
+      const daysInPeriod = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+      cachedRotRows = [];
+      for (const p of products) {
+        const flow = prodFlow.get(p.id) || { periodIn: 0, periodOut: 0, postIn: 0, postOut: 0, outCostSum: 0 };
+        const curStock = currentStockByProd.get(p.id) || { qty: 0, costSum: 0, costCount: 0 };
+        
+        let cost = 0;
+        if (curStock.costCount > 0) {
+          cost = curStock.costSum / curStock.costCount;
+        } else {
+          cost = Number(p.cost_price || 0);
+        }
+        cost = Math.round(cost * 100) / 100;
+
+        const qtyFinal = curStock.qty - flow.postIn + flow.postOut;
+        const qtyInitial = qtyFinal - flow.periodIn + flow.periodOut;
+        const qtyAvg = Math.max(0, (qtyInitial + qtyFinal) / 2);
+        const valAvg = Math.round((qtyAvg * cost) * 100) / 100;
+
+        const qtyOut = flow.periodOut;
+        const valOut = flow.outCostSum > 0 ? Math.round(flow.outCostSum * 100) / 100 : Math.round((qtyOut * cost) * 100) / 100;
+
+        let turnoverRate = 0;
+        let turnoverStr = '0.00';
+        let dsi = 0;
+        let dsiStr = '—';
+        let suggestion = '';
+
+        if (valAvg > 0) {
+          turnoverRate = valOut / valAvg;
+          turnoverStr = fmtN(turnoverRate);
+          if (turnoverRate > 0) {
+            dsi = Math.round(daysInPeriod / turnoverRate);
+            dsiStr = `${dsi} días`;
+          }
+        } else if (valOut > 0) {
+          turnoverRate = 99.9;
+          turnoverStr = 'Alta';
+          dsi = 0;
+          dsiStr = '0 días';
+        }
+
+        if (qtyOut === 0) {
+          suggestion = 'Sin movimiento (Estancado)';
+        } else if (dsi <= 30) {
+          suggestion = 'Alta rotación: Monitorear reposición';
+        } else if (dsi > 30 && dsi <= 90) {
+          suggestion = 'Rotación saludable';
+        } else if (dsi > 90 && dsi <= 180) {
+          suggestion = 'Rotación lenta: Reducir compras';
+        } else {
+          suggestion = 'Exceso de stock: Liquidar excedente';
+        }
+
+        cachedRotRows.push({
+          id: p.id,
+          sku: p.code || '',
+          name: p.name || '',
+          qtyInitial,
+          qtyIn: flow.periodIn,
+          qtyOut,
+          qtyFinal,
+          cost,
+          valOut,
+          qtyAvg,
+          valAvg,
+          turnoverRate,
+          turnoverStr,
+          dsi,
+          dsiStr,
+          suggestion
+        });
+      }
+
+      cachedRotRows.sort((a, b) => b.turnoverRate - a.turnoverRate);
+
+      (window as any)._lastTurnoverAnalysisData = cachedRotRows;
+      const whMap = new Map(warehouses.map((w: any) => [w.id, w.name]));
+      (window as any)._lastTurnoverWhName = whId ? whMap.get(whId) : 'Todas las Bodegas';
+      (window as any)._lastTurnoverPeriod = `Desde ${startDate} hasta ${endDate} (${daysInPeriod} días)`;
+
+      renderRotacionTable();
+      if (expBtn) expBtn.disabled = !cachedRotRows.length;
+      if (printBtn) printBtn.disabled = !cachedRotRows.length;
+
+    } catch (err: any) {
+      resultsContainer.innerHTML = `<div class="p-8 text-center text-red-500">Error: ${esc(err.message)}</div>`;
+    } finally {
+      if (genBtn) {
+        genBtn.disabled = false;
+        genBtn.innerHTML = '<i class="fas fa-arrows-spin"></i> Ejecutar Análisis';
+      }
+    }
+  };
+
+  const renderRotacionTable = () => {
+    const resultsContainer = $('#rot-report-results');
+    if (!resultsContainer) return;
+
+    const term = (getInputVal('rot-search') || '').toLowerCase().trim();
+    const list = term
+      ? cachedRotRows.filter(r => r.sku.toLowerCase().includes(term) || r.name.toLowerCase().includes(term))
+      : cachedRotRows;
+
+    resultsContainer.innerHTML = `
+      <div class="border border-gray-200 rounded-xl overflow-x-auto shadow-sm max-h-[500px] overflow-y-auto">
+        <table class="w-full text-xs data-table">
+          <thead class="bg-blue-50 sticky top-0 z-10 border-b border-blue-200 text-gray-700">
+            <tr>
+              <th class="p-2.5 text-left">Código</th>
+              <th class="p-2.5 text-left min-w-[180px]">Producto</th>
+              <th class="p-2.5 text-right">Cant. Inicial</th>
+              <th class="p-2.5 text-right font-semibold">Salidas (COGS)</th>
+              <th class="p-2.5 text-right font-semibold">Valor Salidas</th>
+              <th class="p-2.5 text-right">Stock Prom.</th>
+              <th class="p-2.5 text-right font-bold text-blue-700">Rotación (Veces)</th>
+              <th class="p-2.5 text-right font-bold text-purple-700">Permanencia (DSI)</th>
+              <th class="p-2.5 text-left min-w-[160px]">Diagnóstico</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${list.length ? list.map(r => `
+              <tr class="hover:bg-gray-50">
+                <td class="p-2.5 font-mono text-blue-800 font-semibold">${esc(r.sku)}</td>
+                <td class="p-2.5 font-medium text-gray-800">${esc(r.name)}</td>
+                <td class="p-2.5 text-right text-gray-500">${fmtN(r.qtyInitial)}</td>
+                <td class="p-2.5 text-right font-semibold text-gray-700">${fmtN(r.qtyOut)}</td>
+                <td class="p-2.5 text-right font-bold text-gray-900">${fmt(r.valOut)}</td>
+                <td class="p-2.5 text-right text-gray-500">${fmtN(r.qtyAvg)}</td>
+                <td class="p-2.5 text-right font-bold text-blue-700">${r.turnoverStr}</td>
+                <td class="p-2.5 text-right font-bold text-purple-700">${r.dsiStr}</td>
+                <td class="p-2.5 text-xs text-gray-600">${esc(r.suggestion)}</td>
+              </tr>
+            `).join('') : `
+              <tr><td colspan="9" class="p-8 text-center text-gray-400">No hay datos de análisis para mostrar.</td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    `;
+  };
+
+  $('#btn-gen-rot')?.addEventListener('click', executeRotacion);
+  $('#rot-search')?.addEventListener('input', () => renderRotacionTable());
+
+  $('#btn-exp-rot')?.addEventListener('click', () => {
+    if (typeof (window as any)._exportReport === 'function') {
+      (window as any)._exportReport('rotacion');
+    }
+  });
+
+  $('#btn-print-rot')?.addEventListener('click', () => {
+    if (typeof (window as any)._printReport === 'function') {
+      (window as any)._printReport('rotacion');
+    }
+  });
+
+  setTimeout(() => executeRotacion(), 50);
 }
 
 function getReportViewHost() {
@@ -6121,6 +7472,190 @@ function initMultiAccountSelector(config: {
   renderChips();
 }
 
+function initMultiThirdSelector(config: {
+  containerId: string;
+  inputId: string;
+  hiddenId: string;
+  resultsId: string;
+  thirdParties: any[];
+  themeColor?: 'indigo' | 'rose' | 'emerald';
+  onChange?: (selectedIds: string[]) => void;
+}) {
+  const container = document.getElementById(config.containerId);
+  const input = document.getElementById(config.inputId) as HTMLInputElement | null;
+  const hidden = document.getElementById(config.hiddenId) as HTMLInputElement | null;
+  const results = document.getElementById(config.resultsId);
+
+  if (!container || !input || !hidden || !results) return;
+
+  let selectedIds = hidden.value.split(',').map(s => s.trim()).filter(Boolean);
+
+  const getThirdById = (idOrDoc: string) => {
+    return config.thirdParties.find(t => t.id === idOrDoc || String(t.doc_number || '') === idOrDoc);
+  };
+
+  const syncValue = () => {
+    hidden.value = selectedIds.join(',');
+    if (config.onChange) config.onChange(selectedIds);
+  };
+
+  const renderChips = () => {
+    const chips = container.querySelectorAll('.third-chip');
+    chips.forEach(c => c.remove());
+
+    selectedIds.forEach(idOrDoc => {
+      const third = getThirdById(idOrDoc);
+      const label = third ? `${third.name} (${third.doc_number}${third.dv ? '-' + third.dv : ''})` : idOrDoc;
+
+      const chip = document.createElement('span');
+      chip.className = 'third-chip flex items-center gap-1.5 px-2.5 py-0.5 rounded-md font-semibold text-xs transition duration-150 border ';
+      if (config.themeColor === 'rose') {
+        chip.className += 'bg-rose-50 text-rose-700 border-rose-200/80 hover:bg-rose-100/50';
+      } else if (config.themeColor === 'emerald') {
+        chip.className += 'bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100/50';
+      } else {
+        chip.className += 'bg-indigo-50 text-indigo-700 border-indigo-200/80 hover:bg-indigo-100/50';
+      }
+
+      chip.innerHTML = `
+        <i class="fas fa-building-columns text-[10px] opacity-70"></i>
+        <span>${esc(label)}</span>
+        <button type="button" class="text-[14px] hover:text-red-600 transition ml-0.5" style="border:none; background:none; padding:0; cursor:pointer; color:inherit; line-height:1;" title="Quitar">&times;</button>
+      `;
+
+      chip.querySelector('button')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedIds = selectedIds.filter(c => c !== idOrDoc);
+        syncValue();
+        renderChips();
+      });
+
+      container.insertBefore(chip, input);
+    });
+  };
+
+  const addThird = (id: string) => {
+    const cleanId = id.trim();
+    if (!cleanId) return;
+    if (!selectedIds.includes(cleanId)) {
+      selectedIds.push(cleanId);
+      syncValue();
+      renderChips();
+    }
+    input.value = '';
+    results.style.display = 'none';
+  };
+
+  const paintDropdown = (query = '') => {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const found = config.thirdParties.filter(t => {
+      const hay = `${t.name || ''} ${t.doc_number || ''}`.toLowerCase();
+      return terms.every(term => hay.includes(term));
+    }).slice(0, 15);
+
+    let html = '';
+    if (found.length) {
+      html += found.map(t => `
+        <button type="button" data-third-id="${esc(t.id)}" class="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center justify-between transition cursor-pointer border-none bg-white text-gray-800 border-b border-gray-100">
+          <div>
+            <div style="font-weight:600; color:#0F172A; font-size:12px;">${esc(t.name || '')}</div>
+            <div style="font-size:11px; color:#64748B;">NIT/Doc: ${esc(t.doc_number || '')}${t.dv ? '-' + esc(t.dv) : ''} · ${esc(t.city || 'Sin ciudad')}</div>
+          </div>
+          <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold">Omitir</span>
+        </button>
+      `).join('');
+    } else if (!query.trim()) {
+      html += '<div class="px-3 py-3 text-xs text-gray-400 text-center">Escribe el nombre o NIT del municipio/tercero a excluir...</div>';
+    } else {
+      html += '<div class="px-3 py-3 text-xs text-gray-400 text-center">No se encontraron terceros con ese criterio</div>';
+    }
+
+    results.innerHTML = html;
+  };
+
+  let activeIndex = -1;
+  const getVisibleItems = () => Array.from(results.querySelectorAll('button[data-third-id]')) as HTMLButtonElement[];
+  const updateHighlight = () => {
+    const items = getVisibleItems();
+    items.forEach((item, index) => {
+      if (index === activeIndex) {
+        item.style.backgroundColor = '#F1F5F9';
+        item.focus();
+      } else {
+        item.style.backgroundColor = '#FFFFFF';
+      }
+    });
+  };
+
+  input.addEventListener('focus', () => {
+    paintDropdown(input.value);
+    results.style.display = 'block';
+    activeIndex = -1;
+  });
+
+  input.addEventListener('input', () => {
+    paintDropdown(input.value);
+    results.style.display = 'block';
+    activeIndex = -1;
+  });
+
+  const clickOutsideHandler = (ev: MouseEvent) => {
+    if (!container.parentElement?.contains(ev.target as Node)) {
+      results.style.display = 'none';
+    }
+  };
+  document.addEventListener('click', clickOutsideHandler);
+
+  container.addEventListener('click', (e) => {
+    if (e.target === container || !(e.target as HTMLElement).closest('.third-chip')) {
+      input.focus();
+    }
+  });
+
+  results.addEventListener('click', (ev) => {
+    const btn = (ev.target as HTMLElement).closest('button');
+    if (!btn) return;
+    const id = btn.getAttribute('data-third-id');
+    if (id) addThird(id);
+  });
+
+  results.addEventListener('mousedown', (ev) => ev.preventDefault());
+
+  input.addEventListener('keydown', (ev: KeyboardEvent) => {
+    const items = getVisibleItems();
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      if (results.style.display === 'none') {
+        results.style.display = 'block';
+        paintDropdown(input.value);
+        return;
+      }
+      activeIndex = (activeIndex + 1) % items.length;
+      updateHighlight();
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      activeIndex = activeIndex - 1 < 0 ? items.length - 1 : activeIndex - 1;
+      updateHighlight();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (results.style.display !== 'none' && activeIndex >= 0 && activeIndex < items.length) {
+        const selectedBtn = items[activeIndex];
+        const id = selectedBtn.getAttribute('data-third-id');
+        if (id) addThird(id);
+      }
+    } else if (ev.key === 'Escape') {
+      results.style.display = 'none';
+      input.blur();
+    } else if (ev.key === 'Backspace' && !input.value && selectedIds.length > 0) {
+      selectedIds.pop();
+      syncValue();
+      renderChips();
+    }
+  });
+
+  renderChips();
+}
+
 async function renderIvaReport() {
   const view = getReportViewHost();
   if (!view) return;
@@ -6365,6 +7900,12 @@ async function generateIvaReportRows() {
       }
       // Redondear a 2 decimales para evitar ruido de punto flotante de JS
       base = Math.round(base * 100) / 100;
+      // Respetar el signo contable de la transacción (devoluciones/notas restan base)
+      if (rowNet < 0) {
+        base = -Math.abs(base);
+      } else if (rowNet > 0) {
+        base = Math.abs(base);
+      }
       return { rate, base };
     };
 
@@ -6460,7 +8001,7 @@ async function generateIvaReportRows() {
           }
           const agg = aggregates.get(key);
           agg.base += item.base;
-          agg.value += Math.abs(item.net);
+          agg.value += item.net;
         });
         g.aggregatedRows = [...aggregates.values()].sort((a, b) => 
           (a.third?.name || '').localeCompare(b.third?.name || '')
@@ -6470,7 +8011,7 @@ async function generateIvaReportRows() {
       } else {
         g.lines.sort((a: any, b: any) => a.tx.date.localeCompare(b.tx.date));
         g.totalBase = g.lines.reduce((sum: number, r: any) => sum + r.base, 0);
-        g.totalValor = g.lines.reduce((sum: number, r: any) => sum + Math.abs(r.net), 0);
+        g.totalValor = g.lines.reduce((sum: number, r: any) => sum + r.net, 0);
       }
     });
 
@@ -6501,6 +8042,9 @@ async function generateIvaReportRows() {
         </div>`;
     } else {
       const isRes = reportType === 'resumido';
+      const overallTotalBase = sortedAccountCodes.reduce((sum, c) => sum + (accountGroups.get(c)?.totalBase || 0), 0);
+      const overallTotalValor = sortedAccountCodes.reduce((sum, c) => sum + (accountGroups.get(c)?.totalValor || 0), 0);
+
       tableHtml = `
         <div class="bg-white rounded-2xl border overflow-hidden shadow-sm animate-fade-in" style="border-color:#E5E7EB">
           <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
@@ -6543,8 +8087,15 @@ async function generateIvaReportRows() {
 
                   let rowsHtml = '';
                   if (isRes) {
-                    rowsHtml = g.aggregatedRows.map((agg: any) => `
-                      <tr class="hover:bg-gray-50/50 transition-colors border-b border-gray-100">
+                    rowsHtml = g.aggregatedRows.map((agg: any) => {
+                      const isValNeg = Number(agg.value || 0) < 0;
+                      const isBaseNeg = Number(agg.base || 0) < 0;
+                      const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
+                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
+                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+
+                      return `
+                      <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(agg.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(agg.third?.doc_number || 'SIN DOC')}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(agg.third?.dv || '—')}</td>
@@ -6552,35 +8103,49 @@ async function generateIvaReportRows() {
                         <td class="p-3 text-gray-600">${esc(agg.third?.address || '—')}</td>
                         <td class="p-3 text-center"><span class="badge ${g.type === 'Generado' ? 'badge-orange' : 'badge-green'} text-[10px]">${esc(g.type)}</span></td>
                         <td class="p-3 text-gray-600">${esc(agg.third?.city || '—')}</td>
-                        <td class="p-3 text-right font-mono text-gray-700 font-semibold">${fmt(agg.base)}</td>
+                        <td class="p-3 text-right font-mono ${baseClass}">${fmt(agg.base)}</td>
                         <td class="p-3 text-right font-mono text-gray-600">${agg.rate > 0 ? `${agg.rate}%` : '—'}</td>
-                        <td class="p-3 text-right font-mono text-green-950 font-bold">${fmt(agg.value)}</td>
-                      </tr>`).join('');
+                        <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(agg.value)}</span></td>
+                      </tr>`;
+                    }).join('');
                   } else {
-                    rowsHtml = g.lines.map((item: any) => `
-                      <tr class="hover:bg-gray-50/50 transition-colors border-b border-gray-100">
+                    rowsHtml = g.lines.map((item: any) => {
+                      const isValNeg = Number(item.net || 0) < 0;
+                      const isBaseNeg = Number(item.base || 0) < 0;
+                      const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
+                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-green-950 font-bold';
+                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+                      const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
+                      const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
+
+                      return `
+                      <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(item.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.third?.doc_number || 'SIN DOC')}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(item.third?.dv || '—')}</td>
                         <td class="p-3 text-center font-semibold text-gray-700">${getPersonType(item.third) === 'JURIDICA' ? 'J' : 'N'}</td>
                         <td class="p-3 text-gray-600">${esc(item.third?.address || '—')}</td>
                         <td class="p-3 text-center"><span class="badge ${g.type === 'Generado' ? 'badge-orange' : 'badge-green'} text-[10px]">${esc(g.type)}</span></td>
-                        <td class="p-3 font-mono text-blue-900 font-semibold">${esc(item.tx.number)}</td>
+                        <td class="p-3 font-mono text-blue-900 font-semibold flex items-center">${esc(item.tx.number)}${docBadge}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(item.tx.date)}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.crossDocRef || '—')}</td>
                         <td class="p-3 text-gray-600">${esc(item.third?.city || '—')}</td>
-                        <td class="p-3 text-right font-mono text-gray-700 font-semibold">${fmt(item.base)}</td>
+                        <td class="p-3 text-right font-mono ${baseClass}">${fmt(item.base)}</td>
                         <td class="p-3 text-right font-mono text-gray-600">${item.rate > 0 ? `${item.rate}%` : '—'}</td>
-                        <td class="p-3 text-right font-mono text-green-950 font-bold">${fmt(Math.abs(item.net))}</td>
-                      </tr>`).join('');
+                        <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(item.net)}</span></td>
+                      </tr>`;
+                    }).join('');
                   }
+
+                  const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-green-900';
+                  const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
 
                   const subtotalHtml = `
                     <tr class="bg-gray-50/80 border-b border-gray-200 font-bold text-gray-700">
                       <td colspan="${isRes ? 7 : 10}" class="p-3 text-right">Subtotal Cuenta ${code}:</td>
-                      <td class="p-3 text-right font-mono text-gray-800">${fmt(g.totalBase)}</td>
+                      <td class="p-3 text-right font-mono ${subBaseClass}">${fmt(g.totalBase)}</td>
                       <td></td>
-                      <td class="p-3 text-right font-mono text-green-900">${fmt(g.totalValor)}</td>
+                      <td class="p-3 text-right font-mono ${subValClass}">${fmt(g.totalValor)}</td>
                     </tr>`;
 
                   return accHeader + rowsHtml + subtotalHtml;
@@ -6590,9 +8155,9 @@ async function generateIvaReportRows() {
                 <!-- Totalizador general en la tabla -->
                 <tr class="bg-green-100/20 border-t-2 border-green-200 font-extrabold text-gray-800">
                   <td colspan="${isRes ? 7 : 10}" class="p-3 text-right text-xs uppercase">Base Total / Neto Reportado:</td>
-                  <td class="p-3 text-right font-mono text-gray-900 text-xs">${fmt(sumGenBase + sumDescBase)}</td>
+                  <td class="p-3 text-right font-mono text-gray-900 text-xs">${fmt(overallTotalBase)}</td>
                   <td></td>
-                  <td class="p-3 text-right font-mono text-green-950 text-xs">${fmt(netGen + netDesc)}</td>
+                  <td class="p-3 text-right font-mono text-xs ${overallTotalValor < 0 ? 'text-rose-600' : 'text-green-950'}">${fmt(overallTotalValor)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -6745,6 +8310,11 @@ async function exportIvaToExcel() {
           if (doc.length >= 9 && (doc.startsWith('8') || doc.startsWith('9'))) return 'JURIDICA';
           return 'NATURAL';
         };
+        const isAggValNeg = Number(agg.value || 0) < 0;
+        const isAggBaseNeg = Number(agg.base || 0) < 0;
+        const aggValStyle = isAggValNeg ? 'color: #dc2626; font-weight: bold;' : '';
+        const aggBaseStyle = isAggBaseNeg ? 'color: #dc2626;' : '';
+
         html += `<tr class="data-row">`;
         html += `<td>${esc(agg.third?.name || 'Sin tercero')}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(agg.third?.doc_number || 'SIN DOC')}</td>`;
@@ -6753,9 +8323,9 @@ async function exportIvaToExcel() {
         html += `<td>${esc(agg.third?.address || '—')}</td>`;
         html += `<td>${esc(g.type)}</td>`;
         html += `<td>${esc(agg.third?.city || '—')}</td>`;
-        html += `<td class="text-right">${formatExcelNum(agg.base)}</td>`;
+        html += `<td class="text-right" style="${aggBaseStyle}">${formatExcelNum(agg.base)}</td>`;
         html += `<td class="text-right">${formatExcelNum(agg.rate)}%</td>`;
-        html += `<td class="text-right">${formatExcelNum(agg.value)}</td>`;
+        html += `<td class="text-right" style="${aggValStyle}">${formatExcelNum(agg.value)}</td>`;
         html += '</tr>';
       });
     } else {
@@ -6766,6 +8336,11 @@ async function exportIvaToExcel() {
           if (doc.length >= 9 && (doc.startsWith('8') || doc.startsWith('9'))) return 'JURIDICA';
           return 'NATURAL';
         };
+        const isItemValNeg = Number(item.net || 0) < 0;
+        const isItemBaseNeg = Number(item.base || 0) < 0;
+        const itemValStyle = isItemValNeg ? 'color: #dc2626; font-weight: bold;' : '';
+        const itemBaseStyle = isItemBaseNeg ? 'color: #dc2626;' : '';
+
         html += `<tr class="data-row">`;
         html += `<td>${esc(item.third?.name || 'Sin tercero')}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(item.third?.doc_number || 'SIN DOC')}</td>`;
@@ -6777,42 +8352,47 @@ async function exportIvaToExcel() {
         html += `<td class="text-center">${formatExcelDate(item.tx.date)}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(item.crossDocRef || '—')}</td>`;
         html += `<td>${esc(item.third?.city || '—')}</td>`;
-        html += `<td class="text-right">${formatExcelNum(item.base)}</td>`;
+        html += `<td class="text-right" style="${itemBaseStyle}">${formatExcelNum(item.base)}</td>`;
         html += `<td class="text-right">${formatExcelNum(item.rate)}%</td>`;
-        html += `<td class="text-right">${formatExcelNum(Math.abs(item.net))}</td>`;
+        html += `<td class="text-right" style="${itemValStyle}">${formatExcelNum(item.net)}</td>`;
         html += '</tr>';
       });
     }
 
+    const subValStyle = Number(g.totalValor || 0) < 0 ? 'color: #dc2626;' : '';
+    const subBaseStyle = Number(g.totalBase || 0) < 0 ? 'color: #dc2626;' : '';
+
     html += `<tr class="subtotal-row">`;
     if (isRes) {
       html += `<td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalBase)}</td>`;
+      html += `<td class="text-right" style="${subBaseStyle}">${formatExcelNum(g.totalBase)}</td>`;
       html += `<td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalValor)}</td>`;
+      html += `<td class="text-right" style="${subValStyle}">${formatExcelNum(g.totalValor)}</td>`;
     } else {
       html += `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalBase)}</td>`;
+      html += `<td class="text-right" style="${subBaseStyle}">${formatExcelNum(g.totalBase)}</td>`;
       html += `<td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalValor)}</td>`;
+      html += `<td class="text-right" style="${subValStyle}">${formatExcelNum(g.totalValor)}</td>`;
     }
     html += '</tr>';
   });
 
   const totalBases = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalBase, 0);
   const totalValor = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalValor, 0);
+  const totValStyle = Number(totalValor || 0) < 0 ? 'color: #dc2626;' : '';
+  const totBaseStyle = Number(totalBases || 0) < 0 ? 'color: #dc2626;' : '';
 
   html += `<tr class="total-row">`;
   if (isRes) {
     html += `<td>TOTAL GENERAL</td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalBases)}</td>`;
+    html += `<td class="text-right" style="${totBaseStyle}">${formatExcelNum(totalBases)}</td>`;
     html += `<td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalValor)}</td>`;
+    html += `<td class="text-right" style="${totValStyle}">${formatExcelNum(totalValor)}</td>`;
   } else {
     html += `<td>TOTAL GENERAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalBases)}</td>`;
+    html += `<td class="text-right" style="${totBaseStyle}">${formatExcelNum(totalBases)}</td>`;
     html += `<td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalValor)}</td>`;
+    html += `<td class="text-right" style="${totValStyle}">${formatExcelNum(totalValor)}</td>`;
   }
   html += '</tr>';
 
@@ -6879,6 +8459,8 @@ async function exportIvaToPdf() {
       if (isRes) {
         g.aggregatedRows.forEach((agg: any) => {
           const pType = getPersonType(agg.third) === 'JURIDICA' ? 'J' : 'N';
+          const isValNeg = Number(agg.value || 0) < 0;
+          const isBaseNeg = Number(agg.base || 0) < 0;
           body.push([
             agg.third?.name || 'Sin tercero',
             agg.third?.doc_number || 'SIN DOC',
@@ -6887,14 +8469,16 @@ async function exportIvaToPdf() {
             agg.third?.address || '—',
             g.type,
             agg.third?.city || '—',
-            fmtPdfNum(agg.base),
+            isBaseNeg ? { content: fmtPdfSignedNum(agg.base), styles: { textColor: [220, 38, 38] } } : fmtPdfNum(agg.base),
             agg.rate > 0 ? `${agg.rate}%` : '—',
-            fmtPdfNum(agg.value)
+            isValNeg ? { content: fmtPdfSignedNum(agg.value), styles: { textColor: [220, 38, 38], fontStyle: 'bold' } } : fmtPdfNum(agg.value)
           ]);
         });
       } else {
         g.lines.forEach((item: any) => {
           const pType = getPersonType(item.third) === 'JURIDICA' ? 'J' : 'N';
+          const isValNeg = Number(item.net || 0) < 0;
+          const isBaseNeg = Number(item.base || 0) < 0;
           body.push([
             item.third?.name || 'Sin tercero',
             item.third?.doc_number || 'SIN DOC',
@@ -6906,46 +8490,55 @@ async function exportIvaToPdf() {
             item.tx.date,
             item.crossDocRef || '—',
             item.third?.city || '—',
-            fmtPdfNum(item.base),
+            isBaseNeg ? { content: fmtPdfSignedNum(item.base), styles: { textColor: [220, 38, 38] } } : fmtPdfNum(item.base),
             item.rate > 0 ? `${item.rate}%` : '—',
-            fmtPdfNum(Math.abs(item.net))
+            isValNeg ? { content: fmtPdfSignedNum(item.net), styles: { textColor: [220, 38, 38], fontStyle: 'bold' } } : fmtPdfNum(item.net)
           ]);
         });
       }
 
+      const isSubValNeg = Number(g.totalValor || 0) < 0;
+      const isSubBaseNeg = Number(g.totalBase || 0) < 0;
+      const subValColor = isSubValNeg ? [220, 38, 38] : [17, 24, 39];
+      const subBaseColor = isSubBaseNeg ? [220, 38, 38] : [17, 24, 39];
+
       if (isRes) {
         body.push([
           { content: `Total Cuenta ${g.code}:`, colSpan: 7, styles: { halign: 'right', fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250] } },
+          { content: fmtPdfSignedNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subBaseColor } },
           { content: '', styles: { fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: [17, 24, 39] } }
+          { content: fmtPdfSignedNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subValColor } }
         ]);
       } else {
         body.push([
           { content: `Total Cuenta ${g.code}:`, colSpan: 10, styles: { halign: 'right', fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250] } },
+          { content: fmtPdfSignedNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subBaseColor } },
           { content: '', styles: { fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: [17, 24, 39] } }
+          { content: fmtPdfSignedNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subValColor } }
         ]);
       }
     });
 
     const totalBases = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalBase, 0);
     const totalValor = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalValor, 0);
+    const isTotValNeg = Number(totalValor || 0) < 0;
+    const isTotBaseNeg = Number(totalBases || 0) < 0;
+    const totValColor = isTotValNeg ? [220, 38, 38] : [21, 128, 61];
+    const totBaseColor = isTotBaseNeg ? [220, 38, 38] : [15, 23, 42];
 
     if (isRes) {
       body.push([
         { content: 'TOTAL GENERAL:', colSpan: 7, styles: { halign: 'right', fontStyle: 'bold', fillColor: [220, 252, 231] } },
-        { content: fmtPdfNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231] } },
+        { content: fmtPdfSignedNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: totBaseColor } },
         { content: '', styles: { fillColor: [220, 252, 231] } },
-        { content: fmtPdfNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: [21, 128, 61] } }
+        { content: fmtPdfSignedNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: totValColor } }
       ]);
     } else {
       body.push([
         { content: 'TOTAL GENERAL:', colSpan: 10, styles: { halign: 'right', fontStyle: 'bold', fillColor: [220, 252, 231] } },
-        { content: fmtPdfNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231] } },
+        { content: fmtPdfSignedNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: totBaseColor } },
         { content: '', styles: { fillColor: [220, 252, 231] } },
-        { content: fmtPdfNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: [21, 128, 61] } }
+        { content: fmtPdfSignedNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: totValColor } }
       ]);
     }
 
@@ -7006,9 +8599,11 @@ async function renderRetencionesReport() {
   view.innerHTML = '<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Reporte de Retenciones...</div>';
 
   try {
-    const [pracAccountsStr, favorAccountsStr] = await Promise.all([
+    const [pracAccountsStr, favorAccountsStr, savedOmitThirdsStr, allThirds] = await Promise.all([
       API.getSetting('report_ret_practicadas').catch(() => '2330'),
       API.getSetting('report_ret_favor').catch(() => '1355'),
+      API.getSetting('report_ret_omit_thirds').catch(() => ''),
+      pb.listAll('third_parties', { sort: 'name' }).catch(() => []),
     ]);
 
     const defaultPracStr = pracAccountsStr || '2330';
@@ -7023,7 +8618,7 @@ async function renderRetencionesReport() {
         <!-- Configuración de cuentas (Colapsable para no saturar) -->
         <details class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden shadow-sm transition-all duration-200">
           <summary class="p-3 font-bold text-xs text-gray-700 cursor-pointer flex items-center justify-between select-none hover:bg-gray-100">
-            <span class="flex items-center gap-1.5"><i class="fas fa-gears text-gray-500"></i>Configuración de Cuentas Contables</span>
+            <span class="flex items-center gap-1.5"><i class="fas fa-gears text-gray-500"></i>Configuración de Cuentas Contables y Omisiones Predeterminadas</span>
             <span class="text-[10px] text-gray-400 font-normal">Clic para expandir y configurar cuentas</span>
           </summary>
           <div class="p-4 border-t border-gray-200 text-xs space-y-3 bg-white">
@@ -7039,7 +8634,7 @@ async function renderRetencionesReport() {
               </div>
             </div>
             <div class="flex justify-end">
-              <button class="btn btn-secondary btn-xs py-1" id="btn-save-ret-config"><i class="fas fa-floppy-disk mr-1"></i>Guardar Cuentas</button>
+              <button class="btn btn-secondary btn-xs py-1" id="btn-save-ret-config"><i class="fas fa-floppy-disk mr-1"></i>Guardar Cuentas y Omisiones</button>
             </div>
           </div>
         </details>
@@ -7076,25 +8671,53 @@ async function renderRetencionesReport() {
           </div>
         </div>
 
-        <!-- Opciones adicionales -->
-        <div class="flex items-center gap-4 mt-2">
-          <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-gray-600 font-semibold">
-            <input type="checkbox" id="ret-omit-dian" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" style="width:14px;height:14px" checked />
-            Omitir registros DIAN (NIT 800197268)
-          </label>
+        <!-- Omisión de Terceros y Entidades Territoriales (DIAN, Municipios para ReteICA, etc.) -->
+        <div class="bg-gray-50/70 p-3 rounded-xl border border-gray-200/80 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <label class="inline-flex items-center gap-2 cursor-pointer select-none text-xs text-gray-700 font-semibold">
+              <input type="checkbox" id="ret-omit-dian" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" style="width:14px;height:14px" checked />
+              <span>Omitir registros DIAN (NIT 800197268)</span>
+            </label>
+            <span class="text-[10px] text-gray-400 hidden sm:inline"><i class="fas fa-info-circle mr-1"></i>Excluye pagos de liquidación a entes recaudadores</span>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">
+              <i class="fas fa-building-columns text-indigo-600 mr-1"></i>Omitir Terceros / Municipios (ej: Pagos de ReteICA al Municipio, Alcaldías o Entidades Territoriales)
+            </label>
+            <div class="relative">
+              <div id="ret-omit-thirds-container" class="flex flex-wrap items-center gap-1.5 p-1.5 bg-white border border-gray-300 rounded-lg min-h-[38px] cursor-text focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 transition">
+                <input type="text" id="ret-omit-thirds-search" class="border-none outline-none text-xs flex-1 min-w-[180px] bg-transparent p-1 text-gray-700 placeholder-gray-400" placeholder="Buscar por nombre o NIT/cédula para omitir..." />
+              </div>
+              <input type="hidden" id="ret-omit-thirds" value="${esc(savedOmitThirdsStr || '')}" />
+              <div id="ret-omit-thirds-results" class="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-56 overflow-y-auto hidden"></div>
+            </div>
+            <p class="text-[10px] text-gray-400 mt-1">Los movimientos asociados a estos terceros serán excluidos del reporte. Haz clic en "Guardar Cuentas y Omisiones" si deseas conservarlos como omisión predeterminada.</p>
+          </div>
         </div>
       </div>
       <div id="ret-results" class="p-5 text-sm text-center text-gray-400">Configura los filtros y haz clic en Generar.</div>`;
 
+    initMultiThirdSelector({
+      containerId: 'ret-omit-thirds-container',
+      inputId: 'ret-omit-thirds-search',
+      hiddenId: 'ret-omit-thirds',
+      resultsId: 'ret-omit-thirds-results',
+      thirdParties: allThirds,
+      themeColor: 'indigo'
+    });
+
     $('#btn-save-ret-config')?.addEventListener('click', async () => {
       const pracVal = getInputVal('ret-acc-prac').trim();
       const favorVal = getInputVal('ret-acc-favor').trim();
+      const omitThirdsVal = getInputVal('ret-omit-thirds').trim();
       try {
         await Promise.all([
           API.setSetting('report_ret_practicadas', pracVal),
           API.setSetting('report_ret_favor', favorVal),
+          API.setSetting('report_ret_omit_thirds', omitThirdsVal),
         ]);
-        showToast('Configuración de cuentas de Retenciones guardada.', 'success');
+        showToast('Configuración guardada (cuentas y omisiones predeterminadas).', 'success');
       } catch (err: any) {
         showToast(`Error al guardar configuración: ${err.message}`, 'error');
       }
@@ -7114,6 +8737,7 @@ async function generateRetReportRows() {
   const reportType = getInputVal('ret-report-type') || 'detallado';
   const personFilter = getInputVal('ret-person-filter') || 'ambos';
   const omitDian = (document.getElementById('ret-omit-dian') as HTMLInputElement | null)?.checked ?? false;
+  const omitThirdsRaw = (getInputVal('ret-omit-thirds') || '').split(',').map(s => s.trim()).filter(Boolean);
 
   if (!fromDate || !toDate) {
     return showToast('Por favor selecciona las fechas Desde y Hasta.', 'warning');
@@ -7154,6 +8778,24 @@ async function generateRetReportRows() {
     ]);
 
     const thirdById = Object.fromEntries(thirdParties.map(t => [t.id, t]));
+
+    // Construir lista y conjuntos para exclusión de terceros
+    const omitThirdIdsOrDocs = new Set(omitThirdsRaw);
+    const omitCleanDocs = new Set<string>();
+    const omittedNames: string[] = [];
+    if (omitDian) {
+      omittedNames.push('DIAN (800197268)');
+    }
+    for (const item of omitThirdsRaw) {
+      const t = thirdParties.find((tp: any) => tp.id === item || String(tp.doc_number || '') === item);
+      if (t) {
+        omittedNames.push(`${t.name} (${t.doc_number}${t.dv ? '-' + t.dv : ''})`);
+        if (t.doc_number) omitCleanDocs.add(String(t.doc_number).replace(/[^0-9]/g, ''));
+      } else {
+        omittedNames.push(item);
+        omitCleanDocs.add(item.replace(/[^0-9]/g, ''));
+      }
+    }
 
     // Obtener los cross_doc_ref de las líneas asociadas a las mismas transacciones
     const txIds = [...new Set(rawTxLines.map(l => l.tx_id))];
@@ -7221,6 +8863,12 @@ async function generateRetReportRows() {
       }
       // Redondear a 2 decimales para evitar el ruido de punto flotante de JS (ej: 385000 / 0.035 -> 10999999.999999998)
       base = Math.round(base * 100) / 100;
+      // Respetar el signo contable de la transacción (devoluciones/notas restan base)
+      if (rowNet < 0) {
+        base = -Math.abs(base);
+      } else if (rowNet > 0) {
+        base = Math.abs(base);
+      }
       return { rate, base };
     };
 
@@ -7238,6 +8886,19 @@ async function generateRetReportRows() {
         const cleanDoc = String(third.doc_number).replace(/[^0-9]/g, '');
         if (cleanDoc === '800197268') {
           continue;
+        }
+      }
+
+      // Omitir Terceros / Municipios seleccionados dinámicamente
+      if (omitThirdIdsOrDocs.size > 0) {
+        if (actualThirdId && omitThirdIdsOrDocs.has(actualThirdId)) {
+          continue;
+        }
+        if (third?.doc_number) {
+          const cleanDoc = String(third.doc_number).replace(/[^0-9]/g, '');
+          if (omitCleanDocs.has(cleanDoc) || omitThirdIdsOrDocs.has(String(third.doc_number).trim())) {
+            continue;
+          }
         }
       }
 
@@ -7315,7 +8976,7 @@ async function generateRetReportRows() {
           }
           const agg = aggregates.get(key);
           agg.base += item.base;
-          agg.value += Math.abs(item.net);
+          agg.value += item.net;
         });
         g.aggregatedRows = [...aggregates.values()].sort((a, b) => 
           (a.third?.name || '').localeCompare(b.third?.name || '')
@@ -7325,7 +8986,7 @@ async function generateRetReportRows() {
       } else {
         g.lines.sort((a: any, b: any) => a.tx.date.localeCompare(b.tx.date));
         g.totalBase = g.lines.reduce((sum: number, r: any) => sum + r.base, 0);
-        g.totalValor = g.lines.reduce((sum: number, r: any) => sum + Math.abs(r.net), 0);
+        g.totalValor = g.lines.reduce((sum: number, r: any) => sum + r.net, 0);
       }
     });
 
@@ -7356,6 +9017,9 @@ async function generateRetReportRows() {
         </div>`;
     } else {
       const isRes = reportType === 'resumido';
+      const overallTotalBase = sortedAccountCodes.reduce((sum, c) => sum + (accountGroups.get(c)?.totalBase || 0), 0);
+      const overallTotalValor = sortedAccountCodes.reduce((sum, c) => sum + (accountGroups.get(c)?.totalValor || 0), 0);
+
       tableHtml = `
         <div class="bg-white rounded-2xl border overflow-hidden shadow-sm animate-fade-in" style="border-color:#E5E7EB">
           <div class="bg-gray-50 px-4 py-3 border-b flex items-center justify-between" style="border-color:#E5E7EB">
@@ -7397,42 +9061,63 @@ async function generateRetReportRows() {
 
                   let rowsHtml = '';
                   if (isRes) {
-                    rowsHtml = g.aggregatedRows.map((agg: any) => `
-                      <tr class="hover:bg-gray-50/50 transition-colors border-b border-gray-100">
+                    rowsHtml = g.aggregatedRows.map((agg: any) => {
+                      const isValNeg = Number(agg.value || 0) < 0;
+                      const isBaseNeg = Number(agg.base || 0) < 0;
+                      const rowBg = isValNeg ? 'bg-rose-50/15 hover:bg-rose-50/30' : 'hover:bg-gray-50/50';
+                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/70 border border-rose-200/60 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
+                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+
+                      return `
+                      <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(agg.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(agg.third?.doc_number || 'SIN DOC')}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(agg.third?.dv || '—')}</td>
                         <td class="p-3 text-center font-semibold text-gray-700">${getPersonType(agg.third) === 'JURIDICA' ? 'J' : 'N'}</td>
                         <td class="p-3 text-gray-600">${esc(agg.third?.address || '—')}</td>
                         <td class="p-3 text-gray-600">${esc(agg.third?.city || '—')}</td>
-                        <td class="p-3 text-right font-mono text-gray-700 font-semibold">${fmt(agg.base)}</td>
+                        <td class="p-3 text-right font-mono ${baseClass}">${fmt(agg.base)}</td>
                         <td class="p-3 text-right font-mono text-gray-600">${agg.rate > 0 ? `${agg.rate}%` : '—'}</td>
-                        <td class="p-3 text-right font-mono text-indigo-950 font-bold">${fmt(agg.value)}</td>
-                      </tr>`).join('');
+                        <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(agg.value)}</span></td>
+                      </tr>`;
+                    }).join('');
                   } else {
-                    rowsHtml = g.lines.map((item: any) => `
-                      <tr class="hover:bg-gray-50/50 transition-colors border-b border-gray-100">
+                    rowsHtml = g.lines.map((item: any) => {
+                      const isValNeg = Number(item.net || 0) < 0;
+                      const isBaseNeg = Number(item.base || 0) < 0;
+                      const rowBg = isValNeg ? 'bg-rose-50/20 hover:bg-rose-50/40' : 'hover:bg-gray-50/50';
+                      const valClass = isValNeg ? 'text-rose-600 font-bold bg-rose-50/80 border border-rose-200/80 rounded px-1.5 py-0.5 inline-block' : 'text-indigo-950 font-bold';
+                      const baseClass = isBaseNeg ? 'text-rose-600 font-semibold' : 'text-gray-700 font-semibold';
+                      const isNC = (item.tx?.number || '').toUpperCase().startsWith('NC') || isValNeg;
+                      const docBadge = isNC ? `<span class="badge bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[9px] ml-1.5" title="Devolución o Nota que resta valor">NC</span>` : '';
+
+                      return `
+                      <tr class="${rowBg} transition-colors border-b border-gray-100">
                         <td class="p-3 font-medium text-gray-800">${esc(item.third?.name || 'Sin tercero')}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.third?.doc_number || 'SIN DOC')}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(item.third?.dv || '—')}</td>
                         <td class="p-3 text-center font-semibold text-gray-700">${getPersonType(item.third) === 'JURIDICA' ? 'J' : 'N'}</td>
                         <td class="p-3 text-gray-600">${esc(item.third?.address || '—')}</td>
-                        <td class="p-3 font-mono text-blue-900 font-semibold">${esc(item.tx.number)}</td>
+                        <td class="p-3 font-mono text-blue-900 font-semibold flex items-center">${esc(item.tx.number)}${docBadge}</td>
                         <td class="p-3 text-center font-mono text-gray-600">${esc(item.tx.date)}</td>
                         <td class="p-3 font-mono text-gray-600">${esc(item.crossDocRef || '—')}</td>
                         <td class="p-3 text-gray-600">${esc(item.third?.city || '—')}</td>
-                        <td class="p-3 text-right font-mono text-gray-700 font-semibold">${fmt(item.base)}</td>
+                        <td class="p-3 text-right font-mono ${baseClass}">${fmt(item.base)}</td>
                         <td class="p-3 text-right font-mono text-gray-600">${item.rate > 0 ? `${item.rate}%` : '—'}</td>
-                        <td class="p-3 text-right font-mono text-indigo-950 font-bold">${fmt(Math.abs(item.net))}</td>
-                      </tr>`).join('');
+                        <td class="p-3 text-right font-mono"><span class="${valClass}">${fmt(item.net)}</span></td>
+                      </tr>`;
+                    }).join('');
                   }
+
+                  const subValClass = g.totalValor < 0 ? 'text-rose-600 font-bold' : 'text-indigo-900';
+                  const subBaseClass = g.totalBase < 0 ? 'text-rose-600 font-bold' : 'text-gray-800';
 
                   const subtotalHtml = `
                     <tr class="bg-gray-50/80 border-b border-gray-200 font-bold text-gray-700">
                       <td colspan="${isRes ? 6 : 9}" class="p-3 text-right">Subtotal Cuenta ${code}:</td>
-                      <td class="p-3 text-right font-mono text-gray-800">${fmt(g.totalBase)}</td>
+                      <td class="p-3 text-right font-mono ${subBaseClass}">${fmt(g.totalBase)}</td>
                       <td></td>
-                      <td class="p-3 text-right font-mono text-indigo-900">${fmt(g.totalValor)}</td>
+                      <td class="p-3 text-right font-mono ${subValClass}">${fmt(g.totalValor)}</td>
                     </tr>`;
 
                   return accHeader + rowsHtml + subtotalHtml;
@@ -7442,9 +9127,9 @@ async function generateRetReportRows() {
                 <!-- Totalizador general en la tabla -->
                 <tr class="bg-indigo-100/20 border-t-2 border-indigo-200 font-extrabold text-gray-800">
                   <td colspan="${isRes ? 6 : 9}" class="p-3 text-right text-xs uppercase">Base Total / Neto Reportado:</td>
-                  <td class="p-3 text-right font-mono text-gray-900 text-xs">${fmt(sumPracBase + sumFavorBase)}</td>
+                  <td class="p-3 text-right font-mono text-gray-900 text-xs">${fmt(overallTotalBase)}</td>
                   <td></td>
-                  <td class="p-3 text-right font-mono text-indigo-950 text-xs">${fmt(netPrac + netFavor)}</td>
+                  <td class="p-3 text-right font-mono text-xs ${overallTotalValor < 0 ? 'text-rose-600' : 'text-indigo-950'}">${fmt(overallTotalValor)}</td>
                 </tr>
               </tfoot>
             </table>
@@ -7475,6 +9160,18 @@ async function generateRetReportRows() {
           </div>
         </div>
       </div>
+      ${omittedNames.length > 0 ? `
+        <div class="mb-4 px-4 py-2.5 bg-indigo-50/80 border border-indigo-200/90 rounded-xl text-xs text-indigo-900 flex items-center justify-between shadow-sm">
+          <div class="flex items-center gap-2">
+            <i class="fas fa-filter-circle-xmark text-indigo-600 text-sm"></i>
+            <div>
+              <span class="font-bold">Terceros / Entidades Omitidas:</span>
+              <span class="text-indigo-800 ml-1 font-medium">${esc(omittedNames.join(' · '))}</span>
+            </div>
+          </div>
+          <span class="text-[10px] bg-indigo-200/70 text-indigo-900 px-2.5 py-0.5 rounded-full font-semibold">${omittedNames.length} omitido${omittedNames.length > 1 ? 's' : ''}</span>
+        </div>
+      ` : ''}
       ${tableHtml}
     `;
 
@@ -7492,7 +9189,8 @@ async function generateRetReportRows() {
       netFavor,
       netSuggested,
       sumPracBase,
-      sumFavorBase
+      sumFavorBase,
+      omittedNames
     };
 
     const expBtn = $('#btn-exp-ret') as HTMLButtonElement | null;
@@ -7572,6 +9270,9 @@ async function exportRetToExcel() {
   html += `<tr><td class="header-subtitle" colspan="9">POR EL AÑO GRAVABLE DE ${year}</td></tr>`;
   // Fila 6: Rango de fechas
   html += `<tr><td class="header-subtitle" colspan="9">Desde ${formattedFrom} Hasta ${formattedTo}</td></tr>`;
+  if (data.omittedNames && data.omittedNames.length > 0) {
+    html += `<tr><td class="header-subtitle" colspan="9" style="color: #4F46E5;">Terceros Omitidos: ${esc(data.omittedNames.join(' · '))}</td></tr>`;
+  }
   // Fila 6b: Espacio vacío
   html += `<tr><td colspan="9"></td></tr>`;
 
@@ -7608,6 +9309,11 @@ async function exportRetToExcel() {
           if (doc.length >= 9 && (doc.startsWith('8') || doc.startsWith('9'))) return 'JURIDICA';
           return 'NATURAL';
         };
+        const isAggValNeg = Number(agg.value || 0) < 0;
+        const isAggBaseNeg = Number(agg.base || 0) < 0;
+        const aggValStyle = isAggValNeg ? 'color: #dc2626; font-weight: bold;' : '';
+        const aggBaseStyle = isAggBaseNeg ? 'color: #dc2626;' : '';
+
         html += `<tr class="data-row">`;
         html += `<td>${esc(agg.third?.name || 'Sin tercero')}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(agg.third?.doc_number || 'SIN DOC')}</td>`;
@@ -7615,9 +9321,9 @@ async function exportRetToExcel() {
         html += `<td class="text-center">${getPersonType(agg.third) === 'JURIDICA' ? 'J' : 'N'}</td>`;
         html += `<td>${esc(agg.third?.address || '—')}</td>`;
         html += `<td>${esc(agg.third?.city || '—')}</td>`;
-        html += `<td class="text-right">${formatExcelNum(agg.base)}</td>`;
+        html += `<td class="text-right" style="${aggBaseStyle}">${formatExcelNum(agg.base)}</td>`;
         html += `<td class="text-right">${formatExcelNum(agg.rate)}%</td>`;
-        html += `<td class="text-right">${formatExcelNum(agg.value)}</td>`;
+        html += `<td class="text-right" style="${aggValStyle}">${formatExcelNum(agg.value)}</td>`;
         html += '</tr>';
       });
     } else {
@@ -7628,6 +9334,11 @@ async function exportRetToExcel() {
           if (doc.length >= 9 && (doc.startsWith('8') || doc.startsWith('9'))) return 'JURIDICA';
           return 'NATURAL';
         };
+        const isItemValNeg = Number(item.net || 0) < 0;
+        const isItemBaseNeg = Number(item.base || 0) < 0;
+        const itemValStyle = isItemValNeg ? 'color: #dc2626; font-weight: bold;' : '';
+        const itemBaseStyle = isItemBaseNeg ? 'color: #dc2626;' : '';
+
         html += `<tr class="data-row">`;
         html += `<td>${esc(item.third?.name || 'Sin tercero')}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(item.third?.doc_number || 'SIN DOC')}</td>`;
@@ -7638,25 +9349,28 @@ async function exportRetToExcel() {
         html += `<td class="text-center">${formatExcelDate(item.tx.date)}</td>`;
         html += `<td style="mso-number-format:\\@">${esc(item.crossDocRef || '—')}</td>`;
         html += `<td>${esc(item.third?.city || '—')}</td>`;
-        html += `<td class="text-right">${formatExcelNum(item.base)}</td>`;
+        html += `<td class="text-right" style="${itemBaseStyle}">${formatExcelNum(item.base)}</td>`;
         html += `<td class="text-right">${formatExcelNum(item.rate)}%</td>`;
-        html += `<td class="text-right">${formatExcelNum(Math.abs(item.net))}</td>`;
+        html += `<td class="text-right" style="${itemValStyle}">${formatExcelNum(item.net)}</td>`;
         html += '</tr>';
       });
     }
+
+    const subValStyle = Number(g.totalValor || 0) < 0 ? 'color: #dc2626;' : '';
+    const subBaseStyle = Number(g.totalBase || 0) < 0 ? 'color: #dc2626;' : '';
 
     // Fila subtotal de la cuenta
     html += `<tr class="subtotal-row">`;
     if (isRes) {
       html += `<td></td><td></td><td></td><td></td><td></td><td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalBase)}</td>`;
+      html += `<td class="text-right" style="${subBaseStyle}">${formatExcelNum(g.totalBase)}</td>`;
       html += `<td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalValor)}</td>`;
+      html += `<td class="text-right" style="${subValStyle}">${formatExcelNum(g.totalValor)}</td>`;
     } else {
       html += `<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalBase)}</td>`;
+      html += `<td class="text-right" style="${subBaseStyle}">${formatExcelNum(g.totalBase)}</td>`;
       html += `<td></td>`;
-      html += `<td class="text-right">${formatExcelNum(g.totalValor)}</td>`;
+      html += `<td class="text-right" style="${subValStyle}">${formatExcelNum(g.totalValor)}</td>`;
     }
     html += '</tr>';
   });
@@ -7664,18 +9378,20 @@ async function exportRetToExcel() {
   // Totales generales
   const totalBases = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalBase, 0);
   const totalValor = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalValor, 0);
+  const totValStyle = Number(totalValor || 0) < 0 ? 'color: #dc2626;' : '';
+  const totBaseStyle = Number(totalBases || 0) < 0 ? 'color: #dc2626;' : '';
 
   html += `<tr class="total-row">`;
   if (isRes) {
     html += `<td>TOTAL GENERAL</td><td></td><td></td><td></td><td></td><td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalBases)}</td>`;
+    html += `<td class="text-right" style="${totBaseStyle}">${formatExcelNum(totalBases)}</td>`;
     html += `<td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalValor)}</td>`;
+    html += `<td class="text-right" style="${totValStyle}">${formatExcelNum(totalValor)}</td>`;
   } else {
     html += `<td>TOTAL GENERAL</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalBases)}</td>`;
+    html += `<td class="text-right" style="${totBaseStyle}">${formatExcelNum(totalBases)}</td>`;
     html += `<td></td>`;
-    html += `<td class="text-right">${formatExcelNum(totalValor)}</td>`;
+    html += `<td class="text-right" style="${totValStyle}">${formatExcelNum(totalValor)}</td>`;
   }
   html += '</tr>';
 
@@ -7712,13 +9428,18 @@ async function exportRetToPdf() {
       ? 'Informe Consolidado de Retención en la Fuente' 
       : 'Informe Detallado de Retención en la Fuente';
 
+    const subtitles: string[] = [
+      `Periodo: ${data.fromDate} a ${data.toDate}`,
+      `Retenciones Practicadas: ${fmtPdfNum(data.netPrac)} · Retenciones a Favor: ${fmtPdfNum(data.netFavor)}`,
+      `Sugerencia de Liquidación: ${data.netSuggested >= 0 ? 'A Pagar' : 'Saldo a Favor'} ${fmtPdfNum(Math.abs(data.netSuggested))}`
+    ];
+    if (data.omittedNames && data.omittedNames.length > 0) {
+      subtitles.push(`Terceros Omitidos: ${data.omittedNames.join(' · ')}`);
+    }
+
     const header = drawPdfHeader(doc, headerCtx, {
       title: reportTitleName,
-      subtitles: [
-        `Periodo: ${data.fromDate} a ${data.toDate}`,
-        `Retenciones Practicadas: ${fmtPdfNum(data.netPrac)} · Retenciones a Favor: ${fmtPdfNum(data.netFavor)}`,
-        `Sugerencia de Liquidación: ${data.netSuggested >= 0 ? 'A Pagar' : 'Saldo a Favor'} ${fmtPdfNum(Math.abs(data.netSuggested))}`
-      ],
+      subtitles,
     });
 
     const body: any[] = [];
@@ -7744,6 +9465,8 @@ async function exportRetToPdf() {
       if (isRes) {
         g.aggregatedRows.forEach((agg: any) => {
           const pType = getPersonType(agg.third) === 'JURIDICA' ? 'J' : 'N';
+          const isValNeg = Number(agg.value || 0) < 0;
+          const isBaseNeg = Number(agg.base || 0) < 0;
           body.push([
             agg.third?.name || 'Sin tercero',
             agg.third?.doc_number || 'SIN DOC',
@@ -7751,14 +9474,16 @@ async function exportRetToPdf() {
             pType,
             agg.third?.address || '—',
             agg.third?.city || '—',
-            fmtPdfNum(agg.base),
+            isBaseNeg ? { content: fmtPdfSignedNum(agg.base), styles: { textColor: [220, 38, 38] } } : fmtPdfNum(agg.base),
             agg.rate > 0 ? `${agg.rate}%` : '—',
-            fmtPdfNum(agg.value)
+            isValNeg ? { content: fmtPdfSignedNum(agg.value), styles: { textColor: [220, 38, 38], fontStyle: 'bold' } } : fmtPdfNum(agg.value)
           ]);
         });
       } else {
         g.lines.forEach((item: any) => {
           const pType = getPersonType(item.third) === 'JURIDICA' ? 'J' : 'N';
+          const isValNeg = Number(item.net || 0) < 0;
+          const isBaseNeg = Number(item.base || 0) < 0;
           body.push([
             item.third?.name || 'Sin tercero',
             item.third?.doc_number || 'SIN DOC',
@@ -7769,27 +9494,32 @@ async function exportRetToPdf() {
             item.tx.date,
             item.crossDocRef || '—',
             item.third?.city || '—',
-            fmtPdfNum(item.base),
+            isBaseNeg ? { content: fmtPdfSignedNum(item.base), styles: { textColor: [220, 38, 38] } } : fmtPdfNum(item.base),
             item.rate > 0 ? `${item.rate}%` : '—',
-            fmtPdfNum(Math.abs(item.net))
+            isValNeg ? { content: fmtPdfSignedNum(item.net), styles: { textColor: [220, 38, 38], fontStyle: 'bold' } } : fmtPdfNum(item.net)
           ]);
         });
       }
+
+      const isSubValNeg = Number(g.totalValor || 0) < 0;
+      const isSubBaseNeg = Number(g.totalBase || 0) < 0;
+      const subValColor = isSubValNeg ? [220, 38, 38] : [17, 24, 39];
+      const subBaseColor = isSubBaseNeg ? [220, 38, 38] : [17, 24, 39];
 
       // 3. Fila de Subtotal
       if (isRes) {
         body.push([
           { content: `Total Cuenta ${g.code}:`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250] } },
+          { content: fmtPdfSignedNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subBaseColor } },
           { content: '', styles: { fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: [17, 24, 39] } }
+          { content: fmtPdfSignedNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subValColor } }
         ]);
       } else {
         body.push([
           { content: `Total Cuenta ${g.code}:`, colSpan: 9, styles: { halign: 'right', fontStyle: 'bold', fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250] } },
+          { content: fmtPdfSignedNum(g.totalBase), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subBaseColor } },
           { content: '', styles: { fillColor: [250, 250, 250] } },
-          { content: fmtPdfNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: [17, 24, 39] } }
+          { content: fmtPdfSignedNum(g.totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [250, 250, 250], textColor: subValColor } }
         ]);
       }
     });
@@ -7797,20 +9527,24 @@ async function exportRetToPdf() {
     // 4. Fila de Total General
     const totalBases = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalBase, 0);
     const totalValor = data.accountGroups.reduce((sum: number, g: any) => sum + g.totalValor, 0);
+    const isTotValNeg = Number(totalValor || 0) < 0;
+    const isTotBaseNeg = Number(totalBases || 0) < 0;
+    const totValColor = isTotValNeg ? [220, 38, 38] : [49, 46, 129];
+    const totBaseColor = isTotBaseNeg ? [220, 38, 38] : [15, 23, 42];
 
     if (isRes) {
       body.push([
         { content: 'TOTAL GENERAL:', colSpan: 6, styles: { halign: 'right', fontStyle: 'bold', fillColor: [238, 242, 255] } },
-        { content: fmtPdfNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255] } },
+        { content: fmtPdfSignedNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: totBaseColor } },
         { content: '', styles: { fillColor: [238, 242, 255] } },
-        { content: fmtPdfNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: [49, 46, 129] } }
+        { content: fmtPdfSignedNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: totValColor } }
       ]);
     } else {
       body.push([
         { content: 'TOTAL GENERAL:', colSpan: 9, styles: { halign: 'right', fontStyle: 'bold', fillColor: [238, 242, 255] } },
-        { content: fmtPdfNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255] } },
+        { content: fmtPdfSignedNum(totalBases), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: totBaseColor } },
         { content: '', styles: { fillColor: [238, 242, 255] } },
-        { content: fmtPdfNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: [49, 46, 129] } }
+        { content: fmtPdfSignedNum(totalValor), styles: { fontStyle: 'bold', halign: 'right', fillColor: [238, 242, 255], textColor: totValColor } }
       ]);
     }
 

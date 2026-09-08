@@ -42,25 +42,27 @@ async function renderInventario(c: any, activeTab = 'stock', ctx: any = {}) {
 
 function _renderInvPage(c, activeTab, ctx = {}) {
   const tabs = [
-    { id: 'stock',      label: 'Stock actual',   icon: 'fa-boxes-stacked'  },
-    { id: 'movimientos',label: 'Movimientos',    icon: 'fa-arrows-rotate'  },
-    { id: 'kardex',     label: 'Kardex',         icon: 'fa-table'          },
-    { id: 'bodegas',    label: 'Bodegas',        icon: 'fa-warehouse'      },
-    { id: 'consignaciones', label: 'Consignaciones', icon: 'fa-handshake'   },
-    { id: 'reportes',   label: 'Reportes',       icon: 'fa-file-invoice'   },
+    { id: 'stock',          label: 'Stock actual',         icon: 'fa-boxes-stacked' },
+    { id: 'lotes',          label: 'Lotes y Vencimientos', icon: 'fa-barcode'       },
+    { id: 'pallets',        label: 'Estibas y Pallets',    icon: 'fa-pallet'        },
+    { id: 'movimientos',    label: 'Movimientos',          icon: 'fa-arrows-rotate' },
+    { id: 'kardex',         label: 'Kardex',               icon: 'fa-table'         },
+    { id: 'bodegas',        label: 'Bodegas',              icon: 'fa-warehouse'     },
+    { id: 'consignaciones', label: 'Consignaciones',       icon: 'fa-handshake'     },
+    { id: 'reportes',       label: 'Reportes',             icon: 'fa-file-invoice'  },
   ];
 
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5 w-full">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">Gestión de Inventarios</h3>
-        <p class="text-sm" style="color:#6B7280">Stock actual, movimientos, bodegas y reportes.</p>
+        <p class="text-sm" style="color:#6B7280">Stock actual, lotes, estibas WMS, movimientos, bodegas y reportes.</p>
       </div>
     </div>
     <div class="flex gap-1 mb-5 border-b" style="border-color:#E5E7EB">
       ${tabs.map(t => `
-        <button class="tab-btn px-5 py-2 text-sm font-medium rounded-t-lg${t.id === activeTab ? ' active' : ''}" data-tab="${t.id}">
-          <i class="fas ${t.icon} mr-2"></i>${t.label}
+        <button class="tab-btn px-4 py-2 text-sm font-medium rounded-t-lg${t.id === activeTab ? ' active' : ''}" data-tab="${t.id}">
+          <i class="fas ${t.icon} mr-1.5"></i>${t.label}
         </button>`).join('')}
     </div>
     <div id="inv-tab-content"></div>`;
@@ -70,6 +72,8 @@ function _renderInvPage(c, activeTab, ctx = {}) {
   function switchTab(tabId) {
     c.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
     if (tabId === 'stock')          renderStockTab(tabContent, ctx);
+    if (tabId === 'lotes')          renderLotesTab(tabContent, ctx);
+    if (tabId === 'pallets')        renderPalletsTab(tabContent, ctx);
     if (tabId === 'movimientos')     renderMovimientosTab(tabContent, ctx);
     if (tabId === 'kardex')          renderKardexTab(tabContent, ctx);
     if (tabId === 'bodegas')         renderBodegasTab(tabContent, ctx);
@@ -7069,14 +7073,1005 @@ async function deleteConsignmentSettlement(id, number) {
         await pb.delete('consignment_settlements', id);
         showToast('Borrador eliminado.', 'success');
         renderConsignacionesTab(document.getElementById('inv-tab-content')!, {});
-      } catch (err) {
+      } catch (err: any) {
         showToast(err.message, 'error');
       }
     }
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: LOTES Y VENCIMIENTOS
+// ══════════════════════════════════════════════════════════════════════════════
+async function renderLotesTab(c: any, ctx: any = {}) {
+  const container = c || document.getElementById('inv-tab-content');
+  if (!container) return;
+  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando lotes y trazabilidad...</div>`;
+  try {
+    const [lots, warehouses] = await Promise.all([
+      API.getInventoryLots(),
+      ctx.warehouses ? ctx.warehouses : API.getWarehouses(false)
+    ]);
+    ctx.warehouses = warehouses;
+
+    const today = new Date();
+    const todayStrVal = todayStr();
+
+    // Métricas
+    const lotsWithStock = lots.filter((l: any) => (Number(l.qty_on_hand) || 0) > 0);
+    const totalUnitsInLots = lotsWithStock.reduce((s: number, l: any) => s + (Number(l.qty_on_hand) || 0), 0);
+
+    const expiredLots = lots.filter((l: any) => {
+      if (!l.expiry_date || (Number(l.qty_on_hand) || 0) <= 0) return false;
+      return l.expiry_date.slice(0, 10) < todayStrVal;
+    });
+
+    const expiringSoonLots = lots.filter((l: any) => {
+      if (!l.expiry_date || (Number(l.qty_on_hand) || 0) <= 0) return false;
+      const expDate = new Date(l.expiry_date.slice(0, 10));
+      const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 60 && diffDays >= 0;
+    });
+
+    const totalLotValue = lotsWithStock.reduce((s: number, l: any) => s + ((Number(l.qty_on_hand) || 0) * (Number(l.unit_cost) || 0)), 0);
+
+    container.innerHTML = `
+      <!-- KPIs -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+        ${invKpi('Lotes con Stock', fmtN(lotsWithStock.length), 'fas fa-barcode', '#1A4B8C', '#EEF4FF')}
+        ${invKpi('Unidades en Lotes', fmtN(totalUnitsInLots), 'fas fa-cubes', '#059669', '#ECFDF5')}
+        ${invKpi('Por Vencer (<60d)', expiringSoonLots.length, 'fas fa-clock', '#C46516', '#FFF8F0')}
+        ${invKpi('Lotes Vencidos', expiredLots.length, 'fas fa-triangle-exclamation', '#DC2626', '#FEF2F2')}
+        ${invKpi('Valor Total en Lotes', fmt(totalLotValue), 'fas fa-coins', '#7C3AED', '#F5F3FF')}
+      </div>
+
+      <!-- Filtros -->
+      <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap gap-3 flex-1 items-center">
+          <input id="lot-search-q" class="form-input min-w-48 text-xs py-1.5" placeholder="Buscar por referencia, nombre o lote...">
+          <select id="lot-wh-filter" class="form-input text-xs py-1.5" style="max-width:200px">
+            <option value="">Todas las bodegas</option>
+            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+          <select id="lot-stock-filter" class="form-input text-xs py-1.5" style="max-width:180px">
+            <option value="with_stock">Solo con existencias (>0)</option>
+            <option value="all">Todos los lotes (historial)</option>
+            <option value="zero">Agotados / Sin stock (=0)</option>
+          </select>
+          <select id="lot-expiry-filter" class="form-input text-xs py-1.5" style="max-width:180px">
+            <option value="all">Todos los vencimientos</option>
+            <option value="warning">🟡 Por vencer en < 60 días</option>
+            <option value="expired">🔴 Lotes vencidos</option>
+            <option value="valid">🟢 Lotes vigentes</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-export-lots" class="btn btn-outline text-xs py-1.5 px-3">
+            <i class="fas fa-file-excel mr-1.5 text-emerald-600"></i>Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabla de Lotes -->
+      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+        <div class="overflow-x-auto">
+          <table class="data-table text-xs" id="lots-table">
+            <thead>
+              <tr>
+                <th style="min-width:220px">Producto & Referencia</th>
+                <th>Nro. Lote</th>
+                <th>Bodega</th>
+                <th>F. Fabricación</th>
+                <th>F. Vencimiento & FEFO</th>
+                <th class="text-right">Stock Disponible</th>
+                <th class="text-right">Costo Unitario</th>
+                <th class="text-right">Valor Total</th>
+                <th>Origen</th>
+                <th class="text-center">Estado</th>
+                <th class="text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="lots-tbody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const renderFilteredLots = () => {
+      const q = (document.getElementById('lot-search-q') as HTMLInputElement)?.value.toLowerCase().trim() || '';
+      const wh = (document.getElementById('lot-wh-filter') as HTMLSelectElement)?.value || '';
+      const stockOpt = (document.getElementById('lot-stock-filter') as HTMLSelectElement)?.value || 'with_stock';
+      const expOpt = (document.getElementById('lot-expiry-filter') as HTMLSelectElement)?.value || 'all';
+
+      const filtered = lots.filter((l: any) => {
+        const prod = l.expand?.product_id;
+        const prodName = (prod?.name || '').toLowerCase();
+        const prodCode = (prod?.code || '').toLowerCase();
+        const lotNum = (l.lot_number || '').toLowerCase();
+        const notes = (l.notes || '').toLowerCase();
+
+        if (q && !prodName.includes(q) && !prodCode.includes(q) && !lotNum.includes(q) && !notes.includes(q)) return false;
+        if (wh && l.warehouse_id !== wh) return false;
+
+        const qty = Number(l.qty_on_hand) || 0;
+        if (stockOpt === 'with_stock' && qty <= 0) return false;
+        if (stockOpt === 'zero' && qty > 0) return false;
+
+        if (expOpt !== 'all') {
+          if (!l.expiry_date) return false;
+          const expDate = new Date(l.expiry_date.slice(0, 10));
+          const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (expOpt === 'expired' && diffDays >= 0) return false;
+          if (expOpt === 'warning' && (diffDays < 0 || diffDays > 60)) return false;
+          if (expOpt === 'valid' && diffDays <= 60) return false;
+        }
+
+        return true;
+      });
+
+      const tbody = document.getElementById('lots-tbody');
+      if (!tbody) return;
+
+      if (!filtered.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="11" class="text-center py-12" style="color:#9CA3AF">
+              <i class="fas fa-barcode text-3xl mb-2 text-slate-300 block"></i>
+              No se encontraron lotes que coincidan con los filtros aplicados.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((l: any) => {
+        const prod = l.expand?.product_id;
+        const whObj = l.expand?.warehouse_id || warehouses.find((w: any) => w.id === l.warehouse_id);
+        const impObj = l.expand?.import_id;
+        const suppObj = l.expand?.supplier_id;
+        const qtyOnHand = Number(l.qty_on_hand) || 0;
+        const initQty = Number(l.initial_qty) || qtyOnHand;
+        const unitCost = Number(l.unit_cost) || 0;
+        const totalVal = qtyOnHand * unitCost;
+        const unit = prod?.unit || 'UND';
+        const pct = initQty > 0 ? Math.min(100, Math.max(0, Math.round((qtyOnHand / initQty) * 100))) : 0;
+
+        let expHtml = '<span class="text-slate-400">Sin vencimiento</span>';
+        if (l.expiry_date) {
+          const expDate = new Date(l.expiry_date.slice(0, 10));
+          const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) {
+            expHtml = `<span class="badge badge-red font-bold text-[11px]"><i class="fas fa-circle-xmark mr-1"></i>${l.expiry_date.slice(0, 10)} (Venció hace ${Math.abs(diffDays)}d)</span>`;
+          } else if (diffDays <= 60) {
+            expHtml = `<span class="badge badge-orange font-bold text-[11px]"><i class="fas fa-clock mr-1"></i>${l.expiry_date.slice(0, 10)} (Vence en ${diffDays}d)</span>`;
+          } else {
+            expHtml = `<span class="badge badge-green font-bold text-[11px]"><i class="fas fa-check-circle mr-1"></i>${l.expiry_date.slice(0, 10)} (${diffDays}d)</span>`;
+          }
+        }
+
+        let statusBadge = '<span class="badge badge-emerald">Activo</span>';
+        if (l.status === 'quarantine') statusBadge = '<span class="badge badge-amber">Cuarentena</span>';
+        else if (l.status === 'closed' || qtyOnHand <= 0) statusBadge = '<span class="badge badge-slate">Agotado</span>';
+
+        return `
+          <tr>
+            <td class="font-medium">
+              <div class="font-bold text-slate-900">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '<span class="text-slate-400">Sin producto</span>'}</div>
+              <span class="text-[10px] text-slate-500 font-mono">Unidad: ${unit}</span>
+            </td>
+            <td>
+              <span class="font-mono font-extrabold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                ${esc(l.lot_number || 'S/L')}
+              </span>
+            </td>
+            <td class="text-slate-700 font-semibold">${whObj ? esc(whObj.name) : '—'}</td>
+            <td class="font-mono text-slate-600">${l.manufacturing_date ? l.manufacturing_date.slice(0, 10) : '—'}</td>
+            <td>${expHtml}</td>
+            <td class="text-right font-mono">
+              <div class="font-bold text-slate-800">${fmtN(qtyOnHand)} ${unit}</div>
+              <div class="w-24 ml-auto bg-slate-200 rounded-full h-1.5 mt-1 overflow-hidden" title="${pct}% restante">
+                <div class="${pct > 25 ? 'bg-blue-600' : 'bg-amber-500'} h-1.5 rounded-full" style="width:${pct}%"></div>
+              </div>
+            </td>
+            <td class="text-right font-mono text-slate-700">${fmt(unitCost)}</td>
+            <td class="text-right font-mono font-bold text-slate-900">${fmt(totalVal)}</td>
+            <td>
+              ${impObj ? `
+                <button class="badge badge-blue font-mono font-bold hover:underline cursor-pointer border-0" onclick="window.viewImportDetail && window.viewImportDetail('${impObj.id}')" title="Ver importación de origen">
+                  <i class="fas fa-ship mr-1"></i>${esc(impObj.number)}
+                </button>
+              ` : (suppObj ? `<span class="text-slate-600 truncate max-w-[120px] block" title="${esc(suppObj.name)}">${esc(suppObj.name)}</span>` : '<span class="text-slate-400">Ingreso Directo</span>')}
+            </td>
+            <td class="text-center">${statusBadge}</td>
+            <td class="text-center whitespace-nowrap">
+              <button class="btn btn-outline btn-xs mr-1 text-blue-700" title="Ver Trazabilidad y Detalle" onclick="window.invViewLotTraceability('${l.id}')">
+                <i class="fas fa-magnifying-glass"></i>
+              </button>
+              <button class="btn btn-secondary btn-xs text-slate-700" title="Editar Estado y Observaciones" onclick="window.invOpenLotEditModal('${l.id}')">
+                <i class="fas fa-pen"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    renderFilteredLots();
+
+    document.getElementById('lot-search-q')?.addEventListener('input', debounce(renderFilteredLots, 150));
+    document.getElementById('lot-wh-filter')?.addEventListener('change', renderFilteredLots);
+    document.getElementById('lot-stock-filter')?.addEventListener('change', renderFilteredLots);
+    document.getElementById('lot-expiry-filter')?.addEventListener('change', renderFilteredLots);
+
+    document.getElementById('btn-export-lots')?.addEventListener('click', () => {
+      let csv = 'Referencia;Producto;Lote;Bodega;F_Fabricacion;F_Vencimiento;Stock;Unidad;Costo_Unit;Valor_Total;Origen\n';
+      lots.forEach((l: any) => {
+        const prod = l.expand?.product_id;
+        const whObj = l.expand?.warehouse_id || warehouses.find((w: any) => w.id === l.warehouse_id);
+        const impObj = l.expand?.import_id;
+        const qty = Number(l.qty_on_hand) || 0;
+        const cost = Number(l.unit_cost) || 0;
+        csv += `"${prod?.code || ''}";"${prod?.name || ''}";"${l.lot_number || ''}";"${whObj?.name || ''}";"${l.manufacturing_date || ''}";"${l.expiry_date || ''}";${qty};"${prod?.unit || 'UND'}";${cost};${qty * cost};"${impObj?.number || 'Directo'}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lotes_inventario_${todayStrVal}.csv`;
+      a.click();
+    });
+
+    const tbl = document.getElementById('lots-table') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
+
+  } catch (err: any) {
+    container.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Error al cargar lotes: ${esc(err.message)}</div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: ESTIBAS Y PALLETS (WMS)
+// ══════════════════════════════════════════════════════════════════════════════
+async function renderPalletsTab(c: any, ctx: any = {}) {
+  const container = c || document.getElementById('inv-tab-content');
+  if (!container) return;
+  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando organización de estibas y pallets...</div>`;
+  try {
+    const [pallets, warehouses, products] = await Promise.all([
+      API.getInventoryPallets(),
+      ctx.warehouses ? ctx.warehouses : API.getWarehouses(false),
+      ctx.products ? ctx.products : API.getProducts()
+    ]);
+    ctx.warehouses = warehouses;
+    ctx.products = products;
+
+    let viewMode = (window as any).__invPalletViewMode || 'grouped';
+    let productFilterId = (window as any).__invPalletFilterProductId || '';
+
+    const availablePallets = pallets.filter((p: any) => (Number(p.units_available) || 0) > 0);
+    const totalPalletsCount = availablePallets.length;
+    const totalBoxesCount = availablePallets.reduce((s: number, p: any) => s + (Number(p.boxes_current) || 0), 0);
+    const totalUnitsCount = availablePallets.reduce((s: number, p: any) => s + (Number(p.units_available) || 0), 0);
+    const distinctSkusCount = new Set(availablePallets.map((p: any) => p.product_id)).size;
+
+    container.innerHTML = `
+      <!-- KPIs -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        ${invKpi('Estibas Disponibles', fmtN(totalPalletsCount), 'fas fa-pallet', '#1A4B8C', '#EEF4FF')}
+        ${invKpi('Referencias Estibadas', distinctSkusCount, 'fas fa-boxes-stacked', '#059669', '#ECFDF5')}
+        ${invKpi('Cajas en Estibas', fmtN(totalBoxesCount), 'fas fa-box', '#7C3AED', '#F5F3FF')}
+        ${invKpi('Unidades en Estibas', fmtN(totalUnitsCount), 'fas fa-cubes', '#C46516', '#FFF8F0')}
+      </div>
+
+      <!-- Filtros y Selector de Modo de Vista -->
+      <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap gap-3 flex-1 items-center">
+          
+          <div class="flex items-center rounded-xl bg-slate-100 p-1 border border-slate-200">
+            <button id="btn-view-grouped" class="px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'grouped' ? 'bg-white shadow text-blue-900' : 'text-slate-600 hover:text-slate-900'}">
+              <i class="fas fa-layer-group mr-1.5"></i>Organización por Referencia
+            </button>
+            <button id="btn-view-individual" class="px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${viewMode === 'individual' ? 'bg-white shadow text-blue-900' : 'text-slate-600 hover:text-slate-900'}">
+              <i class="fas fa-barcode mr-1.5"></i>Detalle Individual (LPN)
+            </button>
+          </div>
+
+          <input id="plt-search-q" class="form-input min-w-44 text-xs py-1.5" placeholder="Buscar producto, referencia, LPN o ubicación...">
+          <select id="plt-wh-filter" class="form-input text-xs py-1.5" style="max-width:180px">
+            <option value="">Todas las bodegas</option>
+            ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+          </select>
+          <select id="plt-status-filter" class="form-input text-xs py-1.5" style="max-width:170px">
+            <option value="available">Solo con stock (>0)</option>
+            <option value="all">Todas las estibas</option>
+            <option value="empty">Vacías / Despachadas</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-2">
+          ${productFilterId ? `
+            <button id="btn-clear-prod-filter" class="btn btn-secondary text-xs py-1.5 px-3">
+              <i class="fas fa-filter-circle-xmark mr-1 text-slate-500"></i>Quitar filtro producto
+            </button>
+          ` : ''}
+          <button id="btn-print-all-lpn" class="btn btn-outline text-xs py-1.5 px-3 text-indigo-700 font-bold border-indigo-200 hover:bg-indigo-50">
+            <i class="fas fa-print mr-1.5 text-indigo-600"></i>Imprimir Rótulos LPN
+          </button>
+        </div>
+      </div>
+
+      <!-- Contenedor dinámico de la vista -->
+      <div id="pallets-view-container"></div>
+    `;
+
+    const renderCurrentView = () => {
+      const q = (document.getElementById('plt-search-q') as HTMLInputElement)?.value.toLowerCase().trim() || '';
+      const wh = (document.getElementById('plt-wh-filter') as HTMLSelectElement)?.value || '';
+      const statusOpt = (document.getElementById('plt-status-filter') as HTMLSelectElement)?.value || 'available';
+
+      const filteredPallets = pallets.filter((p: any) => {
+        if (productFilterId && p.product_id !== productFilterId) return false;
+        if (wh && p.warehouse_id !== wh) return false;
+
+        const unitsAvail = Number(p.units_available) || 0;
+        if (statusOpt === 'available' && unitsAvail <= 0) return false;
+        if (statusOpt === 'empty' && unitsAvail > 0) return false;
+
+        const prod = p.expand?.product_id || products.find((pr: any) => pr.id === p.product_id);
+        const prodName = (prod?.name || '').toLowerCase();
+        const prodCode = (prod?.code || '').toLowerCase();
+        const pltCode = (p.pallet_code || '').toLowerCase();
+        const loc = (p.location_code || '').toLowerCase();
+        const lotNum = (p.expand?.lot_id?.lot_number || '').toLowerCase();
+
+        if (q && !prodName.includes(q) && !prodCode.includes(q) && !pltCode.includes(q) && !loc.includes(q) && !lotNum.includes(q)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      const viewContainer = document.getElementById('pallets-view-container');
+      if (!viewContainer) return;
+
+      if (viewMode === 'grouped') {
+        // ── VISTA AGRUPADA POR REFERENCIA (ORGANIZACIÓN HETEROGÉNEA) ──
+        const productMap = new Map<string, any[]>();
+        filteredPallets.forEach((p: any) => {
+          const pid = p.product_id || 'unassigned';
+          if (!productMap.has(pid)) productMap.set(pid, []);
+          productMap.get(pid)!.push(p);
+        });
+
+        if (!productMap.size) {
+          viewContainer.innerHTML = `
+            <div class="bg-white rounded-2xl border p-12 text-center" style="border-color:#F0F0F0; color:#9CA3AF">
+              <i class="fas fa-pallet text-3xl mb-2 text-slate-300 block"></i>
+              No se encontraron referencias estibadas con los filtros seleccionados.
+            </div>
+          `;
+          return;
+        }
+
+        let groupedHtml = `
+          <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+            <div class="overflow-x-auto">
+              <table class="data-table text-xs" id="pallets-grouped-table">
+                <thead>
+                  <tr>
+                    <th style="min-width:240px">Producto & Referencia</th>
+                    <th>Bodegas</th>
+                    <th class="text-center">Estibas Disp.</th>
+                    <th style="min-width:280px">Organización y Embalaje por Estibas</th>
+                    <th class="text-right">Total Cajas</th>
+                    <th class="text-right">Total Unidades</th>
+                    <th class="text-right">Cubicaje (m³)</th>
+                    <th class="text-right">Peso Bruto (Kg)</th>
+                    <th class="text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+        `;
+
+        productMap.forEach((pList, pid) => {
+          const prod = products.find((pr: any) => pr.id === pid) || pList[0]?.expand?.product_id;
+          const whNames = Array.from(new Set(pList.map(p => {
+            const w = warehouses.find((wh: any) => wh.id === p.warehouse_id) || p.expand?.warehouse_id;
+            return w?.name || 'Bodega Principal';
+          }))).join(', ');
+
+          const totalPlts = pList.length;
+          const totalBoxes = pList.reduce((s, p) => s + (Number(p.boxes_current) || 0), 0);
+          const totalUnits = pList.reduce((s, p) => s + (Number(p.units_available) || 0), 0);
+          const totalWeight = pList.reduce((s, p) => s + (Number(p.gross_weight_kg) || 0), 0);
+          const totalCbm = pList.reduce((s, p) => {
+            const h = Number(p.height_cm) || 120;
+            const isEuro = p.pallet_type === 'EUROPALLET_120x80';
+            return s + ((1.2 * (isEuro ? 0.8 : 1.0) * (h / 100)) * (p.boxes_current > 0 ? 1 : 0));
+          }, 0);
+
+          // Agrupación de desglose de estibas: cuántos pallets de X cajas
+          const breakdownMap = new Map<string, { count: number, boxes: number, unitsPerBox: number }>();
+          pList.forEach(p => {
+            const b = Number(p.boxes_current || p.boxes_initial || 1);
+            const u = Number(p.units_per_box || 1);
+            const key = `${b}_${u}`;
+            if (!breakdownMap.has(key)) {
+              breakdownMap.set(key, { count: 0, boxes: b, unitsPerBox: u });
+            }
+            breakdownMap.get(key)!.count += 1;
+          });
+
+          const breakdownBadges = Array.from(breakdownMap.values()).map(item => `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-blue-50 text-blue-900 border border-blue-200 mr-1.5 mb-1 shadow-2xs" title="${item.count} estibas con ${item.boxes} cajas cada una">
+              <i class="fas fa-pallet text-blue-600"></i>
+              <strong>${item.count} plts</strong> × ${item.boxes} cjs <span class="text-blue-600 font-normal">(${item.unitsPerBox} ${prod?.unit || 'und'}/cj)</span>
+            </span>
+          `).join('');
+
+          groupedHtml += `
+            <tr>
+              <td class="font-medium">
+                <div class="font-bold text-slate-900 text-sm">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : 'Sin asignar'}</div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">Tipo: ${prod?.type || 'BIEN'} · Unidad: <strong>${prod?.unit || 'UND'}</strong></div>
+              </td>
+              <td class="text-slate-700 font-semibold">${esc(whNames)}</td>
+              <td class="text-center font-mono">
+                <span class="badge badge-blue font-bold text-sm px-2.5 py-0.5">${totalPlts}</span>
+              </td>
+              <td>
+                <div class="flex flex-wrap items-center">
+                  ${breakdownBadges}
+                </div>
+              </td>
+              <td class="text-right font-mono font-bold text-slate-800">${fmtN(totalBoxes)}</td>
+              <td class="text-right font-mono font-extrabold text-blue-900 text-sm">${fmtN(totalUnits)} ${prod?.unit || 'UND'}</td>
+              <td class="text-right font-mono text-slate-600">${totalCbm.toFixed(3)} m³</td>
+              <td class="text-right font-mono text-slate-600">${totalWeight.toFixed(1)} Kg</td>
+              <td class="text-center whitespace-nowrap">
+                <button class="btn btn-outline btn-xs mr-1 text-blue-700 font-semibold" onclick="window.invFilterPalletsByProduct('${pid}')" title="Ver estibas individuales de este producto">
+                  <i class="fas fa-list-check mr-1"></i>Ver ${totalPlts} Estibas
+                </button>
+                <button class="btn btn-secondary btn-xs text-indigo-700 font-semibold" onclick="window.invPrintProductPalletLabels('${pid}')" title="Imprimir rótulos LPN de este producto">
+                  <i class="fas fa-qrcode mr-1"></i>Rótulos
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+
+        groupedHtml += `
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+        viewContainer.innerHTML = groupedHtml;
+        const gTbl = document.getElementById('pallets-grouped-table') as HTMLTableElement;
+        if (gTbl) (window as any).makeTableSortable(gTbl);
+
+      } else {
+        // ── VISTA DETALLE INDIVIDUAL DE ESTIBAS (LPN / WMS) ──
+        if (!filteredPallets.length) {
+          viewContainer.innerHTML = `
+            <div class="bg-white rounded-2xl border p-12 text-center" style="border-color:#F0F0F0; color:#9CA3AF">
+              <i class="fas fa-barcode text-3xl mb-2 text-slate-300 block"></i>
+              No se encontraron estibas con los filtros seleccionados.
+            </div>
+          `;
+          return;
+        }
+
+        let indHtml = `
+          <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+            <div class="overflow-x-auto">
+              <table class="data-table text-xs" id="pallets-individual-table">
+                <thead>
+                  <tr>
+                    <th>LPN / Estiba</th>
+                    <th style="min-width:220px">Producto & Referencia</th>
+                    <th>Bodega</th>
+                    <th>Ubicación Almacén</th>
+                    <th>Lote Fabr.</th>
+                    <th>Tipo Estiba</th>
+                    <th class="text-right">Cajas (Act/Ini)</th>
+                    <th class="text-right">Unidades Disp.</th>
+                    <th>Dimensiones</th>
+                    <th class="text-center">Estado</th>
+                    <th class="text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+        `;
+
+        indHtml += filteredPallets.map((p: any) => {
+          const prod = p.expand?.product_id || products.find((pr: any) => pr.id === p.product_id);
+          const wh = p.expand?.warehouse_id || warehouses.find((w: any) => w.id === p.warehouse_id);
+          const lot = p.expand?.lot_id;
+          const uAvail = Number(p.units_available) || 0;
+          const uPerBox = Number(p.units_per_box) || 1;
+          const bCur = Number(p.boxes_current) || 0;
+          const bIni = Number(p.boxes_initial) || bCur;
+          const unit = prod?.unit || 'UND';
+
+          let statusBadge = '<span class="badge badge-green">Disponible</span>';
+          if (uAvail <= 0) statusBadge = '<span class="badge badge-slate">Vacío</span>';
+          else if (bCur < bIni) statusBadge = '<span class="badge badge-orange">Parcial</span>';
+
+          const locHtml = p.location_code ? `
+            <span class="font-mono font-extrabold text-blue-900 bg-slate-100 hover:bg-blue-100 px-2 py-0.5 rounded border border-slate-300 cursor-pointer inline-flex items-center gap-1" onclick="window.invOpenLocationModal('${p.id}', '${esc(p.location_code)}', '${esc(p.notes || '')}')" title="Clic para cambiar ubicación física">
+              <i class="fas fa-location-dot text-blue-600"></i> ${esc(p.location_code)}
+            </span>
+          ` : `
+            <button class="badge badge-amber font-semibold cursor-pointer border-0 inline-flex items-center gap-1" onclick="window.invOpenLocationModal('${p.id}', '', '${esc(p.notes || '')}')" title="Asignar rack / pasillo">
+              <i class="fas fa-plus"></i> Asignar Rack
+            </button>
+          `;
+
+          return `
+            <tr>
+              <td>
+                <span class="font-mono font-black text-slate-900 text-sm tracking-wide block">${esc(p.pallet_code)}</span>
+                <span class="text-[10px] text-slate-500 uppercase">${p.pallet_type === 'EUROPALLET_120x80' ? 'Euro 120x80' : 'Estándar 120x100'}</span>
+              </td>
+              <td class="font-medium">
+                <div class="font-bold text-slate-900">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : 'Sin asignar'}</div>
+                <div class="text-[10px] text-slate-500 font-mono mt-0.5">Empaque: ${uPerBox} ${unit}/caja</div>
+              </td>
+              <td class="text-slate-700 font-semibold">${wh ? esc(wh.name) : '—'}</td>
+              <td>${locHtml}</td>
+              <td>
+                ${lot ? `
+                  <span class="font-mono font-bold text-indigo-900 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                    ${esc(lot.lot_number)}
+                  </span>
+                ` : '<span class="text-slate-400 font-mono">S/L</span>'}
+              </td>
+              <td class="text-slate-600">${p.pallet_type === 'EUROPALLET_120x80' ? 'Europallet' : 'Estándar'}</td>
+              <td class="text-right font-mono font-bold text-slate-800">${bCur} / ${bIni}</td>
+              <td class="text-right font-mono font-extrabold text-blue-900">${fmtN(uAvail)} ${unit}</td>
+              <td class="text-slate-600 font-mono text-[11px]">${p.height_cm || 120} cm · ${p.gross_weight_kg || 0} Kg</td>
+              <td class="text-center">${statusBadge}</td>
+              <td class="text-center whitespace-nowrap">
+                <button class="btn btn-outline btn-xs mr-1 text-indigo-700 font-bold" title="Imprimir Rótulo LPN con Código de Barras" onclick="window.invPrintSinglePalletLabel('${p.id}')">
+                  <i class="fas fa-qrcode"></i>
+                </button>
+                <button class="btn btn-secondary btn-xs text-slate-700" title="Reubicar en Almacén" onclick="window.invOpenLocationModal('${p.id}', '${esc(p.location_code || '')}', '${esc(p.notes || '')}')">
+                  <i class="fas fa-arrows-up-down-left-right"></i>
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        indHtml += `
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+        viewContainer.innerHTML = indHtml;
+        const iTbl = document.getElementById('pallets-individual-table') as HTMLTableElement;
+        if (iTbl) (window as any).makeTableSortable(iTbl);
+      }
+    };
+
+    renderCurrentView();
+
+    document.getElementById('btn-view-grouped')?.addEventListener('click', () => {
+      viewMode = 'grouped';
+      (window as any).__invPalletViewMode = 'grouped';
+      renderPalletsTab(c, ctx);
+    });
+
+    document.getElementById('btn-view-individual')?.addEventListener('click', () => {
+      viewMode = 'individual';
+      (window as any).__invPalletViewMode = 'individual';
+      renderPalletsTab(c, ctx);
+    });
+
+    document.getElementById('btn-clear-prod-filter')?.addEventListener('click', () => {
+      productFilterId = '';
+      (window as any).__invPalletFilterProductId = '';
+      renderPalletsTab(c, ctx);
+    });
+
+    document.getElementById('plt-search-q')?.addEventListener('input', debounce(renderCurrentView, 150));
+    document.getElementById('plt-wh-filter')?.addEventListener('change', renderCurrentView);
+    document.getElementById('plt-status-filter')?.addEventListener('change', renderCurrentView);
+
+    document.getElementById('btn-print-all-lpn')?.addEventListener('click', () => {
+      const q = (document.getElementById('plt-search-q') as HTMLInputElement)?.value.toLowerCase().trim() || '';
+      const wh = (document.getElementById('plt-wh-filter') as HTMLSelectElement)?.value || '';
+      const statusOpt = (document.getElementById('plt-status-filter') as HTMLSelectElement)?.value || 'available';
+
+      const filtered = pallets.filter((p: any) => {
+        if (productFilterId && p.product_id !== productFilterId) return false;
+        if (wh && p.warehouse_id !== wh) return false;
+        const unitsAvail = Number(p.units_available) || 0;
+        if (statusOpt === 'available' && unitsAvail <= 0) return false;
+        return true;
+      });
+
+      if (!filtered.length) {
+        showToast('No hay estibas disponibles para imprimir con los filtros seleccionados.', 'warning');
+        return;
+      }
+
+      window.invRenderLabelsModal(filtered);
+    });
+
+  } catch (err: any) {
+    container.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>Error al cargar estibas: ${esc(err.message)}</div>`;
+  }
+}
+
+// ── Modales y Funciones de Apoyo para Lotes y Pallets ──
+
+function invFilterPalletsByProduct(productId: string) {
+  (window as any).__invPalletFilterProductId = productId;
+  (window as any).__invPalletViewMode = 'individual';
+  renderPalletsTab(document.getElementById('inv-tab-content'), {});
+}
+
+async function invOpenLocationModal(palletId: string, currentLoc: string = '', currentNotes: string = '') {
+  try {
+    const pallet = await _pb().get('inventory_pallets', palletId, { expand: 'product_id,warehouse_id' });
+    const prod = pallet.expand?.product_id;
+    const wh = pallet.expand?.warehouse_id;
+
+    const modalBody = `
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-slate-50 border rounded-xl flex items-center justify-between">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Estiba / LPN</span>
+            <div class="font-mono font-black text-blue-900 text-sm">${esc(pallet.pallet_code)}</div>
+            <div class="text-slate-700 font-semibold">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '—'}</div>
+          </div>
+          <div class="text-right">
+            <span class="badge badge-blue font-bold">${wh ? esc(wh.name) : 'Bodega'}</span>
+            <div class="font-mono text-slate-600 mt-1">${pallet.boxes_current} cjs (${pallet.units_available} und)</div>
+          </div>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Código de Ubicación en Bodega (Pasillo - Rack - Nivel - Posición)</label>
+          <input type="text" id="modal-plt-location" class="form-input w-full font-mono font-bold text-sm uppercase" placeholder="Ej: A-02-04" value="${esc(currentLoc || '')}">
+          <p class="text-[10px] text-slate-500 mt-1">Usa un estándar como <strong>PASILLO-RACK-NIVEL</strong> (ej: A-01-03, B-05-01).</p>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Notas de Almacenamiento / Observaciones</label>
+          <textarea id="modal-plt-notes" class="form-input w-full text-xs" rows="2" placeholder="Observaciones de manipulación o estado...">${esc(currentNotes || '')}</textarea>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-save-plt-loc"><i class="fas fa-floppy-disk mr-1.5"></i>Guardar Ubicación</button>
+    `;
+
+    openModal(`Ubicación de Estiba — ${pallet.pallet_code}`, modalBody, modalFooter);
+
+    document.getElementById('btn-save-plt-loc')?.addEventListener('click', async () => {
+      const loc = (document.getElementById('modal-plt-location') as HTMLInputElement)?.value.trim().toUpperCase() || '';
+      const notes = (document.getElementById('modal-plt-notes') as HTMLTextAreaElement)?.value.trim() || '';
+      try {
+        await API.updateInventoryPallet(palletId, { location_code: loc, notes: notes });
+        showToast('Ubicación física de la estiba actualizada.', 'success');
+        closeModal();
+        renderPalletsTab(document.getElementById('inv-tab-content'), {});
+      } catch (err: any) {
+        showToast('Error al guardar ubicación: ' + err.message, 'error');
+      }
+    });
+
+  } catch (err: any) {
+    showToast('Error al abrir ubicación: ' + err.message, 'error');
+  }
+}
+
+async function invOpenLotEditModal(lotId: string) {
+  try {
+    const lot = await _pb().get('inventory_lots', lotId, { expand: 'product_id,warehouse_id' });
+    const prod = lot.expand?.product_id;
+
+    const modalBody = `
+      <div class="space-y-4 text-xs">
+        <div class="p-3 bg-slate-50 border rounded-xl flex items-center justify-between">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Lote</span>
+            <div class="font-mono font-black text-blue-900 text-sm">${esc(lot.lot_number)}</div>
+            <div class="text-slate-700 font-semibold">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '—'}</div>
+          </div>
+          <div class="text-right">
+            <span class="text-slate-500 font-bold block text-[10px] uppercase">Stock Disponible</span>
+            <span class="font-mono font-extrabold text-blue-900 text-sm">${fmtN(lot.qty_on_hand)} ${prod?.unit || 'UND'}</span>
+          </div>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Estado Operativo del Lote</label>
+          <select id="modal-lot-status" class="form-input w-full text-xs font-semibold">
+            <option value="active" ${lot.status === 'active' ? 'selected' : ''}>🟢 Activo (Disponible para despacho y producción)</option>
+            <option value="quarantine" ${lot.status === 'quarantine' ? 'selected' : ''}>🟡 Cuarentena (En inspección de calidad / Bloqueado)</option>
+            <option value="closed" ${lot.status === 'closed' ? 'selected' : ''}>⚪ Cerrado / Agotado</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="font-bold text-slate-700 block mb-1">Observaciones / Certificados de Calidad</label>
+          <textarea id="modal-lot-notes" class="form-input w-full text-xs" rows="3" placeholder="Información técnica, certificados COA, resultados de laboratorio...">${esc(lot.notes || '')}</textarea>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="btn-save-lot-modal"><i class="fas fa-floppy-disk mr-1.5"></i>Guardar Cambios</button>
+    `;
+
+    openModal(`Gestión de Lote — ${lot.lot_number}`, modalBody, modalFooter);
+
+    document.getElementById('btn-save-lot-modal')?.addEventListener('click', async () => {
+      const st = (document.getElementById('modal-lot-status') as HTMLSelectElement)?.value || 'active';
+      const notes = (document.getElementById('modal-lot-notes') as HTMLTextAreaElement)?.value.trim() || '';
+      try {
+        await API.updateInventoryLot(lotId, { status: st, notes });
+        showToast('Lote actualizado exitosamente.', 'success');
+        closeModal();
+        renderLotesTab(document.getElementById('inv-tab-content'), {});
+      } catch (err: any) {
+        showToast('Error al actualizar lote: ' + err.message, 'error');
+      }
+    });
+
+  } catch (err: any) {
+    showToast('Error al abrir lote: ' + err.message, 'error');
+  }
+}
+
+async function invViewLotTraceability(lotId: string) {
+  try {
+    const [lot, pallets] = await Promise.all([
+      _pb().get('inventory_lots', lotId, { expand: 'product_id,warehouse_id,supplier_id,import_id' }),
+      API.getInventoryPallets({ filter: `lot_id="${lotId}"` }).catch(() => [])
+    ]);
+
+    const prod = lot.expand?.product_id;
+    const wh = lot.expand?.warehouse_id;
+    const imp = lot.expand?.import_id;
+    const supp = lot.expand?.supplier_id;
+    const qty = Number(lot.qty_on_hand) || 0;
+    const init = Number(lot.initial_qty) || qty;
+    const pct = init > 0 ? Math.round((qty / init) * 100) : 0;
+    const unit = prod?.unit || 'UND';
+
+    const modalBody = `
+      <div class="space-y-5 text-xs">
+        
+        <!-- Header Lote -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Lote de Fabricación</span>
+            <div class="font-mono font-black text-blue-900 text-base">${esc(lot.lot_number)}</div>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Producto</span>
+            <div class="font-bold text-slate-900 text-xs truncate">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '—'}</div>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Bodega</span>
+            <div class="font-semibold text-slate-800">${wh ? esc(wh.name) : '—'}</div>
+          </div>
+          <div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Estado</span>
+            <div><span class="badge ${lot.status === 'active' ? 'badge-green' : lot.status === 'quarantine' ? 'badge-amber' : 'badge-slate'}">${lot.status || 'Activo'}</span></div>
+          </div>
+        </div>
+
+        <!-- Fechas y Existencias -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="p-3 rounded-xl border bg-white space-y-2">
+            <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider"><i class="fas fa-calendar-check mr-1 text-blue-600"></i> Cronograma y Caducidad</h4>
+            <div class="flex justify-between py-1 border-b"><span>Fecha de Fabricación:</span> <span class="font-mono font-bold">${lot.manufacturing_date ? lot.manufacturing_date.slice(0, 10) : 'No registrada'}</span></div>
+            <div class="flex justify-between py-1 border-b"><span>Fecha de Vencimiento:</span> <span class="font-mono font-bold text-rose-700">${lot.expiry_date ? lot.expiry_date.slice(0, 10) : 'Sin vencimiento'}</span></div>
+            <div class="flex justify-between py-1"><span>Origen / Proveedor:</span> <span class="font-semibold">${imp ? `Importación ${esc(imp.number)}` : (supp ? esc(supp.name) : 'Ingreso Local')}</span></div>
+          </div>
+
+          <div class="p-3 rounded-xl border bg-white space-y-2">
+            <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider"><i class="fas fa-chart-pie mr-1 text-emerald-600"></i> Balance de Cantidades</h4>
+            <div class="flex justify-between py-1 border-b"><span>Cantidad Inicial:</span> <span class="font-mono font-bold">${fmtN(init)} ${unit}</span></div>
+            <div class="flex justify-between py-1 border-b"><span>Stock Actual en Bodega:</span> <span class="font-mono font-extrabold text-blue-900">${fmtN(qty)} ${unit}</span></div>
+            <div class="flex justify-between py-1"><span>Costo Unitario COP:</span> <span class="font-mono font-bold">${fmt(lot.unit_cost || 0)}</span></div>
+            <div class="w-full bg-slate-200 rounded-full h-2 mt-2 overflow-hidden">
+              <div class="bg-blue-600 h-2 rounded-full" style="width:${pct}%"></div>
+            </div>
+            <div class="text-[10px] text-right text-slate-500 font-mono">${pct}% remanente en inventario</div>
+          </div>
+        </div>
+
+        <!-- Estibas Físicas Asociadas a este Lote -->
+        <div>
+          <h4 class="font-bold text-slate-800 uppercase text-[11px] tracking-wider mb-2 flex items-center justify-between">
+            <span><i class="fas fa-pallet mr-1 text-indigo-600"></i> Estibas Físicas de este Lote (${pallets.length})</span>
+          </h4>
+          ${pallets.length ? `
+            <div class="border rounded-xl overflow-hidden">
+              <table class="w-full text-xs text-left">
+                <thead class="bg-slate-100 font-semibold border-b">
+                  <tr>
+                    <th class="p-2">LPN / Estiba</th>
+                    <th class="p-2">Ubicación Rack</th>
+                    <th class="p-2 text-right">Cajas Disp.</th>
+                    <th class="p-2 text-right">Unidades Disp.</th>
+                    <th class="p-2 text-center">Acción</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y">
+                  ${pallets.map((p: any) => `
+                    <tr>
+                      <td class="p-2 font-mono font-bold text-slate-900">${esc(p.pallet_code)}</td>
+                      <td class="p-2 font-mono font-extrabold text-blue-900">${p.location_code ? esc(p.location_code) : '<span class="text-slate-400">Sin asignar</span>'}</td>
+                      <td class="p-2 text-right font-mono">${p.boxes_current} cjs</td>
+                      <td class="p-2 text-right font-mono font-bold text-blue-900">${fmtN(p.units_available)} ${unit}</td>
+                      <td class="p-2 text-center">
+                        <button class="btn btn-outline btn-xs" onclick="closeModal(); window.invPrintSinglePalletLabel('${p.id}')"><i class="fas fa-qrcode mr-1"></i>Rótulo</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : `
+            <div class="p-4 rounded-xl border border-dashed text-center text-slate-400">
+              No hay estibas físicas desglosadas para este lote (almacenamiento a granel o estantería suelta).
+            </div>
+          `}
+        </div>
+
+      </div>
+    `;
+
+    openModal(`Trazabilidad de Lote — ${lot.lot_number}`, modalBody, `<button class="btn btn-primary" onclick="closeModal()">Cerrar</button>`, true);
+
+  } catch (err: any) {
+    showToast('Error al cargar trazabilidad: ' + err.message, 'error');
+  }
+}
+
+function invRenderLabelsModal(palletsToPrint: any[]) {
+  if (!palletsToPrint.length) return;
+
+  const labelsHtml = palletsToPrint.map((p: any, idx: number) => {
+    const prod = p.expand?.product_id;
+    const lot = p.expand?.lot_id;
+    const imp = p.expand?.import_id;
+    const uAvail = Number(p.units_available) || ((p.boxes_current || 1) * (p.units_per_box || 1));
+    const bCur = Number(p.boxes_current) || 1;
+    const uPerBox = Number(p.units_per_box) || 1;
+
+    return `
+      <div class="border-2 border-slate-900 rounded-xl p-4 bg-white shadow-sm flex flex-col justify-between print:break-inside-avoid print:border-black mb-4" style="min-height:260px">
+        <div>
+          <div class="flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-2">
+            <div>
+              <span class="text-[10px] uppercase font-extrabold tracking-widest text-slate-500">GRAVY WMS · UNIDAD LOGÍSTICA</span>
+              <h3 class="text-sm font-black text-slate-900 leading-tight">${imp ? `IMPORTACIÓN #${esc(imp.number)}` : 'ALMACENAMIENTO BODEGA'}</h3>
+            </div>
+            <div class="text-right">
+              <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-300">ESTIBA #${idx + 1}/${palletsToPrint.length}</span>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center my-2">
+            <div class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">License Plate Number (LPN / SSCC)</div>
+            <div class="text-xl font-black font-mono tracking-wider text-blue-950">${esc(p.pallet_code)}</div>
+            
+            <div class="flex items-center justify-center gap-[2px] h-9 my-1">
+              ${[...Array(38)].map((_, bIdx) => `
+                <div style="width:${(bIdx % 3 === 0 || bIdx % 7 === 0) ? '3px' : '1.5px'}; height:100%; background:#000;"></div>
+              `).join('')}
+            </div>
+            <div class="text-[10px] font-mono text-slate-700 tracking-widest">${esc(p.pallet_code)}</div>
+          </div>
+
+          <div class="space-y-1.5 text-xs mt-3">
+            <div class="flex items-baseline justify-between">
+              <span class="font-bold text-slate-500 text-[10px] uppercase">PRODUCTO:</span>
+              <span class="font-mono font-extrabold text-blue-900">[${prod?.code || 'S/C'}]</span>
+            </div>
+            <div class="font-black text-sm text-slate-900 truncate">${esc(prod?.name || 'Producto')}</div>
+
+            <div class="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 mt-2">
+              <div>
+                <span class="text-[10px] text-slate-500 font-bold uppercase block">Lote Fabr.</span>
+                <span class="font-mono font-extrabold text-xs text-indigo-900">${lot ? esc(lot.lot_number) : 'S/L'}</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-500 font-bold uppercase block">Fecha Venc.</span>
+                <span class="font-mono font-extrabold text-xs text-rose-700">${lot?.expiry_date ? lot.expiry_date.slice(0, 10) : '—'}</span>
+              </div>
+              <div>
+                <span class="text-[10px] text-slate-500 font-bold uppercase block">Ubicación</span>
+                <span class="font-mono font-extrabold text-xs text-blue-900">${p.location_code ? esc(p.location_code) : '—'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-2 border-t-2 border-slate-900 mt-3 flex items-center justify-between text-xs">
+          <div>
+            <span class="text-[10px] text-slate-500 font-bold uppercase block">Empaque</span>
+            <span class="font-black text-slate-900">${bCur} Cajas × ${uPerBox} Und</span>
+          </div>
+          <div class="text-right">
+            <span class="text-[10px] text-slate-500 font-bold uppercase block">Total Estiba</span>
+            <span class="font-black text-base text-blue-900 font-mono">${fmtN(uAvail)} ${prod?.unit || 'UND'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const modalBody = `
+    <div>
+      <div class="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl mb-4 text-xs text-blue-900">
+        <div>
+          <strong>${palletsToPrint.length} rótulos LPN listos para impresión.</strong>
+          <p class="text-[11px] text-blue-700 mt-0.5">Incluye códigos de barras Code128, LPN único, detalle de cajas por estiba y vencimiento.</p>
+        </div>
+        <button type="button" class="btn btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5" onclick="window.print()">
+          <i class="fas fa-print"></i> Imprimir Rótulos
+        </button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[65vh] overflow-y-auto p-1">
+        ${labelsHtml}
+      </div>
+    </div>
+  `;
+
+  openModal(`Rótulos de Estibas (LPN / WMS) — ${palletsToPrint.length} Pallets`, modalBody, `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`, true);
+}
+
+async function invPrintSinglePalletLabel(palletId: string) {
+  try {
+    const pallet = await _pb().get('inventory_pallets', palletId, { expand: 'product_id,warehouse_id,lot_id,import_id' });
+    invRenderLabelsModal([pallet]);
+  } catch (err: any) {
+    showToast('Error al cargar estiba: ' + err.message, 'error');
+  }
+}
+
+async function invPrintProductPalletLabels(productId: string) {
+  try {
+    const pallets = await API.getInventoryPallets({
+      productId,
+      filter: 'units_available > 0'
+    });
+    if (!pallets.length) {
+      showToast('No hay estibas disponibles con stock para este producto.', 'warning');
+      return;
+    }
+    invRenderLabelsModal(pallets);
+  } catch (err: any) {
+    showToast('Error al cargar estibas del producto: ' + err.message, 'error');
+  }
+}
+
 // Asignar funciones globales al objeto window para su ejecución en onclick
+(window as any).renderLotesTab = renderLotesTab;
+(window as any).renderPalletsTab = renderPalletsTab;
+(window as any).invFilterPalletsByProduct = invFilterPalletsByProduct;
+(window as any).invOpenLocationModal = invOpenLocationModal;
+(window as any).invOpenLotEditModal = invOpenLotEditModal;
+(window as any).invViewLotTraceability = invViewLotTraceability;
+(window as any).invRenderLabelsModal = invRenderLabelsModal;
+(window as any).invPrintSinglePalletLabel = invPrintSinglePalletLabel;
+(window as any).invPrintProductPalletLabels = invPrintProductPalletLabels;
+
 (window as any).openInventoryConfigModal = openInventoryConfigModal;
 (window as any).renumberInventoryMovements = renumberInventoryMovements;
 (window as any).editMovement = editMovement;

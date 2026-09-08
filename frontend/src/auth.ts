@@ -1007,23 +1007,207 @@ function togglePassVisibility() {
   }
 }
 
-/* -- Verificar estado de conexion -------------------------- */
-let _connCheckInterval = null;
+/* -- Control de Sesión Única y Conexión -------------------- */
+let _connCheckInterval: any = null;
+let _isDisplacedModalOpen = false;
+
+function showSessionDisplacedModal(info?: { message?: string; ip?: string; time?: string }) {
+  if (_isDisplacedModalOpen || document.getElementById('modal-session-displaced')) return;
+  _isDisplacedModalOpen = true;
+
+  // Detener inmediatamente monitoreo de inactividad y heartbeat
+  stopInactivityTracker();
+  if (_connCheckInterval) {
+    clearInterval(_connCheckInterval);
+    _connCheckInterval = null;
+  }
+
+  // Desactivar token en memoria para cortar peticiones subsecuentes
+  pb.authToken = null;
+  pb.currentUser = null;
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-session-displaced';
+  modal.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 99999999;
+    background: rgba(15, 23, 42, 0.78);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.25s ease-out;
+  `;
+
+  const msg = info?.message || 'Tu sesión en este equipo ha sido cerrada automáticamente porque tu cuenta ha iniciado sesión en otro equipo de la red.';
+  const currentIp = info?.ip || localStorage.getItem('gravy_last_known_ip') || '';
+  const currentTime = info?.time || new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  modal.innerHTML = `
+    <div style="
+      max-width: 490px;
+      width: 100%;
+      background: #FFFFFF;
+      border-radius: 24px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(239, 68, 68, 0.2);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      text-align: center;
+      font-family: inherit;
+    ">
+      <div style="background: linear-gradient(135deg, #EF4444 0%, #B91C1C 100%); padding: 28px 24px; color: #FFFFFF;">
+        <div style="
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 14px;
+          font-size: 28px;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+        ">
+          <i class="fas fa-shield-halved"></i>
+        </div>
+        <h2 style="font-size: 21px; font-weight: 800; margin: 0; letter-spacing: -0.4px;">
+          Sesión Cerrada en este Equipo
+        </h2>
+        <p style="font-size: 13px; margin: 6px 0 0; opacity: 0.92; font-weight: 500;">
+          Control de Concurrencia e Integridad Contable
+        </p>
+      </div>
+
+      <div style="padding: 28px 24px; display: flex; flex-direction: column; gap: 16px;">
+        <p style="font-size: 14px; color: #334155; line-height: 1.55; margin: 0;">
+          ${msg}
+        </p>
+
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 14px; padding: 14px 16px; text-align: left; font-size: 13px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="color: #64748B; font-weight: 600;"><i class="fas fa-clock mr-1"></i> Detectado a las:</span>
+            <span style="color: #0F172A; font-weight: 700;">${currentTime}</span>
+          </div>
+          ${currentIp ? `
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="color: #64748B; font-weight: 600;"><i class="fas fa-network-wired mr-1"></i> Estación / IP:</span>
+            <span style="color: #0F172A; font-weight: 700; font-family: monospace;">${currentIp}</span>
+          </div>` : ''}
+        </div>
+
+        <div style="background: #FEF2F2; border: 1px solid #FEE2E2; border-radius: 12px; padding: 12px 14px; text-align: left; font-size: 12px; color: #991B1B; line-height: 1.45;">
+          <i class="fas fa-info-circle mr-1"></i>
+          Para salvaguardar la consistencia de comprobantes, turnos de caja y existencias en bodega, solo se permite <strong>una sesión activa simultánea por usuario</strong>.
+        </div>
+
+        <button id="btn-session-displaced-ack" style="
+          width: 100%;
+          background: #0F172A;
+          color: #FFFFFF;
+          border: none;
+          padding: 13px 20px;
+          border-radius: 12px;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+          margin-top: 6px;
+        " onmouseover="this.style.background='#1E293B'" onmouseout="this.style.background='#0F172A'">
+          <i class="fas fa-arrow-right-to-bracket"></i>
+          Entendido, Ir a Iniciar Sesión
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const btnAck = document.getElementById('btn-session-displaced-ack');
+  if (btnAck) {
+    btnAck.onclick = () => {
+      _isDisplacedModalOpen = false;
+      modal.remove();
+
+      // Limpiar por completo el almacenamiento de sesión
+      localStorage.removeItem('pb_token');
+      localStorage.removeItem('pb_user');
+      localStorage.removeItem('gravy_hub_token');
+      localStorage.removeItem('gravy_active_company');
+      localStorage.removeItem('gravy_last_activity');
+      localStorage.removeItem('active_branch_id');
+      localStorage.removeItem('active_cost_center_id');
+      localStorage.removeItem('gravy_active_session_id');
+
+      if (typeof (window as any).clearTabsState === 'function') {
+        (window as any).clearTabsState();
+      }
+
+      const compSel = document.getElementById('screen-company-select');
+      if (compSel) compSel.style.display = 'none';
+      const appSel = document.getElementById('screen-app');
+      if (appSel) appSel.style.display = 'none';
+
+      showLogin();
+    };
+  }
+}
+
+// Listener para eventos de sesión revocada/expirada emitidos desde api.ts
+if (typeof window !== 'undefined') {
+  window.addEventListener('gravy:session-expired', (evt: any) => {
+    const detail = evt?.detail || {};
+    showSessionDisplacedModal({
+      message: detail.message,
+    });
+  });
+}
 
 function startConnCheck() {
   if (_connCheckInterval) clearInterval(_connCheckInterval);
   _connCheckInterval = setInterval(async () => {
+    // 1. Verificación básica de estado de red
     const online = await pb.ping();
     const ind = $('#conn-indicator');
-    if (!ind) return;
-    const dot   = ind.querySelector('div');
-    const label = ind.querySelector('span');
-    if (online) {
-      dot.className   = 'w-2 h-2 rounded-full bg-green-400';
-      label.textContent = 'En linea';
-    } else {
-      dot.className   = 'w-2 h-2 rounded-full bg-red-400';
-      label.textContent = 'Sin conexion';
+    if (ind) {
+      const dot = ind.querySelector('div');
+      const label = ind.querySelector('span');
+      if (online) {
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-green-400';
+        if (label) label.textContent = 'En linea';
+      } else {
+        if (dot) dot.className = 'w-2 h-2 rounded-full bg-red-400';
+        if (label) label.textContent = 'Sin conexion';
+      }
+    }
+
+    // 2. Heartbeat autenticado si hay usuario conectado
+    if (online && pb.authToken && pb.currentUser && !_isDisplacedModalOpen) {
+      try {
+        const hbData = await (pb as any).sessionHeartbeat();
+        if (hbData) {
+          if (hbData.last_login_ip) {
+            localStorage.setItem('gravy_last_known_ip', hbData.last_login_ip);
+          }
+          if (hbData.active_session_id) {
+            localStorage.setItem('gravy_active_session_id', hbData.active_session_id);
+          }
+        }
+      } catch (err: any) {
+        if (err?.status === 401) {
+          console.warn('[GRAVY Session] Sesión invalidada en el backend:', err);
+          showSessionDisplacedModal({
+            message: err?.message || 'Tu sesión ha sido revocada porque se inició sesión en otro equipo de la red.'
+          });
+        }
+      }
     }
   }, 15000);
 }
@@ -1053,4 +1237,6 @@ function startConnCheck() {
 (window as any).startInactivityTracker = startInactivityTracker;
 (window as any).stopInactivityTracker = stopInactivityTracker;
 (window as any).INACTIVITY_TIMEOUT_MS = INACTIVITY_TIMEOUT_MS;
+(window as any).showSessionDisplacedModal = showSessionDisplacedModal;
+
 

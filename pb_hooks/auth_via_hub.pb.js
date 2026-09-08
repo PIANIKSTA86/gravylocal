@@ -135,15 +135,39 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       console.log("[GRAVY SSO] Creado nuevo usuario local para: " + email);
     }
 
+    // 4. Control de Sesión Única: Invalidar sesiones previas y generar nuevo active_session_id
+    let remoteIp = "";
+    try {
+      remoteIp = (typeof e?.remoteIP === "function")
+        ? String(e.remoteIP() || "")
+        : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
+    } catch (_) {}
+
+    const previousSessionId = userRecord.getString("active_session_id") || "";
+    const previousIp = userRecord.getString("last_login_ip") || "";
+    const nowStr = new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19);
+
+    // Invalidar criptográficamente cualquier JWT emitido previamente para este usuario
+    try {
+      userRecord.refreshTokenKey();
+    } catch (refErr) {
+      console.log("[GRAVY SSO] Aviso al refrescar tokenKey:", refErr);
+    }
+
+    const newSessionId = $security.randomString(32);
+    userRecord.set("active_session_id", newSessionId);
+    userRecord.set("last_login_ip", remoteIp);
+    userRecord.set("last_login_at", nowStr);
+    userRecord.set("last_activity_at", nowStr);
+    $app.save(userRecord);
+
     // Registrar evento de LOGIN server-side en audit_log
     try {
       const auditCol = $app.findCollectionByNameOrId("audit_log");
-      let remoteIp = "";
-      try {
-        remoteIp = (typeof e?.remoteIP === "function")
-          ? String(e.remoteIP() || "")
-          : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
-      } catch (_) {}
+      let displacementNote = "";
+      if (previousSessionId && previousIp && previousIp !== remoteIp) {
+        displacementNote = ` (Sesión previa desplazada e invalidada en IP ${previousIp})`;
+      }
 
       const auditPayload = {
         username: email,
@@ -151,8 +175,8 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
         action: "LOGIN",
         entity: "sistema",
         entity_id: userRecord.id,
-        event_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19),
-        details: `Inicio de sesión exitoso vía SSO/HUB para ${fullName || email} (Rol: ${role}) en ${companyName || 'empresa'}`,
+        event_at: nowStr,
+        details: `Inicio de sesión exitoso vía SSO/HUB para ${fullName || email} (Rol: ${role}) en ${companyName || 'empresa'}.${displacementNote}`,
         ip: remoteIp,
       };
 
@@ -162,7 +186,7 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
       console.log("[auth-via-hub Audit] Aviso:", auditErr);
     }
 
-    // 4. Retornar la respuesta estándar de autenticación de PocketBase
+    // 5. Retornar la respuesta estándar de autenticación de PocketBase con el nuevo tokenKey
     $apis.recordAuthResponse(e, userRecord, "password");
 
   } catch (err) {

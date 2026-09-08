@@ -567,4 +567,29 @@ routerAdd("POST", "/api/hub/delete-company", (e) => {
   }
 });
 
+// Control de Sesión Única en el HUB
+onRecordAuthRequest((e) => {
+  e.next();
+  try {
+    const hubUser = e.record;
+    if (hubUser && hubUser.collection().name === "hub_users") {
+      let remoteIp = "";
+      try {
+        remoteIp = (typeof e?.remoteIP === "function")
+          ? String(e.remoteIP() || "")
+          : (typeof e?.realIP === "function" ? String(e.realIP() || "") : "");
+      } catch (_) {}
+
+      const nowStr = new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19);
+      hubUser.set("last_login_ip", remoteIp);
+      hubUser.set("last_login_at", nowStr);
+      hubUser.set("last_activity_at", nowStr);
+      hubUser.set("active_session_id", $security.randomString(32));
+      $app.save(hubUser);
+    }
+  } catch (err) {
+    console.log("[GRAVY HUB Auth Hook] Aviso:", err);
+  }
+}, "hub_users");
+
 

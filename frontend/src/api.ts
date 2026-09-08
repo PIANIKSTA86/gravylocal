@@ -236,15 +236,49 @@ const pb = {
     } catch { return false; }
   },
 
+  /** Heartbeat autenticado para monitoreo de sesión activa única */
+  async sessionHeartbeat() {
+    if (!this.authToken) return null;
+    try {
+      const res = await fetch(`${this.baseUrl}/api/session/heartbeat`, {
+        method: 'POST',
+        headers: this.headers(),
+        signal: AbortSignal.timeout(5000)
+      });
+      if (res.status === 401) {
+        throw await this._err(res);
+      }
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err: any) {
+      if (err?.status === 401) throw err;
+      return null;
+    }
+  },
+
   /** Error helper */
   async _err(res) {
-    let body = {};
+    let body: any = {};
     try { body = await res.json(); } catch { body = { message: res.statusText }; }
+
+    // Si el servidor responde 401 Unauthorized y había token activo en el cliente:
+    if (res.status === 401 && this.authToken) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gravy:session-expired', {
+          detail: {
+            status: 401,
+            code: body?.code || 'UNAUTHORIZED',
+            message: body?.message || 'Tu sesión ha finalizado o ha sido revocada por inicio de sesión en otro equipo.'
+          }
+        }));
+      }
+    }
+
     // Extraer errores por campo de la respuesta de validacion de PocketBase
     const fieldErrors = [];
     if (body && body.data && typeof body.data === 'object') {
       for (const [field, detail] of Object.entries(body.data)) {
-        const fieldMsg = detail && detail.message;
+        const fieldMsg = (detail as any) && (detail as any).message;
         if (fieldMsg) fieldErrors.push('[' + field + '] ' + fieldMsg);
       }
     }
@@ -252,7 +286,7 @@ const pb = {
     const msg = fieldErrors.length > 0
       ? fieldErrors.join(' | ')
       : (body && body.message) || 'Error desconocido';
-    const err = new Error(msg);
+    const err: any = new Error(msg);
     err.status = res.status;
     err.data = body;
     return err;
@@ -5167,6 +5201,10 @@ const API = {
 
   async updateInventoryPallet(palletId: string, data: any) {
     return pb.update('inventory_pallets', palletId, data);
+  },
+
+  async updateInventoryLot(lotId: string, data: any) {
+    return pb.update('inventory_lots', lotId, data);
   },
 
   /** Crea una importaciÃ³n con FormData para soporte de archivos */

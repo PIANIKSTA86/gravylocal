@@ -40,6 +40,8 @@ onBootstrap((e) => {
     "inventory_movements",
     "inventory_movement_lines",
     "inventory_stock",
+    "inventory_lots",
+    "inventory_pallets",
     "sales_orders",
     "sales_order_lines",
   ];

@@ -7240,7 +7240,8 @@ async function renderLotesTab(c: any, ctx: any = {}) {
 
         let statusBadge = '<span class="badge badge-emerald">Activo</span>';
         if (l.status === 'quarantine') statusBadge = '<span class="badge badge-amber">Cuarentena</span>';
-        else if (l.status === 'closed' || qtyOnHand <= 0) statusBadge = '<span class="badge badge-slate">Agotado</span>';
+        else if (l.status === 'expired') statusBadge = '<span class="badge badge-rose font-bold">Vencido</span>';
+        else if (l.status === 'depleted' || l.status === 'closed' || qtyOnHand <= 0) statusBadge = '<span class="badge badge-slate">Agotado</span>';
 
         return `
           <tr>
@@ -7765,33 +7766,68 @@ async function invOpenLotEditModal(lotId: string) {
   try {
     const lot = await _pb().get('inventory_lots', lotId, { expand: 'product_id,warehouse_id' });
     const prod = lot.expand?.product_id;
+    const wh = lot.expand?.warehouse_id;
 
     const modalBody = `
       <div class="space-y-4 text-xs">
-        <div class="p-3 bg-slate-50 border rounded-xl flex items-center justify-between">
+        <div class="p-3 bg-slate-50 border rounded-xl flex flex-wrap items-center justify-between gap-2">
           <div>
-            <span class="text-[10px] uppercase font-bold text-slate-500">Lote</span>
-            <div class="font-mono font-black text-blue-900 text-sm">${esc(lot.lot_number)}</div>
-            <div class="text-slate-700 font-semibold">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '—'}</div>
+            <span class="text-[10px] uppercase font-bold text-slate-500">Producto & Referencia</span>
+            <div class="font-bold text-slate-900 text-sm">${prod ? `${esc(prod.code)} - ${esc(prod.name)}` : '—'}</div>
+            <div class="text-[11px] text-slate-600 mt-0.5"><i class="fas fa-warehouse mr-1 text-slate-400"></i>Bodega: <strong>${wh ? esc(wh.name) : 'Sin bodega'}</strong></div>
           </div>
-          <div class="text-right">
-            <span class="text-slate-500 font-bold block text-[10px] uppercase">Stock Disponible</span>
-            <span class="font-mono font-extrabold text-blue-900 text-sm">${fmtN(lot.qty_on_hand)} ${prod?.unit || 'UND'}</span>
+          <div class="flex items-center gap-3">
+            <div class="text-right">
+              <span class="text-slate-500 font-bold block text-[10px] uppercase">Stock Disponible</span>
+              <span class="font-mono font-extrabold text-blue-900 text-sm">${fmtN(lot.qty_on_hand)} ${prod?.unit || 'UND'}</span>
+            </div>
+            <div class="text-right border-l pl-3 border-slate-200">
+              <span class="text-slate-500 font-bold block text-[10px] uppercase">Cantidad Inicial</span>
+              <span class="font-mono font-bold text-slate-700 text-sm">${fmtN(lot.initial_qty || lot.qty_on_hand)} ${prod?.unit || 'UND'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Número de Lote <span class="text-red-500">*</span></label>
+            <input type="text" id="modal-lot-number" class="form-input w-full text-xs font-mono font-bold uppercase text-blue-900" value="${esc(lot.lot_number || '')}">
+          </div>
+
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Estado Operativo del Lote <span class="text-red-500">*</span></label>
+            <select id="modal-lot-status" class="form-input w-full text-xs font-semibold">
+              <option value="active" ${lot.status === 'active' ? 'selected' : ''}>🟢 Activo (Disponible para despacho)</option>
+              <option value="quarantine" ${lot.status === 'quarantine' ? 'selected' : ''}>🟡 Cuarentena (En inspección / Bloqueado)</option>
+              <option value="depleted" ${(lot.status === 'depleted' || lot.status === 'closed') ? 'selected' : ''}>⚪ Agotado / Cerrado</option>
+              <option value="expired" ${lot.status === 'expired' ? 'selected' : ''}>🔴 Vencido / Caducado</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Fecha de Fabricación</label>
+            <input type="date" id="modal-lot-mfg" class="form-input w-full text-xs font-mono" value="${(lot.manufacturing_date || '').slice(0, 10)}">
+          </div>
+
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Fecha de Vencimiento <span class="text-red-500">*</span></label>
+            <input type="date" id="modal-lot-exp" class="form-input w-full text-xs font-mono" value="${(lot.expiry_date || '').slice(0, 10)}">
+          </div>
+
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Costo Unitario COP ($)</label>
+            <input type="number" id="modal-lot-cost" class="form-input w-full text-xs font-mono text-right font-bold" min="0" step="any" value="${lot.unit_cost || 0}">
+          </div>
+
+          <div>
+            <label class="font-bold text-slate-700 block mb-1">Stock Actual en Bodega</label>
+            <input type="text" class="form-input w-full text-xs font-mono bg-slate-100 text-slate-600 font-bold" value="${fmtN(lot.qty_on_hand)} ${prod?.unit || 'UND'}" disabled title="Para modificar el saldo use un movimiento de inventario">
           </div>
         </div>
 
         <div>
-          <label class="font-bold text-slate-700 block mb-1">Estado Operativo del Lote</label>
-          <select id="modal-lot-status" class="form-input w-full text-xs font-semibold">
-            <option value="active" ${lot.status === 'active' ? 'selected' : ''}>🟢 Activo (Disponible para despacho y producción)</option>
-            <option value="quarantine" ${lot.status === 'quarantine' ? 'selected' : ''}>🟡 Cuarentena (En inspección de calidad / Bloqueado)</option>
-            <option value="closed" ${lot.status === 'closed' ? 'selected' : ''}>⚪ Cerrado / Agotado</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="font-bold text-slate-700 block mb-1">Observaciones / Certificados de Calidad</label>
-          <textarea id="modal-lot-notes" class="form-input w-full text-xs" rows="3" placeholder="Información técnica, certificados COA, resultados de laboratorio...">${esc(lot.notes || '')}</textarea>
+          <label class="font-bold text-slate-700 block mb-1">Observaciones / Certificados de Calidad (COA)</label>
+          <textarea id="modal-lot-notes" class="form-input w-full text-xs" rows="2" placeholder="Información técnica, certificados COA, resultados de laboratorio, motivos de ajuste...">${esc(lot.notes || '')}</textarea>
         </div>
       </div>
     `;
@@ -7801,18 +7837,56 @@ async function invOpenLotEditModal(lotId: string) {
       <button type="button" class="btn btn-primary" id="btn-save-lot-modal"><i class="fas fa-floppy-disk mr-1.5"></i>Guardar Cambios</button>
     `;
 
-    openModal(`Gestión de Lote — ${lot.lot_number}`, modalBody, modalFooter);
+    openModal(`Editar Lote — ${lot.lot_number}`, modalBody, modalFooter);
 
     document.getElementById('btn-save-lot-modal')?.addEventListener('click', async () => {
+      const lotNum = (document.getElementById('modal-lot-number') as HTMLInputElement)?.value.trim().toUpperCase();
       const st = (document.getElementById('modal-lot-status') as HTMLSelectElement)?.value || 'active';
+      const mfg = (document.getElementById('modal-lot-mfg') as HTMLInputElement)?.value || '';
+      const exp = (document.getElementById('modal-lot-exp') as HTMLInputElement)?.value || '';
+      const cost = parseFloat((document.getElementById('modal-lot-cost') as HTMLInputElement)?.value || '0') || 0;
       const notes = (document.getElementById('modal-lot-notes') as HTMLTextAreaElement)?.value.trim() || '';
+
+      if (!lotNum) return showToast('El número de lote es obligatorio.', 'warning');
+      if (!exp) return showToast('La fecha de vencimiento es obligatoria.', 'warning');
+
+      const btn = document.getElementById('btn-save-lot-modal') as HTMLButtonElement;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Guardando...'; }
+
       try {
-        await API.updateInventoryLot(lotId, { status: st, notes });
-        showToast('Lote actualizado exitosamente.', 'success');
+        const patchData: Record<string, any> = {
+          lot_number: lotNum,
+          status: st,
+          expiry_date: exp,
+          manufacturing_date: mfg,
+          unit_cost: cost,
+          notes: notes
+        };
+
+        await API.updateInventoryLot(lotId, patchData);
+        showToast(`Lote "${lotNum}" actualizado exitosamente.`, 'success');
         closeModal();
-        renderLotesTab(document.getElementById('inv-tab-content'), {});
+
+        // Refrescar pestaña de lotes si está activa
+        if (document.getElementById('lots-table') && typeof renderLotesTab === 'function') {
+          renderLotesTab(document.getElementById('inv-tab-content'), {});
+        }
+
+        // Refrescar modal rápido de producto si venía de allí
+        if ((window as any).__currentQuickLotProductId && typeof (window as any).prodOpenQuickLotModal === 'function') {
+          (window as any).prodOpenQuickLotModal((window as any).__currentQuickLotProductId, (window as any).__currentQuickLotProductName || '');
+        }
       } catch (err: any) {
-        showToast('Error al actualizar lote: ' + err.message, 'error');
+        let msg = err.message || 'Error desconocido';
+        const data = err?.response?.data || err?.data?.data;
+        if (data && typeof data === 'object') {
+          const fields = Object.entries(data)
+            .map(([k, v]: [string, any]) => `${k}: ${v?.message || JSON.stringify(v)}`)
+            .join(' | ');
+          if (fields) msg += ` (${fields})`;
+        }
+        showToast('Error al actualizar lote: ' + msg, 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk mr-1.5"></i>Guardar Cambios'; }
       }
     });
 

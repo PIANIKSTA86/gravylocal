@@ -2091,22 +2091,99 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       <div class="form-group md:col-span-3 border p-3.5 rounded-xl bg-slate-50/80" style="border-color:#E2E8F0">
         <p class="form-label mb-2" style="font-weight:700;color:#0D2137"><i class="fas fa-boxes-stacked mr-2 text-blue-700"></i>Control Logístico y Trazabilidad Física</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="flex items-start gap-2.5 p-3 rounded-lg border bg-white shadow-xs" style="border-color:#E5E7EB">
-            <input type="checkbox" id="pf-track-lots" class="rounded text-purple-600 focus:ring-purple-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_lots ? 'checked' : ''}>
-            <div>
-              <label for="pf-track-lots" class="font-bold text-xs cursor-pointer block text-gray-800">
-                <i class="fas fa-barcode mr-1 text-purple-600"></i> Control por Lote y Vencimiento
-              </label>
-              <p class="text-[11px] text-gray-500 mt-0.5">Exige o sugiere número de lote, fecha de fabricación y caducidad (FEFO) en entradas y salidas por venta.</p>
+          <!-- Tarjeta Lotes -->
+          <div class="p-3 rounded-xl border bg-white shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-start gap-2.5">
+              <input type="checkbox" id="pf-track-lots" class="rounded text-purple-600 focus:ring-purple-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_lots ? 'checked' : ''}>
+              <div>
+                <label for="pf-track-lots" class="font-bold text-xs cursor-pointer block text-gray-800">
+                  <i class="fas fa-barcode mr-1 text-purple-600"></i> Control por Lote y Vencimiento
+                </label>
+                <p class="text-[11px] text-gray-500 mt-0.5">Exige o sugiere número de lote, fecha de fabricación y caducidad (FEFO) en entradas y salidas por venta.</p>
+              </div>
+            </div>
+
+            <!-- Panel Desplegable de Lotes -->
+            <div id="pf-lots-panel" class="mt-3 pt-3 border-t border-purple-100" style="${row?.track_lots ? '' : 'display:none;'}">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Registro Sanitario / INVIMA</label>
+                  <input id="pf-reg-sanitario" type="text" class="form-input text-xs font-mono" value="${esc(specialConditions.registro_sanitario || '')}" placeholder="Ej: RSA-001234-2024">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Alerta Caducidad (Días)</label>
+                  <input id="pf-expiry-alert-days" type="number" min="1" class="form-input text-xs font-semibold text-purple-700" value="${row?.expiry_alert_days || 60}" placeholder="60">
+                </div>
+              </div>
+              ${row?.id ? `
+                <div class="mt-3 pt-2 border-t border-purple-50 flex items-center justify-between">
+                  <span class="text-[11px] text-purple-900 font-semibold">
+                    <i class="fas fa-boxes-packing mr-1 text-purple-600"></i> Lotes físicos en almacén
+                  </span>
+                  <button type="button" class="btn btn-outline btn-xs px-2.5 py-1 text-[11px] text-purple-700 border-purple-300 hover:bg-purple-50 font-bold cursor-pointer" onclick="window.prodOpenQuickLotModal('${row.id}', '${esc(row.name)}')">
+                    <i class="fas fa-barcode mr-1"></i> Ver / Crear Lotes
+                  </button>
+                </div>
+              ` : `
+                <p class="text-[10px] text-purple-600 italic mt-2">
+                  <i class="fas fa-info-circle mr-1"></i> Al guardar este nuevo producto, podrás asignarle lotes físicos iniciales directamente desde aquí.
+                </p>
+              `}
             </div>
           </div>
-          <div class="flex items-start gap-2.5 p-3 rounded-lg border bg-white shadow-xs" style="border-color:#E5E7EB">
-            <input type="checkbox" id="pf-track-pallets" class="rounded text-blue-600 focus:ring-blue-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_pallets ? 'checked' : ''}>
-            <div>
-              <label for="pf-track-pallets" class="font-bold text-xs cursor-pointer block text-gray-800">
-                <i class="fas fa-pallet mr-1 text-blue-600"></i> Control de Embalaje y Estibas (WMS)
-              </label>
-              <p class="text-[11px] text-gray-500 mt-0.5">Controla almacenamiento por estibas, cajas y ubicación física en rack en recepción y despacho.</p>
+
+          <!-- Tarjeta Embalaje y Estibas -->
+          <div class="p-3 rounded-xl border bg-white shadow-xs" style="border-color:#E5E7EB">
+            <div class="flex items-start gap-2.5">
+              <input type="checkbox" id="pf-track-pallets" class="rounded text-blue-600 focus:ring-blue-500 mt-1 h-4 w-4 cursor-pointer" ${row?.track_pallets ? 'checked' : ''}>
+              <div>
+                <label for="pf-track-pallets" class="font-bold text-xs cursor-pointer block text-gray-800">
+                  <i class="fas fa-pallet mr-1 text-blue-600"></i> Control de Embalaje y Estibas (WMS)
+                </label>
+                <p class="text-[11px] text-gray-500 mt-0.5">Controla almacenamiento por estibas, cajas y ubicación física en rack en recepción y despacho.</p>
+              </div>
+            </div>
+
+            <!-- Panel Desplegable de Embalaje -->
+            <div id="pf-pallets-panel" class="mt-3 pt-3 border-t border-blue-100" style="${row?.track_pallets ? '' : 'display:none;'}">
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Cajas x Estiba</label>
+                  <input id="pf-cajas-pallet" type="number" min="1" class="form-input text-xs font-bold text-blue-900" value="${specialConditions.cajas_en_pallet ?? ''}" placeholder="16">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Unds x Caja</label>
+                  <input id="pf-und-empaque" type="number" min="1" class="form-input text-xs font-bold text-blue-900" value="${specialConditions.und_empaque ?? ''}" placeholder="1">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">Peso Bruto/Cj</label>
+                  <input id="pf-peso-bruto" type="number" min="0" step="0.01" class="form-input text-xs" value="${specialConditions.peso_bruto ?? ''}" placeholder="Kg">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-gray-700 mb-1">L × An × Al (cm)</label>
+                  <div class="flex items-center gap-0.5">
+                    <input id="pf-largo-cm" type="number" min="0" step="0.1" class="form-input text-xs px-1 text-center" value="${specialConditions.largo_cm ?? ''}" placeholder="L">
+                    <span class="text-gray-400 text-xs">×</span>
+                    <input id="pf-ancho-cm" type="number" min="0" step="0.1" class="form-input text-xs px-1 text-center" value="${specialConditions.ancho_cm ?? ''}" placeholder="An">
+                    <span class="text-gray-400 text-xs">×</span>
+                    <input id="pf-alto-cm" type="number" min="0" step="0.1" class="form-input text-xs px-1 text-center" value="${specialConditions.alto_cm ?? ''}" placeholder="Al">
+                  </div>
+                </div>
+              </div>
+              ${row?.id ? `
+                <div class="mt-3 pt-2 border-t border-blue-50 flex items-center justify-between">
+                  <span class="text-[11px] text-blue-900 font-semibold">
+                    <i class="fas fa-warehouse mr-1 text-blue-600"></i> Estibas WMS en almacén
+                  </span>
+                  <button type="button" class="btn btn-outline btn-xs px-2.5 py-1 text-[11px] text-blue-700 border-blue-300 hover:bg-blue-50 font-bold cursor-pointer" onclick="window.prodOpenQuickPalletModal('${row.id}', '${esc(row.name)}')">
+                    <i class="fas fa-pallet mr-1"></i> Ver / Crear Estibas
+                  </button>
+                </div>
+              ` : `
+                <p class="text-[10px] text-blue-600 italic mt-2">
+                  <i class="fas fa-info-circle mr-1"></i> Al guardar este nuevo producto, podrás generar estibas físicas para sus existencias directamente desde aquí.
+                </p>
+              `}
             </div>
           </div>
         </div>
@@ -2485,6 +2562,24 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
   document.getElementById('pf-is-consigned')?.addEventListener('change', syncConsignmentFields);
   syncConsignmentFields();
 
+  const syncLogisticsPanels = () => {
+    const trackLotsChk = document.getElementById('pf-track-lots') as HTMLInputElement;
+    const lotsPanel = document.getElementById('pf-lots-panel');
+    if (trackLotsChk && lotsPanel) {
+      lotsPanel.style.display = trackLotsChk.checked ? 'block' : 'none';
+    }
+
+    const trackPalletsChk = document.getElementById('pf-track-pallets') as HTMLInputElement;
+    const palletsPanel = document.getElementById('pf-pallets-panel');
+    if (trackPalletsChk && palletsPanel) {
+      palletsPanel.style.display = trackPalletsChk.checked ? 'block' : 'none';
+    }
+  };
+
+  document.getElementById('pf-track-lots')?.addEventListener('change', syncLogisticsPanels);
+  document.getElementById('pf-track-pallets')?.addEventListener('change', syncLogisticsPanels);
+  syncLogisticsPanels();
+
   const validateLevel5Account = (accountId: string, label: string) => {
     const id = String(accountId || '').trim();
     if (!id) return true;
@@ -2666,6 +2761,28 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         return;
       }
 
+      // Sincronizar inputs visibles de embalaje y lotes con specialConditions
+      const cPalletVal = (document.getElementById('pf-cajas-pallet') as HTMLInputElement)?.value;
+      if (cPalletVal !== undefined) specialConditions.cajas_en_pallet = cPalletVal !== '' ? (parseFloat(cPalletVal) || null) : null;
+
+      const uEmpVal = (document.getElementById('pf-und-empaque') as HTMLInputElement)?.value;
+      if (uEmpVal !== undefined) specialConditions.und_empaque = uEmpVal !== '' ? (parseFloat(uEmpVal) || null) : null;
+
+      const pBrutoVal = (document.getElementById('pf-peso-bruto') as HTMLInputElement)?.value;
+      if (pBrutoVal !== undefined) specialConditions.peso_bruto = pBrutoVal !== '' ? (parseFloat(pBrutoVal) || null) : null;
+
+      const lCmVal = (document.getElementById('pf-largo-cm') as HTMLInputElement)?.value;
+      if (lCmVal !== undefined) specialConditions.largo_cm = lCmVal !== '' ? (parseFloat(lCmVal) || null) : null;
+
+      const aCmVal = (document.getElementById('pf-ancho-cm') as HTMLInputElement)?.value;
+      if (aCmVal !== undefined) specialConditions.ancho_cm = aCmVal !== '' ? (parseFloat(aCmVal) || null) : null;
+
+      const alCmVal = (document.getElementById('pf-alto-cm') as HTMLInputElement)?.value;
+      if (alCmVal !== undefined) specialConditions.alto_cm = alCmVal !== '' ? (parseFloat(alCmVal) || null) : null;
+
+      const rSanVal = (document.getElementById('pf-reg-sanitario') as HTMLInputElement)?.value;
+      if (rSanVal !== undefined) specialConditions.registro_sanitario = rSanVal.trim();
+
       // Validación de cubicaje: o se diligencian las 3 dimensiones o ninguna.
       const dimsRaw = [specialConditions.largo_cm, specialConditions.ancho_cm, specialConditions.alto_cm];
       const dimsFilledCount = dimsRaw.filter(v => v !== null && v !== undefined && Number(v) > 0).length;
@@ -2820,10 +2937,40 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
   });
 
   $('#btn-special-conditions')?.addEventListener('click', () => {
+    const cPallet = (document.getElementById('pf-cajas-pallet') as HTMLInputElement)?.value;
+    if (cPallet !== undefined) specialConditions.cajas_en_pallet = cPallet !== '' ? (parseFloat(cPallet) || null) : null;
+    const uEmp = (document.getElementById('pf-und-empaque') as HTMLInputElement)?.value;
+    if (uEmp !== undefined) specialConditions.und_empaque = uEmp !== '' ? (parseFloat(uEmp) || null) : null;
+    const pBruto = (document.getElementById('pf-peso-bruto') as HTMLInputElement)?.value;
+    if (pBruto !== undefined) specialConditions.peso_bruto = pBruto !== '' ? (parseFloat(pBruto) || null) : null;
+    const lCm = (document.getElementById('pf-largo-cm') as HTMLInputElement)?.value;
+    if (lCm !== undefined) specialConditions.largo_cm = lCm !== '' ? (parseFloat(lCm) || null) : null;
+    const aCm = (document.getElementById('pf-ancho-cm') as HTMLInputElement)?.value;
+    if (aCm !== undefined) specialConditions.ancho_cm = aCm !== '' ? (parseFloat(aCm) || null) : null;
+    const alCm = (document.getElementById('pf-alto-cm') as HTMLInputElement)?.value;
+    if (alCm !== undefined) specialConditions.alto_cm = alCm !== '' ? (parseFloat(alCm) || null) : null;
+    const rSan = (document.getElementById('pf-reg-sanitario') as HTMLInputElement)?.value;
+    if (rSan !== undefined) specialConditions.registro_sanitario = rSan.trim();
+
     openSpecialConditionsModal(specialConditions, (updated) => {
       Object.assign(specialConditions, updated);
       const summary = $('#pf-special-summary');
       if (summary) summary.textContent = specialConditionsSummary(specialConditions);
+
+      const cPalletEl = document.getElementById('pf-cajas-pallet') as HTMLInputElement;
+      if (cPalletEl) cPalletEl.value = specialConditions.cajas_en_pallet ?? '';
+      const uEmpEl = document.getElementById('pf-und-empaque') as HTMLInputElement;
+      if (uEmpEl) uEmpEl.value = specialConditions.und_empaque ?? '';
+      const pBrutoEl = document.getElementById('pf-peso-bruto') as HTMLInputElement;
+      if (pBrutoEl) pBrutoEl.value = specialConditions.peso_bruto ?? '';
+      const lCmEl = document.getElementById('pf-largo-cm') as HTMLInputElement;
+      if (lCmEl) lCmEl.value = specialConditions.largo_cm ?? '';
+      const aCmEl = document.getElementById('pf-ancho-cm') as HTMLInputElement;
+      if (aCmEl) aCmEl.value = specialConditions.ancho_cm ?? '';
+      const alCmEl = document.getElementById('pf-alto-cm') as HTMLInputElement;
+      if (alCmEl) alCmEl.value = specialConditions.alto_cm ?? '';
+      const rSanEl = document.getElementById('pf-reg-sanitario') as HTMLInputElement;
+      if (rSanEl) rSanEl.value = specialConditions.registro_sanitario ?? '';
     });
   });
 
@@ -2939,6 +3086,475 @@ function deleteProduct(id, name) {
   );
 }
 
+// ── Modal Rápido de Gestión / Creación de Lotes Físicos de un Producto ────────
+async function prodOpenQuickLotModal(productId: string, productName: string) {
+  try {
+    const [warehouses, stockRows, lots] = await Promise.all([
+      (window as any).API.getWarehouses(true),
+      (window as any).API.getInventoryStock({ productId }).catch(() => []),
+      (window as any).pb.listAll('inventory_lots', {
+        filter: `product_id="${(window as any).pb.escapeFilterValue(productId)}"`,
+        expand: 'warehouse_id',
+        sort: '-created'
+      }).catch(() => [])
+    ]);
+
+    const totalStock = stockRows.reduce((sum: number, s: any) => sum + Number(s.qty_on_hand || 0), 0);
+    const assignedLotStock = lots.filter((l: any) => l.status === 'active').reduce((sum: number, l: any) => sum + Number(l.qty_on_hand || 0), 0);
+
+    (window as any).__currentQuickLotProductId = productId;
+    (window as any).__currentQuickLotProductName = productName;
+
+    const today = (window as any).todayStr();
+    const calcDaysLeft = (exp: string) => {
+      if (!exp) return null;
+      const diff = new Date(exp).getTime() - new Date(today).getTime();
+      return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    };
+
+    const modalHtml = `
+      <div class="space-y-4 text-xs" style="color:#374151">
+        <!-- Tarjeta de Existencias Actuales -->
+        <div class="p-3.5 rounded-xl border bg-slate-50 flex flex-wrap items-center justify-between gap-2" style="border-color:#E2E8F0">
+          <div>
+            <span class="text-gray-500 font-semibold block text-[11px]">Producto Seleccionado:</span>
+            <span class="font-bold text-sm text-gray-900">${(window as any).esc(productName)}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="text-right">
+              <span class="text-[10px] text-gray-500 block">Stock Total en Almacén</span>
+              <span class="font-bold font-mono text-sm text-blue-800">${(window as any).fmtN(totalStock)} unds</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-gray-500 block">Con Lote Asignado</span>
+              <span class="font-bold font-mono text-sm text-purple-800">${(window as any).fmtN(assignedLotStock)} unds</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Formulario: Registrar Nuevo Lote Físico -->
+        <div class="p-4 rounded-xl border bg-white shadow-xs" style="border-color:#D8B4FE">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold bg-purple-100 text-purple-800">
+              <i class="fas fa-plus"></i>
+            </span>
+            <span class="font-bold text-sm text-gray-900">Registrar Nuevo Lote Físico</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Bodega <span class="text-red-500">*</span></label>
+              <select id="ql-warehouse" class="form-input text-xs w-full">
+                ${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}">${(window as any).esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Número de Lote <span class="text-red-500">*</span></label>
+              <input id="ql-lot-number" type="text" class="form-input text-xs font-mono font-bold" placeholder="Ej: LOT-2026-001">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Fecha Vencimiento <span class="text-red-500">*</span></label>
+              <input id="ql-expiry-date" type="date" class="form-input text-xs">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Fecha Fabricación</label>
+              <input id="ql-mfg-date" type="date" class="form-input text-xs">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Cantidad Inicial / Saldo <span class="text-red-500">*</span></label>
+              <input id="ql-qty" type="number" min="0.0001" step="any" class="form-input text-xs text-right font-bold" placeholder="0">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Costo Unitario COP (Opcional)</label>
+              <input id="ql-cost" type="number" min="0" step="any" class="form-input text-xs text-right" placeholder="0">
+            </div>
+          </div>
+
+          <div class="mt-3 flex justify-end">
+            <button type="button" id="ql-btn-save" class="btn btn-primary btn-sm px-4 py-1.5 text-xs font-bold" style="background:#7E22CE;border-color:#7E22CE">
+              <i class="fas fa-barcode mr-1"></i> Guardar Lote
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla de Lotes Registrados -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-xs text-gray-700 uppercase tracking-wider">Lotes Registrados (${lots.length})</span>
+          </div>
+
+          ${lots.length === 0 ? `
+            <div class="p-6 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <i class="fas fa-barcode text-2xl mb-1 text-gray-300 block"></i>
+              No hay lotes registrados para este producto todavía.
+            </div>
+          ` : `
+            <div class="overflow-x-auto rounded-xl border" style="border-color:#E5E7EB">
+              <table class="data-table w-full text-xs">
+                <thead>
+                  <tr style="background:#FAF5FF">
+                    <th>N° Lote</th>
+                    <th>Bodega</th>
+                    <th>Vencimiento</th>
+                    <th>Estado FEFO</th>
+                    <th class="text-right">Disponible</th>
+                    <th class="text-right">Inicial</th>
+                    <th class="text-center">Estado</th>
+                    <th class="text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${lots.map((l: any) => {
+                    const dLeft = calcDaysLeft(l.expiry_date);
+                    let fefoBadge = '<span class="badge badge-gray">Sin fecha</span>';
+                    if (dLeft !== null) {
+                      if (dLeft < 0) fefoBadge = `<span class="badge badge-red font-bold">Vencido (${Math.abs(dLeft)} d)</span>`;
+                      else if (dLeft <= 60) fefoBadge = `<span class="badge badge-orange font-bold">Vence en ${dLeft} d</span>`;
+                      else fefoBadge = `<span class="badge badge-green">Vigente (${dLeft} d)</span>`;
+                    }
+                    const whName = l.expand?.warehouse_id?.name || 'Bodega';
+                    const stLabel = l.status === 'active' ? 'Activo' : l.status === 'quarantine' ? 'Cuarentena' : l.status === 'expired' ? 'Vencido' : (l.status === 'depleted' || l.status === 'closed') ? 'Agotado' : (window as any).esc(l.status);
+                    const stBadgeClass = l.status === 'active' ? 'badge-green' : l.status === 'quarantine' ? 'badge-orange' : l.status === 'expired' ? 'badge-red' : 'badge-gray';
+                    return `
+                      <tr>
+                        <td class="font-mono font-bold text-purple-900">${(window as any).esc(l.lot_number)}</td>
+                        <td>${(window as any).esc(whName)}</td>
+                        <td>${l.expiry_date || '—'}</td>
+                        <td>${fefoBadge}</td>
+                        <td class="text-right font-mono font-bold">${(window as any).fmtN(l.qty_on_hand || 0)}</td>
+                        <td class="text-right font-mono text-gray-500">${(window as any).fmtN(l.initial_qty || 0)}</td>
+                        <td class="text-center">
+                          <span class="badge ${stBadgeClass}">${stLabel}</span>
+                        </td>
+                        <td class="text-center whitespace-nowrap">
+                          <button type="button" class="btn btn-outline btn-xs px-2 py-0.5 text-purple-700 font-bold" onclick="window.invOpenLotEditModal('${l.id}')" title="Editar Lote">
+                            <i class="fas fa-pen mr-1"></i> Editar
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    (window as any).openModal(
+      `Gestión de Lotes Físicos — ${productName}`,
+      modalHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      true
+    );
+
+    setTimeout(() => {
+      document.getElementById('ql-btn-save')?.addEventListener('click', async () => {
+        const btn = document.getElementById('ql-btn-save') as HTMLButtonElement;
+        const whId = (document.getElementById('ql-warehouse') as HTMLSelectElement)?.value;
+        const lotNum = (document.getElementById('ql-lot-number') as HTMLInputElement)?.value?.trim();
+        const expDate = (document.getElementById('ql-expiry-date') as HTMLInputElement)?.value;
+        const mfgDate = (document.getElementById('ql-mfg-date') as HTMLInputElement)?.value;
+        const qty = parseFloat((document.getElementById('ql-qty') as HTMLInputElement)?.value || '0');
+        const cost = parseFloat((document.getElementById('ql-cost') as HTMLInputElement)?.value || '0') || 0;
+
+        if (!whId) return (window as any).showToast('Selecciona la bodega.', 'warning');
+        if (!lotNum) return (window as any).showToast('Ingresa el número de lote.', 'warning');
+        if (!expDate) return (window as any).showToast('Ingresa la fecha de vencimiento.', 'warning');
+        if (qty <= 0) return (window as any).showToast('Ingresa una cantidad mayor que cero.', 'warning');
+
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+
+        try {
+          const lotData: Record<string, any> = {
+            product_id: productId,
+            warehouse_id: whId,
+            lot_number: lotNum,
+            expiry_date: expDate,
+            initial_qty: qty,
+            qty_on_hand: qty,
+            unit_cost: cost,
+            status: 'active'
+          };
+          if (mfgDate) lotData.manufacturing_date = mfgDate;
+
+          await (window as any).pb.create('inventory_lots', lotData);
+          (window as any).showToast(`Lote "${lotNum}" registrado exitosamente.`, 'success');
+          await prodOpenQuickLotModal(productId, productName);
+        } catch (err: any) {
+          let errDetail = err?.message || 'Error desconocido';
+          const data = err?.response?.data || err?.data?.data;
+          if (data && typeof data === 'object') {
+            const fields = Object.entries(data)
+              .map(([k, v]: [string, any]) => `${k}: ${v?.message || JSON.stringify(v)}`)
+              .join(' | ');
+            if (fields) errDetail += ` (${fields})`;
+          }
+          (window as any).showToast('Error al registrar lote: ' + errDetail, 'error');
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-barcode mr-1"></i> Guardar Lote'; }
+        }
+      });
+    }, 50);
+
+  } catch (err: any) {
+    (window as any).showToast('Error consultando lotes: ' + err.message, 'error');
+  }
+}
+
+// ── Modal Rápido de Gestión / Creación de Estibas (LPN WMS) de un Producto ───
+async function prodOpenQuickPalletModal(productId: string, productName: string) {
+  try {
+    const [warehouses, product, lots, pallets] = await Promise.all([
+      (window as any).API.getWarehouses(true),
+      (window as any).pb.get('products', productId),
+      (window as any).pb.listAll('inventory_lots', {
+        filter: `product_id="${(window as any).pb.escapeFilterValue(productId)}" && status="active" && qty_on_hand > 0`,
+        sort: 'expiry_date'
+      }).catch(() => []),
+      (window as any).pb.listAll('inventory_pallets', {
+        filter: `product_id="${(window as any).pb.escapeFilterValue(productId)}"`,
+        expand: 'warehouse_id,lot_id',
+        sort: '-created'
+      }).catch(() => [])
+    ]);
+
+    const defaultBoxes = Number(product.cajas_en_pallet || 16);
+    const defaultUnitsBox = Number(product.und_empaque || 1);
+    const autoLpn = `PLT-${Date.now().toString().slice(-6)}`;
+
+    const totalPallets = pallets.filter((p: any) => p.status !== 'depleted').length;
+    const totalBoxesInPallets = pallets.filter((p: any) => p.status !== 'depleted').reduce((sum: number, p: any) => sum + Number(p.boxes_current || 0), 0);
+    const totalUnitsInPallets = pallets.filter((p: any) => p.status !== 'depleted').reduce((sum: number, p: any) => sum + Number(p.units_available || 0), 0);
+
+    const modalHtml = `
+      <div class="space-y-4 text-xs" style="color:#374151">
+        <!-- Tarjeta de Resumen de Palletizado -->
+        <div class="p-3.5 rounded-xl border bg-slate-50 flex flex-wrap items-center justify-between gap-2" style="border-color:#E2E8F0">
+          <div>
+            <span class="text-gray-500 font-semibold block text-[11px]">Producto Seleccionado:</span>
+            <span class="font-bold text-sm text-gray-900">${(window as any).esc(productName)}</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="text-right">
+              <span class="text-[10px] text-gray-500 block">Estibas en Almacén</span>
+              <span class="font-bold font-mono text-sm text-blue-800">${totalPallets} plts</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-gray-500 block">Cajas Paletizadas</span>
+              <span class="font-bold font-mono text-sm text-blue-800">${(window as any).fmtN(totalBoxesInPallets)} cjs</span>
+            </div>
+            <div class="text-right">
+              <span class="text-[10px] text-gray-500 block">Unidades Disponibles</span>
+              <span class="font-bold font-mono text-sm text-emerald-700">${(window as any).fmtN(totalUnitsInPallets)} unds</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Formulario: Armar / Registrar Estiba LPN -->
+        <div class="p-4 rounded-xl border bg-white shadow-xs" style="border-color:#BAE6FD">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold bg-blue-100 text-blue-800">
+              <i class="fas fa-plus"></i>
+            </span>
+            <span class="font-bold text-sm text-gray-900">Registrar / Armar Estiba (LPN)</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Bodega <span class="text-red-500">*</span></label>
+              <select id="qp-warehouse" class="form-input text-xs w-full">
+                ${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}">${(window as any).esc(w.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Código LPN <span class="text-red-500">*</span></label>
+              <input id="qp-pallet-code" type="text" class="form-input text-xs font-mono font-bold text-blue-900 uppercase" value="${autoLpn}">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Tipo de Estiba</label>
+              <select id="qp-pallet-type" class="form-input text-xs w-full">
+                <option value="ESTANDAR_120x100" selected>Estándar (120x100 cm)</option>
+                <option value="EURO_120x80">Europea (120x80 cm)</option>
+                <option value="ESPECIAL">Especial / Otra</option>
+                <option value="PISO_SUELTO">Piso Suelto</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Lote Asociado (Opcional)</label>
+              <select id="qp-lot" class="form-input text-xs w-full font-mono">
+                <option value="">— Sin Lote Específico —</option>
+                ${lots.map((l: any) => `<option value="${(window as any).esc(l.id)}">${(window as any).esc(l.lot_number)} (${(window as any).fmtN(l.qty_on_hand)} unds - Vence: ${l.expiry_date || 'S/F'})</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Ubicación Rack / Pasillo</label>
+              <input id="qp-location" type="text" class="form-input text-xs font-mono uppercase" placeholder="Ej: RACK-A-01">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Número de Cajas <span class="text-red-500">*</span></label>
+              <input id="qp-boxes" type="number" min="1" class="form-input text-xs text-right font-bold" value="${defaultBoxes}">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-gray-700 mb-1">Unidades por Caja <span class="text-red-500">*</span></label>
+              <input id="qp-units-box" type="number" min="1" class="form-input text-xs text-right font-bold" value="${defaultUnitsBox}">
+            </div>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between border-t pt-2" style="border-color:#F0F9FF">
+            <span id="qp-total-preview" class="text-xs font-semibold text-blue-800">
+              Total a registrar: <strong class="text-sm font-mono">${defaultBoxes * defaultUnitsBox} unds</strong>
+            </span>
+            <button type="button" id="qp-btn-save" class="btn btn-primary btn-sm px-4 py-1.5 text-xs font-bold" style="background:#0284C7;border-color:#0284C7">
+              <i class="fas fa-pallet mr-1"></i> Guardar Estiba
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla de Estibas Físicas -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-xs text-gray-700 uppercase tracking-wider">Estibas Físicas Registradas (${pallets.length})</span>
+          </div>
+
+          ${pallets.length === 0 ? `
+            <div class="p-6 text-center text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+              <i class="fas fa-pallet text-2xl mb-1 text-gray-300 block"></i>
+              No hay estibas registradas para este producto todavía.
+            </div>
+          ` : `
+            <div class="overflow-x-auto rounded-xl border" style="border-color:#E5E7EB">
+              <table class="data-table w-full text-xs">
+                <thead>
+                  <tr style="background:#F0F9FF">
+                    <th>LPN Estiba</th>
+                    <th>Bodega</th>
+                    <th>Tipo</th>
+                    <th>Ubicación Rack</th>
+                    <th>Lote</th>
+                    <th class="text-right">Cajas Act. / Inicial</th>
+                    <th class="text-right">Unds Disponibles</th>
+                    <th class="text-center">Estado</th>
+                    <th class="text-center">Rótulo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pallets.map((plt: any) => {
+                    const whName = plt.expand?.warehouse_id?.name || 'Bodega';
+                    const lotNum = plt.expand?.lot_id?.lot_number || '—';
+                    const typeLabel = plt.pallet_type === 'EURO_120x80' ? 'Euro' : plt.pallet_type === 'PISO_SUELTO' ? 'Suelto' : plt.pallet_type === 'ESPECIAL' ? 'Especial' : 'Estándar';
+                    return `
+                      <tr>
+                        <td class="font-mono font-bold text-blue-900">${(window as any).esc(plt.pallet_code)}</td>
+                        <td>${(window as any).esc(whName)}</td>
+                        <td><span class="badge badge-gray text-[10px]">${typeLabel}</span></td>
+                        <td>
+                          ${plt.location_code ? `<span class="badge badge-gray font-mono"><i class="fas fa-location-dot mr-1 text-blue-500"></i>${(window as any).esc(plt.location_code)}</span>` : '<span class="text-gray-400">Sin rack</span>'}
+                        </td>
+                        <td class="font-mono">${(window as any).esc(lotNum)}</td>
+                        <td class="text-right font-mono">${plt.boxes_current || 0} / ${plt.boxes_initial || 0} cjs</td>
+                        <td class="text-right font-mono font-bold text-blue-900">${(window as any).fmtN(plt.units_available || 0)}</td>
+                        <td class="text-center">
+                          <span class="badge ${plt.status === 'full' ? 'badge-green' : plt.status === 'partial' ? 'badge-orange' : plt.status === 'depleted' ? 'badge-red' : 'badge-gray'}">${plt.status === 'full' ? 'Completa' : plt.status === 'partial' ? 'Parcial' : plt.status === 'depleted' ? 'Agotada' : (window as any).esc(plt.status || 'Activa')}</span>
+                        </td>
+                        <td class="text-center">
+                          <button type="button" class="btn btn-outline btn-xs px-2 py-0.5" onclick="window.invPrintSinglePalletLabel('${plt.id}')" title="Imprimir Rótulo Térmico">
+                            <i class="fas fa-print"></i>
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    (window as any).openModal(
+      `Gestión de Estibas (LPN WMS) — ${productName}`,
+      modalHtml,
+      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      true
+    );
+
+    setTimeout(() => {
+      const boxesEl = document.getElementById('qp-boxes') as HTMLInputElement;
+      const uBoxEl = document.getElementById('qp-units-box') as HTMLInputElement;
+      const prevEl = document.getElementById('qp-total-preview');
+
+      const recalcPreview = () => {
+        const b = parseFloat(boxesEl?.value || '0') || 0;
+        const u = parseFloat(uBoxEl?.value || '0') || 0;
+        if (prevEl) {
+          prevEl.innerHTML = `Total a registrar: <strong class="text-sm font-mono">${(window as any).fmtN(b * u)} unds</strong>`;
+        }
+      };
+
+      boxesEl?.addEventListener('input', recalcPreview);
+      uBoxEl?.addEventListener('input', recalcPreview);
+
+      document.getElementById('qp-btn-save')?.addEventListener('click', async () => {
+        const btn = document.getElementById('qp-btn-save') as HTMLButtonElement;
+        const whId = (document.getElementById('qp-warehouse') as HTMLSelectElement)?.value;
+        const code = (document.getElementById('qp-pallet-code') as HTMLInputElement)?.value?.trim().toUpperCase();
+        const pType = (document.getElementById('qp-pallet-type') as HTMLSelectElement)?.value || 'ESTANDAR_120x100';
+        const lotId = (document.getElementById('qp-lot') as HTMLSelectElement)?.value;
+        const loc = (document.getElementById('qp-location') as HTMLInputElement)?.value?.trim().toUpperCase();
+        const boxes = parseFloat(boxesEl?.value || '0') || 0;
+        const uBox = parseFloat(uBoxEl?.value || '0') || 0;
+
+        if (!whId) return (window as any).showToast('Selecciona la bodega.', 'warning');
+        if (!code) return (window as any).showToast('Ingresa el código LPN de la estiba.', 'warning');
+        if (boxes <= 0) return (window as any).showToast('Ingresa un número de cajas mayor que cero.', 'warning');
+        if (uBox <= 0) return (window as any).showToast('Ingresa unidades por caja mayor que cero.', 'warning');
+
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
+
+        try {
+          const totalUnits = boxes * uBox;
+          const palletPayload: Record<string, any> = {
+            product_id: productId,
+            warehouse_id: whId,
+            pallet_code: code,
+            pallet_type: pType,
+            boxes_initial: boxes,
+            boxes_current: boxes,
+            units_per_box: uBox,
+            units_available: totalUnits,
+            location_code: loc || '',
+            status: 'full',
+            notes: 'Registrada desde catálogo de productos'
+          };
+          if (lotId) {
+            palletPayload.lot_id = lotId;
+          }
+
+          await (window as any).pb.create('inventory_pallets', palletPayload);
+          (window as any).showToast(`Estiba "${code}" registrada exitosamente.`, 'success');
+          await prodOpenQuickPalletModal(productId, productName);
+        } catch (err: any) {
+          let errDetail = err?.message || 'Error desconocido';
+          const data = err?.response?.data || err?.data?.data;
+          if (data && typeof data === 'object') {
+            const fields = Object.entries(data)
+              .map(([k, v]: [string, any]) => `${k}: ${v?.message || JSON.stringify(v)}`)
+              .join(' | ');
+            if (fields) errDetail += ` (${fields})`;
+          }
+          (window as any).showToast('Error al registrar estiba: ' + errDetail, 'error');
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-pallet mr-1"></i> Guardar Estiba'; }
+        }
+      });
+    }, 50);
+
+  } catch (err: any) {
+    (window as any).showToast('Error consultando estibas: ' + err.message, 'error');
+  }
+}
+
 // --- VITE MIGRATION GLOBALS ---
 (window as any).openProductForm = openProductForm;
 (window as any).PRODUCT_TYPES = PRODUCT_TYPES;
@@ -2959,3 +3575,5 @@ function deleteProduct(id, name) {
 (window as any).kpiCard = kpiCard;
 (window as any).specialConditionsSummary = specialConditionsSummary;
 (window as any).loadProductCatalog = loadProductCatalog;
+(window as any).prodOpenQuickLotModal = prodOpenQuickLotModal;
+(window as any).prodOpenQuickPalletModal = prodOpenQuickPalletModal;

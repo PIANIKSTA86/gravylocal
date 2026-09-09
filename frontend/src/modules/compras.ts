@@ -535,6 +535,14 @@ async function _loadComprasPage(c: HTMLElement) {
 
   const tbl = document.getElementById('po-table') as HTMLTableElement;
   if (tbl) (window as any).makeTableSortable(tbl);
+
+  const pendingPoId = localStorage.getItem('preloaded_purchase_order_id');
+  if (pendingPoId) {
+    localStorage.removeItem('preloaded_purchase_order_id');
+    setTimeout(() => {
+      openPurchaseForm(null, () => _loadComprasPage(c), null, null, pendingPoId);
+    }, 60);
+  }
 }
 
 function renderPoRow(inv: any) {
@@ -599,8 +607,17 @@ function filterPoTable() {
 }
 
 // ── Formulario Reactivo de Creación / Edición ─────────────────────────
-async function openPurchaseForm(invoiceId: string | null = null, onDone: any = null, preloadedImportId: string | null = null, noteConfig: any = null) {
+async function openPurchaseForm(invoiceId: string | null = null, onDone: any = null, preloadedImportId: string | null = null, noteConfig: any = null, preloadedPoId: string | null = null) {
   let inv: any = null, existingLines: any[] = [];
+  let linkedPurchaseOrderId = preloadedPoId;
+
+  if (!linkedPurchaseOrderId && !invoiceId && !noteConfig) {
+    const storedPoId = localStorage.getItem('preloaded_purchase_order_id');
+    if (storedPoId) {
+      linkedPurchaseOrderId = storedPoId;
+      localStorage.removeItem('preloaded_purchase_order_id');
+    }
+  }
 
   const [poConfig, suppliers, warehouses, products, txTypes, accounts] = await Promise.all([
     getPurchaseConfig(),
@@ -620,6 +637,33 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       (window as any).pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id' }),
       (window as any).API.getPurchaseInvoiceLines(invoiceId),
     ]);
+  } else if (linkedPurchaseOrderId) {
+    try {
+      const poOrder = await (window as any).pb.get('purchase_orders', linkedPurchaseOrderId, { expand: 'supplier_id,warehouse_id' });
+      const poLines = await (window as any).API.getPurchaseOrderLines(linkedPurchaseOrderId);
+      inv = {
+        supplier_id: poOrder.supplier_id,
+        warehouse_id: poOrder.warehouse_id,
+        notes: `Facturación de Orden de Compra N° ${poOrder.number}. ${poOrder.notes || ''}`.trim(),
+        date: (window as any).todayStr(),
+        due_date: poOrder.due_date || (window as any).todayStr(),
+        payment_method: 'CREDITO',
+        supplier_ref: poOrder.number
+      };
+      existingLines = (poLines || []).map((l: any) => ({
+        product_id: l.product_id,
+        qty: l.qty,
+        unit_price: l.unit_price,
+        iva_rate: l.iva_rate || 0,
+        iva_amount: l.iva_amount || 0,
+        subtotal: l.subtotal || (l.qty * l.unit_price),
+        total: l.total || (l.qty * l.unit_price),
+        description: l.description || ''
+      }));
+    } catch (err: any) {
+      console.error("Error precargando orden de compra:", err);
+      (window as any).showToast("Error al precargar la orden de compra: " + err.message, "error");
+    }
   } else if (noteConfig) {
     try {
       const originalInvoice = await (window as any).pb.get('purchase_invoices', noteConfig.originalInvoiceId);
@@ -1181,7 +1225,13 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
 
     if (inv && inv.supplier_id) {
       const match = suppliers.find((c: any) => c.id === inv.supplier_id);
-      if (match) input.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
+      if (match) {
+        input.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
+        poUpdateSupplierTaxInfo(inv.supplier_id, true);
+        if (typeof (window as any).poLoadSupplierBranches === 'function') {
+          (window as any).poLoadSupplierBranches(inv.supplier_id, inv?.third_party_branch_id || '');
+        }
+      }
     }
 
     const performSearch = (val: string) => {
@@ -1827,7 +1877,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 200));
   }
 
-  // Cargar líneas existentes (modo edición / nota de ajuste)
+  // Cargar líneas existentes (modo edición / nota de ajuste / orden de compra)
   if (existingLines.length) {
     existingLines.forEach((l: any) => {
       if (l.account_id) {
@@ -1839,6 +1889,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       }
       (window as any).addPoLine(null, l);
     });
+    setTimeout(() => { (window as any).poRecalcLine(0); }, 100);
   }
 
   initPoGlobalProductSearch();
@@ -1865,11 +1916,11 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
   document.getElementById('po-notes')?.addEventListener('input', triggerStateSave);
 
   // Configurar guardado
-  document.getElementById('btn-save-po')?.addEventListener('click', () => savePurchaseDraftWrapper(invoiceId, onDone, inv, noteConfig));
+  document.getElementById('btn-save-po')?.addEventListener('click', () => savePurchaseDraftWrapper(invoiceId, onDone, inv, noteConfig, linkedPurchaseOrderId));
 }
 
 // ── Wrapper unificado para Guardado de Compra ─────────────────────────
-async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = null, inv: any = null, noteConfig: any = null) {
+async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = null, inv: any = null, noteConfig: any = null, linkedPurchaseOrderId: string | null = null) {
   const poConfig = await getPurchaseConfig();
   const btn = document.getElementById('btn-save-po') as HTMLButtonElement;
   if (btn) {
@@ -2099,6 +2150,18 @@ async function savePurchaseDraftWrapper(invoiceId: string | null, onDone: any = 
         (payload as any).dian_resolution_id = inv.dian_resolution_id;
       }
       const newInv = await (window as any).API.createPurchaseInvoice(payload, lines);
+
+      if (linkedPurchaseOrderId) {
+        try {
+          await (window as any).API.updatePurchaseOrder(linkedPurchaseOrderId, {
+            status: 'invoiced',
+            invoice_id: newInv.id
+          });
+          await (window as any).API.logAudit('UPDATE', 'PurchaseOrder', linkedPurchaseOrderId, `Orden de compra facturada en compra ${newInv.number || number}`);
+        } catch (poErr) {
+          console.warn('[Compras] Error actualizando orden de compra:', poErr);
+        }
+      }
 
       if (poConfig.operational.immediate_posting) {
         const isReadyToPost = await validatePurchasePostingAccounts(newInv.id, newInv.number || number);

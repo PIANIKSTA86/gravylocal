@@ -990,7 +990,10 @@ async function renderSubTabCatalogo(c: HTMLElement) {
           <div class="flex items-center gap-2">
             <button class="btn btn-outline btn-sm" id="btn-export-excel-assets" title="Exportar a Excel"><i class="fas fa-file-excel mr-1.5" style="color:#10B981"></i>Excel</button>
             <button class="btn btn-outline btn-sm" id="btn-export-pdf-assets" title="Exportar a PDF"><i class="fas fa-file-pdf mr-1.5" style="color:#EF4444"></i>PDF</button>
-            ${can('canWrite') ? '<button class="btn btn-primary btn-sm" id="btn-new-asset"><i class="fas fa-plus mr-1.5"></i>Nuevo Activo Fijo</button>' : ''}
+            ${can('canWrite') ? `
+              <button class="btn btn-outline btn-sm" id="btn-import-excel-assets" title="Cargar catálogo desde Excel o CSV"><i class="fas fa-file-import mr-1.5" style="color:#059669"></i>Importar Excel</button>
+              <button class="btn btn-primary btn-sm" id="btn-new-asset"><i class="fas fa-plus mr-1.5"></i>Nuevo Activo Fijo</button>
+            ` : ''}
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -1111,6 +1114,18 @@ async function renderSubTabCatalogo(c: HTMLElement) {
     $('#ast-filter-status')?.addEventListener('change', filter);
 
     $('#btn-new-asset')?.addEventListener('click', () => (window as any).openAssetForm());
+    $('#btn-import-excel-assets')?.addEventListener('click', () => {
+      if (typeof (window as any)._openMassFixedAssetsImportModal === 'function') {
+        (window as any)._openMassFixedAssetsImportModal({
+          onComplete: async () => {
+            const container = document.getElementById('activos-subtab-content');
+            if (container) await renderSubTabCatalogo(container);
+          }
+        });
+      } else {
+        showToast('Utilidad de importación de activos no disponible', 'error');
+      }
+    });
 
     // ── Exportar a Excel ──────────────────────────────────────────────────
     document.getElementById('btn-export-excel-assets')?.addEventListener('click', () => {

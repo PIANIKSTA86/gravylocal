@@ -51,6 +51,7 @@ declare var renderCRM: any;
 declare var renderDespachos: any;
 declare var renderRutasVisitas: any;
 declare var renderMisReservasVendedor: any;
+declare var renderOrdenesCompra: any;
 
 const MAX_TABS = 8;
 
@@ -98,6 +99,7 @@ const PAGE_TITLES: Record<string, string> = {
   'inventario-consignaciones': 'Inventario en Consignación',
   inventario:        'Stock de Inventario',
   compras:           'Compras de Bienes y Servicios',
+  'ordenes-compra':  'Órdenes de Compra',
   'compra-sugerida':  'Compra Sugerida',
   ventas:            'Ventas y Facturación Comercial',
   pedidos:           'Pedidos y Cotizaciones',
@@ -161,6 +163,7 @@ const PAGE_ICONS: Record<string, string> = {
   'inventario-consignaciones': 'fa-handshake',
   inventario: 'fa-warehouse',
   compras: 'fa-cart-flatbed',
+  'ordenes-compra': 'fa-clipboard-list',
   'compra-sugerida': 'fa-wand-magic-sparkles',
   crm: 'fa-funnel-dollar',
   pedidos: 'fa-file-signature',
@@ -242,6 +245,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'inventario-bodegas': 'inventarios',
   'inventario-consignaciones': 'inventarios',
   'compra-sugerida':  'inventarios',
+  'ordenes-compra':   'inventarios',
   'pos':              'comercial',
   'comisiones':       'comercial',
   'spa':              'spa',
@@ -344,6 +348,7 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'inventario-consignaciones': (c) => typeof (window as any).renderInventarioSection === 'function' ? (window as any).renderInventarioSection(c, 'consignaciones') : (typeof renderInventario === 'function' && renderInventario(c, 'consignaciones')),
   inventario:                  () => navigate('inventario-stock'),
   compras:            (c) => typeof renderCompras           === 'function' && renderCompras(c),
+  'ordenes-compra':   (c) => typeof (window as any).renderOrdenesCompra === 'function' ? (window as any).renderOrdenesCompra(c) : (typeof renderOrdenesCompra === 'function' && renderOrdenesCompra(c)),
   'compra-sugerida':  (c) => typeof (window as any).renderCompraSugerida === 'function' && (window as any).renderCompraSugerida(c),
   ventas:             (c) => typeof renderVentas            === 'function' && renderVentas(c),
   pedidos:            (c) => typeof renderPedidos           === 'function' && renderPedidos(c),

@@ -179,11 +179,27 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
       return e.json(500, { message: "Error interno: no se encontró un usuario responsable para el pedido." });
     }
 
-    // 3. Obtener bodega por defecto
+    // 3. Obtener bodega por defecto y configuración de facturación
     let defaultWarehouseId = "";
     try {
       const settingsRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_default_warehouse_id'");
       defaultWarehouseId = settingsRecord.getString("value");
+    } catch (_) {}
+
+    let pricesIncludeIva = false;
+    try {
+      const salesConfigRec = $app.findFirstRecordByFilter("settings", "key = 'sales_settings_v2'");
+      if (salesConfigRec) {
+        const salesConfig = JSON.parse(salesConfigRec.getString("value") || "{}");
+        if (salesConfig && salesConfig.operational) {
+          if (salesConfig.operational.prices_include_iva === true) {
+            pricesIncludeIva = true;
+          }
+          if (!defaultWarehouseId && salesConfig.operational.default_warehouse_id) {
+            defaultWarehouseId = salesConfig.operational.default_warehouse_id;
+          }
+        }
+      }
     } catch (_) {}
 
     if (!defaultWarehouseId) {
@@ -261,7 +277,7 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
         });
       }
 
-      // Calcular montos de la línea (respetando la lista de precios configurada)
+      // Calcular montos de la línea (respetando la lista de precios y los parámetros de facturación)
       let priceListKey = "base_price";
       try {
         const settingsRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_price_list'");
@@ -271,11 +287,24 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
       const basePrice = product.getFloat("base_price") || 0;
       const precio2 = product.getFloat("precio_venta_2") || 0;
       const price = priceListKey === "precio_venta_2" ? precio2 : basePrice;
-
-      const lineSubtotal = price * requestedQty;
       const ivaRate = product.getFloat("iva_rate") || 0;
-      const lineIvaAmount = Math.round(lineSubtotal * (ivaRate / 100) * 100) / 100;
-      const lineTotal = lineSubtotal + lineIvaAmount;
+
+      let lineSubtotal = 0;
+      let lineIvaAmount = 0;
+      let lineTotal = 0;
+      let unitPriceDb = price;
+
+      if (pricesIncludeIva) {
+        lineTotal = Math.round(price * requestedQty * 100) / 100;
+        lineSubtotal = Math.round((lineTotal / (1 + (ivaRate / 100))) * 100) / 100;
+        lineIvaAmount = Math.round((lineTotal - lineSubtotal) * 100) / 100;
+        unitPriceDb = requestedQty > 0 ? Math.round((lineSubtotal / requestedQty) * 10000) / 10000 : Math.round((price / (1 + (ivaRate / 100))) * 10000) / 10000;
+      } else {
+        lineSubtotal = Math.round(price * requestedQty * 100) / 100;
+        lineIvaAmount = Math.round(lineSubtotal * (ivaRate / 100) * 100) / 100;
+        lineTotal = Math.round((lineSubtotal + lineIvaAmount) * 100) / 100;
+        unitPriceDb = price;
+      }
 
       subtotal += lineSubtotal;
       ivaTotal += lineIvaAmount;
@@ -283,7 +312,7 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
       linesToCreate.push({
         product_id: prodId,
         qty: requestedQty,
-        unit_price: price,
+        unit_price: unitPriceDb,
         iva_rate: ivaRate,
         iva_amount: lineIvaAmount,
         subtotal: lineSubtotal,

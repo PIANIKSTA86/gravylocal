@@ -17,6 +17,181 @@ const ORDER_STATUS: Record<string, OrderStatusDetail> = {
   cancelled: { label: 'Cancelado', badge: 'badge-red' },
 };
 
+const SALES_CONFIG_KEY = 'sales_settings_v2';
+
+function defaultSalesConfig() {
+  return {
+    operational: {
+      require_warehouse_for_goods: true,
+      enable_discounts: true,
+      enable_freight: false,
+      enable_withholdings: true,
+      withholdings: {
+        reterenta: true,
+        reteiva: false,
+        reteica: true,
+      },
+      default_due_days: 30,
+      immediate_posting: false,
+      print_format: 'carta_standard',
+      document_title: 'Factura de Venta',
+      prices_include_iva: false,
+      allow_price_edit: true,
+      allow_negative_stock: false,
+      default_warehouse_id: '',
+      enable_multi_unit_conversions: false,
+      dian_dependent_posting: false,
+    },
+    accounting: {
+      accounts: {
+        receivable_code: '13050501',
+        income_fallback_code: '41359501',
+        cost_fallback_code: '61359501',
+        inventory_fallback_code: '14350501',
+        special_third_party_id: '',
+        special_account_code: '',
+        iva_by_rate: {
+          '0': '233501',
+          '5': '233501',
+          '19': '233501',
+        },
+        discount_code: '',
+        freight_code: '',
+        cash_code: '',
+        refund_code: '',
+        inventory_loss_code: '531520',
+      },
+      withholding_rules: [
+        { id: 'wr-renta-2.5', concept: 'RETERENTA', base_type: 'SUBTOTAL', min_base: 1100000, rate: 2.5, account_code: '135515' },
+        { id: 'wr-ica-0.4', concept: 'RETEICA', base_type: 'SUBTOTAL', min_base: 0, rate: 0.414, account_code: '135518' },
+      ],
+    },
+  };
+}
+
+function normalizeSalesConfig(cfg: any) {
+  const base = defaultSalesConfig();
+  const op = cfg?.operational || {};
+  const acc = cfg?.accounting?.accounts || {};
+  const ivaByRate: any = {};
+  
+  if (acc.iva_by_rate && typeof acc.iva_by_rate === 'object') {
+    Object.keys(acc.iva_by_rate).forEach(r => {
+      const c = String(acc.iva_by_rate[r] || '').trim();
+      if (c) ivaByRate[r] = c;
+    });
+  }
+
+  const normalizedRules = (cfg?.accounting?.withholding_rules || [])
+    .map((r: any) => ({
+      id: String(r?.id || `wr-${Date.now()}-${Math.random()}`),
+      concept: String(r?.concept || '').trim().toUpperCase(),
+      base_type: String(r?.base_type || 'SUBTOTAL').trim().toUpperCase(),
+      min_base: Math.max(0, Number(r?.min_base || 0) || 0),
+      rate: Math.max(0, Number(r?.rate || 0) || 0),
+      account_code: String(r?.account_code || '').trim(),
+    }))
+    .filter((r: any) => r.concept && r.rate > 0);
+
+  return {
+    operational: {
+      require_warehouse_for_goods: op.require_warehouse_for_goods !== false,
+      enable_discounts: op.enable_discounts !== false,
+      enable_freight: op.enable_freight === true,
+      enable_withholdings: op.enable_withholdings !== false,
+      withholdings: {
+        reterenta: op?.withholdings?.reterenta !== false,
+        reteiva: !!op?.withholdings?.reteiva,
+        reteica: op?.withholdings?.reteica !== false,
+      },
+      default_due_days: Math.max(0, Number(op.default_due_days ?? base.operational.default_due_days) || 0),
+      immediate_posting: op.immediate_posting === true,
+      print_format: String(op.print_format || 'carta_standard'),
+      document_title: String(op.document_title || 'Factura de Venta'),
+      prices_include_iva: op.prices_include_iva === true,
+      allow_price_edit: op.allow_price_edit !== false,
+      allow_negative_stock: op.allow_negative_stock === true,
+      default_warehouse_id: String(op.default_warehouse_id || '').trim(),
+      enable_multi_unit_conversions: op.enable_multi_unit_conversions === true,
+      dian_dependent_posting: op.dian_dependent_posting === true,
+    },
+    accounting: {
+      accounts: {
+        receivable_code: String(acc.receivable_code || base.accounting.accounts.receivable_code).trim(),
+        income_fallback_code: String(acc.income_fallback_code || base.accounting.accounts.income_fallback_code).trim(),
+        cost_fallback_code: String(acc.cost_fallback_code || base.accounting.accounts.cost_fallback_code).trim(),
+        inventory_fallback_code: String(acc.inventory_fallback_code || base.accounting.accounts.inventory_fallback_code).trim(),
+        special_third_party_id: String(acc.special_third_party_id || '').trim(),
+        special_account_code: String(acc.special_account_code || '').trim(),
+        iva_by_rate: Object.keys(ivaByRate).length ? ivaByRate : { ...base.accounting.accounts.iva_by_rate },
+        discount_code: String(acc.discount_code || '').trim(),
+        freight_code: String(acc.freight_code || '').trim(),
+        cash_code: String(acc.cash_code || '').trim(),
+        refund_code: String(acc.refund_code || '').trim(),
+      },
+      withholding_rules: normalizedRules.length ? normalizedRules : [...base.accounting.withholding_rules],
+    },
+  };
+}
+
+async function getSalesConfig() {
+  try {
+    const raw = await (window as any).API.getSetting(SALES_CONFIG_KEY);
+    if (!raw) return defaultSalesConfig();
+    return normalizeSalesConfig(JSON.parse(raw));
+  } catch {
+    return defaultSalesConfig();
+  }
+}
+
+function roundDec(val: number): number {
+  return (window as any).roundDec
+    ? (window as any).roundDec(val)
+    : Math.round((val + Number.EPSILON) * 100) / 100;
+}
+
+// Conversión Dinámica de Cantidades (Paridad total con Ventas)
+function convertQtyToUnits(qty: number, fromUnit: string, baseUnit: string, largoCm: number, anchoCm: number, undEmpaque: number, pesoBruto: number) {
+  const areaPorFicha = (largoCm * anchoCm) / 10000;
+  const areaPorCaja = areaPorFicha * undEmpaque;
+
+  let qtyInM2 = 0;
+  if (fromUnit === 'M2') {
+    qtyInM2 = qty;
+  } else if (fromUnit === 'CJ') {
+    qtyInM2 = qty * areaPorCaja;
+  } else if (fromUnit === 'UND') {
+    qtyInM2 = qty * areaPorFicha;
+  } else if (fromUnit === 'KG') {
+    const cajas = pesoBruto > 0 ? (qty / pesoBruto) : 0;
+    qtyInM2 = cajas * areaPorCaja;
+  } else {
+    qtyInM2 = qty;
+  }
+
+  let qtyBase = 0;
+  if (baseUnit === 'M2') {
+    qtyBase = qtyInM2;
+  } else if (baseUnit === 'UND') {
+    qtyBase = areaPorFicha > 0 ? (qtyInM2 / areaPorFicha) : qty;
+  } else if (baseUnit === 'CJ') {
+    qtyBase = areaPorCaja > 0 ? (qtyInM2 / areaPorCaja) : qty;
+  } else if (baseUnit === 'KG') {
+    const pesoPorM2 = areaPorCaja > 0 ? (pesoBruto / areaPorCaja) : 0;
+    qtyBase = pesoPorM2 > 0 ? (qtyInM2 * pesoPorM2) : qty;
+  } else {
+    qtyBase = qty;
+  }
+
+  return {
+    baseQty: qtyBase,
+    m2: qtyInM2,
+    cajas: areaPorCaja > 0 ? (qtyInM2 / areaPorCaja) : 0,
+    unidades: areaPorFicha > 0 ? (qtyInM2 / areaPorFicha) : 0,
+    pesoKg: areaPorCaja > 0 ? ((qtyInM2 / areaPorCaja) * pesoBruto) : 0
+  };
+}
+
 // --- Render Principal ---
 export async function renderPedidos(container?: HTMLElement) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
@@ -202,16 +377,20 @@ function filterOrderTable() {
 async function openOrderForm(orderId: string | null = null, onDone: any = null, preloadedDealId: string | null = null) {
   let ord: any = null, existingLines: any[] = [];
 
-  const [customers, warehouses, products, rawSalesCfg, rawPosCfg] = await Promise.all([
+  const [customers, warehouses, products, salesConfig] = await Promise.all([
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
     (window as any).API.getWarehouses(true),
     (window as any).API.getProducts({ activeOnly: true }),
-    (window as any).API.getSetting('sales_settings_v2').catch(() => null),
-    (window as any).API.getSetting('pos_settings_v1').catch(() => null),
+    getSalesConfig(),
   ]);
-  const salesConfig = rawSalesCfg ? JSON.parse(rawSalesCfg) : null;
-  const posConfig = rawPosCfg ? JSON.parse(rawPosCfg) : null;
-  const pricesIncludeIva = (salesConfig?.operational?.prices_include_iva === true) || (posConfig?.special?.prices_include_iva === true);
+
+  const pricesIncludeIva = salesConfig.operational.prices_include_iva === true;
+  const isMultiUnitEnabled = salesConfig.operational.enable_multi_unit_conversions === true;
+  const isDiscountsEnabled = salesConfig.operational.enable_discounts !== false;
+  const allowPriceEdit = salesConfig.operational.allow_price_edit !== false;
+  const allowNegativeStock = salesConfig.operational.allow_negative_stock === true;
+  const requireWarehouse = salesConfig.operational.require_warehouse_for_goods !== false;
+  const defaultDueDays = Number(salesConfig.operational.default_due_days ?? 30) || 0;
 
   const sellers = customers.filter((c: any) => c.type === 'EMPLEADO');
 
@@ -235,7 +414,8 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     }
   }
 
-  const initialWhId = ord?.warehouse_id || (!ord && warehouses.length === 1 ? warehouses[0].id : '');
+  const defaultWhId = salesConfig.operational.default_warehouse_id || '';
+  const initialWhId = ord?.warehouse_id || (warehouses.some((w: any) => w.id === defaultWhId) ? defaultWhId : (!ord && warehouses.length === 1 ? warehouses[0].id : ''));
   let currentWhStock: any[] = [];
   if (initialWhId) {
     currentWhStock = await (window as any).API.getInventoryStock({ warehouseId: initialWhId }).catch(() => []);
@@ -266,13 +446,28 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         stockWhLabel.innerHTML = `<i class="fas fa-warehouse mr-0.5"></i> ${whName}: <strong>${(window as any).fmtN(qtyAvailable)}</strong> disp.`;
         if (qtyRequested > qtyAvailable) {
           stockWhLabel.style.cssText = 'color:#DC2626; background:#FEF2F2; border: 1px solid #FCA5A5; font-weight:700';
+          if (!allowNegativeStock && qtyInput) {
+            qtyInput.style.borderColor = '#EF4444';
+            qtyInput.style.backgroundColor = '#FEF2F2';
+            qtyInput.title = `Atención: La cantidad supera las existencias (${qtyAvailable}) y el stock negativo no está permitido según la política de facturación.`;
+          }
         } else {
           stockWhLabel.style.cssText = 'color:#059669; background:#ECFDF5; border: 1px solid #A7F3D0';
+          if (qtyInput) {
+            qtyInput.style.borderColor = '';
+            qtyInput.style.backgroundColor = '';
+            qtyInput.title = '';
+          }
         }
       } else {
         const totalStock = stocks.reduce((sum: number, s: any) => sum + Number(s.qty_on_hand || 0), 0);
         stockWhLabel.innerHTML = `<i class="fas fa-warehouse mr-0.5"></i> Disp. Total: <strong>${(window as any).fmtN(totalStock)}</strong>`;
         stockWhLabel.style.cssText = 'color:#4B5563; background:#F3F4F6; border: 1px solid #E5E7EB';
+        if (qtyInput) {
+          qtyInput.style.borderColor = '';
+          qtyInput.style.backgroundColor = '';
+          qtyInput.title = '';
+        }
       }
 
       const transitQty = incoming.reduce((sum: number, item: any) => sum + Number(item.qty_available ?? item.qty ?? 0), 0);
@@ -309,10 +504,25 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
   let lineCounter = 0;
   const orderDate = ord?.date || (window as any).todayStr();
-  const orderDueDate = ord?.due_date || (window as any).addDaysToDateStr(orderDate, 5);
+  const orderDueDate = ord?.due_date || (window as any).addDaysToDateStr(orderDate, defaultDueDays);
 
   const formHtml = `
-    <div class="space-y-6 text-sm" style="color:#374151">
+    <div class="space-y-4 text-sm" style="color:#374151">
+      <!-- Indicadores de Parámetros de Facturación Heredados -->
+      <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl border bg-slate-50 text-xs" style="border-color:#E5E7EB">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-slate-700"><i class="fas fa-sliders mr-1 text-teal-700"></i> Parámetros de Facturación:</span>
+          ${pricesIncludeIva 
+            ? `<span class="font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fas fa-check-circle mr-1"></i>Precios incluyen IVA (Tax-In)</span>`
+            : `<span class="font-bold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 border border-blue-200"><i class="fas fa-info-circle mr-1"></i>Precios antes de IVA (Tax-Ex)</span>`
+          }
+          ${isDiscountsEnabled ? `<span class="font-semibold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200"><i class="fas fa-tag mr-1"></i>Descuentos habilitados</span>` : ''}
+          ${isMultiUnitEnabled ? `<span class="font-semibold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200"><i class="fas fa-cube mr-1"></i>Conversión M²/Cajas activa</span>` : ''}
+          ${allowPriceEdit ? '' : `<span class="font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-200"><i class="fas fa-lock mr-1"></i>Edición precio bloqueada</span>`}
+        </div>
+        <span class="text-[11px] text-gray-500 italic">Plazo estándar: ${defaultDueDays} días</span>
+      </div>
+
       <!-- Encabezado -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl" style="background:#F9FAFB;border:1px solid #E5E7EB">
         <div class="form-group relative col-span-1 md:col-span-2">
@@ -327,10 +537,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label font-bold">Bodega de Despacho</label>
+          <label class="form-label font-bold">Bodega de Despacho ${requireWarehouse ? '<span style="color:#EF4444">*</span>' : ''}</label>
           <select id="ord-warehouse" class="form-input">
             <option value="">— Sin bodega —</option>
-            ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(ord?.warehouse_id === w.id || (!ord && warehouses.length === 1)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
+            ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(ord?.warehouse_id === w.id || (!ord && initialWhId === w.id)) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
@@ -363,6 +573,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       <div class="border rounded-xl overflow-hidden mb-3" style="border-color:#E5E7EB">
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F9FAFB;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios</span>
+          <span class="text-xs text-gray-500">${pricesIncludeIva ? 'Precios digitados con IVA incluido' : 'Precios digitados antes de IVA'}</span>
         </div>
         <!-- Buscador Global de Productos -->
         <div class="relative p-2 bg-white border-b" style="border-color:#E5E7EB">
@@ -377,13 +588,14 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         </div>
 
         <div style="overflow-x:auto;max-height:300px;overflow-y:auto">
-          <table class="data-table" id="ord-lines-table" style="min-width:740px">
+          <table class="data-table" id="ord-lines-table" style="min-width:${isDiscountsEnabled ? '820px' : '740px'}">
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
-                <th style="min-width:260px;background:#F4F8FF;color:#374151">Producto / Servicio</th>
-                <th class="text-right" style="width:110px;background:#F4F8FF;color:#374151">Cant.</th>
-                <th class="text-right" style="width:155px;background:#F4F8FF;color:#374151">P. Unitario</th>
-                <th class="text-right" style="width:115px;background:#F4F8FF;color:#374151">IVA %</th>
+                <th style="min-width:240px;background:#F4F8FF;color:#374151">Producto / Servicio</th>
+                <th class="text-right" style="width:115px;background:#F4F8FF;color:#374151">Cant.</th>
+                <th class="text-right" style="width:145px;background:#F4F8FF;color:#374151">P. Unitario</th>
+                <th class="text-right" style="width:105px;background:#F4F8FF;color:#374151">IVA %</th>
+                ${isDiscountsEnabled ? '<th class="text-right" style="width:100px;background:#F4F8FF;color:#374151">Dscto %</th>' : ''}
                 <th class="text-right" style="width:145px;background:#F4F8FF;color:#374151">Total línea</th>
                 <th style="width:58px;background:#F4F8FF;color:#374151">Acción</th>
               </tr>
@@ -395,9 +607,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
       <!-- Totales -->
       <div class="flex justify-end p-4 rounded-xl" style="background:#F9FAFB">
-        <div class="text-sm space-y-1 min-w-80 font-medium">
-          <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal:</span> <span id="ord-total-sub" class="font-semibold">$ 0</span></div>
-          <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA:</span>      <span id="ord-total-iva" class="font-semibold">$ 0</span></div>
+        <div class="text-sm space-y-1.5 min-w-80 font-medium">
+          <div class="flex justify-between gap-8"><span style="color:#6B7280">Subtotal (Base gravable):</span> <span id="ord-total-sub" class="font-semibold text-gray-800">$ 0</span></div>
+          ${isDiscountsEnabled ? `<div class="flex justify-between gap-8 text-rose-600"><span style="color:#EF4444">Descuento líneas:</span> <span id="ord-total-discount" class="font-semibold">-$ 0</span></div>` : ''}
+          <div class="flex justify-between gap-8"><span style="color:#6B7280">IVA Liquidado:</span> <span id="ord-total-iva" class="font-semibold text-gray-800">$ 0</span></div>
           <div class="flex justify-between gap-8 text-base border-t pt-2 font-extrabold" style="border-color:#E5E7EB;color:#0D2137"><span class="font-extrabold text-gray-900">TOTAL PEDIDO:</span> <span id="ord-total-net" class="font-extrabold text-blue-700 text-lg">$ 0</span></div>
         </div>
       </div>
@@ -497,27 +710,82 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     const productName = prod?.name || preloadedLine?._name || preloadedLine?.description || '(producto)';
     const initQty = preloadedLine?.qty ?? 1;
     const initIva = preloadedLine?.iva_rate ?? prod?.iva_rate ?? 19;
+    const initDisc = preloadedLine?.discount_pct ?? preloadedLine?.discount_rate ?? 0;
 
     let initPrice = 0;
     if (preloadedLine) {
       initPrice = pricesIncludeIva
-        ? Math.round(preloadedLine.unit_price * (1 + (preloadedLine.iva_rate || 0) / 100) * 100) / 100
+        ? roundDec(preloadedLine.unit_price * (1 + (preloadedLine.iva_rate || 0) / 100))
         : preloadedLine.unit_price;
     } else if (prod) {
       const prodPrice = prod.sales_price || prod.base_price || 0;
       const prodIva = prod.iva_rate ?? 19;
       initPrice = pricesIncludeIva
-        ? Math.round(prodPrice * (1 + prodIva / 100) * 100) / 100
+        ? roundDec(prodPrice * (1 + prodIva / 100))
         : prodPrice;
+    }
+
+    // Configuración de conversiones dinámicas (Paridad total con Ventas)
+    const undEmpaque = Number(prod?.und_empaque || preloadedLine?.und_empaque || 0);
+    const largoCm = Number(prod?.largo_cm || preloadedLine?.largo_cm || 0);
+    const anchoCm = Number(prod?.ancho_cm || preloadedLine?.ancho_cm || 0);
+    const pesoBruto = Number(prod?.peso_bruto || preloadedLine?.peso_bruto || 0);
+    const hasConversions = undEmpaque > 0 && largoCm > 0 && anchoCm > 0;
+    const baseUnit = (prod?.unit || preloadedLine?.unit || 'UND').toUpperCase();
+
+    let salesUnit = baseUnit;
+    let displayQty = initQty;
+    let displayPrice = initPrice;
+
+    if (isMultiUnitEnabled && hasConversions && (prod || preloadedLine)) {
+      const areaPorFicha = (largoCm * anchoCm) / 10000;
+      const areaPorCaja = areaPorFicha * undEmpaque;
+
+      const descText = preloadedLine?.description || '';
+      const matchDesc = descText.match(/\[(Pedido|Facturado):\s*([\d.]+)\s*(M2|CJ|UND|KG)/i);
+      if (matchDesc) {
+        displayQty = parseFloat(matchDesc[2]);
+        salesUnit = matchDesc[3].toUpperCase();
+      }
+
+      let priceM2 = 0;
+      if (baseUnit === 'M2') {
+        priceM2 = initPrice;
+      } else if (baseUnit === 'UND') {
+        priceM2 = areaPorFicha > 0 ? (initPrice / areaPorFicha) : initPrice;
+      } else if (baseUnit === 'CJ') {
+        priceM2 = areaPorCaja > 0 ? (initPrice / areaPorCaja) : initPrice;
+      } else if (baseUnit === 'KG') {
+        const pesoPorM2 = areaPorCaja > 0 ? (pesoBruto / areaPorCaja) : 0;
+        priceM2 = pesoPorM2 > 0 ? (initPrice * pesoPorM2) : initPrice;
+      }
+
+      if (salesUnit === 'M2') {
+        displayPrice = priceM2;
+      } else if (salesUnit === 'CJ') {
+        displayPrice = priceM2 * areaPorCaja;
+      } else if (salesUnit === 'UND') {
+        displayPrice = priceM2 * areaPorFicha;
+      } else if (salesUnit === 'KG') {
+        const pesoPorCaja = pesoBruto;
+        displayPrice = pesoPorCaja > 0 ? ((priceM2 * areaPorCaja) / pesoPorCaja) : priceM2;
+      }
     }
 
     const tr = document.createElement('tr');
     tr.id = `ord-row-${idx}`;
+    tr.dataset.baseUnit = baseUnit;
+    tr.dataset.largoCm = String(largoCm);
+    tr.dataset.anchoCm = String(anchoCm);
+    tr.dataset.undEmpaque = String(undEmpaque);
+    tr.dataset.pesoBruto = String(pesoBruto);
+    tr.dataset.hasConversions = String(hasConversions);
+
     tr.innerHTML = `
       <td>
         <div class="flex flex-col">
-          <div class="flex items-center gap-1">
-            <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
             <span class="text-xs font-semibold text-gray-800 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
           </div>
           <input type="hidden" id="ordl-prod-id-${idx}" value="${(window as any).esc(productId)}">
@@ -530,10 +798,27 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
               <i class="fas fa-truck-ramp-box mr-0.5"></i> Tránsito: ...
             </span>
           </div>
+          <div class="text-[10px] text-gray-500 font-semibold mt-1 hidden" style="line-height:1.2" id="ordl-equiv-lbl-${idx}"></div>
         </div>
       </td>
-      <td><input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${initQty}" oninput="window.ordRecalcLine(${idx})"></td>
-      <td><input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.ordRecalcLine(${idx})"></td>
+      <td>
+        <div class="flex flex-col gap-1">
+          <input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${displayQty}" oninput="window.ordRecalcLine(${idx})">
+          ${isMultiUnitEnabled && hasConversions ? `
+            <select id="ordl-unit-${idx}" class="form-input text-right w-full py-0.5 text-xs font-semibold" style="height:24px; color:#1A4B8C; padding: 2px 2px 2px 4px;">
+              <option value="M2" ${salesUnit === 'M2' ? 'selected' : ''}>M² (Área)</option>
+              <option value="CJ" ${salesUnit === 'CJ' ? 'selected' : ''}>CJ (Cajas)</option>
+              <option value="UND" ${salesUnit === 'UND' ? 'selected' : ''}>UND (Fichas)</option>
+              <option value="KG" ${salesUnit === 'KG' ? 'selected' : ''}>KG (Peso)</option>
+            </select>
+          ` : `
+            <div class="text-right text-[10px] text-gray-400 font-semibold pr-1">${(window as any).esc(baseUnit)}</div>
+          `}
+        </div>
+      </td>
+      <td>
+        <input type="number" id="ordl-price-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" step="0.01" value="${roundDec(displayPrice) || ''}" oninput="window.ordRecalcLine(${idx})" ${allowPriceEdit ? '' : 'readonly style="background-color:#F3F4F6;cursor:not-allowed"'}>
+      </td>
       <td>
         <select id="ordl-iva-${idx}" class="form-input text-right w-full" style="font-size:11px; padding: 4px 18px 4px 4px;" onchange="window.ordRecalcLine(${idx})">
           <option value="0"  ${initIva == 0 ? 'selected' : ''}>0 %</option>
@@ -541,6 +826,11 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
           <option value="19" ${initIva == 19 ? 'selected' : ''}>19 %</option>
         </select>
       </td>
+      ${isDiscountsEnabled ? `
+        <td>
+          <input type="number" id="ordl-disc-${idx}" class="form-input text-right w-full" style="font-size:12px" min="0" max="100" step="0.01" value="${initDisc}" placeholder="0" oninput="window.ordRecalcLine(${idx})">
+        </td>
+      ` : ''}
       <td class="text-right font-extrabold text-blue-700" style="font-size:13px" id="ordl-total-${idx}">$ 0</td>
       <td class="text-center">
         <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('ord-row-${idx}').remove(); window.ordRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
@@ -554,12 +844,67 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       whLbl?.addEventListener('click', () => (window as any).showStockBreakdownModal(productId, productName));
       transLbl?.addEventListener('click', () => (window as any).showStockBreakdownModal(productId, productName));
 
+      const unitSel = document.getElementById(`ordl-unit-${idx}`) as HTMLSelectElement;
+      if (unitSel) {
+        let prevUnit = salesUnit;
+        unitSel.addEventListener('change', () => {
+          const newUnit = unitSel.value;
+          const priceInput = document.getElementById(`ordl-price-${idx}`) as HTMLInputElement;
+          let currentPrice = parseFloat(priceInput?.value || '0') || 0;
+          const areaPorFicha = (largoCm * anchoCm) / 10000;
+          const areaPorCaja = areaPorFicha * undEmpaque;
+          const pesoPorCaja = pesoBruto;
+
+          let priceInBase = currentPrice;
+          if (prevUnit === 'M2') {
+            if (baseUnit === 'UND') priceInBase = currentPrice * areaPorFicha;
+            else if (baseUnit === 'CJ') priceInBase = currentPrice * areaPorCaja;
+            else if (baseUnit === 'KG') priceInBase = pesoPorCaja > 0 ? ((currentPrice * areaPorCaja) / pesoPorCaja) : currentPrice;
+          } else if (prevUnit === 'CJ') {
+            if (baseUnit === 'M2') priceInBase = areaPorCaja > 0 ? (currentPrice / areaPorCaja) : currentPrice;
+            else if (baseUnit === 'UND') priceInBase = undEmpaque > 0 ? (currentPrice / undEmpaque) : currentPrice;
+            else if (baseUnit === 'KG') priceInBase = pesoPorCaja > 0 ? (currentPrice / pesoPorCaja) : currentPrice;
+          } else if (prevUnit === 'UND') {
+            if (baseUnit === 'M2') priceInBase = areaPorFicha > 0 ? (currentPrice / areaPorFicha) : currentPrice;
+            else if (baseUnit === 'CJ') priceInBase = currentPrice * undEmpaque;
+            else if (baseUnit === 'KG') priceInBase = (undEmpaque > 0 && pesoPorCaja > 0) ? ((currentPrice * undEmpaque) / pesoPorCaja) : currentPrice;
+          } else if (prevUnit === 'KG') {
+            if (baseUnit === 'M2') priceInBase = areaPorCaja > 0 ? ((currentPrice * pesoPorCaja) / areaPorCaja) : currentPrice;
+            else if (baseUnit === 'CJ') priceInBase = currentPrice * pesoPorCaja;
+            else if (baseUnit === 'UND') priceInBase = undEmpaque > 0 ? ((currentPrice * pesoPorCaja) / undEmpaque) : currentPrice;
+          }
+
+          let newPrice = priceInBase;
+          if (newUnit === 'M2') {
+            if (baseUnit === 'UND') newPrice = areaPorFicha > 0 ? (priceInBase / areaPorFicha) : priceInBase;
+            else if (baseUnit === 'CJ') newPrice = areaPorCaja > 0 ? (priceInBase / areaPorCaja) : priceInBase;
+            else if (baseUnit === 'KG') newPrice = areaPorCaja > 0 ? ((priceInBase * pesoPorCaja) / areaPorCaja) : priceInBase;
+          } else if (newUnit === 'CJ') {
+            if (baseUnit === 'M2') newPrice = priceInBase * areaPorCaja;
+            else if (baseUnit === 'UND') newPrice = priceInBase * undEmpaque;
+            else if (baseUnit === 'KG') newPrice = priceInBase * pesoPorCaja;
+          } else if (newUnit === 'UND') {
+            if (baseUnit === 'M2') newPrice = priceInBase * areaPorFicha;
+            else if (baseUnit === 'CJ') newPrice = undEmpaque > 0 ? (priceInBase / undEmpaque) : priceInBase;
+            else if (baseUnit === 'KG') newPrice = undEmpaque > 0 ? ((priceInBase * pesoPorCaja) / undEmpaque) : priceInBase;
+          } else if (newUnit === 'KG') {
+            if (baseUnit === 'M2') newPrice = pesoPorCaja > 0 ? ((priceInBase * areaPorCaja) / pesoPorCaja) : priceInBase;
+            else if (baseUnit === 'CJ') newPrice = pesoPorCaja > 0 ? (priceInBase / pesoPorCaja) : priceInBase;
+            else if (baseUnit === 'UND') newPrice = (undEmpaque > 0 && pesoPorCaja > 0) ? ((priceInBase * undEmpaque) / pesoPorCaja) : priceInBase;
+          }
+
+          if (priceInput) priceInput.value = String(roundDec(newPrice));
+          prevUnit = newUnit;
+          (window as any).ordRecalcLine(idx);
+        });
+      }
+
       if ((window as any).ordUpdateStockDisplay) {
         (window as any).ordUpdateStockDisplay(idx, productId);
       }
     }, 20);
 
-    window.ordRecalcLine(idx);
+    (window as any).ordRecalcLine(idx);
   };
 
   function initOrdGlobalProductSearch() {
@@ -582,6 +927,9 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         const stockText = whId ? `${(window as any).fmtN(stockQty)} en ${whName}` : 'Selecciona bodega';
         const stockColor = stockQty > 0 ? 'color:#059669;background:#ECFDF5' : 'color:#9CA3AF;background:#F3F4F6';
 
+        const prodPrice = p.sales_price || p.base_price || 0;
+        const displayCatalogPrice = pricesIncludeIva ? roundDec(prodPrice * (1 + (p.iva_rate ?? 19) / 100)) : prodPrice;
+
         return `
           <button type="button"
             id="ord-gsr-item-${i}"
@@ -603,7 +951,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
               </div>
               <div class="flex items-center justify-between gap-3 flex-shrink-0 text-right">
                 <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
-                <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.base_price || 0)}</span>
+                <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(displayCatalogPrice)}${pricesIncludeIva ? ' <span class="text-[9px] text-gray-500 font-normal">(IVA inc.)</span>' : ''}</span>
               </div>
             </div>
           </button>
@@ -667,86 +1015,93 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
   };
 
   (window as any).ordRecalcLine = function (idx: number) {
-    const qty = parseFloat((document.getElementById(`ordl-qty-${idx}`) as HTMLInputElement)?.value || '0');
-    const price = parseFloat((document.getElementById(`ordl-price-${idx}`) as HTMLInputElement)?.value || '0');
-    const ivaRate = parseFloat((document.getElementById(`ordl-iva-${idx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement)?.value || '0');
-    const totalEl = document.getElementById(`ordl-total-${idx}`);
+    const rows = document.querySelectorAll('#ord-lines-body tr');
+    let subtotalSum = 0;
+    let discountSum = 0;
+    let ivaSum = 0;
+    let totalSum = 0;
 
-    let subtotal = 0;
-    let iva = 0;
-    let lineTotal = 0;
+    rows.forEach(row => {
+      const curIdx = row.id.split('-').pop();
+      const qty = parseFloat((document.getElementById(`ordl-qty-${curIdx}`) as HTMLInputElement)?.value || '0') || 0;
+      const price = parseFloat((document.getElementById(`ordl-price-${curIdx}`) as HTMLInputElement)?.value || '0') || 0;
+      const ivaRate = parseFloat((document.getElementById(`ordl-iva-${curIdx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${curIdx}`) as HTMLInputElement)?.value || '0') || 0;
+      const discPct = parseFloat((document.getElementById(`ordl-disc-${curIdx}`) as HTMLInputElement)?.value || '0') || 0;
 
-    if (pricesIncludeIva) {
-      lineTotal = qty * price;
-      subtotal = lineTotal / (1 + ivaRate / 100);
-      iva = lineTotal - subtotal;
-    } else {
-      subtotal = qty * price;
-      iva = subtotal * (ivaRate / 100);
-      lineTotal = subtotal + iva;
-    }
+      // Recálculo de equivalencias descriptivas
+      const baseUnit = ((row as HTMLElement).dataset.baseUnit || 'UND').toUpperCase();
+      const largoCm = parseFloat((row as HTMLElement).dataset.largoCm || '0') || 0;
+      const anchoCm = parseFloat((row as HTMLElement).dataset.anchoCm || '0') || 0;
+      const undEmpaque = parseFloat((row as HTMLElement).dataset.undEmpaque || '0') || 0;
+      const pesoBruto = parseFloat((row as HTMLElement).dataset.pesoBruto || '0') || 0;
+      const hasConversions = (row as HTMLElement).dataset.hasConversions === 'true';
 
-    if (totalEl) {
-      totalEl.textContent = (window as any).fmt(lineTotal);
-    }
-    window.ordRecalcTotals();
+      const equivLbl = document.getElementById(`ordl-equiv-lbl-${curIdx}`);
+      if (hasConversions && equivLbl) {
+        const unitSelect = document.getElementById(`ordl-unit-${curIdx}`) as HTMLSelectElement;
+        const selectedUnit = unitSelect ? unitSelect.value : baseUnit;
+        const convs = convertQtyToUnits(qty, selectedUnit, baseUnit, largoCm, anchoCm, undEmpaque, pesoBruto);
+        equivLbl.innerHTML = `Equivale a: <strong class="text-blue-700">${(window as any).fmtN(convs.cajas)} CJ</strong> | <strong class="text-blue-700">${(window as any).fmtN(convs.m2)} M²</strong> | <strong class="text-blue-700">${(window as any).fmtN(convs.unidades)} UND</strong> | <strong class="text-blue-700">${(window as any).fmtN(convs.pesoKg)} Kg</strong>`;
+        equivLbl.classList.remove('hidden');
+      } else if (equivLbl) {
+        equivLbl.classList.add('hidden');
+      }
 
-    // Recalculate stock highlights when row qty or total changes
+      let lineGross = 0, lineDisc = 0, lineSub = 0, lineIva = 0, lineTot = 0;
+      if (pricesIncludeIva) {
+        const lineTotalGross = roundDec(qty * price);
+        lineDisc = roundDec(lineTotalGross * (discPct / 100));
+        lineTot = roundDec(lineTotalGross - lineDisc);
+        lineSub = roundDec(lineTot / (1 + ivaRate / 100));
+        lineIva = roundDec(lineTot - lineSub);
+        lineGross = roundDec(lineTotalGross / (1 + ivaRate / 100));
+      } else {
+        lineGross = roundDec(qty * price);
+        lineDisc = roundDec(lineGross * (discPct / 100));
+        lineSub = roundDec(lineGross - lineDisc);
+        lineIva = roundDec(lineSub * (ivaRate / 100));
+        lineTot = roundDec(lineSub + lineIva);
+      }
+
+      const totalEl = document.getElementById(`ordl-total-${curIdx}`);
+      if (totalEl) totalEl.textContent = (window as any).fmt(lineTot);
+
+      subtotalSum = roundDec(subtotalSum + (pricesIncludeIva ? lineGross : lineGross));
+      discountSum = roundDec(discountSum + lineDisc);
+      ivaSum = roundDec(ivaSum + lineIva);
+      totalSum = roundDec(totalSum + lineTot);
+    });
+
+    const netSubtotal = roundDec(subtotalSum - discountSum);
+    const subEl = document.getElementById('ord-total-sub');
+    const discEl = document.getElementById('ord-total-discount');
+    const ivaEl = document.getElementById('ord-total-iva');
+    const netEl = document.getElementById('ord-total-net');
+
+    if (subEl) subEl.textContent = (window as any).fmt(pricesIncludeIva ? roundDec(totalSum - ivaSum) : netSubtotal);
+    if (discEl) discEl.textContent = `-${(window as any).fmt(discountSum)}`;
+    if (ivaEl) ivaEl.textContent = (window as any).fmt(ivaSum);
+    if (netEl) netEl.textContent = (window as any).fmt(totalSum);
+
+    // Resaltado de stock para la línea
     if (idx > 0) {
       const prodId = (document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement)?.value;
       if (prodId && (window as any).ordUpdateStockDisplay) {
         (window as any).ordUpdateStockDisplay(idx, prodId);
       }
     } else {
-      const rows = document.querySelectorAll('#ord-lines-body tr');
       rows.forEach((row: any) => {
-        const idx = row.id.split('-').pop();
-        const prodId = (document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement)?.value;
+        const curIdx = row.id.split('-').pop();
+        const prodId = (document.getElementById(`ordl-prod-id-${curIdx}`) as HTMLInputElement)?.value;
         if (prodId && (window as any).ordUpdateStockDisplay) {
-          (window as any).ordUpdateStockDisplay(idx, prodId);
+          (window as any).ordUpdateStockDisplay(curIdx, prodId);
         }
       });
     }
   };
 
   (window as any).ordRecalcTotals = function () {
-    let subtotal = 0;
-    let iva = 0;
-    let net = 0;
-
-    const rows = document.querySelectorAll('#ord-lines-body tr');
-    rows.forEach(row => {
-      const idx = row.id.split('-').pop();
-      const qty = parseFloat((document.getElementById(`ordl-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
-      const price = parseFloat((document.getElementById(`ordl-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
-      const ivaRate = parseFloat((document.getElementById(`ordl-iva-${idx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement)?.value || '0') || 0;
-
-      let lineSub = 0;
-      let lineIva = 0;
-      let lineTotal = 0;
-
-      if (pricesIncludeIva) {
-        lineTotal = qty * price;
-        lineSub = lineTotal / (1 + ivaRate / 100);
-        lineIva = lineTotal - lineSub;
-      } else {
-        lineSub = qty * price;
-        lineIva = lineSub * (ivaRate / 100);
-        lineTotal = lineSub + lineIva;
-      }
-
-      subtotal += lineSub;
-      iva += lineIva;
-      net += lineTotal;
-    });
-
-    const subEl = document.getElementById('ord-total-sub');
-    const ivaEl = document.getElementById('ord-total-iva');
-    const netEl = document.getElementById('ord-total-net');
-
-    if (subEl) subEl.textContent = (window as any).fmt(subtotal);
-    if (ivaEl) ivaEl.textContent = (window as any).fmt(iva);
-    if (netEl) netEl.textContent = (window as any).fmt(net);
+    (window as any).ordRecalcLine(0);
   };
 
   // Cargar líneas iniciales
@@ -756,8 +1111,13 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       if (match) {
         l._name = match.name;
         l._code = match.code;
+        l.unit = match.unit;
+        l.largo_cm = match.largo_cm;
+        l.ancho_cm = match.ancho_cm;
+        l.und_empaque = match.und_empaque;
+        l.peso_bruto = match.peso_bruto;
       }
-      (window as any).addOrdLine(null, l);
+      (window as any).addOrdLine(match || null, l);
     });
   }
 
@@ -777,16 +1137,39 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       if (!customerId) throw new Error('Por favor selecciona un cliente.');
       if (!date) throw new Error('Por favor selecciona la fecha de emisión del pedido.');
 
-      const lines: any[] = [];
       const rows = document.querySelectorAll('#ord-lines-body tr');
+      if (!rows.length) throw new Error('El pedido debe tener al menos una línea.');
+
+      // Validar regla de bodega exigida cuando hay bienes físicos
+      if (requireWarehouse && !warehouseId) {
+        let hasPhysicalGoods = false;
+        rows.forEach(row => {
+          const curIdx = row.id.split('-').pop();
+          const prodId = (document.getElementById(`ordl-prod-id-${curIdx}`) as HTMLInputElement)?.value;
+          const match = products.find((p: any) => p.id === prodId);
+          if (match && String(match.type || '').toUpperCase() !== 'SERVICIO') {
+            hasPhysicalGoods = true;
+          }
+        });
+        if (hasPhysicalGoods) {
+          throw new Error('La política de facturación exige seleccionar una bodega de despacho para pedidos con artículos físicos.');
+        }
+      }
+
+      const lines: any[] = [];
+      let totalOrderGross = 0;
+      let totalOrderDiscount = 0;
+      let totalOrderIva = 0;
+      let totalOrderFinal = 0;
 
       rows.forEach((row, i) => {
-        const idx = row.id.split('-').pop();
-        const productId = (document.getElementById(`ordl-prod-id-${idx}`) as HTMLInputElement)?.value;
-        const prodLabel = (document.getElementById(`ordl-prod-search-${idx}`) as HTMLInputElement)?.value;
-        const qty = parseFloat((document.getElementById(`ordl-qty-${idx}`) as HTMLInputElement)?.value || '0');
-        const price = parseFloat((document.getElementById(`ordl-price-${idx}`) as HTMLInputElement)?.value || '0');
-        const ivaRate = parseFloat((document.getElementById(`ordl-iva-${idx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${idx}`) as HTMLInputElement)?.value || '0');
+        const curIdx = row.id.split('-').pop();
+        const productId = (document.getElementById(`ordl-prod-id-${curIdx}`) as HTMLInputElement)?.value;
+        const prodLabel = (document.getElementById(`ordl-prod-search-${curIdx}`) as HTMLInputElement)?.value;
+        const qty = parseFloat((document.getElementById(`ordl-qty-${curIdx}`) as HTMLInputElement)?.value || '0');
+        const price = parseFloat((document.getElementById(`ordl-price-${curIdx}`) as HTMLInputElement)?.value || '0');
+        const ivaRate = parseFloat((document.getElementById(`ordl-iva-${curIdx}`) as HTMLSelectElement || document.getElementById(`ordl-iva-${curIdx}`) as HTMLInputElement)?.value || '0');
+        const discPct = parseFloat((document.getElementById(`ordl-disc-${curIdx}`) as HTMLInputElement)?.value || '0');
 
         if (!productId) {
           throw new Error(`Por favor selecciona un producto válido en la línea ${i + 1}.`);
@@ -798,24 +1181,92 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
           throw new Error(`El precio unitario no puede ser negativo en la línea ${i + 1}.`);
         }
 
+        // Conversión a unidad base de inventario si aplica
+        const baseUnit = ((row as HTMLElement).dataset.baseUnit || 'UND').toUpperCase();
+        const largoCm = parseFloat((row as HTMLElement).dataset.largoCm || '0') || 0;
+        const anchoCm = parseFloat((row as HTMLElement).dataset.anchoCm || '0') || 0;
+        const undEmpaque = parseFloat((row as HTMLElement).dataset.undEmpaque || '0') || 0;
+        const pesoBruto = parseFloat((row as HTMLElement).dataset.pesoBruto || '0') || 0;
+        const hasConversions = (row as HTMLElement).dataset.hasConversions === 'true';
+
+        const unitSelect = document.getElementById(`ordl-unit-${curIdx}`) as HTMLSelectElement;
+        const selectedUnit = unitSelect ? unitSelect.value : baseUnit;
+
         const unitPriceDb = pricesIncludeIva ? (price / (1 + ivaRate / 100)) : price;
-        const subtotal = qty * unitPriceDb;
-        const ivaAmount = subtotal * (ivaRate / 100);
-        const total = subtotal + ivaAmount;
+        let finalQty = qty;
+        let finalPrice = unitPriceDb;
+        let descriptionExtra = '';
+
+        if (hasConversions && selectedUnit !== baseUnit) {
+          const convs = convertQtyToUnits(qty, selectedUnit, baseUnit, largoCm, anchoCm, undEmpaque, pesoBruto);
+          finalQty = convs.baseQty;
+
+          const areaPorFicha = (largoCm * anchoCm) / 10000;
+          const areaPorCaja = areaPorFicha * undEmpaque;
+          let priceInBase = unitPriceDb;
+
+          if (selectedUnit === 'M2') {
+            if (baseUnit === 'UND') priceInBase = unitPriceDb * areaPorFicha;
+            else if (baseUnit === 'CJ') priceInBase = unitPriceDb * areaPorCaja;
+            else if (baseUnit === 'KG') {
+              const pesoPorM2 = areaPorCaja > 0 ? (pesoBruto / areaPorCaja) : 0;
+              priceInBase = pesoPorM2 > 0 ? (unitPriceDb / pesoPorM2) : unitPriceDb;
+            }
+          } else if (selectedUnit === 'CJ') {
+            if (baseUnit === 'M2') priceInBase = areaPorCaja > 0 ? (unitPriceDb / areaPorCaja) : unitPriceDb;
+            else if (baseUnit === 'UND') priceInBase = undEmpaque > 0 ? (unitPriceDb / undEmpaque) : unitPriceDb;
+            else if (baseUnit === 'KG') priceInBase = pesoBruto > 0 ? (unitPriceDb / pesoBruto) : unitPriceDb;
+          } else if (selectedUnit === 'UND') {
+            if (baseUnit === 'M2') priceInBase = areaPorFicha > 0 ? (unitPriceDb / areaPorFicha) : unitPriceDb;
+            else if (baseUnit === 'CJ') priceInBase = unitPriceDb * undEmpaque;
+            else if (baseUnit === 'KG') {
+              const pesoPorFicha = undEmpaque > 0 ? (pesoBruto / undEmpaque) : 0;
+              priceInBase = pesoPorFicha > 0 ? (unitPriceDb / pesoPorFicha) : unitPriceDb;
+            }
+          } else if (selectedUnit === 'KG') {
+            const pesoPorCaja = pesoBruto;
+            if (baseUnit === 'M2') priceInBase = areaPorCaja > 0 ? ((unitPriceDb * pesoPorCaja) / areaPorCaja) : unitPriceDb;
+            else if (baseUnit === 'CJ') priceInBase = unitPriceDb * pesoPorCaja;
+            else if (baseUnit === 'UND') priceInBase = undEmpaque > 0 ? ((unitPriceDb * pesoPorCaja) / undEmpaque) : unitPriceDb;
+          }
+          finalPrice = priceInBase;
+          descriptionExtra = ` [Pedido: ${qty} ${selectedUnit} a ${(window as any).fmt(price)}/${selectedUnit}]`;
+        }
+
+        let lineGross = 0, lineDisc = 0, lineSub = 0, lineIva = 0, lineTot = 0;
+        if (pricesIncludeIva) {
+          const lineTotalGross = roundDec(qty * price);
+          lineDisc = roundDec(lineTotalGross * (discPct / 100));
+          lineTot = roundDec(lineTotalGross - lineDisc);
+          lineSub = roundDec(lineTot / (1 + ivaRate / 100));
+          lineIva = roundDec(lineTot - lineSub);
+          lineGross = roundDec(lineTotalGross / (1 + ivaRate / 100));
+        } else {
+          lineGross = roundDec(qty * price);
+          lineDisc = roundDec(lineGross * (discPct / 100));
+          lineSub = roundDec(lineGross - lineDisc);
+          lineIva = roundDec(lineSub * (ivaRate / 100));
+          lineTot = roundDec(lineSub + lineIva);
+        }
+
+        totalOrderGross = roundDec(totalOrderGross + lineGross);
+        totalOrderDiscount = roundDec(totalOrderDiscount + lineDisc);
+        totalOrderIva = roundDec(totalOrderIva + lineIva);
+        totalOrderFinal = roundDec(totalOrderFinal + lineTot);
 
         lines.push({
           product_id: productId,
-          description: prodLabel,
-          qty,
-          unit_price: unitPriceDb,
+          description: descriptionExtra ? `${prodLabel}${descriptionExtra}` : prodLabel,
+          qty: finalQty,
+          unit_price: finalPrice,
           iva_rate: ivaRate,
-          iva_amount: ivaAmount,
-          subtotal,
-          total,
+          iva_amount: lineIva,
+          subtotal: lineSub,
+          total: lineTot,
+          discount_pct: discPct,
+          discount_amount: lineDisc,
         });
       });
-
-      if (!lines.length) throw new Error('El pedido debe tener al menos una línea.');
 
       const header = {
         number,
@@ -825,6 +1276,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         date,
         due_date: dueDate,
         notes,
+        subtotal: roundDec(totalOrderFinal - totalOrderIva),
+        iva_total: totalOrderIva,
+        discount_amount: totalOrderDiscount,
+        total: totalOrderFinal,
       };
 
       const crmDealId = (document.getElementById('ord-crm-deal-id') as HTMLInputElement)?.value || null;
@@ -832,10 +1287,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
       if (orderId) {
         order = await (window as any).API.updateSalesOrder(orderId, header, lines);
-        (window as any).showToast('Pedido actualizado correctamente', 'success');
+        (window as any).showToast('Pedido actualizado correctamente con parámetros de facturación', 'success');
       } else {
         order = await (window as any).API.createSalesOrder(header, lines);
-        (window as any).showToast('Pedido registrado con éxito', 'success');
+        (window as any).showToast('Pedido registrado con éxito con parámetros de facturación', 'success');
       }
       if (crmDealId && order && order.id) {
         try {
@@ -1355,19 +1810,19 @@ export async function openECommerceOrderModal(opts: {
   (window as any).showToast('Cargando catálogo para toma de pedido...', 'info');
 
   try {
-    const [customers, warehouses, products, stockRows, incomingRows, rawSalesCfg, rawPosCfg] = await Promise.all([
+    const [customers, warehouses, products, stockRows, incomingRows, salesConfig] = await Promise.all([
       (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
       (window as any).API.getWarehouses(true),
       (window as any).API.getProducts({ activeOnly: true }),
       (window as any).API.getInventoryStock().catch(() => []),
       (window as any).pb.listAll('import_items', { expand: 'import_id', filter: 'qty_available > 0' }).catch(() => []),
-      (window as any).API.getSetting('sales_settings_v2').catch(() => null),
-      (window as any).API.getSetting('pos_settings_v1').catch(() => null),
+      getSalesConfig(),
     ]);
 
-    const salesConfig = rawSalesCfg ? JSON.parse(rawSalesCfg) : null;
-    const posConfig = rawPosCfg ? JSON.parse(rawPosCfg) : null;
-    const pricesIncludeIva = (salesConfig?.operational?.prices_include_iva === true) || (posConfig?.special?.prices_include_iva === true);
+    const pricesIncludeIva = salesConfig.operational.prices_include_iva === true;
+    const defaultWhId = salesConfig.operational.default_warehouse_id || '';
+    const defaultDueDays = Number(salesConfig.operational.default_due_days ?? 30) || 0;
+    const requireWarehouse = salesConfig.operational.require_warehouse_for_goods !== false;
 
     // Mapeo de stock físico por producto
     const stockMap: Record<string, number> = {};
@@ -1413,6 +1868,7 @@ export async function openECommerceOrderModal(opts: {
                 <i class="fas fa-bag-shopping"></i>
               </span>
               <span class="font-extrabold text-sm tracking-tight text-white">Toma de Pedido Móvil</span>
+              ${pricesIncludeIva ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">IVA Inc.</span>' : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">Tax-Ex</span>'}
             </div>
             <button type="button" class="text-slate-400 hover:text-white p-1 text-sm" onclick="window.closeModal()">
               <i class="fas fa-xmark text-lg"></i>
@@ -1443,7 +1899,7 @@ export async function openECommerceOrderModal(opts: {
             <div class="flex gap-2">
               <select id="ecom-warehouse-sel" class="flex-1 bg-slate-800 text-white text-xs font-semibold px-2 py-2 rounded-xl border border-slate-700 outline-none">
                 <option value="">— Bodega Principal —</option>
-                ${warehouses.map((w: any) => `<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('')}
+                ${warehouses.map((w: any) => `<option value="${esc(w.id)}"${(defaultWhId === w.id) ? ' selected' : ''}>${esc(w.name)}</option>`).join('')}
               </select>
               <select id="ecom-mode-sel" class="bg-slate-800 text-white text-xs font-bold px-2 py-2 rounded-xl border border-slate-700 outline-none">
                 <option value="venta">🛍️ Venta</option>
@@ -1705,7 +2161,7 @@ export async function openECommerceOrderModal(opts: {
             <div class="mt-2 pt-2 border-t border-slate-100">
               <div class="flex items-baseline justify-between mb-2">
                 <span class="text-xs sm:text-sm font-extrabold text-blue-900">${p.base_price ? fmt(p.base_price) : '$ 0'}</span>
-                <span class="text-[9px] font-bold text-slate-400">IVA ${p.iva_rate ?? 0}%</span>
+                <span class="text-[9px] font-bold ${pricesIncludeIva ? 'text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded' : 'text-slate-400'}">${pricesIncludeIva ? `IVA ${p.iva_rate ?? 0}% inc.` : `+ IVA ${p.iva_rate ?? 0}%`}</span>
               </div>
 
               <!-- Stepper Táctil [ - ] [ Cantidad ] [ + ] -->
@@ -1902,15 +2358,35 @@ export async function openECommerceOrderModal(opts: {
         const mode = (document.getElementById('ecom-mode-sel') as HTMLSelectElement)?.value || 'venta';
         const notes = (document.getElementById('ecom-drawer-notes') as HTMLInputElement)?.value.trim() || (mode === 'reserva' ? 'Reserva de stock en preventa' : '');
 
+        if (requireWarehouse && !warehouseId) {
+          const hasPhysicalProducts = items.some(i => i.product?.type !== 'service');
+          if (hasPhysicalProducts) {
+            throw new Error('Debes seleccionar una bodega para los productos físicos según los parámetros de facturación.');
+          }
+        }
+
         const lines: any[] = items.map(item => {
           const p = item.product;
           const qty = item.qty;
           const price = item.price;
           const ivaRate = item.ivaRate;
-          const unitPriceDb = pricesIncludeIva ? (price / (1 + ivaRate / 100)) : price;
-          const subtotal = qty * unitPriceDb;
-          const ivaAmount = subtotal * (ivaRate / 100);
-          const total = subtotal + ivaAmount;
+          
+          let unitPriceDb = price;
+          let subtotal = 0;
+          let ivaAmount = 0;
+          let total = 0;
+
+          if (pricesIncludeIva) {
+            total = roundDec(qty * price, 2);
+            subtotal = roundDec(total / (1 + ivaRate / 100), 2);
+            ivaAmount = roundDec(total - subtotal, 2);
+            unitPriceDb = qty > 0 ? roundDec(subtotal / qty, 4) : roundDec(price / (1 + ivaRate / 100), 4);
+          } else {
+            subtotal = roundDec(qty * price, 2);
+            ivaAmount = roundDec(subtotal * (ivaRate / 100), 2);
+            total = roundDec(subtotal + ivaAmount, 2);
+            unitPriceDb = roundDec(price, 4);
+          }
 
           return {
             product_id: p.id,
@@ -1928,7 +2404,7 @@ export async function openECommerceOrderModal(opts: {
           customer_id: customerId,
           warehouse_id: warehouseId,
           date: (window as any).todayStr(),
-          due_date: (window as any).addDaysToDateStr((window as any).todayStr(), mode === 'reserva' ? 7 : 3),
+          due_date: (window as any).addDaysToDateStr((window as any).todayStr(), mode === 'reserva' ? 7 : (defaultDueDays || 30)),
           notes,
         };
 

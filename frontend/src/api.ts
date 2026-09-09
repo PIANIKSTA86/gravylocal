@@ -49,7 +49,7 @@ const pb = {
 
   /** GET /api/collections/:col/records con filtro y paginación */
   async list(collection, { filter = '', sort = '', page = 1, perPage = 200, expand = '', ignoreBranch = false, ignoreCostCenter = false } = {}) {
-    const branchScoped = ['transactions', 'tx_lines', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders', 'niif_assets'];
+    const branchScoped = ['transactions', 'tx_lines', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders', 'purchase_orders', 'niif_assets'];
     const activeBranchId = localStorage.getItem('active_branch_id');
     if (activeBranchId && activeBranchId !== 'TODAS' && activeBranchId !== 'ALL' && branchScoped.includes(collection) && !ignoreBranch) {
       const branchFilter = `branch_id = "${this.escapeFilterValue(activeBranchId)}"`;
@@ -108,7 +108,7 @@ const pb = {
       }
     }
 
-    const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders'];
+    const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders', 'purchase_orders'];
     if (branchScoped.includes(collection) && data && typeof data === 'object' && !(data instanceof FormData)) {
       const activeBranchId = localStorage.getItem('active_branch_id');
       const user = this.currentUser;
@@ -155,7 +155,7 @@ const pb = {
       }
     }
 
-    const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders'];
+    const branchScoped = ['transactions', 'invoices', 'purchase_invoices', 'inventory_movements', 'payroll_periods', 'pos_registers', 'pos_shifts', 'sales_orders', 'purchase_orders'];
     if (branchScoped.includes(collection) && data && typeof data === 'object' && !(data instanceof FormData)) {
       if (data.branch_id !== undefined && data.branch_id !== null && data.branch_id !== '' && !/^[a-z0-9]{15}$/.test(String(data.branch_id))) {
         data.branch_id = null;
@@ -384,6 +384,28 @@ const API = {
         throw new Error('No tienes permisos para modificar configuraciÃ³n global.');
       }
       throw err;
+    }
+  },
+
+  async getCompanyInfo() {
+    try {
+      const [name, nit, address, phone, email] = await Promise.all([
+        this.getSetting('company_name'),
+        this.getSetting('company_nit'),
+        this.getSetting('company_address'),
+        this.getSetting('company_phone'),
+        this.getSetting('company_email'),
+      ]);
+      return {
+        name: name || 'GRAVY ERP',
+        legal_name: name || 'GRAVY ERP',
+        nit: nit || '',
+        address: address || '',
+        phone: phone || '',
+        email: email || '',
+      };
+    } catch {
+      return { name: 'GRAVY ERP', legal_name: 'GRAVY ERP', nit: '', address: '', phone: '', email: '' };
     }
   },
 
@@ -5211,7 +5233,154 @@ const API = {
     await this.logAudit('DELETE', 'Invoice', invoiceId, `Eliminado borrador de factura ${inv.number}`);
   },
 
-  // â”€â”€ Importaciones â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Órdenes de Compra (PO) ──────────────────────────────────────────
+
+  /** Lista paginada de órdenes de compra */
+  async getPurchaseOrders(opts: any = {}) {
+    const { page = 1, perPage = 50, filter = '', sort = '-date' } = opts;
+    return pb.list('purchase_orders', {
+      page, perPage, filter, sort,
+      expand: 'supplier_id,warehouse_id,invoice_id,user_id',
+    });
+  },
+
+  /** Líneas de una orden de compra con expand de producto */
+  async getPurchaseOrderLines(orderId: string) {
+    const safe = pb.escapeFilterValue(orderId);
+    return pb.listAll('purchase_order_lines', {
+      filter: `purchase_order_id="${safe}"`,
+      sort: 'line_order',
+      expand: 'product_id',
+    });
+  },
+
+  /** Configuración de consecutivo de órdenes de compra */
+  async getPurchaseOrderConfig() {
+    try {
+      const raw = await this.getSetting('purchase_order_settings_v1');
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return { prefix: 'OC', next_number: 1, padding: 4 };
+  },
+
+  async savePurchaseOrderConfig(cfg: { prefix: string; next_number: number; padding: number }) {
+    await this.setSetting('purchase_order_settings_v1', JSON.stringify(cfg));
+  },
+
+  /** Obtiene y avanza el consecutivo de orden de compra */
+  async nextPurchaseOrderConsecutive() {
+    let cfg = await this.getPurchaseOrderConfig();
+    const prefix = (cfg.prefix || 'OC').trim().toUpperCase();
+    const padding = Math.max(1, Number(cfg.padding) || 4);
+    let nextNum = Math.max(1, Number(cfg.next_number) || 1);
+
+    // Fallback: si el consecutivo es 1, verificar si ya existen órdenes para no colisionar
+    if (nextNum === 1) {
+      try {
+        const last = await pb.list('purchase_orders', { sort: '-created', perPage: 1 });
+        if (last.items && last.items.length) {
+          const numStr = String(last.items[0].number || '').replace(/\D/g, '');
+          const parsed = parseInt(numStr || '0', 10);
+          if (parsed >= nextNum) nextNum = parsed + 1;
+        }
+      } catch (_) {}
+    }
+
+    const consecutiveStr = `${prefix}-${String(nextNum).padStart(padding, '0')}`;
+
+    // Avanzar contador
+    cfg.next_number = nextNum + 1;
+    await this.savePurchaseOrderConfig(cfg).catch(() => {});
+
+    return consecutiveStr;
+  },
+
+  /** Crea orden de compra con cabecera y líneas en estado pending */
+  async createPurchaseOrder(header: any, lines: any[]) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || 0);
+      ivaTot += Number(l.iva_amount || 0);
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    let orderNum = header.number;
+    if (!orderNum || orderNum === 'AUTO') {
+      orderNum = await this.nextPurchaseOrderConsecutive();
+    }
+
+    const order = await pb.create('purchase_orders', {
+      ...header,
+      number: orderNum,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+      status: 'pending',
+      user_id: pb.currentUser?.id
+    });
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('purchase_order_lines', {
+        purchase_order_id: order.id,
+        line_order: i + 1,
+        ...lines[i]
+      });
+    }
+
+    await this.logAudit('CREATE', 'PurchaseOrder', order.id, `Orden de compra creada ${order.number}`);
+    return order;
+  },
+
+  /** Actualiza orden de compra y sus líneas */
+  async updatePurchaseOrder(orderId: string, header: any, lines: any[]) {
+    let subtotal = 0, ivaTot = 0;
+    for (const l of lines) {
+      subtotal += Number(l.subtotal || 0);
+      ivaTot += Number(l.iva_amount || 0);
+    }
+    const discountAmt = Number(header.discount_amount || 0);
+    const total = subtotal - discountAmt + ivaTot;
+
+    await pb.update('purchase_orders', orderId, {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      total,
+    });
+
+    // Reemplazar líneas
+    const oldLines = await pb.listAll('purchase_order_lines', {
+      filter: `purchase_order_id="${pb.escapeFilterValue(orderId)}"`
+    });
+    for (const l of oldLines) {
+      await pb.delete('purchase_order_lines', l.id);
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      await pb.create('purchase_order_lines', {
+        purchase_order_id: orderId,
+        line_order: i + 1,
+        ...lines[i]
+      });
+    }
+
+    await this.logAudit('UPDATE', 'PurchaseOrder', orderId, `Orden de compra actualizada ${header.number || ''}`);
+    return pb.get('purchase_orders', orderId);
+  },
+
+  /** Anula una orden de compra */
+  async cancelPurchaseOrder(orderId: string, reason = '') {
+    const order = await pb.get('purchase_orders', orderId);
+    if (order.status !== 'pending') {
+      throw new Error(`Solo se pueden anular órdenes en estado Pendiente. Estado actual: ${order.status}`);
+    }
+    await pb.update('purchase_orders', orderId, { status: 'cancelled' });
+    await this.logAudit('VOID', 'PurchaseOrder', orderId, `Orden de compra anulada ${order.number} | Motivo: ${reason}`);
+    return pb.get('purchase_orders', orderId);
+  },
+
+  // ── Importaciones ──────────────────────────────────────────────────
 
   /** Lista paginada de importaciones */
   async getImports(opts: any = {}) {

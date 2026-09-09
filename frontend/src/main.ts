@@ -27,6 +27,7 @@ import './modules/utilidades.ts';
 import './modules/productos.ts';
 import './modules/inventario.ts';
 import './modules/compras.ts';
+import './modules/ordenes-compra.ts';
 import './modules/compra-sugerida.ts';
 import './modules/pedidos.ts';
 import './modules/reservas-logistica.ts';

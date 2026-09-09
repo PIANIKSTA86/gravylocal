@@ -135,6 +135,7 @@ let _massTpImportInProgress = false;
 let _massAccImportInProgress = false;
 let _massPhUnitsImportInProgress = false;
 let _massPhBalancesImportInProgress = false;
+let _massFixedAssetsImportInProgress = false;
 
 /* ── Helper para Generación de Plantillas Excel Multi-hoja (con 'Indicaciones') ── */
 function _generateTemplateXlsx(config: {
@@ -610,6 +611,607 @@ async function _executeMassProductsImport(rows) {
 }
 
 /* ══════════════════════════════════════════════════════════
+   CARGA MASIVA DE ACTIVOS FIJOS (NIIF / NIC 16)
+══════════════════════════════════════════════════════════ */
+function _downloadMassFixedAssetsTemplate() {
+  const headers = [
+    'codigo', 'nombre', 'categoria', 'costo', 'vida_util_niif', 'vida_util_fiscal',
+    'valor_residual', 'metodo_depreciacion', 'centro_costos', 'responsable',
+    'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero',
+    'marca', 'modelo', 'serie', 'placa_qr', 'estado', 'activo_padre'
+  ];
+
+  const rows = [
+    {
+      codigo: 'ACT-001',
+      nombre: 'Portátil Lenovo ThinkPad E14 Gen 4 Core i7 16GB',
+      categoria: 'COMP',
+      costo: 4850000,
+      vida_util_niif: 60,
+      vida_util_fiscal: 60,
+      valor_residual: 485000,
+      metodo_depreciacion: 'linea_recta',
+      centro_costos: 'ADM-01',
+      responsable: 'admin@empresa.com',
+      proveedor: '900123456',
+      ubicacion: 'Sede Principal - Oficina 302',
+      fecha_compra: '2025-01-15',
+      fecha_puesta_servicio: '2025-02-01',
+      factura_numero: 'FE-10892',
+      marca: 'Lenovo',
+      modelo: 'ThinkPad E14 Gen 4',
+      serie: 'PF-4X9901Z',
+      placa_qr: 'PLACA-001',
+      estado: 'activo',
+      activo_padre: ''
+    },
+    {
+      codigo: 'VEH-002',
+      nombre: 'Camión Foton Aumark 3.5 Toneladas Furgón Aislado',
+      categoria: 'VEH',
+      costo: 128000000,
+      vida_util_niif: 120,
+      vida_util_fiscal: 120,
+      valor_residual: 12800000,
+      metodo_depreciacion: 'linea_recta',
+      centro_costos: 'LOG-01',
+      responsable: '',
+      proveedor: '890987654',
+      ubicacion: 'Parqueadero Parque Industrial Sede Norte',
+      fecha_compra: '2024-08-10',
+      fecha_puesta_servicio: '2024-08-20',
+      factura_numero: 'FAC-88934',
+      marca: 'Foton',
+      modelo: 'Aumark BJ1051',
+      serie: '9FB4887321049',
+      placa_qr: 'WXZ-456',
+      estado: 'activo',
+      activo_padre: ''
+    },
+    {
+      codigo: 'MAQ-003',
+      nombre: 'Compresor Industrial de Tornillo 15 HP con Tanque 500L',
+      categoria: 'MAQ',
+      costo: 32000000,
+      vida_util_niif: 120,
+      vida_util_fiscal: 120,
+      valor_residual: 0,
+      metodo_depreciacion: 'linea_recta',
+      centro_costos: 'PROD-01',
+      responsable: '',
+      proveedor: '',
+      ubicacion: 'Planta de Operaciones - Nave A',
+      fecha_compra: '2024-11-05',
+      fecha_puesta_servicio: '2024-11-15',
+      factura_numero: 'FE-7762',
+      marca: 'Schulz',
+      modelo: 'SRP 4015',
+      serie: 'SC-998822',
+      placa_qr: 'MAQ-003',
+      estado: 'activo',
+      activo_padre: ''
+    }
+  ];
+
+  const indications: Array<[string, string, string, string, string]> = [
+    ['codigo', 'SÍ', 'Texto Alfanumérico', 'Código o placa de inventario única del activo. Si ya existe en el sistema, la ficha del activo será ACTUALIZADA; si no existe, será CREADO.', 'ACT-001'],
+    ['nombre', 'SÍ', 'Texto Libre', 'Descripción o nombre comercial completo del activo fijo.', 'Portátil Lenovo ThinkPad E14 Gen 4'],
+    ['categoria', 'SÍ', 'Código o Nombre', 'Código (ej: COMP, VEH, MAQ) o nombre de la Categoría de Activos Fijos existente en el módulo NIIF.', 'COMP'],
+    ['costo', 'SÍ', 'Número Positivo (> 0)', 'Costo histórico de adquisición del activo en pesos colombianos ($ COP).', '4850000'],
+    ['vida_util_niif', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil contable bajo NIIF en meses. Si se omite, toma la vida útil por defecto de la categoría.', '60'],
+    ['vida_util_fiscal', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil tributaria fiscal en meses (Estatuto Tributario Art. 137). Si se omite, toma la de la categoría o la vida útil NIIF.', '60'],
+    ['valor_residual', 'NO (Auto)', 'Número (>= 0)', 'Valor de salvamento o residual NIIF ($ COP). Si se omite, se calcula con el % por defecto de la categoría o 0.', '485000'],
+    ['metodo_depreciacion', 'NO', 'Texto', 'Método de cálculo. Valores admitidos: linea_recta, saldos_decrecientes, unidades_produccion (Default: linea_recta).', 'linea_recta'],
+    ['centro_costos', 'NO', 'Código o Nombre', 'Código o nombre del Centro de Costos registrado en GRAVY (ej: ADM-01, 01, Ventas).', 'ADM-01'],
+    ['responsable', 'NO', 'Email, Cédula o Nombre', 'Usuario responsable o custodio del activo registrado en el sistema.', 'admin@empresa.com'],
+    ['proveedor', 'NO', 'NIT o Documento', 'Número de identificación o NIT del proveedor en el directorio de terceros.', '900123456'],
+    ['ubicacion', 'NO', 'Texto Libre', 'Ubicación física del bien (oficina, piso, bodega, sede).', 'Sede Principal - Oficina 302'],
+    ['fecha_compra', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de adquisición de la factura de compra.', '2025-01-15'],
+    ['fecha_puesta_servicio', 'NO', 'Fecha (YYYY-MM-DD)', 'Fecha de puesta en marcha o inicio de depreciación. Si se omite, toma la fecha de compra.', '2025-02-01'],
+    ['factura_numero', 'NO', 'Texto', 'Número de factura o documento de soporte de la compra.', 'FE-10892'],
+    ['marca', 'NO', 'Texto', 'Marca del fabricante del equipo o vehículo.', 'Lenovo'],
+    ['modelo', 'NO', 'Texto', 'Modelo específico del bien.', 'ThinkPad E14 Gen 4'],
+    ['serie', 'NO', 'Texto', 'Número de serie de fábrica o chasis.', 'PF-4X9901Z'],
+    ['placa_qr', 'NO', 'Texto', 'Identificador de placa metálica, código de barras o QR físico. Si se omite, toma el código del activo.', 'PLACA-001'],
+    ['estado', 'NO', 'Texto', 'Estado operativo: activo, suspendido, en reparacion, retirado, vendido (Default: activo).', 'activo'],
+    ['activo_padre', 'NO', 'Código Alfanumérico', 'Código del activo principal si este ítem es una parte, accesorio o componente capitalizable.', '']
+  ];
+
+  _generateTemplateXlsx({
+    filename: 'plantilla_carga_activos_fijos',
+    sheetName: 'Catálogo de Activos Fijos',
+    headers,
+    rows,
+    indications
+  });
+}
+
+async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Promise<void> | void }) {
+  if (!can('canWrite')) return showToast('No tienes permisos para registrar o importar activos fijos', 'error');
+  if ((window as any)._massFixedAssetsImportInProgress) return showToast('Importación de activos en curso, por favor espera...', 'warning');
+
+  const reqCols = ['codigo', 'nombre', 'categoria', 'costo'];
+  const optColsFin = ['vida_util_niif', 'vida_util_fiscal', 'valor_residual', 'metodo_depreciacion', 'centro_costos'];
+  const optColsAdmin = ['responsable', 'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero', 'marca', 'modelo', 'serie', 'placa_qr', 'estado', 'activo_padre'];
+
+  openModal(
+    '<i class="fas fa-boxes-stacked mr-2" style="color:#059669"></i>Carga masiva de activos fijos',
+    `<div class="mb-2">
+      <p class="text-sm mb-3" style="color:#374151">
+        Carga un archivo <strong>Excel (.xlsx/.xls)</strong> o <strong>CSV</strong> con el catálogo de activos fijos.<br>
+        Si el <strong>código/placa</strong> ya existe, el activo será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
+      </p>
+      <div class="rounded-xl p-3 mb-3 text-xs" style="background:#ECFDF5;border:1px solid #A7F3D0">
+        <p class="font-semibold mb-1" style="color:#059669;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          ${reqCols.map(c => `<code class="px-2 py-0.5 rounded font-mono font-semibold" style="background:#D1FAE5;color:#047857">${c}</code>`).join('')}
+        </div>
+        <p class="font-semibold mb-1" style="color:#1E3A8A;text-transform:uppercase;letter-spacing:.05em">Columnas financieras y depreciación (opcionales / con defaults de categoría)</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          ${optColsFin.map(c => `<code class="px-2 py-0.5 rounded font-mono" style="background:#DBEAFE;color:#1D4ED8">${c}</code>`).join('')}
+        </div>
+        <p class="font-semibold mb-1" style="color:#4B5563;text-transform:uppercase;letter-spacing:.05em">Columnas administrativas, técnicas y custodia (opcionales)</p>
+        <div class="flex flex-wrap gap-1.5 mb-2">
+          ${optColsAdmin.map(c => `<code class="px-2 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
+        </div>
+        <p class="text-[11px] mt-2" style="color:#065F46">
+          <strong>Categoría</strong>: Código (ej: COMP, VEH) o nombre de categoría NIIF. 
+          <strong>Fechas</strong>: Formato YYYY-MM-DD. 
+          <strong>Valores monetarios</strong>: Cifras numéricas sin puntos de mil ni signos de peso.
+        </p>
+      </div>
+
+      <div id="mass-assets-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#A7F3D0;background:#F0FDF4">
+        <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#10B981"></i>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#059669;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
+        <input type="file" id="mass-assets-file-input" accept=".csv,.xlsx,.xls" class="hidden">
+      </div>
+
+      <div id="mass-assets-progress-wrap" class="hidden mt-4">
+        <div class="w-full rounded-full h-2" style="background:#E5E7EB">
+          <div id="mass-assets-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#059669,#2563EB);width:0%"></div>
+        </div>
+        <p id="mass-assets-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
+      </div>
+
+      <div id="mass-assets-preview" class="mt-4 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-sm font-semibold" style="color:#0D2137">Vista previa</p>
+          <button class="btn btn-outline btn-sm" id="btn-mass-assets-clear"><i class="fas fa-xmark mr-1"></i>Limpiar</button>
+        </div>
+        <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
+          <table class="data-table text-xs" id="mass-assets-preview-table">
+            <thead><tr>
+              <th>#</th><th>Código</th><th>Activo</th><th>Categoría</th><th>Costo</th><th>Vida NIIF</th><th>Centro Costo</th><th>Estado</th><th>Acción</th>
+            </tr></thead>
+            <tbody id="mass-assets-preview-body"></tbody>
+          </table>
+        </div>
+        <div id="mass-assets-summary" class="mt-2 text-xs" style="color:#6B7280"></div>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary hidden" id="btn-mass-assets-run" style="background:#059669;border-color:#059669"><i class="fas fa-bolt mr-1"></i>Ejecutar carga</button>`,
+    true
+  );
+
+  let parsedRows: any[] = [];
+  const dropZone = $('#mass-assets-drop-zone');
+  const fileInput = $('#mass-assets-file-input') as HTMLInputElement | null;
+  const runBtn = $('#btn-mass-assets-run') as HTMLButtonElement | null;
+  const clearBtn = $('#btn-mass-assets-clear');
+
+  const resetPreview = () => {
+    parsedRows = [];
+    $('#mass-assets-preview')?.classList.add('hidden');
+    runBtn?.classList.add('hidden');
+    const body = $('#mass-assets-preview-body');
+    if (body) body.innerHTML = '';
+    const summary = $('#mass-assets-summary');
+    if (summary) summary.innerHTML = '';
+    if (fileInput) fileInput.value = '';
+  };
+
+  const setDropDefault = () => {
+    if (!dropZone) return;
+    dropZone.style.borderColor = '#A7F3D0';
+    dropZone.style.background = '#F0FDF4';
+  };
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  dropZone?.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#059669';
+    dropZone.style.background = '#D1FAE5';
+  });
+  dropZone?.addEventListener('dragleave', () => setDropDefault());
+  dropZone?.addEventListener('drop', e => {
+    e.preventDefault();
+    setDropDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) processFile(file);
+  });
+  fileInput?.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) processFile(file);
+  });
+  clearBtn?.addEventListener('click', resetPreview);
+  runBtn?.addEventListener('click', () => _executeMassFixedAssetsImport(parsedRows, options?.onComplete));
+
+  async function processFile(file: File) {
+    if (file.size > 8 * 1024 * 1024) return showToast('El archivo supera el límite permitido de 8 MB', 'error');
+    const ext = String(file.name.split('.').pop() || '').toLowerCase();
+    let rawRows: any[] = [];
+    try {
+      if (ext === 'csv') {
+        rawRows = _massTxParseCsv(await file.text());
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const parsed = _massTxParseExcel(await file.arrayBuffer());
+        rawRows = Array.isArray(parsed) ? parsed : (parsed?.rows || []);
+      } else {
+        return showToast('Formato no soportado. Debe ser CSV, XLSX o XLS.', 'error');
+      }
+    } catch (err: any) {
+      return showToast(`Error al leer el archivo: ${err.message}`, 'error');
+    }
+    if (!rawRows.length) return showToast('El archivo no contiene filas de datos', 'warning');
+    
+    parsedRows = await _massFixedAssetsBuildDraft(rawRows);
+    _massFixedAssetsRenderPreview(parsedRows);
+  }
+}
+
+async function _massFixedAssetsBuildDraft(rawRows: any[]) {
+  // 1. Precarga paralela de colecciones de referencia para mapeos rápidos en memoria
+  const [existingAssets, categories, costCenters, thirdParties, users] = await Promise.all([
+    pb.listAll('niif_assets', {}),
+    pb.listAll('niif_asset_categories', {}),
+    pb.listAll('cost_centers', {}),
+    pb.listAll('third_parties', {}),
+    pb.listAll('users', {})
+  ]);
+
+  // Mapas por código o nombre normalizado
+  const assetsByCode = new Map<string, any>(existingAssets.map((a: any) => [String(a.code || '').trim().toUpperCase(), a]));
+  
+  const categoryByCode = new Map<string, any>();
+  const categoryByName = new Map<string, any>();
+  for (const c of categories) {
+    if (c.code) categoryByCode.set(String(c.code).trim().toUpperCase(), c);
+    if (c.name) categoryByName.set(String(c.name).trim().toUpperCase(), c);
+  }
+
+  const ccByCode = new Map<string, any>();
+  const ccByName = new Map<string, any>();
+  for (const cc of costCenters) {
+    if (cc.code) ccByCode.set(String(cc.code).trim().toUpperCase(), cc);
+    if (cc.name) ccByName.set(String(cc.name).trim().toUpperCase(), cc);
+  }
+
+  const tpByDoc = new Map<string, any>();
+  const tpByName = new Map<string, any>();
+  for (const tp of thirdParties) {
+    const rawDoc = String(tp.doc_number || '').replace(/[^0-9a-zA-Z]/g, '').toUpperCase();
+    if (rawDoc) tpByDoc.set(rawDoc, tp);
+    if (tp.name) tpByName.set(String(tp.name).trim().toUpperCase(), tp);
+  }
+
+  const userByEmail = new Map<string, any>();
+  const userByName = new Map<string, any>();
+  for (const u of users) {
+    if (u.email) userByEmail.set(String(u.email).trim().toLowerCase(), u);
+    if (u.name) userByName.set(String(u.name).trim().toUpperCase(), u);
+  }
+
+  const validMethods = new Set(['linea_recta', 'saldos_decrecientes', 'unidades_produccion']);
+
+  // Normalizador de fechas para Excel (soporta YYYY-MM-DD, DD/MM/YYYY, Date object o serial de Excel)
+  const parseDateString = (val: any): string | null => {
+    if (!val) return null;
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      return val.toISOString().split('T')[0];
+    }
+    const s = String(val).trim();
+    if (!s) return null;
+    // Si viene como YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    // Si viene como DD/MM/YYYY o DD-MM-YYYY
+    const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (dmy) {
+      const day = dmy[1].padStart(2, '0');
+      const month = dmy[2].padStart(2, '0');
+      const year = dmy[3];
+      return `${year}-${month}-${day}`;
+    }
+    // Si es un número serial de Excel
+    const num = Number(s);
+    if (!isNaN(num) && num > 20000 && num < 90000) {
+      const utcDays = Math.floor(num - 25569);
+      const utcValue = utcDays * 86400;
+      const dateInfo = new Date(utcValue * 1000);
+      return dateInfo.toISOString().split('T')[0];
+    }
+    return s;
+  };
+
+  return rawRows.map((raw, i) => {
+    const rowNo = i + 2;
+    const get = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = raw[_massTxNormHeader(k)];
+        if (v !== undefined && String(v).trim() !== '') return String(v).trim();
+      }
+      return '';
+    };
+
+    const code = get('codigo', 'code', 'placa', 'código').toUpperCase();
+    const name = get('nombre', 'name', 'descripcion', 'descripción');
+    const catRaw = get('categoria', 'category', 'categoría', 'cat');
+    const costRaw = get('costo', 'cost', 'costo_adquisicion', 'valor');
+
+    if (!code) return { ok: false, rowNo, error: `Fila ${rowNo}: Falta el código o placa del activo.` };
+    if (!name) return { ok: false, rowNo, error: `Fila ${rowNo}: Falta el nombre del activo.` };
+    if (!catRaw) return { ok: false, rowNo, error: `Fila ${rowNo}: Falta especificar la categoría del activo.` };
+    
+    const cost = parseFloat(costRaw.replace(/[^0-9.-]/g, ''));
+    if (isNaN(cost) || cost <= 0) {
+      return { ok: false, rowNo, error: `Fila ${rowNo}: Costo de adquisición inválido (${costRaw}). Debe ser un número mayor a cero.` };
+    }
+
+    // Resolver Categoría NIIF
+    const catNorm = catRaw.toUpperCase();
+    const resolvedCat = categoryByCode.get(catNorm) || categoryByName.get(catNorm);
+    if (!resolvedCat) {
+      return { ok: false, rowNo, error: `Fila ${rowNo}: La categoría "${catRaw}" no existe en la parametrización NIIF.` };
+    }
+
+    // Resolver Vidas Útiles (Prioridad: fila Excel > default de categoría > fallback)
+    const lifeNiifRaw = get('vida_util_niif', 'useful_life_niif', 'vida_niif', 'meses_niif');
+    let useful_life_niif = lifeNiifRaw ? parseInt(lifeNiifRaw, 10) : (resolvedCat.useful_life_niif_default || 60);
+    if (isNaN(useful_life_niif) || useful_life_niif <= 0) useful_life_niif = 60;
+
+    const lifeFiscalRaw = get('vida_util_fiscal', 'useful_life_fiscal', 'vida_fiscal', 'meses_fiscal');
+    let useful_life_fiscal = lifeFiscalRaw ? parseInt(lifeFiscalRaw, 10) : (resolvedCat.useful_life_fiscal_default || useful_life_niif);
+    if (isNaN(useful_life_fiscal) || useful_life_fiscal <= 0) useful_life_fiscal = useful_life_niif;
+
+    // Resolver Valor Residual
+    const residualRaw = get('valor_residual', 'residual_value', 'salvamento');
+    let residual_value = 0;
+    if (residualRaw !== '') {
+      residual_value = parseFloat(residualRaw.replace(/[^0-9.-]/g, '')) || 0;
+    } else if (resolvedCat.residual_value_percent_default) {
+      residual_value = Math.round(cost * (resolvedCat.residual_value_percent_default / 100));
+    }
+
+    // Resolver Método de Depreciación
+    let methodRaw = get('metodo_depreciacion', 'depreciation_method', 'metodo').toLowerCase().replace(/\s+/g, '_');
+    if (!methodRaw || !validMethods.has(methodRaw)) {
+      methodRaw = resolvedCat.depreciation_method_default || 'linea_recta';
+    }
+
+    // Resolver Centro de Costos
+    let cost_center_id: string | null = null;
+    let costCenterDisplay = '—';
+    const ccRaw = get('centro_costos', 'cost_center', 'centro_costo', 'cc');
+    if (ccRaw) {
+      const ccNorm = ccRaw.toUpperCase();
+      const resolvedCc = ccByCode.get(ccNorm) || ccByName.get(ccNorm);
+      if (resolvedCc) {
+        cost_center_id = resolvedCc.id;
+        costCenterDisplay = resolvedCc.code || resolvedCc.name;
+      }
+    }
+
+    // Resolver Responsable / Custodio
+    let owner_id: string | null = null;
+    const ownerRaw = get('responsable', 'owner', 'custodio', 'empleado');
+    if (ownerRaw) {
+      const uEmail = userByEmail.get(ownerRaw.toLowerCase());
+      const uName = userByName.get(ownerRaw.toUpperCase());
+      const resolvedUser = uEmail || uName;
+      if (resolvedUser) owner_id = resolvedUser.id;
+    }
+
+    // Resolver Proveedor (Tercero)
+    let provider_id: string | null = null;
+    const providerRaw = get('proveedor', 'provider', 'tercero', 'nit');
+    if (providerRaw) {
+      const cleanDoc = providerRaw.replace(/[^0-9a-zA-Z]/g, '').toUpperCase();
+      const resolvedTp = tpByDoc.get(cleanDoc) || tpByName.get(providerRaw.toUpperCase());
+      if (resolvedTp) provider_id = resolvedTp.id;
+    }
+
+    // Resolver Activo Padre
+    let parent_asset_id: string | null = null;
+    const parentCodeRaw = get('activo_padre', 'parent_asset', 'componente_de').toUpperCase();
+    if (parentCodeRaw && assetsByCode.has(parentCodeRaw)) {
+      parent_asset_id = assetsByCode.get(parentCodeRaw).id;
+    }
+
+    // Fechas
+    const purchase_date = parseDateString(get('fecha_compra', 'purchase_date', 'fecha_factura', 'fecha_adquisicion'));
+    const start_service_date = parseDateString(get('fecha_puesta_servicio', 'start_service_date', 'puesta_en_servicio', 'fecha_servicio')) || purchase_date;
+
+    // Estado Operativo
+    const statusRaw = get('estado', 'status').toLowerCase().trim();
+    let status = 'active';
+    if (/^(suspendido|suspendida|suspended)$/i.test(statusRaw)) status = 'suspended';
+    else if (/^(reparacion|en reparacion|en_reparacion|in_repair)$/i.test(statusRaw)) status = 'in_repair';
+    else if (/^(retirado|retirada|baja|dado de baja|retired)$/i.test(statusRaw)) status = 'retired';
+    else if (/^(vendido|vendida|sold)$/i.test(statusRaw)) status = 'sold';
+
+    const active = status !== 'retired';
+
+    // Comprobar si ya existe para upsert
+    const existing = assetsByCode.get(code);
+    const mode = existing ? 'update' : 'create';
+
+    const payload = {
+      code,
+      name,
+      category_id: resolvedCat.id,
+      cost,
+      useful_life_niif,
+      useful_life_fiscal,
+      residual_value,
+      depreciation_method: methodRaw,
+      cost_center_id,
+      owner_id,
+      provider_id,
+      parent_asset_id,
+      location: get('ubicacion', 'location'),
+      invoice_number: get('factura_numero', 'invoice_number', 'nro_factura', 'factura'),
+      invoice_date: purchase_date,
+      purchase_date,
+      start_service_date,
+      brand: get('marca', 'brand'),
+      model: get('modelo', 'model'),
+      serial_number: get('serie', 'serial_number', 'serial'),
+      qr_code: get('placa_qr', 'qr_code', 'placa') || code,
+      status,
+      active
+    };
+
+    return {
+      ok: true,
+      rowNo,
+      code,
+      name,
+      category: resolvedCat.name,
+      cost,
+      useful_life_niif,
+      costCenterDisplay,
+      status,
+      mode,
+      existingId: existing ? existing.id : null,
+      payload
+    };
+  });
+}
+
+function _massFixedAssetsRenderPreview(rows: any[]) {
+  const preview = $('#mass-assets-preview');
+  const tbody = $('#mass-assets-preview-body');
+  const summary = $('#mass-assets-summary');
+  const runBtn = $('#btn-mass-assets-run');
+  if (!preview || !tbody || !summary || !runBtn) return;
+
+  const okRows = rows.filter(r => r.ok);
+  const badRows = rows.filter(r => !r.ok);
+
+  const statusMap: Record<string, string> = {
+    active: '<span class="badge badge-green">Activo</span>',
+    suspended: '<span class="badge badge-gray">Suspendido</span>',
+    in_repair: '<span class="badge badge-orange">Reparación</span>',
+    retired: '<span class="badge badge-red">Retirado</span>',
+    sold: '<span class="badge badge-blue">Vendido</span>'
+  };
+
+  tbody.innerHTML = rows.map(r => {
+    if (r.ok) {
+      return `<tr>
+        <td>${r.rowNo}</td>
+        <td><strong class="font-mono text-indigo-900">${esc(r.code)}</strong></td>
+        <td><div class="font-medium text-gray-800 text-xs">${esc(r.name)}</div></td>
+        <td><span class="text-xs text-gray-600">${esc(r.category)}</span></td>
+        <td class="font-semibold">${fmt(r.cost)}</td>
+        <td>${r.useful_life_niif} m</td>
+        <td><span class="text-xxs text-gray-500">${esc(r.costCenterDisplay)}</span></td>
+        <td>${statusMap[r.status] || `<span class="badge badge-green">${esc(r.status)}</span>`}</td>
+        <td><span class="badge ${r.mode === 'update' ? 'badge-orange' : 'badge-blue'}">${r.mode === 'update' ? 'Actualizar' : 'Crear'}</span></td>
+      </tr>`;
+    }
+    return `<tr style="background:#FEF2F2">
+      <td>${r.rowNo}</td>
+      <td colspan="7" class="text-xs font-medium" style="color:#DC2626">${esc(r.error || 'Error en la fila')}</td>
+      <td><span class="badge badge-red">Error</span></td>
+    </tr>`;
+  }).join('');
+
+  summary.innerHTML = `<span style="color:${badRows.length ? '#B91C1C' : '#166534'}">
+    <strong>${rows.length}</strong> fila(s) procesadas: <strong>${okRows.length}</strong> válida(s), <strong>${badRows.length}</strong> con error.
+    ${badRows.length ? 'Las filas con error serán omitidas durante la importación.' : 'Todos los registros están listos para ejecutarse.'}
+  </span>`;
+
+  preview.classList.remove('hidden');
+  if (okRows.length) runBtn.classList.remove('hidden');
+  else runBtn.classList.add('hidden');
+}
+
+async function _executeMassFixedAssetsImport(rows: any[], onComplete?: () => Promise<void> | void) {
+  if ((window as any)._massFixedAssetsImportInProgress) return;
+  const valids = (rows || []).filter(r => r.ok && r.payload);
+  if (!valids.length) return showToast('No hay registros válidos para importar', 'warning');
+
+  (window as any)._massFixedAssetsImportInProgress = true;
+  const runBtn = $('#btn-mass-assets-run') as HTMLButtonElement | null;
+  const progressWrap = $('#mass-assets-progress-wrap');
+  const progressBar = $('#mass-assets-progress-bar');
+  const progressText = $('#mass-assets-progress-text');
+
+  if (runBtn) {
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Importando activos...';
+  }
+  progressWrap?.classList.remove('hidden');
+
+  let created = 0, updated = 0, failed = 0;
+  const failedRows: string[] = [];
+
+  try {
+    for (let i = 0; i < valids.length; i++) {
+      const row = valids[i];
+      const pct = Math.round((i / valids.length) * 100);
+      if (progressBar) progressBar.style.width = `${pct}%`;
+      if (progressText) progressText.textContent = `Procesando ${i + 1} de ${valids.length}: [${row.code}] ${row.name}`;
+
+      try {
+        if (row.mode === 'update' && row.existingId) {
+          await pb.update('niif_assets', row.existingId, row.payload);
+          updated++;
+        } else {
+          await pb.create('niif_assets', row.payload);
+          created++;
+        }
+      } catch (err: any) {
+        failed++;
+        failedRows.push(`Fila ${row.rowNo} (${row.code}): ${err.message}`);
+      }
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = 'Carga de activos completada';
+
+    await API.logAudit('IMPORT', 'niif_assets', 'bulk', `${created} activos creados, ${updated} actualizados, ${failed} con error`);
+    if (failedRows.length) console.warn('[CargaMasivaActivosFijos] Errores en importación:', failedRows);
+
+    showToast(
+      `Catálogo de activos cargado: ${created} creados, ${updated} actualizados${failed ? `, ${failed} con error` : ''}`,
+      failed ? 'warning' : 'success',
+      6000
+    );
+
+    _loadSysInfo();
+    closeModal();
+
+    if (typeof onComplete === 'function') {
+      try {
+        await onComplete();
+      } catch (err: any) {
+        console.error('Error al ejecutar onComplete de carga de activos:', err);
+      }
+    }
+  } finally {
+    (window as any)._massFixedAssetsImportInProgress = false;
+    if (runBtn) {
+      runBtn.disabled = false;
+      runBtn.innerHTML = '<i class="fas fa-bolt mr-1"></i>Ejecutar carga';
+    }
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
    RENDER PRINCIPAL
 ══════════════════════════════════════════════════════════ */
 async function renderUtilidades(container) {
@@ -996,6 +1598,33 @@ async function renderUtilidades(container) {
           </div>
         </div>
 
+        <!-- ── Tarjeta: Carga masiva de activos fijos ──── -->
+        <div class="stat-card green" id="util-card-mass-assets" style="border-left-color: #10B981;">
+          <div class="flex items-start justify-between mb-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                   style="background:rgba(16,185,129,.12)">
+                <i class="fas fa-boxes-stacked" style="color:#059669;font-size:18px"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-base" style="color:#0D2137">Carga masiva de activos fijos</h3>
+                <p class="text-xs" style="color:#6B7280">Importa catálogo de PPE y activos desde CSV o Excel</p>
+              </div>
+            </div>
+          </div>
+          <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
+            Crea o actualiza activos fijos en lote con parámetros contables NIIF y fiscales (costo, vida útil, método y centro de costos). Si el código o placa ya existe, la ficha se actualiza automáticamente.
+          </p>
+          <div class="flex gap-3 flex-wrap">
+            <button id="btn-mass-assets-template" class="btn btn-outline btn-sm">
+              <i class="fas fa-download"></i> Descargar plantilla
+            </button>
+            <button id="btn-mass-assets-open" class="btn btn-secondary btn-sm" style="background:#059669;border-color:#059669">
+              <i class="fas fa-upload"></i> Cargar archivo
+            </button>
+          </div>
+        </div>
+
         ${isAdmin ? `
         <!-- ── Tarjeta: Reemplazo masivo de cuentas ──────── -->
         <div class="stat-card blue" id="util-card-bulk-replace-acc" style="border-left-color: #2563EB;">
@@ -1137,6 +1766,8 @@ async function renderUtilidades(container) {
   $('#btn-mass-ph-bal-open')?.addEventListener('click', _openMassPhBalancesImportModal);
   $('#btn-mass-products-template')?.addEventListener('click', _downloadMassProductsTemplate);
   $('#btn-mass-products-open')?.addEventListener('click', _openMassProductsImportModal);
+  $('#btn-mass-assets-template')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-open')?.addEventListener('click', () => _openMassFixedAssetsImportModal());
 
   // Listeners de Utilidades de Inventario
   $('#btn-inv-toma-fisica')?.addEventListener('click', () => {
@@ -5704,4 +6335,7 @@ async function _openRenumberProductsModal() {
 (window as any)._downloadMassPhBalancesTemplate = _downloadMassPhBalancesTemplate;
 (window as any)._openMassPhBalancesImportModal = _openMassPhBalancesImportModal;
 (window as any)._massPhBalancesImportInProgress = _massPhBalancesImportInProgress;
+(window as any)._downloadMassFixedAssetsTemplate = _downloadMassFixedAssetsTemplate;
+(window as any)._openMassFixedAssetsImportModal = _openMassFixedAssetsImportModal;
+(window as any)._massFixedAssetsImportInProgress = _massFixedAssetsImportInProgress;
 

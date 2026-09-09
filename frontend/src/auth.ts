@@ -98,6 +98,7 @@ function applyModuleVisibility(): void {
     'inventario-bodegas': 'inventarios',
     'inventario-consignaciones': 'inventarios',
     'compra-sugerida':  'inventarios',
+    'ordenes-compra':   'inventarios',
     'pos':              'comercial',
     'comisiones':       'comercial',
     'spa':              'spa',

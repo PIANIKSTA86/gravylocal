@@ -1812,6 +1812,67 @@ const API = {
     return invStored;
   },
 
+  /** Actualiza cabecera + líneas de factura de compra / documento soporte en estado borrador */
+  async updatePurchaseInvoice(invoiceId, header, lines = []) {
+    if (!invoiceId) throw new Error('ID de factura requerido para actualizar.');
+
+    // Calcular totales desde las líneas si se proveen
+    let subtotal = 0, ivaTot = 0, retTot = 0, ivaCostTot = 0;
+    const headerIvaTreatment = String(header?.iva_treatment || 'DESCONTABLE').toUpperCase();
+
+    if (lines && lines.length) {
+      for (const l of lines) {
+        subtotal += Number(l.subtotal || 0);
+        ivaTot += Number(l.iva_amount || 0);
+        retTot += Number(l.ret_amount || 0);
+        const lineIsCost = (headerIvaTreatment === 'MAYOR_COSTO') || (headerIvaTreatment === 'POR_LINEA' && !!l.iva_as_cost);
+        if (lineIsCost) {
+          ivaCostTot += Number(l.iva_amount || 0);
+        }
+      }
+    } else {
+      subtotal = Number(header?.subtotal || 0);
+      ivaTot = Number(header?.iva_total || 0);
+      retTot = Number(header?.ret_total || 0);
+    }
+    const payableTotal = (subtotal + ivaTot) - retTot;
+
+    const payload = {
+      ...header,
+      subtotal,
+      iva_total: ivaTot,
+      iva_treatment: headerIvaTreatment,
+      iva_cost_total: ivaCostTot,
+      total: payableTotal,
+      ret_total: retTot,
+      payable_total: payableTotal
+    };
+
+    await pb.update('purchase_invoices', invoiceId, payload);
+
+    if (lines && lines.length) {
+      const oldLines = await pb.listAll('purchase_invoice_lines', {
+        filter: `invoice_id="${pb.escapeFilterValue(invoiceId)}"`
+      });
+      for (const ol of oldLines) {
+        await pb.delete('purchase_invoice_lines', ol.id);
+      }
+      for (let i = 0; i < lines.length; i++) {
+        const lineIsCost = (headerIvaTreatment === 'MAYOR_COSTO') || (headerIvaTreatment === 'POR_LINEA' && !!lines[i].iva_as_cost);
+        await pb.create('purchase_invoice_lines', {
+          invoice_id: invoiceId,
+          line_order: i + 1,
+          ...lines[i],
+          iva_as_cost: lineIsCost
+        });
+      }
+    }
+
+    const updatedInv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
+    await this.logAudit('UPDATE', 'PurchaseInvoice', invoiceId, `Actualizada compra/documento soporte ${updatedInv.number}`);
+    return updatedInv;
+  },
+
   /**
    * Contabiliza una factura de compra (draft â†’ posted):
    * 1. Genera asiento FC en transactions (status: draft, listo para aprobar)
@@ -2145,16 +2206,18 @@ const API = {
       invMovId = mov.id;
     }
 
-    // â”€â”€ Actualizar factura â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Actualizar factura de compra con estado contabilizado y numero oficial
+    const isDraftNumber = !inv.number || inv.number.startsWith('BORR-') || inv.number.startsWith('FC-BORR-') || inv.number.startsWith('TEMP-');
     await pb.update('purchase_invoices', invoiceId, {
       status: 'posted',
+      ...(isDraftNumber && tx.number ? { number: tx.number } : {}),
       tx_id: tx.id,
       tx_number: tx.number,
       inv_movement_id: invMovId,
       ret_total: retTotal,
       payable_total: payableCredit,
     });
-    await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${inv.number} â†’ TX ${tx.number}`);
+    await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${tx.number || inv.number}`);
     return { inv, tx };
   },
 

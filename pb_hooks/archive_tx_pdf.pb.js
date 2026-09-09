@@ -377,7 +377,7 @@ function buildDianRepresentationPdfBytes(data) {
 /**
  * Función central de archivado físico HÍBRIDO (Vista C)
  */
-function executeTransactionPdfArchiving(txRecord) {
+var executeTransactionPdfArchiving = function(txRecord) {
   if (!txRecord) return null;
 
   const status = String(txRecord.get("status") || "").toLowerCase().trim();

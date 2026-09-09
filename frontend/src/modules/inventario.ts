@@ -128,8 +128,8 @@ async function renderStockTab(c, ctx = {}) {
           </div>
         </div>
         ${['superadmin', 'admin'].includes(_pb().currentUser?.role) ? `
-          <button id="btn-recalc-stock" class="btn btn-secondary flex items-center gap-1.5" style="border-radius:12px; font-size:13px; padding:6px 12px">
-            <i class="fas fa-arrows-rotate"></i> Recalcular Existencias
+          <button id="btn-recalc-stock" class="btn btn-orange-subtle flex items-center gap-1.5 font-bold" style="border-radius:12px; font-size:13px; padding:6px 12px">
+            <i class="fas fa-arrows-rotate text-orange-600"></i> Recalcular Existencias
           </button>
         ` : ''}
       </div>

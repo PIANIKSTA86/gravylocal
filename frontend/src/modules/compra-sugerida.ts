@@ -83,7 +83,7 @@
         <!-- Encabezado de Página -->
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg shadow-md shadow-indigo-200">
+            <span class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center text-lg shadow-md shadow-emerald-200">
               <i class="fas fa-wand-magic-sparkles"></i>
             </span>
             <div>
@@ -94,22 +94,22 @@
           
           <!-- Selector de Modo Operativo -->
           <div class="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs font-bold">
-            <button type="button" id="mode-btn-hibrido" class="cs-mode-btn px-4 py-2 rounded-lg transition-all bg-indigo-600 text-white shadow-sm" data-mode="HIBRIDO">
+            <button type="button" id="mode-btn-hibrido" class="cs-mode-btn px-4 py-2 rounded-lg transition-all bg-emerald-600 text-white shadow-sm" data-mode="HIBRIDO">
               <i class="fas fa-brain mr-1.5"></i>Híbrido (ERP)
             </button>
-            <button type="button" id="mode-btn-pedidos" class="cs-mode-btn px-4 py-2 rounded-lg transition-all text-slate-600 hover:text-slate-900" data-mode="PEDIDOS">
+            <button type="button" id="mode-btn-pedidos" class="cs-mode-btn px-4 py-2 rounded-lg transition-all text-slate-600 hover:text-emerald-700" data-mode="PEDIDOS">
               <i class="fas fa-cart-flatbed mr-1.5"></i>Por Pedidos Clientes
             </button>
-            <button type="button" id="mode-btn-ventas" class="cs-mode-btn px-4 py-2 rounded-lg transition-all text-slate-600 hover:text-slate-900" data-mode="VENTAS">
+            <button type="button" id="mode-btn-ventas" class="cs-mode-btn px-4 py-2 rounded-lg transition-all text-slate-600 hover:text-emerald-700" data-mode="VENTAS">
               <i class="fas fa-chart-line mr-1.5"></i>Por Historial Ventas
             </button>
           </div>
         </div>
 
         <!-- Banner Explicativo del Modo Activo -->
-        <div id="cs-mode-banner" class="p-4 rounded-xl border flex items-center justify-between gap-4 text-xs font-medium bg-indigo-50/70 border-indigo-200 text-indigo-900">
+        <div id="cs-mode-banner" class="p-4 rounded-xl border flex items-center justify-between gap-4 text-xs font-medium bg-emerald-50/80 border-emerald-200 text-emerald-950">
           <div class="flex items-center gap-3">
-            <i class="fas fa-shield-halved text-indigo-600 text-base" id="cs-mode-icon"></i>
+            <i class="fas fa-shield-halved text-emerald-600 text-base" id="cs-mode-icon"></i>
             <div id="cs-mode-desc">
               <span class="font-bold uppercase tracking-wider">Modelo Integral Híbrido</span>: 
               Garantiza cubrir los pedidos de clientes pendientes, abastece el stock mínimo y proyecta el consumo diario del tiempo de entrega.
@@ -178,7 +178,7 @@
               </div>
               <div class="inline-flex p-0.5 bg-slate-100 rounded-lg text-xs font-semibold text-slate-600">
                 <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md hover:text-slate-900" data-days="15">15d</button>
-                <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md bg-white text-indigo-600 shadow-sm" data-days="30">30d</button>
+                <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md bg-white text-emerald-700 font-bold shadow-xs" data-days="30">30d</button>
                 <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md hover:text-slate-900" data-days="60">60d</button>
                 <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md hover:text-slate-900" data-days="90">90d</button>
                 <button type="button" class="cs-preset-btn px-2.5 py-1 rounded-md hover:text-slate-900" data-preset="cur_month">Este Mes</button>
@@ -225,7 +225,7 @@
             <div class="w-[260px] relative" id="cs-supplier-filter-container">
               <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
                 <span>Proveedor / Tercero</span>
-                <button type="button" id="cs-supplier-clear-text" class="text-indigo-600 hover:text-indigo-800 text-[10px] hidden font-bold cursor-pointer">
+                <button type="button" id="cs-supplier-clear-text" class="text-emerald-600 hover:text-emerald-800 text-[10px] hidden font-bold cursor-pointer">
                   [Ver todos]
                 </button>
               </label>
@@ -250,7 +250,7 @@
               </select>
             </div>
 
-            <button id="cs-btn-apply" class="btn btn-primary px-4 py-2 h-[36px] flex items-center gap-2 text-xs font-bold shadow-sm">
+            <button id="cs-btn-apply" class="px-4 py-2 h-[36px] flex items-center gap-2 text-xs font-bold rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md shadow-orange-500/20 transition-all cursor-pointer">
               <i class="fas fa-arrows-rotate"></i> Recalcular
             </button>
           </div>
@@ -263,7 +263,7 @@
               <thead>
                 <tr class="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th class="p-3.5 w-[36px] text-center">
-                    <input type="checkbox" id="cs-th-select-all" class="w-4 h-4 text-indigo-600 rounded border-slate-300 cursor-pointer">
+                    <input type="checkbox" id="cs-th-select-all" class="w-4 h-4 text-emerald-600 rounded border-slate-300 cursor-pointer focus:ring-emerald-500">
                   </th>
                   <th class="p-3.5">Producto</th>
                   <th class="p-3.5 text-center" title="Stock Mínimo y Stock Máximo">Mín / Máx</th>
@@ -309,17 +309,17 @@
         </div>
 
         <!-- Barra Flotante de Acciones en Lote -->
-        <div id="cs-action-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 z-50 transition-all duration-300 opacity-0 pointer-events-none translate-y-4">
+        <div id="cs-action-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-md text-slate-800 border-2 border-slate-200 shadow-2xl px-6 py-4 rounded-2xl flex items-center gap-6 z-50 transition-all duration-300 opacity-0 pointer-events-none translate-y-4">
           <div class="text-xs">
-            <span class="font-bold text-indigo-400" id="cs-selected-count">0</span> productos seleccionados
-            <span class="text-slate-500 mx-2">|</span>
-            Inversión: <span class="font-bold text-emerald-400" id="cs-selected-total">$0</span>
+            <span class="font-bold text-orange-600" id="cs-selected-count">0</span> productos seleccionados
+            <span class="text-slate-300 mx-2 font-bold">|</span>
+            Inversión: <span class="font-bold text-emerald-700" id="cs-selected-total">$0</span>
           </div>
-          <div class="flex items-center gap-2">
-            <button id="cs-btn-bulk-supplier" type="button" class="btn btn-secondary px-4 py-2.5 flex items-center gap-2 text-xs font-bold rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-200 cursor-pointer">
-              <i class="fas fa-user-tag text-indigo-400"></i> Asignar Tercero
+          <div class="flex items-center gap-2.5">
+            <button id="cs-btn-bulk-supplier" type="button" class="px-4 py-2.5 flex items-center gap-2 text-xs font-bold rounded-xl border border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100 hover:border-orange-300 transition-all shadow-xs cursor-pointer">
+              <i class="fas fa-user-tag text-orange-600"></i> Asignar Tercero
             </button>
-            <button id="cs-btn-generate" class="btn btn-primary px-5 py-2.5 flex items-center gap-2 text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 cursor-pointer">
+            <button id="cs-btn-generate" class="px-5 py-2.5 flex items-center gap-2 text-xs font-bold rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-lg shadow-emerald-600/25 transition-all cursor-pointer">
               <i class="fas fa-clipboard-check"></i> Generar Órdenes de Compra
             </button>
           </div>
@@ -330,7 +330,7 @@
           <div class="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full overflow-hidden anim-scale">
             <div class="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div class="flex items-center gap-2.5">
-                <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <div class="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
                   <i class="fas fa-user-tag text-sm"></i>
                 </div>
                 <div>
@@ -353,19 +353,19 @@
                 <div id="cs-assign-dropdown" class="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto z-50 hidden divide-y divide-slate-100 text-xs"></div>
               </div>
 
-              <div id="cs-assign-selected-badge" class="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between hidden">
+              <div id="cs-assign-selected-badge" class="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between hidden">
                 <div>
-                  <div class="text-[10px] uppercase font-bold text-indigo-500">Tercero Seleccionado</div>
+                  <div class="text-[10px] uppercase font-bold text-emerald-600">Tercero Seleccionado</div>
                   <div class="font-bold text-slate-800 text-xs" id="cs-assign-selected-name">Nombre Proveedor</div>
                   <div class="text-[10px] text-slate-400 font-mono" id="cs-assign-selected-nit">NIT: 000000</div>
                 </div>
-                <i class="fas fa-circle-check text-indigo-600 text-lg"></i>
+                <i class="fas fa-circle-check text-emerald-600 text-lg"></i>
               </div>
             </div>
 
             <div class="p-4 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50/50">
-              <button type="button" id="cs-modal-assign-cancel" class="btn btn-secondary px-4 py-2 text-xs font-bold cursor-pointer">Cancelar</button>
-              <button type="button" id="cs-modal-assign-confirm" class="btn btn-primary px-5 py-2 text-xs font-bold flex items-center gap-2 cursor-pointer" disabled>
+              <button type="button" id="cs-modal-assign-cancel" class="px-4 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">Cancelar</button>
+              <button type="button" id="cs-modal-assign-confirm" class="px-5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed" disabled>
                 <i class="fas fa-check"></i> Asignar Proveedor
               </button>
             </div>
@@ -740,7 +740,7 @@
           return `
             <tr class="hover:bg-slate-50/80 transition-colors ${p.suggestedQty > 0 ? 'bg-indigo-50/5' : ''}" data-row-id="${p.id}">
               <td class="p-3.5 text-center">
-                <input type="checkbox" class="cs-row-checkbox w-4 h-4 text-indigo-600 rounded border-slate-300 cursor-pointer" data-id="${p.id}" ${isChecked ? 'checked' : ''} ${p.suggestedQty <= 0 ? 'disabled' : ''}>
+                <input type="checkbox" class="cs-row-checkbox w-4 h-4 text-emerald-600 rounded border-slate-300 cursor-pointer focus:ring-emerald-500" data-id="${p.id}" ${isChecked ? 'checked' : ''} ${p.suggestedQty <= 0 ? 'disabled' : ''}>
               </td>
               <td class="p-3.5">
                 <div class="font-bold text-slate-800">${esc(p.name)}</div>
@@ -838,7 +838,7 @@
 
       for (let p = startP; p <= endP; p++) {
         html += `
-          <button type="button" class="cs-page-nav px-3 py-1 rounded-lg text-xs font-bold ${p === state.currentPage ? 'bg-indigo-600 text-white shadow-xs' : 'border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer'}" data-page="${p}">
+          <button type="button" class="cs-page-nav px-3 py-1 rounded-lg text-xs font-bold ${p === state.currentPage ? 'bg-emerald-600 text-white shadow-xs' : 'border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer'}" data-page="${p}">
             ${p}
           </button>
         `;
@@ -888,11 +888,11 @@
             state.mode = newMode;
             // Actualizar estilo visual de botones
             modeButtons.forEach(b => {
-              b.classList.remove('bg-indigo-600', 'text-white', 'shadow-sm');
+              b.classList.remove('bg-emerald-600', 'text-white', 'shadow-sm');
               b.classList.add('text-slate-600');
             });
             target.classList.remove('text-slate-600');
-            target.classList.add('bg-indigo-600', 'text-white', 'shadow-sm');
+            target.classList.add('bg-emerald-600', 'text-white', 'shadow-sm');
 
             // Actualizar banner explicativo
             const banner = document.getElementById('cs-mode-banner');
@@ -901,8 +901,8 @@
 
             if (banner && desc && icon) {
               if (newMode === 'HIBRIDO') {
-                banner.className = 'p-4 rounded-xl border flex items-center justify-between gap-4 text-xs font-medium bg-indigo-50/70 border-indigo-200 text-indigo-900';
-                icon.className = 'fas fa-shield-halved text-indigo-600 text-base';
+                banner.className = 'p-4 rounded-xl border flex items-center justify-between gap-4 text-xs font-medium bg-emerald-50/80 border-emerald-200 text-emerald-950';
+                icon.className = 'fas fa-shield-halved text-emerald-600 text-base';
                 desc.innerHTML = `<span class="font-bold uppercase tracking-wider">Modelo Integral Híbrido</span>: Garantiza cubrir los pedidos de clientes pendientes, abastece el stock mínimo y proyecta el consumo diario del tiempo de entrega.`;
               } else if (newMode === 'PEDIDOS') {
                 banner.className = 'p-4 rounded-xl border flex items-center justify-between gap-4 text-xs font-medium bg-amber-50/70 border-amber-200 text-amber-900';
@@ -949,9 +949,9 @@
           if (eInput) eInput.value = state.endDate;
 
           presetButtons.forEach(b => {
-            b.classList.remove('bg-white', 'text-indigo-600', 'shadow-sm');
+            b.classList.remove('bg-white', 'text-emerald-700', 'font-bold', 'shadow-xs');
           });
-          target.classList.add('bg-white', 'text-indigo-600', 'shadow-sm');
+          target.classList.add('bg-white', 'text-emerald-700', 'font-bold', 'shadow-xs');
 
           loadCalculations();
         });

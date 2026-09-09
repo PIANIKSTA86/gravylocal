@@ -58,7 +58,7 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
         <!-- Encabezado de Página -->
         <div class="flex flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg shadow-md shadow-indigo-200">
+            <span class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center text-lg shadow-md shadow-emerald-200">
               <i class="fas fa-clipboard-list"></i>
             </span>
             <div>
@@ -68,13 +68,13 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
           </div>
 
           <div class="flex items-center gap-2.5">
-            <button id="po-btn-config" class="btn btn-secondary px-3.5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl border border-slate-200 hover:bg-slate-50">
-              <i class="fas fa-cog text-slate-500"></i> Consecutivo
+            <button id="po-btn-config" class="px-3.5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100 hover:border-orange-300 transition-all shadow-xs cursor-pointer">
+              <i class="fas fa-cog text-orange-600"></i> Consecutivo
             </button>
-            <button id="po-btn-sugerida" class="btn btn-secondary px-3.5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50/50 text-indigo-700 hover:bg-indigo-100/60">
-              <i class="fas fa-wand-magic-sparkles text-indigo-600"></i> Compra Sugerida
+            <button id="po-btn-sugerida" class="px-3.5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 transition-all shadow-xs cursor-pointer">
+              <i class="fas fa-wand-magic-sparkles text-emerald-600"></i> Compra Sugerida
             </button>
-            <button id="po-btn-new" class="btn btn-primary px-4 py-2 text-xs font-bold flex items-center gap-2 rounded-xl shadow-sm">
+            <button id="po-btn-new" class="px-4 py-2 text-xs font-bold flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer">
               <i class="fas fa-plus"></i> Nueva Orden
             </button>
           </div>
@@ -108,8 +108,8 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
             </select>
           </div>
 
-          <button id="po-btn-refresh" class="btn btn-secondary px-3.5 py-2 h-[36px] flex items-center gap-2 text-xs font-bold rounded-xl border border-slate-200 hover:bg-slate-50">
-            <i class="fas fa-arrows-rotate"></i>
+          <button id="po-btn-refresh" class="px-3.5 py-2 h-[36px] flex items-center gap-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-all shadow-xs cursor-pointer" title="Actualizar lista">
+            <i class="fas fa-arrows-rotate text-slate-500"></i>
           </button>
         </div>
 
@@ -152,7 +152,7 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
         <div class="bg-white rounded-2xl p-6 shadow-2xl max-w-md w-full mx-4 border border-slate-100 space-y-4">
           <div class="flex items-center justify-between pb-3 border-b border-slate-100">
             <h4 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              <i class="fas fa-cog text-indigo-600"></i> Consecutivo de Órdenes de Compra
+              <i class="fas fa-cog text-orange-600"></i> Consecutivo de Órdenes de Compra
             </h4>
             <button type="button" class="po-close-modal text-slate-400 hover:text-slate-600 text-sm">
               <i class="fas fa-times"></i>
@@ -174,8 +174,8 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
             </div>
           </div>
           <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-            <button type="button" class="po-close-modal btn btn-secondary px-4 py-2 text-xs font-bold">Cancelar</button>
-            <button type="button" id="po-btn-save-config" class="btn btn-primary px-4 py-2 text-xs font-bold">Guardar Cambios</button>
+            <button type="button" class="po-close-modal px-4 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">Cancelar</button>
+            <button type="button" id="po-btn-save-config" class="px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white shadow-md shadow-orange-500/20 transition-all cursor-pointer">Guardar Cambios</button>
           </div>
         </div>
       </div>
@@ -185,7 +185,7 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
         <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-slate-100 flex flex-col max-h-[90vh]">
           <div class="p-5 border-b border-slate-100 flex items-center justify-between shrink-0">
             <h4 class="text-base font-bold text-slate-800 flex items-center gap-2">
-              <i class="fas fa-file-invoice text-indigo-600"></i> <span id="po-modal-title">Nueva Orden de Compra</span>
+              <i class="fas fa-file-invoice text-emerald-600"></i> <span id="po-modal-title">Nueva Orden de Compra</span>
             </h4>
             <button type="button" class="po-close-modal text-slate-400 hover:text-slate-600 text-sm">
               <i class="fas fa-times"></i>
@@ -228,8 +228,8 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
             <div class="pt-2">
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Productos de la Orden</span>
-                <button type="button" id="pof-btn-add-line" class="btn btn-secondary px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 border border-slate-200 hover:bg-slate-50">
-                  <i class="fas fa-plus text-indigo-600"></i> Agregar Producto
+                <button type="button" id="pof-btn-add-line" class="px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition-all cursor-pointer">
+                  <i class="fas fa-plus text-emerald-600"></i> Agregar Producto
                 </button>
               </div>
 
@@ -271,8 +271,8 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
           </div>
 
           <div class="p-4 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0 bg-slate-50/50 rounded-b-2xl">
-            <button type="button" class="po-close-modal btn btn-secondary px-4 py-2 text-xs font-bold">Cancelar</button>
-            <button type="button" id="pof-btn-save" class="btn btn-primary px-5 py-2 text-xs font-bold flex items-center gap-2">
+            <button type="button" class="po-close-modal px-4 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">Cancelar</button>
+            <button type="button" id="pof-btn-save" class="px-5 py-2 text-xs font-bold flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20 transition-all cursor-pointer">
               <i class="fas fa-save"></i> Guardar Orden de Compra
             </button>
           </div>
@@ -416,7 +416,7 @@ const PO_STATUS_MAP: Record<string, POStatusDetail> = {
           let h = '';
           h += `<button type="button" class="po-page-btn px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold ${state.page === 1 ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 cursor-pointer'}" data-page="${state.page - 1}" ${state.page === 1 ? 'disabled' : ''}><i class="fas fa-chevron-left"></i></button>`;
           for (let i = 1; i <= state.totalPages; i++) {
-            h += `<button type="button" class="po-page-btn px-3 py-1 rounded-lg text-xs font-bold ${i === state.page ? 'bg-indigo-600 text-white' : 'border border-slate-200 hover:bg-slate-100 text-slate-700'}" data-page="${i}">${i}</button>`;
+            h += `<button type="button" class="po-page-btn px-3 py-1 rounded-lg text-xs font-bold ${i === state.page ? 'bg-emerald-600 text-white shadow-xs' : 'border border-slate-200 hover:bg-slate-100 text-slate-700 cursor-pointer'}" data-page="${i}">${i}</button>`;
           }
           h += `<button type="button" class="po-page-btn px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-semibold ${state.page === state.totalPages ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100 cursor-pointer'}" data-page="${state.page + 1}" ${state.page === state.totalPages ? 'disabled' : ''}><i class="fas fa-chevron-right"></i></button>`;
           pBtns.innerHTML = h;

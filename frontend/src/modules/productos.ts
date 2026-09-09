@@ -681,10 +681,10 @@ async function renderProductos(c) {
       <!-- Selector Estricto de Modo Comercial (No Mezcla de Naturaleza) -->
       <div class="mb-4 bg-white rounded-2xl p-2.5 border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div class="inline-flex rounded-xl p-1 bg-slate-100 border border-slate-200 text-xs font-bold w-full sm:w-auto">
-          <button id="btn-mode-venta" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'venta' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+          <button id="btn-mode-venta" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'venta' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-emerald-700'}">
             <i class="fas fa-boxes-stacked"></i> 🛍️ Venta Inmediata (Stock Físico)
           </button>
-          <button id="btn-mode-reserva" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'reserva' ? 'bg-[#006876] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}">
+          <button id="btn-mode-reserva" class="flex-1 sm:flex-none px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-all ${cartMode === 'reserva' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-600 hover:text-orange-700'}">
             <i class="fas fa-ship"></i> 🚢 Preventa & Reservas (En Tránsito)
           </button>
         </div>

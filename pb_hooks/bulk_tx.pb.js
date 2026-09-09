@@ -153,21 +153,39 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
         if ((txType.getString("numbering_mode") || "continuous") === "period") {
           const periodTag = txDate.slice(0, 7).replace("-", ""); // "2026-05" -> "202605"
           const counters = JSON.parse(txType.getString("period_counters") || "{}") || {};
-          const next = (Number(counters[periodTag]) || 0) + 1;
+          let next = Number(counters[periodTag]) || 0;
+
+          while (true) {
+            next++;
+            txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
+            let found = false;
+            try {
+              txApp.findFirstRecordByFilter("transactions", "number = '" + txNumber + "'");
+              found = true;
+            } catch (_) {}
+            if (!found) break;
+          }
 
           counters[periodTag] = next;
           txType.set("period_counters", JSON.stringify(counters));
           txApp.save(txType);
-
-          txNumber = `${prefix}-${periodTag}-${String(next).padStart(6, "0")}`;
         } else {
           const consecutiveRaw = Number(txType.get("consecutive") || 0);
-          const next = (Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0) + 1;
+          let next = Number.isFinite(consecutiveRaw) ? consecutiveRaw : 0;
+
+          while (true) {
+            next++;
+            txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
+            let found = false;
+            try {
+              txApp.findFirstRecordByFilter("transactions", "number = '" + txNumber + "'");
+              found = true;
+            } catch (_) {}
+            if (!found) break;
+          }
 
           txType.set("consecutive", next);
           txApp.save(txType);
-
-          txNumber = `${prefix}-${String(next).padStart(8, "0")}`;
         }
       } else {
         // Si no se encontró por ID, buscar si existe un comprobante con este número

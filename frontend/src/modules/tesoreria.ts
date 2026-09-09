@@ -1371,13 +1371,13 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
   const selectedTxTypeId = txTypeSelect?.value || '';
   let docNumber = docNumInput?.value?.trim() || 'AUTO';
   
-  // If the docNumber matches the next consecutive of the selected tx type, treat it as AUTO
+  // Si el número coincide con la sugerencia, empieza por AUTO o el prefijo de la serie, delegar al backend como AUTO
   const selectedTxType = _tesoCurrentTxTypes.find(t => t.id === selectedTxTypeId);
   if (selectedTxType) {
     const prefix = (selectedTxType.prefix || selectedTxType.code || 'TX').trim().toUpperCase();
     const next = (Number(selectedTxType.consecutive) || 0) + 1;
     const nextNum = `${prefix}-${String(next).padStart(8, '0')}`;
-    if (docNumber === 'AUTO' || docNumber === nextNum || docNumber.startsWith('AUTO (')) {
+    if (!docNumber || docNumber === 'AUTO' || docNumber === nextNum || docNumber.startsWith('AUTO') || docNumber.startsWith(`${prefix}-`)) {
       docNumber = 'AUTO';
     }
   }
@@ -1709,6 +1709,11 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     if (cont) {
       renderTesoListado(cont, typeCode as any);
     }
+
+    // Refrescar en memoria los tipos de transacción para actualizar consecutivos de inmediato
+    try {
+      _tesoCurrentTxTypes = await pb.listAll('transaction_types', { filter: 'active=true', sort: 'code' });
+    } catch (_) {}
 
   } catch (err: any) {
     console.error(err);

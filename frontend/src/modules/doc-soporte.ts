@@ -715,6 +715,13 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     const prevEl = document.getElementById('ds-consecutivo-preview') as HTMLInputElement;
     if (!prevEl) return;
 
+    // Si estamos editando un borrador existente que ya posee un número asignado, respetamos su número
+    if (existingPur && existingPur.number) {
+      prevEl.value = existingPur.number;
+      prevEl.style.color = '#1E293B';
+      return;
+    }
+
     let selectedTxType = txTypes.find((t: any) => t.id === txTypeSel?.value);
     let selectedRes = resolutions.find((r: any) => r.id === resSel?.value);
 
@@ -758,7 +765,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     if (selectedRes) {
       const nextNum = (selectedRes.current_number ? selectedRes.current_number + 1 : selectedRes.number_from) || 1;
       const prefix = selectedRes.prefix ? selectedRes.prefix + '-' : '';
-      prevEl.value = `${prefix}${nextNum}`;
+      prevEl.value = `${prefix}${String(nextNum).padStart(8, '0')}`;
       prevEl.style.color = '#1E293B';
     } else {
       prevEl.value = 'Sin resolución DIAN asociada';
@@ -895,8 +902,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
       <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div>
-          <label class="form-label font-bold">Próximo Consecutivo</label>
-          <input id="ds-consecutivo-preview" class="form-input font-mono font-bold bg-slate-100 text-slate-800" readonly value="Cargando...">
+          <label class="form-label font-bold">${existingPur ? 'Consecutivo Borrador' : 'Próximo Consecutivo'}</label>
+          <input id="ds-consecutivo-preview" class="form-input font-mono font-bold bg-slate-100 text-slate-800" readonly value="${esc(existingPur?.number || 'Cargando...')}">
         </div>
         <div>
           <label class="form-label font-bold">Resolución DIAN</label>
@@ -1154,9 +1161,14 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
       const billDate = (document.getElementById('ds-date') as HTMLInputElement).value || (window as any).todayStr();
 
+      // Si es edición de borrador existente, conservar de forma estricta su número original
+      const validDocNumber = (existingPur && existingPur.number)
+        ? existingPur.number
+        : ((consecutivoPreview && !consecutivoPreview.includes('Sin resolución')) ? consecutivoPreview : 'AUTO');
+
       const headerPayload = {
-        number: consecutivoPreview,
-        tx_number: consecutivoPreview,
+        number: validDocNumber,
+        tx_number: (existingPur && (existingPur.tx_number || existingPur.number)) ? (existingPur.tx_number || existingPur.number) : validDocNumber,
         tx_type_id: txTypeId,
         supplier_id: supplierId,
         warehouse_id: warehouseId,
@@ -1165,25 +1177,47 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         payment_dian_code: dianCode,
         bank_account_id: bankAccountId,
         notes: (document.getElementById('ds-notes') as HTMLTextAreaElement).value || 'Documento Soporte a No Obligado a Facturar',
-        status: 'draft'
+        status: 'draft',
+        subtotal: subtotalSum,
+        total: subtotalSum,
+        payable_total: subtotalSum
       };
 
       let purInv: any;
-      if (typeof (window as any).API?.createPurchaseInvoice === 'function') {
-        purInv = await (window as any).API.createPurchaseInvoice(headerPayload, linesData);
-      } else {
-        purInv = await pb.create('purchase_invoices', {
-          ...headerPayload,
-          subtotal: subtotalSum,
-          total: subtotalSum,
-          payable_total: subtotalSum
-        });
-        for (let i = 0; i < linesData.length; i++) {
-          await pb.create('purchase_invoice_lines', {
-            invoice_id: purInv.id,
-            line_order: i + 1,
-            ...linesData[i]
+      if (existingPur && existingPur.id) {
+        // ACTUALIZAR BORRADOR EXISTENTE (Sin crear registros duplicados ni alterar consecutivos)
+        if (typeof (window as any).API?.updatePurchaseInvoice === 'function') {
+          purInv = await (window as any).API.updatePurchaseInvoice(existingPur.id, headerPayload, linesData);
+        } else {
+          await pb.update('purchase_invoices', existingPur.id, headerPayload);
+          const oldLines = await pb.listAll('purchase_invoice_lines', {
+            filter: `invoice_id="${pb.escapeFilterValue(existingPur.id)}"`
           });
+          for (const ol of oldLines) {
+            await pb.delete('purchase_invoice_lines', ol.id);
+          }
+          for (let i = 0; i < linesData.length; i++) {
+            await pb.create('purchase_invoice_lines', {
+              invoice_id: existingPur.id,
+              line_order: i + 1,
+              ...linesData[i]
+            });
+          }
+          purInv = await pb.get('purchase_invoices', existingPur.id, { expand: 'supplier_id,tx_type_id' });
+        }
+      } else {
+        // CREAR NUEVO DOCUMENTO SOPORTE
+        if (typeof (window as any).API?.createPurchaseInvoice === 'function') {
+          purInv = await (window as any).API.createPurchaseInvoice(headerPayload, linesData);
+        } else {
+          purInv = await pb.create('purchase_invoices', headerPayload);
+          for (let i = 0; i < linesData.length; i++) {
+            await pb.create('purchase_invoice_lines', {
+              invoice_id: purInv.id,
+              line_order: i + 1,
+              ...linesData[i]
+            });
+          }
         }
       }
 

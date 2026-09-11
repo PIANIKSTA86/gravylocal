@@ -2316,16 +2316,34 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     
     let invoice = null;
     let isInmoInvoice = false;
-    try {
-      invoice = $app.findFirstRecordByFilter("invoices", "tx_id = '" + realTxId + "'");
-    } catch (_) {
+    let isPurchase = false;
+
+    if (isDS || isNDS) {
       try {
         invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + realTxId + "'");
+        if (invoice) {
+          isPurchase = true;
+          purchaseInv = invoice;
+        }
+      } catch (_) {}
+    }
+
+    if (!invoice) {
+      try {
+        invoice = $app.findFirstRecordByFilter("invoices", "tx_id = '" + realTxId + "'");
       } catch (_) {
         try {
-          invoice = $app.findFirstRecordByFilter("inmo_invoices", "tx_id = '" + realTxId + "'");
-          isInmoInvoice = true;
-        } catch (_) {}
+          invoice = $app.findFirstRecordByFilter("purchase_invoices", "tx_id = '" + realTxId + "'");
+          if (invoice) {
+            isPurchase = true;
+            purchaseInv = invoice;
+          }
+        } catch (_2) {
+          try {
+            invoice = $app.findFirstRecordByFilter("inmo_invoices", "tx_id = '" + realTxId + "'");
+            isInmoInvoice = true;
+          } catch (_) {}
+        }
       }
     }
 
@@ -2424,9 +2442,16 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         ivaTotal = invoice.getFloat("iva_total");
         total = invoice.getFloat("total");
         
-        const isPurchase = (purchaseInv !== null);
+        if (!isPurchase && (purchaseInv !== null || isDS || isNDS)) {
+          isPurchase = true;
+        }
         const linesCollection = isPurchase ? 'purchase_invoice_lines' : 'invoice_lines';
-        const lines = $app.findRecordsByFilter(linesCollection, "invoice_id = '" + invoice.id + "'", "line_order");
+        let lines = $app.findRecordsByFilter(linesCollection, "invoice_id = '" + invoice.id + "'", "line_order");
+        if ((!lines || lines.length === 0) && isPurchase) {
+          try {
+            lines = $app.findRecordsByFilter("purchase_invoice_lines", "purchase_invoice_id = '" + invoice.id + "'", "line_order");
+          } catch (_) {}
+        }
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           
@@ -2490,6 +2515,40 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         }
       }
       total = subtotal;
+    }
+
+    if (items.length === 0) {
+      const txLines = $app.findRecordsByFilter("tx_lines", "tx_id = '" + realTxId + "'", "line_order");
+      let lineIdx = 1;
+      for (let i = 0; i < txLines.length; i++) {
+        const line = txLines[i];
+        const d = line.getFloat("debit");
+        const c = line.getFloat("credit");
+        const amount = d > 0 ? d : c;
+        if (amount > 0) {
+          items.push({
+            id: String(lineIdx++),
+            description: line.getString("description") || "Concepto Contable",
+            qty: 1,
+            price: amount,
+            ivaRate: 0,
+            ivaAmount: 0,
+            subtotal: amount,
+            total: amount,
+            code: '99999999',
+            unit: 'ZZ'
+          });
+          subtotal += amount;
+        }
+      }
+      if (items.length > 0) {
+        total = subtotal;
+      }
+    }
+
+    if (items.length === 0) {
+      e.json(400, { message: "El documento " + (tx.getString("number") || "") + " no contiene conceptos ni líneas para emitir ante la DIAN." });
+      return;
     }
     
     const docNumber = tx.getString("number") || ("TEMP" + Date.now());
@@ -3476,13 +3535,16 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     }
     
     if (docRecord.getString("status") === "aceptada") {
-      e.json(200, {
-        success: true,
-        status: "aceptada",
-        cufe: docRecord.getString("cufe"),
-        dianResponse: "Este documento ya fue aceptado por la DIAN."
-      });
-      return;
+      const currentCufe = docRecord.getString("cufe") || "";
+      if (currentCufe && currentCufe.length > 20 && currentCufe !== "404" && !body.force) {
+        e.json(200, {
+          success: true,
+          status: "aceptada",
+          cufe: currentCufe,
+          dianResponse: "Este documento ya fue aceptado por la DIAN."
+        });
+        return;
+      }
     }
     
     const transId = docRecord.getString("ftech_transaction_id");
@@ -3510,9 +3572,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     const hubUrl = "http://127.0.0.1:8088/api/facturatech/check-status";
     console.log("[GRAVY HOOK] Consultando estado en Hub: " + hubUrl);
     
-    const txTypeCode = txType ? txType.getString("code") : "";
-    const isDS = (txTypeCode === "DS");
-    const isNDS = (txTypeCode === "NDS");
+    const txTypeCode = txType ? String(txType.getString("code") || '').toUpperCase() : "";
+    const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : "";
+    const isDS = (txTypeCode === "DS" || txPrefix === "DS" || txPrefix === "DSE");
+    const isNDS = (txTypeCode === "NDS" || txPrefix === "NDS");
     const isPOS = (txTypeCode === "POS");
 
     const isNC = (txTypeCode === "NC");

@@ -287,6 +287,10 @@ function renderPhInvRows(invoices) {
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(inv.id)}" title="Ver detalle">
             <i class="fas fa-eye"></i>
           </button>
+          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(inv.id)}" title="Descargar PDF (Factura / Cuenta de Cobro)"
+            style="color:#DC2626;border-color:#FCA5A5">
+            <i class="fas fa-file-pdf"></i>
+          </button>
           ${inv.status === 'draft' ? `
             <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(inv.id)}" title="Añadir concepto individual"
               style="color:#7F7CFF;border-color:#C4B5FD">
@@ -319,7 +323,13 @@ function renderPhInvRows(invoices) {
 
 function attachPhInvActions() {
   document.querySelectorAll('.ph-inv-view').forEach(btn => {
-    btn.addEventListener('click', () => openPhInvoiceDetail(btn.dataset.id));
+    btn.addEventListener('click', () => openPhInvoiceDetail((btn as HTMLElement).dataset.id!));
+  });
+  document.querySelectorAll('.ph-inv-download-pdf').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPhDownloadPdfModal((btn as HTMLElement).dataset.id!);
+    });
   });
   document.querySelectorAll('.ph-inv-add-individual').forEach(btn => {
     btn.addEventListener('click', () => openPhAddIndividualLinesModal(btn.dataset.id));
@@ -595,8 +605,22 @@ async function openPhInvoiceDetail(invoiceId) {
             </tr>
           </tbody>
         </table>
+        <div class="p-3.5 rounded-xl border bg-gray-50 flex items-start justify-between gap-3 mt-3" style="border-color:#E5E7EB">
+          <div class="flex-1">
+            <p class="text-xs font-bold text-gray-700 uppercase mb-1 flex items-center gap-1.5">
+              <i class="fas fa-comment-dots text-indigo-500"></i>Comentario / Pie de Factura:
+            </p>
+            <p class="text-xs text-gray-600 italic whitespace-pre-line" id="ph-inv-detail-note-display">${esc(inv.notes || '— Sin nota individual asignada (usará el comentario configurado en la copropiedad) —')}</p>
+          </div>
+          ${canEditDraftLines ? `
+            <button class="btn btn-outline btn-sm flex-shrink-0" id="ph-edit-inv-note-btn" title="Editar nota de esta factura">
+              <i class="fas fa-pen mr-1"></i>Editar nota
+            </button>
+          ` : ''}
+        </div>
       </div>`,
       `<div class="flex flex-wrap gap-2">
+        <button class="btn btn-outline" id="ph-inv-detail-download-pdf" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf mr-1"></i> Descargar PDF</button>
         <button class="btn btn-outline" id="ph-inv-detail-print-inv"><i class="fas fa-print mr-1"></i> Imprimir Factura</button>
         <button class="btn btn-outline" id="ph-inv-detail-print-statement"><i class="fas fa-file-invoice mr-1"></i> Imprimir Estado Cuenta</button>
         <button class="btn btn-primary" id="ph-inv-detail-send-email"><i class="fas fa-envelope mr-1"></i> Enviar Correo</button>
@@ -605,11 +629,36 @@ async function openPhInvoiceDetail(invoiceId) {
     );
 
     setTimeout(() => {
+      document.getElementById('ph-inv-detail-download-pdf')?.addEventListener('click', () => openPhDownloadPdfModal(invoiceId));
       document.getElementById('ph-inv-detail-print-inv')?.addEventListener('click', () => printPhInvoice(invoiceId, 'invoice'));
       document.getElementById('ph-inv-detail-print-statement')?.addEventListener('click', () => printPhInvoice(invoiceId, 'statement'));
       document.getElementById('ph-inv-detail-send-email')?.addEventListener('click', () => openPhInvoiceEmailModal(invoiceId));
 
       if (canEditDraftLines) {
+        document.getElementById('ph-edit-inv-note-btn')?.addEventListener('click', () => {
+          openModal(
+            'Editar Pie de Factura',
+            `<div class="space-y-3">
+               <p class="text-xs text-gray-600">Instrucción o cuentas bancarias para el pie de esta factura:</p>
+               <textarea id="ph-modal-edit-note" class="form-input text-xs font-sans" rows="4" style="resize:vertical;">${esc(inv.notes || '')}</textarea>
+             </div>`,
+            `<button class="btn btn-outline" onclick="openPhInvoiceDetail('${esc(invoiceId)}')">Cancelar</button>
+             <button class="btn btn-primary" id="ph-modal-save-note-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+          );
+          setTimeout(() => {
+            document.getElementById('ph-modal-save-note-btn')?.addEventListener('click', async () => {
+              const newNote = ((document.getElementById('ph-modal-edit-note') as HTMLTextAreaElement)?.value || '').trim();
+              try {
+                await pb.update('ph_invoices', invoiceId, { notes: newNote });
+                showToast('Nota de la factura actualizada.', 'success');
+                openPhInvoiceDetail(invoiceId);
+              } catch (e: any) {
+                showToast(e.message || 'Error al actualizar nota.', 'error');
+              }
+            });
+          }, 50);
+        });
+
         document.querySelectorAll('.ph-line-edit').forEach(btn => {
           btn.addEventListener('click', () => openPhEditDraftLineModal(btn.dataset.lineId, btn.dataset.invId));
         });
@@ -699,6 +748,7 @@ async function postPhInvoiceConfirm(invoiceId, btn) {
       row.querySelector('td:nth-child(8)').innerHTML = `
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(inv.id)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(inv.id)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
           <button class="btn btn-sm ph-inv-paid" data-id="${esc(inv.id)}" title="Marcar pagada"
             style="background:#EEF4FF;color:#2446B8;border:1.5px solid #93C5FD"><i class="fas fa-coins"></i></button>
           ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(inv.id)}" title="Descontabilizar factura"
@@ -726,6 +776,7 @@ async function markPhPaidConfirm(invoiceId, btn) {
       row.querySelector('td:nth-child(8)').innerHTML = `
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
           ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(invoiceId)}" title="Descontabilizar factura"
             style="color:#1A4B8C;border-color:#93C5FD"><i class="fas fa-rotate-left"></i></button>` : ''}
         </div>`;
@@ -751,6 +802,7 @@ async function unpostPhInvoiceConfirm(invoiceId, btn) {
       row.querySelector('td:nth-child(8)').innerHTML = `
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(invoiceId)}" title="Añadir concepto individual"
             style="color:#7F7CFF;border-color:#C4B5FD"><i class="fas fa-plus-circle"></i></button>
           <button class="btn btn-sm ph-inv-post" data-id="${esc(invoiceId)}" title="Contabilizar"
@@ -797,7 +849,10 @@ function voidPhInvoiceModal(invoiceId) {
           row.style.opacity = '.55';
           row.querySelector('td:nth-child(7)').innerHTML = `<span class="badge badge-red">Anulada</span>`;
           row.querySelector('td:nth-child(8)').innerHTML = `
-            <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>`;
+            <div class="flex gap-1">
+              <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
+              <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
+            </div>`;
           attachPhInvActions();
         }
       } catch (err) {
@@ -2253,13 +2308,14 @@ async function renderPhConfig(c) {
   c.id = c.id || 'ph-config-container';
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
-    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes] = await Promise.all([
+    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes, rawFooterNote] = await Promise.all([
       API.getPhBillingConcepts(false),
       API.getPhCommonAreas(false),
       API.getSetting('ph_config_v1'),
       API.getAccounts(true),
       API.getPhProperties(true),
       API.getPhIndividualCharges({ filter: '' }).catch(() => ({ items: [] })),
+      API.getSetting('ph_invoice_footer_note').catch(() => ''),
     ]);
     const indConcepts = (indConceptsRes?.items || []).slice().sort((a, b) => {
       const an = String(a?.name || a?.description || '').toLowerCase();
@@ -2269,6 +2325,8 @@ async function renderPhConfig(c) {
     const propMap = new Map((properties || []).map(p => [p.id, p]));
     let phCfg = {};
     try { phCfg = phCfgRaw ? JSON.parse(phCfgRaw) : {}; } catch (_) { phCfg = {}; }
+    const defaultFooterNote = 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.';
+    const invoiceFooterNote = (rawFooterNote || phCfg.invoice_footer_note || defaultFooterNote).trim();
     const cxcCode    = phCfg.cxc_code    || '130505';
     const incomeCode = phCfg.income_code || '413505';
     const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
@@ -2291,6 +2349,27 @@ async function renderPhConfig(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Parámetros de Facturación y Pie de Factura -->
+        <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
+          <h4 class="font-bold mb-4" style="color:#0D2137">
+            <i class="fas fa-file-invoice-dollar mr-2" style="color:#7F7CFF"></i>Parámetros de Facturación y Pie de Factura
+          </h4>
+          <p class="text-sm mb-4" style="color:#6B7280">
+            Define el comentario, instrucciones de consignación y cuentas bancarias oficiales que se imprimirán al pie de las facturas y cuentas de cobro de esta copropiedad.
+          </p>
+          <div class="form-group">
+            <label class="form-label font-semibold">Comentario / Instrucciones de Pago al Pie de Factura</label>
+            <textarea id="ph-cfg-footer-note" class="form-input font-sans text-xs" rows="5" style="resize:vertical;"
+              placeholder="Ej: CONSIGNAR EN LA CUENTA CORRIENTE BANCOLOMBIA No. 123-456789-01 A NOMBRE DE LA COPROPIEDAD...">${esc(invoiceFooterNote)}</textarea>
+            <p class="text-xs mt-1.5" style="color:#9CA3AF">
+              Indica números de cuenta, convenios bancarios, PSE, Nequi/Daviplata o advertencias de recaudo específicas de este conjunto.
+            </p>
+          </div>
+          <button class="btn btn-primary" id="ph-cfg-save-note-btn">
+            <i class="fas fa-save mr-1"></i>Guardar Parámetros de Facturación
+          </button>
+        </div>
 
         <!-- Configuración Contable -->
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
@@ -2316,7 +2395,7 @@ async function renderPhConfig(c) {
             <p class="text-xs mt-1" style="color:#9CA3AF">Cuenta clase 2 donde se registran los saldos a favor de propietarios (ej: 280505 Anticipos de Clientes).</p>
           </div>
           <button class="btn btn-primary" id="ph-cfg-save-btn">
-            <i class="fas fa-save mr-1"></i>Guardar Configuración
+            <i class="fas fa-save mr-1"></i>Guardar Cuentas Contables
           </button>
         </div>
 
@@ -2425,11 +2504,32 @@ async function renderPhConfig(c) {
         </div>
       </div>`;
 
+    // Guardar parámetros de facturación (Pie de factura)
+    document.getElementById('ph-cfg-save-note-btn')?.addEventListener('click', async () => {
+      const noteVal = ((document.getElementById('ph-cfg-footer-note') as HTMLTextAreaElement)?.value || '').trim();
+      const btn = document.getElementById('ph-cfg-save-note-btn') as HTMLButtonElement;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...'; }
+      try {
+        const cfg = { ...phCfg, invoice_footer_note: noteVal };
+        await Promise.all([
+          API.setSetting('ph_config_v1', JSON.stringify(cfg)),
+          API.setSetting('ph_invoice_footer_note', noteVal),
+        ]);
+        phCfg.invoice_footer_note = noteVal;
+        showToast('Parámetros de facturación guardados exitosamente.', 'success');
+      } catch (err: any) {
+        showToast(err.message || 'Error al guardar parámetros.', 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Parámetros de Facturación'; }
+      }
+    });
+
     // Guardar config contable
     document.getElementById('ph-cfg-save-btn')?.addEventListener('click', async () => {
       const cxc    = (document.getElementById('ph-cfg-cxc')?.value    || '').trim();
       const income = (document.getElementById('ph-cfg-income')?.value  || '').trim();
       const anticipo = (document.getElementById('ph-cfg-anticipo')?.value || '').trim();
+      const noteVal = ((document.getElementById('ph-cfg-footer-note') as HTMLTextAreaElement)?.value || '').trim();
       if (!cxc || !income) { showToast('Completa la cuenta CxC y la cuenta de ingreso.', 'warning'); return; }
       if (!accountByCode.has(cxc) || !accountByCode.has(income)) {
         showToast('Selecciona cuentas válidas del PUC activo.', 'warning');
@@ -2454,13 +2554,17 @@ async function renderPhConfig(c) {
             if (antiRes.length) anticipoAccountId = antiRes[0].id;
           } catch(_) {}
         }
-        const cfg = { ...phCfg, cxc_code: cxc, income_code: income, anticipo_account_code: anticipo || null, anticipo_account_id: anticipoAccountId };
-        await API.setSetting('ph_config_v1', JSON.stringify(cfg));
-        showToast('Configuración guardada.', 'success');
+        const cfg = { ...phCfg, cxc_code: cxc, income_code: income, anticipo_account_code: anticipo || null, anticipo_account_id: anticipoAccountId, invoice_footer_note: noteVal };
+        await Promise.all([
+          API.setSetting('ph_config_v1', JSON.stringify(cfg)),
+          API.setSetting('ph_invoice_footer_note', noteVal),
+        ]);
+        phCfg = cfg;
+        showToast('Configuración contable guardada.', 'success');
       } catch (err) {
         showToast(err.message || 'Error.', 'error');
       } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Configuración'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Cuentas Contables'; }
       }
     });
 
@@ -3405,7 +3509,12 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
       (window as any).API.getPhInvoiceLines(invoiceId),
     ]);
     const prop = inv.expand?.property_id;
-    const owner = prop?.expand?.owner_id;
+    let owner = prop?.expand?.owner_id;
+    if (!owner && prop?.owner_id) {
+      try {
+        owner = await (window as any).pb.get('third_parties', prop.owner_id);
+      } catch (_) {}
+    }
 
     let outstandingInvoices: any[] = [];
     if (type === 'statement') {
@@ -3421,7 +3530,7 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
       }
     }
 
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64] = await Promise.all([
+    const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64, customFooterNote] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
       (window as any).API.getSetting('company_nit').catch(() => ''),
       (window as any).API.getSetting('company_address').catch(() => ''),
@@ -3429,6 +3538,7 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
       (window as any).API.getSetting('company_email').catch(() => ''),
       (window as any).API.getSetting('company_city').catch(() => ''),
       (window as any).API.getSetting('company_logo').catch(() => ''),
+      (window as any).API.getSetting('ph_invoice_footer_note').catch(() => ''),
     ]);
 
     // Agrupar saldos por conceptos
@@ -3467,6 +3577,47 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
 
     const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
     const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
+
+    function getPreviousPeriod(p: string): string {
+      if (!p || typeof p !== 'string') return '';
+      const parts = p.split('-');
+      let y = parseInt(parts[0], 10);
+      let m = parseInt(parts[1], 10) - 1;
+      if (m < 1) {
+        m = 12;
+        y -= 1;
+      }
+      return `${y}-${String(m).padStart(2, '0')}`;
+    }
+
+    const prevPeriod = getPreviousPeriod(inv.period);
+    const prevMonthName = getMonthNameUpper(prevPeriod);
+    let prevMonthUnitRecaudo = 0;
+    let prevMonthTotalRecaudo = 0;
+
+    if (prevPeriod) {
+      try {
+        const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
+        const [unitPrevPaid, allPrevPaid] = await Promise.all([
+          (window as any).pb.listAll('ph_invoices', {
+            filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
+          }).catch(() => []),
+          (window as any).pb.listAll('ph_invoices', {
+            filter: `period="${prevPeriod}" && status="paid"`
+          }).catch(() => [])
+        ]);
+        if (unitPrevPaid && unitPrevPaid.length > 0) {
+          prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+        }
+        if (allPrevPaid && allPrevPaid.length > 0) {
+          prevMonthTotalRecaudo = allPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+        }
+      } catch (err) {
+        console.warn('Error al calcular recaudos del mes anterior:', err);
+      }
+    }
+
+    const ownerDocNumber = owner?.doc_number ? (owner.doc_number + (owner.dv ? '-' + owner.dv : '')) : (owner?.nit || owner?.document || '—');
 
     const printWin = window.open('', '_blank');
     if (!printWin) {
@@ -3641,7 +3792,7 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
                         <tr>
                           <td style="border: none; padding: 0; font-weight: bold;">${(window as any).esc(prop?.code || prop?.name || '')}</td>
                           <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; background: #ffffff;">NIT / C.C.</td>
-                          <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(owner?.nit || owner?.document || '—')}</td>
+                          <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(ownerDocNumber)}</td>
                         </tr>
                       </table>
                     </td>
@@ -3695,6 +3846,20 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
             </tr>
           </table>
 
+          <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background: #ffffff;">
+            <tr>
+              <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background: #ffffff;">
+                <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
+                <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
+              </td>
+              <td style="width: 50%; padding: 4.5px 8px; background: #ffffff;">
+                <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
+                <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
+              </td>
+            </tr>
+          </table>
+
           <!-- Tabla de Conceptos (100% de Ancho, Sin Columna Lateral Rotada) -->
           <table class="data-table" style="margin-bottom: 14px;">
             <thead>
@@ -3718,7 +3883,7 @@ async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') 
                   ${numeroALetras(totalActual)}
                 </div>
                 <div style="font-size: 10px; line-height: 1.4; font-style: italic; text-align: left; text-transform: uppercase; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #000;">
-                  ${inv.notes ? (window as any).esc(inv.notes).replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
+                  ${(window as any).esc(inv.notes?.trim() || customFooterNote?.trim() || 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.').replace(/\n/g, '<br>')}
                 </div>
               </td>
               <td style="width: 35%; vertical-align: top;">
@@ -3830,14 +3995,126 @@ async function openPhInvoiceEmailModal(invoiceId: string) {
   }
 }
 
+async function openPhDownloadPdfModal(invoiceId: string) {
+  try {
+    const inv = await pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' });
+    const prop = inv.expand?.property_id;
+    const propName = prop?.name || prop?.code || 'Unidad';
+    const num = inv.number || 'Factura';
+
+    (window as any).openModal(
+      `Descargar Documento PDF — ${esc(propName)}`,
+      `<div class="space-y-4">
+        <p class="text-sm text-gray-600">
+          Selecciona el formato de documento PDF que deseas generar y descargar para la factura <strong>${esc(num)}</strong> (${esc(propName)}):
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div id="ph-opt-dl-invoice" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#3B82F6; background:#F8FAFC;">
+            <div class="flex items-center gap-2 mb-1.5">
+              <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
+              <span class="font-bold text-sm text-gray-800">Factura / Cuenta del Mes</span>
+            </div>
+            <p class="text-xs text-gray-500 leading-relaxed">
+              Muestra exclusivamente los conceptos y valores liquidados para el período facturado actual (${fmtPeriod(inv.period)}).
+            </p>
+          </div>
+          <div id="ph-opt-dl-statement" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#E2E8F0; background:#FFFFFF;">
+            <div class="flex items-center gap-2 mb-1.5">
+              <i class="fas fa-file-lines text-indigo-600 text-lg"></i>
+              <span class="font-bold text-sm text-gray-800">Estado de Cuenta Integral</span>
+            </div>
+            <p class="text-xs text-gray-500 leading-relaxed">
+              Incluye saldo anterior de períodos vencidos no pagados, cobros del mes y saldo total acumulado a la fecha.
+            </p>
+          </div>
+        </div>
+        <div id="ph-dl-pdf-status" class="hidden text-xs font-semibold text-blue-600 flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>Generando archivo PDF oficial...</span>
+        </div>
+      </div>`,
+      `<button class="btn btn-outline" id="ph-dl-pdf-cancel" onclick="closeModal()">Cancelar</button>
+       <button class="btn btn-primary" id="ph-dl-pdf-btn"><i class="fas fa-download mr-1"></i> Descargar PDF</button>`
+    );
+
+    setTimeout(() => {
+      let selectedType: 'invoice' | 'statement' = 'invoice';
+      const optInv = document.getElementById('ph-opt-dl-invoice');
+      const optStat = document.getElementById('ph-opt-dl-statement');
+      const btn = document.getElementById('ph-dl-pdf-btn') as HTMLButtonElement;
+      const cancelBtn = document.getElementById('ph-dl-pdf-cancel') as HTMLButtonElement;
+      const statusBox = document.getElementById('ph-dl-pdf-status');
+
+      optInv?.addEventListener('click', () => {
+        selectedType = 'invoice';
+        if (optInv) { optInv.style.borderColor = '#3B82F6'; optInv.style.background = '#F8FAFC'; }
+        if (optStat) { optStat.style.borderColor = '#E2E8F0'; optStat.style.background = '#FFFFFF'; }
+      });
+
+      optStat?.addEventListener('click', () => {
+        selectedType = 'statement';
+        if (optStat) { optStat.style.borderColor = '#3B82F6'; optStat.style.background = '#F8FAFC'; }
+        if (optInv) { optInv.style.borderColor = '#E2E8F0'; optInv.style.background = '#FFFFFF'; }
+      });
+
+      btn?.addEventListener('click', async () => {
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Generando...'; }
+        if (cancelBtn) cancelBtn.disabled = true;
+        if (statusBox) statusBox.classList.remove('hidden');
+
+        await executePhInvoicePdfDownload(invoiceId, selectedType);
+        (window as any).closeModal();
+      });
+    }, 40);
+  } catch (err: any) {
+    (window as any).showToast(err.message || 'Error al preparar descarga de factura', 'error');
+  }
+}
+
+async function executePhInvoicePdfDownload(invoiceId: string, type: 'invoice' | 'statement') {
+  try {
+    (window as any).showToast('Generando y descargando PDF...', 'info');
+    const res = await (window as any).API.downloadPhInvoicePdf(invoiceId, type);
+
+    if (res && res.success && res.pdfBase64) {
+      const byteCharacters = atob(res.pdfBase64);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.filename || `Factura_${invoiceId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      (window as any).showToast('Archivo PDF descargado exitosamente.', 'success');
+      return;
+    }
+
+    throw new Error(res?.message || 'No se recibió el archivo PDF desde el servidor.');
+  } catch (err: any) {
+    console.warn('[GRAVY PH DOWNLOAD PDF BACKEND UNAVAILABLE, USING CLIENT PRINT FALLBACK]', err);
+    (window as any).showToast('Aviso: Abriendo formato de impresión / PDF...', 'warning');
+    await printPhInvoice(invoiceId, type);
+  }
+}
+
 async function openPhBulkEmailModal() {
-  const period = document.getElementById('ph-period-filter')?.value || (window as any).currentPeriod();
+  const filterInput = document.getElementById('ph-period-filter') as HTMLInputElement;
+  const initialPeriod = (filterInput && filterInput.value ? filterInput.value.trim() : '') || currentPeriod();
 
   (window as any).openModal(
     'Envío Masivo por Correo (Con PDF)',
     `<div class="space-y-4">
       <p class="text-sm text-gray-600">
-        Esta acción generará y enviará las facturas o estados de cuenta con su respectivo <strong>archivo PDF adjunto</strong> a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(period)}</strong> y cuenten con correo registrado.
+        Esta acción generará y enviará las facturas o estados de cuenta con su respectivo <strong>archivo PDF adjunto</strong> a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(initialPeriod)}</strong> y cuenten con correo registrado.
       </p>
       <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
         <i class="fas fa-shield-alt text-amber-600 text-base"></i>
@@ -3846,7 +4123,7 @@ async function openPhBulkEmailModal() {
       <div class="grid grid-cols-2 gap-4">
         <div class="form-group mb-0">
           <label class="form-label">Período</label>
-          <input id="ph-bulk-email-period" type="month" class="form-input" value="${(window as any).esc(period)}" disabled>
+          <input id="ph-bulk-email-period" type="month" class="form-input" value="${(window as any).esc(initialPeriod)}" disabled>
         </div>
         <div class="form-group mb-0">
           <label class="form-label">Tipo de Documento</label>
@@ -3881,7 +4158,19 @@ async function openPhBulkEmailModal() {
 
   setTimeout(() => {
     document.getElementById('ph-bulk-email-confirm-btn')?.addEventListener('click', async () => {
-      const type = (document.getElementById('ph-bulk-email-type') as HTMLSelectElement)?.value;
+      const modalPeriodInput = document.getElementById('ph-bulk-email-period') as HTMLInputElement;
+      const pagePeriodInput = document.getElementById('ph-period-filter') as HTMLInputElement;
+      const effectivePeriod = (modalPeriodInput && modalPeriodInput.value ? modalPeriodInput.value.trim() : '') ||
+                              (pagePeriodInput && pagePeriodInput.value ? pagePeriodInput.value.trim() : '') ||
+                              initialPeriod ||
+                              currentPeriod();
+
+      if (!effectivePeriod) {
+        (window as any).showToast('Por favor seleccione un período válido.', 'error');
+        return;
+      }
+
+      const type = (document.getElementById('ph-bulk-email-type') as HTMLSelectElement)?.value || 'invoice';
       const subject = (document.getElementById('ph-bulk-email-subject') as HTMLInputElement)?.value.trim();
       
       const confirmBtn = document.getElementById('ph-bulk-email-confirm-btn') as HTMLButtonElement;
@@ -3897,7 +4186,7 @@ async function openPhBulkEmailModal() {
       log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Generando PDFs y enviando correos por Gmail SMTP...</p>`;
 
       try {
-        const res = await (window as any).API.sendPhBulkEmails(period, type, subject, '');
+        const res = await (window as any).API.sendPhBulkEmails(effectivePeriod, type, subject, '');
         
         const total = (res.sent || 0) + (res.skipped || 0) + (res.failed || 0);
         progressCounts.textContent = `${total} / ${total} Procesados`;
@@ -3928,6 +4217,7 @@ async function openPhBulkEmailModal() {
         cancelBtn.textContent = 'Cerrar';
 
       } catch (err: any) {
+        console.error('[GRAVY PH BULK EMAIL ERROR]', err);
         log.innerHTML = `<p class="text-red-500 font-bold"><i class="fas fa-exclamation-circle mr-1"></i> Fallo en el proceso: ${err.message}</p>`;
         (window as any).showToast(err.message || 'Error en envío masivo', 'error');
         confirmBtn.disabled = false;
@@ -3963,4 +4253,6 @@ async function openPhBulkEmailModal() {
 (window as any).printPhInvoice = printPhInvoice;
 (window as any).openPhInvoiceEmailModal = openPhInvoiceEmailModal;
 (window as any).openPhBulkEmailModal = openPhBulkEmailModal;
+(window as any).openPhDownloadPdfModal = openPhDownloadPdfModal;
+(window as any).executePhInvoicePdfDownload = executePhInvoicePdfDownload;
 

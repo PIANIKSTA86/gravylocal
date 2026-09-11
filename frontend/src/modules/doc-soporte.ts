@@ -484,14 +484,14 @@ function renderDsRows(list: DocSoporteItem[]): string {
               </button>
             ` : ''}
 
-            ${d.status_dian !== 'aceptada' ? `
-              <button class="btn btn-outline btn-sm p-1.5 border-orange-500 hover:bg-orange-50" title="Solicitar Firma DIAN" onclick="window.emitDsDocFromRow('${esc(d.id)}', '${esc(d.tx_id || '')}', '${esc(d.number)}')">
+            ${(d.status_dian !== 'aceptada' || !d.cuds || d.cuds === '404' || d.cuds.length < 20) ? `
+              <button class="btn btn-outline btn-sm p-1.5 border-orange-500 hover:bg-orange-50" title="Solicitar Firma DIAN / Reenviar" onclick="window.emitDsDocFromRow('${esc(d.id)}', '${esc(d.tx_id || '')}', '${esc(d.number)}')">
                 <i class="fas fa-paper-plane text-orange-600"></i>
               </button>
             ` : ''}
 
-            ${d.status_dian === 'enviada' ? `
-              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}')">
+            ${(d.status_dian === 'enviada' || d.status_dian === 'aceptada' || d.status_dian === 'rechazada' || !d.cuds || d.cuds === '404') ? `
+              <button class="btn btn-outline btn-sm p-1.5 border-blue-500 hover:bg-blue-50" title="Consultar Estado Facturatech / DIAN" onclick="window.checkFtechStatus('${esc(d.id)}','${esc(d.tx_id || '')}')">
                 <i class="fas fa-arrows-rotate text-blue-600"></i>
               </button>
             ` : ''}
@@ -1752,6 +1752,32 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
   <Note>Documento Soporte sin XML firmado generado aún.</Note>
 </DocumentoSoporte>`;
 
+    const currentCuds = (d && (d.cuds || d.cufe)) || '';
+    const hasValidCuds = currentCuds && currentCuds.length > 20 && currentCuds !== '404';
+
+    const modalFooter = `
+      <div class="flex flex-wrap items-center justify-between w-full gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          ${txId ? `
+            <button class="btn btn-outline btn-sm border-blue-600 text-blue-600 hover:bg-blue-50" title="Consultar estado actualizado en Facturatech y DIAN" onclick="window.refreshDsStatusFromModal('${esc(id)}','${esc(txId)}')">
+              <i class="fas fa-arrows-rotate mr-1.5 text-blue-600"></i>Actualizar Estado Facturatech
+            </button>
+          ` : ''}
+          ${(!hasValidCuds || statusVal !== 'aceptada') && txId ? `
+            <button class="btn btn-outline btn-sm border-orange-500 text-orange-600 hover:bg-orange-50" title="Reenviar documento a Facturatech / DIAN" onclick="window.reemitFromDsModal('${esc(id)}','${esc(txId)}','${esc(docNum)}')">
+              <i class="fas fa-paper-plane mr-1.5 text-orange-600"></i>Reenviar a DIAN
+            </button>
+          ` : ''}
+          ${(hasValidCuds || statusVal === 'aceptada' || (xmlContent && xmlContent.includes('cbc:'))) && txId ? `
+            <button class="btn btn-outline btn-sm border-emerald-600 text-emerald-600 hover:bg-emerald-50" title="Descargar contenedor ZIP oficial" onclick="window.downloadDianZip('${esc(txId || id)}','${esc(docNum)}')">
+              <i class="fas fa-file-zipper mr-1.5 text-emerald-600"></i>Descargar ZIP XML
+            </button>
+          ` : ''}
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="closeModal()">Cerrar</button>
+      </div>
+    `;
+
     openModal(
       `Detalle Documento Soporte — ${esc(docNum)}`,
       `<div class="space-y-4 text-sm">
@@ -1759,7 +1785,7 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
           <div><span class="form-label font-bold text-gray-500">Comprobante</span><p class="font-mono font-semibold text-indigo-800">${esc(docNum)}</p></div>
           <div><span class="form-label font-bold text-gray-500">Estado DIAN</span><p><span class="badge ${si.cls}">${si.label}</span></p></div>
           <div><span class="form-label font-bold text-gray-500">Fecha</span><p>${esc(d.date || d.created || (tx && tx.date) || '—')}</p></div>
-          <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">CUDS / CUFE</span><p class="font-mono text-xs break-all p-2 rounded" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(d.cuds || d.cufe || 'Pendiente de transmisión')}</p></div>
+          <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">CUDS / CUFE</span><p class="font-mono text-xs break-all p-2 rounded" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(currentCuds || 'Pendiente de transmisión')}</p></div>
           <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">Respuesta Servidor DIAN</span><p class="p-2 rounded text-sm text-gray-600 font-medium" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(d.dian_response || '—')}</p></div>
         </div>
         <div>
@@ -1767,11 +1793,29 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
           <textarea readonly class="form-input font-mono text-xs mt-1 w-full" rows="12" style="resize:vertical;background:#F9FAFB">${esc(xmlContent)}</textarea>
         </div>
       </div>`,
-      `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>`,
+      modalFooter,
       true
     );
   } catch (err: any) {
     showToast(err.message || 'Error al cargar detalle', 'error');
+  }
+};
+
+(window as any).refreshDsStatusFromModal = async function(id: string, txId: string) {
+  if (typeof (window as any).checkFtechStatus === 'function') {
+    await (window as any).checkFtechStatus(id, txId);
+  }
+  setTimeout(() => {
+    (window as any).viewDsDetail(id, txId);
+  }, 600);
+};
+
+(window as any).reemitFromDsModal = async function(id: string, txId: string, docNum: string) {
+  closeModal();
+  if (typeof (window as any).emitDocSoporteFromList === 'function') {
+    await (window as any).emitDocSoporteFromList(txId, docNum);
+  } else if (typeof (window as any).emitDsDocFromRow === 'function') {
+    await (window as any).emitDsDocFromRow(id, txId, docNum);
   }
 };
 

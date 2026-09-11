@@ -1,0 +1,111 @@
+
+==================================================
+TIMESTAMP: 2026-09-10T14:54:25.621Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://ws-dse.facturatech.co/v1/pro/
+soapAction: urn:https://ws-dse.facturatech.co/v1/pro/uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMzE1PC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA5LTEwPC9FTkNfNz4KICAgIDxFTkNfOD4wOTo1NDoyNC0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIAogICAgPEVOQ18xNT4wPC9FTkNfMTU+CiAgICA8RU5DXzE2PjIwMjYtMDktMTA8L0VOQ18xNj4KICAgIDxFTkNfMjA+MTwvRU5DXzIwPgogICAgPEVOQ18yMT4xMDwvRU5DXzIxPgogIDwvRU5DPgogIDxQUk8+CiAgICA8UFJPXzE+MjwvUFJPXzE+CiAgICA8UFJPXzI+MTEzMDY1Nzc0NjwvUFJPXzI+CiAgICA8UFJPXzM+MzE8L1BST18zPgogICAgPFBST182PkpVTElBTiBNQVVSSUNJTyBQRVJFWiBNT1JBPC9QUk9fNj4KICAgIDxQUk9fMTA+Q1IgMSBDIDEgNjMgMDkgQkwgMzIgQSBBUCA1MDE8L1BST18xMD4KICAgIDxQUk9fMTE+NzY8L1BST18xMT4KICAgIDxQUk9fMTM+Q0FMSSAtIDc2MDAxPC9QUk9fMTM+CiAgICA8UFJPXzE0Pjc2MDAwMTwvUFJPXzE0PgogICAgPFBST18xNT5DTzwvUFJPXzE1PgogICAgPFBST18xOT5WQUxMRSBERUwgQ0FVQ0EgLSA3NjwvUFJPXzE5PgogICAgPFBST18yMT5Db2xvbWJpYTwvUFJPXzIxPgogICAgPFBST18yMj45PC9QUk9fMjI+CiAgICA8UFJPXzIzPjc2MDAxPC9QUk9fMjM+CiAgICA8VEFDPgogICAgICA8VEFDXzE+Ui05OS1QTjwvVEFDXzE+CiAgICA8L1RBQz4KICAgIDxHVEU+CiAgICAgIDxHVEVfMT4wMTwvR1RFXzE+CiAgICAgIDxHVEVfMj5JVkE8L0dURV8yPgogICAgPC9HVEU+CiAgPC9QUk8+CiAgPEFEUT4KICAgIDxBRFFfMT4xPC9BRFFfMT4KICAgIDxBRFFfMj45MDE0Mjg4MzQ8L0FEUV8yPgogICAgPEFEUV8zPjMxPC9BRFFfMz4KICAgIAogICAgPEFEUV82PkRPTUVTVElLTyBTQVM8L0FEUV82PgogICAgPEFEUV8yMj4yPC9BRFFfMjI+CiAgICA8VENSPgogICAgICA8VENSXzE+Ui05OS1QTjwvVENSXzE+CiAgICA8L1RDUj4KICAgIDxHVEE+CiAgICAgIDxHVEFfMT5aWjwvR1RBXzE+CiAgICAgIDxHVEFfMj5JVkE8L0dUQV8yPgogICAgPC9HVEE+CiAgPC9BRFE+CiAgPFRPVD4KICAgIDxUT1RfMT4wLjAwPC9UT1RfMT4KICAgIDxUT1RfMj5DT1A8L1RPVF8yPgogICAgPFRPVF8zPjAuMDA8L1RPVF8zPgogICAgPFRPVF80PkNPUDwvVE9UXzQ+CiAgICA8VE9UXzU+MC4wMDwvVE9UXzU+CiAgICA8VE9UXzY+Q09QPC9UT1RfNj4KICAgIDxUT1RfNz4wLjAwPC9UT1RfNz4KICAgIDxUT1RfOD5DT1A8L1RPVF84PgogIDwvVE9UPgogIDxEUkY+CiAgICA8RFJGXzE+MTg3NjQwOTk3NzM0NzQ8L0RSRl8xPgogICAgPERSRl8yPjIwMjUtMTAtMDY8L0RSRl8yPgogICAgPERSRl8zPjIwMjYtMTAtMDY8L0RSRl8zPgogICAgPERSRl80PkRTRTwvRFJGXzQ+CiAgICA8RFJGXzU+MTk1PC9EUkZfNT4KICAgIDxEUkZfNj4xMDAwPC9EUkZfNj4KICA8L0RSRj4KICA8TUVQPgogICAgPE1FUF8xPjEwPC9NRVBfMT4KICAgIDxNRVBfMj4xPC9NRVBfMj4KICAgIDxNRVBfMz4yMDI2LTA5LTEwPC9NRVBfMz4KICA8L01FUD4KPC9ET0NVTUVOVE9fU09QT1JURT4=</xmlBase64>
+      </urn:uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:uploadDocumentResponse xmlns:ns1="urn:https://ws-dse.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">404</code><transactionID xsi:type="xsd:string"></transactionID><message xsi:type="xsd:string">Se encontraron los siguientes errores, revise su insumo: Element ENC_15: [facet minInclusive] The value 0 is less than the minimum value allowed (1).
+.Element ENC_15: 0 is not a valid value of the local atomic type.
+.Element DOCUMENTO_SOPORTE: Missing child element(s). Expected is one of ( MEP, ITE ).
+</message></return></ns1:uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 404
+parsedTransactionID: 
+parsedMessage: Se encontraron los siguientes errores, revise su insumo: Element ENC_15: [facet minInclusive] The value 0 is less than the minimum value allowed (1).
+.Element ENC_15: 0 is not a valid value of the local atomic type.
+.Element DOCUMENTO_SOPORTE: Missing child element(s). Expected is one of ( MEP, ITE ).
+
+
+==================================================
+TIMESTAMP: 2026-09-10T20:54:45.463Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://ws-dse.facturatech.co/v1/pro/
+soapAction: urn:https://ws-dse.facturatech.co/v1/pro/uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMzE1PC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA5LTEwPC9FTkNfNz4KICAgIDxFTkNfOD4xNTo1NDo0NC0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIAogICAgPEVOQ18xNT4xPC9FTkNfMTU+CiAgICA8RU5DXzE2PjIwMjYtMDktMTA8L0VOQ18xNj4KICAgIDxFTkNfMjA+MTwvRU5DXzIwPgogICAgPEVOQ18yMT4xMDwvRU5DXzIxPgogIDwvRU5DPgogIDxQUk8+CiAgICA8UFJPXzE+MjwvUFJPXzE+CiAgICA8UFJPXzI+MTEzMDY1Nzc0NjwvUFJPXzI+CiAgICA8UFJPXzM+MzE8L1BST18zPgogICAgPFBST182PkpVTElBTiBNQVVSSUNJTyBQRVJFWiBNT1JBPC9QUk9fNj4KICAgIDxQUk9fMTA+Q1IgMSBDIDEgNjMgMDkgQkwgMzIgQSBBUCA1MDE8L1BST18xMD4KICAgIDxQUk9fMTE+NzY8L1BST18xMT4KICAgIDxQUk9fMTM+Q0FMSSAtIDc2MDAxPC9QUk9fMTM+CiAgICA8UFJPXzE0Pjc2MDAwMTwvUFJPXzE0PgogICAgPFBST18xNT5DTzwvUFJPXzE1PgogICAgPFBST18xOT5WQUxMRSBERUwgQ0FVQ0EgLSA3NjwvUFJPXzE5PgogICAgPFBST18yMT5Db2xvbWJpYTwvUFJPXzIxPgogICAgPFBST18yMj45PC9QUk9fMjI+CiAgICA8UFJPXzIzPjc2MDAxPC9QUk9fMjM+CiAgICA8VEFDPgogICAgICA8VEFDXzE+Ui05OS1QTjwvVEFDXzE+CiAgICA8L1RBQz4KICAgIDxHVEU+CiAgICAgIDxHVEVfMT4wMTwvR1RFXzE+CiAgICAgIDxHVEVfMj5JVkE8L0dURV8yPgogICAgPC9HVEU+CiAgPC9QUk8+CiAgPEFEUT4KICAgIDxBRFFfMT4xPC9BRFFfMT4KICAgIDxBRFFfMj45MDE0Mjg4MzQ8L0FEUV8yPgogICAgPEFEUV8zPjMxPC9BRFFfMz4KICAgIAogICAgPEFEUV82PkRPTUVTVElLTyBTQVM8L0FEUV82PgogICAgPEFEUV8yMj4yPC9BRFFfMjI+CiAgICA8VENSPgogICAgICA8VENSXzE+Ui05OS1QTjwvVENSXzE+CiAgICA8L1RDUj4KICAgIDxHVEE+CiAgICAgIDxHVEFfMT5aWjwvR1RBXzE+CiAgICAgIDxHVEFfMj5JVkE8L0dUQV8yPgogICAgPC9HVEE+CiAgPC9BRFE+CiAgPFRPVD4KICAgIDxUT1RfMT4zNjAwMDAuMDA8L1RPVF8xPgogICAgPFRPVF8yPkNPUDwvVE9UXzI+CiAgICA8VE9UXzM+MC4wMDwvVE9UXzM+CiAgICA8VE9UXzQ+Q09QPC9UT1RfND4KICAgIDxUT1RfNT4zNjAwMDAuMDA8L1RPVF81PgogICAgPFRPVF82PkNPUDwvVE9UXzY+CiAgICA8VE9UXzc+MzYwMDAwLjAwPC9UT1RfNz4KICAgIDxUT1RfOD5DT1A8L1RPVF84PgogIDwvVE9UPgogIDxEUkY+CiAgICA8RFJGXzE+MTg3NjQwOTk3NzM0NzQ8L0RSRl8xPgogICAgPERSRl8yPjIwMjUtMTAtMDY8L0RSRl8yPgogICAgPERSRl8zPjIwMjYtMTAtMDY8L0RSRl8zPgogICAgPERSRl80PkRTRTwvRFJGXzQ+CiAgICA8RFJGXzU+MTk1PC9EUkZfNT4KICAgIDxEUkZfNj4xMDAwPC9EUkZfNj4KICA8L0RSRj4KICA8TUVQPgogICAgPE1FUF8xPjEwPC9NRVBfMT4KICAgIDxNRVBfMj4xPC9NRVBfMj4KICAgIDxNRVBfMz4yMDI2LTA5LTEwPC9NRVBfMz4KICA8L01FUD4KICA8SVRFPgogICAgPElURV8xPjE8L0lURV8xPgogICAgPElURV8zPjEuMDA8L0lURV8zPgogICAgPElURV80PlpaPC9JVEVfND4KICAgIDxJVEVfNT4zNjAwMDAuMDA8L0lURV81PgogICAgPElURV82PkNPUDwvSVRFXzY+CiAgICA8SVRFXzc+MzYwMDAwLjAwPC9JVEVfNz4KICAgIDxJVEVfOD5DT1A8L0lURV84PgogICAgPElURV8xMT5TRVJWSUNJTyBERSBMSUNFTkNJQU1JRU5UTyBERSBTT0ZUV0FSRTwvSVRFXzExPgogICAgPElURV8yNz4xLjAwPC9JVEVfMjc+CiAgICA8SVRFXzI4PlpaPC9JVEVfMjg+CiAgICA8SUFFPgogICAgICA8SUFFXzE+UjAwMTwvSUFFXzE+CiAgICAgIDxJQUVfMj45OTk8L0lBRV8yPgogICAgPC9JQUU+CiAgICA8SUJTPgogICAgICA8SUJTXzE+MjAyNi0wOS0xMDwvSUJTXzE+CiAgICAgIDxJQlNfMj4xPC9JQlNfMj4KICAgICAgPElCU18zPlBvciBvcGVyYWNpw7NuPC9JQlNfMz4KICAgIDwvSUJTPgogIDwvSVRFPgo8L0RPQ1VNRU5UT19TT1BPUlRFPg==</xmlBase64>
+      </urn:uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:uploadDocumentResponse xmlns:ns1="urn:https://ws-dse.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">200</code><transactionID xsi:type="xsd:string">969fc8af7454d3358d003f22468dd3a763b23f966049a0269d288f4e2b2d259a</transactionID><message xsi:type="xsd:string">El comprobante ha sido recibido correctamente.</message></return></ns1:uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 200
+parsedTransactionID: 969fc8af7454d3358d003f22468dd3a763b23f966049a0269d288f4e2b2d259a
+parsedMessage: El comprobante ha sido recibido correctamente.
+
+
+==================================================
+TIMESTAMP: 2026-09-10T20:54:49.124Z
+ACTION: FACTURATECH CHECK-STATUS (ACCEPTED & DOWNLOADED)
+==================================================
+provider: Facturatech
+transId: 969fc8af7454d3358d003f22468dd3a763b23f966049a0269d288f4e2b2d259a
+prefix: DSE
+folio: 315
+endpointUrl: https://ws-dse.facturatech.co/v1/pro/
+statusAction: urn:https://ws-dse.facturatech.co/v1/pro/documentStatus
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">969fc8af7454d3358d003f22468dd3a763b23f966049a0269d288f4e2b2d259a</transaccionID>
+      </urn:documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+statusResponseXml: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:documentStatusResponse xmlns:ns1="urn:https://ws-dse.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">201</code><documentBase64 xsi:nil="true" xsi:type="xsd:string"/><message xsi:type="xsd:string">El comprobante DSE315 está en proceso</message><messageError xsi:type="xsd:string"></messageError></return></ns1:documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 201
+parsedStatus: 
+parsedMessage: El comprobante DSE315 está en proceso
+cufeAction: urn:https://ws-dse.facturatech.co/v1/pro/downloadCUDSResponse
+cufeEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:downloadCUDS soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <prefix xsi:type="xsd:string">DSE</prefix>
+         <number xsi:type="xsd:integer">315</number>
+      </urn:downloadCUDS>
+   </soapenv:Body>
+</soapenv:Envelope>
+extractedCufe: 404
+xmlAction: urn:https://ws-dse.facturatech.co/v1/pro/downloadXML
+xmlEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <prefix xsi:type="xsd:string">DSE</prefix>
+         <number xsi:type="xsd:integer">315</number>
+      </urn:downloadXML>
+   </soapenv:Body>
+</soapenv:Envelope>
+extractedXmlLength: 0
+

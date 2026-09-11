@@ -1,0 +1,8746 @@
+{
+  "_authOrigins": {
+    "id": "pbc_4275539003",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "collectionRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "recordRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "fingerprint",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "_externalAuths": {
+    "id": "pbc_2281828961",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "collectionRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "recordRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "provider",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "providerId",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "_mfas": {
+    "id": "pbc_2279338944",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "collectionRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "recordRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "method",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "_otps": {
+    "id": "pbc_1638494021",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "collectionRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "recordRef",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "password",
+        "type": "password",
+        "required": true
+      },
+      {
+        "name": "sentTo",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "_superusers": {
+    "id": "pbc_3142635823",
+    "type": "auth",
+    "field_count": 8,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "password",
+        "type": "password",
+        "required": true
+      },
+      {
+        "name": "tokenKey",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      },
+      {
+        "name": "emailVisibility",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "verified",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "account_types": {
+    "id": "pbc_2257284400",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "nature",
+        "type": "select",
+        "required": true,
+        "values": [
+          "debit",
+          "credit"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "class_code",
+        "type": "text",
+        "required": true
+      }
+    ]
+  },
+  "accounts": {
+    "id": "pbc_2324088501",
+    "type": "base",
+    "field_count": 19,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "account_type_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "account_types",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "nature",
+        "type": "select",
+        "required": true,
+        "values": [
+          "debit",
+          "credit"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "level",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "parent_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "requires_third_party",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "maneja_cruce",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "maneja_retenciones",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "tipos_retencion",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rate_reterenta",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rate_reteiva",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rate_reteica",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "niif_classification",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "niif_standard",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "niif_statement",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "niif_cf_category",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "agenda_vencimientos": {
+    "id": "pbc_4049922820",
+    "type": "base",
+    "field_count": 8,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "cxp_proveedor",
+          "impuesto_dian_iva",
+          "impuesto_dian_retencion",
+          "exogena_dian",
+          "otro",
+          "cxp_importacion",
+          "cxc_cliente"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "pendiente",
+          "programado",
+          "pagado",
+          "vencido"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "assigned_roles",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "appointments": {
+    "id": "pbc_1037645436",
+    "type": "base",
+    "field_count": 11,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "pet_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "pets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "start_time",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "end_time",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "service_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "pending",
+          "in_progress",
+          "completed",
+          "cancelled"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "stylist_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "real_start_time",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "real_end_time",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "audit_log": {
+    "id": "pbc_2462721645",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "username",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "action",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "entity",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "entity_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "details",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ip",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "event_at",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "bank_accounts": {
+    "id": "pbc_314358106",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "bank",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "currency",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "bank_movements": {
+    "id": "pbc_1814386223",
+    "type": "base",
+    "field_count": 10,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "bank_account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "bank_accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "debit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "credit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "balance",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ref",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "reconciled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "tx_line_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "tx_lines",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      }
+    ]
+  },
+  "branches": {
+    "id": "pbc_2536409462",
+    "type": "base",
+    "field_count": 4,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "cash_concepts": {
+    "id": "pbc_4214560803",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "egreso",
+          "recaudo"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "clientes": {
+    "id": "pbc_279994318",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "nombre",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "documento",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "limite_credito",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "saldo_actual",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lista_precio_defecto",
+        "type": "relation",
+        "required": false,
+        "relation_to": "listas_precios",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "commission_rules": {
+    "id": "pbc_3652465962",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "total_sale",
+          "per_product"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "rate",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "seller_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "consignment_settlement_lines": {
+    "id": "pbc_consg_lines",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "settlement_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "consignment_settlements",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "qty_sold",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "qty_returned",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_cost",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  "consignment_settlements": {
+    "id": "pbc_consg_settl",
+    "type": "base",
+    "field_count": 12,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "INBOUND",
+          "OUTBOUND"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "third_party_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "draft",
+          "posted",
+          "voided"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "purchase_invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "purchase_invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "return_warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "cost_centers": {
+    "id": "pbc_cost_centers",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "parent_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "cost_centers",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "crm_deals": {
+    "id": "pbc_924532027",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "client_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "value",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "stage",
+        "type": "select",
+        "required": true,
+        "values": [
+          "CONTACTO",
+          "PROPUESTA",
+          "NEGOCIACION",
+          "GANADO",
+          "PERDIDO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "expected_close",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "seller_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "crm_interactions": {
+    "id": "pbc_1896089724",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "deal_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "crm_deals",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "LLAMADA",
+          "CORREO",
+          "REUNION",
+          "WHATSAPP",
+          "COTIZACION",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "request_details",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "response_details",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "response_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "dian_resolutions": {
+    "id": "pbc_4258913350",
+    "type": "base",
+    "field_count": 11,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "document_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "FV",
+          "POS",
+          "DS",
+          "NE",
+          "NC",
+          "ND",
+          "NDS"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "prefix",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "resolution_number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "resolution_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number_from",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "number_to",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "current_number",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "expiration_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "pos_register_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "pos_registers",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "einvoice_docs": {
+    "id": "pbc_3722157315",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "cufe",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "pendiente",
+          "enviada",
+          "aceptada",
+          "rechazada"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "dian_response",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "xml_content",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "sent_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ftech_transaction_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "zip_filename",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "electronic_document_items": {
+    "id": "pbc_4224488888",
+    "type": "base",
+    "field_count": 8,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "document_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "electronic_documents",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "unspsc_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  "electronic_document_taxes": {
+    "id": "pbc_3629964045",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "document_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "electronic_documents",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "tax_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "iva",
+          "ica",
+          "inc",
+          "retefuente",
+          "reteiva",
+          "reteica"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "rate",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "base",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  "electronic_documents": {
+    "id": "pbc_1439117088",
+    "type": "base",
+    "field_count": 24,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "uuid",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "document_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "invoice_purchase",
+          "invoice_sale",
+          "credit_note",
+          "debit_note",
+          "support_document",
+          "payroll",
+          "payroll_adjust"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "pendiente",
+          "homologado",
+          "contabilizado",
+          "error"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "issue_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "reception_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "supplier_nit",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "supplier_name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "customer_nit",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "customer_name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "tax_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "xml_file",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "text/xml",
+          "application/xml"
+        ]
+      },
+      {
+        "name": "pdf_file",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "application/pdf",
+          "image/*"
+        ]
+      },
+      {
+        "name": "processed",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "transaction_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "hash",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "import_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "supplier_details",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "electronic_payrolls": {
+    "id": "pbc_2085274278",
+    "type": "base",
+    "field_count": 23,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "periodo_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "payroll_periods",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "ano",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "mes",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "tipo_ambiente",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "numero_envio",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "fecha_envio",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "xml_generado",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "estado_dian",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cufe",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "total_devengos",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_deducciones",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_neto",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_empleador",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_empleados",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "employee_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "consecutivo",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "prefijo",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ftech_transaction_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dian_response",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pdf_base64",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "exogena_concepts": {
+    "id": "pbc_3857520778",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "account_ranges",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "format_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "1001",
+          "1007",
+          "1008",
+          "1009"
+        ],
+        "maxSelect": 0
+      }
+    ]
+  },
+  "financial_notes": {
+    "id": "pbc_506896689",
+    "type": "base",
+    "field_count": 10,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "periodo",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "nota_num",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "tipo_informe",
+        "type": "select",
+        "required": true,
+        "values": [
+          "ESF",
+          "ER"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "titulo",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "cuenta_codigo",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "contenido",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "sugerido",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "revisado",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "updated_by",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      }
+    ]
+  },
+  "geo_countries": {
+    "id": "pbc_359529685",
+    "type": "base",
+    "field_count": 3,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      }
+    ]
+  },
+  "geo_departments": {
+    "id": "pbc_1922795238",
+    "type": "base",
+    "field_count": 4,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "country_code",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "geo_municipalities": {
+    "id": "pbc_1164725277",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "dept_code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "postal_code",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "homologation_rules": {
+    "id": "pbc_1124988449",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "rule_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "supplier",
+          "unspsc",
+          "keyword"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "key_value",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "account_code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "import_invoices": {
+    "id": "pbc_2915859709",
+    "type": "base",
+    "field_count": 15,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "imports",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "currency",
+        "type": "select",
+        "required": true,
+        "values": [
+          "USD",
+          "COP",
+          "EUR",
+          "CNY"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "exchange_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "fob_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "fob_amount_cop",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payment_due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "invoice_file",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 10485760,
+        "mimeTypes": [
+          "application/pdf",
+          "image/*"
+        ]
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "tx_fob_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "import_lines": {
+    "id": "pbc_4123813726",
+    "type": "base",
+    "field_count": 29,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "imports",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "fob_price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "arancel_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "arancel_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "prorated_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "unit_cost_cop",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_cop",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "manifest_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "manifest_file",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "application/pdf",
+          "image/*"
+        ]
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "pais_origen",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "certificado_origen_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "posicion_arancelaria",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "peso_neto_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "peso_bruto_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "largo_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ancho_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "alto_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cubic_meters_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "import_invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "import_invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "lot_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "manufacturing_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "expiry_date",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "import_pallet_configs": {
+    "id": "pbc_2644222426",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "imports",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "import_line_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "import_lines",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "pallet_qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "boxes_per_pallet",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "units_per_box",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "total_boxes",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_units",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "pallet_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "ESTANDAR_120x100",
+          "EURO_120x80",
+          "ESPECIAL",
+          "PISO_SUELTO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "height_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "gross_weight_kg",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lot_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "imports": {
+    "id": "pbc_3922105078",
+    "type": "base",
+    "field_count": 50,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "planeacion",
+          "transito",
+          "nacionalizacion",
+          "recibido",
+          "anulado"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "incoterm",
+        "type": "select",
+        "required": false,
+        "values": [
+          "FOB",
+          "CIF",
+          "EXW",
+          "CFR",
+          "CIP",
+          "CPT",
+          "DAP",
+          "DPU",
+          "DDP",
+          "FAS",
+          "FCA"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "bl_awb",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "bl_document",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "application/pdf",
+          "image/*"
+        ]
+      },
+      {
+        "name": "transport_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "maritimo",
+          "aereo",
+          "terrestre",
+          "courier"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "estimated_arrival",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "currency",
+        "type": "select",
+        "required": true,
+        "values": [
+          "USD",
+          "COP",
+          "EUR",
+          "CNY"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "exchange_rate",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "fob_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "freight_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "insurance_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "arancel_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "gastos_nacionalizacion",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "transporte_nacional",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "otros_gastos",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_gastos_cif",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total_gastos_locales",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "purchase_invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "purchase_invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "date_created",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_fob_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_freight_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_insurance_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_customs_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_local_carrier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "tx_local_other_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "freight_supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "insurance_supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "customs_supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "local_carrier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "local_other_supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "supplier_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "freight_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "insurance_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "customs_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "local_carrier_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "local_other_invoice_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "vuce_registro_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dian_declaracion_num",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dian_declaracion_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dian_levante_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dian_trm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "modalidad_importacion",
+        "type": "select",
+        "required": false,
+        "values": [
+          "ORDINARIA",
+          "FRANQUICIA",
+          "TEMPORAL_REEXP",
+          "TEMPORAL_PERF",
+          "ENSAMBLE",
+          "URGENTES"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "canal_inspeccion",
+        "type": "select",
+        "required": false,
+        "values": [
+          "AUTOMATICO",
+          "DOCUMENTAL",
+          "FISICO",
+          "NO_INTRUSIVO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "proration_method",
+        "type": "select",
+        "required": false,
+        "values": [
+          "FOB_VALUE",
+          "GROSS_WEIGHT",
+          "CUBIC_VOLUME"
+        ],
+        "maxSelect": 0
+      }
+    ]
+  },
+  "inmo_contracts": {
+    "id": "pbc_4065969623",
+    "type": "base",
+    "field_count": 19,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inmo_properties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "tenant_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "start_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "end_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "monthly_rent",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "increment_percentage",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "VIGENTE",
+          "FINALIZADO",
+          "SUSPENDIDO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "EMITIDO",
+          "RECIBIDO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "term_months",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "implicit_interest_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "right_of_use_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lease_liability_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "amortization_table",
+        "type": "json",
+        "required": false
+      },
+      {
+        "name": "lessor_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "inmo_invoice_lines": {
+    "id": "pbc_179499240",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "inmo_invoices",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "account_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "inmo_invoices": {
+    "id": "pbc_3071274698",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "period",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "contract_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "inmo_contracts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "rent_amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "other_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "commission_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "net_to_owner",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "draft",
+          "posted",
+          "paid",
+          "voided"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "payout_tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tax_amount",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "inmo_properties": {
+    "id": "pbc_1451450202",
+    "type": "base",
+    "field_count": 27,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "CASA",
+          "APARTAMENTO",
+          "LOCAL",
+          "BODEGA",
+          "OFICINA",
+          "LOTE",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "city",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "owner_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "rental_price",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "sale_price",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "commission_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "DISPONIBLE",
+          "ARRENDADO",
+          "VENDIDO",
+          "MANTENIMIENTO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "neighborhood",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "social_stratum",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "area_sqm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "rooms",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "bathrooms",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "parking_spaces",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "admon_price",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "year_built",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "has_elevator",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "has_pool",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "has_gym",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "has_balcony",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "has_storage",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "pet_friendly",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "inmo_property_history": {
+    "id": "pbc_4006801848",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "inmo_properties",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "event_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "MANTENIMIENTO",
+          "MEJORA_ESTRUCTURAL",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "title",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cost",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "inventory_concepts": {
+    "id": "pbc_inventory_concepts",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "ENTRADA",
+          "SALIDA",
+          "AMBOS"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "inventory_lots": {
+    "id": "pbc_4230823287",
+    "type": "base",
+    "field_count": 15,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "lot_number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "manufacturing_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "expiry_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "initial_qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "qty_on_hand",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "active",
+          "depleted",
+          "quarantine",
+          "expired"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "imports",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "inventory_movement_lines": {
+    "id": "pbc_1173048170",
+    "type": "base",
+    "field_count": 13,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "movement_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "inventory_movements",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "original_unit_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lot_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pallet_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "boxes_qty",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lot_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_lots",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "pallet_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_pallets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "inventory_movements": {
+    "id": "pbc_4280990403",
+    "type": "base",
+    "field_count": 12,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "mov_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "ENTRADA",
+          "SALIDA",
+          "TRASLADO",
+          "AJUSTE_POSITIVO",
+          "AJUSTE_NEGATIVO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "dest_warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "third_party_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "draft",
+          "applied",
+          "voided"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "concept_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_concepts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "inventory_pallets": {
+    "id": "pbc_2400528911",
+    "type": "base",
+    "field_count": 18,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "pallet_code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "location_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "boxes_initial",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "lot_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_lots",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "boxes_current",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "units_per_box",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "units_available",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "pallet_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "ESTANDAR_120x100",
+          "EURO_120x80",
+          "ESPECIAL",
+          "PISO_SUELTO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "height_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "gross_weight_kg",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "full",
+          "partial",
+          "depleted",
+          "quarantine"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "imports",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "inventory_stock": {
+    "id": "pbc_4192604402",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "qty_on_hand",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "avg_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "last_mov_date",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "invoice_lines": {
+    "id": "pbc_2616189266",
+    "type": "base",
+    "field_count": 21,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "invoices",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "discount_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "discount_pct",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rule_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "is_loss",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "lot_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pallet_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "boxes_qty",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lot_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_lots",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "pallet_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_pallets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "invoices": {
+    "id": "pbc_711030668",
+    "type": "base",
+    "field_count": 46,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "customer_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payable_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payment_method",
+        "type": "select",
+        "required": true,
+        "values": [
+          "EFECTIVO",
+          "TRANSFERENCIA",
+          "CREDITO",
+          "MIXTO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "draft",
+          "posted",
+          "voided"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_type_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transaction_types",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "inv_movement_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_movements",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "pos_shift_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "pos_shifts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "discount_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "freight_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payment_split",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "seller_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "commission_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "commission_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "has_pending_delivery",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "delivery_fulfillment_status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "PENDIENTE",
+          "PARCIAL",
+          "ENTREGADO",
+          "NO_REQUIERE"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "bank_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "bank_accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "po_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "remision_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "payment_form",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "payment_dian_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rule_renta_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rule_ica_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rule_iva_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_mode",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cross_doc_ref",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "is_electronic",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "cost_corrected",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "cost_corrected_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "third_party_branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_party_branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "delivery_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "logistica_deliveries",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "licenses": {
+    "id": "pbc_1065113382",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "module_key",
+        "type": "select",
+        "required": true,
+        "values": [
+          "core",
+          "contabilidad",
+          "comercial",
+          "nomina",
+          "copropiedades",
+          "full",
+          "inmobiliarias",
+          "logistica",
+          "inventarios",
+          "tesoreria",
+          "tienda-virtual",
+          "spa",
+          "conciliacion",
+          "crm",
+          "niif",
+          "activos_fijos"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "expires_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "plan",
+        "type": "select",
+        "required": false,
+        "values": [
+          "trial",
+          "mensual",
+          "anual",
+          "perpetua"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "listas_precios": {
+    "id": "pbc_26262227",
+    "type": "base",
+    "field_count": 3,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "nombre",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "activo",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "logistica_deliveries": {
+    "id": "pbc_4251913776",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "client_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "vehicle_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "logistica_vehicles",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "PENDIENTE",
+          "DESPACHADO",
+          "ENTREGADO",
+          "DEVUELTO",
+          "CANCELADO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "weight",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "items",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "billing_status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "PENDIENTE_FACTURAR",
+          "FACTURADO",
+          "NO_APLICA"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "delivery_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "DIRECTO",
+          "DESDE_PEDIDO",
+          "DESDE_IMPORTACION"
+        ],
+        "maxSelect": 0
+      }
+    ]
+  },
+  "logistica_delivery_lines": {
+    "id": "pbc_267823855",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "delivery_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "logistica_deliveries",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_line_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoice_lines",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "reservation_line_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_reservation_lines",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "qty_planned",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "qty_delivered",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "boxes_qty",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lot_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_lots",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "pallet_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_pallets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "logistica_vehicles": {
+    "id": "pbc_3392905230",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "plate",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "driver",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "capacity",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "DISPONIBLE",
+          "EN_RUTA",
+          "MANTENIMIENTO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "transportista_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "licencia_vence",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "soat_vence",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tecnomecanica_vence",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "poliza_rc_vence",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "niif_asset_categories": {
+    "id": "pbc_4118764413",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "useful_life_niif_default",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "useful_life_fiscal_default",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "depreciation_method_default",
+        "type": "select",
+        "required": false,
+        "values": [
+          "linea_recta",
+          "saldos_decrecientes",
+          "unidades_produccion"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "residual_value_percent_default",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "account_asset_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_depr_accum_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_depr_expense_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_impairment_accum_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_impairment_expense_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_revaluation_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_disposal_gain_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_disposal_loss_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "niif_asset_events": {
+    "id": "pbc_739159810",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "event_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "traslado",
+          "mejora",
+          "revaluacion",
+          "deterioro",
+          "baja"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "previous_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "new_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "location_from",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "location_to",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cost_center_from_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "cost_centers",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "cost_center_to_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "cost_centers",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "owner_from_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "owner_to_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "transaction_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "niif_asset_inventories": {
+    "id": "pbc_4269731531",
+    "type": "base",
+    "field_count": 6,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "open",
+          "closed"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "results",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "niif_assets": {
+    "id": "pbc_1340922796",
+    "type": "base",
+    "field_count": 29,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "cost",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "useful_life_niif",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "useful_life_fiscal",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "depreciation_method",
+        "type": "select",
+        "required": true,
+        "values": [
+          "linea_recta",
+          "saldos_decrecientes",
+          "unidades_produccion"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "residual_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "impairment",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "revaluation",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "location",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "cost_center_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "cost_centers",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "owner_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "category_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "niif_asset_categories",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "parent_asset_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "niif_assets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "active",
+          "suspended",
+          "in_repair",
+          "retired",
+          "sold",
+          "lost",
+          "obsolete"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "brand",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "model",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "serial_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "color",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "manufacturer",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "provider_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "invoice_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "purchase_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "start_service_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qr_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "photo_url",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "niif_leases": {
+    "id": "pbc_2914044310",
+    "type": "base",
+    "field_count": 12,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "contract_number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "start_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "term_months",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "monthly_canon",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "implicit_interest_rate",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "right_of_use_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "lease_liability_value",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "amortization_table",
+        "type": "json",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "lessor_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "niif_policies": {
+    "id": "pbc_2022492430",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "standard",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "objective",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "scope",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "recognition",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "initial_measurement",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "subsequent_measurement",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "derecognition",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "disclosures",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "borrador",
+          "aprobada"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "version",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "owner",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "history",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "niif_settings": {
+    "id": "pbc_2101532165",
+    "type": "base",
+    "field_count": 11,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "grupo_empresa",
+        "type": "select",
+        "required": true,
+        "values": [
+          "Grupo 1",
+          "Grupo 2",
+          "Grupo 3"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "moneda_funcional",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "moneda_presentacion",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "fecha_transicion",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "fecha_adopcion",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "metodo_depreciacion",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "metodo_inventarios",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "materialidad",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "politicas_aprobadas",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "params_adicionales",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "payments": {
+    "id": "pbc_631030571",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "payment_method",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "date",
+        "required": true
+      }
+    ]
+  },
+  "payroll_documents": {
+    "id": "pbc_2384597020",
+    "type": "base",
+    "field_count": 8,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "employee_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "category",
+        "type": "select",
+        "required": true,
+        "values": [
+          "HOJA_VIDA",
+          "ESTUDIOS",
+          "SEGURIDAD_SOCIAL",
+          "EXAMEN_MEDICO",
+          "HISTORIA_CLINICA",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "file",
+        "type": "file",
+        "required": true,
+        "maxSelect": 1,
+        "maxSize": 0,
+        "mimeTypes": null
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "payroll_lines": {
+    "id": "pbc_2766340730",
+    "type": "base",
+    "field_count": 24,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "period_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "payroll_periods",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "salary_base",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "days_worked",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "overtime",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "transport_allowance",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "deduction_health",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "deduction_pension",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "deduction_other",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "net_pay",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "employer_health",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "employer_pension",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "employer_arl",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "sena",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "icbf",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "caja_comp",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cesantias",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "intereses_ces",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "prima",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "vacaciones",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "solidarity_fund",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "withholding_tax",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "payroll_novelties": {
+    "id": "pbc_2926512047",
+    "type": "base",
+    "field_count": 13,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "period_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "payroll_periods",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "employee_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "type",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date_from",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date_to",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "support_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "draft",
+          "processed"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "payroll_periods": {
+    "id": "pbc_2682020231",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date_from",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date_to",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "draft",
+          "approved",
+          "paid"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 999
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "pets": {
+    "id": "pbc_2704641423",
+    "type": "base",
+    "field_count": 8,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "owner_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "species",
+        "type": "select",
+        "required": true,
+        "values": [
+          "PERRO",
+          "GATO",
+          "AVE",
+          "ROEDOR",
+          "REPTIL",
+          "OTRO"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "breed",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "birthdate",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "allergies",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "behavior_notes",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "ph_billing_concepts": {
+    "id": "pbc_446239205",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "is_variable",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "applies_coef",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "ph_budget_lines": {
+    "id": "pbc_1903728781",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "budget_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "ph_budgets",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "annual_amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "monthly_distribution",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "ph_budgets": {
+    "id": "pbc_3238548894",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "year",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "draft",
+          "approved",
+          "archived"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "total_amount",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "ph_common_areas": {
+    "id": "pbc_2321549435",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "capacity",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "min_hours",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "max_hours",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "rules",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "ph_individual_charges": {
+    "id": "pbc_2978640734",
+    "type": "base",
+    "field_count": 10,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "ph_properties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "period",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "account_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "ph_invoice_lines": {
+    "id": "pbc_2889165415",
+    "type": "base",
+    "field_count": 7,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "ph_invoices",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "concept_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "ph_billing_concepts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "amount",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "account_code",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "ph_invoices": {
+    "id": "pbc_92469940",
+    "type": "base",
+    "field_count": 11,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "period",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "ph_properties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "draft",
+          "posted",
+          "paid",
+          "voided"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "ph_pqrs": {
+    "id": "pbc_1421491355",
+    "type": "base",
+    "field_count": 13,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "ph_properties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "pqrs_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "PETICION",
+          "QUEJA",
+          "RECLAMO",
+          "SUGERENCIA",
+          "FELICITACION"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "priority",
+        "type": "select",
+        "required": false,
+        "values": [
+          "baja",
+          "media",
+          "alta"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "subject",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "open",
+          "in_process",
+          "resolved",
+          "closed"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "response",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "opened_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "closed_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "assigned_to",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "evidences",
+        "type": "file",
+        "required": false,
+        "maxSelect": 3,
+        "maxSize": 2097152,
+        "mimeTypes": [
+          "image/*",
+          "application/pdf",
+          "text/plain"
+        ]
+      }
+    ]
+  },
+  "ph_properties": {
+    "id": "pbc_4259671506",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "unit_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "APARTAMENTO",
+          "PARQUEADERO",
+          "DEPOSITO",
+          "LOCAL",
+          "CASA",
+          "OFICINA",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "floor",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tower",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "area_m2",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "coef_participacion",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "owner_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "occupant_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "apartment",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "admin_fee",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "ph_reservations": {
+    "id": "pbc_1428497364",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "area_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "ph_common_areas",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "property_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "ph_properties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "time_from",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "time_to",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "pending",
+          "confirmed",
+          "cancelled"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "attendees",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "pos_registers": {
+    "id": "pbc_3459247009",
+    "type": "base",
+    "field_count": 5,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "terminal_key",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "pos_shifts": {
+    "id": "pbc_859065514",
+    "type": "base",
+    "field_count": 18,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "opened_at",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "closed_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cash_initial",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "cash_sales",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cash_expected",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cash_actual",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "open",
+          "closed"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pos_register_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "pos_registers",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "cash_recaudos",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cash_egresos",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "bank_recaudos",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "bank_egresos",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "precios_producto": {
+    "id": "pbc_1022633735",
+    "type": "base",
+    "field_count": 4,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "producto_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "lista_precio_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "listas_precios",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "precio",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  "product_components": {
+    "id": "pbc_386025020",
+    "type": "base",
+    "field_count": 4,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "parent_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "component_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      }
+    ]
+  },
+  "products": {
+    "id": "pbc_4092854851",
+    "type": "base",
+    "field_count": 51,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "BIEN",
+          "SERVICIO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "unit",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "unspsc_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ean_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "income_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "cost_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "inventory_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "base_price",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cost_price",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "presentacion",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "categoria",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "linea",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "precio_venta_2",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "precio_venta_3",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "peso",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cajas_en_pallet",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "und_empaque",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "peso_x_und_empaque",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "is_combo",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "posicion_arancelaria",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "arancel_rate_default",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "pais_origen",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "marca",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "modelo",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "visto_bueno_required",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "visto_bueno_entidad",
+        "type": "select",
+        "required": false,
+        "values": [
+          "ICA",
+          "INVIMA",
+          "SIC",
+          "INDUMIL",
+          "AUNAP",
+          "MINCIT",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "registro_sanitario",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "peso_neto",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "peso_bruto",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "stock_min",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "stock_max",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "manifest_pdf",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 10485760,
+        "mimeTypes": [
+          "application/pdf"
+        ]
+      },
+      {
+        "name": "image",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp",
+          "image/svg+xml"
+        ]
+      },
+      {
+        "name": "largo_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ancho_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "alto_cm",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "is_consigned",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "consignment_supplier_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "consignment_cost",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "auto_calc_price",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "margin_factor",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "margin_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "MARKUP_COST",
+          "MARGIN_SALE",
+          "FACTOR"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "rounding_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "NONE",
+          "NEAREST_10",
+          "NEAREST_100",
+          "NEAREST_1000",
+          "CEIL_100",
+          "CEIL_1000"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "track_lots",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "track_pallets",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "purchase_invoice_lines": {
+    "id": "pbc_817774349",
+    "type": "base",
+    "field_count": 22,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "purchase_invoices",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rule_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_concept",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_base_type",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_base",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_account_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "discount_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "discount_pct",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_as_cost",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "purchase_invoices": {
+    "id": "pbc_3726714070",
+    "type": "base",
+    "field_count": 28,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "supplier_ref",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "draft",
+          "posted",
+          "voided"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transactions",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "inv_movement_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "inventory_movements",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_type_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "transaction_types",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "tx_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payable_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ret_rule_renta_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rule_ica_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "ret_rule_iva_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "imports",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "dian_resolution_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "dian_resolutions",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "discount_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_treatment",
+        "type": "select",
+        "required": false,
+        "values": [
+          "DESCONTABLE",
+          "MAYOR_COSTO",
+          "POR_LINEA"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "iva_cost_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "third_party_branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_party_branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "purchase_order_lines": {
+    "id": "pbc_purchase_order_lines",
+    "type": "base",
+    "field_count": 11,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "purchase_order_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "purchase_orders",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      }
+    ]
+  },
+  "purchase_orders": {
+    "id": "pbc_purchase_orders",
+    "type": "base",
+    "field_count": 15,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "supplier_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "discount_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "pending",
+          "invoiced",
+          "cancelled"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "purchase_invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "sales_order_lines": {
+    "id": "pbc_358150590",
+    "type": "base",
+    "field_count": 13,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "sales_orders",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "qty",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "unit_price",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "iva_rate",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "imports",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "sales_orders": {
+    "id": "pbc_2420370400",
+    "type": "base",
+    "field_count": 22,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "customer_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "subtotal",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "iva_total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "discount_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "total",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "pending",
+          "invoiced",
+          "cancelled"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "seller_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "has_pending_delivery",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "fulfillment_status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "SIN_GESTION",
+          "RESERVADO_IMPORTACION",
+          "PENDIENTE_ENTREGA",
+          "PARCIAL_ENTREGADO",
+          "ENTREGADO",
+          "EN_DESPACHO",
+          "FACTURADO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "third_party_branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_party_branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "delivery_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "logistica_deliveries",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  },
+  "sales_reservation_lines": {
+    "id": "pbc_710896604",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "reservation_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "sales_reservations",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "product_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "products",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "import_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "imports",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "import_line_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "import_lines",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "qty_reserved",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "qty_dispatched",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "qty_released",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "eta_snapshot",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "active",
+          "partial",
+          "completed",
+          "released",
+          "cancelled"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "sales_reservations": {
+    "id": "pbc_4130161515",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "customer_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "invoice_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "invoices",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "active",
+          "partial",
+          "completed",
+          "released",
+          "cancelled",
+          "por_confirmar",
+          "accepted"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "settings": {
+    "id": "pbc_2769025244",
+    "type": "base",
+    "field_count": 3,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "key",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "value",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "spa_clients": {
+    "id": "pbc_1346741877",
+    "type": "base",
+    "field_count": 9,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "client_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "skin_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "GRASA",
+          "SECA",
+          "MIXTA",
+          "SENSIBLE",
+          "NORMAL"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "allergies",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "medical_conditions",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "treatment_notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "birthdate",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "third_parties": {
+    "id": "pbc_955284662",
+    "type": "base",
+    "field_count": 46,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "CLIENTE",
+          "PROVEEDOR",
+          "EMPLEADO",
+          "PROPIETARIO",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "doc_type",
+        "type": "select",
+        "required": true,
+        "values": [
+          "11",
+          "12",
+          "13",
+          "21",
+          "22",
+          "31",
+          "41",
+          "42",
+          "47",
+          "48",
+          "50",
+          "91",
+          "NIT",
+          "NITPE",
+          "CC",
+          "CE",
+          "TI",
+          "PAS",
+          "RC"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "doc_number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "dv",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "commercial_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": false
+      },
+      {
+        "name": "phone",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "city",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "department",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "country",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tax_regime",
+        "type": "select",
+        "required": false,
+        "values": [
+          "COMUN",
+          "SIMPLIFICADO",
+          "NO_RESP",
+          "GRAN_CONTR"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "is_retention_agent",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "bank_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "bank_account",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "contact_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "contact_phone",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "person_type",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "first_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "last_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "business_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "city_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dept_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "advisor",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "phone2",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "email2",
+        "type": "email",
+        "required": false
+      },
+      {
+        "name": "credit_limit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "max_invoices",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "payment_days",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ciiu",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tfe",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tfc",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "rf",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "prf",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "pi",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "piv",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "gc",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "ar",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "ei",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "resp",
+        "type": "json",
+        "required": false
+      },
+      {
+        "name": "gcm",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "rut_pdf",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 15728640,
+        "mimeTypes": [
+          "application/pdf"
+        ]
+      }
+    ]
+  },
+  "third_party_branches": {
+    "id": "pbc_tp_branches",
+    "type": "base",
+    "field_count": 20,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "third_party_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": true,
+        "maxSelect": 1
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "is_main",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "country",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "department",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "dept_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "city",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "city_code",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "phone",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "phone2",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": false
+      },
+      {
+        "name": "contact_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "advisor",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "advisor_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pi",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "transaction_types": {
+    "id": "pbc_1708081505",
+    "type": "base",
+    "field_count": 10,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "prefix",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "consecutive",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "numbering_mode",
+        "type": "select",
+        "required": false,
+        "values": [
+          "continuous",
+          "period"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "numbering_period_granularity",
+        "type": "select",
+        "required": false,
+        "values": [
+          "monthly",
+          "yearly"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "period_counters",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "transactions": {
+    "id": "pbc_3174063690",
+    "type": "base",
+    "field_count": 19,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "tx_type_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "transaction_types",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "number",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "third_party_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "cross_enabled",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "cross_type",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cross_number",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "cross_amount",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cross_purpose",
+        "type": "select",
+        "required": false,
+        "values": [
+          "Causar",
+          "Recaudar",
+          "Reportar Cartera"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": false,
+        "values": [
+          "active",
+          "voided",
+          "draft"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "user_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "users",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "payment_days",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "teso_mode",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "teso_params",
+        "type": "json",
+        "required": false
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "book_type",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "pos_shift_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "pos_shifts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      }
+    ]
+  },
+  "treasury_settings": {
+    "id": "pbc_1098600856",
+    "type": "base",
+    "field_count": 4,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "default_bank_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "default_cash_account_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "auto_rules",
+        "type": "json",
+        "required": false
+      }
+    ]
+  },
+  "tx_lines": {
+    "id": "pbc_2785691647",
+    "type": "base",
+    "field_count": 14,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "tx_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "transactions",
+        "cascadeDelete": true,
+        "maxSelect": 0
+      },
+      {
+        "name": "account_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "accounts",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "debit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "credit",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "line_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "cross_doc_ref",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "third_party_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "cost_center_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "cost_centers",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "cross_doc_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "due_date",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "is_iva_cost",
+        "type": "bool",
+        "required": false
+      }
+    ]
+  },
+  "users": {
+    "id": "_pb_users_auth_",
+    "type": "auth",
+    "field_count": 24,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "password",
+        "type": "password",
+        "required": true
+      },
+      {
+        "name": "tokenKey",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "email",
+        "type": "email",
+        "required": true
+      },
+      {
+        "name": "emailVisibility",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "verified",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "avatar",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 0,
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/svg+xml",
+          "image/gif",
+          "image/webp"
+        ]
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "role",
+        "type": "select",
+        "required": true,
+        "values": [
+          "superadmin",
+          "admin",
+          "contador",
+          "auxiliar",
+          "auditor",
+          "propietario",
+          "viewer",
+          "vendedor",
+          "cajero"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "full_name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "owner_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 0
+      },
+      {
+        "name": "default_branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "allowed_branches",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 99
+      },
+      {
+        "name": "topbar_color",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "can_edit_docs",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "default_warehouse_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "allowed_warehouses",
+        "type": "relation",
+        "required": false,
+        "relation_to": "warehouses",
+        "cascadeDelete": false,
+        "maxSelect": 99
+      },
+      {
+        "name": "active_session_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "last_login_ip",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "last_login_at",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "last_activity_at",
+        "type": "text",
+        "required": false
+      }
+    ]
+  },
+  "vendor_visits": {
+    "id": "pbc_3686138633",
+    "type": "base",
+    "field_count": 16,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "seller_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "client_id",
+        "type": "relation",
+        "required": true,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "visit_date",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "order_seq",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "values": [
+          "PROGRAMADA",
+          "EN_CURSO",
+          "COMPLETADA_PEDIDO",
+          "COMPLETADA_RECAUDO",
+          "NO_EFECTIVA",
+          "REPROGRAMADA"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "objective",
+        "type": "select",
+        "required": false,
+        "values": [
+          "VENTA",
+          "COBRO",
+          "SEGUIMIENTO",
+          "PROSPECCION"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "checkin_time",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "checkout_time",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "geo_lat",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "geo_lng",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "sales_order_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "sales_orders",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "no_order_reason",
+        "type": "select",
+        "required": false,
+        "values": [
+          "STOCK_SUFICIENTE",
+          "LOCAL_CERRADO",
+          "ENCARGADO_NO_DISPONIBLE",
+          "PRECIO",
+          "OTRO"
+        ],
+        "maxSelect": 0
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "required": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "required": false
+      }
+    ]
+  },
+  "warehouses": {
+    "id": "pbc_1364849191",
+    "type": "base",
+    "field_count": 10,
+    "fields": [
+      {
+        "name": "id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "code",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "notes",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "active",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "branch_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "branches",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      },
+      {
+        "name": "is_consignment",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "consignment_type",
+        "type": "select",
+        "required": false,
+        "values": [
+          "INBOUND",
+          "OUTBOUND"
+        ],
+        "maxSelect": 1
+      },
+      {
+        "name": "linked_third_party_id",
+        "type": "relation",
+        "required": false,
+        "relation_to": "third_parties",
+        "cascadeDelete": false,
+        "maxSelect": 1
+      }
+    ]
+  }
+}

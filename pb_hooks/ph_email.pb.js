@@ -30,6 +30,32 @@ function getMonthNameUpper(p) {
   return months[m - 1] || '';
 }
 
+// Formateador de fecha YYYY-MM-DD a DD/MM/YYYY sin desfasar zona horaria
+function fmtDateDDMMYYYY(dStr) {
+  if (!dStr) return '—';
+  const s = String(dStr).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return m[3] + '/' + m[2] + '/' + m[1];
+  }
+  return s;
+}
+
+// Obtener el período inmediatamente anterior (YYYY-MM)
+function getPreviousPeriod(period) {
+  if (!period) return '';
+  const parts = String(period).split('-');
+  let y = parseInt(parts[0], 10);
+  let m = parseInt(parts[1], 10);
+  if (isNaN(y) || isNaN(m)) return '';
+  m -= 1;
+  if (m < 1) {
+    m = 12;
+    y -= 1;
+  }
+  return y + '-' + (m < 10 ? '0' + m : m);
+}
+
 // Helper de números a letras en español
 function numeroALetras(num) {
   var tempNum = parseFloat(String(num)).toFixed(2).split('.');
@@ -131,8 +157,13 @@ function buildPhEmailHtml({
   conceptsList,
   propertyName,
   propertyCode,
+  propertyArea,
+  propertyCoef,
+  propertyMatricula,
   ownerName,
+  ownerDocNumber,
   ownerAddress,
+  ownerPhone,
   companyName,
   companyNit,
   companyAddress,
@@ -140,7 +171,11 @@ function buildPhEmailHtml({
   companyEmail,
   companyCity,
   companyLogo,
-  totalActual
+  totalActual,
+  notes: customNotes,
+  prevMonthUnitRecaudo,
+  prevMonthTotalRecaudo,
+  prevMonthName
 }) {
   const numberText = invoice.getString("number");
   
@@ -160,15 +195,9 @@ function buildPhEmailHtml({
       </tr>`;
   }
 
-  // Si hay observaciones, agregarlas abajo
+  // Nota al pie de factura / instrucciones de recaudo
   let notesHtml = "";
-  const notes = invoice.getString("notes");
-  if (notes && notes.trim()) {
-    notesHtml = `
-      <div style="margin-top: 14px; font-size: 10.5px; color: #000; font-style: italic; line-height: 1.4; border-top: 1px dashed #000; padding-top: 8px; text-align: left;">
-        ${notes.replace(/\n/g, '<br>')}
-      </div>`;
-  }
+  const notes = (customNotes || invoice.getString("notes") || getSetting("ph_invoice_footer_note", "") || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
 
   const phoneSection = companyPhone ? `TEL / PORTERÍA: ${companyPhone}` : "";
   const addressSection = companyAddress ? `<div style="font-size: 10px; color: #000;">${companyAddress}</div>` : "";
@@ -235,7 +264,7 @@ function buildPhEmailHtml({
             </tr>
             <tr>
               <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Contacto:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">—</td>
+              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerPhone || '—'}</td>
             </tr>
             <tr>
               <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Cód. Unidad:</td>
@@ -244,7 +273,7 @@ function buildPhEmailHtml({
                   <tr>
                     <td style="border: none; padding: 0; font-weight: bold; color: #000;">${propertyCode || propertyName}</td>
                     <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; color: #000; background-color: #ffffff;">NIT / C.C.</td>
-                    <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">—</td>
+                    <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">${ownerDocNumber || '—'}</td>
                   </tr>
                 </table>
               </td>
@@ -263,7 +292,7 @@ function buildPhEmailHtml({
               <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Matrícula</td>
             </tr>
             <tr>
-              <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">&nbsp;</td>
+              <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyMatricula || '&nbsp;'}</td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Ref. Banco</td>
@@ -274,7 +303,7 @@ function buildPhEmailHtml({
           </table>
         </td>
 
-        <!-- Columna 3: Fechas / Mes -->
+        <!-- Columna 3: Fechas / Área -->
         <td style="width: 23%; vertical-align: top;">
           <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
             <tr>
@@ -282,18 +311,32 @@ function buildPhEmailHtml({
               <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Vencimiento</td>
             </tr>
             <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${invoice.getString("date")}</td>
-              <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${invoice.getString("due_date") || invoice.getString("date")}</td>
+              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("date"))}</td>
+              <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("due_date") || invoice.getString("date"))}</td>
             </tr>
             <tr>
               <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Área (m²)</td>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Mes</td>
+              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Coeficiente</td>
             </tr>
             <tr>
-              <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">&nbsp;</td>
-              <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${getMonthNameUpper(invoice.getString("period"))}</td>
+              <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyArea || '&nbsp;'}</td>
+              <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyCoef || '—'}</td>
             </tr>
           </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
+      <tr>
+        <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background-color: #ffffff; color: #000;">
+          <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
+          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
+        </td>
+        <td style="width: 50%; padding: 4.5px 8px; background-color: #ffffff; color: #000;">
+          <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
+          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
         </td>
       </tr>
     </table>
@@ -364,6 +407,7 @@ function generatePhPdfAttachment({
   propertyMatricula,
   ownerName,
   ownerNit,
+  ownerDocNumber,
   ownerAddress,
   ownerPhone,
   ownerEmail,
@@ -376,7 +420,10 @@ function generatePhPdfAttachment({
   companyLogo,
   totalActual,
   type,
-  notes
+  notes,
+  prevMonthUnitRecaudo,
+  prevMonthTotalRecaudo,
+  prevMonthName
 }) {
   const numberText = invoice.getString("number") || "cuenta";
   const docType = type || 'invoice';
@@ -408,13 +455,17 @@ function generatePhPdfAttachment({
           propertyCoef,
           propertyMatricula,
           ownerName,
-          ownerNit,
+          ownerNit: ownerDocNumber || ownerNit || '—',
+          ownerDocNumber: ownerDocNumber || ownerNit || '—',
           ownerAddress,
           ownerPhone,
           ownerEmail,
           conceptsList,
           totalActual,
-          notes
+          notes,
+          prevMonthUnitRecaudo,
+          prevMonthTotalRecaudo,
+          prevMonthName
         }
       })
     });
@@ -438,31 +489,49 @@ function generatePhPdfAttachment({
 // ROUTE: Envío individual de Factura / Estado de cuenta
 // ──────────────────────────────────────────────────────────
 routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
-  const auth = e.requestInfo()?.auth;
+  let auth = null;
+  try { auth = e.requestInfo()?.auth || e.auth; } catch (_) {
+    try { auth = $apis.requestInfo(e).authRecord; } catch (_) {}
+  }
   if (!auth) {
-    e.json(401, { message: "Autenticación requerida." });
-    return;
+    return e.json(401, { message: "Autenticación requerida." });
   }
 
   // Sincronizar configuraciones SMTP antes del envío
-  syncSmtpSettings();
+  try { syncSmtpSettings(); } catch (_) {}
 
-  const body = e.requestInfo()?.body || {};
-  const invoiceId = body.invoiceId || body.invoice_id;
-  const type = body.type || 'invoice'; // 'invoice' o 'statement'
-  const customEmail = String(body.email || '').trim();
-  const customSubject = String(body.subject || '').trim();
+  let body = {};
+  try {
+    body = e.requestInfo()?.body || {};
+  } catch (_) {
+    try {
+      body = $apis.requestInfo(e).body || {};
+    } catch (_) {}
+  }
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (_) {}
+  }
+
+  let invoiceId = body?.invoiceId || body?.invoice_id || body?.id;
+  if (!invoiceId) {
+    try {
+      const q = e.requestInfo()?.query || {};
+      invoiceId = q.invoiceId || q.invoice_id || q.id;
+    } catch (_) {}
+  }
+
+  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+  const customEmail = String(body?.email || '').trim();
+  const customSubject = String(body?.subject || '').trim();
 
   if (!invoiceId) {
-    e.json(400, { message: "El ID de la factura (invoiceId) es requerido." });
-    return;
+    return e.json(400, { message: "El ID de la factura (invoiceId) es requerido." });
   }
 
   try {
     const invoice = $app.findRecordById("ph_invoices", invoiceId);
     if (!invoice) {
-      e.json(404, { message: "Factura no encontrada." });
-      return;
+      return e.json(404, { message: "Factura no encontrada." });
     }
 
     $app.expandRecord(invoice, ["property_id"], null);
@@ -551,6 +620,44 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
     const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
+    const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
+    const ownerPhone = owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—";
+
+    const prevPeriod = getPreviousPeriod(invoice.getString("period"));
+    const prevMonthName = getMonthNameUpper(prevPeriod);
+    let prevMonthUnitRecaudo = 0;
+    let prevMonthTotalRecaudo = 0;
+    if (prevPeriod) {
+      try {
+        const unitPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
+          "",
+          200,
+          0
+        );
+        if (unitPaid) {
+          for (const p of unitPaid) {
+            prevMonthUnitRecaudo += p.getFloat("total");
+          }
+        }
+        const allPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          `period = '${prevPeriod}' && status = 'paid'`,
+          "",
+          1000,
+          0
+        );
+        if (allPaid) {
+          for (const p of allPaid) {
+            prevMonthTotalRecaudo += p.getFloat("total");
+          }
+        }
+      } catch (errRec) {
+        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
+      }
+    }
+
     // Configuración de la empresa
     const companyName = getSetting("company_name", "GRAVY S.A.S");
     const companyNit = getSetting("company_nit", "");
@@ -559,6 +666,8 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     const companyEmail = getSetting("company_email", "");
     const companyCity = getSetting("company_city", "");
     const companyLogo = getSetting("company_logo", "");
+    const companyFooterNote = getSetting("ph_invoice_footer_note", "");
+    const invoiceNotes = (invoice.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
 
     // Generar plantilla de correo
     const htmlContent = buildPhEmailHtml({
@@ -566,8 +675,13 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       conceptsList,
       propertyName: prop.getString("name") || prop.getString("code") || "Unidad",
       propertyCode: prop.getString("code") || "",
+      propertyArea: prop.getString("area_m2") || prop.getString("area") || "",
+      propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
+      propertyMatricula: prop.getString("matricula") || "",
       ownerName: owner ? owner.getString("name") : "Copropietario",
+      ownerDocNumber,
       ownerAddress: owner ? owner.getString("address") : "",
+      ownerPhone,
       companyName,
       companyNit,
       companyAddress,
@@ -575,7 +689,11 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       companyEmail,
       companyCity,
       companyLogo,
-      totalActual
+      totalActual,
+      notes: invoiceNotes,
+      prevMonthUnitRecaudo,
+      prevMonthTotalRecaudo,
+      prevMonthName
     });
 
     const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
@@ -603,9 +721,10 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
         propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
         propertyMatricula: prop.getString("matricula") || "",
         ownerName: owner ? owner.getString("name") : "Copropietario",
-        ownerNit: owner ? (owner.getString("doc_number") || owner.getString("nit") || "—") : "—",
+        ownerNit: ownerDocNumber,
+        ownerDocNumber,
         ownerAddress: owner ? owner.getString("address") : "",
-        ownerPhone: owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—",
+        ownerPhone,
         ownerEmail: targetEmail,
         companyName,
         companyNit,
@@ -616,7 +735,10 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
         companyLogo,
         totalActual,
         type,
-        notes: invoice.getString("notes") || ""
+        notes: invoiceNotes,
+        prevMonthUnitRecaudo,
+        prevMonthTotalRecaudo,
+        prevMonthName
       });
 
       if (pdfAttachment && pdfAttachment.pdfPath) {
@@ -651,23 +773,44 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
 // ROUTE: Envío masivo de Facturas / Estados de cuenta por Período
 // ──────────────────────────────────────────────────────────
 routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
-  const auth = e.requestInfo()?.auth;
+  let auth = null;
+  try { auth = e.requestInfo()?.auth || e.auth; } catch (_) {
+    try { auth = $apis.requestInfo(e).authRecord; } catch (_) {}
+  }
   if (!auth) {
-    e.json(401, { message: "Autenticación requerida." });
-    return;
+    return e.json(401, { message: "Autenticación requerida." });
   }
 
   // Sincronizar configuraciones SMTP antes del envío
-  syncSmtpSettings();
+  try { syncSmtpSettings(); } catch (smtpErr) {
+    console.warn("[GRAVY PH EMAIL] Advertencia al sincronizar SMTP:", smtpErr);
+  }
 
-  const body = e.requestInfo()?.body || {};
-  const period = body.period;
-  const type = body.type || 'invoice'; // 'invoice' o 'statement'
-  const customSubject = String(body.subject || '').trim();
+  let body = {};
+  try {
+    body = e.requestInfo()?.body || {};
+  } catch (_) {
+    try {
+      body = $apis.requestInfo(e).body || {};
+    } catch (_) {}
+  }
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (_) {}
+  }
+
+  let period = String(body?.period || body?.periodo || "").trim();
+  if (!period) {
+    try {
+      const q = e.requestInfo()?.query || {};
+      period = String(q.period || q.periodo || "").trim();
+    } catch (_) {}
+  }
+
+  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+  const customSubject = String(body?.subject || '').trim();
 
   if (!period) {
-    e.json(400, { message: "El período es requerido." });
-    return;
+    return e.json(400, { message: "El período es requerido (formato YYYY-MM)." });
   }
 
   try {
@@ -680,8 +823,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     );
 
     if (!invoices.length) {
-      e.json(404, { message: "No se encontraron facturas activas para el período " + period });
-      return;
+      return e.json(404, { message: "No se encontraron facturas activas para el período " + period });
     }
 
     // Configuración de la empresa
@@ -692,6 +834,27 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     const companyEmail = getSetting("company_email", "");
     const companyCity = getSetting("company_city", "");
     const companyLogo = getSetting("company_logo", "");
+    const companyFooterNote = getSetting("ph_invoice_footer_note", "");
+
+    const prevPeriod = getPreviousPeriod(period);
+    const prevMonthName = getMonthNameUpper(prevPeriod);
+    let prevMonthTotalRecaudo = 0;
+    if (prevPeriod) {
+      try {
+        const allPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          `period = '${prevPeriod}' && status = 'paid'`,
+          "",
+          1000,
+          0
+        );
+        if (allPaid) {
+          for (const p of allPaid) {
+            prevMonthTotalRecaudo += p.getFloat("total");
+          }
+        }
+      } catch (_) {}
+    }
 
     let sent = 0;
     let skipped = 0;
@@ -721,6 +884,27 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           skipped++;
           details.push({ number: inv.getString("number"), unit: prop.getString("name"), status: "skipped", reason: "Propietario sin email registrado" });
           continue;
+        }
+
+        const ownerDocNumber = owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—");
+        const ownerPhone = owner.getString("phone") || owner.getString("celular") || "—";
+
+        let prevMonthUnitRecaudo = 0;
+        if (prevPeriod) {
+          try {
+            const unitPaid = $app.findRecordsByFilter(
+              "ph_invoices",
+              `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
+              "",
+              200,
+              0
+            );
+            if (unitPaid) {
+              for (const p of unitPaid) {
+                prevMonthUnitRecaudo += p.getFloat("total");
+              }
+            }
+          } catch (_) {}
         }
 
         inv.set("email_sent_to", email);
@@ -788,14 +972,21 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
         const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
+        const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
+
         // Generar plantilla de correo
         const htmlContent = buildPhEmailHtml({
           invoice: inv,
           conceptsList,
           propertyName: prop.getString("name") || prop.getString("code") || "Unidad",
           propertyCode: prop.getString("code") || "",
+          propertyArea: prop.getString("area_m2") || prop.getString("area") || "",
+          propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
+          propertyMatricula: prop.getString("matricula") || "",
           ownerName: owner.getString("name") || "Copropietario",
+          ownerDocNumber,
           ownerAddress: owner.getString("address") || "",
+          ownerPhone,
           companyName,
           companyNit,
           companyAddress,
@@ -803,7 +994,11 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           companyEmail,
           companyCity,
           companyLogo,
-          totalActual
+          totalActual,
+          notes: invoiceNotes,
+          prevMonthUnitRecaudo,
+          prevMonthTotalRecaudo,
+          prevMonthName
         });
 
         const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
@@ -819,9 +1014,10 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
           propertyMatricula: prop.getString("matricula") || "",
           ownerName: owner.getString("name") || "Copropietario",
-          ownerNit: owner.getString("doc_number") || owner.getString("nit") || "—",
+          ownerNit: ownerDocNumber,
+          ownerDocNumber,
           ownerAddress: owner.getString("address") || "",
-          ownerPhone: owner.getString("phone") || owner.getString("celular") || "—",
+          ownerPhone,
           ownerEmail: email,
           companyName,
           companyNit,
@@ -832,7 +1028,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           companyLogo,
           totalActual,
           type,
-          notes: inv.getString("notes") || ""
+          notes: invoiceNotes
         });
 
         // Enviar usando el cliente mailer de PocketBase
@@ -876,7 +1072,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
       }
     }
 
-    e.json(200, {
+    return e.json(200, {
       success: true,
       sent,
       skipped,
@@ -886,6 +1082,234 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
   } catch (err) {
     console.error("[GRAVY PH EMAIL] Error inesperado en lote:", err);
-    e.json(500, { message: "Error inesperado al ejecutar envío masivo: " + err.message });
+    return e.json(500, { message: "Error inesperado al ejecutar envío masivo: " + err.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────
+// ROUTE: Descarga individual de Factura / Estado de cuenta en PDF
+// ──────────────────────────────────────────────────────────
+routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
+  let auth = null;
+  try { auth = e.requestInfo()?.auth || e.auth; } catch (_) {
+    try { auth = $apis.requestInfo(e).authRecord; } catch (_) {}
+  }
+  if (!auth) {
+    return e.json(401, { message: "Autenticación requerida." });
+  }
+
+  let body = {};
+  try {
+    body = e.requestInfo()?.body || {};
+  } catch (_) {
+    try {
+      body = $apis.requestInfo(e).body || {};
+    } catch (_) {}
+  }
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body); } catch (_) {}
+  }
+
+  let invoiceId = body?.invoiceId || body?.id || body?.invoice_id;
+  if (!invoiceId) {
+    try {
+      const q = e.requestInfo()?.query || {};
+      invoiceId = q.invoiceId || q.id || q.invoice_id;
+    } catch (_) {}
+  }
+
+  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+
+  if (!invoiceId) {
+    return e.json(400, { message: "El ID de la factura es requerido." });
+  }
+
+  try {
+    const inv = $app.findRecordById("ph_invoices", invoiceId);
+    if (!inv) {
+      return e.json(404, { message: "Factura no encontrada." });
+    }
+
+    $app.expandRecord(inv, ["property_id"], null);
+    const prop = inv.expandedOne("property_id");
+    if (!prop) {
+      e.json(404, { message: "Propiedad asociada no encontrada." });
+      return;
+    }
+
+    $app.expandRecord(prop, ["owner_id"], null);
+    const owner = prop.expandedOne("owner_id");
+
+    const lines = $app.findRecordsByFilter(
+      "ph_invoice_lines",
+      `invoice_id = '${inv.id}'`,
+      "line_order",
+      200,
+      0
+    );
+
+    const outstandingInvoices = [];
+    if (type === 'statement') {
+      const res = $app.findRecordsByFilter(
+        "ph_invoices",
+        `property_id = '${prop.id}' && id != '${inv.id}' && status != 'paid' && status != 'voided' && period < '${inv.getString("period")}'`,
+        "period",
+        200,
+        0
+      );
+      if (res) {
+        for (const oldInv of res) {
+          outstandingInvoices.push(oldInv);
+        }
+      }
+    }
+
+    const conceptsMap = {};
+    for (const l of lines) {
+      const desc = l.getString("description");
+      conceptsMap[desc] = {
+        description: desc,
+        saldoAnterior: 0,
+        cobrosMes: l.getFloat("amount"),
+        saldoActual: l.getFloat("amount")
+      };
+    }
+
+    for (const oldInv of outstandingInvoices) {
+      const oldLines = $app.findRecordsByFilter(
+        "ph_invoice_lines",
+        `invoice_id = '${oldInv.id}'`,
+        "line_order",
+        200,
+        0
+      );
+      for (const ol of oldLines) {
+        const desc = ol.getString("description");
+        if (!conceptsMap[desc]) {
+          conceptsMap[desc] = {
+            description: desc,
+            saldoAnterior: 0,
+            cobrosMes: 0,
+            saldoActual: 0
+          };
+        }
+        conceptsMap[desc].saldoAnterior += ol.getFloat("amount");
+        conceptsMap[desc].saldoActual += ol.getFloat("amount");
+      }
+    }
+
+    const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
+    const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
+
+    const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
+    const ownerPhone = owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—";
+
+    const prevPeriod = getPreviousPeriod(inv.getString("period"));
+    const prevMonthName = getMonthNameUpper(prevPeriod);
+    let prevMonthUnitRecaudo = 0;
+    let prevMonthTotalRecaudo = 0;
+    if (prevPeriod) {
+      try {
+        const unitPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
+          "",
+          200,
+          0
+        );
+        if (unitPaid) {
+          for (const p of unitPaid) {
+            prevMonthUnitRecaudo += p.getFloat("total");
+          }
+        }
+        const allPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          `period = '${prevPeriod}' && status = 'paid'`,
+          "",
+          1000,
+          0
+        );
+        if (allPaid) {
+          for (const p of allPaid) {
+            prevMonthTotalRecaudo += p.getFloat("total");
+          }
+        }
+      } catch (errRec) {
+        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
+      }
+    }
+
+    const companyName = getSetting("company_name", "GRAVY S.A.S");
+    const companyNit = getSetting("company_nit", "");
+    const companyAddress = getSetting("company_address", "");
+    const companyPhone = getSetting("company_phone", "");
+    const companyEmail = getSetting("company_email", "");
+    const companyCity = getSetting("company_city", "");
+    const companyLogo = getSetting("company_logo", "");
+    const companyFooterNote = getSetting("ph_invoice_footer_note", "");
+    const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
+
+    const numberText = inv.getString("number") || "cuenta";
+    const docType = type || 'invoice';
+    const rawUnit = prop.getString("name") || prop.getString("code") || "Unidad";
+    const cleanUnit = rawUnit.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}_${cleanUnit}`;
+
+    const orchestratorRes = $http.send({
+      url: "http://127.0.0.1:8088/api/ph/generate-pdf",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: filename,
+        format: "base64",
+        statementData: {
+          companyName,
+          companyNit,
+          companyAddress,
+          companyPhone,
+          companyEmail,
+          companyCity,
+          companyLogo,
+          docType,
+          docNumber: numberText,
+          period: inv.getString("period"),
+          date: inv.getString("date"),
+          dueDate: inv.getString("due_date") || inv.getString("date"),
+          propertyName: prop.getString("name") || prop.getString("code") || "Unidad",
+          propertyCode: prop.getString("code") || "",
+          propertyArea: prop.getString("area_m2") || prop.getString("area") || "",
+          propertyCoef: prop.getString("coef_participacion") ? (prop.getString("coef_participacion") + "%") : "",
+          propertyMatricula: prop.getString("matricula") || "",
+          ownerName: owner ? owner.getString("name") : "Copropietario",
+          ownerNit: ownerDocNumber,
+          ownerDocNumber,
+          ownerAddress: owner ? owner.getString("address") : "",
+          ownerPhone,
+          ownerEmail: owner ? (owner.getString("email") || owner.getString("correo") || "—") : "—",
+          conceptsList,
+          totalActual,
+          notes: invoiceNotes,
+          prevMonthUnitRecaudo,
+          prevMonthTotalRecaudo,
+          prevMonthName
+        }
+      })
+    });
+
+    if (orchestratorRes.statusCode === 200) {
+      const data = JSON.parse(orchestratorRes.raw);
+      if (data.pdfBase64) {
+        return e.json(200, {
+          success: true,
+          pdfBase64: data.pdfBase64,
+          filename: `${filename}.pdf`
+        });
+      }
+    }
+
+    return e.json(500, { message: "No se pudo generar el archivo PDF en el orquestador." });
+  } catch (err) {
+    console.error("[GRAVY PH EMAIL] Error generando PDF individual:", err);
+    return e.json(500, { message: "Error al generar PDF individual: " + err.message });
   }
 });

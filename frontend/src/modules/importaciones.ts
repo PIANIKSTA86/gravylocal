@@ -221,13 +221,162 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     (window as any).API.getProducts({ activeOnly: true }),
   ]);
 
-  const getSupplierOptions = (selectedId: string) => {
-    return `<option value="">— Seleccionar —</option>` + suppliers.map((s: any) => `
-      <option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>
-        ${(window as any).esc(s.name)} (${s.doc_number || s.nit || 'S/N'})
-      </option>
-    `).join('');
+  // --- HELPERS DE BUSCADORES DINÁMICOS DE TERCEROS ---
+  const renderTerceroDynamicPicker = ({
+    id,
+    value = '',
+    placeholder = 'Buscar por NIT o nombre...',
+    disabled = false,
+    compact = false,
+    showQuickAdd = true,
+  }: {
+    id: string;
+    value?: string;
+    placeholder?: string;
+    disabled?: boolean;
+    compact?: boolean;
+    showQuickAdd?: boolean;
+  }) => {
+    const selectedSupplier = suppliers.find((s: any) => s.id === value);
+    const displayText = selectedSupplier ? `${selectedSupplier.doc_number || selectedSupplier.nit || 'S/N'} - ${selectedSupplier.name}` : '';
+    const heightClass = compact ? 'text-xs py-1 h-7' : 'text-xs py-1.5';
+
+    return `
+      <div id="wrap-${id}" class="relative flex items-center gap-1 w-full" style="min-width:${compact ? '160px' : '220px'}">
+        <div class="relative flex-1">
+          <input id="${id}-search" type="text" class="form-input ${heightClass} w-full pr-6" autocomplete="off" placeholder="${placeholder}" value="${(window as any).esc(displayText)}" ${disabled ? 'disabled style="background:#F3F4F6;color:#374151"' : ''}>
+          <button type="button" id="btn-clear-${id}" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 text-xs border-0 bg-transparent cursor-pointer p-0 ${displayText && !disabled ? '' : 'hidden'}" title="Limpiar selección">
+            <i class="fas fa-circle-xmark"></i>
+          </button>
+        </div>
+        <input id="${id}" type="hidden" value="${(window as any).esc(value || '')}">
+        ${showQuickAdd && !disabled ? `
+          <button type="button" id="btn-add-${id}" class="btn btn-outline ${compact ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs'} text-slate-600 hover:text-blue-600 hover:border-blue-300 flex-shrink-0" title="Crear nuevo tercero">
+            <i class="fas fa-user-plus"></i>
+          </button>
+        ` : ''}
+        <div id="${id}-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.15);z-index:9999"></div>
+      </div>
+    `;
   };
+
+  const initTerceroDynamicPicker = ({
+    id,
+    onChange,
+    disabled = false,
+  }: {
+    id: string;
+    onChange?: (val: string, supplier: any) => void;
+    disabled?: boolean;
+  }) => {
+    const searchInput = document.getElementById(`${id}-search`) as HTMLInputElement;
+    const hiddenInput = document.getElementById(id) as HTMLInputElement;
+    const resultsDiv = document.getElementById(`${id}-results`);
+    const btnClear = document.getElementById(`btn-clear-${id}`);
+    const btnAdd = document.getElementById(`btn-add-${id}`);
+    if (!searchInput || !hiddenInput || !resultsDiv) return;
+
+    if (disabled) {
+      searchInput.disabled = true;
+      return;
+    }
+
+    const performFilter = (queryVal: string) => {
+      const q = queryVal.toLowerCase().trim();
+      const filtered = !q
+        ? suppliers.slice(0, 30)
+        : suppliers.filter((s: any) => `${s.name || ''} ${s.doc_number || ''} ${s.nit || ''}`.toLowerCase().includes(q)).slice(0, 30);
+
+      if (!filtered.length) {
+        resultsDiv.innerHTML = `<div class="px-3 py-2 text-xs text-slate-400">Sin coincidencias</div>`;
+        return;
+      }
+
+      resultsDiv.innerHTML = filtered.map((s: any) => `
+        <button type="button" class="w-full text-left px-3 py-2 text-xs border-0 bg-white hover:bg-blue-50 cursor-pointer block border-b border-slate-100 last:border-0"
+                data-supplier-id="${(window as any).esc(s.id)}"
+                data-supplier-text="${(window as any).esc(s.doc_number || s.nit || 'S/N')} - ${(window as any).esc(s.name)}">
+          <div class="font-bold text-slate-800">${(window as any).esc(s.name)}</div>
+          <div class="text-[10px] text-slate-500">Doc: ${(window as any).esc(s.doc_number || s.nit || 'S/N')} ${s.tax_regime ? `· ${s.tax_regime}` : ''}</div>
+        </button>
+      `).join('');
+
+      resultsDiv.querySelectorAll('button[data-supplier-id]').forEach((btn: any) => {
+        btn.addEventListener('click', (e: Event) => {
+          e.stopPropagation();
+          const sId = btn.getAttribute('data-supplier-id');
+          const sText = btn.getAttribute('data-supplier-text');
+          hiddenInput.value = sId;
+          searchInput.value = sText;
+          resultsDiv.style.display = 'none';
+          if (btnClear) btnClear.classList.remove('hidden');
+          const suppObj = suppliers.find((x: any) => x.id === sId);
+          if (onChange) onChange(sId, suppObj);
+        });
+      });
+    };
+
+    searchInput.addEventListener('focus', () => {
+      performFilter(searchInput.value);
+      resultsDiv.style.display = 'block';
+    });
+
+    searchInput.addEventListener('input', () => {
+      hiddenInput.value = '';
+      if (btnClear) {
+        if (searchInput.value) btnClear.classList.remove('hidden');
+        else btnClear.classList.add('hidden');
+      }
+      performFilter(searchInput.value);
+      resultsDiv.style.display = 'block';
+      if (onChange) onChange('', null);
+    });
+
+    searchInput.addEventListener('blur', () => {
+      setTimeout(() => { resultsDiv.style.display = 'none'; }, 250);
+    });
+
+    if (btnClear) {
+      btnClear.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hiddenInput.value = '';
+        searchInput.value = '';
+        btnClear.classList.add('hidden');
+        resultsDiv.style.display = 'none';
+        if (onChange) onChange('', null);
+      });
+    }
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof (window as any).openTerceroForm === 'function') {
+          (window as any).openTerceroForm(null, async (createdRecord: any) => {
+            if (createdRecord && createdRecord.id) {
+              suppliers.push(createdRecord);
+              hiddenInput.value = createdRecord.id;
+              searchInput.value = `${createdRecord.doc_number || createdRecord.nit || 'S/N'} - ${createdRecord.name}`;
+              if (btnClear) btnClear.classList.remove('hidden');
+              if (onChange) onChange(createdRecord.id, createdRecord);
+              (window as any).showToast('Tercero creado y seleccionado exitosamente.', 'success');
+            }
+          });
+        } else {
+          (window as any).showToast('Módulo de terceros no disponible.', 'warning');
+        }
+      });
+    }
+
+    if (typeof (window as any).initKeyboardAutocomplete === 'function') {
+      (window as any).initKeyboardAutocomplete({
+        input: searchInput,
+        results: resultsDiv,
+        itemSelector: 'button[data-supplier-id]'
+      });
+    }
+  };
+
+  let localStageExpenses: Record<string, any[]> = {};
 
   if (importId) {
     const [impRes, linesRes, invsRes, palletsRes] = await Promise.all([
@@ -247,6 +396,68 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       });
     }
   }
+
+  // Cargar o inicializar estructura multi-línea para cada etapa
+  if (imp?.stage_expenses) {
+    try {
+      localStageExpenses = typeof imp.stage_expenses === 'string' ? JSON.parse(imp.stage_expenses) : imp.stage_expenses;
+    } catch (_) {
+      localStageExpenses = {};
+    }
+  }
+
+  const defaultStages = ['freight', 'insurance', 'customs', 'local_carrier', 'local_other'];
+  defaultStages.forEach(stg => {
+    if (!localStageExpenses[stg] || !localStageExpenses[stg].length) {
+      let legacySupp = '';
+      let legacyInv = '';
+      let legacyCost = 0;
+      let legacyTrm = 1;
+      let legacyTx = null;
+
+      if (stg === 'freight') {
+        legacySupp = imp?.freight_supplier_id || '';
+        legacyInv = imp?.freight_invoice_num || '';
+        legacyCost = imp?.freight_cost || 0;
+        legacyTrm = imp?.freight_trm || imp?.exchange_rate || 4000;
+        legacyTx = imp?.tx_freight_id || null;
+      } else if (stg === 'insurance') {
+        legacySupp = imp?.insurance_supplier_id || '';
+        legacyInv = imp?.insurance_invoice_num || '';
+        legacyCost = imp?.insurance_cost || 0;
+        legacyTrm = imp?.insurance_trm || imp?.exchange_rate || 4000;
+        legacyTx = imp?.tx_insurance_id || null;
+      } else if (stg === 'customs') {
+        legacySupp = imp?.customs_supplier_id || '';
+        legacyInv = imp?.customs_invoice_num || '';
+        legacyCost = imp?.gastos_nacionalizacion || 0;
+        legacyTrm = imp?.customs_trm || imp?.dian_trm || imp?.exchange_rate || 4000;
+        legacyTx = imp?.tx_customs_id || null;
+      } else if (stg === 'local_carrier') {
+        legacySupp = imp?.local_carrier_id || '';
+        legacyInv = imp?.local_carrier_invoice_num || '';
+        legacyCost = imp?.transporte_nacional || 0;
+        legacyTrm = imp?.local_carrier_trm || 1;
+        legacyTx = imp?.tx_local_carrier_id || null;
+      } else if (stg === 'local_other') {
+        legacySupp = imp?.local_other_supplier_id || '';
+        legacyInv = imp?.local_other_invoice_num || '';
+        legacyCost = imp?.otros_gastos || 0;
+        legacyTrm = imp?.local_other_trm || 1;
+        legacyTx = imp?.tx_local_other_id || null;
+      }
+
+      localStageExpenses[stg] = [{
+        id: `stage-${stg}-0`,
+        supplier_id: legacySupp,
+        invoice_num: legacyInv,
+        comment: '',
+        amount: legacyCost,
+        trm: legacyTrm,
+        tx_id: legacyTx
+      }];
+    }
+  });
 
   let lineCounter = 0;
   const suggestedNumber = !imp ? await (window as any).API.nextImportConsecutive().catch(() => '') : '';
@@ -272,11 +483,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div class="form-group col-span-1 md:col-span-2">
             <label class="form-label font-bold" id="lbl-imp-supplier-title">Proveedor Internacional Principal <span id="imp-supplier-req-star" style="color:#EF4444">${imp?.is_consolidated ? '' : '*'}</span></label>
-            <div id="imp-supplier-search-wrap" class="relative">
-              <input id="imp-supplier-search" class="form-input" autocomplete="off" placeholder="Buscar proveedor por NIT o nombre...">
-              <input id="imp-supplier-id" type="hidden" value="${(window as any).esc(imp?.supplier_id || '')}">
-              <div id="imp-supplier-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:180px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
-            </div>
+            ${renderTerceroDynamicPicker({
+              id: 'imp-supplier-id',
+              value: imp?.supplier_id || '',
+              placeholder: 'Buscar proveedor por NIT o nombre...'
+            })}
             <p class="text-[11px] text-gray-500 mt-1" id="lbl-imp-supplier-hint">
               ${imp?.is_consolidated ? 'Proveedor general, consolidador o agente de carga principal.' : 'Proveedor internacional emisor de la mercancía.'}
             </p>
@@ -627,593 +838,475 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           <!-- Tab Content Panels Container -->
           <div class="p-5 bg-slate-50/50">
 
-            <!-- Panel 0: Vista General -->
-            <div class="imp-stage-panel space-y-6" id="imp-stage-panel-resumen">
-              <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Panel 0: Vista General - Dashboard Ejecutivo de Hoja de Costos -->
+            <div class="imp-stage-panel space-y-5" id="imp-stage-panel-resumen">
+              
+              <!-- Tarjetas KPI Superiores en Formato Amplio -->
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
                 
-                <!-- Tabla Matriz General -->
-                <div class="lg:col-span-2 p-4 rounded-xl border bg-white shadow-sm" style="border-color:#E2E8F0">
-                  <div class="flex items-center justify-between mb-3">
-                    <h5 class="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <i class="fas fa-table text-blue-600"></i> Matriz de Causación por Etapa
-                    </h5>
-                    <span class="text-[10px] text-slate-400 font-medium">Haz clic en una etapa para editar en detalle</span>
+                <!-- 1. FOB Mercancía -->
+                <div class="p-3.5 rounded-xl border bg-white shadow-sm flex flex-col justify-between" style="border-color:#E2E8F0">
+                  <div class="flex items-center justify-between text-slate-500 mb-1">
+                    <span class="text-[11px] font-bold uppercase tracking-wider">1. FOB Mercancía</span>
+                    <div class="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs"><i class="fas fa-ship"></i></div>
                   </div>
+                  <div>
+                    <div class="text-xs text-slate-400 font-mono" id="kpi-fob-usd">$ 0 USD</div>
+                    <div class="text-base font-extrabold text-slate-900 font-mono mt-0.5" id="lbl-res-fob-cop">$ 0</div>
+                  </div>
+                  <button type="button" class="mt-2 text-[11px] text-indigo-600 hover:text-indigo-800 font-bold text-left flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('fob')">
+                    <span>Ver detalle</span> <i class="fas fa-arrow-right text-[9px]"></i>
+                  </button>
+                </div>
 
-                  <div style="overflow-x:auto">
-                    <table class="w-full text-xs text-left border-collapse" id="imp-stages-table">
-                      <thead>
-                        <tr class="border-b text-slate-500 font-semibold bg-slate-50" style="border-color:#E5E7EB">
-                          <th class="py-2.5 px-3" style="min-width:130px">Etapa</th>
-                          <th class="py-2.5 px-3" style="min-width:160px">Proveedor / Tercero</th>
-                          <th class="py-2.5 px-3" style="width:105px">Factura Nro</th>
-                          <th class="py-2.5 px-3 text-right" style="width:100px">Monto Divisa</th>
-                          <th class="py-2.5 px-3 text-right" style="width:100px;background:#FEFCE8" title="Tasa Representativa del Mercado aplicada a este rubro">TRM ($) <i class="fas fa-coins text-amber-500"></i></th>
-                          <th class="py-2.5 px-3 text-right" style="width:115px">Total (COP)</th>
-                          <th class="py-2.5 px-3 text-center" style="width:110px">Acción Contable</th>
-                        </tr>
-                      </thead>
-                      <tbody class="divide-y divide-slate-100">
-                        
-                        <!-- FOB Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('fob')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_fob_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            <span>FOB Mercancía</span>
-                            <span class="text-[10px] text-slate-400 font-normal" id="lbl-fob-currency">(USD)</span>
-                            <span id="lbl-fob-consolidated-indicator" class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-bold ${imp?.is_consolidated ? '' : 'hidden'}">Consolidado</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <span class="font-medium text-xs text-slate-700" id="stage-fob-supplier-name">
-                              ${imp?.is_consolidated ? 'Múltiples Proveedores (Ver tab)' : (imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba')}
-                            </span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-supplier-invoice-num" class="form-input text-xs py-1 font-mono ${imp?.is_consolidated ? 'hidden' : ''}" placeholder="Factura Nro" value="${(window as any).esc(imp?.supplier_invoice_num || '')}" ${imp?.tx_fob_id ? 'disabled' : ''}>
-                            <span id="imp-consolidated-inv-count-badge" class="text-xs text-blue-700 font-semibold ${imp?.is_consolidated ? '' : 'hidden'}">Ver Facturas</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="number" id="imp-fob-total" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.fob_total || '0'}" readonly style="background:#F3F4F6">
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-stage-fob-trm" class="form-input text-xs py-1 text-right font-bold text-slate-700 bg-slate-100" value="${imp?.exchange_rate || '4000.00'}" readonly title="TRM Base de la importación">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-fob-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            <div id="wrap-fob-single-action" class="${imp?.is_consolidated ? 'hidden' : ''}">
-                              ${imp?.tx_fob_id ? `
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_fob_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                              ` : `
-                                <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-fob" onclick="window.triggerStageCausacion('fob')">
-                                  <i class="fas fa-calculator mr-1"></i> Causar
-                                </button>
-                              `}
-                            </div>
-                            <button type="button" id="btn-fob-goto-tab" class="btn btn-outline btn-xs text-blue-700 w-full ${imp?.is_consolidated ? '' : 'hidden'}" onclick="window.switchImpStageTab('fob')">
-                              <i class="fas fa-list-check mr-1"></i> Ver Detalle
-                            </button>
-                          </td>
-                        </tr>
-
-                        <!-- Freight Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('freight')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_freight_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            Flete Int. <span class="text-[10px] text-slate-400 font-normal" id="lbl-freight-currency">(USD)</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <select id="imp-freight-supplier-id" class="form-input text-xs py-1" ${imp?.tx_freight_id ? 'disabled' : ''}>
-                              ${getSupplierOptions(imp?.freight_supplier_id || '')}
-                            </select>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-freight-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.freight_invoice_num || '')}" ${imp?.tx_freight_id ? 'disabled' : ''}>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="number" id="imp-freight-cost" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.freight_cost || '0'}" step="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('freight')" data-original-val="${imp?.freight_cost || '0'}">
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-freight-trm" class="form-input text-xs py-1 text-right font-bold text-amber-900 bg-amber-50 border-amber-300" placeholder="TRM Flete" value="${imp?.freight_trm || imp?.freight_exchange_rate || imp?.exchange_rate || '4000.00'}" step="0.01" min="1" oninput="window.impRecalcTotals(); window.checkStageAmountChange('freight')" title="TRM específica de la factura de Flete">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-freight-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_freight_id ? `
-                              <div class="flex flex-col gap-1 items-center">
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_freight_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                                <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-freight" onclick="window.triggerStageAdjustment('freight')">
-                                  <i class="fas fa-pen-nib mr-1"></i> Ajustar
-                                </button>
-                              </div>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-freight" onclick="window.triggerStageCausacion('freight')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
-                          </td>
-                        </tr>
-
-                        <!-- Insurance Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('insurance')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_insurance_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            Seguro Int. <span class="text-[10px] text-slate-400 font-normal" id="lbl-insurance-currency">(USD)</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <select id="imp-insurance-supplier-id" class="form-input text-xs py-1" ${imp?.tx_insurance_id ? 'disabled' : ''}>
-                              ${getSupplierOptions(imp?.insurance_supplier_id || '')}
-                            </select>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-insurance-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.insurance_invoice_num || '')}" ${imp?.tx_insurance_id ? 'disabled' : ''}>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="number" id="imp-insurance-cost" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.insurance_cost || '0'}" step="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('insurance')" data-original-val="${imp?.insurance_cost || '0'}">
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-insurance-trm" class="form-input text-xs py-1 text-right font-bold text-amber-900 bg-amber-50 border-amber-300" placeholder="TRM Seguro" value="${imp?.insurance_trm || imp?.insurance_exchange_rate || imp?.exchange_rate || '4000.00'}" step="0.01" min="1" oninput="window.impRecalcTotals(); window.checkStageAmountChange('insurance')" title="TRM de la póliza de Seguro">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-insurance-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_insurance_id ? `
-                              <div class="flex flex-col gap-1 items-center">
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_insurance_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                                <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-insurance" onclick="window.triggerStageAdjustment('insurance')">
-                                  <i class="fas fa-pen-nib mr-1"></i> Ajustar
-                                </button>
-                              </div>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-insurance" onclick="window.triggerStageCausacion('insurance')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
-                          </td>
-                        </tr>
-
-                        <!-- Customs Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('customs')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_customs_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            Aduana / DIAN <span class="text-[10px] text-slate-400 font-normal">(COP)</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <select id="imp-customs-supplier-id" class="form-input text-xs py-1" ${imp?.tx_customs_id ? 'disabled' : ''}>
-                              ${getSupplierOptions(imp?.customs_supplier_id || '')}
-                            </select>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-customs-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.customs_invoice_num || '')}" ${imp?.tx_customs_id ? 'disabled' : ''}>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <div class="flex flex-col gap-1">
-                              <input type="number" id="imp-gastos-nacionalizacion" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.gastos_nacionalizacion || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('customs')" data-original-val="${imp?.gastos_nacionalizacion || '0'}">
-                              <div class="text-[9px] text-slate-500 text-right">Arancel: <span id="stage-customs-arancel">$ 0</span></div>
-                            </div>
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-customs-trm" class="form-input text-xs py-1 text-right font-bold text-amber-900 bg-amber-50 border-amber-300" placeholder="TRM DIAN" value="${imp?.customs_trm || imp?.dian_trm || imp?.exchange_rate || '4000.00'}" step="0.01" min="1" oninput="window.impRecalcTotals(); window.checkStageAmountChange('customs')" title="TRM Oficial DIAN o del Agenciamiento Aduanero">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-customs-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_customs_id ? `
-                              <div class="flex flex-col gap-1 items-center">
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_customs_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                                <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-customs" onclick="window.triggerStageAdjustment('customs')">
-                                  <i class="fas fa-pen-nib mr-1"></i> Ajustar
-                                </button>
-                              </div>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-customs" onclick="window.triggerStageCausacion('customs')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
-                          </td>
-                        </tr>
-
-                        <!-- Local Carrier Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('local_carrier')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_local_carrier_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            Transporte Local <span class="text-[10px] text-slate-400 font-normal">(COP)</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <select id="imp-local-carrier-id" class="form-input text-xs py-1" ${imp?.tx_local_carrier_id ? 'disabled' : ''}>
-                              ${getSupplierOptions(imp?.local_carrier_id || '')}
-                            </select>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-local-carrier-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.local_carrier_invoice_num || '')}" ${imp?.tx_local_carrier_id ? 'disabled' : ''}>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="number" id="imp-transporte-nacional" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.transporte_nacional || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_carrier')" data-original-val="${imp?.transporte_nacional || '0'}">
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-local-carrier-trm" class="form-input text-xs py-1 text-right font-bold text-amber-900 bg-amber-50 border-amber-300" placeholder="1 o TRM" value="${imp?.local_carrier_trm || '1'}" step="0.01" min="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_carrier')" title="TRM de Transporte Local (1 si factura en COP o TRM si cotizado en USD)">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-carrier-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_local_carrier_id ? `
-                              <div class="flex flex-col gap-1 items-center">
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_local_carrier_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                                <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-local_carrier" onclick="window.triggerStageAdjustment('local_carrier')">
-                                  <i class="fas fa-pen-nib mr-1"></i> Ajustar
-                                </button>
-                              </div>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-local_carrier" onclick="window.triggerStageCausacion('local_carrier')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
-                          </td>
-                        </tr>
-
-                        <!-- Local Other Row -->
-                        <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer" onclick="if(!event.target.closest('button, input, select')) window.switchImpStageTab('local_other')">
-                          <td class="py-2.5 px-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${imp?.tx_local_other_id ? 'bg-emerald-500' : 'bg-slate-300'}"></span>
-                            Otros Gastos <span class="text-[10px] text-slate-400 font-normal">(COP)</span>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <select id="imp-local-other-supplier-id" class="form-input text-xs py-1" ${imp?.tx_local_other_id ? 'disabled' : ''}>
-                              ${getSupplierOptions(imp?.local_other_supplier_id || '')}
-                            </select>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="text" id="imp-local-other-invoice-num" class="form-input text-xs py-1 font-mono" placeholder="Factura Nro" value="${(window as any).esc(imp?.local_other_invoice_num || '')}" ${imp?.tx_local_other_id ? 'disabled' : ''}>
-                          </td>
-                          <td class="py-2.5 px-3">
-                            <input type="number" id="imp-otros-gastos" class="form-input text-xs py-1 text-right font-semibold" value="${imp?.otros_gastos || '0'}" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_other')" data-original-val="${imp?.otros_gastos || '0'}">
-                          </td>
-                          <td class="py-2.5 px-3 bg-amber-50/40">
-                            <input type="number" id="imp-local-other-trm" class="form-input text-xs py-1 text-right font-bold text-amber-900 bg-amber-50 border-amber-300" placeholder="1 o TRM" value="${imp?.local_other_trm || '1'}" step="0.01" min="0.01" oninput="window.impRecalcTotals(); window.checkStageAmountChange('local_other')" title="TRM de Otros Gastos Portuarios (1 si en COP o TRM si en USD)">
-                          </td>
-                          <td class="py-2.5 px-3 text-right">
-                            <span id="stage-other-cop-display" class="font-mono font-bold text-slate-800 text-xs block">$ 0</span>
-                          </td>
-                          <td class="py-2.5 px-3 text-center">
-                            ${imp?.tx_local_other_id ? `
-                              <div class="flex flex-col gap-1 items-center">
-                                <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full" onclick="window.viewStageTx('${imp.tx_local_other_id}')">
-                                  <i class="fas fa-receipt mr-1"></i> Asiento
-                                </button>
-                                <button type="button" class="btn btn-warning btn-xs w-full hidden" id="btn-adjust-local_other" onclick="window.triggerStageAdjustment('local_other')">
-                                  <i class="fas fa-pen-nib mr-1"></i> Ajustar
-                                </button>
-                              </div>
-                            ` : `
-                              <button type="button" class="btn btn-primary btn-xs w-full" id="btn-causar-local_other" onclick="window.triggerStageCausacion('local_other')">
-                                <i class="fas fa-calculator mr-1"></i> Causar
-                              </button>
-                            `}
-                          </td>
-                        </tr>
-
-                      </tbody>
-                    </table>
+                <!-- 2. Gastos CIF (Flete + Seguro) -->
+                <div class="p-3.5 rounded-xl border bg-white shadow-sm flex flex-col justify-between" style="border-color:#E2E8F0">
+                  <div class="flex items-center justify-between text-slate-500 mb-1">
+                    <span class="text-[11px] font-bold uppercase tracking-wider">2. Logística CIF</span>
+                    <div class="w-6 h-6 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center text-xs"><i class="fas fa-plane-departure"></i></div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] text-slate-400">Flete + Seguro Int.</div>
+                    <div class="text-base font-extrabold text-sky-950 font-mono mt-0.5" id="lbl-res-cif-cop">$ 0</div>
+                  </div>
+                  <div class="flex items-center gap-2 mt-2">
+                    <button type="button" class="text-[11px] text-sky-600 hover:text-sky-800 font-bold border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('freight')">Flete</button>
+                    <span class="text-slate-300">·</span>
+                    <button type="button" class="text-[11px] text-amber-600 hover:text-amber-800 font-bold border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('insurance')">Seguro</button>
                   </div>
                 </div>
 
-                <!-- Resumen de Hoja de Costos (Columna Derecha) -->
-                <div class="p-5 rounded-xl border flex flex-col justify-between shadow-sm bg-gradient-to-b from-blue-50/80 via-white to-blue-50/30" style="border-color:#DBEAFE">
-                  <div>
-                    <h5 class="font-bold text-xs text-blue-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                      <i class="fas fa-file-invoice-dollar text-blue-600"></i> Resumen Hoja de Costos
-                    </h5>
-                    
-                    <div class="space-y-2.5 text-xs font-semibold">
-                      <div class="flex justify-between text-slate-600 pb-1 border-b border-blue-100">
-                        <span>FOB Mercancía (COP):</span>
-                        <span id="lbl-res-fob-cop" class="font-mono text-slate-900">$ 0</span>
-                      </div>
-                      <div class="flex justify-between text-slate-600 pb-1 border-b border-blue-100">
-                        <span>Gastos CIF (Flete + Seguro COP):</span>
-                        <span id="lbl-res-cif-cop" class="font-mono text-slate-900">$ 0</span>
-                      </div>
-                      <div class="flex justify-between text-slate-600 pb-1 border-b border-blue-100">
-                        <span>Arancel e Impuestos DIAN COP:</span>
-                        <span id="lbl-res-arancel-cop" class="font-mono text-slate-900">$ 0</span>
-                      </div>
-                      <div class="flex justify-between text-slate-600 pb-1 border-b border-blue-100">
-                        <span>Otros Gastos & Transporte COP:</span>
-                        <span id="lbl-res-locales-cop" class="font-mono text-slate-900">$ 0</span>
-                      </div>
-                    </div>
+                <!-- 3. Aduanas & Arancel DIAN -->
+                <div class="p-3.5 rounded-xl border bg-white shadow-sm flex flex-col justify-between" style="border-color:#E2E8F0">
+                  <div class="flex items-center justify-between text-slate-500 mb-1">
+                    <span class="text-[11px] font-bold uppercase tracking-wider">3. Aduana / DIAN</span>
+                    <div class="w-6 h-6 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-xs"><i class="fas fa-building-columns"></i></div>
                   </div>
+                  <div>
+                    <div class="text-[11px] text-slate-400">Aranceles + Agenciamiento</div>
+                    <div class="text-base font-extrabold text-purple-950 font-mono mt-0.5" id="lbl-res-arancel-cop">$ 0</div>
+                  </div>
+                  <button type="button" class="mt-2 text-[11px] text-purple-600 hover:text-purple-800 font-bold text-left flex items-center gap-1 border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('customs')">
+                    <span>Nacionalización</span> <i class="fas fa-arrow-right text-[9px]"></i>
+                  </button>
+                </div>
 
-                  <div class="border-t-2 pt-4 mt-6 border-blue-200 bg-white/60 p-3 rounded-lg">
-                    <div class="flex justify-between items-baseline text-sm font-extrabold text-blue-950">
-                      <span>COSTO TOTAL IMPORTACIÓN:</span>
-                      <span id="lbl-res-total-cop" class="text-xl text-blue-700 font-mono">$ 0</span>
-                    </div>
+                <!-- 4. Transporte & Gastos Locales -->
+                <div class="p-3.5 rounded-xl border bg-white shadow-sm flex flex-col justify-between" style="border-color:#E2E8F0">
+                  <div class="flex items-center justify-between text-slate-500 mb-1">
+                    <span class="text-[11px] font-bold uppercase tracking-wider">4. Gastos Locales</span>
+                    <div class="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-xs"><i class="fas fa-truck"></i></div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] text-slate-400">Acarreos + Bodegaje</div>
+                    <div class="text-base font-extrabold text-emerald-950 font-mono mt-0.5" id="lbl-res-locales-cop">$ 0</div>
+                  </div>
+                  <div class="flex items-center gap-2 mt-2">
+                    <button type="button" class="text-[11px] text-emerald-600 hover:text-emerald-800 font-bold border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('local_carrier')">Transporte</button>
+                    <span class="text-slate-300">·</span>
+                    <button type="button" class="text-[11px] text-orange-600 hover:text-orange-800 font-bold border-0 bg-transparent p-0 cursor-pointer" onclick="window.switchImpStageTab('local_other')">Otros</button>
+                  </div>
+                </div>
+
+                <!-- 5. COSTO TOTAL CONSOLIDADO -->
+                <div class="col-span-2 md:col-span-1 p-3.5 rounded-xl border bg-gradient-to-br from-blue-900 to-indigo-950 text-white shadow-md flex flex-col justify-between">
+                  <div class="flex items-center justify-between text-blue-200 mb-1">
+                    <span class="text-[10px] font-extrabold uppercase tracking-wider">Costo Capitalizable</span>
+                    <i class="fas fa-sack-dollar text-amber-400 text-sm"></i>
+                  </div>
+                  <div>
+                    <div class="text-[11px] text-blue-200" id="lbl-res-total-usd">Equiv. $ 0 USD</div>
+                    <div class="text-lg font-black text-amber-300 font-mono mt-0.5" id="lbl-res-total-cop">$ 0</div>
+                  </div>
+                  <div class="text-[10px] text-blue-300 font-semibold mt-1">
+                    <i class="fas fa-boxes-packing mr-1"></i> Costo final a bodega
                   </div>
                 </div>
 
               </div>
+
+              <!-- Matriz de Liquidación y Hoja de Costos Analítica a Ancho Completo -->
+              <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h5 class="font-bold text-sm text-slate-800 flex items-center gap-2">
+                      <i class="fas fa-file-invoice-dollar text-blue-600"></i>
+                      Hoja de Costos Consolidada y Estado Contable
+                    </h5>
+                    <p class="text-xs text-slate-500 mt-0.5">Desglose de cada rubro de importación, contrapartida contable y estado de causación.</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="badge badge-blue text-xs font-semibold" id="badge-summary-lines-count">6 Rubros Contables</span>
+                  </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-summary-table">
+                    <thead>
+                      <tr class="border-b text-slate-500 font-semibold bg-slate-100/50">
+                        <th class="py-2.5 px-3">Rubro / Etapa</th>
+                        <th class="py-2.5 px-3">Contrapartida PUC</th>
+                        <th class="py-2.5 px-3">Tercero(s) / Facturas</th>
+                        <th class="py-2.5 px-3 text-right">Subtotal Divisa</th>
+                        <th class="py-2.5 px-3 text-right">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:90px">% Costo</th>
+                        <th class="py-2.5 px-3 text-center" style="width:120px">Estado Contable</th>
+                        <th class="py-2.5 px-3 text-center" style="width:110px">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-summary-tbody">
+                      <!-- Inyectado por impRecalcTotals -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
 
             <!-- Panel 1: FOB Mercancía -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-fob">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-ship"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 1: FOB Mercancía</h5>
-                        <p class="text-[11px] text-slate-400">Factura comercial y causación contable a cuentas por pagar proveedor exterior (PUC 220505)</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-fob">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-ship"></i>
                     </div>
-                    <span id="badge-fob-header-status" class="badge ${imp?.tx_fob_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_fob_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
-                  </div>
-
-                  <!-- Vista Estándar: Proveedor Único -->
-                  <div id="imp-fob-single-view" class="${imp?.is_consolidated ? 'hidden' : ''}">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Proveedor Internacional:</label>
-                        <div class="p-2 bg-slate-50 rounded-lg border border-slate-200 font-bold text-slate-800" id="stage-fob-supplier-detail-name">
-                          ${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label class="block font-semibold text-slate-700 mb-1">Nro. Factura / Commercial Invoice:</label>
-                        <p class="text-[11px] text-slate-400 mb-1">Edita el número en la vista general o matriz.</p>
-                      </div>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 1: FOB Mercancía (Proveedor del Exterior)</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 220505 (Proveedores del Exterior)</strong> · Base de compra internacional</p>
                     </div>
                   </div>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
+                </div>
 
-                  <!-- Vista Consolidada: Tabla de Facturas Comerciales por Proveedor -->
-                  <div id="imp-fob-consolidated-view" class="${imp?.is_consolidated ? '' : 'hidden'} space-y-3">
-                    <div class="flex items-center justify-between">
-                      <span class="text-xs font-bold text-slate-800">Causación Individual por Factura Comercial:</span>
-                      <button type="button" class="btn btn-outline btn-xs" onclick="window.impOpenInvoiceModal()">
-                        <i class="fas fa-plus mr-1"></i> Nueva Factura
-                      </button>
+                <!-- Vista Estándar: Proveedor Único -->
+                <div id="imp-fob-single-view" class="${imp?.is_consolidated ? 'hidden' : ''}">
+                  <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                    <div>
+                      <label class="block font-semibold text-slate-700 mb-1">Proveedor Internacional:</label>
+                      <div class="p-2 bg-white rounded-lg border border-slate-200 font-bold text-slate-800" id="stage-fob-supplier-detail-name">
+                        ${imp?.expand?.supplier_id ? (window as any).esc(imp.expand.supplier_id.name) : 'Definido arriba'}
+                      </div>
                     </div>
-                    <div class="border rounded-lg overflow-hidden">
-                      <table class="w-full text-xs text-left">
-                        <thead class="bg-slate-50 text-slate-600 border-b">
-                          <tr>
-                            <th class="py-2 px-2.5">Proveedor</th>
-                            <th class="py-2 px-2.5">Factura Nro.</th>
-                            <th class="py-2 px-2.5">Vencimiento</th>
-                            <th class="py-2 px-2.5 text-right">FOB (USD)</th>
-                            <th class="py-2 px-2.5 text-right">FOB (COP)</th>
-                            <th class="py-2 px-2.5 text-center">Acción Contable</th>
-                          </tr>
-                        </thead>
-                        <tbody id="imp-fob-stage-invoices-body" class="divide-y divide-slate-100">
-                          <!-- Injected by impRenderInvoicesTable -->
-                        </tbody>
-                      </table>
+                    <div>
+                      <label class="block font-semibold text-slate-700 mb-1">Nro. Factura Comercial:</label>
+                      <input type="text" id="imp-supplier-invoice-num" class="form-input text-xs py-1 font-mono w-full" placeholder="Factura Nro" value="${(window as any).esc(imp?.supplier_invoice_num || '')}" ${imp?.tx_fob_id ? 'disabled' : ''}>
+                    </div>
+                    <div>
+                      <label class="block font-semibold text-slate-700 mb-1">Total FOB (Divisa):</label>
+                      <input type="number" id="imp-fob-total" class="form-input text-xs py-1 text-right font-semibold font-mono w-full" value="${imp?.fob_total || '0'}" readonly style="background:#F3F4F6">
+                    </div>
+                    <div>
+                      <label class="block font-semibold text-slate-700 mb-1">Acción Contable:</label>
+                      <div id="wrap-fob-single-action">
+                        ${imp?.tx_fob_id ? `
+                          <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full py-1.5" onclick="window.viewStageTx('${imp.tx_fob_id}')">
+                            <i class="fas fa-receipt mr-1"></i> Ver Asiento
+                          </button>
+                        ` : `
+                          <button type="button" class="btn btn-primary btn-xs w-full py-1.5" id="btn-causar-fob" onclick="window.triggerStageCausacion('fob')">
+                            <i class="fas fa-calculator mr-1"></i> Causar FOB
+                          </button>
+                        `}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div class="p-5 bg-indigo-50/50 rounded-xl border border-indigo-100 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h6 class="font-bold text-xs text-indigo-900 uppercase tracking-wider mb-2">Impacto Contable FOB</h6>
-                    <p class="text-xs text-indigo-700/80 leading-relaxed">
-                      El costo FOB se carga a la cuenta de <strong>Inventario en Tránsito (PUC 146505)</strong> en contrapartida de <strong>Proveedores del Exterior (PUC 220505)</strong> con programación automática en la Agenda de Pagos.
-                    </p>
+                <!-- Vista Consolidada: Tabla de Facturas Comerciales por Proveedor -->
+                <div id="imp-fob-consolidated-view" class="${imp?.is_consolidated ? '' : 'hidden'} space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-800">Causación Individual por Factura Comercial:</span>
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impOpenInvoiceModal()">
+                      <i class="fas fa-plus mr-1"></i> Nueva Factura Comercial
+                    </button>
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="border rounded-xl overflow-hidden bg-white">
+                    <table class="w-full text-xs text-left">
+                      <thead class="bg-slate-50 text-slate-600 border-b">
+                        <tr>
+                          <th class="py-2.5 px-3">Proveedor Internacional</th>
+                          <th class="py-2.5 px-3">Factura Nro.</th>
+                          <th class="py-2.5 px-3">Vencimiento</th>
+                          <th class="py-2.5 px-3 text-right">FOB (USD)</th>
+                          <th class="py-2.5 px-3 text-right">FOB (COP)</th>
+                          <th class="py-2.5 px-3 text-center">Acción Contable</th>
+                        </tr>
+                      </thead>
+                      <tbody id="imp-fob-stage-invoices-body" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
 
             <!-- Panel 2: Flete Internacional -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-freight">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-plane-departure"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 2: Flete Internacional</h5>
-                        <p class="text-[11px] text-slate-400">Transporte marítimo o aéreo internacional hasta puerto/aeropuerto de entrada</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-freight">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-plane-departure"></i>
                     </div>
-                    <span class="badge ${imp?.tx_freight_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_freight_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 2: Flete Internacional (Naviera / Aerolínea / Forwarder)</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 233545 (Costos y Gastos por Pagar - Fletes)</strong> · Afecta base CIF</p>
+                    </div>
                   </div>
-
-                  <p class="text-xs text-slate-600">
-                    Introduce el proveedor logístico de flete y el monto del documento soporte. Este costo forma parte del valor <strong>CIF</strong> que incrementa la base gravable de aranceles.
-                  </p>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('freight')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Factura / Proveedor Adicional
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
                 </div>
 
-                <div class="p-5 bg-sky-50/50 rounded-xl border border-sky-100 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h6 class="font-bold text-xs text-sky-900 uppercase tracking-wider mb-2">Prorrateo de Flete</h6>
-                    <p class="text-xs text-sky-800/80 leading-relaxed">
-                      El flete se prorratea entre los productos según el método seleccionado (Valor FOB, Peso Bruto o Volumen CBM).
-                    </p>
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-freight-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Proveedor / Tercero</th>
+                        <th class="py-2.5 px-3" style="width:130px">Factura Nro</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Comentario / Detalle</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto Divisa</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-freight-lines-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="flex justify-between items-center p-3 bg-sky-50/60 rounded-xl border border-sky-100 text-xs">
+                  <div class="text-sky-900 font-medium">
+                    <i class="fas fa-circle-info mr-1 text-sky-600"></i> El flete se prorratea entre los ítems según el método seleccionado (FOB, peso o volumen).
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Flete COP:</span>
+                    <span class="font-mono font-bold text-sky-950 text-sm" id="summary-subtotal-freight">$ 0</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <!-- Panel 3: Seguro Internacional -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-insurance">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-shield-alt"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 3: Seguro Internacional</h5>
-                        <p class="text-[11px] text-slate-400">Póliza de transporte y cobertura de carga internacional</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-insurance">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-shield-alt"></i>
                     </div>
-                    <span class="badge ${imp?.tx_insurance_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_insurance_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 3: Seguro Internacional (Aseguradora / Póliza de Carga)</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 233555 (Seguros y Pólizas Internacionales)</strong> · Afecta base CIF</p>
+                    </div>
                   </div>
-
-                  <p class="text-xs text-slate-600">
-                    Causa la prima de seguro emitida por la aseguradora internacional o agente de carga para la protección de la mercancía.
-                  </p>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('insurance')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Factura / Aseguradora Adicional
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
                 </div>
 
-                <div class="p-5 bg-amber-50/50 rounded-xl border border-amber-100 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h6 class="font-bold text-xs text-amber-900 uppercase tracking-wider mb-2">Cobertura CIF</h6>
-                    <p class="text-xs text-amber-800/80 leading-relaxed">
-                      El seguro se integra a la base CIF y se capitaliza directamente al inventario en tránsito.
-                    </p>
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-insurance-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Aseguradora / Tercero</th>
+                        <th class="py-2.5 px-3" style="width:130px">Póliza / Factura</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Comentario / Cobertura</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto Divisa</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-insurance-lines-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="flex justify-between items-center p-3 bg-amber-50/60 rounded-xl border border-amber-100 text-xs">
+                  <div class="text-amber-900 font-medium">
+                    <i class="fas fa-circle-info mr-1 text-amber-600"></i> La prima del seguro se integra a la base CIF incrementando la base de aranceles.
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Seguro COP:</span>
+                    <span class="font-mono font-bold text-amber-950 text-sm" id="summary-subtotal-insurance">$ 0</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <!-- Panel 4: Aduana / DIAN -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-customs">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-building-columns"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 4: Nacionalización (Aduana / DIAN)</h5>
-                        <p class="text-[11px] text-slate-400">Declaración de Importación, Aranceles e Impuestos aduaneros</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-customs">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-building-columns"></i>
                     </div>
-                    <span class="badge ${imp?.tx_customs_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_customs_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 4: Nacionalización (Aduana / DIAN / SIA)</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 233595 (Agenciamiento Aduanero y Nacionalización)</strong></p>
+                    </div>
                   </div>
-
-                  <p class="text-xs text-slate-600">
-                    Contempla el pago de <strong>Aranceles</strong> (calculados automáticamente según posición arancelaria) más los <strong>Gastos de Agenciamiento Aduanero y Nacionalización (COP)</strong>.
-                  </p>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('customs')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Factura / Agente Adicional
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
                 </div>
 
-                <div class="p-5 bg-purple-50/50 rounded-xl border border-purple-100 flex flex-col justify-between space-y-4">
+                <div class="p-3.5 bg-purple-50/70 rounded-xl border border-purple-200 text-xs text-purple-950 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h6 class="font-bold text-xs text-purple-900 uppercase tracking-wider mb-2">Agenciamiento Aduanero</h6>
-                    <p class="text-xs text-purple-800/80 leading-relaxed">
-                      Genera el comprobante contable a favor de la DIAN / Agencia de Aduanas correspondiente.
-                    </p>
+                    <span class="font-bold"><i class="fas fa-scale-balanced mr-1.5"></i> Aranceles Liquidados de Mercancías:</span>
+                    <span class="font-mono font-bold text-purple-900 ml-1" id="stage-customs-arancel">$ 0</span>
+                    <p class="text-[11px] text-purple-700 mt-0.5">Calculados automáticamente a partir de la tasa arancelaria de cada producto sobre la base CIF.</p>
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Aduana COP:</span>
+                    <span class="font-mono font-bold text-purple-950 text-sm" id="summary-subtotal-customs">$ 0</span>
+                  </div>
+                </div>
+
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-customs-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Agencia Aduanera / DIAN</th>
+                        <th class="py-2.5 px-3" style="width:130px">Factura Nro</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Concepto / Trámite</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto (COP)</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-customs-lines-body"></tbody>
+                  </table>
                 </div>
               </div>
             </div>
 
             <!-- Panel 5: Transporte Local -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-local_carrier">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-truck"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 5: Transporte Local / Acarreos</h5>
-                        <p class="text-[11px] text-slate-400">Flete terrestre desde puerto/aeropuerto hasta depósito final</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-local_carrier">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-truck"></i>
                     </div>
-                    <span class="badge ${imp?.tx_local_carrier_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_local_carrier_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 5: Transporte Local / Acarreos Terrestres</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 233545 (Acarreos y Fletes Terrestres Locales)</strong></p>
+                    </div>
                   </div>
-
-                  <p class="text-xs text-slate-600">
-                    Registra la factura de transporte nacional expedida por la empresa de acarreos o transportadora local.
-                  </p>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('local_carrier')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Factura / Transportador Adicional
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
                 </div>
 
-                <div class="p-5 bg-emerald-50/50 rounded-xl border border-emerald-100 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h6 class="font-bold text-xs text-emerald-900 uppercase tracking-wider mb-2">Transporte Nacional</h6>
-                    <p class="text-xs text-emerald-800/80 leading-relaxed">
-                      Este valor se suma a la liquidación final del costo unitario nacionalizado.
-                    </p>
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-local_carrier-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Transportadora / Tercero</th>
+                        <th class="py-2.5 px-3" style="width:130px">Remesa / Factura</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Ruta / Detalle</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto (COP)</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-local_carrier-lines-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="flex justify-between items-center p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 text-xs">
+                  <div class="text-emerald-900 font-medium">
+                    <i class="fas fa-circle-info mr-1 text-emerald-600"></i> Flete terrestre desde el puerto o zona franca de ingreso hasta depósito final.
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Transporte COP:</span>
+                    <span class="font-mono font-bold text-emerald-950 text-sm" id="summary-subtotal-local_carrier">$ 0</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <!-- Panel 6: Otros Gastos -->
-            <div class="imp-stage-panel hidden" id="imp-stage-panel-local_other">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="md:col-span-2 p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
-                  <div class="flex items-center justify-between border-b pb-3 border-slate-100">
-                    <div class="flex items-center gap-2">
-                      <div class="w-8 h-8 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
-                        <i class="fas fa-box"></i>
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-sm text-slate-800">Etapa 6: Otros Gastos Operativos</h5>
-                        <p class="text-[11px] text-slate-400">Bodegaje, inspección de carga, manipuleos y complementarios</p>
-                      </div>
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-local_other">
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-box"></i>
                     </div>
-                    <span class="badge ${imp?.tx_local_other_id ? 'badge-emerald text-emerald-700 bg-emerald-50' : 'badge-slate text-slate-600 bg-slate-100'} font-semibold text-xs px-2.5 py-1">
-                      ${imp?.tx_local_other_id ? '✓ Causado' : '⏳ Pendiente'}
-                    </span>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 6: Otros Gastos Operativos y Portuarios</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 233595 (Gastos Portuarios y Bodegaje)</strong></p>
+                    </div>
                   </div>
-
-                  <p class="text-xs text-slate-600">
-                    Causa cualquier costo logístico adicional en puerto o zona franca (almacenamiento, estibado, inspección física).
-                  </p>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('local_other')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Factura / Operador Adicional
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
                 </div>
 
-                <div class="p-5 bg-orange-50/50 rounded-xl border border-orange-100 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h6 class="font-bold text-xs text-orange-900 uppercase tracking-wider mb-2">Gastos Portuarios</h6>
-                    <p class="text-xs text-orange-800/80 leading-relaxed">
-                      Se prorratea en la hoja de costos garantizando la precisión del costo real ingresado a inventario.
-                    </p>
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-local_other-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Operador / Bodega / Tercero</th>
+                        <th class="py-2.5 px-3" style="width:130px">Factura Nro</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Concepto / Almacenaje</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto (COP)</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-local_other-lines-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="flex justify-between items-center p-3 bg-orange-50/60 rounded-xl border border-orange-100 text-xs">
+                  <div class="text-orange-900 font-medium">
+                    <i class="fas fa-circle-info mr-1 text-orange-600"></i> Bodegaje, inspección de contenedor, manipuleos y trámites complementarios.
                   </div>
-                  <button type="button" class="btn btn-primary text-xs w-full py-2.5" onclick="window.switchImpStageTab('resumen')">
-                    <i class="fas fa-arrow-left mr-1"></i> Volver a la Matriz
-                  </button>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Otros Gastos COP:</span>
+                    <span class="font-mono font-bold text-orange-950 text-sm" id="summary-subtotal-local_other">$ 0</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1233,63 +1326,237 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
   (window as any).openModal(importId ? 'Editar Importación' : 'Nueva Importación', formHtml, footer, true);
 
-  // Autocomplete de proveedores
-  function initImpSupplierSearch() {
-    const input = document.getElementById('imp-supplier-search') as HTMLInputElement;
-    const hidden = document.getElementById('imp-supplier-id') as HTMLInputElement;
-    const results = document.getElementById('imp-supplier-results');
-    if (!input || !hidden || !results) return;
+  // Inicializar selector dinámico de Tercero / Proveedor Principal
+  initTerceroDynamicPicker({
+    id: 'imp-supplier-id',
+    onChange: (_val, supp) => {
+      const stageFobSupplier = document.getElementById('stage-fob-supplier-name');
+      const stageFobDetail = document.getElementById('stage-fob-supplier-detail-name');
+      const name = supp ? supp.name : 'Definido arriba';
+      if (stageFobSupplier) stageFobSupplier.textContent = name;
+      if (stageFobDetail) stageFobDetail.textContent = name;
+      (window as any).impRecalcTotals();
+    }
+  });
 
-    if (imp && imp.supplier_id) {
-      const match = suppliers.find((s: any) => s.id === imp.supplier_id);
-      if (match) input.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
+  // --- Funciones de Gestión y Renderizado Multi-Línea por Etapas ---
+
+  (window as any).impRenderStageTable = function(stageKey: string) {
+    const tbody = document.getElementById(`imp-stage-${stageKey}-lines-body`);
+    if (!tbody) return;
+
+    const lines = localStageExpenses[stageKey] || [];
+    if (!lines.length) {
+      const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
+      const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other') ? 1 : exchangeRate;
+      localStageExpenses[stageKey] = [{
+        id: `stage-${stageKey}-${Date.now()}`,
+        supplier_id: '',
+        invoice_num: '',
+        comment: '',
+        amount: 0,
+        trm: defaultTrm,
+        tx_id: null
+      }];
     }
 
-    const performSearch = (val: string) => {
-      const query = val.toLowerCase().trim();
-      const filtered = !query 
-        ? suppliers.slice(0, 30) 
-        : suppliers.filter((s: any) => `${s.name} ${s.doc_number} ${s.nit}`.toLowerCase().includes(query)).slice(0, 30);
+    tbody.innerHTML = (localStageExpenses[stageKey] || []).map((line: any, idx: number) => {
+      const isCaused = Boolean(line.tx_id);
+      const amountVal = line.amount ?? 0;
+      const trmVal = line.trm ?? 1;
+      const totalCop = amountVal * trmVal;
+      const pickerId = `stage-${stageKey}-line-${idx}-supp`;
 
-      if (!filtered.length) {
-        results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
-        return;
-      }
+      return `
+        <tr class="hover:bg-slate-50 transition-colors ${isCaused ? 'bg-slate-50/70' : ''}" id="row-stage-${stageKey}-${idx}">
+          <td class="py-2 px-2.5">
+            ${renderTerceroDynamicPicker({
+              id: pickerId,
+              value: line.supplier_id || '',
+              placeholder: 'Seleccionar tercero...',
+              compact: true,
+              disabled: isCaused
+            })}
+          </td>
+          <td class="py-2 px-2.5">
+            <input type="text" class="form-input text-xs py-1 font-mono font-bold w-full"
+                   value="${(window as any).esc(line.invoice_num || '')}"
+                   placeholder="Factura Nro"
+                   ${isCaused ? 'disabled style="background:#F3F4F6"' : ''}
+                   onchange="window.impUpdateStageLineField('${stageKey}', ${idx}, 'invoice_num', this.value)">
+          </td>
+          <td class="py-2 px-2.5">
+            <input type="text" class="form-input text-xs py-1 w-full text-slate-700"
+                   value="${(window as any).esc(line.comment || '')}"
+                   placeholder="Detalle o concepto"
+                   ${isCaused ? 'disabled style="background:#F3F4F6"' : ''}
+                   onchange="window.impUpdateStageLineField('${stageKey}', ${idx}, 'comment', this.value)">
+          </td>
+          <td class="py-2 px-2.5 text-right">
+            <input type="number" class="form-input text-xs py-1 text-right font-mono font-semibold w-full"
+                   min="0" step="0.01" value="${amountVal}"
+                   ${isCaused ? 'disabled style="background:#F3F4F6"' : ''}
+                   oninput="window.impUpdateStageLineField('${stageKey}', ${idx}, 'amount', parseFloat(this.value) || 0)">
+          </td>
+          <td class="py-2 px-2.5 text-right bg-amber-50/30">
+            <input type="number" class="form-input text-xs py-1 text-right font-mono w-full"
+                   min="1" step="0.01" value="${trmVal}"
+                   ${isCaused ? 'disabled style="background:#F3F4F6"' : ''}
+                   oninput="window.impUpdateStageLineField('${stageKey}', ${idx}, 'trm', parseFloat(this.value) || 1)">
+          </td>
+          <td class="py-2 px-2.5 text-right font-mono font-bold text-slate-800" id="stage-${stageKey}-line-${idx}-cop">
+            ${(window as any).fmt(totalCop)}
+          </td>
+          <td class="py-2 px-2.5 text-center">
+            ${isCaused ? `
+              <button type="button" class="btn btn-outline btn-xs text-blue-700 w-full py-1" onclick="window.viewStageTx('${line.tx_id}')">
+                <i class="fas fa-receipt mr-1"></i> Asiento
+              </button>
+            ` : `
+              <button type="button" class="btn btn-primary btn-xs w-full py-1" id="btn-causar-line-${stageKey}-${idx}" onclick="window.impTriggerStageLineCausacion('${stageKey}', ${idx})">
+                <i class="fas fa-calculator mr-1"></i> Causar
+              </button>
+            `}
+          </td>
+          <td class="py-2 px-1 text-center">
+            ${isCaused ? `
+              <span class="text-slate-300" title="Línea con asiento contable"><i class="fas fa-lock text-xs"></i></span>
+            ` : `
+              <button type="button" class="text-slate-400 hover:text-red-600 transition-colors p-1 border-0 bg-transparent cursor-pointer" onclick="window.impRemoveStageExpenseLine('${stageKey}', ${idx})" title="Eliminar línea">
+                <i class="fas fa-trash-can text-xs"></i>
+              </button>
+            `}
+          </td>
+        </tr>
+      `;
+    }).join('');
 
-      results.innerHTML = filtered.map((s: any) => `
-        <button type="button" class="w-full text-left px-3 py-2 text-xs border-none bg-white hover:bg-gray-100 cursor-pointer block"
-                onclick="window.selectImpSupplier('${(window as any).esc(s.id)}', '${(window as any).esc(s.doc_number || s.nit || '')} - ${(window as any).esc(s.name)}')">
-          <div class="font-bold text-gray-800">${(window as any).esc(s.name)}</div>
-          <div class="text-[10px] text-gray-500">Doc: ${s.doc_number || s.nit || 'S/N'}</div>
-        </button>
-      `).join('');
-    };
-
-    input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
-    input.addEventListener('input', () => { hidden.value = ''; performSearch(input.value); results.style.display = 'block'; });
-    input.addEventListener('blur', () => { setTimeout(() => { results.style.display = 'none'; }, 200); });
-
-    (window as any).initKeyboardAutocomplete({
-      input,
-      results,
-      itemSelector: 'button',
+    // Inicializar picker para cada fila de la etapa
+    (localStageExpenses[stageKey] || []).forEach((line: any, idx: number) => {
+      const isCaused = Boolean(line.tx_id);
+      initTerceroDynamicPicker({
+        id: `stage-${stageKey}-line-${idx}-supp`,
+        disabled: isCaused,
+        onChange: (val) => {
+          line.supplier_id = val;
+          (window as any).impRecalcTotals();
+        }
+      });
     });
-  }
+  };
 
-  (window as any).selectImpSupplier = function(id: string, text: string) {
-    const hidden = document.getElementById('imp-supplier-id') as HTMLInputElement;
-    const input = document.getElementById('imp-supplier-search') as HTMLInputElement;
-    if (hidden && input) {
-      hidden.value = id;
-      input.value = text;
-      // Actualizar nombre del proveedor FOB en la tabla de etapas
-      const stageFobSupplier = document.getElementById('stage-fob-supplier-name');
-      if (stageFobSupplier) {
-        const nameOnly = text.split(' - ').pop() || '';
-        stageFobSupplier.textContent = nameOnly;
+  (window as any).impAddStageExpenseLine = function(stageKey: string) {
+    if (!localStageExpenses[stageKey]) localStageExpenses[stageKey] = [];
+    const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
+    const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other') ? 1 : exchangeRate;
+
+    localStageExpenses[stageKey].push({
+      id: `stage-${stageKey}-${Date.now()}`,
+      supplier_id: '',
+      invoice_num: '',
+      comment: '',
+      amount: 0,
+      trm: defaultTrm,
+      tx_id: null
+    });
+
+    (window as any).impRenderStageTable(stageKey);
+    (window as any).impRecalcTotals();
+  };
+
+  (window as any).impRemoveStageExpenseLine = function(stageKey: string, lineIdx: number) {
+    const line = localStageExpenses[stageKey]?.[lineIdx];
+    if (!line) return;
+    if (line.tx_id) {
+      (window as any).showToast('No puedes eliminar una línea que ya cuenta con causación contable.', 'warning');
+      return;
+    }
+
+    localStageExpenses[stageKey].splice(lineIdx, 1);
+    if (!localStageExpenses[stageKey].length) {
+      (window as any).impAddStageExpenseLine(stageKey);
+    } else {
+      (window as any).impRenderStageTable(stageKey);
+      (window as any).impRecalcTotals();
+    }
+  };
+
+  (window as any).impUpdateStageLineField = function(stageKey: string, lineIdx: number, field: string, val: any) {
+    const line = localStageExpenses[stageKey]?.[lineIdx];
+    if (!line) return;
+    line[field] = val;
+
+    const copCell = document.getElementById(`stage-${stageKey}-line-${lineIdx}-cop`);
+    if (copCell) {
+      const copVal = (line.amount || 0) * (line.trm || 1);
+      copCell.textContent = (window as any).fmt(copVal);
+    }
+
+    (window as any).impRecalcTotals();
+  };
+
+  (window as any).impTriggerStageLineCausacion = async function(stageKey: string, lineIdx: number) {
+    if (!importId) {
+      (window as any).showToast('Por favor guarda la importación primero como Borrador antes de realizar causaciones contables.', 'warning');
+      return;
+    }
+
+    const line = localStageExpenses[stageKey]?.[lineIdx];
+    if (!line) return;
+
+    if (!line.supplier_id) {
+      (window as any).showToast('Debes seleccionar un proveedor / tercero para esta línea.', 'warning');
+      return;
+    }
+    if (!line.invoice_num || !line.invoice_num.trim()) {
+      (window as any).showToast('Debes ingresar el número de factura o soporte para esta línea.', 'warning');
+      return;
+    }
+    const amountCOP = (line.amount || 0) * (line.trm || 1);
+    if (amountCOP <= 0) {
+      (window as any).showToast('El monto a causar debe ser mayor a cero.', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById(`btn-causar-line-${stageKey}-${lineIdx}`) as HTMLButtonElement;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Causando...';
+    }
+
+    try {
+      await SupplyChainOrchestrator.postImportStageWithPaymentSchedule({
+        importId,
+        stageName: stageKey as any,
+        supplierId: line.supplier_id,
+        invoiceNum: line.invoice_num.trim(),
+        amount: amountCOP,
+        comment: line.comment || '',
+        lineId: line.id,
+        allowMultiple: true,
+        stageExpenses: localStageExpenses
+      });
+
+      (window as any).showToast(`Causación y agenda de pagos creadas exitosamente para Factura ${line.invoice_num}.`, 'success');
+
+      (window as any).closeModal();
+      setTimeout(() => {
+        openImportForm(importId, onDone);
+      }, 300);
+
+    } catch (err: any) {
+      (window as any).showToast(err.message, 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-calculator mr-1"></i> Causar';
       }
     }
   };
+
+  // Renderizar tablas de las etapas 2 a 6
+  ['freight', 'insurance', 'customs', 'local_carrier', 'local_other'].forEach(stg => {
+    (window as any).impRenderStageTable(stg);
+  });
 
   (window as any).impHandleFileSelect = function(key: string, files: FileList | null) {
     if (!files || !files.length) return;
@@ -1307,8 +1574,6 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (lbl) lbl.textContent = `✓ ${file.name.slice(0, 12)}...`;
     }
   };
-
-  initImpSupplierSearch();
 
   // Verificación y actualización en tiempo real de cuenta PUC de tránsito
   (window as any).impUpdateTransitAccountInfo = async function() {
@@ -1818,29 +2083,29 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   (window as any).impRecalcTotals = function() {
     const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
     const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
-    const freightCost = parseFloat((document.getElementById('imp-freight-cost') as HTMLInputElement)?.value || '0');
-    const insuranceCost = parseFloat((document.getElementById('imp-insurance-cost') as HTMLInputElement)?.value || '0');
-    const gastosNacionalizacion = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
-    const transporteNacional = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
-    const otrosGastos = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
     const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
     const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
 
-    // TRM específicas por cada rubro
-    const freightTrm = parseFloat((document.getElementById('imp-freight-trm') as HTMLInputElement)?.value) || exchangeRate;
-    const insuranceTrm = parseFloat((document.getElementById('imp-insurance-trm') as HTMLInputElement)?.value) || exchangeRate;
-    const customsTrm = parseFloat((document.getElementById('imp-customs-trm') as HTMLInputElement)?.value) || exchangeRate;
-    const localCarrierTrm = parseFloat((document.getElementById('imp-local-carrier-trm') as HTMLInputElement)?.value) || 1;
-    const localOtherTrm = parseFloat((document.getElementById('imp-local-other-trm') as HTMLInputElement)?.value) || 1;
+    // Calcular costos desde localStageExpenses
+    const freightLines = localStageExpenses['freight'] || [];
+    const insuranceLines = localStageExpenses['insurance'] || [];
+    const customsLines = localStageExpenses['customs'] || [];
+    const localCarrierLines = localStageExpenses['local_carrier'] || [];
+    const localOtherLines = localStageExpenses['local_other'] || [];
 
-    // Conversión a COP con TRM individual de cada rubro
-    const freightCostCOP = freightCost * freightTrm;
-    const insuranceCostCOP = insuranceCost * insuranceTrm;
+    const freightCost = freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const insuranceCost = insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const gastosNacionalizacion = customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const transporteNacional = localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const otrosGastos = localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+
+    const freightCostCOP = freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const insuranceCostCOP = insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalCIFExpensesCOP = freightCostCOP + insuranceCostCOP;
 
-    const gastosNacCOP = gastosNacionalizacion;
-    const transporteCOP = transporteNacional * localCarrierTrm;
-    const otrosGastosCOP = otrosGastos * localOtherTrm;
+    const gastosNacCOP = customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const transporteCOP = localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const otrosGastosCOP = localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalLocalExpensesCOP = gastosNacCOP + transporteCOP + otrosGastosCOP;
 
     const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
@@ -1944,39 +2209,188 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (totalLabel) totalLabel.textContent = (window as any).fmt(lineTotalCOP);
     });
 
+    const grandTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
+
     // Update global inputs/labels
     const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
     if (fobTotalInput) fobTotalInput.value = totalFOB.toFixed(2);
 
+    // KPI Cards Superiores
+    const kpiFobUsd = document.getElementById('kpi-fob-usd');
     const lblResFob = document.getElementById('lbl-res-fob-cop');
     const lblResCif = document.getElementById('lbl-res-cif-cop');
     const lblResArancel = document.getElementById('lbl-res-arancel-cop');
     const lblResLocales = document.getElementById('lbl-res-locales-cop');
+    const lblResTotalUsd = document.getElementById('lbl-res-total-usd');
     const lblResTotal = document.getElementById('lbl-res-total-cop');
     const customsArancel = document.getElementById('stage-customs-arancel');
 
+    if (kpiFobUsd) kpiFobUsd.textContent = `$ ${(window as any).fmtN(totalFOB)} ${currency}`;
     if (lblResFob) lblResFob.textContent = (window as any).fmt(totalFOBCop);
     if (lblResCif) lblResCif.textContent = (window as any).fmt(totalCIFExpensesCOP);
     if (lblResArancel) lblResArancel.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
     if (lblResLocales) lblResLocales.textContent = (window as any).fmt(transporteCOP + otrosGastosCOP);
-    if (lblResTotal) lblResTotal.textContent = (window as any).fmt(totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP);
+    if (lblResTotalUsd) lblResTotalUsd.textContent = `Equiv. $ ${(window as any).fmtN(grandTotalCOP / exchangeRate)} USD`;
+    if (lblResTotal) lblResTotal.textContent = (window as any).fmt(grandTotalCOP);
     if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
 
-    // Actualizar totales en COP de cada fila en la Matriz de Etapas
-    const stageFobCop = document.getElementById('stage-fob-cop-display');
-    if (stageFobCop) stageFobCop.textContent = (window as any).fmt(totalFOBCop);
-    const stageFreightCop = document.getElementById('stage-freight-cop-display');
-    if (stageFreightCop) stageFreightCop.textContent = (window as any).fmt(freightCostCOP);
-    const stageInsuranceCop = document.getElementById('stage-insurance-cop-display');
-    if (stageInsuranceCop) stageInsuranceCop.textContent = (window as any).fmt(insuranceCostCOP);
-    const stageCustomsCop = document.getElementById('stage-customs-cop-display');
-    if (stageCustomsCop) stageCustomsCop.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
-    const stageCarrierCop = document.getElementById('stage-carrier-cop-display');
-    if (stageCarrierCop) stageCarrierCop.textContent = (window as any).fmt(transporteCOP);
-    const stageOtherCop = document.getElementById('stage-other-cop-display');
-    if (stageOtherCop) stageOtherCop.textContent = (window as any).fmt(otrosGastosCOP);
-    const stageFobTrm = document.getElementById('imp-stage-fob-trm') as HTMLInputElement;
-    if (stageFobTrm) stageFobTrm.value = exchangeRate.toFixed(2);
+    // Subtotales en las cabeceras de cada pestaña de etapa
+    const subFreight = document.getElementById('summary-subtotal-freight');
+    const subInsurance = document.getElementById('summary-subtotal-insurance');
+    const subCustoms = document.getElementById('summary-subtotal-customs');
+    const subCarrier = document.getElementById('summary-subtotal-local_carrier');
+    const subOther = document.getElementById('summary-subtotal-local_other');
+
+    if (subFreight) subFreight.textContent = (window as any).fmt(freightCostCOP);
+    if (subInsurance) subInsurance.textContent = (window as any).fmt(insuranceCostCOP);
+    if (subCustoms) subCustoms.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
+    if (subCarrier) subCarrier.textContent = (window as any).fmt(transporteCOP);
+    if (subOther) subOther.textContent = (window as any).fmt(otrosGastosCOP);
+
+    // Matriz de Hoja de Costos Analítica en Vista General
+    const summaryTbody = document.getElementById('imp-summary-tbody');
+    if (summaryTbody) {
+      const getTercerosSummary = (lines: any[]) => {
+        if (!lines || !lines.length) return '<span class="text-slate-400">Sin asignar</span>';
+        const assigned = lines.filter(l => l.supplier_id);
+        if (!assigned.length) return '<span class="text-slate-400">Sin asignar</span>';
+        if (lines.length === 1) {
+          const suppObj = suppliers.find((s: any) => s.id === lines[0].supplier_id);
+          const sName = suppObj ? suppObj.name : 'Tercero Seleccionado';
+          return `<span class="font-semibold text-slate-800">${(window as any).esc(sName)}</span> ${lines[0].invoice_num ? `<span class="text-[10px] text-slate-500 font-mono">(${lines[0].invoice_num})</span>` : ''}`;
+        }
+        const uniqueSuppIds = Array.from(new Set(assigned.map(l => l.supplier_id)));
+        return `<span class="font-semibold text-slate-800">${uniqueSuppIds.length} Proveedor(es)</span> · <span class="text-slate-500">${lines.length} Factura(s)</span>`;
+      };
+
+      const getStageBadge = (lines: any[]) => {
+        if (!lines || !lines.length) return `<span class="badge badge-slate text-[11px]">⏳ Pendiente</span>`;
+        const causedCount = lines.filter(l => l.tx_id).length;
+        if (causedCount === lines.length && lines.length > 0) {
+          return `<span class="badge badge-emerald text-[11px]"><i class="fas fa-check-circle mr-1"></i>Causado</span>`;
+        }
+        if (causedCount > 0) {
+          return `<span class="badge badge-amber text-[11px]"><i class="fas fa-clock mr-1"></i>Parcial (${causedCount}/${lines.length})</span>`;
+        }
+        return `<span class="badge badge-slate text-[11px]">⏳ Pendiente</span>`;
+      };
+
+      const fobCaused = isConsolidated
+        ? (localInvoices.length > 0 && localInvoices.every(i => i.tx_fob_id))
+        : Boolean(imp?.tx_fob_id);
+      const fobBadge = fobCaused
+        ? `<span class="badge badge-emerald text-[11px]"><i class="fas fa-check-circle mr-1"></i>Causado</span>`
+        : (isConsolidated && localInvoices.some(i => i.tx_fob_id)
+            ? `<span class="badge badge-amber text-[11px]"><i class="fas fa-clock mr-1"></i>Parcial</span>`
+            : `<span class="badge badge-slate text-[11px]">⏳ Pendiente</span>`);
+
+      const fobTerceros = isConsolidated
+        ? `<span class="font-semibold text-slate-800">${localInvoices.length} Factura(s) Consolidada(s)</span>`
+        : (() => {
+            const suppId = (document.getElementById('imp-supplier-id') as HTMLInputElement)?.value;
+            const suppObj = suppliers.find((s: any) => s.id === suppId);
+            const invNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value;
+            return suppObj ? `<span class="font-semibold text-slate-800">${(window as any).esc(suppObj.name)}</span> ${invNum ? `<span class="text-[10px] text-slate-500 font-mono">(${invNum})</span>` : ''}` : '<span class="text-slate-400">Sin asignar</span>';
+          })();
+
+      const rowsData = [
+        {
+          rubro: '1. FOB Mercancía',
+          tab: 'fob',
+          puc: '220505 - Proveedores del Exterior',
+          terceros: fobTerceros,
+          divisa: `${(window as any).fmtN(totalFOB)} ${currency}`,
+          cop: totalFOBCop,
+          badge: fobBadge,
+          btnLabel: 'Gestionar FOB'
+        },
+        {
+          rubro: '2. Flete Internacional',
+          tab: 'freight',
+          puc: '233545 - Costos y Gastos Fletes',
+          terceros: getTercerosSummary(freightLines),
+          divisa: `${(window as any).fmtN(freightCost)} USD`,
+          cop: freightCostCOP,
+          badge: getStageBadge(freightLines),
+          btnLabel: `Gestionar (${freightLines.length})`
+        },
+        {
+          rubro: '3. Seguro Internacional',
+          tab: 'insurance',
+          puc: '233555 - Seguros y Pólizas Int.',
+          terceros: getTercerosSummary(insuranceLines),
+          divisa: `${(window as any).fmtN(insuranceCost)} USD`,
+          cop: insuranceCostCOP,
+          badge: getStageBadge(insuranceLines),
+          btnLabel: `Gestionar (${insuranceLines.length})`
+        },
+        {
+          rubro: '4. Aduana / DIAN (Arancel + SIA)',
+          tab: 'customs',
+          puc: '233595 - Agenciamiento Aduanero',
+          terceros: `Arancel Mercancías + ${getTercerosSummary(customsLines)}`,
+          divisa: '—',
+          cop: arancelTotalCOP + gastosNacCOP,
+          badge: getStageBadge(customsLines),
+          btnLabel: `Gestionar (${customsLines.length})`
+        },
+        {
+          rubro: '5. Transporte Local Terrestre',
+          tab: 'local_carrier',
+          puc: '233545 - Acarreos y Fletes Locales',
+          terceros: getTercerosSummary(localCarrierLines),
+          divisa: '—',
+          cop: transporteCOP,
+          badge: getStageBadge(localCarrierLines),
+          btnLabel: `Gestionar (${localCarrierLines.length})`
+        },
+        {
+          rubro: '6. Otros Gastos Portuarios',
+          tab: 'local_other',
+          puc: '233595 - Gastos Portuarios y Bodega',
+          terceros: getTercerosSummary(localOtherLines),
+          divisa: '—',
+          cop: otrosGastosCOP,
+          badge: getStageBadge(localOtherLines),
+          btnLabel: `Gestionar (${localOtherLines.length})`
+        },
+      ];
+
+      summaryTbody.innerHTML = rowsData.map(r => {
+        const pct = grandTotalCOP > 0 ? ((r.cop / grandTotalCOP) * 100).toFixed(1) : '0.0';
+        return `
+          <tr class="hover:bg-slate-50 transition-colors">
+            <td class="py-2.5 px-3 font-bold text-slate-800">${r.rubro}</td>
+            <td class="py-2.5 px-3 font-mono text-[11px] text-slate-500">${r.puc}</td>
+            <td class="py-2.5 px-3 text-xs">${r.terceros}</td>
+            <td class="py-2.5 px-3 text-right font-mono font-semibold text-slate-600">${r.divisa}</td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${(window as any).fmt(r.cop)}</td>
+            <td class="py-2.5 px-3 text-right font-mono text-xs font-semibold text-blue-700">${pct}%</td>
+            <td class="py-2.5 px-3 text-center">${r.badge}</td>
+            <td class="py-2.5 px-3 text-center">
+              <button type="button" class="btn btn-outline btn-xs text-blue-600 hover:bg-blue-50 py-1 px-2.5" onclick="window.switchImpStageTab('${r.tab}')">
+                ${r.btnLabel} <i class="fas fa-arrow-right ml-1 text-[9px]"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('') + `
+        <tr class="bg-slate-100/70 font-extrabold border-t-2 border-slate-300">
+          <td class="py-3 px-3 text-slate-900" colspan="3">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-calculator text-blue-600"></i>
+              <span>TOTAL COSTO CAPITALIZABLE (INVENTARIO EN BODEGA)</span>
+            </div>
+          </td>
+          <td class="py-3 px-3 text-right font-mono text-slate-600">Equiv. ${(window as any).fmtN(grandTotalCOP / exchangeRate)} USD</td>
+          <td class="py-3 px-3 text-right font-mono text-blue-950 text-sm">${(window as any).fmt(grandTotalCOP)}</td>
+          <td class="py-3 px-3 text-right font-mono text-blue-700">100.0%</td>
+          <td class="py-3 px-3 text-center" colspan="2">
+            <span class="text-xs text-slate-500 font-semibold">${rowsData.filter(r => r.badge.includes('Causado')).length} de 6 causados</span>
+          </td>
+        </tr>
+      `;
+    }
 
     // Update invoices table labels if present
     if (isConsolidated) {
@@ -2210,9 +2624,11 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         <div class="p-5 space-y-4 text-xs">
           <div class="form-group">
             <label class="form-label font-bold">Proveedor Internacional <span class="text-red-500">*</span></label>
-            <select id="inv-modal-supplier" class="form-input text-xs">
-              ${getSupplierOptions(inv?.supplier_id || inv?.third_party_id || '')}
-            </select>
+            ${renderTerceroDynamicPicker({
+              id: 'inv-modal-supplier',
+              value: inv?.supplier_id || inv?.third_party_id || '',
+              placeholder: 'Buscar proveedor por NIT o nombre...'
+            })}
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -2259,11 +2675,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
     document.body.appendChild(overlay);
 
+    initTerceroDynamicPicker({
+      id: 'inv-modal-supplier',
+      value: inv?.supplier_id || inv?.third_party_id || ''
+    });
+
     overlay.querySelector('#inv-modal-close')?.addEventListener('click', () => overlay.remove());
     overlay.querySelector('#inv-modal-cancel')?.addEventListener('click', () => overlay.remove());
 
     overlay.querySelector('#inv-modal-save')?.addEventListener('click', () => {
-      const suppId = (document.getElementById('inv-modal-supplier') as HTMLSelectElement)?.value;
+      const suppId = (document.getElementById('inv-modal-supplier') as HTMLInputElement)?.value;
       const invNum = (document.getElementById('inv-modal-number') as HTMLInputElement)?.value.trim();
       const invDate = (document.getElementById('inv-modal-date') as HTMLInputElement)?.value;
       const dueDate = (document.getElementById('inv-modal-due-date') as HTMLInputElement)?.value;
@@ -3136,27 +3557,33 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const estimatedArrival = (document.getElementById('imp-estimated-arrival') as HTMLInputElement)?.value || null;
       const notes = (document.getElementById('imp-notes') as HTMLInputElement)?.value.trim() || null;
 
-      // Gastos
-      const freightCost = parseFloat((document.getElementById('imp-freight-cost') as HTMLInputElement)?.value || '0');
-      const insuranceCost = parseFloat((document.getElementById('imp-insurance-cost') as HTMLInputElement)?.value || '0');
-      const gastosNacionalizacion = parseFloat((document.getElementById('imp-gastos-nacionalizacion') as HTMLInputElement)?.value || '0');
-      const transporteNacional = parseFloat((document.getElementById('imp-transporte-nacional') as HTMLInputElement)?.value || '0');
-      const otrosGastos = parseFloat((document.getElementById('imp-otros-gastos') as HTMLInputElement)?.value || '0');
+      // Gastos y proveedores derivados de localStageExpenses
+      const freightLines = localStageExpenses['freight'] || [];
+      const insuranceLines = localStageExpenses['insurance'] || [];
+      const customsLines = localStageExpenses['customs'] || [];
+      const localCarrierLines = localStageExpenses['local_carrier'] || [];
+      const localOtherLines = localStageExpenses['local_other'] || [];
 
-      // Proveedores de Etapas
-      const freightSupplierId = (document.getElementById('imp-freight-supplier-id') as HTMLSelectElement)?.value || null;
-      const insuranceSupplierId = (document.getElementById('imp-insurance-supplier-id') as HTMLSelectElement)?.value || null;
-      const customsSupplierId = (document.getElementById('imp-customs-supplier-id') as HTMLSelectElement)?.value || null;
-      const localCarrierId = (document.getElementById('imp-local-carrier-id') as HTMLSelectElement)?.value || null;
-      const localOtherSupplierId = (document.getElementById('imp-local-other-supplier-id') as HTMLSelectElement)?.value || null;
+      const freightCost = freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+      const insuranceCost = insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+      const gastosNacionalizacion = customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+      const transporteNacional = localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+      const otrosGastos = localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+
+      // Proveedores de Etapas (primer tercero para compatibilidad con vistas legacy)
+      const freightSupplierId = freightLines[0]?.supplier_id || null;
+      const insuranceSupplierId = insuranceLines[0]?.supplier_id || null;
+      const customsSupplierId = customsLines[0]?.supplier_id || null;
+      const localCarrierId = localCarrierLines[0]?.supplier_id || null;
+      const localOtherSupplierId = localOtherLines[0]?.supplier_id || null;
 
       // Facturas de Etapas
       const supplierInvoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const freightInvoiceNum = (document.getElementById('imp-freight-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const insuranceInvoiceNum = (document.getElementById('imp-insurance-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const customsInvoiceNum = (document.getElementById('imp-customs-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const localCarrierInvoiceNum = (document.getElementById('imp-local-carrier-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const localOtherInvoiceNum = (document.getElementById('imp-local-other-invoice-num') as HTMLInputElement)?.value.trim() || null;
+      const freightInvoiceNum = freightLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
+      const insuranceInvoiceNum = insuranceLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
+      const customsInvoiceNum = customsLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
+      const localCarrierInvoiceNum = localCarrierLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
+      const localOtherInvoiceNum = localOtherLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
 
       // Cumplimiento y prorrateo
       const vuceRegistroNum = (document.getElementById('imp-vuce-registro') as HTMLInputElement)?.value.trim() || null;
@@ -3173,15 +3600,18 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (exchangeRate <= 0) throw new Error('La tasa de cambio debe ser un número positivo.');
 
       // TRM específicas por cada rubro
-      const freightTrm = parseFloat((document.getElementById('imp-freight-trm') as HTMLInputElement)?.value) || exchangeRate;
-      const insuranceTrm = parseFloat((document.getElementById('imp-insurance-trm') as HTMLInputElement)?.value) || exchangeRate;
-      const customsTrm = parseFloat((document.getElementById('imp-customs-trm') as HTMLInputElement)?.value) || exchangeRate;
-      const localCarrierTrm = parseFloat((document.getElementById('imp-local-carrier-trm') as HTMLInputElement)?.value) || 1;
-      const localOtherTrm = parseFloat((document.getElementById('imp-local-other-trm') as HTMLInputElement)?.value) || 1;
+      const freightTrm = freightLines[0]?.trm || exchangeRate;
+      const insuranceTrm = insuranceLines[0]?.trm || exchangeRate;
+      const customsTrm = customsLines[0]?.trm || exchangeRate;
+      const localCarrierTrm = localCarrierLines[0]?.trm || 1;
+      const localOtherTrm = localOtherLines[0]?.trm || 1;
 
       // Totales con TRM individual
-      const totalCIFExpensesCOP = (freightCost * freightTrm) + (insuranceCost * insuranceTrm);
-      const totalLocalExpensesCOP = gastosNacionalizacion + (transporteNacional * localCarrierTrm) + (otrosGastos * localOtherTrm);
+      const totalCIFExpensesCOP = freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
+                                  insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+      const totalLocalExpensesCOP = customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
+                                    localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
+                                    localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
       const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
 
       const lines: any[] = [];
@@ -3333,6 +3763,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         total_gastos_cif: totalCIFExpensesCOP,
         total_gastos_locales: totalLocalExpensesCOP,
         total: grandTotalCOP,
+        stage_expenses: JSON.stringify(localStageExpenses),
 
         // Relaciones y facturas de causación
         freight_supplier_id: freightSupplierId,

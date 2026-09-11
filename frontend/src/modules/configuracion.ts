@@ -385,49 +385,133 @@ async function renderConfiguracion(c) {
         </div>
       </div>
 
-      <!-- SECCIÓN TIENDA VIRTUAL (E-COMMERCE) -->
-      <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <!-- SECCIÓN TIENDA VIRTUAL (E-COMMERCE & CATÁLOGO MAKAO) -->
+      <div class="bg-white rounded-2xl border p-5 mb-4 shadow-sm" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 border-b pb-3" style="border-color:#F3F4F6">
           <div>
-            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-store mr-2" style="color:#E11D48"></i>Tienda Virtual (E-commerce)</h4>
-            <p class="text-sm" style="color:#6B7280">Configura la bodega predeterminada para validar existencias, lista de precios para el catálogo y el número de WhatsApp receptor de pedidos.</p>
+            <div class="flex items-center gap-2">
+              <span class="w-8 h-8 rounded-lg flex items-center justify-center text-white" style="background:linear-gradient(135deg, #3D68A8, #07BCEB)">
+                <i class="fas fa-store"></i>
+              </span>
+              <h4 class="font-bold text-base" style="color:#0D2137">Tienda Virtual & Catálogo Makao</h4>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Configura la identidad gráfica de alta gama (estilo Makao), el motor de colores reactivo, existencias de bodega y sincronización con facturación.</p>
           </div>
-          ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-ecommerce"><i class="fas fa-floppy-disk mr-1"></i> Guardar ajustes tienda</button>' : ''}
+          <div class="flex items-center gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline btn-sm" id="btn-open-store-tab" title="Abrir tienda en nueva pestaña">
+              <i class="fas fa-arrow-up-right-from-square mr-1" style="color:#07BCEB"></i> Abrir Catálogo
+            </button>
+            ${canEdit ? `
+              <button type="button" class="btn btn-outline btn-sm" id="btn-sync-billing-to-store" style="border-color:#3D68A8; color:#3D68A8;" title="Copia Nombre, Teléfono y Logo desde los datos de facturación">
+                <i class="fas fa-wand-magic-sparkles mr-1"></i> Sincronizar desde Facturación
+              </button>
+              <button class="btn btn-primary btn-sm" id="btn-save-ecommerce">
+                <i class="fas fa-floppy-disk mr-1"></i> Guardar ajustes tienda
+              </button>
+            ` : ''}
+          </div>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div class="form-group">
-            <label class="form-label">Bodega Predeterminada (Stock)</label>
-            <select id="cfg-ecommerce-warehouse" class="form-input" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
-              <option value="">Consolidado Global (Todas las Bodegas)</option>
-              ${warehouses.map((w: any) => `<option value="${esc(w.id)}" ${byKey['ecommerce_default_warehouse_id']?.value === w.id ? 'selected' : ''}>${esc(w.name)}</option>`).join('')}
-            </select>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 text-sm">
+          <!-- SUBPANEL 1: IDENTIDAD VISUAL Y ESTILOS GRÁFICOS (MAKAO DESIGN SYSTEM) -->
+          <div class="p-4 rounded-xl border bg-slate-50/50 space-y-3" style="border-color:#E2E8F0">
+            <div class="flex items-center justify-between border-b pb-2" style="border-color:#E2E8F0">
+              <h5 class="font-bold text-xs uppercase tracking-wider flex items-center gap-2" style="color:#1E3A8A">
+                <i class="fas fa-palette" style="color:#3D68A8"></i> Identidad Gráfica & Estilo
+              </h5>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Diseño Makao</span>
+            </div>
+
+            <!-- Selector de Color de Acento -->
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Color de Marca / Acento Primario</label>
+              <div class="flex items-center gap-3">
+                <input type="color" id="cfg-ecommerce-accent-color" value="${esc(byKey['ecommerce_accent_color']?.value || '#3D68A8')}" class="w-10 h-10 p-1 rounded-lg border cursor-pointer bg-white" style="border-color:#CBD5E1">
+                <input id="cfg-ecommerce-accent-hex" class="form-input w-28 font-mono text-xs font-bold uppercase" value="${esc(byKey['ecommerce_accent_color']?.value || '#3D68A8')}" placeholder="#3D68A8" ${canEdit ? '' : 'readonly'}>
+                <div id="cfg-accent-badge-preview" class="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-white font-bold text-xs shadow-sm transition-all" style="background:${esc(byKey['ecommerce_accent_color']?.value || '#3D68A8')}">
+                  <i class="fas fa-eye"></i> Vista Previa Botones
+                </div>
+              </div>
+              <p class="text-[11px] text-gray-500 mt-1">El sistema calculará automáticamente las tonalidades claras, hover, sombras y fondos de botones.</p>
+            </div>
+
+            <!-- Título Hero y Subtítulo -->
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Mensaje de Bienvenida (Hero Banner)</label>
+              <input id="cfg-ecommerce-welcome-msg" class="form-input text-xs" value="${esc(byKey['ecommerce_welcome_msg']?.value || 'Revisa nuestro catálogo y haz tu pedido de forma fácil y rápida.')}" placeholder="Ej: Bienvenidos a nuestro catálogo online" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Subtítulo / Descripción Comercial</label>
+              <input id="cfg-ecommerce-description" class="form-input text-xs" value="${esc(byKey['ecommerce_description']?.value || 'Catálogo interactivo de productos y pedidos.')}" placeholder="Ej: Envíos a todo el país y precios de fábrica" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Prefijo de Pedido</label>
+                <input id="cfg-ecommerce-order-prefix" class="form-input text-xs font-mono font-bold" value="${esc(byKey['ecommerce_order_prefix']?.value || 'PED-')}" placeholder="Ej: PED- o MK-" ${canEdit ? '' : 'readonly'}>
+              </div>
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Monto Mínimo de Pedido ($)</label>
+                <input id="cfg-ecommerce-min-order" type="number" min="0" step="1000" class="form-input text-xs font-bold" value="${esc(byKey['ecommerce_min_order']?.value || '0')}" placeholder="0 = Sin mínimo" ${canEdit ? '' : 'readonly'}>
+              </div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Lista de Precios del Catálogo</label>
-            <select id="cfg-ecommerce-price-list" class="form-input" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
-              <option value="base_price" ${byKey['ecommerce_price_list']?.value === 'base_price' || !byKey['ecommerce_price_list']?.value ? 'selected' : ''}>Precio Base (General)</option>
-              <option value="precio_venta_2" ${byKey['ecommerce_price_list']?.value === 'precio_venta_2' ? 'selected' : ''}>Precio de Venta 2 (Alternativo / Mayorista)</option>
-            </select>
-          </div>
+          <!-- SUBPANEL 2: OPERACIONES, INVENTARIO Y FACTURACIÓN -->
+          <div class="p-4 rounded-xl border bg-slate-50/50 space-y-3" style="border-color:#E2E8F0">
+            <div class="flex items-center justify-between border-b pb-2" style="border-color:#E2E8F0">
+              <h5 class="font-bold text-xs uppercase tracking-wider flex items-center gap-2" style="color:#065F46">
+                <i class="fas fa-boxes-stacked" style="color:#10B981"></i> Operación, Despacho e Inventario
+              </h5>
+              <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Control ERP</span>
+            </div>
 
-          <div class="form-group">
-            <label class="form-label">Usuario Responsable del Pedido</label>
-            <select id="cfg-ecommerce-user" class="form-input" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
-              ${users.map((u: any) => `<option value="${esc(u.id)}" ${byKey['ecommerce_default_user_id']?.value === u.id ? 'selected' : ''}>${esc(u.name || u.email)} (${esc(u.role)})</option>`).join('')}
-            </select>
-          </div>
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Nombre Comercial en Tienda</label>
+              <input id="cfg-ecommerce-store-name" class="form-input text-xs font-bold" value="${esc(byKey['ecommerce_store_name']?.value || byKey['company_name']?.value || 'GRAVY')}" placeholder="Ej: DISTRIBUCIONES GRAVY SAS" ${canEdit ? '' : 'readonly'}>
+            </div>
 
-          <div class="form-group">
-            <label class="form-label">Nombre Comercial de la Tienda</label>
-            <input id="cfg-ecommerce-store-name" class="form-input" value="${esc(byKey['ecommerce_store_name']?.value || 'GRAVY')}" placeholder="Ej: GRAVY SAS" ${canEdit ? '' : 'readonly'}>
-          </div>
+            <div class="form-group">
+              <label class="form-label font-semibold text-xs text-gray-700">Número de WhatsApp (Receptor de Pedidos)</label>
+              <input id="cfg-ecommerce-whatsapp" class="form-input text-xs font-mono" value="${esc(byKey['ecommerce_whatsapp_number']?.value || byKey['company_phone']?.value || '573000000000')}" placeholder="Ej: 573001234567" ${canEdit ? '' : 'readonly'}>
+              <p class="text-[11px] text-gray-500 mt-1">Con código de país (57 para Colombia), sin '+' ni espacios.</p>
+            </div>
 
-          <div class="form-group md:col-span-2">
-            <label class="form-label">Número de WhatsApp (con código de país, sin + o espacios)</label>
-            <input id="cfg-ecommerce-whatsapp" class="form-input" value="${esc(byKey['ecommerce_whatsapp_number']?.value || '573000000000')}" placeholder="Ej: 573001234567" ${canEdit ? '' : 'readonly'}>
-            <p class="text-xs mt-1" style="color:#9CA3AF">Número de teléfono a donde el cliente enviará el mensaje con el resumen del pedido.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Bodega de Stock</label>
+                <select id="cfg-ecommerce-warehouse" class="form-input text-xs" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
+                  <option value="">Consolidado Global (Todas)</option>
+                  ${warehouses.map((w: any) => `<option value="${esc(w.id)}" ${byKey['ecommerce_default_warehouse_id']?.value === w.id ? 'selected' : ''}>${esc(w.name)}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Lista de Precios</label>
+                <select id="cfg-ecommerce-price-list" class="form-input text-xs" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
+                  <option value="base_price" ${byKey['ecommerce_price_list']?.value === 'base_price' || !byKey['ecommerce_price_list']?.value ? 'selected' : ''}>Precio Base (General)</option>
+                  <option value="precio_venta_2" ${byKey['ecommerce_price_list']?.value === 'precio_venta_2' ? 'selected' : ''}>Precio 2 (Mayorista / Alternativo)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Vendedor / Usuario Responsable</label>
+                <select id="cfg-ecommerce-user" class="form-input text-xs" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
+                  ${users.map((u: any) => `<option value="${esc(u.id)}" ${byKey['ecommerce_default_user_id']?.value === u.id ? 'selected' : ''}>${esc(u.name || u.email)} (${esc(u.role)})</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label font-semibold text-xs text-gray-700">Venta sin Existencias</label>
+                <select id="cfg-ecommerce-block-out-of-stock" class="form-input text-xs" ${canEdit ? '' : 'disabled'} style="color-scheme: light;">
+                  <option value="0" ${byKey['ecommerce_block_out_of_stock']?.value !== '1' ? 'selected' : ''}>Permitir pedidos sin existencias</option>
+                  <option value="1" ${byKey['ecommerce_block_out_of_stock']?.value === '1' ? 'selected' : ''}>Bloquear compra si stock = 0</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -794,18 +878,83 @@ async function renderConfiguracion(c) {
       }
     });
 
+    // Sincronización en vivo del Color Picker con el Input HEX y la previsualización
+    const accentPicker = document.getElementById('cfg-ecommerce-accent-color') as HTMLInputElement | null;
+    const accentHex = document.getElementById('cfg-ecommerce-accent-hex') as HTMLInputElement | null;
+    const badgePreview = document.getElementById('cfg-accent-badge-preview');
+
+    const updateAccentPreview = (hex: string) => {
+      if (!hex) return;
+      if (!hex.startsWith('#')) hex = '#' + hex;
+      if (badgePreview) {
+        badgePreview.style.backgroundColor = hex;
+      }
+    };
+
+    accentPicker?.addEventListener('input', (e) => {
+      const val = (e.target as HTMLInputElement).value;
+      if (accentHex) accentHex.value = val.toUpperCase();
+      updateAccentPreview(val);
+    });
+
+    accentHex?.addEventListener('input', (e) => {
+      let val = (e.target as HTMLInputElement).value.trim();
+      if (!val.startsWith('#') && val.length > 0) val = '#' + val;
+      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+        if (accentPicker) accentPicker.value = val;
+        updateAccentPreview(val);
+      }
+    });
+
+    // Abrir la tienda virtual en una pestaña nueva
+    $('#btn-open-store-tab')?.addEventListener('click', () => {
+      window.open('/store.html', '_blank');
+    });
+
+    // Botón Inteligente: Sincronizar desde Facturación
+    $('#btn-sync-billing-to-store')?.addEventListener('click', () => {
+      const companyName = getInputVal('cfg-company_name').trim() || byKey['company_name']?.value || '';
+      const companyPhone = getInputVal('cfg-company_phone').trim() || byKey['company_phone']?.value || '';
+      
+      if (companyName) {
+        const storeNameInput = document.getElementById('cfg-ecommerce-store-name') as HTMLInputElement | null;
+        if (storeNameInput) storeNameInput.value = companyName;
+      }
+
+      if (companyPhone) {
+        // Limpiar caracteres no numéricos y asegurar código de país
+        let cleanPhone = companyPhone.replace(/\D/g, '');
+        if (cleanPhone.length === 10 && !cleanPhone.startsWith('57')) {
+          cleanPhone = '57' + cleanPhone;
+        }
+        const waInput = document.getElementById('cfg-ecommerce-whatsapp') as HTMLInputElement | null;
+        if (waInput && cleanPhone) waInput.value = cleanPhone;
+      }
+
+      showToast('Parámetros de facturación sincronizados en la tienda. Recuerda hacer clic en "Guardar ajustes tienda".', 'success');
+    });
+
     $('#btn-save-ecommerce')?.addEventListener('click', async () => {
       if (!canEdit) return showToast('Sin permisos para actualizar configuración', 'error');
       try {
+        let accentVal = getInputVal('cfg-ecommerce-accent-hex').trim() || getInputVal('cfg-ecommerce-accent-color').trim() || '#3D68A8';
+        if (!accentVal.startsWith('#')) accentVal = '#' + accentVal;
+
         const payload = [
           ['ecommerce_default_warehouse_id', getInputVal('cfg-ecommerce-warehouse').trim()],
           ['ecommerce_price_list', getInputVal('cfg-ecommerce-price-list').trim()],
           ['ecommerce_default_user_id', getInputVal('cfg-ecommerce-user').trim()],
           ['ecommerce_store_name', getInputVal('cfg-ecommerce-store-name').trim()],
           ['ecommerce_whatsapp_number', getInputVal('cfg-ecommerce-whatsapp').trim()],
+          ['ecommerce_accent_color', accentVal],
+          ['ecommerce_welcome_msg', getInputVal('cfg-ecommerce-welcome-msg').trim()],
+          ['ecommerce_description', getInputVal('cfg-ecommerce-description').trim()],
+          ['ecommerce_order_prefix', getInputVal('cfg-ecommerce-order-prefix').trim() || 'PED-'],
+          ['ecommerce_min_order', getInputVal('cfg-ecommerce-min-order').trim() || '0'],
+          ['ecommerce_block_out_of_stock', getInputVal('cfg-ecommerce-block-out-of-stock').trim() || '0'],
         ];
         await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
-        showToast('Configuración de Tienda Virtual guardada con éxito', 'success');
+        showToast('Configuración gráfica y operativa de la Tienda Virtual guardada con éxito', 'success');
         renderConfiguracion(c);
       } catch (err: any) {
         showToast(err.message || 'No se pudo guardar la configuración de e-commerce', 'error');

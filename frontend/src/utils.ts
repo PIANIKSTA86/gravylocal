@@ -86,10 +86,21 @@ if (typeof window !== 'undefined') {
 
 /* ── Fechas (Colombia America/Bogota / UTC-5) ─────────────── */
 function getColombiaDateStr(d?: Date | string | number): string {
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      return `${m[1]}-${m[2]}-${m[3]}`;
+    }
+  }
   const dt = d ? (d instanceof Date ? d : new Date(d)) : new Date();
   if (isNaN(dt.getTime())) return '';
-  const cot = new Date(dt.getTime() - 5 * 3600 * 1000);
-  return cot.toISOString().slice(0, 10);
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).format(dt);
+  } catch {
+    const cot = new Date(dt.getTime() - 5 * 3600 * 1000);
+    return cot.toISOString().slice(0, 10);
+  }
 }
 
 function getColombiaDateTimeStr(d?: Date | string | number): string {
@@ -125,6 +136,13 @@ function nowStr(d?: Date | string | number): string {
 
 function fmtDate(d) {
   if (!d) return '—';
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+  }
   const dateStr = getColombiaDateStr(d);
   if (!dateStr) return '—';
   const parts = dateStr.split('-');

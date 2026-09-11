@@ -1263,15 +1263,21 @@ app.post('/api/facturatech/check-status', async (req, res) => {
 
     console.log(`[GRAVY FTECH] Resultado estado: code=${statusCode}, status=${statusVal}, msg=${statusMsg}, hasDocBase64=${!!documentBase64}`);
 
-    const isSigned = (statusVal && statusVal.toUpperCase() === 'SIGNED_XML') || 
+    const isProcessing = (statusCode === '201') || 
+                         (statusMsg && statusMsg.toLowerCase().includes('en proceso')) ||
+                         (statusVal && statusVal.toUpperCase() === 'PROCESSING') ||
+                         (statusCode === '100');
+
+    const isSigned = !isProcessing && (
+                     (statusVal && statusVal.toUpperCase() === 'SIGNED_XML') || 
                      (statusMsg && statusMsg.toLowerCase().includes('signed_xml')) || 
                      (statusMsg && statusMsg.toLowerCase().includes('firmado')) || 
-                     statusCode === '201' || 
+                     (statusMsg && statusMsg.toLowerCase().includes('autorizado')) || 
                      (statusCode === '200' && !!documentBase64) || 
-                     (!!documentBase64 && (!statusVal || !statusVal.toUpperCase().includes('ERROR')));
+                     (!!documentBase64 && (!statusVal || !statusVal.toUpperCase().includes('ERROR'))));
 
     // If still processing, return enviada status
-    if (!isSigned && (statusVal === 'PROCESSING' || (statusCode === '200' && !documentBase64) || statusCode === '100')) {
+    if (!isSigned && (isProcessing || (statusCode === '200' && !documentBase64))) {
       writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (PROCESSING)', {
         provider: 'Facturatech',
         transId,
@@ -1374,7 +1380,10 @@ app.post('/api/facturatech/check-status', async (req, res) => {
         try {
           const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope, cufeContentType);
           if (cufeResponse.statusCode === 200) {
-            cufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult') || extractSoapTag(cufeResponse.data, 'code');
+            const rawCufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult');
+            if (rawCufe && /^[a-f0-9]{32,}$/i.test(rawCufe.trim())) {
+              cufe = rawCufe.trim();
+            }
           }
         } catch (err) {
           console.warn(`[GRAVY FTECH] Error al descargar CUFE por SOAP (se intentará fallback regex):`, err.message);
@@ -3019,14 +3028,29 @@ function generatePhStatementPdf(statementData) {
       };
 
       const periodName = getMonthNameUpper(period);
-      const date = d.date || '';
-      const dueDate = d.dueDate || date;
+
+      const fmtDateDDMMYYYY = (dStr) => {
+        if (!dStr) return '—';
+        const s = String(dStr).trim();
+        const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) {
+          return `${m[3]}/${m[2]}/${m[1]}`;
+        }
+        return s;
+      };
+
+      const date = fmtDateDDMMYYYY(d.date);
+      const dueDate = fmtDateDDMMYYYY(d.dueDate || d.date);
 
       const ownerName = d.ownerName || 'Copropietario';
-      const ownerNit = d.ownerNit || '—';
+      const ownerNit = d.ownerDocNumber || d.ownerNit || '—';
       const ownerAddress = d.ownerAddress || '';
       const ownerPhone = d.ownerPhone || '—';
       const ownerEmail = d.ownerEmail || '—';
+
+      const prevMonthUnitRecaudo = Number(d.prevMonthUnitRecaudo) || 0;
+      const prevMonthTotalRecaudo = Number(d.prevMonthTotalRecaudo) || 0;
+      const prevMonthName = d.prevMonthName || '';
 
       const propertyName = d.propertyName || 'Unidad';
       const propertyCode = d.propertyCode || propertyName;
@@ -3242,6 +3266,25 @@ function generatePhStatementPdf(statementData) {
 
       y += metaH + 6;
 
+      // ─── 2.5 BARRA DE RECAUDO DEL MES ANTERIOR ─────────────
+      const recH = 18;
+      const halfW = W / 2;
+      doc.rect(L, y, W, recH).strokeColor('#000000').lineWidth(0.8).stroke();
+      doc.moveTo(L + halfW, y).lineTo(L + halfW, y + recH).strokeColor('#000000').lineWidth(0.8).stroke();
+
+      const prevMonthLabel = prevMonthName ? ` (${prevMonthName})` : '';
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000')
+         .text(`RECAUDO MES ANTERIOR UNIDAD${prevMonthLabel}:`, L + 6, y + 5, { width: halfW - 85 });
+      doc.font('Helvetica-Bold').fontSize(8.5)
+         .text(`$ ${cleanFmt(prevMonthUnitRecaudo)}`, L + halfW - 80, y + 4.5, { width: 74, align: 'right' });
+
+      doc.font('Helvetica-Bold').fontSize(7.5)
+         .text(`TOTAL RECAUDO COPROPIEDAD${prevMonthLabel}:`, L + halfW + 6, y + 5, { width: halfW - 85 });
+      doc.font('Helvetica-Bold').fontSize(8.5)
+         .text(`$ ${cleanFmt(prevMonthTotalRecaudo)}`, L + W - 80, y + 4.5, { width: 74, align: 'right' });
+
+      y += recH + 6;
+
       // ─── 3. TABLA DE CONCEPTOS ──────────────────────────────
       const thH = 20;
       const cWidths = [W * 0.46, W * 0.18, W * 0.18, W * 0.18];
@@ -3335,6 +3378,16 @@ app.post('/api/ph/generate-pdf', async (req, res) => {
     const { filename = 'cuenta_cobro', statementData, format } = req.body;
     const pdfBuffer = await generatePhStatementPdf(statementData);
     
+    // Si se solicita en formato base64 para descarga en frontend
+    if (format === 'base64') {
+      const sanitizedFilename = String(filename).replace(/[^a-zA-Z0-9_\-]/g, '_');
+      return res.json({
+        success: true,
+        pdfBase64: pdfBuffer.toString('base64'),
+        filename: `${sanitizedFilename}.pdf`
+      });
+    }
+
     // Si se solicita explícitamente en formato binario para visualización o descarga
     if (format === 'binary' || req.query.download === '1') {
       res.set({

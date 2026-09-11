@@ -89,20 +89,116 @@ routerAdd("GET", "/api/public/ecommerce/config", (e) => {
   try {
     let whatsappNumber = "573000000000";
     let storeName = "GRAVY";
+    let accentColor = "#3D68A8";
+    let welcomeMsg = "Revisa nuestro catálogo y haz tu pedido de forma fácil y rápida.";
+    let description = "Catálogo interactivo de productos y pedidos.";
+    let minOrder = 0;
+    let orderPrefix = "PED-";
+    let blockOutOfStock = false;
+    let logo = "";
+    let companyName = "";
+    let companyNit = "";
+    let companyAddress = "";
+    let companyPhone = "";
+
+    // Obtener parámetros generales de la empresa (facturación)
+    try {
+      const rec = $app.findFirstRecordByFilter("settings", "key = 'company_name'");
+      companyName = rec.getString("value") || "";
+      if (companyName) storeName = companyName;
+    } catch (_) {}
 
     try {
+      const rec = $app.findFirstRecordByFilter("settings", "key = 'company_nit'");
+      companyNit = rec.getString("value") || "";
+    } catch (_) {}
+
+    try {
+      const rec = $app.findFirstRecordByFilter("settings", "key = 'company_address'");
+      companyAddress = rec.getString("value") || "";
+    } catch (_) {}
+
+    try {
+      const rec = $app.findFirstRecordByFilter("settings", "key = 'company_phone'");
+      companyPhone = rec.getString("value") || "";
+      if (companyPhone && !whatsappNumber) whatsappNumber = companyPhone;
+    } catch (_) {}
+
+    try {
+      const rec = $app.findFirstRecordByFilter("settings", "key = 'company_logo'");
+      const rawLogo = rec.getString("value") || "";
+      if (rawLogo) {
+        logo = rawLogo.startsWith("data:") ? rawLogo : ("data:image/png;base64," + rawLogo);
+      }
+    } catch (_) {}
+
+    // Parámetros específicos de e-commerce
+    try {
       const waRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_whatsapp_number'");
-      whatsappNumber = waRecord.getString("value") || whatsappNumber;
+      const val = waRecord.getString("value");
+      if (val) whatsappNumber = val;
     } catch (_) {}
 
     try {
       const nameRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_store_name'");
-      storeName = nameRecord.getString("value") || storeName;
+      const val = nameRecord.getString("value");
+      if (val) storeName = val;
+    } catch (_) {}
+
+    try {
+      const colRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_accent_color'");
+      const val = colRecord.getString("value");
+      if (val) accentColor = val;
+    } catch (_) {}
+
+    try {
+      const msgRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_welcome_msg'");
+      const val = msgRecord.getString("value");
+      if (val) welcomeMsg = val;
+    } catch (_) {}
+
+    try {
+      const descRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_description'");
+      const val = descRecord.getString("value");
+      if (val) description = val;
+    } catch (_) {}
+
+    try {
+      const minRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_min_order'");
+      minOrder = parseFloat(minRecord.getString("value") || "0") || 0;
+    } catch (_) {}
+
+    try {
+      const prefRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_order_prefix'");
+      const val = prefRecord.getString("value");
+      if (val) orderPrefix = val;
+    } catch (_) {}
+
+    try {
+      const blockRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_block_out_of_stock'");
+      blockOutOfStock = blockRecord.getString("value") === "1" || blockRecord.getString("value") === "true";
+    } catch (_) {}
+
+    try {
+      const logoRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_logo'");
+      const rawCustomLogo = logoRecord.getString("value");
+      if (rawCustomLogo) logo = rawCustomLogo;
     } catch (_) {}
 
     return e.json(200, {
+      store_name: storeName,
       whatsapp_number: whatsappNumber,
-      store_name: storeName
+      accent_color: accentColor,
+      welcome_msg: welcomeMsg,
+      description: description,
+      min_order: minOrder,
+      order_prefix: orderPrefix,
+      block_out_of_stock: blockOutOfStock,
+      logo: logo,
+      company_name: companyName,
+      company_nit: companyNit,
+      company_address: companyAddress,
+      company_phone: companyPhone
     });
   } catch (err) {
     return e.json(500, { message: "Error al obtener configuración pública: " + String(err) });
@@ -223,7 +319,15 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
     consecutive += 1;
     settingRecord.set("value", String(consecutive));
     $app.save(settingRecord);
-    const orderNumber = "PED-" + String(consecutive).padStart(8, "0");
+
+    let orderPrefix = "PED-";
+    try {
+      const prefRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_order_prefix'");
+      const val = prefRecord.getString("value");
+      if (val) orderPrefix = val;
+    } catch (_) {}
+
+    const orderNumber = orderPrefix + String(consecutive).padStart(8, "0");
 
     // 5. Validar disponibilidad de stock y acumular totales
     let subtotal = 0;
@@ -323,6 +427,17 @@ routerAdd("POST", "/api/public/ecommerce/orders", (e) => {
     }
 
     const orderTotal = subtotal + ivaTotal;
+
+    // Validar monto mínimo si está configurado
+    try {
+      const minRecord = $app.findFirstRecordByFilter("settings", "key = 'ecommerce_min_order'");
+      const minOrder = parseFloat(minRecord.getString("value") || "0") || 0;
+      if (minOrder > 0 && orderTotal < minOrder) {
+        return e.json(400, {
+          message: "El pedido no alcanza el monto mínimo requerido de $" + Math.round(minOrder).toLocaleString("es-CO") + " (Total actual: $" + Math.round(orderTotal).toLocaleString("es-CO") + ")"
+        });
+      }
+    } catch (_) {}
 
     // 6. Crear cabecera del pedido (sales_orders)
     const ordersCol = $app.findCollectionByNameOrId("sales_orders");

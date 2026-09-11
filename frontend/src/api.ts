@@ -3745,13 +3745,14 @@ const API = {
    */
   async generatePhInvoices(period, dueDate = '') {
     const safePeriod = pb.escapeFilterValue(period);
-    const [properties, concepts, rawCfg] = await Promise.all([
+    const [properties, concepts, rawCfg, rawFooterNote] = await Promise.all([
       this.getPhProperties(true),
       this.getPhBillingConcepts(true),
       this.getSetting('ph_config_v1'),
+      this.getSetting('ph_invoice_footer_note').catch(() => ''),
     ]);
     if (!properties.length) throw new Error('No hay unidades activas registradas.');
-    if (!concepts.length) throw new Error('No hay conceptos de facturaciÃ³n activos.');
+    if (!concepts.length) throw new Error('No hay conceptos de facturación activos.');
 
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
@@ -3893,7 +3894,7 @@ const API = {
           subtotal: safeTotal,
           total: safeTotal,
           status: 'draft',
-          notes: '',
+          notes: String(phCfg?.invoice_footer_note || rawFooterNote || '').trim(),
         });
       } catch (err: any) {
         const details = err?.data?.data ? JSON.stringify(err.data.data) : (err.message || 'Error desconocido');
@@ -4415,21 +4416,35 @@ const API = {
   async sendPhInvoiceEmail(invoiceId, type = 'invoice', email = '', subject = '', message = '') {
     const res = await fetch(`${pb.baseUrl}/api/ph/send-invoice-email`, {
       method: 'POST',
-      headers: this.headers(),
+      headers: pb.headers(),
       body: JSON.stringify({ invoiceId, type, email, subject, message }),
     });
-    if (!res.ok) throw await this._err(res);
+    if (!res.ok) throw await pb._err(res);
     return res.json();
   },
 
-  /** Envia correos masivos de facturaciÃ³n PH para un perÃ­odo */
+  /** Envia correos masivos de facturación PH para un período */
   async sendPhBulkEmails(period, type = 'invoice', subject = '', message = '') {
-    const res = await fetch(`${pb.baseUrl}/api/ph/send-bulk-emails`, {
+    const cleanPeriod = String(period || '').trim();
+    if (!cleanPeriod) throw new Error('El período de facturación es requerido (formato YYYY-MM).');
+    const url = `${pb.baseUrl}/api/ph/send-bulk-emails?period=${encodeURIComponent(cleanPeriod)}`;
+    const res = await fetch(url, {
       method: 'POST',
-      headers: this.headers(),
-      body: JSON.stringify({ period, type, subject, message }),
+      headers: pb.headers(),
+      body: JSON.stringify({ period: cleanPeriod, type, subject, message }),
     });
-    if (!res.ok) throw await this._err(res);
+    if (!res.ok) throw await pb._err(res);
+    return res.json();
+  },
+
+  /** Descarga individual de factura o estado de cuenta PH en PDF */
+  async downloadPhInvoicePdf(invoiceId, type = 'invoice') {
+    const res = await fetch(`${pb.baseUrl}/api/ph/download-invoice-pdf`, {
+      method: 'POST',
+      headers: pb.headers(),
+      body: JSON.stringify({ invoiceId, type }),
+    });
+    if (!res.ok) throw await pb._err(res);
     return res.json();
   },
 
@@ -6280,7 +6295,7 @@ const API = {
       if (targetInvoiceRecord.tx_fob_id) {
         throw new Error(`La factura comercial ${targetInvoiceRecord.invoice_number} ya tiene causación contable.`);
       }
-    } else if (imp[map.txField]) {
+    } else if (imp[map.txField] && !opts.allowMultiple) {
       throw new Error(`La etapa ${map.label} ya tiene una causación contable registrada.`);
     }
 
@@ -6308,7 +6323,7 @@ const API = {
     const txTypeId = txTypes[0].id;
 
     let lines: any[] = [];
-    if (stageName === 'customs') {
+    if (stageName === 'customs' && !opts.allowMultiple) {
       const arancelAmt = imp.arancel_total || 0;
       const customsAmt = imp.gastos_nacionalizacion || 0;
       const customsCode = accountsCfg.customs_payable_account_code || '233595';
@@ -6331,7 +6346,7 @@ const API = {
             third_party_id: supplierId,
             debit: 0,
             credit: customsAmt,
-            description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}`,
+            description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}${opts.comment ? ` | ${opts.comment}` : ''}`,
             line_order: 2,
             cross_doc_ref: invoiceNum
           },
@@ -6363,7 +6378,7 @@ const API = {
           third_party_id: supplierId,
           debit: 0,
           credit: amount,
-          description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}`,
+          description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}${opts.comment ? ` | ${opts.comment}` : ''}`,
           line_order: 2,
           cross_doc_ref: invoiceNum
         }
@@ -6374,7 +6389,7 @@ const API = {
       tx_type_id: txTypeId,
       number: 'AUTO',
       date: new Date().toISOString().slice(0, 10),
-      description: `Causación ${map.label} Importación ${imp.number}${opts.invoiceId ? ` - Factura ${invoiceNum}` : ''}`,
+      description: `Causación ${map.label} Importación ${imp.number}${opts.invoiceId ? ` - Factura ${invoiceNum}` : ''}${opts.comment ? ` | ${opts.comment}` : ''}`,
       third_party_id: supplierId,
       status: 'active'
     };
@@ -6393,10 +6408,27 @@ const API = {
       } catch (_) {}
     } else {
       const updateData: Record<string, any> = {};
-      updateData[map.txField] = tx.id;
-      updateData[map.supplierField] = supplierId;
-      updateData[map.invoiceField] = invoiceNum;
-      await pb.update('imports', importId, updateData);
+      if (!imp[map.txField]) {
+        updateData[map.txField] = tx.id;
+        updateData[map.supplierField] = supplierId;
+        updateData[map.invoiceField] = invoiceNum;
+      }
+      if (opts.stageExpenses) {
+        updateData.stage_expenses = typeof opts.stageExpenses === 'string' ? opts.stageExpenses : JSON.stringify(opts.stageExpenses);
+      }
+      if (Object.keys(updateData).length > 0) {
+        try {
+          await pb.update('imports', importId, updateData);
+        } catch (e) {
+          // Si falla por stage_expenses no existiendo en PB, removerlo y actualizar campos básicos
+          if (updateData.stage_expenses) {
+            delete updateData.stage_expenses;
+            if (Object.keys(updateData).length > 0) {
+              await pb.update('imports', importId, updateData).catch(() => {});
+            }
+          }
+        }
+      }
     }
 
     await this.logAudit('POST_STAGE', 'imports', importId, `Causación contable etapa ${map.label} realizada. Transacción: ${tx.number}`);

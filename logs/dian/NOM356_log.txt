@@ -1,0 +1,25 @@
+
+==================================================
+TIMESTAMP: 2026-09-10T22:18:33.949Z
+ACTION: FACTURATECH CHECK-STATUS (REJECTED)
+==================================================
+provider: Facturatech
+transId: 8856da6e8df0a2186717631ebccfc2ecd596a10cee3ec15c50995a064dc348ed
+prefix: NOM
+folio: 356
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">8856da6e8df0a2186717631ebccfc2ecd596a10cee3ec15c50995a064dc348ed</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">409</code><documentBase64 xsi:type="xsd:string"></documentBase64><message xsi:type="xsd:string">El comprobante NOM356 ha sido rechazado</message><messageError xsi:type="xsd:string"></messageError></return></ns1:FtechAction.documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 409
+parsedStatus: 
+parsedMessage: El comprobante NOM356 ha sido rechazado
+

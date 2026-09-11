@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRAVY — Generador de Licencia y Contrato de Servicios</title>
+<link rel="icon" href="assets/gravy-logo.png" type="image/png">
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<link rel="stylesheet" href="style.css">
+<script src="assets/jspdf.min.js"></script>
+<script src="assets/autotable.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <img src="assets/gravy-logo.png" alt="GRAVY" class="logo">
+  <div>
+    <h1>Generador de Licencia de Uso y Contrato de Servicios</h1>
+    <p>Módulo interno del licenciador — genera los documentos legales en PDF a partir de los datos del cliente.</p>
+  </div>
+</header>
+
+<main class="layout">
+  <form id="licForm" class="panel form-panel">
+
+    <fieldset>
+      <legend>0. Identificación y numeración de control</legend>
+      <p class="hint">Números de control no consecutivos (aleatorios con checksum), para trazabilidad interna sin revelar volumen de contratos a terceros.</p>
+      <div class="grid-2">
+        <label>N.° de Licencia
+          <span class="inline-field">
+            <input name="num_licencia" id="numLicencia" readonly>
+            <button type="button" id="btnRegenLic" title="Generar nuevo número">⟳</button>
+          </span>
+        </label>
+        <label>N.° de Contrato de Servicios
+          <span class="inline-field">
+            <input name="num_contrato" id="numContrato" readonly>
+            <button type="button" id="btnRegenContrato" title="Generar nuevo número">⟳</button>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>1. Licenciante (Proveedor)</legend>
+      <div class="grid-2">
+        <label>Razón social
+          <input name="lic_razon" required value="GRAVY SOFTWARE S.A.S.">
+        </label>
+        <label>NIT
+          <input name="lic_nit" required value="900.000.000-1">
+        </label>
+        <label>Domicilio
+          <input name="lic_domicilio" required value="Bogotá D.C., Colombia">
+        </label>
+        <label>Representante legal
+          <input name="lic_representante" required>
+        </label>
+        <label>Correo electrónico
+          <input name="lic_email" type="email" value="contacto@gravy.com.co">
+        </label>
+        <label>Teléfono
+          <input name="lic_telefono">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. Licenciatario (Cliente)</legend>
+      <div class="grid-2">
+        <label>Razón social / Nombre
+          <input name="cli_razon" required>
+        </label>
+        <label>NIT / C.C.
+          <input name="cli_nit" required>
+        </label>
+        <label>Domicilio
+          <input name="cli_domicilio" required>
+        </label>
+        <label>Representante legal
+          <input name="cli_representante" required>
+        </label>
+        <label>Correo electrónico
+          <input name="cli_email" type="email">
+        </label>
+        <label>Teléfono
+          <input name="cli_telefono">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. Objeto y alcance del software</legend>
+      <div class="grid-2">
+        <label>Nombre del software
+          <input name="sw_nombre" required value="GRAVY — Plataforma Contable Inteligente">
+        </label>
+        <label>Versión
+          <input name="sw_version" value="2.0.0">
+        </label>
+        <label>Tipo de licencia
+          <select name="sw_tipo_licencia">
+            <option value="Suscripción mensual">Suscripción mensual</option>
+            <option value="Suscripción anual">Suscripción anual</option>
+            <option value="Perpetua">Perpetua (pago único)</option>
+          </select>
+        </label>
+        <label>Modalidad de despliegue
+          <select name="sw_modalidad">
+            <option value="Local (on-premise)">Local (on-premise)</option>
+            <option value="Nube">Nube (cloud)</option>
+            <option value="Híbrida">Híbrida</option>
+          </select>
+        </label>
+        <label>N.° de empresas/NITs habilitados
+          <input name="sw_empresas" type="number" min="1" value="1">
+        </label>
+        <label>N.° de usuarios concurrentes
+          <input name="sw_usuarios" type="number" min="1" value="3">
+        </label>
+      </div>
+      <label>Módulos contratados</label>
+
+      <div class="mod-group">
+        <h4>Contabilidad y Cierre</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Contabilidad General y PUC" checked> Contabilidad General y PUC</label>
+          <label><input type="checkbox" name="mod" value="Centros de Costo"> Centros de Costo</label>
+          <label><input type="checkbox" name="mod" value="Documentos Soporte Electrónico"> Documentos Soporte Electrónico</label>
+          <label><input type="checkbox" name="mod" value="Cierre Contable"> Cierre Contable</label>
+          <label><input type="checkbox" name="mod" value="Conciliación Bancaria"> Conciliación Bancaria</label>
+          <label><input type="checkbox" name="mod" value="Auditoría"> Auditoría</label>
+          <label><input type="checkbox" name="mod" value="Gestión NIIF (IFRS)"> Gestión NIIF (IFRS)</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Tributario y Facturación Electrónica</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Facturación Electrónica DIAN" checked> Facturación Electrónica DIAN</label>
+          <label><input type="checkbox" name="mod" value="Validación de Documentos DIAN"> Validación de Documentos DIAN</label>
+          <label><input type="checkbox" name="mod" value="Resoluciones y Consecutivos DIAN"> Resoluciones y Consecutivos DIAN</label>
+          <label><input type="checkbox" name="mod" value="Información Exógena DIAN"> Información Exógena DIAN</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Nómina</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Nómina Electrónica"> Nómina Electrónica</label>
+          <label><input type="checkbox" name="mod" value="Contratos y Novedades de Nómina"> Contratos y Novedades de Nómina</label>
+          <label><input type="checkbox" name="mod" value="Liquidación de Nómina"> Liquidación de Nómina</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Tesorería</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Tesorería y Cuentas Bancarias"> Tesorería y Cuentas Bancarias</label>
+          <label><input type="checkbox" name="mod" value="Agenda de Pagos"> Agenda de Pagos</label>
+          <label><input type="checkbox" name="mod" value="Recaudos y Egresos"> Recaudos y Egresos</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Comercial y Ventas</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Ventas y Facturación Comercial"> Ventas y Facturación Comercial</label>
+          <label><input type="checkbox" name="mod" value="Punto de Venta (POS)"> Punto de Venta (POS)</label>
+          <label><input type="checkbox" name="mod" value="Pedidos y Cotizaciones"> Pedidos y Cotizaciones</label>
+          <label><input type="checkbox" name="mod" value="Tienda Virtual"> Tienda Virtual</label>
+          <label><input type="checkbox" name="mod" value="CRM - Seguimiento de Ventas"> CRM - Seguimiento de Ventas</label>
+          <label><input type="checkbox" name="mod" value="Comisiones a Vendedores"> Comisiones a Vendedores</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Compras e Importaciones</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Compras de Bienes y Servicios"> Compras de Bienes y Servicios</label>
+          <label><input type="checkbox" name="mod" value="Órdenes de Compra"> Órdenes de Compra</label>
+          <label><input type="checkbox" name="mod" value="Compra Sugerida"> Compra Sugerida</label>
+          <label><input type="checkbox" name="mod" value="Gestión de Importaciones"> Gestión de Importaciones</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Inventario y Logística</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Inventario y Kardex Valorizado"> Inventario y Kardex Valorizado</label>
+          <label><input type="checkbox" name="mod" value="Bodegas y Consignaciones"> Bodegas y Consignaciones</label>
+          <label><input type="checkbox" name="mod" value="Lotes y Vencimientos"> Lotes y Vencimientos</label>
+          <label><input type="checkbox" name="mod" value="Embalaje"> Embalaje</label>
+          <label><input type="checkbox" name="mod" value="Despachos y Entregas"> Despachos y Entregas</label>
+          <label><input type="checkbox" name="mod" value="Control y Planificación de Rutas"> Control y Planificación de Rutas</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Verticales Especializados</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Propiedad Horizontal (PH)"> Propiedad Horizontal (PH)</label>
+          <label><input type="checkbox" name="mod" value="Gestión Inmobiliaria"> Gestión Inmobiliaria</label>
+          <label><input type="checkbox" name="mod" value="Spa de Mascotas"> Spa de Mascotas</label>
+          <label><input type="checkbox" name="mod" value="Spa de Belleza"> Spa de Belleza</label>
+        </div>
+      </div>
+
+      <div class="mod-group">
+        <h4>Plataforma y Administración</h4>
+        <div class="checks">
+          <label><input type="checkbox" name="mod" value="Multiempresa / Multi-NIT"> Multiempresa / Multi-NIT</label>
+          <label><input type="checkbox" name="mod" value="Usuarios y Roles"> Usuarios y Roles</label>
+          <label><input type="checkbox" name="mod" value="Panel SuperAdministrador"> Panel SuperAdministrador</label>
+          <label><input type="checkbox" name="mod" value="Respaldo Automático en la Nube"> Respaldo Automático en la Nube</label>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. Personalizaciones de software</legend>
+      <div class="grid-2">
+        <label>¿El desarrollo incluye personalizaciones a la medida?
+          <select name="personalizacion" id="personalizacion">
+            <option value="No">No, corresponde al software estándar</option>
+            <option value="Sí">Sí, incluye desarrollos a la medida</option>
+          </select>
+        </label>
+      </div>
+      <label>Descripción del alcance de la(s) personalización(es)
+        <textarea name="personalizacion_detalle" id="personalizacionDetalle" rows="3" placeholder="Ej: integración con báscula electrónica, reporte especial de comisiones, campo adicional en factura, etc." disabled></textarea>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>5. Condiciones económicas</legend>
+      <div class="grid-2">
+        <label>Valor total (COP)
+          <input name="valor" type="number" min="0" required>
+        </label>
+        <label>Forma de pago
+          <select name="forma_pago" id="formaPago">
+            <option>Pago único</option>
+            <option>Mensual</option>
+            <option>Trimestral</option>
+            <option>Anual</option>
+          </select>
+        </label>
+        <label id="renovacionLabel">Periodicidad de renovación
+          <input name="renovacion" id="renovacion" value="Anual, automática salvo aviso con 30 días de anticipación">
+        </label>
+        <label>Fecha de inicio
+          <input name="fecha_inicio" type="date" required>
+        </label>
+      </div>
+      <p class="hint" id="perpetuaHint" style="display:none;">Licencia perpetua seleccionada: no aplica renovación periódica; la vigencia y las condiciones de pago se ajustan automáticamente en los documentos generados.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>6. Servicios y soporte</legend>
+      <div class="grid-2">
+        <label>Duración del contrato (meses)
+          <input name="duracion_meses" type="number" min="1" value="12">
+        </label>
+        <label>Horario de soporte
+          <input name="soporte_horario" value="Lunes a viernes, 8:00 a.m. – 6:00 p.m.">
+        </label>
+        <label>Canal de soporte
+          <input name="soporte_canal" value="Correo electrónico y mesa de ayuda en línea">
+        </label>
+        <label>Tiempo máximo de respuesta
+          <input name="soporte_sla" value="24 horas hábiles">
+        </label>
+        <label>Incluye actualizaciones
+          <select name="incluye_actualizaciones"><option value="Sí">Sí</option><option value="No">No</option></select>
+        </label>
+        <label>Incluye capacitación inicial
+          <select name="incluye_capacitacion"><option value="Sí">Sí</option><option value="No">No</option></select>
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>7. Firma y jurisdicción</legend>
+      <div class="grid-2">
+        <label>Ciudad de firma
+          <input name="ciudad_firma" value="Bogotá D.C.">
+        </label>
+        <label>Fecha de firma
+          <input name="fecha_firma" type="date" required>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="actions">
+      <button type="button" id="btnLicencia">📄 Generar Licencia (PDF)</button>
+      <button type="button" id="btnContrato">📄 Generar Contrato de Servicios (PDF)</button>
+      <button type="button" id="btnAmbos" class="primary">📑 Generar Ambos Documentos</button>
+      <button type="button" id="btnClear" title="Borra los datos guardados en este navegador">🗑️ Borrar datos guardados</button>
+    </div>
+    <p class="hint">Al generar cualquier PDF también se descarga un archivo <strong>.json</strong> con los mismos datos, para poder cargarlo después y reutilizarlo en una nueva licencia.</p>
+    <div class="actions">
+      <button type="button" id="btnExportarJson">💾 Exportar solo JSON</button>
+      <label class="file-btn">
+        📂 Cargar datos desde JSON
+        <input type="file" id="inputImportarJson" accept="application/json,.json" hidden>
+      </label>
+    </div>
+    <p class="hint" id="saveStatus"></p>
+  </form>
+
+  <aside class="panel preview-panel">
+    <h2>Vista previa de datos</h2>
+    <div id="preview"></div>
+  </aside>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

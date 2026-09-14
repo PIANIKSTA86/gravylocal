@@ -237,7 +237,7 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
       } else {
         // Desvincular referencias de bank_movements para evitar errores de integridad
         try {
-          txApp.db().newQuery("UPDATE bank_movements SET tx_line_id = '' WHERE tx_line_id IN (SELECT id FROM tx_lines WHERE tx_id = {:txId})").bind({ txId: txRec.id }).execute();
+          txApp.db().newQuery("UPDATE bank_movements SET tx_line_id = '', reconciled = 0, reconciliation_id = '' WHERE tx_line_id IN (SELECT id FROM tx_lines WHERE tx_id = {:txId})").bind({ txId: txRec.id }).execute();
         } catch (_) {}
         // Eliminar líneas anteriores atómicamente
         try {

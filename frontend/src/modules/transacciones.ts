@@ -2125,11 +2125,12 @@ window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
             (window as any).loadConsultaTxPage();
           }
         } else {
-          (window as any).showToast(`Error al emitir: ${res.dianResponse || 'Respuesta de DIAN rechazada'}`, 'error');
+          const errorMsg = res?.dianResponse || res?.message || 'Respuesta de DIAN rechazada';
+          (window as any).showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
         }
       } catch (err: any) {
-        const errMsg = err.response?.message || err.message || 'Error al emitir a la DIAN';
-        (window as any).showToast(errMsg, 'error');
+        const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error al emitir a la DIAN');
+        (window as any).showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
       }
     }
   );

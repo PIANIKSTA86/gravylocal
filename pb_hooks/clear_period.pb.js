@@ -236,7 +236,7 @@ routerAdd("POST", "/api/gravy/clear-period", (e) => {
       try { db.newQuery(`UPDATE crm_deals SET invoice_id = '' WHERE invoice_id IN (SELECT id FROM invoices WHERE date >= '${s}' AND date <= '${en}')`).execute(); } catch(_) {}
     }
     if (selections.transactions) {
-      try { db.newQuery(`UPDATE bank_movements SET tx_line_id = '' WHERE tx_line_id IN (${txLineSubquery})`).execute(); } catch(_) {}
+      try { db.newQuery(`UPDATE bank_movements SET tx_line_id = '', reconciled = 0, reconciliation_id = '' WHERE tx_line_id IN (${txLineSubquery})`).execute(); } catch(_) {}
       try { db.newQuery(`UPDATE invoices SET tx_id = '', tx_number = '' WHERE tx_id IN (${txSubquery})`).execute(); } catch(_) {}
       try { db.newQuery(`UPDATE purchase_invoices SET tx_id = '' WHERE tx_id IN (${txSubquery})`).execute(); } catch(_) {}
       try { db.newQuery(`UPDATE inventory_movements SET tx_id = '' WHERE tx_id IN (${txSubquery})`).execute(); } catch(_) {}

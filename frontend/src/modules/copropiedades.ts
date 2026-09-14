@@ -174,6 +174,9 @@ async function renderPhFacturacion(c) {
           <button class="btn btn-outline" id="ph-config-btn" title="Configuración Copropiedades" style="color:#7F7CFF;border-color:#7F7CFF">
             <i class="fas fa-cog"></i>
           </button>
+          <button class="btn btn-outline" id="ph-bulk-pdf-btn" title="Descargar PDF unificado con todas las facturas del período para impresión masiva" style="color:#1D4ED8;border-color:#93C5FD">
+            <i class="fas fa-file-pdf"></i> Imprimir período (PDF)
+          </button>
           <button class="btn btn-outline" id="ph-bulk-email-btn" title="Enviar masivo de facturas o estados de cuenta por correo" style="color:#7F7CFF;border-color:#C4B5FD">
             <i class="fas fa-mail-bulk"></i> Enviar masivo
           </button>
@@ -239,6 +242,7 @@ async function renderPhFacturacion(c) {
 
     // Generar
     document.getElementById('ph-gen-btn')?.addEventListener('click', () => openPhGenerateModal());
+    document.getElementById('ph-bulk-pdf-btn')?.addEventListener('click', () => openPhBulkPdfModal());
     document.getElementById('ph-bulk-email-btn')?.addEventListener('click', () => openPhBulkEmailModal());
     document.getElementById('ph-post-period-btn')?.addEventListener('click', () => openPhPostPeriodModal(c));
     document.getElementById('ph-unpost-period-btn')?.addEventListener('click', () => openPhUnpostPeriodModal(c));
@@ -564,6 +568,7 @@ async function openPhInvoiceDetail(invoiceId) {
     const prop  = inv.expand?.property_id;
     const owner = prop?.expand?.owner_id;
     const meta  = PH_STATUS[inv.status] || PH_STATUS.draft;
+    const canEditDraftLines = inv.status === 'draft' && (typeof (window as any).can === 'function' ? (window as any).can('canWrite') : true);
     const isLateLine = (line) => {
       const code = String(line?.expand?.concept_id?.code || '').trim().toUpperCase();
       if (code === 'MORA') return true;
@@ -3501,425 +3506,334 @@ async function _renderPhPresExec(c) {
   } catch (err) { c.innerHTML = `<div class="alert alert-danger">${esc(err.message)}</div>`; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// GENERACIÓN Y DESCARGA DE DOCUMENTOS OFICIALES (PDF VECTORIAL ORQUESTADO)
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statement') {
+  const [inv, lines, billingConcepts] = await Promise.all([
+    (window as any).pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' }),
+    (window as any).API.getPhInvoiceLines(invoiceId),
+    (window as any).API.getPhBillingConcepts(false).catch(() => []),
+  ]);
+  const prop = inv.expand?.property_id;
+  let owner = prop?.expand?.owner_id;
+  if (!owner && prop?.owner_id) {
+    try {
+      owner = await (window as any).pb.get('third_parties', prop.owner_id);
+    } catch (_) {}
+  }
+
+  let outstandingInvoices: any[] = [];
+  if (type === 'statement') {
+    try {
+      const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
+      const res = await (window as any).pb.listAll('ph_invoices', {
+        filter: `property_id="${safePropId}" && id!="${invoiceId}" && status!="paid" && status!="voided" && period < "${inv.period}"`,
+        sort: 'period'
+      });
+      outstandingInvoices = res || [];
+    } catch (err) {
+      console.warn('Error al cargar cartera pendiente:', err);
+    }
+  }
+
+  const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64, customFooterNote] = await Promise.all([
+    (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
+    (window as any).API.getSetting('company_nit').catch(() => ''),
+    (window as any).API.getSetting('company_address').catch(() => ''),
+    (window as any).API.getSetting('company_phone').catch(() => ''),
+    (window as any).API.getSetting('company_email').catch(() => ''),
+    (window as any).API.getSetting('company_city').catch(() => ''),
+    (window as any).API.getSetting('company_logo').catch(() => ''),
+    (window as any).API.getSetting('ph_invoice_footer_note').catch(() => ''),
+  ]);
+
+  function getCanonicalConceptName(rawDesc: string): string {
+    if (!rawDesc) return 'CONCEPTO';
+    const str = String(rawDesc).trim();
+    const norm = str
+      .toLowerCase()
+      .replace(/[áàäâ]/g, 'a')
+      .replace(/[éèëê]/g, 'e')
+      .replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o')
+      .replace(/[úùüû]/g, 'u');
+
+    if (
+      (norm.includes('interes') && norm.includes('mora')) ||
+      norm === 'mora' ||
+      norm.startsWith('mora ') ||
+      norm.includes('intereses mora')
+    ) {
+      return 'INTERESES DE MORA';
+    }
+
+    if (
+      norm.includes('cuota de administracion') ||
+      norm.includes('cuota administracion') ||
+      norm.includes('cuota ordinaria') ||
+      norm === 'administracion'
+    ) {
+      return 'CUOTA ADMINISTRACION';
+    }
+
+    if (
+      norm.includes('fondo de imprevistos') ||
+      norm.includes('fondo imprevistos')
+    ) {
+      return 'FONDO DE IMPREVISTOS';
+    }
+
+    return str;
+  }
+
+  const conceptsById: Record<string, any> = {};
+  const conceptsByCanonical: Record<string, any> = {};
+  let moraConceptId = '';
+  (billingConcepts || []).forEach((c: any) => {
+    const code = String(c.code || '').trim().toUpperCase();
+    const name = String(c.name || '').trim();
+    conceptsById[c.id] = c;
+    if (code === 'MORA' || name.toUpperCase().includes('MORA')) {
+      moraConceptId = c.id;
+    }
+    conceptsByCanonical[getCanonicalConceptName(name)] = c.id;
+  });
+
+  function resolveConceptGroup(line: any) {
+    const rawId = line.concept_id || '';
+    const rawDesc = line.description || 'Concepto';
+    const canonicalDesc = getCanonicalConceptName(rawDesc);
+    const conceptObj = rawId ? conceptsById[rawId] : null;
+
+    const isMoraById = rawId && (rawId === moraConceptId || (conceptObj && (conceptObj.code === 'MORA' || String(conceptObj.name).toUpperCase().includes('MORA'))));
+    const isMoraByText = canonicalDesc === 'INTERESES DE MORA';
+
+    if (isMoraById || isMoraByText) {
+      return {
+        groupKey: '__MORA__',
+        conceptId: (conceptObj ? conceptObj.id : moraConceptId) || '',
+        description: 'INTERESES DE MORA'
+      };
+    }
+
+    if (conceptObj) {
+      return {
+        groupKey: 'ID_' + conceptObj.id,
+        conceptId: conceptObj.id,
+        description: String(conceptObj.name).toUpperCase()
+      };
+    }
+
+    if (conceptsByCanonical[canonicalDesc]) {
+      const matchedId = conceptsByCanonical[canonicalDesc];
+      const matched = conceptsById[matchedId];
+      if (matched) {
+        return {
+          groupKey: 'ID_' + matched.id,
+          conceptId: matched.id,
+          description: String(matched.name).toUpperCase()
+        };
+      }
+    }
+
+    if (rawId) {
+      return {
+        groupKey: 'ID_' + rawId,
+        conceptId: rawId,
+        description: canonicalDesc || String(rawDesc).toUpperCase()
+      };
+    }
+
+    return {
+      groupKey: '__TEXT_' + canonicalDesc,
+      conceptId: '',
+      description: canonicalDesc || 'CONCEPTO'
+    };
+  }
+
+  // Agrupar saldos por conceptos (ID-First con respaldo canónico)
+  const conceptsMap: Record<string, { conceptId: string; description: string; saldoAnterior: number; cobrosMes: number; saldoActual: number }> = {};
+  
+  // Cargar cobros del mes
+  lines.forEach((l: any) => {
+    const group = resolveConceptGroup(l);
+    if (!conceptsMap[group.groupKey]) {
+      conceptsMap[group.groupKey] = {
+        conceptId: group.conceptId,
+        description: group.description,
+        saldoAnterior: 0,
+        cobrosMes: 0,
+        saldoActual: 0
+      };
+    }
+    conceptsMap[group.groupKey].cobrosMes += Number(l.amount) || 0;
+    conceptsMap[group.groupKey].saldoActual += Number(l.amount) || 0;
+  });
+
+  // Cargar saldos anteriores
+  for (const oldInv of outstandingInvoices) {
+    try {
+      const oldLines = await (window as any).API.getPhInvoiceLines(oldInv.id);
+      oldLines.forEach((ol: any) => {
+        const groupOld = resolveConceptGroup(ol);
+        if (!conceptsMap[groupOld.groupKey]) {
+          conceptsMap[groupOld.groupKey] = {
+            conceptId: groupOld.conceptId,
+            description: groupOld.description,
+            saldoAnterior: 0,
+            cobrosMes: 0,
+            saldoActual: 0
+          };
+        }
+        conceptsMap[groupOld.groupKey].saldoAnterior += Number(ol.amount) || 0;
+        conceptsMap[groupOld.groupKey].saldoActual += Number(ol.amount) || 0;
+      });
+    } catch (_) {}
+  }
+
+  const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
+  conceptsList.sort((a, b) => {
+    const nameA = a.description.toUpperCase();
+    const nameB = b.description.toUpperCase();
+    if (nameA.includes('ADMIN') && !nameB.includes('ADMIN')) return -1;
+    if (!nameA.includes('ADMIN') && nameB.includes('ADMIN')) return 1;
+    if (nameA.includes('MORA') && !nameB.includes('MORA')) return 1;
+    if (!nameA.includes('MORA') && nameB.includes('MORA')) return -1;
+    return nameA.localeCompare(nameB, 'es');
+  });
+
+  const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
+
+  function getPreviousPeriod(p: string): string {
+    if (!p || typeof p !== 'string') return '';
+    const parts = p.split('-');
+    let y = parseInt(parts[0], 10);
+    let m = parseInt(parts[1], 10) - 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  function getMonthNameUpper(p: string) {
+    if (!p) return '';
+    const parts = p.split('-');
+    const m = parseInt(parts[1], 10) || 1;
+    const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+    return months[m - 1] || '';
+  }
+
+  const prevPeriod = getPreviousPeriod(inv.period);
+  const prevMonthName = getMonthNameUpper(prevPeriod);
+  let prevMonthUnitRecaudo = 0;
+  let prevMonthTotalRecaudo = 0;
+
+  if (prevPeriod) {
+    try {
+      const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
+      const [unitPrevPaid, allPrevPaid] = await Promise.all([
+        (window as any).pb.listAll('ph_invoices', {
+          filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
+        }).catch(() => []),
+        (window as any).pb.listAll('ph_invoices', {
+          filter: `period="${prevPeriod}" && status="paid"`
+        }).catch(() => [])
+      ]);
+      if (unitPrevPaid && unitPrevPaid.length > 0) {
+        prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+      }
+      if (allPrevPaid && allPrevPaid.length > 0) {
+        prevMonthTotalRecaudo = allPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+      }
+    } catch (err) {
+      console.warn('Error al calcular recaudos del mes anterior:', err);
+    }
+  }
+
+  const ownerDocNumber = owner?.doc_number ? (owner.doc_number + (owner.dv ? '-' + owner.dv : '')) : (owner?.nit || owner?.document || '—');
+  const numberText = inv.number || 'cuenta';
+  const rawUnit = prop?.name || prop?.code || 'Unidad';
+  const cleanUnit = rawUnit.replace(/[^a-zA-Z0-9_\-]/g, '_');
+  const filename = `${type === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}_${cleanUnit}`;
+
+  const notes = (inv.notes || customFooterNote || 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.').trim();
+
+  return {
+    filename,
+    statementData: {
+      companyName: compName,
+      companyNit: compNit,
+      companyAddress: compAddress,
+      companyPhone: compPhone,
+      companyEmail: compEmail,
+      companyCity: compCity,
+      companyLogo: logoBase64,
+      docType: type,
+      docNumber: numberText,
+      period: inv.period,
+      date: inv.date,
+      dueDate: inv.due_date || inv.date,
+      propertyName: prop?.name || prop?.code || 'Unidad',
+      propertyCode: prop?.code || '',
+      propertyArea: prop?.area_m2 || prop?.area || '',
+      propertyCoef: prop?.coef_participacion ? `${prop.coef_participacion}%` : '',
+      propertyMatricula: prop?.matricula || '',
+      ownerName: owner?.name || 'Copropietario',
+      ownerNit: ownerDocNumber,
+      ownerDocNumber,
+      ownerAddress: owner?.address || '',
+      ownerPhone: owner?.phone || owner?.celular || '—',
+      ownerEmail: owner?.email || owner?.correo || '—',
+      conceptsList,
+      totalActual,
+      notes,
+      prevMonthUnitRecaudo,
+      prevMonthTotalRecaudo,
+      prevMonthName
+    }
+  };
+}
+
 async function printPhInvoice(invoiceId: string, type: 'invoice' | 'statement') {
   try {
-    (window as any).showToast('Generando formato de impresión...', 'info');
-    const [inv, lines] = await Promise.all([
-      (window as any).pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' }),
-      (window as any).API.getPhInvoiceLines(invoiceId),
-    ]);
-    const prop = inv.expand?.property_id;
-    let owner = prop?.expand?.owner_id;
-    if (!owner && prop?.owner_id) {
-      try {
-        owner = await (window as any).pb.get('third_parties', prop.owner_id);
-      } catch (_) {}
-    }
-
-    let outstandingInvoices: any[] = [];
-    if (type === 'statement') {
-      try {
-        const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
-        const res = await (window as any).pb.listAll('ph_invoices', {
-          filter: `property_id="${safePropId}" && id!="${invoiceId}" && status!="paid" && status!="voided" && period < "${inv.period}"`,
-          sort: 'period'
-        });
-        outstandingInvoices = res || [];
-      } catch (err) {
-        console.warn('Error al cargar cartera pendiente:', err);
-      }
-    }
-
-    const [compName, compNit, compAddress, compPhone, compEmail, compCity, logoBase64, customFooterNote] = await Promise.all([
-      (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => ''),
-      (window as any).API.getSetting('company_address').catch(() => ''),
-      (window as any).API.getSetting('company_phone').catch(() => ''),
-      (window as any).API.getSetting('company_email').catch(() => ''),
-      (window as any).API.getSetting('company_city').catch(() => ''),
-      (window as any).API.getSetting('company_logo').catch(() => ''),
-      (window as any).API.getSetting('ph_invoice_footer_note').catch(() => ''),
-    ]);
-
-    // Agrupar saldos por conceptos
-    const conceptsMap: Record<string, { description: string; saldoAnterior: number; cobrosMes: number; saldoActual: number }> = {};
+    (window as any).showToast('Generando documento oficial en PDF...', 'info');
+    const { filename, statementData } = await buildPhStatementData(invoiceId, type);
     
-    // Cargar cobros del mes
-    lines.forEach((l: any) => {
-      const desc = l.description || 'Concepto';
-      conceptsMap[desc] = {
-        description: desc,
-        saldoAnterior: 0,
-        cobrosMes: l.amount || 0,
-        saldoActual: l.amount || 0
-      };
-    });
-
-    // Cargar saldos anteriores
-    for (const oldInv of outstandingInvoices) {
-      try {
-        const oldLines = await (window as any).API.getPhInvoiceLines(oldInv.id);
-        oldLines.forEach((ol: any) => {
-          const desc = ol.description || 'Concepto';
-          if (!conceptsMap[desc]) {
-            conceptsMap[desc] = {
-              description: desc,
-              saldoAnterior: 0,
-              cobrosMes: 0,
-              saldoActual: 0
-            };
-          }
-          conceptsMap[desc].saldoAnterior += ol.amount || 0;
-          conceptsMap[desc].saldoActual += ol.amount || 0;
-        });
-      } catch (_) {}
-    }
-
-    const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
-    const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
-
-    function getPreviousPeriod(p: string): string {
-      if (!p || typeof p !== 'string') return '';
-      const parts = p.split('-');
-      let y = parseInt(parts[0], 10);
-      let m = parseInt(parts[1], 10) - 1;
-      if (m < 1) {
-        m = 12;
-        y -= 1;
+    // Generar PDF vectorial idéntico al enviado por correo
+    let pdfBase64 = '';
+    try {
+      const directRes = await (window as any).API.generatePhStatementPdfDirect(statementData, filename);
+      if (directRes && directRes.pdfBase64) {
+        pdfBase64 = directRes.pdfBase64;
       }
-      return `${y}-${String(m).padStart(2, '0')}`;
-    }
-
-    const prevPeriod = getPreviousPeriod(inv.period);
-    const prevMonthName = getMonthNameUpper(prevPeriod);
-    let prevMonthUnitRecaudo = 0;
-    let prevMonthTotalRecaudo = 0;
-
-    if (prevPeriod) {
-      try {
-        const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
-        const [unitPrevPaid, allPrevPaid] = await Promise.all([
-          (window as any).pb.listAll('ph_invoices', {
-            filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
-          }).catch(() => []),
-          (window as any).pb.listAll('ph_invoices', {
-            filter: `period="${prevPeriod}" && status="paid"`
-          }).catch(() => [])
-        ]);
-        if (unitPrevPaid && unitPrevPaid.length > 0) {
-          prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
-        }
-        if (allPrevPaid && allPrevPaid.length > 0) {
-          prevMonthTotalRecaudo = allPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
-        }
-      } catch (err) {
-        console.warn('Error al calcular recaudos del mes anterior:', err);
+    } catch (directErr) {
+      console.warn('Fallo generación directa orquestador, intentando fallback backend:', directErr);
+      const backendRes = await (window as any).API.downloadPhInvoicePdf(invoiceId, type);
+      if (backendRes && backendRes.pdfBase64) {
+        pdfBase64 = backendRes.pdfBase64;
       }
     }
 
-    const ownerDocNumber = owner?.doc_number ? (owner.doc_number + (owner.dv ? '-' + owner.dv : '')) : (owner?.nit || owner?.document || '—');
-
-    const printWin = window.open('', '_blank');
-    if (!printWin) {
-      (window as any).showToast('Por favor, permite abrir ventanas emergentes para imprimir.', 'warning');
-      return;
+    if (!pdfBase64) {
+      throw new Error('No se pudo generar el archivo PDF oficial.');
     }
 
-    // Helper de números a letras en español
-    function numeroALetras(num: number): string {
-      var tempNum = parseFloat(String(num)).toFixed(2).split('.');
-      var entero = parseInt(tempNum[0], 10);
-      var centavos = tempNum[1];
-      
-      if (entero === 0) return ('Son: Cero PESOS ' + centavos + '/100').toUpperCase();
-      
-      function letras(n: number): string {
-        if (n < 10) {
-          return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
-        }
-        if (n < 20) {
-          return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
-        }
-        if (n < 30) {
-          if (n === 20) return 'Veinte';
-          return 'Veinti' + letras(n - 20).toLowerCase();
-        }
-        if (n < 100) {
-          var u = n % 10;
-          var d = Math.floor(n / 10);
-          var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
-          return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
-        }
-        if (n < 1000) {
-          var d_u = n % 100;
-          var c = Math.floor(n / 100);
-          var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
-          if (n === 100) return 'Cien';
-          if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
-          return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
-        }
-        if (n < 1000000) {
-          var mil = Math.floor(n / 1000);
-          var resto = n % 1000;
-          var t = '';
-          if (mil === 1) t = 'Mil';
-          else t = letras(mil) + ' mil';
-          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
-        }
-        if (n < 1000000000) {
-          var millon = Math.floor(n / 1000000);
-          var resto = n % 1000000;
-          var t = '';
-          if (millon === 1) t = 'Un millón';
-          else t = letras(millon) + ' millones';
-          return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
-        }
-        return '';
-      }
-      
-      var res = letras(entero);
-      res = res.charAt(0).toUpperCase() + res.slice(1);
-      return ('Son: ' + res + ' PESOS ' + centavos + '/100').toUpperCase();
+    const byteCharacters = atob(pdfBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
     }
-
-    function getMonthNameUpper(period: string) {
-      if (!period) return '';
-      const parts = period.split('-');
-      const m = parseInt(parts[1], 10) || 1;
-      const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-      return months[m - 1] || '';
-    }
-
-    function cleanFmt(num: number): string {
-      return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    let tableRowsHtml = "";
-    conceptsList.forEach((c) => {
-      const sAnt = c.saldoAnterior > 0 ? cleanFmt(c.saldoAnterior) : "";
-      const cMes = c.cobrosMes > 0 ? cleanFmt(c.cobrosMes) : "";
-      const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
-      tableRowsHtml += `
-        <tr style="height: 22px;">
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: left; background: #ffffff;">${(window as any).esc(c.description)}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right; background: #ffffff;">${sAnt}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; text-align: right; background: #ffffff;">${cMes}</td>
-          <td style="padding: 5px 8px; border-bottom: 1px solid #000; text-align: right; font-weight: bold; background: #ffffff;">${sAct}</td>
-        </tr>`;
-    });
-
-    const docTypeLabel = type === 'statement' ? 'ESTADO DE CUENTA' : 'CUENTA DE COBRO';
-
-    const htmlContent = `
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>${docTypeLabel} No. ${inv.number}</title>
-        <style>
-          body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 20px; font-size: 11px; line-height: 1.35; background: #ffffff; }
-          .container { max-width: 720px; margin: 0 auto; position: relative; background: #ffffff; }
-          .data-table { width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11px; background: #ffffff; }
-          .data-table th { background-color: #ffffff; border: 1px solid #000; padding: 6px 8px; font-weight: bold; text-align: center; text-transform: uppercase; font-size: 10.5px; }
-          .data-table td { border: 1px solid #000; padding: 5px 8px; background: #ffffff; }
-          
-          @media print {
-            body { margin: 10px; background: #ffffff; }
-            .no-print { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          
-          <!-- Encabezado Principal: Logo, Datos Copropiedad y Caja de Control -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 10px;">
-            <tr>
-              <!-- Logotipo de la Copropiedad (Limpio, sin fondos de color) -->
-              <td style="width: 25%; vertical-align: middle; text-align: left; padding-right: 10px;">
-                ${logoBase64 
-                  ? `<img src="data:image/png;base64,${logoBase64}" style="max-height: 80px; max-width: 175px; object-fit: contain; display: block;" alt="Logo Copropiedad" />`
-                  : `<div style="font-size: 20px; font-weight: 900; color: #000; font-family: sans-serif; letter-spacing: -0.5px;">${(window as any).esc(compName.substring(0, 4))}</div>`
-                }
-              </td>
-              <!-- Información de la Copropiedad (Centro) -->
-              <td style="width: 45%; text-align: center; vertical-align: top; line-height: 1.3; padding: 0 10px;">
-                <div style="font-size: 14.5px; font-weight: bold; text-transform: uppercase; color: #000;">${(window as any).esc(compName)}</div>
-                <div style="font-size: 11px; font-weight: bold; margin-top: 2px; color: #000;">NIT ${(window as any).esc(compNit)}</div>
-                ${compAddress ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compAddress)}</div>` : ''}
-                ${compPhone ? `<div style="font-size: 10px; color: #111;">TEL / PORTERÍA: ${(window as any).esc(compPhone)}</div>` : ''}
-                ${compEmail ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compEmail)}</div>` : ''}
-                ${compCity ? `<div style="font-size: 10px; color: #111;">${(window as any).esc(compCity)}</div>` : ''}
-              </td>
-              <!-- Caja de Control: Tipo de Documento y Consecutivo (Derecha) -->
-              <td style="width: 30%; vertical-align: top; text-align: right;">
-                <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background: #ffffff;">
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; background: #ffffff;">${docTypeLabel} No.</td>
-                  </tr>
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 8px; text-align: center; font-size: 17px; font-weight: 800; font-family: monospace; background: #ffffff;">${inv.number}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 3px; text-align: center; font-size: 9.5px; font-weight: bold; text-transform: uppercase; background: #ffffff;">PERÍODO: ${getMonthNameUpper(inv.period)}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-
-          <!-- Ficha de Datos / Metadatos (Sin rellenos de color) -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
-            <tr>
-              <!-- Columna 1: Info del Propietario -->
-              <td style="width: 55%; vertical-align: top; padding-right: 15px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                  <tr>
-                    <td style="width: 22%; font-weight: bold; padding: 3.5px 0;">Nombre:</td>
-                    <td style="width: 78%; padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.name || 'Copropietario')}</td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: bold; padding: 3.5px 0;">Dirección:</td>
-                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.address || prop?.name || '')}</td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: bold; padding: 3.5px 0;">Contacto:</td>
-                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.phone || owner?.celular || '—')}</td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: bold; padding: 3.5px 0;">Cód. Unidad:</td>
-                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000;">
-                      <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                          <td style="border: none; padding: 0; font-weight: bold;">${(window as any).esc(prop?.code || prop?.name || '')}</td>
-                          <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; background: #ffffff;">NIT / C.C.</td>
-                          <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold;">${(window as any).esc(ownerDocNumber)}</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="font-weight: bold; padding: 3.5px 0;">Correo:</td>
-                    <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold;">${(window as any).esc(owner?.email || owner?.correo || '—')}</td>
-                  </tr>
-                </table>
-              </td>
-              
-              <!-- Columna 2: Matrícula / Ref. Banco -->
-              <td style="width: 22%; vertical-align: top; padding-right: 12px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background: #ffffff;">
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; background: #ffffff; text-transform: uppercase;">Matrícula</td>
-                  </tr>
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; background: #ffffff;">${(window as any).esc(prop?.matricula || '') || '&nbsp;'}</td>
-                  </tr>
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; background: #ffffff; text-transform: uppercase;">Ref. Banco</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 5px; text-align: center; font-weight: bold; height: 18px; background: #ffffff;">${(window as any).esc(prop?.name || prop?.code || '') || '&nbsp;'}</td>
-                  </tr>
-                </table>
-              </td>
-
-              <!-- Columna 3: Fechas / Área -->
-              <td style="width: 23%; vertical-align: top;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background: #ffffff;">
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; background: #ffffff;">Emisión</td>
-                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; background: #ffffff;">Vencimiento</td>
-                  </tr>
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; background: #ffffff;">${(window as any).fmtDate(inv.date)}</td>
-                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; background: #ffffff;">${(window as any).fmtDate(inv.due_date || inv.date)}</td>
-                  </tr>
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; background: #ffffff;">Área (m²)</td>
-                    <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; background: #ffffff;">Coeficiente</td>
-                  </tr>
-                  <tr>
-                    <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; background: #ffffff;">${(window as any).esc(prop?.area_m2 || prop?.area || '') || '&nbsp;'}</td>
-                    <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; background: #ffffff;">${prop?.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : '—'}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-
-          <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background: #ffffff;">
-            <tr>
-              <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background: #ffffff;">
-                <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-                <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
-              </td>
-              <td style="width: 50%; padding: 4.5px 8px; background: #ffffff;">
-                <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-                <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
-              </td>
-            </tr>
-          </table>
-
-          <!-- Tabla de Conceptos (100% de Ancho, Sin Columna Lateral Rotada) -->
-          <table class="data-table" style="margin-bottom: 14px;">
-            <thead>
-              <tr style="border-bottom: 1.5px solid #000;">
-                <th style="width: 46%; text-align: left; border-right: 1px solid #000;">CONCEPTO</th>
-                <th style="width: 18%; text-align: right; border-right: 1px solid #000;">SALDO ANTERIOR</th>
-                <th style="width: 18%; text-align: right; border-right: 1px solid #000;">COBROS DEL MES</th>
-                <th style="width: 18%; text-align: right;">SALDO TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRowsHtml}
-            </tbody>
-          </table>
-
-          <!-- Totales y Nota de Pago (Sin Rellenos de Color) -->
-          <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
-            <tr>
-              <td style="width: 65%; vertical-align: top; padding-right: 15px;">
-                <div style="border: 1px solid #000; padding: 6px 8px; font-weight: bold; background: #ffffff; font-size: 10.5px; margin-bottom: 8px; text-transform: uppercase;">
-                  ${numeroALetras(totalActual)}
-                </div>
-                <div style="font-size: 10px; line-height: 1.4; font-style: italic; text-align: left; text-transform: uppercase; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #000;">
-                  ${(window as any).esc(inv.notes?.trim() || customFooterNote?.trim() || 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.').replace(/\n/g, '<br>')}
-                </div>
-              </td>
-              <td style="width: 35%; vertical-align: top;">
-                <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background: #ffffff;">
-                  <tr>
-                    <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-size: 10px; font-weight: bold; text-transform: uppercase; background: #ffffff;">TOTAL A PAGAR</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 9px 10px; font-size: 18px; font-weight: bold; background: #ffffff;">
-                      <div style="float: left;">$</div>
-                      <div style="float: right;">${cleanFmt(totalActual)}</div>
-                      <div style="clear: both;"></div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-
-          <!-- Pie de Página Institucional Discreto -->
-          <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
-            Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
-          </div>
-
-        </div>
-
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
-      </body>
-      </html>`;
-
-    printWin.document.write(htmlContent);
-    printWin.document.close();
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    (window as any).showToast('Documento PDF oficial abierto en nueva pestaña.', 'success');
   } catch (err: any) {
-    (window as any).showToast('Error al imprimir: ' + err.message, 'error');
+    console.error('Error al imprimir documento PDF:', err);
+    (window as any).showToast('Error al generar PDF: ' + (err.message || err), 'error');
   }
 }
 
@@ -3945,8 +3859,8 @@ async function openPhInvoiceEmailModal(invoiceId: string) {
         <div class="form-group mb-0">
           <label class="form-label">Tipo de Envío</label>
           <select id="ph-email-type" class="form-input">
+            <option value="statement" selected>Estado de Cuenta Completo (Incluye Cartera)</option>
             <option value="invoice">Factura del Período</option>
-            <option value="statement">Estado de Cuenta Completo (Incluye Cartera)</option>
           </select>
         </div>
         <div class="form-group mb-0">
@@ -4009,22 +3923,22 @@ async function openPhDownloadPdfModal(invoiceId: string) {
           Selecciona el formato de documento PDF que deseas generar y descargar para la factura <strong>${esc(num)}</strong> (${esc(propName)}):
         </p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div id="ph-opt-dl-invoice" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#3B82F6; background:#F8FAFC;">
-            <div class="flex items-center gap-2 mb-1.5">
-              <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
-              <span class="font-bold text-sm text-gray-800">Factura / Cuenta del Mes</span>
-            </div>
-            <p class="text-xs text-gray-500 leading-relaxed">
-              Muestra exclusivamente los conceptos y valores liquidados para el período facturado actual (${fmtPeriod(inv.period)}).
-            </p>
-          </div>
-          <div id="ph-opt-dl-statement" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#E2E8F0; background:#FFFFFF;">
+          <div id="ph-opt-dl-statement" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#3B82F6; background:#F8FAFC;">
             <div class="flex items-center gap-2 mb-1.5">
               <i class="fas fa-file-lines text-indigo-600 text-lg"></i>
               <span class="font-bold text-sm text-gray-800">Estado de Cuenta Integral</span>
             </div>
             <p class="text-xs text-gray-500 leading-relaxed">
               Incluye saldo anterior de períodos vencidos no pagados, cobros del mes y saldo total acumulado a la fecha.
+            </p>
+          </div>
+          <div id="ph-opt-dl-invoice" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#E2E8F0; background:#FFFFFF;">
+            <div class="flex items-center gap-2 mb-1.5">
+              <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
+              <span class="font-bold text-sm text-gray-800">Factura / Cuenta del Mes</span>
+            </div>
+            <p class="text-xs text-gray-500 leading-relaxed">
+              Muestra exclusivamente los conceptos y valores liquidados para el período facturado actual (${fmtPeriod(inv.period)}).
             </p>
           </div>
         </div>
@@ -4038,7 +3952,7 @@ async function openPhDownloadPdfModal(invoiceId: string) {
     );
 
     setTimeout(() => {
-      let selectedType: 'invoice' | 'statement' = 'invoice';
+      let selectedType: 'invoice' | 'statement' = 'statement';
       const optInv = document.getElementById('ph-opt-dl-invoice');
       const optStat = document.getElementById('ph-opt-dl-statement');
       const btn = document.getElementById('ph-dl-pdf-btn') as HTMLButtonElement;
@@ -4073,37 +3987,155 @@ async function openPhDownloadPdfModal(invoiceId: string) {
 
 async function executePhInvoicePdfDownload(invoiceId: string, type: 'invoice' | 'statement') {
   try {
-    (window as any).showToast('Generando y descargando PDF...', 'info');
-    const res = await (window as any).API.downloadPhInvoicePdf(invoiceId, type);
+    (window as any).showToast('Generando y descargando PDF oficial...', 'info');
+    const { filename, statementData } = await buildPhStatementData(invoiceId, type);
 
-    if (res && res.success && res.pdfBase64) {
-      const byteCharacters = atob(res.pdfBase64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+    let pdfBase64 = '';
+    let finalFilename = filename ? `${filename}.pdf` : `Factura_${invoiceId}.pdf`;
+
+    try {
+      const directRes = await (window as any).API.generatePhStatementPdfDirect(statementData, filename);
+      if (directRes && directRes.pdfBase64) {
+        pdfBase64 = directRes.pdfBase64;
+        if (directRes.filename) finalFilename = directRes.filename.endsWith('.pdf') ? directRes.filename : `${directRes.filename}.pdf`;
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'application/pdf' });
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = res.filename || `Factura_${invoiceId}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-
-      (window as any).showToast('Archivo PDF descargado exitosamente.', 'success');
-      return;
+    } catch (directErr) {
+      console.warn('Fallo generación directa orquestador, intentando fallback backend:', directErr);
+      const backendRes = await (window as any).API.downloadPhInvoicePdf(invoiceId, type);
+      if (backendRes && backendRes.pdfBase64) {
+        pdfBase64 = backendRes.pdfBase64;
+        if (backendRes.filename) finalFilename = backendRes.filename.endsWith('.pdf') ? backendRes.filename : `${backendRes.filename}.pdf`;
+      }
     }
 
-    throw new Error(res?.message || 'No se recibió el archivo PDF desde el servidor.');
+    if (!pdfBase64) {
+      throw new Error('No se pudo generar el archivo PDF oficial desde el orquestador.');
+    }
+
+    const byteCharacters = atob(pdfBase64);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = finalFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    (window as any).showToast('Archivo PDF oficial descargado exitosamente.', 'success');
   } catch (err: any) {
-    console.warn('[GRAVY PH DOWNLOAD PDF BACKEND UNAVAILABLE, USING CLIENT PRINT FALLBACK]', err);
-    (window as any).showToast('Aviso: Abriendo formato de impresión / PDF...', 'warning');
-    await printPhInvoice(invoiceId, type);
+    console.error('[GRAVY PH DOWNLOAD PDF ERROR]', err);
+    (window as any).showToast('Error al descargar PDF: ' + (err.message || err), 'error');
   }
+}
+
+async function openPhBulkPdfModal() {
+  const filterInput = document.getElementById('ph-period-filter') as HTMLInputElement;
+  const initialPeriod = (filterInput && filterInput.value ? filterInput.value.trim() : '') || currentPeriod();
+
+  (window as any).openModal(
+    'Imprimir Período en PDF (Lote Unificado)',
+    `<div class="space-y-4">
+      <p class="text-sm text-gray-600">
+        Esta utilidad compila todas las facturas activas del período en un <strong>único documento PDF multipágina</strong> (1 página tamaño Carta por unidad), en orden correlativo, listo para impresión masiva inmediata con <code>Ctrl + P</code>.
+      </p>
+      <div class="p-3 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-800 flex items-center gap-2">
+        <i class="fas fa-print text-blue-600 text-base"></i>
+        <span>Ideal para la entrega física de cuentas de cobro en portería o casilleros sin necesidad de imprimir unidad por unidad.</span>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="form-group mb-0">
+          <label class="form-label">Período de Facturación</label>
+          <input id="ph-bulk-pdf-period" type="month" class="form-input" value="${(window as any).esc(initialPeriod)}" disabled>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Tipo de Documento</label>
+          <select id="ph-bulk-pdf-type" class="form-input">
+            <option value="invoice">Facturas del Período (Solo cobros del mes)</option>
+            <option value="statement">Estados de Cuenta Integrales (Con Cartera / Saldos Anteriores)</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Estado y progreso -->
+      <div id="ph-bulk-pdf-status" class="hidden text-xs font-semibold text-blue-600 flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
+        <i class="fas fa-spinner fa-spin text-base"></i>
+        <span>El orquestador está compilando el archivo PDF unificado en alta fidelidad... Por favor espere unos segundos.</span>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" id="ph-bulk-pdf-cancel" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="ph-bulk-pdf-download-btn"><i class="fas fa-download mr-1"></i> Descargar PDF Unificado</button>`
+  );
+
+  setTimeout(() => {
+    document.getElementById('ph-bulk-pdf-download-btn')?.addEventListener('click', async () => {
+      const modalPeriodInput = document.getElementById('ph-bulk-pdf-period') as HTMLInputElement;
+      const pagePeriodInput = document.getElementById('ph-period-filter') as HTMLInputElement;
+      const effectivePeriod = (modalPeriodInput && modalPeriodInput.value ? modalPeriodInput.value.trim() : '') ||
+                              (pagePeriodInput && pagePeriodInput.value ? pagePeriodInput.value.trim() : '') ||
+                              initialPeriod ||
+                              currentPeriod();
+
+      if (!effectivePeriod) {
+        (window as any).showToast('Por favor seleccione un período válido.', 'error');
+        return;
+      }
+
+      const type = ((document.getElementById('ph-bulk-pdf-type') as HTMLSelectElement)?.value || 'invoice') as 'invoice' | 'statement';
+      const downloadBtn = document.getElementById('ph-bulk-pdf-download-btn') as HTMLButtonElement;
+      const cancelBtn = document.getElementById('ph-bulk-pdf-cancel') as HTMLButtonElement;
+      const statusBox = document.getElementById('ph-bulk-pdf-status');
+
+      downloadBtn.disabled = true;
+      downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Generando PDF...';
+      cancelBtn.disabled = true;
+      if (statusBox) statusBox.classList.remove('hidden');
+
+      try {
+        (window as any).showToast('Compilando lote de facturas en PDF...', 'info');
+        const res = await (window as any).API.downloadPhPeriodPdf(effectivePeriod, type);
+
+        if (res && res.success && res.pdfBase64) {
+          const byteCharacters = atob(res.pdfBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'application/pdf' });
+
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = res.filename || `Facturas_Copropiedad_${effectivePeriod}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+
+          (window as any).showToast(`PDF unificado descargado exitosamente (${res.totalInvoices || 'todas las'} unidades compiladas).`, 'success');
+          (window as any).closeModal();
+          return;
+        }
+
+        throw new Error(res?.message || 'No se recibió el archivo PDF consolidado desde el servidor.');
+      } catch (err: any) {
+        console.error('[GRAVY PH BULK PDF ERROR]', err);
+        (window as any).showToast(err.message || 'Error al generar el PDF unificado', 'error');
+        downloadBtn.disabled = false;
+        downloadBtn.innerHTML = '<i class="fas fa-download mr-1"></i> Descargar PDF Unificado';
+        cancelBtn.disabled = false;
+        if (statusBox) statusBox.classList.add('hidden');
+      }
+    });
+  }, 40);
 }
 
 async function openPhBulkEmailModal() {
@@ -4253,6 +4285,7 @@ async function openPhBulkEmailModal() {
 (window as any).printPhInvoice = printPhInvoice;
 (window as any).openPhInvoiceEmailModal = openPhInvoiceEmailModal;
 (window as any).openPhBulkEmailModal = openPhBulkEmailModal;
+(window as any).openPhBulkPdfModal = openPhBulkPdfModal;
 (window as any).openPhDownloadPdfModal = openPhDownloadPdfModal;
 (window as any).executePhInvoicePdfDownload = executePhInvoicePdfDownload;
 

@@ -1629,6 +1629,7 @@ async function openDocHomologationModal(id: string) {
         const globalMarginFactor = parseFloat((document.getElementById('cde-margin-factor-global') as HTMLInputElement)?.value || '0') || 0;
         const globalMarginType = (document.getElementById('cde-margin-type-global') as HTMLSelectElement)?.value || 'MARKUP_COST';
         const globalRoundingType = (document.getElementById('cde-rounding-type-global') as HTMLSelectElement)?.value || 'NEAREST_100';
+        const defaultProductConfig = await (window as any).API.getDefaultProductAccountingAndTaxConfig().catch(() => null);
 
         for (let index = 0; index < items.length; index++) {
           const it = items[index];
@@ -1681,6 +1682,7 @@ async function openDocHomologationModal(id: string) {
             }
 
             if (!productRecord) {
+              const itemIvaRate = Number(it.tax_rate ?? it.iva_rate ?? defaultProductConfig?.defaultIvaRate ?? 19);
               productRecord = await (window as any).pb.create('products', {
                 code: prodSkuVal,
                 name: it.description,
@@ -1695,7 +1697,10 @@ async function openDocHomologationModal(id: string) {
                 margin_factor: marginFactorToUse > 0 ? marginFactorToUse : null,
                 margin_type: marginTypeToUse,
                 rounding_type: roundingTypeToUse,
-                inventory_account_id: invAccIdResolved
+                iva_rate: itemIvaRate,
+                income_account_id: defaultProductConfig?.incomeAccountId || '',
+                cost_account_id: defaultProductConfig?.costAccountId || '',
+                inventory_account_id: invAccIdResolved || defaultProductConfig?.inventoryAccountId || ''
               });
             } else {
               const updateData: any = {

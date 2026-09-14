@@ -385,12 +385,32 @@ window.checkFtechStatus = async function(id: string, txId: string) {
     if (res && res.success) {
       showToast(`Estado actualizado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
       const container = $('#page-content');
-      if (container) renderFacturacionDIAN(container);
+      if (container) {
+        if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
+          (window as any).renderDocSoporte(container);
+        } else if (typeof renderFacturacionDIAN === 'function') {
+          renderFacturacionDIAN(container);
+        }
+      }
     } else {
-      showToast(`Error al consultar: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
+      const errMsg = res?.dianResponse || res?.message || 'Respuesta desconocida';
+      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9000);
+      const container = $('#page-content');
+      if (container && (window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
+        (window as any).renderDocSoporte(container);
+      }
     }
   } catch (err: any) {
-    showToast(err.message || 'Error en comunicación con Facturatech', 'error');
+    const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error en comunicación con Facturatech');
+    showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+    const container = $('#page-content');
+    if (container) {
+      if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
+        (window as any).renderDocSoporte(container);
+      } else if (typeof renderFacturacionDIAN === 'function') {
+        renderFacturacionDIAN(container);
+      }
+    }
   }
 };
 
@@ -399,9 +419,9 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
     showToast('No hay una transacción vinculada a este documento.', 'warning');
     return;
   }
-  confirmDialog('Emitir Documento a DIAN', `¿Confirmas el firmado digital y envío del documento <strong>${esc(docNumber)}</strong> ante la DIAN?`, async () => {
+  confirmDialog('Emitir Documento a DIAN', `¿Confirmas el firmado digital y envío del documento <strong>${esc(docNumber)}</strong> ante la DIAN / Facturatech?`, async () => {
     try {
-      showToast('Transmitiendo a la DIAN...', 'info');
+      showToast('Transmitiendo a la DIAN / Facturatech...', 'info');
       const res = await pb.send('/api/dian/emit', {
         method: 'POST',
         body: JSON.stringify({ txId: txId }),
@@ -413,11 +433,16 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
         const container = $('#page-content');
         if (container) renderFacturacionDIAN(container);
       } else {
-        showToast(`Error al emitir: ${res.dianResponse || 'Respuesta de DIAN rechazada'}`, 'error');
+        const errorMsg = res?.dianResponse || res?.message || 'Respuesta de DIAN rechazada';
+        showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
+        const container = $('#page-content');
+        if (container) renderFacturacionDIAN(container);
       }
     } catch (err: any) {
-      const errMsg = err.response?.message || err.message || 'Error en comunicación con la DIAN';
-      showToast(errMsg, 'error');
+      const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error en comunicación con la DIAN');
+      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+      const container = $('#page-content');
+      if (container) renderFacturacionDIAN(container);
     }
   });
 };

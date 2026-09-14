@@ -928,6 +928,91 @@ const API = {
     return false;
   },
 
+  /**
+   * Obtiene la configuración contable y tributaria predeterminada para productos:
+   * - Tarifa de IVA predeterminada (establecida en la configuración de Inventarios)
+   * - Cuenta de ingresos (establecida en Facturación / sales_settings_v2)
+   * - Cuenta de costo de ventas (establecida en Facturación / sales_settings_v2)
+   * - Cuenta de inventarios (establecida en Facturación / sales_settings_v2)
+   */
+  async getDefaultProductAccountingAndTaxConfig() {
+    const [salesCfgRaw, invCfgRaw, accounts] = await Promise.all([
+      this.getSetting('sales_settings_v2').catch(() => null),
+      this.getSetting('inventory_settings_v1').catch(() => null),
+      this.getAccounts(false).catch(() => []),
+    ]);
+
+    let defaultIvaRate = 19;
+    if (invCfgRaw) {
+      try {
+        const invCfg = JSON.parse(invCfgRaw);
+        if (invCfg?.default_iva_rate !== undefined && invCfg?.default_iva_rate !== null && !isNaN(Number(invCfg.default_iva_rate))) {
+          defaultIvaRate = Number(invCfg.default_iva_rate);
+        }
+      } catch (_) {}
+    }
+
+    let salesAccounts: any = {};
+    if (salesCfgRaw) {
+      try {
+        const salesCfg = JSON.parse(salesCfgRaw);
+        salesAccounts = salesCfg?.accounting?.accounts || {};
+      } catch (_) {}
+    }
+
+    const accountList = (Array.isArray(accounts) ? accounts : [])
+      .filter((a: any) => a.active && Number(a.level) >= 3)
+      .sort((a: any, b: any) => String(a.code || '').localeCompare(String(b.code || '')));
+
+    const findAccount = (codeStr: string, defaultPrefixes: string) => {
+      const code = String(codeStr || '').trim();
+      if (code) {
+        // 1. Coincidencia exacta auxiliar nivel 5
+        const exactL5 = accountList.find((a: any) => Number(a.level) === 5 && a.code === code);
+        if (exactL5) return exactL5;
+
+        // 2. Coincidencia exacta nivel menor -> buscar primer hijo nivel 5
+        const exactAny = accountList.find((a: any) => a.code === code);
+        if (exactAny) {
+          if (Number(exactAny.level) === 5) return exactAny;
+          const childL5 = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
+          if (childL5) return childL5;
+        }
+
+        // 3. Primer auxiliar nivel 5 que empiece con el código
+        const prefMatch = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
+        if (prefMatch) return prefMatch;
+      }
+
+      // Fallback por prefijos de clase contable (ej: '41', '61', '14')
+      const prefixes = defaultPrefixes.split(',');
+      for (const pref of prefixes) {
+        const fallback = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(pref.trim()));
+        if (fallback) return fallback;
+      }
+      return null;
+    };
+
+    const targetIncomeCode = String(salesAccounts.income_fallback_code || salesAccounts.income_account_code || '41359501').trim();
+    const targetCostCode = String(salesAccounts.cost_fallback_code || '61359501').trim();
+    const targetInvCode = String(salesAccounts.inventory_fallback_code || salesAccounts.inventory_code || '14350501').trim();
+
+    const incomeAcc = findAccount(targetIncomeCode, '41');
+    const costAcc = findAccount(targetCostCode, '61');
+    const invAcc = findAccount(targetInvCode, '14');
+
+    return {
+      defaultIvaRate,
+      incomeAccountId: incomeAcc?.id || '',
+      incomeAccountCode: incomeAcc?.code || targetIncomeCode,
+      costAccountId: costAcc?.id || '',
+      costAccountCode: costAcc?.code || targetCostCode,
+      inventoryAccountId: invAcc?.id || '',
+      inventoryAccountCode: invAcc?.code || targetInvCode,
+      accounts: accountList,
+    };
+  },
+
   /** Recalcular todas las existencias y costos de inventario */
   async recalculateStock() {
     return pb.send('/api/gravy/recalculate-stock', { method: 'POST' });
@@ -3757,8 +3842,27 @@ const API = {
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
     const lateFeeRate = Number(phCfg?.late_fee_rate || 0);
-    const lateFeeIncomeCode = String(phCfg?.late_fee_income_code || '').trim();
-    const moraConcept = (concepts || []).find(c => String(c?.code || '').trim().toUpperCase() === 'MORA');
+    let moraConcept = (concepts || []).find(c => String(c?.code || '').trim().toUpperCase() === 'MORA');
+    if (!moraConcept) {
+      try {
+        const existingMora = await pb.listAll('ph_billing_concepts', { filter: 'code="MORA"' });
+        if (existingMora.length > 0) {
+          moraConcept = existingMora[0];
+        } else {
+          moraConcept = await pb.create('ph_billing_concepts', {
+            code: 'MORA',
+            name: 'INTERESES DE MORA',
+            description: 'Intereses de mora por pagos de administración vencidos',
+            amount: 0,
+            is_variable: true,
+            applies_coef: false,
+            active: true,
+          });
+        }
+      } catch (errMora) {
+        console.warn('No se pudo asegurar concepto MORA:', errMora);
+      }
+    }
     const lateConceptIds = Array.isArray(phCfg?.late_fee_concepts)
       ? phCfg.late_fee_concepts.map(v => String(v || '')).filter(Boolean)
       : [];
@@ -4445,6 +4549,38 @@ const API = {
       body: JSON.stringify({ invoiceId, type }),
     });
     if (!res.ok) throw await pb._err(res);
+    return res.json();
+  },
+
+  /** Descarga unificada de todas las facturas o estados de cuenta PH de un período en un solo PDF multipágina */
+  async downloadPhPeriodPdf(period, type = 'invoice') {
+    const cleanPeriod = String(period || '').trim();
+    if (!cleanPeriod) throw new Error('El período de facturación es requerido (formato YYYY-MM).');
+    const res = await fetch(`${pb.baseUrl}/api/ph/download-period-pdf`, {
+      method: 'POST',
+      headers: pb.headers(),
+      body: JSON.stringify({ period: cleanPeriod, type }),
+    });
+    if (!res.ok) throw await pb._err(res);
+    return res.json();
+  },
+
+  /** Genera el PDF oficial de una cuenta o estado de cuenta PH directamente en el orquestador */
+  async generatePhStatementPdfDirect(statementData: any, filename = 'cuenta_cobro') {
+    const orchestratorHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+    const res = await fetch(`http://${orchestratorHost}:8088/api/ph/generate-pdf`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename,
+        format: 'base64',
+        statementData
+      })
+    });
+    if (!res.ok) {
+      const errTxt = await res.text().catch(() => '');
+      throw new Error(`Error en el orquestador (${res.status}): ${errTxt || res.statusText}`);
+    }
     return res.json();
   },
 

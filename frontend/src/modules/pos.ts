@@ -3236,6 +3236,48 @@ window.confirmPOSPayment = async function() {
       }
     }
 
+    let posPayForm = '1';
+    let posPayDianCode = '10';
+    let posDueDate = (window as any).todayStr();
+
+    if (currentPOSPayMethod === 'CREDITO') {
+      posPayForm = '2';
+      posPayDianCode = '30';
+      let creditDays = 30;
+      if (selectedCustomerId && typeof posCustomers !== 'undefined' && Array.isArray(posCustomers)) {
+        const cust = posCustomers.find(c => c.id === selectedCustomerId);
+        if (cust && Number(cust.payment_days) > 0) {
+          creditDays = Number(cust.payment_days);
+        }
+      }
+      const d = new Date();
+      d.setDate(d.getDate() + creditDays);
+      posDueDate = d.toISOString().slice(0, 10);
+    } else if (currentPOSPayMethod === 'TRANSFERENCIA') {
+      posPayForm = '1';
+      posPayDianCode = '47';
+    } else if (currentPOSPayMethod === 'MIXTO') {
+      try {
+        const parsedSplit = JSON.parse(paymentSplit || '{}');
+        if (Number(parsedSplit.CREDITO || 0) > 0 && Number(parsedSplit.EFECTIVO || 0) === 0 && Number(parsedSplit.TRANSFERENCIA || 0) === 0) {
+          posPayForm = '2';
+          posPayDianCode = '30';
+          let creditDays = 30;
+          if (selectedCustomerId && typeof posCustomers !== 'undefined' && Array.isArray(posCustomers)) {
+            const cust = posCustomers.find(c => c.id === selectedCustomerId);
+            if (cust && Number(cust.payment_days) > 0) {
+              creditDays = Number(cust.payment_days);
+            }
+          }
+          const d = new Date();
+          d.setDate(d.getDate() + creditDays);
+          posDueDate = d.toISOString().slice(0, 10);
+        } else if (Number(parsedSplit.TRANSFERENCIA || 0) > Number(parsedSplit.EFECTIVO || 0)) {
+          posPayDianCode = '47';
+        }
+      } catch (_) {}
+    }
+
     const header = {
       number: invoiceNumber,
       customer_id: selectedCustomerId,
@@ -3244,9 +3286,11 @@ window.confirmPOSPayment = async function() {
       commission_rate: commissionRate,
       commission_amount: commissionAmount,
       date: (window as any).todayStr(),
-      due_date: (window as any).todayStr(),
+      due_date: posDueDate,
       notes: `Venta POS turno #${activeShift.id.slice(-5)}`,
       payment_method: currentPOSPayMethod,
+      payment_form: posPayForm,
+      payment_dian_code: posPayDianCode,
       ret_total: 0,
       status: 'draft',
       pos_shift_id: activeShift.id,

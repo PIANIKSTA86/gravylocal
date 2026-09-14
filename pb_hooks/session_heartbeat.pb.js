@@ -37,32 +37,12 @@ routerAdd("POST", "/api/session/heartbeat", (e) => {
   }
 }, $apis.requireAuth());
 
-// Middleware global para interceptar y rechazar inmediatamente tokens revocados/desplazados
-routerUse((e) => {
-  try {
-    const reqPath = String(e?.request?.url?.path || "");
-    // Excluir rutas públicas o de autenticación inicial
-    if (reqPath.includes("/auth-with-password") ||
-        reqPath.includes("/auth-via-hub") ||
-        reqPath.includes("/api/health") ||
-        reqPath.includes("/api/public/")) {
-      return e.next();
-    }
-
-    const headers = e.requestInfo()?.headers || {};
-    const authHeader = String(headers["authorization"] || "").trim();
-    const authRecord = e.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(e).authRecord : null);
-
-    if (authHeader.startsWith("Bearer ") && !authRecord) {
-      return e.json(401, {
-        code: "SESSION_DISPLACED",
-        message: "Tu sesión ha sido revocada porque se inició sesión en otro equipo de la red o tu token caducó."
-      });
-    }
-  } catch (_) {}
-
-  return e.next();
+// Middleware global para interceptar tokens (desactivado temporalmente para no interferir con la cadena de Echo router)
+/*
+routerUse((next) => (e) => {
+  return next(e);
 });
+*/
 
 
 

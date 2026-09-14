@@ -183,6 +183,42 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Colección ph_billing_concepts creada.');
   }
 
+  // Sembrar concepto de cobro MORA si no existe y vincular líneas huérfanas
+  try {
+    let moraConcept = null;
+    try {
+      moraConcept = $app.findFirstRecordByFilter('ph_billing_concepts', 'code = "MORA"');
+    } catch (_) {}
+
+    if (!moraConcept) {
+      const bCol = $app.findCollectionByNameOrId('ph_billing_concepts');
+      moraConcept = new Record(bCol, {
+        code: 'MORA',
+        name: 'INTERESES DE MORA',
+        description: 'Intereses de mora por pagos de administración vencidos',
+        amount: 0,
+        is_variable: true,
+        applies_coef: false,
+        active: true
+      });
+      $app.save(moraConcept);
+      console.log('[GRAVY-PH] Concepto MORA sembrado exitosamente en ph_billing_concepts.');
+    }
+
+    if (moraConcept && moraConcept.id) {
+      try {
+        $app.nonconcurrentDB()
+          .newQuery("UPDATE ph_invoice_lines SET concept_id = {:moraId} WHERE (concept_id IS NULL OR concept_id = '') AND (lower(description) LIKE '%mora%' OR lower(description) LIKE '%interes%')")
+          .bind({ moraId: moraConcept.id })
+          .execute();
+      } catch (errUpd) {
+        console.log('[GRAVY-PH] Aviso al vincular líneas históricas de mora: ' + errUpd);
+      }
+    }
+  } catch (errMora) {
+    console.log('[GRAVY-PH] Aviso al asegurar concepto MORA: ' + errMora);
+  }
+
   // ──────────────────────────────────────────────────────────
   // COLECCIÓN: ph_invoices — Facturas de copropiedad
   // ──────────────────────────────────────────────────────────

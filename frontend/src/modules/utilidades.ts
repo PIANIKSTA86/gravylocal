@@ -391,8 +391,11 @@ async function _openMassProductsImportModal() {
 }
 
 async function _massProductsBuildDraft(rawRows) {
-  // Cargar productos existentes para update/insert
-  const existing = await pb.listAll('products', {});
+  // Cargar productos existentes para update/insert y configuración contable/tributaria por defecto
+  const [existing, defaultProductConfig] = await Promise.all([
+    pb.listAll('products', {}),
+    API.getDefaultProductAccountingAndTaxConfig().catch(() => null),
+  ]);
   const byCode = new Map(existing.map(p => [String(p.code || '').toUpperCase(), p]));
   const validTypes = new Set(['BIEN', 'SERVICIO']);
   const validUnits = (typeof PRODUCT_UNITS !== 'undefined' ? PRODUCT_UNITS : []);
@@ -428,7 +431,8 @@ async function _massProductsBuildDraft(rawRows) {
     const name = get('nombre', 'name');
     const type = get('tipo', 'type').toUpperCase();
     const unit = get('unidad', 'unit').toUpperCase();
-    const iva = Number(get('iva', 'iva_rate'));
+    const ivaRaw = get('iva', 'iva_rate', 'tarifa_iva');
+    const iva = ivaRaw !== '' ? Number(ivaRaw) : Number(defaultProductConfig?.defaultIvaRate ?? 19);
     const activeRaw = get('activo', 'active', 'estado').toLowerCase();
     const active = !/^(no|0|false|inactivo|inactiva)$/i.test(activeRaw);
 
@@ -496,9 +500,9 @@ async function _massProductsBuildDraft(rawRows) {
       alto_cm,
       stock_min: toNullableNumber(get('stock_min')),
       stock_max: toNullableNumber(get('stock_max')),
-      income_account_id: resolveAccount(get('cuenta_ingresos', 'cuenta_ingreso', 'income_account')),
-      cost_account_id: resolveAccount(get('cuenta_costos', 'cuenta_costo', 'cost_account')),
-      inventory_account_id: resolveAccount(get('cuenta_inventarios', 'cuenta_inventario', 'inventory_account')),
+      income_account_id: resolveAccount(get('cuenta_ingresos', 'cuenta_ingreso', 'income_account')) || defaultProductConfig?.incomeAccountId || '',
+      cost_account_id: resolveAccount(get('cuenta_costos', 'cuenta_costo', 'cost_account')) || defaultProductConfig?.costAccountId || '',
+      inventory_account_id: type === 'BIEN' ? (resolveAccount(get('cuenta_inventarios', 'cuenta_inventario', 'inventory_account')) || defaultProductConfig?.inventoryAccountId || '') : '',
       is_combo,
       margin_factor: toNullableNumber(get('factor_margen', 'margin_factor')),
       margin_type: get('tipo_margen', 'margin_type') || 'MARKUP_COST',

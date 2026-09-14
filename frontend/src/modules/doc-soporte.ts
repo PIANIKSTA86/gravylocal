@@ -462,9 +462,15 @@ function renderDsRows(list: DocSoporteItem[]): string {
         </td>
         <td class="p-3 text-right font-mono font-bold text-slate-900">${fmt(d.total)}</td>
         <td class="p-3 text-center">
-          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${st.cls}">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${st.cls}" title="${esc(d.dian_response || '')}">
             <i class="fas ${st.icon} text-[10px]"></i>${st.label}
           </span>
+          ${(d.status_dian === 'rechazada' || (d.dian_response && d.status_dian !== 'aceptada')) && d.dian_response ? `
+            <div class="text-[11px] text-rose-600 mt-1 max-w-[200px] mx-auto truncate font-medium flex items-center justify-center gap-1" title="${esc(d.dian_response)}">
+              <i class="fas fa-circle-exclamation text-rose-500 text-[10px]"></i>
+              <span class="truncate">${esc(d.dian_response.replace(/^Error de emisión:\s*/i, '').replace(/^Facturatech:\s*/i, ''))}</span>
+            </div>
+          ` : ''}
         </td>
         <td class="p-3 text-xs font-mono text-slate-500">
           ${d.cuds ? `<span title="${esc(d.cuds)}">${esc(d.cuds.slice(0, 16))}...</span>` : '<span class="text-slate-300">—</span>'}
@@ -1672,11 +1678,16 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         const container = document.getElementById('page-content');
         if (container) renderDocSoporte(container);
       } else {
-        showToast(`Error al emitir Documento Soporte: ${res.dianResponse || 'Rechazado por el servidor'}`, 'error');
+        const errorMsg = res?.dianResponse || res?.message || 'Rechazado por el servidor';
+        showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
+        const container = document.getElementById('page-content');
+        if (container) renderDocSoporte(container);
       }
     } catch (err: any) {
-      const errMsg = err.response?.message || err.message || 'Error al emitir Documento Soporte';
-      showToast(errMsg, 'error');
+      const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error al emitir Documento Soporte');
+      showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
+      const container = document.getElementById('page-content');
+      if (container) renderDocSoporte(container);
     }
   });
 };
@@ -1786,7 +1797,13 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
           <div><span class="form-label font-bold text-gray-500">Estado DIAN</span><p><span class="badge ${si.cls}">${si.label}</span></p></div>
           <div><span class="form-label font-bold text-gray-500">Fecha</span><p>${esc(d.date || d.created || (tx && tx.date) || '—')}</p></div>
           <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">CUDS / CUFE</span><p class="font-mono text-xs break-all p-2 rounded" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(currentCuds || 'Pendiente de transmisión')}</p></div>
-          <div class="col-span-2 md:col-span-3"><span class="form-label font-bold text-gray-500">Respuesta Servidor DIAN</span><p class="p-2 rounded text-sm text-gray-600 font-medium" style="background:#F9FAFB;border:1px solid #E5E7EB">${esc(d.dian_response || '—')}</p></div>
+          <div class="col-span-2 md:col-span-3">
+            <span class="form-label font-bold text-gray-500">Respuesta Servidor DIAN / Facturatech</span>
+            <div class="p-2.5 rounded text-sm font-medium border flex items-start gap-2 ${statusVal === 'rechazada' ? 'bg-rose-50 text-rose-800 border-rose-200' : (statusVal === 'aceptada' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-700 border-slate-200')}">
+              <i class="fas ${statusVal === 'rechazada' ? 'fa-circle-xmark text-rose-600 mt-0.5' : (statusVal === 'aceptada' ? 'fa-circle-check text-emerald-600 mt-0.5' : 'fa-circle-info text-slate-500 mt-0.5')}"></i>
+              <span>${esc(d.dian_response || '—')}</span>
+            </div>
+          </div>
         </div>
         <div>
           <span class="form-label font-bold text-gray-500">Contenido XML (UBL 2.1 / Documento Soporte)</span>

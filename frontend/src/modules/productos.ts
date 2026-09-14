@@ -1820,11 +1820,10 @@ async function viewProductDetail(id) {
 
 // ── Formulario crear/editar ───────────────────────────────────────────────────
 async function openProductForm(row = null, accounts = null, catalog = {}, initialComponents = []) {
-  const [allGoods, suppliers, salesCfgRaw, purchaseCfgRaw] = await Promise.all([
+  const [allGoods, suppliers, defaultProductConfig] = await Promise.all([
     API.getProducts({ activeOnly: true }).catch(() => []),
     pb.listAll('third_parties', { filter: 'type = "PROVEEDOR" && active = true' }).catch(() => []),
-    API.getSetting('sales_settings_v2').catch(() => null),
-    API.getSetting('purchase_config_v1').catch(() => null),
+    API.getDefaultProductAccountingAndTaxConfig().catch(() => null),
   ]);
   const allGoodsFiltered = allGoods.filter((p: any) => p.type === 'BIEN' && p.id !== row?.id && !p.is_combo);
 
@@ -1837,7 +1836,9 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
   }
 
   if (!accounts) {
-    accounts = await API.getAccounts(false).catch(() => []);
+    accounts = (defaultProductConfig?.accounts && defaultProductConfig.accounts.length)
+      ? defaultProductConfig.accounts
+      : await API.getAccounts(false).catch(() => []);
   }
 
   const accountList = (Array.isArray(accounts) ? accounts : [])
@@ -1850,59 +1851,10 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
   let defaultCostAccountId = '';
   let defaultInventoryAccountId = '';
 
-  if (!row) {
-    let salesCfg: any = null;
-    let purchaseCfg: any = null;
-    try { if (salesCfgRaw) salesCfg = JSON.parse(salesCfgRaw); } catch (_) {}
-    try { if (purchaseCfgRaw) purchaseCfg = JSON.parse(purchaseCfgRaw); } catch (_) {}
-
-    const salesAccounts = salesCfg?.accounting?.accounts || {};
-    const purchaseAccounts = purchaseCfg?.accounting?.accounts || {};
-
-    const findAccountByCode = (codeStr: string, defaultPrefixes: string) => {
-      const code = String(codeStr || '').trim();
-      if (code) {
-        // 1. Coincidencia exacta nivel 5 (auxiliar)
-        const exactL5 = accountList.find((a: any) => Number(a.level) === 5 && a.code === code);
-        if (exactL5) return exactL5.id;
-
-        // 2. Coincidencia exacta en cualquier nivel -> buscar el primer auxiliar nivel 5 que empiece con ese código
-        const exactAny = accountList.find((a: any) => a.code === code);
-        if (exactAny) {
-          if (Number(exactAny.level) === 5) return exactAny.id;
-          const childL5 = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
-          if (childL5) return childL5.id;
-        }
-
-        // 3. Primer auxiliar nivel 5 que empiece con el código
-        const prefMatch = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(code));
-        if (prefMatch) return prefMatch.id;
-      }
-
-      // Fallback: buscar por prefijos generales de la clase contable
-      const prefixes = defaultPrefixes.split(',');
-      for (const pref of prefixes) {
-        const fallback = accountList.find((a: any) => Number(a.level) === 5 && String(a.code || '').startsWith(pref.trim()));
-        if (fallback) return fallback.id;
-      }
-      return '';
-    };
-
-    // 1. Cuenta de Ingresos (Clase 41)
-    const targetIncomeCode = String(salesAccounts.income_fallback_code || salesAccounts.income_account_code || '41359501').trim();
-    defaultIncomeAccountId = findAccountByCode(targetIncomeCode, '41');
-
-    // 2. Cuenta de Costo de Ventas (Clase 61)
-    const targetCostCode = String(
-      salesAccounts.cost_fallback_code || 
-      (purchaseAccounts.cost_fallback_code && String(purchaseAccounts.cost_fallback_code).startsWith('61') ? purchaseAccounts.cost_fallback_code : '') || 
-      '61359501'
-    ).trim();
-    defaultCostAccountId = findAccountByCode(targetCostCode, '61');
-
-    // 3. Cuenta de Inventario (Clase 14)
-    const targetInvCode = String(salesAccounts.inventory_fallback_code || purchaseAccounts.inventory_code || salesAccounts.inventory_code || '14350501').trim();
-    defaultInventoryAccountId = findAccountByCode(targetInvCode, '14');
+  if (!row && defaultProductConfig) {
+    defaultIncomeAccountId = defaultProductConfig.incomeAccountId || '';
+    defaultCostAccountId = defaultProductConfig.costAccountId || '';
+    defaultInventoryAccountId = defaultProductConfig.inventoryAccountId || '';
   }
 
   const pickAccountByPrefix = (prefix = '', query = '') => {
@@ -1939,7 +1891,9 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
     registro_sanitario: row?.registro_sanitario ?? '',
   };
 
-  const defaultIvaRate = (row?.iva_rate !== undefined && row?.iva_rate !== null) ? Number(row.iva_rate) : 19;
+  const defaultIvaRate = (row?.iva_rate !== undefined && row?.iva_rate !== null)
+    ? Number(row.iva_rate)
+    : Number(defaultProductConfig?.defaultIvaRate ?? 19);
 
   openModal(
     row ? `Editar — ${esc(row.code)}` : 'Nuevo Producto / Servicio',
@@ -2534,11 +2488,15 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
 
     const isBien = typeSel.value === 'BIEN';
     invInput.disabled = !isBien;
-    invInput.placeholder = isBien ? 'Buscar cuenta 14...' : 'Solo aplica para BIEN';
+    invInput.placeholder = isBien ? 'Buscar cuenta 14...' : 'No aplica (Solo para bienes)';
     invInput.style.backgroundColor = isBien ? '' : '#F3F4F6';
     if (!isBien) {
       invHidden.value = '';
       invInput.value = '';
+    } else if (!invHidden.value && defaultInventoryAccountId) {
+      invHidden.value = defaultInventoryAccountId;
+      const acc = accountMap.get(defaultInventoryAccountId);
+      if (acc) invInput.value = `${acc.code} — ${acc.name}`;
     }
     if (consignmentContainer) {
       consignmentContainer.style.display = isBien ? 'block' : 'none';
@@ -2748,6 +2706,8 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       const costAccountId = (document.getElementById('pf-cost-acct') as HTMLInputElement)?.value || '';
       const inventoryAccountId = (document.getElementById('pf-inv-acct') as HTMLInputElement)?.value || '';
 
+      const isBien = getSelectVal('pf-type') === 'BIEN';
+
       if (!validateLevel5Account(incomeAccountId, 'Cuenta de ingresos')) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
         return;
@@ -2756,7 +2716,7 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
         return;
       }
-      if (!validateLevel5Account(inventoryAccountId, 'Cuenta de inventario')) {
+      if (isBien && !validateLevel5Account(inventoryAccountId, 'Cuenta de inventario')) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar'; }
         return;
       }
@@ -2874,7 +2834,7 @@ async function openProductForm(row = null, accounts = null, catalog = {}, initia
       
       formData.append('income_account_id', incomeAccountId);
       formData.append('cost_account_id', costAccountId);
-      formData.append('inventory_account_id', inventoryAccountId);
+      formData.append('inventory_account_id', isBien ? inventoryAccountId : '');
       formData.append('is_combo', String(isCombo));
       formData.append('is_consigned', String((document.getElementById('pf-is-consigned') as HTMLInputElement)?.checked || false));
       formData.append('consignment_supplier_id', (document.getElementById('pf-consignment-supplier') as HTMLInputElement)?.value || '');

@@ -13560,11 +13560,11 @@ async function renderConsecutiveAuditReport() {
         return;
       }
 
-      // Fetch reference master data in parallel
+      // Fetch reference master data in parallel (excluyendo documentos anulados/cancelados)
       const [warehouses, purchaseInvoices, salesInvoices] = await Promise.all([
         pb.listAll('warehouses', { ignoreBranch: true }),
-        pb.listAll('purchase_invoices', { filter: `date>="${dateFrom}" && date<="${dateTo}"`, ignoreBranch: true }),
-        pb.listAll('invoices', { filter: `date>="${dateFrom}" && date<="${dateTo}"`, ignoreBranch: true })
+        pb.listAll('purchase_invoices', { filter: `date>="${dateFrom}" && date<="${dateTo}" && status!="voided" && status!="cancelled"`, ignoreBranch: true }),
+        pb.listAll('invoices', { filter: `date>="${dateFrom}" && date<="${dateTo}" && status!="voided" && status!="cancelled"`, ignoreBranch: true })
       ]);
 
       const warehouseMap = new Map<string, string>();
@@ -13575,7 +13575,15 @@ async function renderConsecutiveAuditReport() {
       const purchaseMap = new Map<string, any>();
       const purchaseByNumMap = new Map<string, any>();
       for (const pinv of purchaseInvoices) {
-        if (pinv.tx_id) purchaseMap.set(pinv.tx_id, pinv);
+        if (pinv.status === 'voided' || pinv.status === 'cancelled') continue;
+        if (pinv.tx_id) {
+          const existing = purchaseMap.get(pinv.tx_id);
+          if (!existing) {
+            purchaseMap.set(pinv.tx_id, pinv);
+          } else if (existing.number !== existing.tx_number && pinv.number === pinv.tx_number) {
+            purchaseMap.set(pinv.tx_id, pinv);
+          }
+        }
         if (pinv.number) {
           const key = `${pinv.tx_type_id || ''}_${pinv.number}`;
           purchaseByNumMap.set(key, pinv);
@@ -13585,7 +13593,15 @@ async function renderConsecutiveAuditReport() {
       const salesMap = new Map<string, any>();
       const salesByNumMap = new Map<string, any>();
       for (const sinv of salesInvoices) {
-        if (sinv.tx_id) salesMap.set(sinv.tx_id, sinv);
+        if (sinv.status === 'voided' || sinv.status === 'cancelled') continue;
+        if (sinv.tx_id) {
+          const existing = salesMap.get(sinv.tx_id);
+          if (!existing) {
+            salesMap.set(sinv.tx_id, sinv);
+          } else if (existing.number !== existing.tx_number && sinv.number === sinv.tx_number) {
+            salesMap.set(sinv.tx_id, sinv);
+          }
+        }
         if (sinv.number) {
           const key = `${sinv.tx_type_id || ''}_${sinv.number}`;
           salesByNumMap.set(key, sinv);
@@ -13678,9 +13694,34 @@ async function renderConsecutiveAuditReport() {
           const thirdPartyCity = tp ? tp.city : '';
           const thirdPartyResp = tp ? (tp.resp ? (Array.isArray(tp.resp) ? tp.resp.join(',') : String(tp.resp)) : (tp.rf || '')) : '';
 
-          // Datos de facturas vinculadas (búsqueda por ID o número)
-          const pinv = purchaseMap.get(tx.id) || purchaseByNumMap.get(`${tx.tx_type_id || ''}_${tx.number}`);
-          const sinv = salesMap.get(tx.id) || salesByNumMap.get(`${tx.tx_type_id || ''}_${tx.number}`);
+          // Datos de facturas vinculadas (búsqueda segura por ID o número sin cruzar con anuladas)
+          let pinv = null;
+          if (tx.id && purchaseMap.has(tx.id)) {
+            const cand = purchaseMap.get(tx.id);
+            if (cand && (!cand.number || !tx.number || cand.number === tx.number || cand.tx_number === tx.number)) {
+              pinv = cand;
+            }
+          }
+          if (!pinv) {
+            const cand = purchaseByNumMap.get(`${tx.tx_type_id || ''}_${tx.number}`);
+            if (cand && cand.status !== 'voided' && cand.status !== 'cancelled') {
+              pinv = cand;
+            }
+          }
+
+          let sinv = null;
+          if (tx.id && salesMap.has(tx.id)) {
+            const cand = salesMap.get(tx.id);
+            if (cand && (!cand.number || !tx.number || cand.number === tx.number || cand.tx_number === tx.number)) {
+              sinv = cand;
+            }
+          }
+          if (!sinv) {
+            const cand = salesByNumMap.get(`${tx.tx_type_id || ''}_${tx.number}`);
+            if (cand && cand.status !== 'voided' && cand.status !== 'cancelled') {
+              sinv = cand;
+            }
+          }
 
           const lineIva = taxTotals.get(tx.id) || 0;
           const lineRetefuente = retefuenteTotals.get(tx.id) || 0;
@@ -13709,26 +13750,32 @@ async function renderConsecutiveAuditReport() {
           let desctoPct = 0;
 
           if (pinv) {
-            extRef = pinv.supplier_ref || '';
-            subtotal = pinv.subtotal || 0;
-            iva = lineIva;
+            extRef = pinv.supplier_ref || lineAffects || '';
+            subtotal = Number(pinv.subtotal || 0);
+            iva = (pinv.iva_total !== undefined && pinv.iva_total !== null && Number(pinv.iva_total) > 0) ? Number(pinv.iva_total) : lineIva;
             retefuente = lineRetefuente;
             reteica = lineReteica;
-            retenciones = lineRet;
-            total = subtotal + iva;
+            retenciones = lineRet || Number(pinv.ret_total || 0);
+            total = (pinv.total && Math.abs(Number(pinv.total) - tot.debit) < 1) ? Number(pinv.total) : (tot.debit || (subtotal + iva));
+            if (subtotal === 0 && total > 0) {
+              subtotal = Math.max(0, total - iva);
+            }
             neto = total - retenciones;
             warehouseName = warehouseMap.get(pinv.warehouse_id) || '';
             dueDate = pinv.due_date || tx.date || '';
-            affects = lineAffects;
+            affects = lineAffects || extRef;
             paymentDays = pinv.payment_days || 0;
             desctoFinanciero = pinv.discount_amount || 0;
           } else if (sinv) {
-            subtotal = sinv.subtotal || 0;
-            iva = lineIva;
+            subtotal = Number(sinv.subtotal || 0);
+            iva = (sinv.tax_amount !== undefined && sinv.tax_amount !== null && Number(sinv.tax_amount) > 0) ? Number(sinv.tax_amount) : lineIva;
             retefuente = lineRetefuente;
             reteica = lineReteica;
             retenciones = lineRet;
-            total = subtotal + iva;
+            total = (sinv.total && Math.abs(Number(sinv.total) - tot.debit) < 1) ? Number(sinv.total) : (tot.debit || (subtotal + iva));
+            if (subtotal === 0 && total > 0) {
+              subtotal = Math.max(0, total - iva);
+            }
             neto = total - retenciones;
             warehouseName = warehouseMap.get(sinv.warehouse_id) || '';
             dueDate = sinv.due_date || tx.date || '';
@@ -13736,14 +13783,16 @@ async function renderConsecutiveAuditReport() {
             paymentDays = sinv.payment_days || 0;
             desctoFinanciero = sinv.discount_amount || 0;
           } else {
+            // Comprobante contable directo (ej: importación XML directa, recibos de caja, notas de contabilidad, egresos)
             iva = lineIva;
             retefuente = lineRetefuente;
             reteica = lineReteica;
             retenciones = lineRet;
-            total = tot.debit;
-            subtotal = total - iva;
+            total = tot.debit > 0 ? tot.debit : tot.credit;
+            subtotal = Math.max(0, total - iva);
             neto = total - retenciones;
-            affects = lineAffects;
+            extRef = lineAffects || '';
+            affects = lineAffects || '';
           }
 
           if (desctoFinanciero > 0) {
@@ -14581,7 +14630,22 @@ const tabsHtml = `
       let hasDetailRows = false;
       for (const g of _auditGroups) {
         const combinedItems: any[] = [];
-        const txRowsToInclude = showAll ? g.rows : g.imbalanced;
+        let txRowsToInclude = [];
+        if (showAll) {
+          txRowsToInclude = g.rows;
+        } else {
+          const unionSet = new Set();
+          for (const r of g.imbalanced) {
+            txRowsToInclude.push(r);
+            unionSet.add(r.id);
+          }
+          for (const r of g.drafts) {
+            if (!unionSet.has(r.id)) {
+              txRowsToInclude.push(r);
+              unionSet.add(r.id);
+            }
+          }
+        }
         for (const r of txRowsToInclude) { combinedItems.push({ type: 'tx', data: r, consec: r.consec }); }
         for (const gap of g.gaps) { combinedItems.push({ type: 'gap', data: gap, consec: gap }); }
         combinedItems.sort((a, b) => {

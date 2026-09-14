@@ -5503,7 +5503,7 @@ function buildSingleWorkerUblXml(
 <Periodo FechaIngreso="${fechaIngreso}"${fechaRetiroXml} TiempoLaborado="${emp.diasLaborados || 30}" FechaLiquidacionInicio="${fechaLiqInicio}" FechaLiquidacionFin="${fechaLiqFin}" FechaGen="${fechaGen}"/>
 <NumeroSecuenciaXML CodigoTrabajador="${esc(docNum)}" Prefijo="${esc(company.prefijo || 'NOM')}" Consecutivo="${consecutivo}" Numero="${numSec}" />
 <LugarGeneracionXML Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Idioma="es" />
-<InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="${cune}" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
+<InformacionGeneral Version="V1.0: Documento Soporte de Pago de Nómina Electrónica" Ambiente="${company.ambienteDian || '1'}" CUNE="${cune || ''}" EncripCUNE="CUNE-SHA384" FechaGen="${fechaGen}" HoraGen="${horaGen}" TipoXML="102" PeriodoNomina="5" TipoMoneda="COP" TRM="1.00"/>
 <Empleador RazonSocial="${esc(company.companyName)}" NIT="${esc(cleanCompanyNit)}" DV="${esc(cleanCompanyDv)}" Pais="CO" DepartamentoEstado="${deptCode}" MunicipioCiudad="${cityCode}" Direccion="${esc(company.companyDir)}" />
 <Trabajador TipoTrabajador="${esc(emp.tipoTrabajador || '01')}" SubTipoTrabajador="${esc(emp.subTipoTrabajador || '00')}" AltoRiesgoPension="${emp.altoRiesgo ? 'true' : 'false'}" TipoDocumento="${esc(tipoDocCode)}" NumeroDocumento="${esc(docNum)}" PrimerApellido="${esc(emp.primerApellido)}"${segundoApellidoAttr} PrimerNombre="${esc(emp.primerNombre)}"${otrosNombresAttr} LugarTrabajoPais="CO" LugarTrabajoDepartamentoEstado="${esc(emp.deptCode || deptCode)}" LugarTrabajoMunicipioCiudad="${esc(emp.cityCode || cityCode)}" LugarTrabajoDireccion="${esc(emp.direccion || company.companyDir)}" SalarioIntegral="${emp.salarioIntegral ? 'true' : 'false'}" TipoContrato="${esc(emp.tipoContratoCode || '2')}" Sueldo="${sueldoBasico}" CodigoTrabajador="${esc(docNum)}" />
 ${pagoXml}
@@ -5708,7 +5708,42 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         }
       } else {
         const rawName = (emp.first_name && emp.last_name) ? `${emp.first_name} ${emp.last_name}` : (emp.name || 'Empleado');
-        const nameParts = rawName.trim().split(/\s+/);
+        let primerNombre = 'Empleado';
+        let otrosNombres = '';
+        let primerApellido = 'Apellido';
+        let segundoApellido = '';
+
+        const fName = String(emp.first_name || '').trim();
+        const lName = String(emp.last_name || '').trim();
+
+        if (fName && lName) {
+          const fParts = fName.split(/\s+/).filter(Boolean);
+          primerNombre = fParts[0] || 'Empleado';
+          otrosNombres = fParts.slice(1).join(' ');
+
+          const lParts = lName.split(/\s+/).filter(Boolean);
+          primerApellido = lParts[0] || 'Apellido';
+          segundoApellido = lParts.slice(1).join(' ');
+        } else {
+          const nameParts = rawName.trim().split(/\s+/).filter(Boolean);
+          if (nameParts.length >= 4) {
+            primerNombre = nameParts[0];
+            otrosNombres = nameParts[1];
+            primerApellido = nameParts[2];
+            segundoApellido = nameParts.slice(3).join(' ');
+          } else if (nameParts.length === 3) {
+            primerNombre = nameParts[0];
+            primerApellido = nameParts[1];
+            segundoApellido = nameParts[2];
+          } else if (nameParts.length === 2) {
+            primerNombre = nameParts[0];
+            primerApellido = nameParts[1];
+          } else {
+            primerNombre = nameParts[0] || 'Empleado';
+            primerApellido = 'SinApellido';
+          }
+        }
+
         const otMap: any = {};
         if (otMeta.breakdown && Array.isArray(otMeta.breakdown)) {
           otMeta.breakdown.forEach((b: any) => {
@@ -5727,10 +5762,10 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         acumuladosPorEmpleado.set(empId, {
           empId: empId,
           nombreCompleto: rawName,
-          primerNombre: emp.first_name || (nameParts[0] || 'Empleado'),
-          otrosNombres: nameParts.length > 2 ? nameParts.slice(1, -2).join(' ') : '',
-          primerApellido: emp.last_name || (nameParts.length >= 2 ? nameParts[nameParts.length - 2] : ''),
-          segundoApellido: nameParts.length >= 1 ? nameParts[nameParts.length - 1] : '',
+          primerNombre,
+          otrosNombres,
+          primerApellido,
+          segundoApellido,
           tipoDocumento: emp.doc_type || 'CC',
           numeroDocumento: emp.doc_number || '00000000',
           cargo: emp.notes || 'Colaborador',
@@ -5796,6 +5831,11 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         filter: `ano=${year} && mes=${month} && (employee_id="${e.empId}" || (xml_generado ~ "${e.numeroDocumento}"))`
       });
 
+      if (existentes.length > 0 && existentes[0].estado_dian === 'APROBADO') {
+        // Un volante ya aprobado formalmente ante la DIAN no se debe regenerar ni sobreescribir
+        continue;
+      }
+
       let consecutivo = 0;
       let recordPrefix = nePrefix;
 
@@ -5813,25 +5853,8 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         prefijo: recordPrefix, ambienteDian
       };
 
-      const devengosStr = round2(e.totalDevengos || 0).toFixed(2);
-      const deduccionesStr = round2(e.totalDeducciones || 0).toFixed(2);
-      const netoStr = round2(e.netoPagar || 0).toFixed(2);
-      const cleanDocTrabajador = String(e.numeroDocumento || '').replace(/[^0-9A-Za-z]/g, '');
-
-      // Cálculo del CUNE canónico reglamentario SHA-384
-      const calculatedCune = await calculateCune({
-        numNE: `${recordPrefix}${consecutivo}`,
-        fecNE: fechaGen,
-        horNE: horaGen,
-        valDev: devengosStr,
-        valDed: deduccionesStr,
-        valTol: netoStr,
-        nitEmisor: companyNit,
-        docTrabajador: cleanDocTrabajador,
-        tipoXML: '102',
-        pin: softwarePin,
-        ambiente: ambienteDian
-      });
+      // Para Facturatech (Proveedor Tecnológico), el CUNE se transmite vacío en el XML inicial; Facturatech calcula el CUNE oficial y sella digitalmente el comprobante
+      const calculatedCune = '';
 
       const singleXml = buildSingleWorkerUblXml(
         e,
@@ -5931,6 +5954,12 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           <div class="flex justify-between items-center"><span class="text-gray-400">CUNE:</span><span class="font-mono text-gray-700 font-bold break-all">${cuneDetailLabel}</span></div>
           <div class="flex justify-between"><span class="text-gray-400">ID Transacción Facturatech:</span><span class="font-mono text-gray-700">${esc(rec.ftech_transaction_id || '—')}</span></div>
           <div class="flex justify-between"><span class="text-gray-400">Estado DIAN:</span><span class="font-bold">${esc(rec.estado_dian || 'PENDIENTE')}</span></div>
+          ${rec.dian_response ? `
+            <div class="mt-2 pt-2 border-t text-left">
+              <span class="text-gray-400 block mb-0.5 font-medium">Respuesta Proveedor Tecnológico / DIAN:</span>
+              <div class="p-2 rounded font-mono text-3xs ${rec.estado_dian === 'RECHAZADO' ? 'text-red-800 bg-red-50 border border-red-200' : 'text-gray-700 bg-gray-50 border'}">${esc(rec.dian_response)}</div>
+            </div>
+          ` : ''}
         </div>
 
         <div class="border rounded-xl p-3 bg-white space-y-2">
@@ -5946,33 +5975,112 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
   }
 };
 
-(window as any).emitNominaElectronicaDian = async function(id) {
-  confirmDialog('Transmitir Volante Individual a DIAN / Facturatech', '¿Confirmas el firmado digital y emisión de este volante de nómina ante la DIAN?', async () => {
-    try {
-      showToast('Transmitiendo comprobante de nómina a la DIAN / Facturatech...', 'info');
-      const res = await pb.send('/api/dian/nomina/emit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      if (res && res.success) {
-        if (res.simulated) {
-          showToast(`Nómina procesada en MODO SIMULACIÓN. (No transmitida a DIAN real - Verifique credenciales en Configuración)`, 'warning');
-        } else if (res.status === 'APROBADO') {
-          showToast(`Nómina Electrónica APROBADA y validada por la DIAN.`, 'success');
-        } else if (res.status === 'EN_PROCESO') {
-          showToast(`Nómina recibida por Facturatech. En proceso de validación DIAN. (ID: ${res.transactionID || 'OK'})`, 'info');
-        } else {
-          showToast(`Nómina emitida: Estado ${res.status}`, 'info');
-        }
-        renderNominaElectronicaPage($('#page-content'));
+async function doEmitNomina(id: string, reassignConsecutive: boolean = false) {
+  try {
+    showToast('Transmitiendo comprobante de nómina a la DIAN / Facturatech...', 'info');
+    const res = await pb.send('/api/dian/nomina/emit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, reassignConsecutive })
+    });
+    if (res && res.success) {
+      if (res.simulated) {
+        showToast(`Nómina procesada en MODO SIMULACIÓN. (No transmitida a DIAN real - Verifique credenciales en Configuración)`, 'warning');
+      } else if (res.status === 'APROBADO') {
+        showToast(`Nómina Electrónica APROBADA y validada por la DIAN.`, 'success');
+      } else if (res.status === 'EN_PROCESO') {
+        showToast(`Nómina recibida por Facturatech. En proceso de validación DIAN. (ID: ${res.transactionID || 'OK'})`, 'info');
+      } else if (res.status === 'RECHAZADO') {
+        showToast(`Nómina rechazada por DIAN: ${res.message || 'Verifique detalles'}`, 'error');
       } else {
-        showToast(res.message || 'Error al emitir nómina electrónica', 'error');
+        showToast(`Nómina emitida: Estado ${res.status}`, 'info');
       }
-    } catch (err: any) {
-      showToast(err.message || 'Error en comunicación DIAN', 'error');
+      renderNominaElectronicaPage($('#page-content'));
+    } else {
+      showToast(res.message || 'Error al emitir nómina electrónica', 'error');
     }
-  });
+  } catch (err: any) {
+    showToast(err.message || 'Error en comunicación DIAN', 'error');
+  }
+}
+
+(window as any).emitNominaElectronicaDian = async function(id: string) {
+  try {
+    const rec = await pb.get('electronic_payrolls', id);
+    const currNum = `${rec.prefijo || 'NOM'}-${rec.consecutivo || '0'}`;
+
+    if (rec.estado_dian === 'RECHAZADO') {
+      // Obtener el siguiente consecutivo de la resolución NE activa para mostrarlo al usuario
+      const neResolutions = await pb.listAll('dian_resolutions', { filter: 'document_type="NE" && active=true' }).catch(() => []);
+      const activeRes = neResolutions[0] || null;
+      let nextNum = 1;
+      let pfx = rec.prefijo || 'NOM';
+      if (activeRes) {
+        pfx = (activeRes.prefix || pfx).trim();
+        nextNum = Number(activeRes.current_number || 1);
+      } else {
+        const prev = await pb.listAll('electronic_payrolls', { sort: '-consecutivo', perPage: 1 }).catch(() => []);
+        nextNum = (prev[0]?.consecutivo || 0) + 1;
+      }
+      const nextConsecutiveStr = `${pfx}-${nextNum}`;
+
+      const modalHtml = `
+        <div class="space-y-3 text-left text-xs">
+          <div class="bg-red-50 border border-red-200 text-red-800 p-3 rounded-xl flex items-start gap-2">
+            <i class="fas fa-exclamation-triangle text-red-500 mt-0.5 text-base"></i>
+            <div>
+              <strong class="font-bold">Comprobante Previamente Rechazado (${esc(currNum)})</strong>
+              <p class="text-3xs mt-1 text-red-700">Facturatech/DIAN rechazó este comprobante en un intento anterior. Si el folio ya fue invalidado en Facturatech, puede requerirse reemitir con un consecutivo nuevo.</p>
+              ${rec.dian_response ? `<div class="mt-2 p-1.5 bg-white border border-red-200 rounded font-mono text-3xs text-red-900">${esc(rec.dian_response)}</div>` : ''}
+            </div>
+          </div>
+          <div class="p-3 bg-gray-50 border rounded-xl space-y-1.5 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-500">Consecutivo actual:</span>
+              <strong class="font-mono text-red-700 font-bold">${esc(currNum)}</strong>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Siguiente consecutivo sugerido:</span>
+              <strong class="font-mono text-emerald-700 font-bold">${esc(nextConsecutiveStr)}</strong>
+            </div>
+          </div>
+          <p class="text-gray-600 text-3xs italic">Selecciona cómo deseas proceder con la transmisión ante Facturatech:</p>
+        </div>
+      `;
+
+      const footerHtml = `
+        <div class="flex flex-wrap gap-2 justify-end">
+          <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+          <button class="btn btn-outline btn-sm border-gray-400 hover:bg-gray-100" id="btn-reemit-same"><i class="fas fa-rotate-left mr-1"></i>Reintentar con ${esc(currNum)}</button>
+          <button class="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700" id="btn-reemit-next"><i class="fas fa-arrow-right mr-1"></i>Asignar ${esc(nextConsecutiveStr)} y Transmitir</button>
+        </div>
+      `;
+
+      openModal(`Reemisión de Nómina — ${esc(currNum)}`, modalHtml, footerHtml, false);
+
+      document.getElementById('btn-reemit-same')?.addEventListener('click', async () => {
+        closeModal();
+        await doEmitNomina(id, false);
+      });
+
+      document.getElementById('btn-reemit-next')?.addEventListener('click', async () => {
+        closeModal();
+        await doEmitNomina(id, true);
+      });
+
+      return;
+    }
+
+    // Si el comprobante está PENDIENTE o nuevo, confirmación estándar
+    confirmDialog('Transmitir Volante Individual a DIAN / Facturatech', 
+      `¿Confirmas el firmado digital y emisión del volante <strong>${esc(currNum)}</strong> ante la DIAN / Facturatech?`, 
+      async () => {
+        await doEmitNomina(id, false);
+      }
+    );
+  } catch (fetchErr: any) {
+    showToast('Error al preparar emisión: ' + fetchErr.message, 'error');
+  }
 };
 
 (window as any).checkNominaFtechStatus = async function(id: string) {

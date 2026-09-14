@@ -179,12 +179,15 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
           const prefijo = rec.getString("prefijo") || "NOM";
           const consecutivo = rec.getInt("consecutivo") || 1;
 
+          let sendXmlContent = (xmlContent || '').replace(/\bCUNE="[^"]*"/g, 'CUNE=""');
+          sendXmlContent = sendXmlContent.replace(/EncripCUNE\s*=\s*"[^"]*"/g, 'EncripCUNE ="CUNE-SHA384"');
+
           const resHub = $http.send({
             url: "http://127.0.0.1:8088/api/facturatech/upload-and-send",
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              xmlContent: xmlContent,
+              xmlContent: sendXmlContent,
               ftechUsername: ftechUsername,
               ftechPassword: ftechPassword,
               ftechEnvironment: ftechEnvironment,
@@ -206,6 +209,7 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
             if (transId) rec.set("ftech_transaction_id", transId);
 
             let finalStatus = "EN_PROCESO";
+            let statusMessage = hubResData.message || "En proceso";
             try {
               const statusHubRes = $http.send({
                 url: "http://127.0.0.1:8088/api/facturatech/check-status",
@@ -226,6 +230,7 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
 
               if (statusHubRes.statusCode === 200) {
                 const sData = JSON.parse(statusHubRes.raw);
+                if (sData.message) statusMessage = sData.message;
                 if (sData.status === "aceptada" || sData.status === "APROBADO") {
                   finalStatus = "APROBADO";
                   if (sData.xmlContent && sData.xmlContent.includes("<")) {
@@ -244,9 +249,11 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
             } catch (_) {}
 
             rec.set("estado_dian", finalStatus);
+            rec.set("dian_response", statusMessage);
             rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
           } else {
             rec.set("estado_dian", "RECHAZADO");
+            rec.set("dian_response", "Error HTTP: " + resHub.statusCode);
           }
         } catch (ftechErr) {
           console.error(`[GRAVY QUEUE WORKER] Error Hub para ID ${recId}:`, ftechErr);

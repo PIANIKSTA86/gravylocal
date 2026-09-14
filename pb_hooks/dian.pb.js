@@ -683,6 +683,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   documentType,
   documentNumber,
   issueDate,
+  dueDate,
   issueTime,
   dianEnvironment,
   emitterNit,
@@ -701,7 +702,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   ivaTotal: paramIvaTotal,
   total: paramTotal,
   softwareId,
-  mandante
+  mandante,
+  paymentForm,
+  paymentDianCode,
+  paymentMethod
 }) {
   const dec = (val) => Number(val || 0).toFixed(2);
   const decPrice = (val, qty, subtotal) => {
@@ -863,9 +867,9 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     </cac:Party>
   </cac:AccountingCustomerParty>`;
 
-  const payForm = invRec.getString("payment_form") || (invRec.getString("payment_method") === "CREDITO" ? "2" : "1");
-  const payDianCode = invRec.getString("payment_dian_code") || (invRec.getString("payment_method") === "CREDITO" ? "30" : "10");
-  const dueDateVal = invRec.getString("due_date") ? invRec.getString("due_date").slice(0, 10) : issueDate;
+  const payForm = String(paymentForm || (paymentMethod === "CREDITO" ? "2" : "1"));
+  const payDianCode = String(paymentDianCode || (payForm === "2" ? "30" : (paymentMethod === "TRANSFERENCIA" ? "47" : "10")));
+  const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
 
   xml += `
   <cac:PaymentMeans>
@@ -1067,7 +1071,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     isDS,
     isNDS,
     sinReferencia,
-    txDescription
+    txDescription,
+    paymentForm,
+    paymentDianCode,
+    paymentMethod
   }) {
     const dec = (val) => Number(val || 0).toFixed(2);
     const decPrice = (val, qty, subtotal) => {
@@ -1580,14 +1587,18 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     }
 
     // 10. MEP Block
-    let mep1 = "10";
-    let mep2 = "1";
+    const payForm = String(paymentForm || (paymentMethod === 'CREDITO' ? '2' : '1'));
+    const payDianCode = String(paymentDianCode || (payForm === '2' ? '30' : (paymentMethod === 'TRANSFERENCIA' ? '47' : '10')));
+    let mep1 = payDianCode;
+    let mep2 = payForm;
+    const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
+
     if (isDS) {
       xml += `
   <MEP>
     <MEP_1>${mep1}</MEP_1>
     <MEP_2>${mep2}</MEP_2>
-    <MEP_3>${issueDate}</MEP_3>
+    <MEP_3>${mep2 === '2' ? dueDateVal : issueDate}</MEP_3>
   </MEP>`;
     } else if ((isNC || isND) && sinReferencia) {
       xml += `
@@ -1597,11 +1608,20 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     <MEP_3>${issueDate}</MEP_3>
   </MEP>`;
     } else {
-      xml += `
+      if (mep2 === '2') {
+        xml += `
   <MEP>
     <MEP_1>${mep1}</MEP_1>
-    <MEP_2>${mep2}</MEP_2>
+    <MEP_2>2</MEP_2>
+    <MEP_3>${dueDateVal}</MEP_3>
   </MEP>`;
+      } else {
+        xml += `
+  <MEP>
+    <MEP_1>${mep1}</MEP_1>
+    <MEP_2>1</MEP_2>
+  </MEP>`;
+      }
     }
 
     // 11. CDN Block & SNO Block
@@ -1735,7 +1755,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     crossDocRef,
     clTec,
     cajaName,
-    mandante
+    mandante,
+    paymentForm,
+    paymentDianCode,
+    paymentMethod
   }) {
     const dec = (val) => Number(val || 0).toFixed(2);
     const decPrice = (val, qty, subtotal) => {
@@ -2080,13 +2103,26 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   </DRF>`;
 
     // 10. MEP Block
-    let mep1 = "10";
-    let mep2 = "1";
-    xml += `
+    const payForm = String(paymentForm || (paymentMethod === 'CREDITO' ? '2' : '1'));
+    const payDianCode = String(paymentDianCode || (payForm === '2' ? '30' : (paymentMethod === 'TRANSFERENCIA' ? '47' : '10')));
+    let mep1 = payDianCode;
+    let mep2 = payForm;
+    const dueDateVal = dueDate ? String(dueDate).slice(0, 10) : issueDate;
+
+    if (mep2 === '2') {
+      xml += `
   <MEP>
     <MEP_1>${mep1}</MEP_1>
-    <MEP_2>${mep2}</MEP_2>
+    <MEP_2>2</MEP_2>
+    <MEP_3>${dueDateVal}</MEP_3>
   </MEP>`;
+    } else {
+      xml += `
+  <MEP>
+    <MEP_1>${mep1}</MEP_1>
+    <MEP_2>1</MEP_2>
+  </MEP>`;
+    }
 
     // 12. ITE Blocks
     for (let idx = 0; idx < items.length; idx++) {
@@ -2162,6 +2198,9 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       return;
     }
     
+    let docRecord = null;
+    let realTxId = null;
+
     try {
       let tx = null;
     let purchaseInv = null;
@@ -2189,7 +2228,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       return;
     }
 
-    const realTxId = tx.id;
+    realTxId = tx.id;
     
     let txType = null;
     let customer = null;
@@ -2217,7 +2256,6 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     }
     
     // Check or create einvoice_docs
-    let docRecord;
     try {
       docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + realTxId + "'");
       if (docRecord.getString("status") === "aceptada") {
@@ -2611,6 +2649,15 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       }
     }
 
+    let paymentForm = "1";
+    let paymentDianCode = "10";
+    let paymentMethod = "EFECTIVO";
+    if (invoice) {
+      paymentForm = invoice.getString("payment_form") || (invoice.getString("payment_method") === "CREDITO" ? "2" : "1");
+      paymentDianCode = invoice.getString("payment_dian_code") || (paymentForm === "2" ? "30" : (invoice.getString("payment_method") === "TRANSFERENCIA" ? "47" : "10"));
+      paymentMethod = invoice.getString("payment_method") || (paymentForm === "2" ? "CREDITO" : "EFECTIVO");
+    }
+
     let xml = "";
     if (einvoiceMethod === "facturatech") {
       if (isPOS) {
@@ -2643,7 +2690,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           customer,
           clTec,
           cajaName,
-          mandante: mandanteInfo
+          mandante: mandanteInfo,
+          paymentForm,
+          paymentDianCode,
+          paymentMethod
         });
       } else {
         xml = buildFtechXml({
@@ -2727,7 +2777,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
             const invNotes = invoice ? (invoice.getString("notes") || "") : "";
             return txDesc.includes("[SIN_REFERENCIA]") || invNotes.includes("[SIN_REFERENCIA]");
           })(),
-          txDescription: tx ? tx.getString("description") : ""
+          txDescription: tx ? tx.getString("description") : "",
+          paymentForm,
+          paymentDianCode,
+          paymentMethod
         });
       }
     } else {
@@ -2735,6 +2788,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         documentType: (isNC ? 'CreditNote' : (isND ? 'DebitNote' : 'Invoice')),
         documentNumber: docNumber,
         issueDate,
+        dueDate,
         issueTime,
         dianEnvironment,
         emitterNit,
@@ -2753,7 +2807,10 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         ivaTotal,
         total,
         softwareId,
-        mandante: mandanteInfo
+        mandante: mandanteInfo,
+        paymentForm,
+        paymentDianCode,
+        paymentMethod
       });
     }
 
@@ -2869,7 +2926,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
               
               console.log("[GRAVY HOOK] Intento " + pollAttempts + " - Estado obtenido: " + currentStatus);
               
-              if (currentStatus === "aceptada") {
+              if (currentStatus === "aceptada" || currentStatus === "rechazada") {
                 break;
               }
             }
@@ -2984,16 +3041,23 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     
   } catch (err) {
     console.error("[GRAVY HOOK] Error al emitir a la DIAN:", err);
+    const rawError = String(err.message || err);
     if (docRecord) {
       try {
         docRecord.set("status", "rechazada");
-        docRecord.set("dian_response", "Error de emisión: " + String(err.message || err));
+        docRecord.set("dian_response", rawError);
         $app.save(docRecord);
       } catch (saveErr) {
         console.error("[GRAVY HOOK] Error al guardar error en docRecord:", saveErr);
       }
     }
-    e.json(400, { message: "Error al procesar la emisión DIAN: " + (err.message || String(err)) });
+    e.json(400, {
+      success: false,
+      message: rawError,
+      providerError: rawError,
+      dianResponse: rawError,
+      error: rawError
+    });
     return;
   }
 });
@@ -3641,7 +3705,14 @@ function sendInvoiceEmailHelper(txId, customEmail) {
     
   } catch (err) {
     console.error("[GRAVY HOOK] Error al consultar estado Facturatech:", err);
-    e.json(500, { message: "Error al consultar estado Facturatech: " + err.message });
+    const rawError = String(err.message || err);
+    e.json(400, {
+      success: false,
+      message: rawError,
+      providerError: rawError,
+      dianResponse: rawError,
+      error: rawError
+    });
   }
 });
 
@@ -4402,10 +4473,64 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
     const ftechPassword = getNominaSetting("ftech_password", "");
     const ftechEnvironment = getNominaSetting("ftech_environment", "demo");
 
-    const prefijo = rec.getString("prefijo") || "NOM";
-    const consecutivo = rec.getInt("consecutivo") || 1;
-    const xmlContent = rec.getString("xml_generado") || "";
+    let reassignConsecutive = false;
+    if (body.reassignConsecutive === true || body.reassignConsecutive === 'true') {
+      reassignConsecutive = true;
+    }
+
+    let prefijo = rec.getString("prefijo") || "NOM";
+    let consecutivo = rec.getInt("consecutivo") || 1;
+    let xmlContent = rec.getString("xml_generado") || "";
     let cufe = rec.getString("cufe") || "";
+
+    if (reassignConsecutive) {
+      try {
+        let activeNeRes = null;
+        try {
+          activeNeRes = $app.findFirstRecordByFilter("dian_resolutions", "document_type = 'NE' && active = true");
+        } catch (_) {}
+
+        let nextNum = 1;
+        if (activeNeRes) {
+          prefijo = (activeNeRes.getString("prefix") || prefijo || "NOM").trim();
+          nextNum = activeNeRes.getInt("current_number") || 1;
+          activeNeRes.set("current_number", nextNum + 1);
+          $app.save(activeNeRes);
+        } else {
+          try {
+            const maxPayrolls = $app.findRecordsByFilter("electronic_payrolls", "1=1", "-consecutivo", 1);
+            if (maxPayrolls && maxPayrolls.length > 0) {
+              nextNum = (maxPayrolls[0].getInt("consecutivo") || 0) + 1;
+            }
+          } catch (_) {}
+        }
+
+        consecutivo = nextNum;
+        rec.set("consecutivo", consecutivo);
+        rec.set("prefijo", prefijo);
+        rec.set("ftech_transaction_id", "");
+        rec.set("cufe", "");
+        rec.set("estado_dian", "PENDIENTE");
+
+        // Actualizar consecutivo y prefijo en el XML generado
+        xmlContent = xmlContent.replace(/Consecutivo="[0-9]+"/, `Consecutivo="${consecutivo}"`)
+                               .replace(/Numero="[A-Za-z0-9_-]+"/, `Numero="${prefijo}${consecutivo}"`)
+                               .replace(/Prefijo="[A-Za-z0-9_-]+"/, `Prefijo="${prefijo}"`);
+        rec.set("xml_generado", xmlContent);
+        $app.save(rec);
+        console.log(`[GRAVY HOOK] Consecutivo reasignado bajo confirmación de usuario a: ${prefijo}${consecutivo}`);
+      } catch (reassignErr) {
+        console.error("[GRAVY HOOK] Error al reasignar consecutivo:", reassignErr);
+      }
+    }
+
+    // Sanitización CUNE para Facturatech: el CUNE debe ir vacío CUNE="" para que el proveedor tecnológico lo selle
+    if (einvoiceMethod === "facturatech" && xmlContent) {
+      xmlContent = xmlContent.replace(/\bCUNE="[^"]*"/g, 'CUNE=""');
+      // Proteger EncripCUNE con espacio 'EncripCUNE ="CUNE-SHA384"' para evitar que cualquier versión previa del hub lo mutile
+      xmlContent = xmlContent.replace(/EncripCUNE\s*=\s*"[^"]*"/g, 'EncripCUNE ="CUNE-SHA384"');
+      rec.set("xml_generado", xmlContent);
+    }
 
     if (einvoiceMethod === "facturatech") {
       if (!ftechUsername) {
@@ -4442,8 +4567,9 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
           errDetails = parsed.error || parsed.message || resHub.raw;
         } catch (_) {}
         rec.set("estado_dian", "RECHAZADO");
+        rec.set("dian_response", "Error Hub Facturatech: " + errDetails);
         $app.save(rec);
-        e.json(resHub.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error Hub Facturatech: " + errDetails });
+        e.json(resHub.statusCode || 500, { success: false, status: "RECHAZADO", message: "Error Hub Facturatech: " + errDetails, consecutivo, prefijo });
         return;
       }
 
@@ -4503,6 +4629,7 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
       }
 
       rec.set("estado_dian", finalStatus);
+      rec.set("dian_response", statusMsg);
       rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
       $app.save(rec);
 
@@ -4510,6 +4637,8 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
         success: true,
         status: finalStatus,
         cufe: cufe,
+        consecutivo: consecutivo,
+        prefijo: prefijo,
         transactionID: transId,
         message: statusMsg
       });
@@ -4622,6 +4751,7 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
           }
 
           rec.set("estado_dian", estadoFinal);
+          if (sData.message) rec.set("dian_response", sData.message);
           $app.save(rec);
           e.json(200, { success: true, status: estadoFinal, message: sData.message || `Estado DIAN: ${estadoFinal}` });
           return;

@@ -1361,11 +1361,16 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
   (window as any).poQuickAddProduct = async function() {
     const PO_UNITS_LOCAL = ['UND', 'KG', 'L', 'M', 'M2', 'M3', 'PAQ', 'CJ', 'HORA', 'MES'];
 
-    const rawCfg = await (window as any).API.getSetting('product_config_v1');
+    const [rawCfg, defaultProductConfig] = await Promise.all([
+      (window as any).API.getSetting('product_config_v1').catch(() => null),
+      (window as any).API.getDefaultProductAccountingAndTaxConfig().catch(() => null),
+    ]);
     let productCfg = { auto_code: false, prefix: 'P-', consecutive: 1, digits: 4 };
     if (rawCfg) {
       try { productCfg = JSON.parse(rawCfg); } catch (_) {}
     }
+
+    const defaultIva = Number(defaultProductConfig?.defaultIvaRate ?? 19);
 
     let overlay = document.getElementById('po-quick-prod-overlay');
     if (!overlay) {
@@ -1423,13 +1428,13 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
           <div>
             <label style="display:block;font-size:11px;font-weight:600;color:#6B7280;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em">IVA %</label>
             <select id="po-qap-iva" class="form-input">
-              <option value="0" selected>0 %</option>
-              <option value="5">5 %</option>
-              <option value="19">19 %</option>
+              <option value="19" ${defaultIva === 19 ? 'selected' : ''}>19 %</option>
+              <option value="5" ${defaultIva === 5 ? 'selected' : ''}>5 %</option>
+              <option value="0" ${defaultIva === 0 ? 'selected' : ''}>0 %</option>
             </select>
           </div>
         </div>
-        <p style="margin:0 20px 12px;font-size:11px;color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>El producto se creará con los campos mínimos. Puedes completar cuentas contables y datos adicionales desde el módulo de Productos.</p>
+        <p style="margin:0 20px 12px;font-size:11px;color:#059669"><i class="fas fa-shield-halved mr-1"></i>El producto se creará con las cuentas contables de facturación (ingresos, costos e inventario) y el IVA predeterminado de inventarios.</p>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid #F0F0F0;background:#F9FAFB">
           <div id="po-qap-error" style="font-size:12px;color:#DC2626;display:none"></div>
           <div class="flex gap-2" style="margin-left:auto">
@@ -1526,6 +1531,9 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
           sale_price: costPrice,
           iva_rate: ivaRate,
           active: true,
+          income_account_id: defaultProductConfig?.incomeAccountId || '',
+          cost_account_id: defaultProductConfig?.costAccountId || '',
+          inventory_account_id: type === 'BIEN' ? (defaultProductConfig?.inventoryAccountId || '') : '',
         });
 
         // Actualizar el caché en memoria del formulario

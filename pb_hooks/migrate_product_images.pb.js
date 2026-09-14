@@ -7,21 +7,15 @@ routerAdd("GET", "/api/gravy/migrate-product-images", (e) => {
   return e.json(200, { status: "ok" });
 });
 
-onAfterBootstrap((e) => {
+onBootstrap((e) => {
+  e.next();
+
   try {
     const col = $app.findCollectionByNameOrId("products");
     if (!col) return;
 
-    let hasImage = false;
-    const fields = col.fields;
-    for (let i = 0; i < fields.length; i++) {
-      if (fields[i].name === "image") {
-        hasImage = true;
-        break;
-      }
-    }
-
-    if (!hasImage) {
+    const existing = new Set(col.fields.fieldNames());
+    if (!existing.has("image")) {
       col.fields.add(new Field({
         name: "image",
         type: "file",

@@ -207,6 +207,59 @@ function showToast(msg, type = 'success', duration = 3500) {
   }, duration);
 }
 
+function getDianErrorMessage(err: any, fallback = 'Error en la comunicación con el proveedor tecnológico / DIAN'): string {
+  if (!err) return fallback;
+
+  let raw = '';
+
+  // 1. Inspect PocketBase ClientResponseError data
+  if (err.data && typeof err.data === 'object') {
+    raw = err.data.providerError || err.data.dianResponse || err.data.message || err.data.error || '';
+  }
+
+  // 2. Inspect err.response
+  if (!raw && err.response && typeof err.response === 'object') {
+    raw = err.response.data?.providerError ||
+          err.response.data?.dianResponse ||
+          err.response.data?.message ||
+          err.response.data?.error ||
+          err.response.message || '';
+  }
+
+  // 3. Inspect err.message directly
+  if (!raw && typeof err.message === 'string') {
+    const m = err.message.trim();
+    if (!m.includes('status of 400') &&
+        !m.includes('status of 500') &&
+        !m.includes('Failed to load resource') &&
+        !m.includes('ClientResponseError') &&
+        !m.includes('Failed to fetch')) {
+      raw = m;
+    }
+  }
+
+  // Fallback if nothing specific was found
+  if (!raw) {
+    if (typeof err === 'string' && err.trim()) raw = err;
+    else raw = fallback;
+  }
+
+  // Clean common backend wrapper prefixes to surface the pure provider/DIAN message
+  const clean = String(raw)
+    .replace(/^Error al procesar la emisión DIAN:\s*/i, '')
+    .replace(/^Error de emisión:\s*/i, '')
+    .replace(/^Facturatech Hub Error \(\d+\):\s*/i, '')
+    .replace(/^Error al consultar estado Facturatech:\s*/i, '')
+    .trim();
+
+  return clean || fallback;
+}
+
+function showDianErrorToast(err: any, prefixTitle = 'Facturatech / DIAN') {
+  const msg = getDianErrorMessage(err);
+  showToast(`${prefixTitle}: ${msg}`, 'error', 8500);
+}
+
 function getIconForDocumentTitle(title: string): string {
   const t = title.toLowerCase();
   if (t.includes('factura') || t.includes('venta')) return 'fa-receipt';
@@ -1467,6 +1520,8 @@ function setInputVal(id, v){ const el = $(`#${id}`); if (el) el.value = v ?? '';
 (window as any).closeLineComment = closeLineComment;
 (window as any).TP_TYPES = TP_TYPES;
 (window as any).showToast = showToast;
+(window as any).getDianErrorMessage = getDianErrorMessage;
+(window as any).showDianErrorToast = showDianErrorToast;
 (window as any).translateText = translateText;
 (window as any).setInputVal = setInputVal;
 (window as any).ROLES = ROLES;

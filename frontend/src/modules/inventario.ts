@@ -828,11 +828,13 @@ async function openUnifiedInventoryConfigModal() {
     if (rawProd) prodCfg = { ...prodCfg, ...JSON.parse(rawProd) };
   } catch (_) {}
 
-  let invCfg = { allow_negative_stock: false };
+  let invCfg = { allow_negative_stock: false, default_iva_rate: 19 };
   try {
     const rawInv = await API.getSetting('inventory_settings_v1');
     if (rawInv) invCfg = { ...invCfg, ...JSON.parse(rawInv) };
   } catch (_) {}
+
+  const currentDefaultIva = Number(invCfg.default_iva_rate ?? 19);
 
   const bodyHtml = `
     <div class="space-y-4 text-left" style="font-family:'Segoe UI',sans-serif">
@@ -876,6 +878,22 @@ async function openUnifiedInventoryConfigModal() {
             <span class="text-[11px] text-gray-500 block mt-0.5">Si se activa, el sistema autorizará el registro y aplicación de salidas, traslados y ajustes negativos aun cuando la bodega de origen no cuente con existencias suficientes.</span>
           </div>
         </label>
+      </div>
+
+      <!-- Sección 3: Tarifa de IVA Predeterminada para Nuevos Productos -->
+      <div class="p-4 rounded-xl border border-gray-200 bg-gray-50/70">
+        <h4 class="font-bold text-gray-800 text-sm mb-2 flex items-center gap-2 border-b pb-2">
+          <i class="fas fa-percent text-amber-600"></i> Tarifa de IVA Predeterminada
+        </h4>
+        <p class="text-xs text-gray-500 mb-3">Tarifa de IVA que se asignará automáticamente cada vez que se cree un nuevo producto en cualquier sector del sistema (inventarios, compras, facturación, etc.).</p>
+        <div class="max-w-xs">
+          <label class="block text-[10.5px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tarifa IVA por Defecto <span class="text-red-500">*</span></label>
+          <select id="inv-cfg-default-iva" class="form-input text-xs w-full font-bold">
+            <option value="19" ${currentDefaultIva === 19 ? 'selected' : ''}>19 % — Tarifa General</option>
+            <option value="5" ${currentDefaultIva === 5 ? 'selected' : ''}>5 % — Tarifa Reducida</option>
+            <option value="0" ${currentDefaultIva === 0 ? 'selected' : ''}>0 % — Exento / Excluido</option>
+          </select>
+        </div>
       </div>
     </div>
   `;
@@ -6399,9 +6417,11 @@ async function _saveUnifiedInventoryConfig() {
     const prodConfig = { auto_code, prefix, consecutive, digits };
     await API.setSetting('product_config_v1', JSON.stringify(prodConfig));
 
-    // 2. Guardar Configuración de Stock Negativo
+    // 2. Guardar Configuración de Stock Negativo y Tarifa de IVA por Defecto
     const allow_negative_stock = (document.getElementById('inv-cfg-allow-negative') as HTMLInputElement)?.checked || false;
-    const invConfig = { allow_negative_stock };
+    const default_iva_rate_raw = parseFloat((document.getElementById('inv-cfg-default-iva') as HTMLSelectElement)?.value || '19');
+    const default_iva_rate = isNaN(default_iva_rate_raw) ? 19 : default_iva_rate_raw;
+    const invConfig = { allow_negative_stock, default_iva_rate };
     await API.setSetting('inventory_settings_v1', JSON.stringify(invConfig));
 
     showToast('Configuración de productos e inventario guardada correctamente.', 'success');

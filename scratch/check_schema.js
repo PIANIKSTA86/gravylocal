@@ -1,15 +1,6 @@
-const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./pb_data/data.db');
-
-['products', 'invoice_lines', 'inventory_movement_lines'].forEach(name => {
-  db.get(`SELECT fields FROM _collections WHERE name = '${name}'`, (err, row) => {
-    if (err) console.error(err);
-    else if (row) {
-      const fields = JSON.parse(row.fields);
-      console.log(`${name.toUpperCase()} FIELDS:`);
-      fields.forEach(f => console.log(`  - ${f.name} (${f.type})`));
-    }
-  });
-});
-
-setTimeout(() => db.close(), 1000);
+const { DatabaseSync } = require('node:sqlite');
+const db = new DatabaseSync('./pb_data/data.db');
+const col = db.prepare("SELECT * FROM _collections WHERE name = 'einvoice_docs'").get();
+console.log(Object.keys(col));
+if (col.fields) console.log('fields:', JSON.stringify(JSON.parse(col.fields), null, 2));
+if (col.schema) console.log('schema:', JSON.stringify(JSON.parse(col.schema), null, 2));

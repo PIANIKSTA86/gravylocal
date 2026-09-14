@@ -1,0 +1,54 @@
+
+==================================================
+TIMESTAMP: 2026-09-11T10:26:42.258Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://ws-dse.facturatech.co/v1/pro/
+soapAction: urn:https://ws-dse.facturatech.co/v1/pro/uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMzEzPC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA5LTExPC9FTkNfNz4KICAgIDxFTkNfOD4wNToyNjo0MS0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIAogICAgPEVOQ18xNT4xPC9FTkNfMTU+CiAgICA8RU5DXzE2PjIwMjYtMDktMTE8L0VOQ18xNj4KICAgIDxFTkNfMjA+MTwvRU5DXzIwPgogICAgPEVOQ18yMT4xMDwvRU5DXzIxPgogIDwvRU5DPgogIDxQUk8+CiAgICA8UFJPXzE+MjwvUFJPXzE+CiAgICA8UFJPXzI+MTE0NDE2MzQ3ODwvUFJPXzI+CiAgICA8UFJPXzM+MzE8L1BST18zPgogICAgPFBST182PktBUk9MIFlJU05FWSBGUkFOQ08gUVVJTlRFUk88L1BST182PgogICAgPFBST18xMD5DUiAyOCBIIDM5IDkwPC9QUk9fMTA+CiAgICA8UFJPXzExPjc2PC9QUk9fMTE+CiAgICA8UFJPXzEzPkNBTEkgLSA3NjAwMTwvUFJPXzEzPgogICAgPFBST18xND43NjAwMDE8L1BST18xND4KICAgIDxQUk9fMTU+Q088L1BST18xNT4KICAgIDxQUk9fMTk+VkFMTEUgREVMIENBVUNBIC0gNzY8L1BST18xOT4KICAgIDxQUk9fMjE+Q29sb21iaWE8L1BST18yMT4KICAgIDxQUk9fMjI+MTwvUFJPXzIyPgogICAgPFBST18yMz43NjAwMTwvUFJPXzIzPgogICAgPFRBQz4KICAgICAgPFRBQ18xPlItOTktUE48L1RBQ18xPgogICAgPC9UQUM+CiAgICA8R1RFPgogICAgICA8R1RFXzE+MDE8L0dURV8xPgogICAgICA8R1RFXzI+SVZBPC9HVEVfMj4KICAgIDwvR1RFPgogIDwvUFJPPgogIDxBRFE+CiAgICA8QURRXzE+MTwvQURRXzE+CiAgICA8QURRXzI+OTAxNDI4ODM0PC9BRFFfMj4KICAgIDxBRFFfMz4zMTwvQURRXzM+CiAgICAKICAgIDxBRFFfNj5ET01FU1RJS08gU0FTPC9BRFFfNj4KICAgIDxBRFFfMjI+MjwvQURRXzIyPgogICAgPFRDUj4KICAgICAgPFRDUl8xPlItOTktUE48L1RDUl8xPgogICAgPC9UQ1I+CiAgICA8R1RBPgogICAgICA8R1RBXzE+Wlo8L0dUQV8xPgogICAgICA8R1RBXzI+SVZBPC9HVEFfMj4KICAgIDwvR1RBPgogIDwvQURRPgogIDxUT1Q+CiAgICA8VE9UXzE+MTc1MDAwMC4wMDwvVE9UXzE+CiAgICA8VE9UXzI+Q09QPC9UT1RfMj4KICAgIDxUT1RfMz4wLjAwPC9UT1RfMz4KICAgIDxUT1RfND5DT1A8L1RPVF80PgogICAgPFRPVF81PjE3NTAwMDAuMDA8L1RPVF81PgogICAgPFRPVF82PkNPUDwvVE9UXzY+CiAgICA8VE9UXzc+MTc1MDAwMC4wMDwvVE9UXzc+CiAgICA8VE9UXzg+Q09QPC9UT1RfOD4KICA8L1RPVD4KICA8RFJGPgogICAgPERSRl8xPjE4NzY0MDk5NzczNDc0PC9EUkZfMT4KICAgIDxEUkZfMj4yMDI1LTEwLTA2PC9EUkZfMj4KICAgIDxEUkZfMz4yMDI2LTEwLTA2PC9EUkZfMz4KICAgIDxEUkZfND5EU0U8L0RSRl80PgogICAgPERSRl81PjE5NTwvRFJGXzU+CiAgICA8RFJGXzY+MTAwMDwvRFJGXzY+CiAgPC9EUkY+CiAgPE1FUD4KICAgIDxNRVBfMT4xMDwvTUVQXzE+CiAgICA8TUVQXzI+MTwvTUVQXzI+CiAgICA8TUVQXzM+MjAyNi0wOS0xMTwvTUVQXzM+CiAgPC9NRVA+CiAgPElURT4KICAgIDxJVEVfMT4xPC9JVEVfMT4KICAgIDxJVEVfMz4xLjAwPC9JVEVfMz4KICAgIDxJVEVfND5aWjwvSVRFXzQ+CiAgICA8SVRFXzU+MTc1MDAwMC4wMDwvSVRFXzU+CiAgICA8SVRFXzY+Q09QPC9JVEVfNj4KICAgIDxJVEVfNz4xNzUwMDAwLjAwPC9JVEVfNz4KICAgIDxJVEVfOD5DT1A8L0lURV84PgogICAgPElURV8xMT5SRVZJU09SSUEgRklTQ0FMPC9JVEVfMTE+CiAgICA8SVRFXzI3PjEuMDA8L0lURV8yNz4KICAgIDxJVEVfMjg+Wlo8L0lURV8yOD4KICAgIDxJQUU+CiAgICAgIDxJQUVfMT5SMDAxPC9JQUVfMT4KICAgICAgPElBRV8yPjk5OTwvSUFFXzI+CiAgICA8L0lBRT4KICAgIDxJQlM+CiAgICAgIDxJQlNfMT4yMDI2LTA5LTExPC9JQlNfMT4KICAgICAgPElCU18yPjE8L0lCU18yPgogICAgICA8SUJTXzM+UG9yIG9wZXJhY2nDs248L0lCU18zPgogICAgPC9JQlM+CiAgPC9JVEU+CjwvRE9DVU1FTlRPX1NPUE9SVEU+</xmlBase64>
+      </urn:uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:uploadDocumentResponse xmlns:ns1="urn:https://ws-dse.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">404</code><transactionID xsi:type="xsd:string"></transactionID><message xsi:type="xsd:string">No cuenta con creditos o ya han expirado.</message></return></ns1:uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 404
+parsedTransactionID: 
+parsedMessage: No cuenta con creditos o ya han expirado.
+
+
+==================================================
+TIMESTAMP: 2026-09-11T10:27:10.188Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: SupportDocument
+isPOS: false
+endpointUrl: https://ws-dse.facturatech.co/v1/pro/
+soapAction: urn:https://ws-dse.facturatech.co/v1/pro/uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-dse.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPERPQ1VNRU5UT19TT1BPUlRFIHhtbG5zOnhzaT0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiIHhtbG5zOnhzZD0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEiPgogIDxFTkM+CiAgICA8RU5DXzE+RFM8L0VOQ18xPgogICAgPEVOQ18yPjkwMTQyODgzNDwvRU5DXzI+CiAgICAKICAgIDxFTkNfND5VQkwgMi4xPC9FTkNfND4KICAgIDxFTkNfNT5ESUFOIDIuMTwvRU5DXzU+CiAgICA8RU5DXzY+RFNFMzEzPC9FTkNfNj4KICAgIDxFTkNfNz4yMDI2LTA5LTExPC9FTkNfNz4KICAgIDxFTkNfOD4wNToyNzowOS0wNTowMDwvRU5DXzg+CiAgICA8RU5DXzk+MDU8L0VOQ185PgogICAgPEVOQ18xMD5DT1A8L0VOQ18xMD4KICAgIAogICAgPEVOQ18xNT4xPC9FTkNfMTU+CiAgICA8RU5DXzE2PjIwMjYtMDktMTE8L0VOQ18xNj4KICAgIDxFTkNfMjA+MTwvRU5DXzIwPgogICAgPEVOQ18yMT4xMDwvRU5DXzIxPgogIDwvRU5DPgogIDxQUk8+CiAgICA8UFJPXzE+MjwvUFJPXzE+CiAgICA8UFJPXzI+MTE0NDE2MzQ3ODwvUFJPXzI+CiAgICA8UFJPXzM+MzE8L1BST18zPgogICAgPFBST182PktBUk9MIFlJU05FWSBGUkFOQ08gUVVJTlRFUk88L1BST182PgogICAgPFBST18xMD5DUiAyOCBIIDM5IDkwPC9QUk9fMTA+CiAgICA8UFJPXzExPjc2PC9QUk9fMTE+CiAgICA8UFJPXzEzPkNBTEkgLSA3NjAwMTwvUFJPXzEzPgogICAgPFBST18xND43NjAwMDE8L1BST18xND4KICAgIDxQUk9fMTU+Q088L1BST18xNT4KICAgIDxQUk9fMTk+VkFMTEUgREVMIENBVUNBIC0gNzY8L1BST18xOT4KICAgIDxQUk9fMjE+Q29sb21iaWE8L1BST18yMT4KICAgIDxQUk9fMjI+MTwvUFJPXzIyPgogICAgPFBST18yMz43NjAwMTwvUFJPXzIzPgogICAgPFRBQz4KICAgICAgPFRBQ18xPlItOTktUE48L1RBQ18xPgogICAgPC9UQUM+CiAgICA8R1RFPgogICAgICA8R1RFXzE+MDE8L0dURV8xPgogICAgICA8R1RFXzI+SVZBPC9HVEVfMj4KICAgIDwvR1RFPgogIDwvUFJPPgogIDxBRFE+CiAgICA8QURRXzE+MTwvQURRXzE+CiAgICA8QURRXzI+OTAxNDI4ODM0PC9BRFFfMj4KICAgIDxBRFFfMz4zMTwvQURRXzM+CiAgICAKICAgIDxBRFFfNj5ET01FU1RJS08gU0FTPC9BRFFfNj4KICAgIDxBRFFfMjI+MjwvQURRXzIyPgogICAgPFRDUj4KICAgICAgPFRDUl8xPlItOTktUE48L1RDUl8xPgogICAgPC9UQ1I+CiAgICA8R1RBPgogICAgICA8R1RBXzE+Wlo8L0dUQV8xPgogICAgICA8R1RBXzI+SVZBPC9HVEFfMj4KICAgIDwvR1RBPgogIDwvQURRPgogIDxUT1Q+CiAgICA8VE9UXzE+MTc1MDAwMC4wMDwvVE9UXzE+CiAgICA8VE9UXzI+Q09QPC9UT1RfMj4KICAgIDxUT1RfMz4wLjAwPC9UT1RfMz4KICAgIDxUT1RfND5DT1A8L1RPVF80PgogICAgPFRPVF81PjE3NTAwMDAuMDA8L1RPVF81PgogICAgPFRPVF82PkNPUDwvVE9UXzY+CiAgICA8VE9UXzc+MTc1MDAwMC4wMDwvVE9UXzc+CiAgICA8VE9UXzg+Q09QPC9UT1RfOD4KICA8L1RPVD4KICA8RFJGPgogICAgPERSRl8xPjE4NzY0MDk5NzczNDc0PC9EUkZfMT4KICAgIDxEUkZfMj4yMDI1LTEwLTA2PC9EUkZfMj4KICAgIDxEUkZfMz4yMDI2LTEwLTA2PC9EUkZfMz4KICAgIDxEUkZfND5EU0U8L0RSRl80PgogICAgPERSRl81PjE5NTwvRFJGXzU+CiAgICA8RFJGXzY+MTAwMDwvRFJGXzY+CiAgPC9EUkY+CiAgPE1FUD4KICAgIDxNRVBfMT4xMDwvTUVQXzE+CiAgICA8TUVQXzI+MTwvTUVQXzI+CiAgICA8TUVQXzM+MjAyNi0wOS0xMTwvTUVQXzM+CiAgPC9NRVA+CiAgPElURT4KICAgIDxJVEVfMT4xPC9JVEVfMT4KICAgIDxJVEVfMz4xLjAwPC9JVEVfMz4KICAgIDxJVEVfND5aWjwvSVRFXzQ+CiAgICA8SVRFXzU+MTc1MDAwMC4wMDwvSVRFXzU+CiAgICA8SVRFXzY+Q09QPC9JVEVfNj4KICAgIDxJVEVfNz4xNzUwMDAwLjAwPC9JVEVfNz4KICAgIDxJVEVfOD5DT1A8L0lURV84PgogICAgPElURV8xMT5SRVZJU09SSUEgRklTQ0FMPC9JVEVfMTE+CiAgICA8SVRFXzI3PjEuMDA8L0lURV8yNz4KICAgIDxJVEVfMjg+Wlo8L0lURV8yOD4KICAgIDxJQUU+CiAgICAgIDxJQUVfMT5SMDAxPC9JQUVfMT4KICAgICAgPElBRV8yPjk5OTwvSUFFXzI+CiAgICA8L0lBRT4KICAgIDxJQlM+CiAgICAgIDxJQlNfMT4yMDI2LTA5LTExPC9JQlNfMT4KICAgICAgPElCU18yPjE8L0lCU18yPgogICAgICA8SUJTXzM+UG9yIG9wZXJhY2nDs248L0lCU18zPgogICAgPC9JQlM+CiAgPC9JVEU+CjwvRE9DVU1FTlRPX1NPUE9SVEU+</xmlBase64>
+      </urn:uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:uploadDocumentResponse xmlns:ns1="urn:https://ws-dse.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">404</code><transactionID xsi:type="xsd:string"></transactionID><message xsi:type="xsd:string">No cuenta con creditos o ya han expirado.</message></return></ns1:uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 404
+parsedTransactionID: 
+parsedMessage: No cuenta con creditos o ya han expirado.
+

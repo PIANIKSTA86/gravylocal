@@ -1,0 +1,154 @@
+
+==================================================
+TIMESTAMP: 2026-09-11T17:01:08.064Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: NominaIndividual
+isPOS: undefined
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+soapAction: urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPCEtLVZlcnNpb24gIzEuMC0tPgo8Tm9taW5hSW5kaXZpZHVhbCB4bWxucz0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwiCiB4bWxuczp4cz0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiCiB4bWxuczpkcz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC8wOS94bWxkc2lnIyIKIHhtbG5zOmV4dD0idXJuOm9hc2lzOm5hbWVzOnNwZWNpZmljYXRpb246dWJsOnNjaGVtYTp4c2Q6Q29tbW9uRXh0ZW5zaW9uQ29tcG9uZW50cy0yIgogeG1sbnM6eGFkZXM9Imh0dHA6Ly91cmkuZXRzaS5vcmcvMDE5MDMvdjEuMy4yIyIKIHhtbG5zOnhhZGVzMTQxPSJodHRwOi8vdXJpLmV0c2kub3JnLzAxOTAzL3YxLjQuMSMiCiB4bWxuczp4c2k9Imh0dHA6Ly93d3cudzMub3JnLzIwMDEvWE1MU2NoZW1hLWluc3RhbmNlIgogU2NoZW1hTG9jYXRpb249IiIKIHhzaTpzY2hlbWFMb2NhdGlvbj0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwgTm9taW5hSW5kaXZpZHVhbEVsZWN0cm9uaWNhWFNELnhzZCI+CjxleHQ6VUJMRXh0ZW5zaW9ucz4KPC9leHQ6VUJMRXh0ZW5zaW9ucz4KPFBlcmlvZG8gRmVjaGFJbmdyZXNvPSIyMDI2LTAxLTAxIiBUaWVtcG9MYWJvcmFkbz0iMzAiIEZlY2hhTGlxdWlkYWNpb25JbmljaW89IjIwMjYtMDgtMDEiIEZlY2hhTGlxdWlkYWNpb25GaW49IjIwMjYtMDgtMzEiIEZlY2hhR2VuPSIyMDI2LTA5LTA5Ii8+CjxOdW1lcm9TZWN1ZW5jaWFYTUwgQ29kaWdvVHJhYmFqYWRvcj0iMjk2ODI2NzUiIFByZWZpam89Ik5PTSIgQ29uc2VjdXRpdm89IjM1OCIgTnVtZXJvPSJOT00zNTgiIC8+CjxMdWdhckdlbmVyYWNpb25YTUwgUGFpcz0iQ08iIERlcGFydGFtZW50b0VzdGFkbz0iNzYiIE11bmljaXBpb0NpdWRhZD0iNzYwMDEiIElkaW9tYT0iZXMiIC8+CjxJbmZvcm1hY2lvbkdlbmVyYWwgVmVyc2lvbj0iVjEuMDogRG9jdW1lbnRvIFNvcG9ydGUgZGUgUGFnbyBkZSBOw7NtaW5hIEVsZWN0csOzbmljYSIgQW1iaWVudGU9IjEiIENVTkU9IiIgRW5jcmlwQ1VORT0iIiBGZWNoYUdlbj0iMjAyNi0wOS0wOSIgSG9yYUdlbj0iMTU6MDg6MDctMDU6MDAiIFRpcG9YTUw9IjEwMiIgUGVyaW9kb05vbWluYT0iNSIgVGlwb01vbmVkYT0iQ09QIiBUUk09IjEuMDAiLz4KPEVtcGxlYWRvciBSYXpvblNvY2lhbD0iRE9NRVNUSUtPIFNBUyIgTklUPSI5MDE0Mjg4MzQiIERWPSIwIiBQYWlzPSJDTyIgRGVwYXJ0YW1lbnRvRXN0YWRvPSI3NiIgTXVuaWNpcGlvQ2l1ZGFkPSI3NjAwMSIgRGlyZWNjaW9uPSJDTCAyOSA1IDUwIiAvPgo8VHJhYmFqYWRvciBUaXBvVHJhYmFqYWRvcj0iMDEiIFN1YlRpcG9UcmFiYWphZG9yPSIwMCIgQWx0b1JpZXNnb1BlbnNpb249ImZhbHNlIiBUaXBvRG9jdW1lbnRvPSIxMyIgTnVtZXJvRG9jdW1lbnRvPSIyOTY4MjY3NSIgUHJpbWVyQXBlbGxpZG89Ik1PTkNBREEgQVJNSUxMQSIgU2VndW5kb0FwZWxsaWRvPSJBUk1JTExBIiBQcmltZXJOb21icmU9IkFOR0VMSUNBIiBMdWdhclRyYWJham9QYWlzPSJDTyIgTHVnYXJUcmFiYWpvRGVwYXJ0YW1lbnRvRXN0YWRvPSI3NiIgTHVnYXJUcmFiYWpvTXVuaWNpcGlvQ2l1ZGFkPSI3NjUyMCIgTHVnYXJUcmFiYWpvRGlyZWNjaW9uPSJDUiAyNCBBIDE5IDM3IiBTYWxhcmlvSW50ZWdyYWw9ImZhbHNlIiBUaXBvQ29udHJhdG89IjIiIFN1ZWxkbz0iMjE3NDAwMC4wMCIgQ29kaWdvVHJhYmFqYWRvcj0iMjk2ODI2NzUiIC8+CiAgPFBhZ28gRm9ybWE9IjEiIE1ldG9kbz0iMTAiIC8+CjxGZWNoYXNQYWdvcz4KPEZlY2hhUGFnbz4yMDI2LTA4LTMxPC9GZWNoYVBhZ28+CjwvRmVjaGFzUGFnb3M+CjxEZXZlbmdhZG9zPgogIDxCYXNpY28gRGlhc1RyYWJhamFkb3M9IjMwIiBTdWVsZG9UcmFiYWphZG89IjIxNzQwMDAuMDAiIC8+CiAgPFRyYW5zcG9ydGUgQXV4aWxpb1RyYW5zcG9ydGU9IjI0OTA5NS4wMCIgVmlhdGljb01hbnVBbG9qUz0iMC4wMCIgVmlhdGljb01hbnVBbG9qTlM9IjAuMDAiIC8+CjwvRGV2ZW5nYWRvcz4KPERlZHVjY2lvbmVzPgogIDxTYWx1ZCBQb3JjZW50YWplPSI0LjAwIiBEZWR1Y2Npb249Ijg2OTYwLjAwIiAvPgogIDxGb25kb1BlbnNpb24gUG9yY2VudGFqZT0iNC4wMCIgRGVkdWNjaW9uPSI4Njk2MC4wMCIgLz4KPC9EZWR1Y2Npb25lcz4KPERldmVuZ2Fkb3NUb3RhbD4yNDIzMDk1LjAwPC9EZXZlbmdhZG9zVG90YWw+CjxEZWR1Y2Npb25lc1RvdGFsPjE3MzkyMC4wMDwvRGVkdWNjaW9uZXNUb3RhbD4KPENvbXByb2JhbnRlVG90YWw+MjI0OTE3NS4wMDwvQ29tcHJvYmFudGVUb3RhbD4KPC9Ob21pbmFJbmRpdmlkdWFsPg==</xmlBase64>
+      </urn:FtechAction.uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.uploadDocumentResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">200</code><transactionID xsi:type="xsd:string">8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4</transactionID><error xsi:type="xsd:string">El comprobante ha sido recibido correctamente.</error></return></ns1:FtechAction.uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 200
+parsedTransactionID: 8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4
+parsedMessage: El comprobante ha sido recibido correctamente.
+
+
+==================================================
+TIMESTAMP: 2026-09-11T17:01:08.225Z
+ACTION: FACTURATECH CHECK-STATUS (PROCESSING)
+==================================================
+provider: Facturatech
+transId: 8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4
+prefix: NOM
+folio: 358
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">201</code><documentBase64 xsi:nil="true" xsi:type="xsd:string"/><arDocument xsi:nil="true" xsi:type="xsd:string"/><message xsi:type="xsd:string">El comprobante NOM358 está en proceso</message><messageError xsi:type="xsd:string"></messageError></return></ns1:FtechAction.documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 201
+parsedStatus: 
+parsedMessage: El comprobante NOM358 está en proceso
+
+
+==================================================
+TIMESTAMP: 2026-09-11T17:02:10.613Z
+ACTION: FACTURATECH CHECK-STATUS (REJECTED)
+==================================================
+provider: Facturatech
+transId: 8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4
+prefix: NOM
+folio: 358
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">8bed4353f79a0264cd483443494c8207bf42ab83f6f03ce5bd2f45f1cd542ee4</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">409</code><documentBase64 xsi:type="xsd:string"></documentBase64><message xsi:type="xsd:string">El comprobante NOM358 ha sido rechazado</message><messageError xsi:type="xsd:string"></messageError></return></ns1:FtechAction.documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 409
+parsedStatus: 
+parsedMessage: El comprobante NOM358 ha sido rechazado
+
+
+==================================================
+TIMESTAMP: 2026-09-11T17:32:21.942Z
+ACTION: FACTURATECH UPLOAD-AND-SEND
+==================================================
+provider: Facturatech
+documentType: NominaIndividual
+isPOS: undefined
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+soapAction: urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.uploadDocument
+soapEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <xmlBase64 xsi:type="xsd:string">PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPCEtLVZlcnNpb24gIzEuMC0tPgo8Tm9taW5hSW5kaXZpZHVhbCB4bWxucz0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwiCiB4bWxuczp4cz0iaHR0cDovL3d3dy53My5vcmcvMjAwMS9YTUxTY2hlbWEtaW5zdGFuY2UiCiB4bWxuczpkcz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC8wOS94bWxkc2lnIyIKIHhtbG5zOmV4dD0idXJuOm9hc2lzOm5hbWVzOnNwZWNpZmljYXRpb246dWJsOnNjaGVtYTp4c2Q6Q29tbW9uRXh0ZW5zaW9uQ29tcG9uZW50cy0yIgogeG1sbnM6eGFkZXM9Imh0dHA6Ly91cmkuZXRzaS5vcmcvMDE5MDMvdjEuMy4yIyIKIHhtbG5zOnhhZGVzMTQxPSJodHRwOi8vdXJpLmV0c2kub3JnLzAxOTAzL3YxLjQuMSMiCiB4bWxuczp4c2k9Imh0dHA6Ly93d3cudzMub3JnLzIwMDEvWE1MU2NoZW1hLWluc3RhbmNlIgogU2NoZW1hTG9jYXRpb249IiIKIHhzaTpzY2hlbWFMb2NhdGlvbj0iZGlhbjpnb3Y6Y286ZmFjdHVyYWVsZWN0cm9uaWNhOk5vbWluYUluZGl2aWR1YWwgTm9taW5hSW5kaXZpZHVhbEVsZWN0cm9uaWNhWFNELnhzZCI+CjxleHQ6VUJMRXh0ZW5zaW9ucz4KPC9leHQ6VUJMRXh0ZW5zaW9ucz4KPFBlcmlvZG8gRmVjaGFJbmdyZXNvPSIyMDI2LTAxLTAxIiBUaWVtcG9MYWJvcmFkbz0iMzAiIEZlY2hhTGlxdWlkYWNpb25JbmljaW89IjIwMjYtMDgtMDEiIEZlY2hhTGlxdWlkYWNpb25GaW49IjIwMjYtMDgtMzEiIEZlY2hhR2VuPSIyMDI2LTA5LTA5Ii8+CjxOdW1lcm9TZWN1ZW5jaWFYTUwgQ29kaWdvVHJhYmFqYWRvcj0iMjk2ODI2NzUiIFByZWZpam89Ik5PTSIgQ29uc2VjdXRpdm89IjM1OCIgTnVtZXJvPSJOT00zNTgiIC8+CjxMdWdhckdlbmVyYWNpb25YTUwgUGFpcz0iQ08iIERlcGFydGFtZW50b0VzdGFkbz0iNzYiIE11bmljaXBpb0NpdWRhZD0iNzYwMDEiIElkaW9tYT0iZXMiIC8+CjxJbmZvcm1hY2lvbkdlbmVyYWwgVmVyc2lvbj0iVjEuMDogRG9jdW1lbnRvIFNvcG9ydGUgZGUgUGFnbyBkZSBOw7NtaW5hIEVsZWN0csOzbmljYSIgQW1iaWVudGU9IjEiIENVTkU9IiIgRW5jcmlwQ1VORSA9IkNVTkUtU0hBMzg0IiBGZWNoYUdlbj0iMjAyNi0wOS0wOSIgSG9yYUdlbj0iMTU6MDg6MDctMDU6MDAiIFRpcG9YTUw9IjEwMiIgUGVyaW9kb05vbWluYT0iNSIgVGlwb01vbmVkYT0iQ09QIiBUUk09IjEuMDAiLz4KPEVtcGxlYWRvciBSYXpvblNvY2lhbD0iRE9NRVNUSUtPIFNBUyIgTklUPSI5MDE0Mjg4MzQiIERWPSIwIiBQYWlzPSJDTyIgRGVwYXJ0YW1lbnRvRXN0YWRvPSI3NiIgTXVuaWNpcGlvQ2l1ZGFkPSI3NjAwMSIgRGlyZWNjaW9uPSJDTCAyOSA1IDUwIiAvPgo8VHJhYmFqYWRvciBUaXBvVHJhYmFqYWRvcj0iMDEiIFN1YlRpcG9UcmFiYWphZG9yPSIwMCIgQWx0b1JpZXNnb1BlbnNpb249ImZhbHNlIiBUaXBvRG9jdW1lbnRvPSIxMyIgTnVtZXJvRG9jdW1lbnRvPSIyOTY4MjY3NSIgUHJpbWVyQXBlbGxpZG89Ik1PTkNBREEiIFNlZ3VuZG9BcGVsbGlkbz0iQVJNSUxMQSIgUHJpbWVyTm9tYnJlPSJBTkdFTElDQSIgTHVnYXJUcmFiYWpvUGFpcz0iQ08iIEx1Z2FyVHJhYmFqb0RlcGFydGFtZW50b0VzdGFkbz0iNzYiIEx1Z2FyVHJhYmFqb011bmljaXBpb0NpdWRhZD0iNzY1MjAiIEx1Z2FyVHJhYmFqb0RpcmVjY2lvbj0iQ1IgMjQgQSAxOSAzNyIgU2FsYXJpb0ludGVncmFsPSJmYWxzZSIgVGlwb0NvbnRyYXRvPSIyIiBTdWVsZG89IjIxNzQwMDAuMDAiIENvZGlnb1RyYWJhamFkb3I9IjI5NjgyNjc1IiAvPgogIDxQYWdvIEZvcm1hPSIxIiBNZXRvZG89IjEwIiAvPgo8RmVjaGFzUGFnb3M+CjxGZWNoYVBhZ28+MjAyNi0wOC0zMTwvRmVjaGFQYWdvPgo8L0ZlY2hhc1BhZ29zPgo8RGV2ZW5nYWRvcz4KICA8QmFzaWNvIERpYXNUcmFiYWphZG9zPSIzMCIgU3VlbGRvVHJhYmFqYWRvPSIyMTc0MDAwLjAwIiAvPgogIDxUcmFuc3BvcnRlIEF1eGlsaW9UcmFuc3BvcnRlPSIyNDkwOTUuMDAiIFZpYXRpY29NYW51QWxvalM9IjAuMDAiIFZpYXRpY29NYW51QWxvak5TPSIwLjAwIiAvPgo8L0RldmVuZ2Fkb3M+CjxEZWR1Y2Npb25lcz4KICA8U2FsdWQgUG9yY2VudGFqZT0iNC4wMCIgRGVkdWNjaW9uPSI4Njk2MC4wMCIgLz4KICA8Rm9uZG9QZW5zaW9uIFBvcmNlbnRhamU9IjQuMDAiIERlZHVjY2lvbj0iODY5NjAuMDAiIC8+CjwvRGVkdWNjaW9uZXM+CjxEZXZlbmdhZG9zVG90YWw+MjQyMzA5NS4wMDwvRGV2ZW5nYWRvc1RvdGFsPgo8RGVkdWNjaW9uZXNUb3RhbD4xNzM5MjAuMDA8L0RlZHVjY2lvbmVzVG90YWw+CjxDb21wcm9iYW50ZVRvdGFsPjIyNDkxNzUuMDA8L0NvbXByb2JhbnRlVG90YWw+CjwvTm9taW5hSW5kaXZpZHVhbD4=</xmlBase64>
+      </urn:FtechAction.uploadDocument>
+   </soapenv:Body>
+</soapenv:Envelope>
+httpStatusCode: 200
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.uploadDocumentResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:uploadResponse"><code xsi:type="xsd:string">200</code><transactionID xsi:type="xsd:string">62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc</transactionID><error xsi:type="xsd:string">El comprobante ha sido recibido correctamente.</error></return></ns1:FtechAction.uploadDocumentResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedSuccess: false
+parsedCode: 200
+parsedTransactionID: 62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc
+parsedMessage: El comprobante ha sido recibido correctamente.
+
+
+==================================================
+TIMESTAMP: 2026-09-11T17:32:22.128Z
+ACTION: FACTURATECH CHECK-STATUS (PROCESSING)
+==================================================
+provider: Facturatech
+transId: 62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc
+prefix: NOM
+folio: 358
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">201</code><documentBase64 xsi:nil="true" xsi:type="xsd:string"/><arDocument xsi:nil="true" xsi:type="xsd:string"/><message xsi:type="xsd:string">El comprobante NOM358 está en proceso</message><messageError xsi:type="xsd:string"></messageError></return></ns1:FtechAction.documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 201
+parsedStatus: 
+parsedMessage: El comprobante NOM358 está en proceso
+
+
+==================================================
+TIMESTAMP: 2026-09-11T17:35:25.235Z
+ACTION: FACTURATECH CHECK-STATUS (REJECTED)
+==================================================
+provider: Facturatech
+transId: 62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc
+prefix: NOM
+folio: 358
+endpointUrl: https://ws-nomina.facturatech.co/v1/pro/index.php
+statusEnvelope: <soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+         <username xsi:type="xsd:string">901428834</username>
+         <password xsi:type="xsd:string">8cd4dfbf5b0ddad5e99debcd9d30920a232eedbf8dc3bc0173c4d79dfbf627fb</password>
+         <transaccionID xsi:type="xsd:string">62a191b24d07c3c9e9fa107ba4f04db6baecbbeef8c34aa97908a748d9419abc</transaccionID>
+      </urn:FtechAction.documentStatus>
+   </soapenv:Body>
+</soapenv:Envelope>
+rawResponse: <?xml version="1.0" encoding="UTF-8"?><SOAP-ENV:Envelope SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-nomina.facturatech.co/v1/pro/"><SOAP-ENV:Body><ns1:FtechAction.documentStatusResponse xmlns:ns1="urn:https://ws-nomina.facturatech.co/v1/pro/"><return xsi:type="tns:documentStatusResponse"><code xsi:type="xsd:string">409</code><documentBase64 xsi:type="xsd:string"></documentBase64><message xsi:type="xsd:string">El comprobante NOM358 ha sido rechazado</message><messageError xsi:type="xsd:string"></messageError></return></ns1:FtechAction.documentStatusResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+parsedCode: 409
+parsedStatus: 
+parsedMessage: El comprobante NOM358 ha sido rechazado
+

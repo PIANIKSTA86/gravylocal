@@ -4,9 +4,29 @@
 'use strict';
 
 let _selectedBankId = '';
+let _filterPeriod = '';
 let _filterFrom = '';
 let _filterTo = '';
 let _isInitialized = false;
+
+function _computeMonthRange(periodStr: string) {
+  const s = String(periodStr || '').trim();
+  const match = s.match(/^(\d{4})-(\d{2})$/);
+  const now = new Date();
+  const y = match ? parseInt(match[1], 10) : now.getFullYear();
+  const m = match ? parseInt(match[2], 10) : (now.getMonth() + 1);
+  const from = `${y}-${String(m).padStart(2, '0')}-01`;
+  const lastDay = new Date(y, m, 0).getDate();
+  const to = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  return { from, to, period: `${y}-${String(m).padStart(2, '0')}` };
+}
+
+function _dateMinusDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
 
 async function renderConciliacion(c) {
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo de conciliación bancaria...</div>`;
@@ -20,8 +40,10 @@ async function renderConciliacion(c) {
       if (bankAccounts.length > 0) {
         _selectedBankId = bankAccounts[0].id;
       }
-      _filterFrom = todayStr().slice(0, 8) + '01';
-      _filterTo = todayStr();
+      _filterPeriod = todayStr().slice(0, 7);
+      const range = _computeMonthRange(_filterPeriod);
+      _filterFrom = range.from;
+      _filterTo = range.to;
       _isInitialized = true;
     }
 
@@ -34,9 +56,9 @@ async function renderConciliacion(c) {
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h3 class="text-xl font-bold flex items-center gap-2" style="color:#0D2137">
-            <i class="fas fa-scale-balanced text-blue-600"></i> Conciliación Bancaria Dual
+            <i class="fas fa-scale-balanced text-blue-600"></i> Conciliación Bancaria Mensual Dual
           </h3>
-          <p class="text-sm text-gray-500">Cruce dinámico lado a lado entre el Libro Auxiliar Contable y el Extracto del Banco.</p>
+          <p class="text-sm text-gray-500">Cruce dinámico lado a lado entre el Libro Auxiliar Contable y el Extracto Bancario mensual.</p>
         </div>
         ${can('canWrite') ? `
         <div class="flex flex-wrap gap-2">
@@ -50,24 +72,22 @@ async function renderConciliacion(c) {
       <!-- Barra de Filtros y Controles -->
       <div class="bg-white rounded-2xl border p-4 mb-4 shadow-sm" style="border-color:#E5E7EB">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-          <div class="md:col-span-3 form-group mb-0">
+          <div class="md:col-span-4 form-group mb-0">
             <label class="text-xs font-bold text-gray-600 block mb-1">Cuenta Bancaria</label>
             <select id="bank-filter" class="form-input w-full font-medium">
               <option value="">Todas las cuentas bancarias</option>
               ${bankAccounts.map(b => `<option value="${esc(b.id)}" ${b.id === _selectedBankId ? 'selected' : ''}>${esc(b.bank)} - ${esc(b.number)} (${esc(b.name)})</option>`).join('')}
             </select>
           </div>
-          <div class="md:col-span-2 form-group mb-0">
-            <label class="text-xs font-bold text-gray-600 block mb-1">Desde</label>
-            <input id="filter-from" type="date" class="form-input w-full text-xs" value="${esc(_filterFrom)}">
-          </div>
-          <div class="md:col-span-2 form-group mb-0">
-            <label class="text-xs font-bold text-gray-600 block mb-1">Hasta</label>
-            <input id="filter-to" type="date" class="form-input w-full text-xs" value="${esc(_filterTo)}">
+          <div class="md:col-span-3 form-group mb-0">
+            <label class="text-xs font-bold text-gray-600 block mb-1">
+              <i class="fas fa-calendar-days text-blue-600 mr-1"></i> Período Mensual
+            </label>
+            <input id="filter-period" type="month" class="form-input w-full font-bold text-xs" value="${esc(_filterPeriod)}">
           </div>
           <div class="md:col-span-2 mb-0">
             <button class="btn btn-primary w-full" id="btn-search-movs" style="height:38px; display:flex; align-items:center; justify-content:center; gap:6px;">
-              <i class="fas fa-search"></i> Cargar Datos
+              <i class="fas fa-rotate mr-1"></i> Cargar Mes
             </button>
           </div>
           <div class="md:col-span-3 form-group mb-0">
@@ -86,7 +106,7 @@ async function renderConciliacion(c) {
               <i class="fas fa-file-invoice-dollar mr-1"></i> Generar Nota de Ajuste (<span id="unrecon-count">0</span>)
             </button>
             <button class="btn btn-primary" id="btn-pair-selected" disabled>
-              <i class="fas fa-link mr-1"></i> Conciliar Pareja Seleccionada
+              <i class="fas fa-link mr-1"></i> Conciliar Selección
             </button>
             <button class="btn btn-secondary" id="btn-close-recon" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0" title="Cerrar período y certificar conciliación formal">
               <i class="fas fa-lock mr-1"></i> Cerrar Conciliación
@@ -99,7 +119,7 @@ async function renderConciliacion(c) {
             </button>
           </div>
           <div class="text-xs text-gray-500 font-medium">
-            <i class="fas fa-info-circle text-blue-500 mr-1"></i> Marca 1 movimiento contable y 1 del extracto para emparejar manualmente.
+            <i class="fas fa-info-circle text-blue-500 mr-1"></i> Marca movimientos a la izquierda y derecha para emparejar (admite cruces 1:1, 1:N y N:1).
           </div>
         </div>
         ` : ''}
@@ -215,13 +235,41 @@ async function renderConciliacion(c) {
     const txLineByMovId = new Map<string, any>();
 
     const updatePairingButtonState = () => {
-      const selectedLeft = $$('#table-aux tbody .check-left:checked');
-      const selectedRight = $$('#table-bank tbody .check-right:checked');
+      const selectedLeft = Array.from(document.querySelectorAll('#table-aux tbody .check-left:checked')) as HTMLInputElement[];
+      const selectedRight = Array.from(document.querySelectorAll('#table-bank tbody .check-right:checked')) as HTMLInputElement[];
       const btnPair = $('#btn-pair-selected') as HTMLButtonElement | null;
-      if (btnPair) {
-        const canPair = selectedLeft.length === 1 && selectedRight.length === 1;
-        btnPair.disabled = !canPair;
-        btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Pareja (${selectedLeft.length}:${selectedRight.length})`;
+      if (!btnPair) return;
+
+      if (selectedLeft.length === 0 || selectedRight.length === 0) {
+        btnPair.disabled = true;
+        btnPair.className = 'btn btn-primary';
+        btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Selección (0:0)`;
+        return;
+      }
+
+      let netAux = 0;
+      selectedLeft.forEach(cb => {
+        const line = txLines.find(l => l.id === cb.value);
+        if (line) netAux += ((line.debit || 0) - (line.credit || 0));
+      });
+
+      let netBank = 0;
+      selectedRight.forEach(cb => {
+        const m = movements.find(mov => mov.id === cb.value);
+        if (m) netBank += ((m.credit || 0) - (m.debit || 0));
+      });
+
+      const diff = Math.abs(netAux - netBank);
+      const isBalanced = diff < 1.0;
+
+      btnPair.disabled = !isBalanced;
+      if (isBalanced) {
+        btnPair.className = 'btn btn-primary';
+        const label = diff > 0.001 ? `Δ ${fmt(diff)}` : 'Exacto';
+        btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Selección (${selectedLeft.length}:${selectedRight.length}) [${label}]`;
+      } else {
+        btnPair.className = 'btn btn-secondary';
+        btnPair.innerHTML = `<i class="fas fa-scale-unbalanced mr-1"></i> Descuadre: ${fmt(diff)} (${selectedLeft.length}:${selectedRight.length})`;
       }
     };
 
@@ -232,6 +280,13 @@ async function renderConciliacion(c) {
       const q = getInputVal('mov-q').toLowerCase();
       const filtered = txLines.filter(l => {
         const isReconciled = movByTxLineId.has(l.id);
+        const lDate = l.expand?.tx_id?.date || '';
+
+        // Si la línea es del mes anterior (partida en tránsito), solo mostrarla si está conciliada con este extracto o si sigue pendiente
+        if (_filterFrom && lDate < _filterFrom) {
+          if (!movByTxLineId.has(l.id) && isReconciled) return false;
+        }
+
         if (leftFilter === 'pending' && isReconciled) return false;
         if (leftFilter === 'reconciled' && !isReconciled) return false;
         if (q) {
@@ -244,7 +299,7 @@ async function renderConciliacion(c) {
       });
 
       if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400">No hay movimientos contables.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400">No hay movimientos contables en este período mensual.</td></tr>`;
         return;
       }
 
@@ -255,15 +310,19 @@ async function renderConciliacion(c) {
         const det = l.description || third || 'Sin detalle';
         const partnerMov = movByTxLineId.get(l.id);
         const isReconciled = !!partnerMov;
+        const isTransitPrior = _filterFrom && date < _filterFrom;
 
         const rowBgClass = isReconciled 
           ? 'bg-emerald-50/50 hover:bg-emerald-100/60' 
-          : 'bg-amber-50/40 hover:bg-amber-100/50';
+          : (isTransitPrior ? 'bg-indigo-50/40 hover:bg-indigo-100/50' : 'bg-amber-50/40 hover:bg-amber-100/50');
 
         return `
           <tr class="${rowBgClass} transition-colors cursor-pointer" data-tx-line-id="${esc(l.id)}" data-partner-mov-id="${partnerMov ? esc(partnerMov.id) : ''}">
             <td><input type="checkbox" class="check-left" value="${esc(l.id)}"></td>
-            <td class="whitespace-nowrap font-medium">${esc(date.slice(0, 10))}</td>
+            <td class="whitespace-nowrap font-medium">
+              ${esc(date.slice(0, 10))}
+              ${isTransitPrior ? '<span class="badge badge-blue ml-1 text-[9px]" title="Partida en tránsito del mes anterior">Tránsito</span>' : ''}
+            </td>
             <td><span class="font-bold text-blue-700">${esc(comp)}</span></td>
             <td title="${esc(det)}"><div class="truncate max-w-[180px]">${esc(det)}</div></td>
             <td class="text-right font-medium text-emerald-700">${l.debit > 0 ? fmt(l.debit) : '-'}</td>
@@ -298,7 +357,7 @@ async function renderConciliacion(c) {
       });
 
       if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400">No hay movimientos de extracto bancario.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400">No hay movimientos de extracto bancario en este período mensual.</td></tr>`;
         return;
       }
 
@@ -326,7 +385,7 @@ async function renderConciliacion(c) {
             </td>
             <td class="text-center">
               ${can('canWrite') ? `
-                <button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:10px" onclick="toggleRecon('${esc(m.id)}', ${isReconciled ? 'false' : 'true'})">
+                <button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:10px" onclick="toggleRecon('${esc(m.id)}', ${isReconciled ? 'false' : 'true'})" title="${isReconciled ? 'Desconciliar movimiento' : 'Marcar conciliado'}">
                   <i class="fas ${isReconciled ? 'fa-xmark text-red-500' : 'fa-check text-emerald-600'}"></i>
                 </button>
               ` : ''}
@@ -379,28 +438,31 @@ async function renderConciliacion(c) {
 
     const reloadAllData = async () => {
       _selectedBankId = getSelectVal('bank-filter');
-      _filterFrom = getInputVal('filter-from');
-      _filterTo = getInputVal('filter-to');
+      _filterPeriod = getInputVal('filter-period') || todayStr().slice(0, 7);
+      const range = _computeMonthRange(_filterPeriod);
+      _filterFrom = range.from;
+      _filterTo = range.to;
+      const transitFrom = _dateMinusDays(_filterFrom, 30);
 
       const tbodyAux = $('#table-aux tbody');
       const tbodyBank = $('#table-bank tbody');
-      if (tbodyAux) tbodyAux.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando auxiliar contable...</td></tr>`;
-      if (tbodyBank) tbodyBank.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando extracto...</td></tr>`;
+      if (tbodyAux) tbodyAux.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando auxiliar contable del mes...</td></tr>`;
+      if (tbodyBank) tbodyBank.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando extracto del mes...</td></tr>`;
 
       try {
-        // 1. Cargar Extracto Bancario (bank_movements)
+        // 1. Cargar Extracto Bancario del mes completo (bank_movements)
         const bankFilters = [];
         if (_selectedBankId) bankFilters.push(`bank_account_id = "${pb.escapeFilterValue(_selectedBankId)}"`);
         if (_filterFrom) bankFilters.push(`date >= "${pb.escapeFilterValue(_filterFrom)}"`);
         if (_filterTo) bankFilters.push(`date <= "${pb.escapeFilterValue(_filterTo)}"`);
 
         movements = await pb.listAll('bank_movements', {
-          sort: '-date',
+          sort: 'date',
           filter: bankFilters.join(' && '),
           expand: 'bank_account_id,tx_line_id',
         });
 
-        // 2. Cargar Libro Auxiliar Contable (tx_lines)
+        // 2. Cargar Libro Auxiliar Contable (tx_lines) incluyendo partidas en tránsito de hasta 30 días previos
         const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
         const bankAccId = currentBankAcc?.account_id;
 
@@ -422,13 +484,16 @@ async function renderConciliacion(c) {
 
           const safeAccountFilter = targetAccountIds.map(id => `account_id="${pb.escapeFilterValue(id)}"`).join(' || ');
           const txFilters = [`(${safeAccountFilter})`, 'tx_id.status != "voided"'];
-          if (_filterFrom) txFilters.push(`tx_id.date >= "${pb.escapeFilterValue(_filterFrom)}"`);
-          if (_filterTo) txFilters.push(`tx_id.date <= "${pb.escapeFilterValue(_filterTo)} 23:59:59"`);
+          // Incluye mes actual y lookback de 30 días para tránsito
+          txFilters.push(`tx_id.date >= "${pb.escapeFilterValue(transitFrom)}"`);
+          txFilters.push(`tx_id.date <= "${pb.escapeFilterValue(_filterTo)} 23:59:59"`);
 
           txLines = await pb.listAll('tx_lines', {
             filter: txFilters.join(' && '),
             expand: 'tx_id,third_party_id',
-            sort: '-tx_id.date',
+            sort: '-tx_id.date,line_order',
+            ignoreBranch: true,
+            ignoreCostCenter: true,
           });
         } else {
           txLines = [];
@@ -469,11 +534,11 @@ async function renderConciliacion(c) {
                   </div>
                   <div>
                     <div class="font-bold text-emerald-900 text-sm flex items-center gap-2">
-                      <span>Período con Conciliación Bancaria Cerrada y Certificada</span>
-                      <span class="badge badge-green text-xs"><i class="fas fa-certificate mr-1"></i>Auditado</span>
+                      <span>Período con Conciliación Bancaria Formal Certificada</span>
+                      <span class="badge badge-green text-xs"><i class="fas fa-certificate mr-1"></i>Auditada</span>
                     </div>
                     <p class="text-xs text-emerald-700 mb-0">
-                      Corte formal del <strong>${esc(c.period_start)}</strong> al <strong>${esc(c.period_end)}</strong> | Cerrado por: <strong>${esc(c.expand?.closed_by?.name || 'Contabilidad')}</strong>. Saldo libros: <strong>${fmt(c.book_balance || 0)}</strong> | Extracto: <strong>${fmt(c.bank_balance || 0)}</strong>.
+                      Período mensual del <strong>${esc(c.period_start)}</strong> al <strong>${esc(c.period_end)}</strong> | Cerrado por: <strong>${esc(c.expand?.closed_by?.name || 'Contabilidad')}</strong>. Saldo libros: <strong>${fmt(c.book_balance || 0)}</strong> | Extracto: <strong>${fmt(c.bank_balance || 0)}</strong>.
                     </p>
                   </div>
                 </div>
@@ -504,8 +569,7 @@ async function renderConciliacion(c) {
 
     // Eventos de Filtros y Búsqueda
     $('#btn-search-movs')?.addEventListener('click', reloadAllData);
-    $('#filter-from')?.addEventListener('keydown', e => { if (e.key === 'Enter') reloadAllData(); });
-    $('#filter-to')?.addEventListener('keydown', e => { if (e.key === 'Enter') reloadAllData(); });
+    $('#filter-period')?.addEventListener('change', reloadAllData);
     $('#bank-filter')?.addEventListener('change', reloadAllData);
     $('#mov-q')?.addEventListener('input', debounce(() => { renderLeftTable(); renderRightTable(); }, 150));
 
@@ -530,25 +594,40 @@ async function renderConciliacion(c) {
       });
     });
 
-    // Acción: Conciliar Pareja Seleccionada Manualmente
+    // Acción: Conciliar Selección Manualmente (1:1, 1:N o N:1)
     $('#btn-pair-selected')?.addEventListener('click', async () => {
-      const selectedLeft = $('#table-aux tbody .check-left:checked') as HTMLInputElement | null;
-      const selectedRight = $('#table-bank tbody .check-right:checked') as HTMLInputElement | null;
-      if (!selectedLeft || !selectedRight) return showToast('Selecciona 1 ítem del libro y 1 del extracto', 'warning');
+      const selectedLeft = Array.from(document.querySelectorAll('#table-aux tbody .check-left:checked')) as HTMLInputElement[];
+      const selectedRight = Array.from(document.querySelectorAll('#table-bank tbody .check-right:checked')) as HTMLInputElement[];
+      if (!selectedLeft.length || !selectedRight.length) {
+        return showToast('Selecciona al menos 1 movimiento contable y 1 del extracto', 'warning');
+      }
 
-      const leftId = selectedLeft.value;
-      const rightId = selectedRight.value;
+      const btn = $('#btn-pair-selected') as HTMLButtonElement | null;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Conciliando...'; }
 
       try {
-        await pb.update('bank_movements', rightId, { reconciled: true, tx_line_id: leftId });
-        showToast('Pareja conciliada correctamente', 'success');
+        const primaryLineId = selectedLeft[0].value;
+        const promises: Promise<any>[] = [];
+
+        selectedRight.forEach((cb, idx) => {
+          const assignedLineId = selectedLeft[idx] ? selectedLeft[idx].value : primaryLineId;
+          promises.push(pb.update('bank_movements', cb.value, {
+            reconciled: true,
+            tx_line_id: assignedLineId
+          }));
+        });
+
+        await Promise.all(promises);
+        showToast(`Conciliación exitosa: ${selectedRight.length} movimiento(s) vinculados con ${selectedLeft.length} apunte(s) contables.`, 'success');
         await reloadAllData();
       } catch (err: any) {
-        showToast('Error conciliando pareja: ' + (err.message || ''), 'error');
+        showToast('Error conciliando selección: ' + (err.message || ''), 'error');
+      } finally {
+        if (btn) btn.disabled = false;
       }
     });
 
-    // Acción: Sugerir Conciliación Automática
+    // Acción: Sugerir Conciliación Automática (Apertura de Modal Interactivo de Previsualización)
     $('#btn-suggest-recon')?.addEventListener('click', async () => {
       const bankId = getSelectVal('bank-filter');
       if (!bankId) return showToast('Selecciona una cuenta bancaria para sugerir conciliación', 'warning');
@@ -556,22 +635,28 @@ async function renderConciliacion(c) {
       if (!bank?.account_id) return showToast('La cuenta bancaria no tiene cuenta contable asociada', 'warning');
 
       const btn = $('#btn-suggest-recon') as HTMLButtonElement | null;
-      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Emparejando...'; }
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Analizando sugerencias...'; }
 
       try {
         const suggestions = await buildReconSuggestions(bank, movements, 30, accounts);
         if (!suggestions.length) {
-          showToast('No se encontraron nuevas parejas automáticas', 'info');
+          showToast('No se encontraron nuevas parejas automáticas para este período', 'info');
         } else {
-          let ok = 0;
-          for (const s of suggestions) {
-            try {
-              await pb.update('bank_movements', s.movementId, { reconciled: true, tx_line_id: s.txLineId });
-              ok++;
-            } catch (_) {}
-          }
-          showToast(`Conciliadas ${ok} pareja(s) automáticamente`, 'success');
-          await reloadAllData();
+          openSuggestionsModal(suggestions, bank, async (selected) => {
+            let ok = 0;
+            const chunkSize = 15;
+            for (let i = 0; i < selected.length; i += chunkSize) {
+              const chunk = selected.slice(i, i + chunkSize);
+              await Promise.all(chunk.map(async s => {
+                try {
+                  await pb.update('bank_movements', s.movementId, { reconciled: true, tx_line_id: s.txLineId });
+                  ok++;
+                } catch (_) {}
+              }));
+            }
+            showToast(`Se conciliaron ${ok} pareja(s) automáticamente con éxito.`, 'success');
+            await reloadAllData();
+          });
         }
       } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-wand-magic-sparkles mr-1"></i> Sugerir Conciliación Automatizada'; }
@@ -924,25 +1009,30 @@ function openBankMovementForm(bankAccounts) {
   });
 }
 
-async function toggleRecon(id, reconciled) {
+async function toggleRecon(id: string, reconciled: boolean) {
   try {
-    await pb.update('bank_movements', id, { reconciled });
-    showToast('Estado de conciliación actualizado', 'success');
+    if (!reconciled) {
+      await pb.update('bank_movements', id, { reconciled: false, tx_line_id: '', reconciliation_id: '' });
+      showToast('Desconciliado: se liberó el vínculo contable del movimiento', 'info');
+    } else {
+      showToast('Para conciliar, selecciona el movimiento bancario junto a su asiento contable y pulsa "Emparejar"', 'warning');
+      return;
+    }
     renderConciliacion($('#page-content'));
-  } catch (err) { showToast(err.message, 'error'); }
+  } catch (err: any) { showToast(err.message, 'error'); }
 }
 
 function _asDateOnly(s) {
   if (!s) return null;
   const d = new Date(String(s).slice(0, 10) + 'T00:00:00');
-  return isNaN(d) ? null : d;
+  return isNaN(d.getTime()) ? null : d;
 }
 
 function _daysDiff(a, b) {
   const da = _asDateOnly(a);
   const db = _asDateOnly(b);
   if (!da || !db) return 999;
-  return Math.round(Math.abs((da - db) / 86400000));
+  return Math.round(Math.abs((da.getTime() - db.getTime()) / 86400000));
 }
 
 function _normText(s) {
@@ -965,7 +1055,7 @@ function _textOverlap(a, b) {
   return common / Math.max(wa.size, wb.size);
 }
 
-async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, accounts: any[] = []) {
+async function buildReconSuggestions(bankAccount: any, movements: any[], dayWindow = 30, accounts: any[] = []) {
   const accountId = bankAccount?.account_id;
   if (!accountId) return [];
 
@@ -996,32 +1086,43 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, acc
   try {
     txLines = await pb.listAll('tx_lines', {
       filter: filterStr,
-      expand: 'tx_id',
-      sort: '-id',
+      expand: 'tx_id,third_party_id',
+      sort: '-tx_id.date,line_order',
+      ignoreBranch: true,
+      ignoreCostCenter: true,
     });
   } catch (err) {
     console.warn('[buildReconSuggestions] Error consultando tx_lines con filtro amplio, usando fallback:', err);
     txLines = await pb.listAll('tx_lines', {
-      filter: `account_id="${pb.escapeFilterValue(accountId)}"`,
-      expand: 'tx_id',
-      sort: '-id',
+      filter: `account_id="${pb.escapeFilterValue(accountId)}" && tx_id.status != "voided"`,
+      expand: 'tx_id,third_party_id',
+      sort: '-tx_id.date,line_order',
+      ignoreBranch: true,
+      ignoreCostCenter: true,
     });
   }
 
+  // Partidas contables que ya estén debidamente conciliadas
   const usedLineIds = new Set(
-    movements.filter(m => m.tx_line_id).map(m => m.tx_line_id)
+    movements.filter(m => m.reconciled && m.tx_line_id).map(m => m.tx_line_id)
   );
 
   const remainingLines = txLines.filter(l => !usedLineIds.has(l.id) && l.expand?.tx_id);
-  const pendingMovs = movements.filter(m => m.bank_account_id === bankAccount.id && !m.reconciled);
-  const reservedLines = new Set();
+  // Movimientos pendientes: no conciliados o con vínculo huérfano pendiente
+  const pendingMovs = movements.filter(m => m.bank_account_id === bankAccount.id && (!m.reconciled || !m.tx_line_id));
+  
+  // Ordenar movimientos cronológicamente ascendente (+date) para evitar que movimientos tardíos del mes
+  // acaparen partidas de primeros días
+  pendingMovs.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  const reservedLines = new Set<string>();
   const suggestions: any[] = [];
 
   for (const m of pendingMovs) {
     const amount = +(m.debit > 0 ? m.debit : m.credit || 0);
     if (!amount) continue;
 
-    // En contabilidad bancaria el sentido es inverso al extracto.
+    // En contabilidad bancaria el sentido contable es opuesto al extracto del banco
     const primarySide = m.debit > 0 ? 'credit' : 'debit';
     const altSide = m.debit > 0 ? 'debit' : 'credit';
 
@@ -1034,7 +1135,7 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, acc
         let diffAmt = Math.abs(primaryAmt - amount);
         let isInverseSide = false;
 
-        // Si no coincide en el lado directo, verificar si fue grabado en sentido inverso en la contabilidad
+        // Si no coincide en el lado natural, verificar si fue grabado invertido
         if (diffAmt >= 1.0 && altAmt > 0) {
           const invDiff = Math.abs(altAmt - amount);
           if (invDiff < 1.0) {
@@ -1043,13 +1144,16 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, acc
           }
         }
 
-        if (diffAmt >= 1.0) return null; // Diferencia de monto superior a 1 peso
+        if (diffAmt >= 1.0) return null; // Tolerancia estricta de diferencia < 1 peso
 
-        const txDate = l.expand?.tx_id?.date || '';
+        const txDate = l.expand?.tx_id?.date ? String(l.expand.tx_id.date).slice(0, 10) : '';
         const dDiff = _daysDiff(m.date, txDate);
         const descScore = _textOverlap(m.description || m.ref || '', l.description || l.expand?.tx_id?.description || '');
+        
+        // Puntuación heurística: cercanía de fechas + exactitud + similitud de texto
         let score = Math.max(0, 100 - dDiff * 3) + descScore * 40;
-        if (isInverseSide) score -= 30;
+        if (dDiff === 0) score += 15; // Mismo día
+        if (isInverseSide) score -= 35; // Penalizar inversión de débito/crédito
 
         return { line: l, dDiff, descScore, score, isInverseSide, diffAmt };
       })
@@ -1069,14 +1173,18 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, acc
       confidence = 'media';
     }
 
-    let reason = `Monto ${fmt(amount)} · dif fecha ${top.dDiff} día(s)`;
-    if (top.isInverseSide) reason += ' (lado inverso en contabilidad)';
+    let reason = `Monto exacto ${fmt(amount)} · dif fecha ${top.dDiff} día(s)`;
+    if (top.isInverseSide) reason += ' (lado invertido en contabilidad)';
 
     suggestions.push({
       movementId: m.id,
+      movement: m,
       txLineId: top.line.id,
+      txLine: top.line,
       confidence,
       reason,
+      dDiff: top.dDiff,
+      amount,
     });
     reservedLines.add(top.line.id);
   }
@@ -1084,15 +1192,180 @@ async function buildReconSuggestions(bankAccount, movements, dayWindow = 30, acc
   return suggestions;
 }
 
+function openSuggestionsModal(suggestions: any[], bankAccount: any, onApplyCallback: (selected: any[]) => Promise<void>) {
+  const altaCount = suggestions.filter(s => s.confidence === 'alta').length;
+  const mediaCount = suggestions.filter(s => s.confidence === 'media').length;
+  const bajaCount = suggestions.filter(s => s.confidence === 'baja').length;
+
+  openModal(
+    `<i class="fas fa-wand-magic-sparkles mr-2 text-blue-600"></i>Sugerencias de Conciliación Automática (${suggestions.length})`,
+    `
+    <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+      <div>
+        <div class="font-bold mb-0.5"><i class="fas fa-robot mr-1 text-blue-600"></i> El motor inteligente encontró ${suggestions.length} posibles emparejamientos:</div>
+        <div class="text-[11px] text-blue-700">Revisa las coincidencias antes de aplicarlas. Por defecto se seleccionan las de confianza Alta y Media.</div>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Alta: ${altaCount}</span>
+        <span class="badge badge-blue"><i class="fas fa-check mr-1"></i>Media: ${mediaCount}</span>
+        <span class="badge badge-orange"><i class="fas fa-triangle-exclamation mr-1"></i>Baja: ${bajaCount}</span>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between gap-2 mb-2">
+      <div class="flex items-center gap-2">
+        <button class="btn btn-outline btn-sm font-semibold" id="btn-sug-filter-all">Todas (${suggestions.length})</button>
+        <button class="btn btn-outline btn-sm font-semibold" id="btn-sug-filter-alta">Alta (${altaCount})</button>
+        <button class="btn btn-outline btn-sm font-semibold" id="btn-sug-filter-media">Media (${mediaCount})</button>
+        <button class="btn btn-outline btn-sm font-semibold" id="btn-sug-filter-baja">Baja (${bajaCount})</button>
+      </div>
+      <div class="flex items-center gap-2 text-xs font-medium text-gray-600">
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="checkbox" id="chk-sug-select-all" checked style="accent-color:#2563EB">
+          <span>Marcar/Desmarcar visibles</span>
+        </label>
+      </div>
+    </div>
+
+    <div style="max-height:380px;overflow-y:auto;border:1px solid #E5E7EB;border-radius:12px">
+      <table class="data-table" style="font-size:11px" id="table-sug-list">
+        <thead class="bg-gray-50 sticky top-0 z-10">
+          <tr>
+            <th style="width:36px;text-align:center">#</th>
+            <th style="width:75px">Confianza</th>
+            <th>Movimiento Bancario (Extracto)</th>
+            <th>Asiento en Libros (Contabilidad)</th>
+            <th style="width:85px;text-align:right">Valor</th>
+            <th style="width:65px;text-align:center">Dif. Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${suggestions.map((s, idx) => {
+            const isPrechecked = s.confidence === 'alta' || s.confidence === 'media';
+            const m = s.movement;
+            const l = s.txLine;
+            const tx = l.expand?.tx_id;
+            const badge = s.confidence === 'alta'
+              ? '<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Alta</span>'
+              : s.confidence === 'media'
+                ? '<span class="badge badge-blue"><i class="fas fa-check mr-1"></i>Media</span>'
+                : '<span class="badge badge-orange"><i class="fas fa-triangle-exclamation mr-1"></i>Baja</span>';
+
+            const mType = m.credit > 0 ? 'Ingreso' : 'Egreso';
+            const mAmount = m.credit > 0 ? m.credit : m.debit;
+            const lVoucher = tx ? `${tx.number || 'Comp'} · ${String(tx.date || '').slice(0, 10)}` : 'Sin comp.';
+
+            return `
+              <tr data-conf="${esc(s.confidence)}" class="sug-row hover:bg-blue-50/40">
+                <td style="text-align:center">
+                  <input type="checkbox" class="sug-check" data-idx="${idx}" ${isPrechecked ? 'checked' : ''} style="accent-color:#2563EB">
+                </td>
+                <td>${badge}</td>
+                <td>
+                  <div class="font-bold text-gray-800">${esc(m.date)} · <span class="${m.credit > 0 ? 'text-emerald-700' : 'text-blue-700'}">${mType}</span></div>
+                  <div class="text-gray-600 truncate max-w-[240px]" title="${esc(m.description || '')}">${esc(m.description || m.ref || 'Sin detalle')}</div>
+                </td>
+                <td>
+                  <div class="font-bold text-gray-800">${esc(lVoucher)}</div>
+                  <div class="text-gray-600 truncate max-w-[240px]" title="${esc(l.description || tx?.description || '')}">${esc(l.description || tx?.description || 'Sin detalle')}</div>
+                </td>
+                <td style="text-align:right;font-weight:700" class="${m.credit > 0 ? 'text-emerald-700' : 'text-blue-700'}">
+                  ${fmt(mAmount)}
+                </td>
+                <td style="text-align:center">
+                  <span class="badge ${s.dDiff === 0 ? 'badge-green' : s.dDiff <= 2 ? 'badge-blue' : 'badge-gray'}">${s.dDiff} d</span>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    `,
+    `
+    <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary" id="btn-do-apply-sug" style="background:#2563EB">
+      <i class="fas fa-check-double mr-1"></i> Conciliar Seleccionadas (<span id="sug-count-label">0</span>)
+    </button>
+    `,
+    true
+  );
+
+  const getSelectedCount = () => {
+    return (document.querySelectorAll('.sug-check:checked') as NodeListOf<HTMLInputElement>).length;
+  };
+
+  const updateCountLabel = () => {
+    const c = getSelectedCount();
+    const lbl = document.getElementById('sug-count-label');
+    if (lbl) lbl.textContent = String(c);
+    const btn = document.getElementById('btn-do-apply-sug') as HTMLButtonElement | null;
+    if (btn) btn.disabled = c === 0;
+  };
+
+  updateCountLabel();
+
+  // Filtrado de pestañas
+  const setFilterTab = (conf: string) => {
+    const rows = document.querySelectorAll('#table-sug-list tbody tr') as NodeListOf<HTMLElement>;
+    rows.forEach(r => {
+      if (conf === 'all' || r.dataset.conf === conf) {
+        r.style.display = '';
+      } else {
+        r.style.display = 'none';
+      }
+    });
+  };
+
+  document.getElementById('btn-sug-filter-all')?.addEventListener('click', () => setFilterTab('all'));
+  document.getElementById('btn-sug-filter-alta')?.addEventListener('click', () => setFilterTab('alta'));
+  document.getElementById('btn-sug-filter-media')?.addEventListener('click', () => setFilterTab('media'));
+  document.getElementById('btn-sug-filter-baja')?.addEventListener('click', () => setFilterTab('baja'));
+
+  // Seleccionar / Deseleccionar visibles
+  document.getElementById('chk-sug-select-all')?.addEventListener('change', (e) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    const checks = document.querySelectorAll('#table-sug-list tbody tr') as NodeListOf<HTMLElement>;
+    checks.forEach(row => {
+      if (row.style.display !== 'none') {
+        const chk = row.querySelector('.sug-check') as HTMLInputElement | null;
+        if (chk) chk.checked = checked;
+      }
+    });
+    updateCountLabel();
+  });
+
+  document.querySelectorAll('.sug-check').forEach(chk => {
+    chk.addEventListener('change', updateCountLabel);
+  });
+
+  document.getElementById('btn-do-apply-sug')?.addEventListener('click', async () => {
+    const checks = document.querySelectorAll('.sug-check:checked') as NodeListOf<HTMLInputElement>;
+    const selectedIndices = Array.from(checks).map(c => parseInt(c.dataset.idx || '-1')).filter(i => i >= 0);
+    const selected = selectedIndices.map(i => suggestions[i]);
+
+    if (!selected.length) return;
+
+    const btn = document.getElementById('btn-do-apply-sug') as HTMLButtonElement | null;
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Conciliando...';
+    }
+
+    closeModal();
+    await onApplyCallback(selected);
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // LIMPIAR PERÍODO — elimina movimientos bancarios de un rango de fechas
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function openClearMovementsModal(bankAccounts, movements) {
-  // Pre-poblar desde/hasta con lo que ya tiene el filtro activo
-  const preFrom = getInputVal('filter-from') || '';
-  const preTo   = getInputVal('filter-to')   || '';
-  const preBid  = getSelectVal('bank-filter') || '';
+  // Pre-poblar desde/hasta con lo que ya tiene el filtro activo mensual
+  const preFrom = _filterFrom || getInputVal('filter-from') || '';
+  const preTo   = _filterTo   || getInputVal('filter-to')   || '';
+  const preBid  = _selectedBankId || getSelectVal('bank-filter') || '';
 
   openModal(
     '<i class="fas fa-trash-can mr-2" style="color:#DC2626"></i>Limpiar Período',
@@ -2773,8 +3046,8 @@ async function openCloseReconciliationModal(
       </div>
       <p class="mb-0 text-[11px]">
         ${isExactMatch 
-          ? 'El saldo en libros auxiliares y el saldo del extracto bancario coinciden perfectamente ($0 diferencia). Al cerrar, se generará el Acta Oficial no transaccional con firmas de auditoría.' 
-          : 'Existe un delta entre el Libro Auxiliar y el Extracto Bancario. Si corresponde a partidas en tránsito justificadas (ej: cheques girados y no cobrados), registra la justificación contable para expedir el Acta.'}
+          ? 'El saldo en libros auxiliares y el saldo del extracto bancario coinciden perfectamente ($0 diferencia). Al cerrar, se generará el Acta Oficial no transaccional con firmas de auditoría. <em>Nota: este cierre aplica de manera exclusiva a la conciliación bancaria de esta cuenta y no bloquea la contabilidad general del ERP.</em>' 
+          : 'Existe un delta entre el Libro Auxiliar y el Extracto Bancario. Si corresponde a partidas en tránsito justificadas (ej: cheques girados y no cobrados), registra la justificación contable para expedir el Acta. <em>Nota: este cierre aplica de manera exclusiva a la conciliación bancaria de esta cuenta y no bloquea la contabilidad general del ERP.</em>'}
       </p>
     </div>
 

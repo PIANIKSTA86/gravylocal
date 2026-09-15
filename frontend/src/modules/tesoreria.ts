@@ -3323,7 +3323,7 @@ async function openTesoreriaConfigModal() {
 
 // ─── PÁGINA INDEPENDIENTE DE RECAUDOS (RC) ───────────────────────────────────
 async function showRecaudosScreen(container: HTMLElement) {
-  const c = container || document.getElementById('page-content');
+  const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'recaudos') : (container || document.getElementById('tab-pane-recaudos'));
   if (!c) return;
 
   // Render core container structure with loading skeletons
@@ -3442,7 +3442,7 @@ async function loadQuickInfoRecaudos() {
 
 // ─── PÁGINA INDEPENDIENTE DE EGRESOS (CE) ─────────────────────────────────────
 async function showEgresosScreen(container: HTMLElement) {
-  const c = container || document.getElementById('page-content');
+  const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'egresos') : (container || document.getElementById('tab-pane-egresos'));
   if (!c) return;
 
   c.innerHTML = `
@@ -4406,7 +4406,7 @@ window.deleteTesoConcept = async function(id: string) {
 
 // ─── PÁGINA INDEPENDIENTE DE CUENTAS BANCARIAS ────────────────────────────────
 async function showBankAccountsScreen(container: HTMLElement) {
-  const c = container || document.getElementById('page-content');
+  const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'cuentas-bancarias') : (container || document.getElementById('tab-pane-cuentas-bancarias'));
   if (!c) return;
 
   // Render full screen layout (Split: Form on Left, List on Right)

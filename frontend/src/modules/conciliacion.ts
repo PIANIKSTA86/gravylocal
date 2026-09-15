@@ -28,7 +28,10 @@ function _dateMinusDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function renderConciliacion(c) {
+async function renderConciliacion(c?: any) {
+  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
+  c = getContainer(c, 'conciliacion');
+  if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo de conciliación bancaria...</div>`;
   try {
     const [bankAccounts, accounts] = await Promise.all([
@@ -789,7 +792,7 @@ function openBankAccountsManager(bankAccountsList, accounts) {
   openModal(
     '<i class="fas fa-building-columns mr-2"></i>Cuentas Bancarias',
     `<div id="ba-m-container">${buildModalContent()}</div>`,
-    `<button class="btn btn-outline" onclick="(function(){ closeModal(); if(window.__baMgrNeedsRefresh){ window.__baMgrNeedsRefresh=false; renderConciliacion(document.getElementById('page-content')); } })()" >Cerrar</button>`,
+    `<button class="btn btn-outline" onclick="(function(){ closeModal(); if(window.__baMgrNeedsRefresh){ window.__baMgrNeedsRefresh=false; if(window.reloadTab) window.reloadTab('conciliacion'); else renderConciliacion(); } })()" >Cerrar</button>`,
     true
   );
 
@@ -1004,7 +1007,8 @@ function openBankMovementForm(bankAccounts) {
       await pb.create('bank_movements', payload);
       closeModal();
       showToast('Movimiento registrado', 'success');
-      renderConciliacion($('#page-content'));
+      if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+      else renderConciliacion();
     } catch (err) { showToast(err.message, 'error'); }
   });
 }
@@ -1018,7 +1022,8 @@ async function toggleRecon(id: string, reconciled: boolean) {
       showToast('Para conciliar, selecciona el movimiento bancario junto a su asiento contable y pulsa "Emparejar"', 'warning');
       return;
     }
-    renderConciliacion($('#page-content'));
+    if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+    else renderConciliacion();
   } catch (err: any) { showToast(err.message, 'error'); }
 }
 
@@ -1477,7 +1482,8 @@ function openClearMovementsModal(bankAccounts, movements) {
       closeModal();
       if (fail) showToast(`Eliminados ${ok}. ${fail} no pudieron borrarse (pueden tener restricciones).`, 'warning');
       else      showToast(`${ok} movimiento(s) eliminado(s) correctamente`, 'success');
-      renderConciliacion($('#page-content'));
+      if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+      else renderConciliacion();
     } catch (err: any) {
       showToast('Error al eliminar movimientos: ' + err.message, 'error');
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-can mr-1"></i> Eliminar movimientos'; }
@@ -2072,8 +2078,8 @@ async function _doImport() {
     showToast(`${ok} movimientos importados correctamente`, 'success');
   }
 
-  const pageContent = document.getElementById('page-content');
-  if (pageContent) renderConciliacion(pageContent);
+  if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+  else renderConciliacion();
 }
 
 
@@ -2820,7 +2826,8 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
         closeModal();
         showToast(`Se vincularon y conciliaron ${reconciledCount} movimientos al comprobante seleccionado.`, 'success');
         if (onDoneCb) onDoneCb();
-        else renderConciliacion($('#page-content'));
+        else if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+        else renderConciliacion();
         return;
       }
 
@@ -2996,7 +3003,8 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
       closeModal();
       showToast(`Se causó el Comprobante ${createdTx.number || ''} (${lines.length} líneas) y se conciliaron ${reconciledOk} movimientos del extracto.`, 'success');
       if (onDoneCb) onDoneCb();
-      else renderConciliacion($('#page-content'));
+      else if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+      else renderConciliacion();
     } catch (err: any) {
       showToast('Error causando la nota de ajuste: ' + (err.message || ''), 'error');
       if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="fas fa-file-invoice-dollar mr-1"></i> Causar y Conciliar Nota de Ajuste'; }
@@ -3729,7 +3737,8 @@ async function openReconciliationsHistoryModal(bankAccount: any) {
       });
       showToast('Período de conciliación reabierto correctamente', 'info');
       closeModal();
-      renderConciliacion($('#page-content'));
+      if ((window as any).reloadTab) (window as any).reloadTab('conciliacion');
+      else renderConciliacion();
     } catch (err: any) {
       showToast('Error reabriendo conciliación: ' + err.message, 'error');
     }

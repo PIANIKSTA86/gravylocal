@@ -1146,11 +1146,15 @@
     .tab-pane {
       display: none !important;
       height: 100%;
+      content-visibility: hidden;
+      pointer-events: none !important;
     }
 
     .tab-pane.active {
       display: block !important;
-      animation: fadeIn 0.2s ease-in-out;
+      content-visibility: visible;
+      pointer-events: auto !important;
+      animation: fadeIn 0.15s ease-in-out;
     }
 
     .brand-shell {
@@ -1575,9 +1579,10 @@
       font-size: 10px;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-B1tcY3Mx.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-GW6Cqrx9.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-DeUoVenb.css">
+  <script type="module" crossorigin src="/assets/main-B5H4Sa2M.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-Dgl4fgtV.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-giVFJdki.css">
+  <link rel="stylesheet" crossorigin href="/assets/main-Dgihpmma.css">
 </head>
 
 <body>
@@ -1878,6 +1883,9 @@
         </div>
         <div class="nav-item" data-page="nomina-liquidacion" data-label="Liquidación" data-module="nomina">
           <i class="fas fa-calculator"></i><span class="nav-label">Liquidación</span>
+        </div>
+        <div class="nav-item" data-page="nomina-liquidacion-definitiva" data-label="Liquidación Definitiva" data-module="nomina">
+          <i class="fas fa-user-slash"></i><span class="nav-label">Liquidación Definitiva</span>
         </div>
         <div class="nav-item" data-page="nomina-electronica-p" data-label="Nómina Electrónica" data-module="nomina">
           <i class="fas fa-file-invoice-dollar"></i><span class="nav-label">Nómina Electrónica</span>

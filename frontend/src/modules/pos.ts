@@ -833,8 +833,8 @@ function updatePOSHeldBadge() {
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'pos');
   if (!container) return;
   // Exponer función global para el botón de configuración y promociones
   window.openPOSSettingsModal = openPOSSettingsModal;
@@ -2410,11 +2410,15 @@ window.closePOSShift = async function() {
         const selector = document.getElementById('global-branch-selector') as HTMLSelectElement;
         if (selector) selector.disabled = false;
 
-        const targetContainer = document.getElementById('pos-main-container') || document.getElementById('page-content');
-        if (targetContainer) {
-          (window as any).renderPOS(targetContainer);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('pos');
         } else {
-          window.renderShiftOpeningForm();
+          const targetContainer = document.getElementById('pos-main-container') || ((window as any).getTabPane ? (window as any).getTabPane('pos') : null);
+          if (targetContainer) {
+            (window as any).renderPOS(targetContainer);
+          } else {
+            window.renderShiftOpeningForm();
+          }
         }
       });
     }, 50);

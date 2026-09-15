@@ -4,8 +4,8 @@
 'use strict';
 
 async function renderTiposTx(c) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  c = getContainer(c, 'tipos-tx');
   if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando tipos de transacción...</div>`;
   try {
@@ -183,7 +183,11 @@ function openTxTypeForm(row = null, suggestedCode = '') {
       }
       closeModal();
       showToast('Serie guardada correctamente', 'success');
-      renderTiposTx($('#page-content'));
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('tipos-tx');
+      } else {
+        renderTiposTx();
+      }
     } catch (err) {
       // Error de duplicado: mensaje claro
       if (err.message?.toLowerCase().includes('unique') || err.status === 400) {
@@ -231,7 +235,11 @@ function toggleTxType(id, active) {
       try {
         await pb.update('transaction_types', id, { active: activeB });
         showToast('Estado actualizado', 'success');
-        renderTiposTx($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('tipos-tx');
+        } else {
+          renderTiposTx();
+        }
       } catch (err) { showToast(err.message, 'error'); }
     }
   );
@@ -274,7 +282,11 @@ async function deleteTxType(id) {
       try {
         await pb.delete('transaction_types', id);
         showToast('Serie de transacción eliminada definitivamente', 'success');
-        renderTiposTx($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('tipos-tx');
+        } else {
+          renderTiposTx();
+        }
       } catch (err) {
         showToast(err.message, 'error');
       }

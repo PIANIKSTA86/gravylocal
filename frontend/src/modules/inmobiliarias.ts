@@ -543,7 +543,7 @@ async function openInmuebleModal(id = '') {
         (window as any).showToast('Inmueble creado exitosamente.', 'success');
       }
       (window as any).closeModal();
-      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-inmuebles-content') || document.getElementById('page-content');
+      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-inmuebles-content') || ((window as any).getTabPane ? (window as any).getTabPane('inmobiliarias') : null) || ((window as any).getActivePane ? (window as any).getActivePane() : null);
       if (contentContainer) {
         renderInmoInmuebles(contentContainer);
       }
@@ -1234,7 +1234,7 @@ async function openContractModal(id = '', defaultType = 'EMITIDO') {
         (window as any).showToast('Contrato creado exitosamente.', 'success');
       }
       (window as any).closeModal();
-      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-contratos-content') || document.getElementById('page-content');
+      const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-contratos-content') || ((window as any).getTabPane ? (window as any).getTabPane('inmo-contratos') : null) || ((window as any).getActivePane ? (window as any).getActivePane() : null);
       if (contentContainer) {
         if (type === 'RECIBIDO' && (window as any).loadActiveTab) {
           // Si estamos en el módulo NIIF, recargar la grilla activa de allí
@@ -1426,7 +1426,7 @@ function attachInmoInvActions() {
       try {
         await (window as any).API.unpostInmoInvoice(id);
         (window as any).showToast('Factura revertida a borrador.', 'success');
-        const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || document.getElementById('page-content');
+        const contentContainer = document.getElementById('inmo-tab-content') || document.getElementById('inmo-liquidacion-content') || ((window as any).getTabPane ? (window as any).getTabPane('inmo-liquidacion') : null) || ((window as any).getActivePane ? (window as any).getActivePane() : null);
         if (contentContainer) {
           renderInmoLiquidacion(contentContainer);
         }

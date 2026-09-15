@@ -430,7 +430,7 @@ async function openPurchaseSettingsModal(onSaved: any = null) {
 // ── Render Principal ──────────────────────────────────────────────────────────
 export async function renderCompras(container?: HTMLElement) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  const target = getContainer(container);
+  const target = getContainer(container, 'compras');
   if (!target) return;
   target.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando compras...</div>`;
   try {
@@ -2346,7 +2346,10 @@ async function viewPurchaseDetail(id: string) {
 }
 
 function editPurchase(id: string) {
-  openPurchaseForm(id, () => renderCompras(document.getElementById('page-content')!));
+  openPurchaseForm(id, () => {
+    if ((window as any).reloadTab) (window as any).reloadTab('compras');
+    else renderCompras();
+  });
 }
 
 function contabilizarCompra(id: string, number: string) {
@@ -2363,7 +2366,8 @@ function contabilizarCompra(id: string, number: string) {
         if (!isReadyToPost) return;
         const { inv, tx } = await (window as any).API.postPurchaseInvoice(id);
         (window as any).showToast(`Factura ${inv.number} contabilizada exitosamente. Asiento ${tx.number} generado (borrador).`, 'success');
-        renderCompras(document.getElementById('page-content')!);
+        if ((window as any).reloadTab) (window as any).reloadTab('compras');
+        else renderCompras();
       } catch (err: any) {
         (window as any).showToast(err.response?.message || err.message, 'error');
       }
@@ -2388,7 +2392,8 @@ function reopenPurchase(id: string, number: string) {
     async (reason: string) => {
       await (window as any).API.reopenPurchaseInvoice(id, reason);
       (window as any).showToast(`Factura ${number} reabierta en borrador. Se revirtieron contabilidad e inventario.`, 'success');
-      renderCompras(document.getElementById('page-content')!);
+      if ((window as any).reloadTab) (window as any).reloadTab('compras');
+      else renderCompras();
     }
   );
 }
@@ -2410,7 +2415,8 @@ function voidPurchase(id: string, number: string, status = 'draft') {
     async (reason: string) => {
       await (window as any).API.voidPurchaseInvoice(id, reason);
       (window as any).showToast(status === 'posted' ? 'Compra anulada. Se revirtieron contabilidad e inventario.' : 'Compra anulada', 'success');
-      renderCompras(document.getElementById('page-content')!);
+      if ((window as any).reloadTab) (window as any).reloadTab('compras');
+      else renderCompras();
     }
   );
 }
@@ -2495,7 +2501,10 @@ function poKpi(label: string, value: any, icon: string, color: string, bg: strin
     const resId = (document.getElementById('pre-note-resolution') as HTMLSelectElement)?.value || '';
     (window as any).closeModal();
 
-    window.openPurchaseForm(null, () => (window as any)._loadComprasPage(document.getElementById('page-content')!), null, { originalInvoiceId: pId, type, resolutionId: resId, originalInvoiceNum: purchaseNum });
+    window.openPurchaseForm(null, () => {
+      if ((window as any).reloadTab) (window as any).reloadTab('compras');
+      else renderCompras();
+    }, null, { originalInvoiceId: pId, type, resolutionId: resId, originalInvoiceNum: purchaseNum });
   };
 };
 

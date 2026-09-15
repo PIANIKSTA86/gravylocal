@@ -499,8 +499,8 @@ async function openSalesSettingsModal(onSaved: any = null) {
 
 // --- Render Principal ---
 export async function renderVentas(container?: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((c: any) => c || document.getElementById('page-content'));
-  const target = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((c: any, k: string) => c || document.getElementById('tab-pane-' + k));
+  const target = getContainer(container, 'ventas');
   if (!target) return;
   target.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial de facturación...</div>`;
   try {
@@ -3634,7 +3634,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 (window as any).openPendingDeliverySaleForm = function(onDone: any = null) {
   navigate('ventas');
   setTimeout(() => {
-    openSalesForm(null, onDone || (() => renderVentas(document.getElementById('page-content')!)));
+    openSalesForm(null, onDone || (() => ((window as any).reloadTab ? (window as any).reloadTab('ventas') : renderVentas())));
     setTimeout(() => {
       const pending = document.getElementById('so-pending-delivery') as HTMLInputElement | null;
       if (pending) {
@@ -4956,9 +4956,10 @@ window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
         if (res && res.success) {
           (window as any).showToast(`Factura ${docNumber} emitida correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
           (window as any).closeModal();
-          const content = document.getElementById('page-content');
-          if (content) {
-            (window as any).renderVentas(content);
+          if (typeof (window as any).reloadTab === 'function') {
+            (window as any).reloadTab('ventas');
+          } else {
+            (window as any).renderVentas();
           }
         } else {
           (window as any).showToast(`Error al emitir factura: ${res.dianResponse || 'Respuesta desconocida'}`, 'error');
@@ -4973,7 +4974,7 @@ window.emitInvoiceToDian = async function(txId: string, docNumber: string) {
 
 window.editSalesInvoice = async function(id: string) {
   try {
-    await openSalesForm(id, () => renderVentas(document.getElementById('page-content')!));
+    await openSalesForm(id, () => ((window as any).reloadTab ? (window as any).reloadTab('ventas') : renderVentas()));
   } catch (err: any) {
     console.error("Error abriendo borrador para edición:", err);
     (window as any).showToast?.("Error al cargar la factura en borrador: " + (err.message || err), "error");
@@ -5080,7 +5081,7 @@ window.duplicateSalesInvoice = async function(id: string) {
     (window as any).showToast?.(`Factura duplicada con éxito bajo el consecutivo ${newNumber}`, 'success');
 
     // 9. Abrir de inmediato el formulario de edición
-    await openSalesForm(newInv.id, () => renderVentas(document.getElementById('page-content')!));
+    await openSalesForm(newInv.id, () => ((window as any).reloadTab ? (window as any).reloadTab('ventas') : renderVentas()));
 
   } catch (err: any) {
     console.error("Error al duplicar factura:", err);
@@ -5143,7 +5144,11 @@ window.contabilizarVenta = function(id: string, number: string, isElectronic: bo
         } else {
           (window as any).showToast(`Factura ${number} contabilizada exitosamente con Kardex y COGS`, 'success');
         }
-        renderVentas(document.getElementById('page-content')!);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('ventas');
+        } else {
+          renderVentas();
+        }
       } catch (err: any) {
         (window as any).showToast(err.message || 'Error al contabilizar', 'error');
       }
@@ -5159,7 +5164,11 @@ window.deleteSalesInvoiceDraft = function(id: string, number: string) {
       try {
         await (window as any).API.deleteInvoiceDraft(id);
         (window as any).showToast('Factura borrador y componentes asociados eliminados', 'success');
-        renderVentas(document.getElementById('page-content')!);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('ventas');
+        } else {
+          renderVentas();
+        }
       } catch (err: any) {
         (window as any).showToast(err.message || 'Error al eliminar borrador', 'error');
       }
@@ -5181,7 +5190,11 @@ window.voidSalesInvoiceDirect = function(id: string, number: string) {
     async (reason: string) => {
       await (window as any).API.voidInvoice(id, reason);
       (window as any).showToast(`Factura de venta ${number} anulada. Contabilidad e inventario revertidos.`, 'success');
-      renderVentas(document.getElementById('page-content')!);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('ventas');
+      } else {
+        renderVentas();
+      }
     }
   );
 };
@@ -5410,9 +5423,10 @@ window.seeSalesTxDetail = function(txId: string) {
       (window as any).closeModal();
       
       // Recargar el detalle y refrescar página de ventas
-      const pageContent = document.getElementById('page-content');
-      if (pageContent) {
-        (window as any).renderVentas(pageContent);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('ventas');
+      } else {
+        (window as any).renderVentas();
       }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error al cambiar la forma de pago', 'error');

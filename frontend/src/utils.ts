@@ -9,17 +9,47 @@
 function getActivePane(): HTMLElement | Document {
   if (typeof document === 'undefined') return {} as any;
   const active = document.querySelector('#page-content .tab-pane.active');
-  return (active as HTMLElement) || document.getElementById('page-content') || document;
+  if (active) return active as HTMLElement;
+  const fallbackPane = document.querySelector('#page-content .tab-pane');
+  if (fallbackPane) return fallbackPane as HTMLElement;
+  return document.getElementById('page-content') || document;
 }
 
-function getPageContainer(container?: HTMLElement | null): HTMLElement {
+function getPageContainer(container?: HTMLElement | null, pageKey?: string): HTMLElement {
   if (typeof document === 'undefined') return {} as any;
+  // Si se pasa un contenedor legítimo de pestaña (que NO sea la raíz #page-content)
   if (container && container.id && container.id !== 'page-content' && !container.id.startsWith('page-content')) {
     return container;
   }
+  // Si se especificó una clave de página, buscar su pane dedicado
+  if (pageKey) {
+    const specificPane = document.getElementById(`tab-pane-${pageKey}`);
+    if (specificPane) return specificPane;
+  }
+  // Retornar la pestaña activa actual si existe
   const active = document.querySelector('#page-content .tab-pane.active') as HTMLElement;
   if (active) return active;
-  return (container || document.getElementById('page-content') || document.body) as HTMLElement;
+  
+  // Buscar cualquier tab-pane existente
+  const anyPane = document.querySelector('#page-content .tab-pane') as HTMLElement;
+  if (anyPane) return anyPane;
+
+  // Si se pasa page-content y no hay panes, asegurarse de no romper la jerarquía
+  const pageContent = document.getElementById('page-content');
+  if (pageContent) {
+    // Crear un pane contenedor por defecto para no inyectar HTML huérfano en la raíz
+    const safeKey = pageKey || (window as any).currentPage || 'default';
+    let safePane = document.getElementById(`tab-pane-${safeKey}`);
+    if (!safePane) {
+      safePane = document.createElement('div');
+      safePane.id = `tab-pane-${safeKey}`;
+      safePane.className = `tab-pane tab-pane-${safeKey} active`;
+      pageContent.appendChild(safePane);
+    }
+    return safePane;
+  }
+
+  return (container || document.body) as HTMLElement;
 }
 
 const $ = (s: string, context?: HTMLElement | Document): HTMLElement | null => {
@@ -27,7 +57,12 @@ const $ = (s: string, context?: HTMLElement | Document): HTMLElement | null => {
   const root = context || getActivePane();
   let el = root.querySelector(s);
   if (!el && root !== document) {
-    el = document.querySelector(s);
+    // Si no está en el pane activo, solo permitir consultar elementos globales o fuera de pestañas inactivas.
+    // Esto previene de forma estricta que una pestaña interactúe con los inputs o tablas de otra pestaña oculta.
+    const candidate = document.querySelector(s);
+    if (candidate && !candidate.closest('.tab-pane:not(.active)')) {
+      el = candidate;
+    }
   }
   return el as HTMLElement | null;
 };
@@ -37,7 +72,11 @@ const $$ = (s: string, context?: HTMLElement | Document): HTMLElement[] => {
   const root = context || getActivePane();
   const list = root.querySelectorAll(s);
   if (list.length > 0) return [...list] as HTMLElement[];
-  return root !== document ? ([...document.querySelectorAll(s)] as HTMLElement[]) : [];
+  if (root !== document) {
+    const candidateList = document.querySelectorAll(s);
+    return ([...candidateList] as HTMLElement[]).filter(el => !el.closest('.tab-pane:not(.active)'));
+  }
+  return [];
 };
 
 /* ── Sanitización HTML (previene XSS) ────────────────────── */

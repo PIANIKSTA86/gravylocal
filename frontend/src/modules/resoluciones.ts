@@ -39,8 +39,8 @@ const DOC_TYPES = [
 ];
 
 export async function renderResoluciones(container: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'resoluciones');
   if (!container) return;
   container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando resoluciones...</div>`;
 
@@ -276,8 +276,10 @@ function getOrGenerateBrowserUUID() {
   localStorage.setItem('gravy_pos_register_id', registerId);
   (window as any).showToast('Esta terminal ha sido vinculada con éxito.', 'success');
   (window as any).closeModal();
-  if (document.getElementById('page-content')) {
-    renderResoluciones(document.getElementById('page-content')!);
+  if (typeof (window as any).reloadTab === 'function') {
+    (window as any).reloadTab('resoluciones');
+  } else {
+    renderResoluciones((window as any).getTabPane?.('resoluciones'));
   }
 };
 
@@ -333,7 +335,11 @@ function openRegisterForm(reg: PosRegister | null = null) {
         (window as any).showToast('Caja creada con éxito.', 'success');
       }
       (window as any).closeModal();
-      renderResoluciones(document.getElementById('page-content')!);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('resoluciones');
+      } else {
+        renderResoluciones((window as any).getTabPane?.('resoluciones'));
+      }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error al guardar caja.', 'error');
     }
@@ -361,7 +367,11 @@ function openRegisterForm(reg: PosRegister | null = null) {
         }
         (window as any).showToast('Caja eliminada con éxito.', 'success');
         (window as any).closeModal();
-        renderResoluciones(document.getElementById('page-content')!);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('resoluciones');
+        } else {
+          renderResoluciones((window as any).getTabPane?.('resoluciones'));
+        }
       } catch (err: any) {
         (window as any).showToast('No se puede eliminar la caja.', 'error');
       }
@@ -470,7 +480,11 @@ function openResolutionForm(res: DianResolution | null = null, registers: PosReg
         (window as any).showToast('Resolución creada con éxito.', 'success');
       }
       (window as any).closeModal();
-      renderResoluciones(document.getElementById('page-content')!);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('resoluciones');
+      } else {
+        renderResoluciones((window as any).getTabPane?.('resoluciones'));
+      }
     } catch (err: any) {
       (window as any).showToast(err.message || 'Error al guardar resolución.', 'error');
     }
@@ -498,7 +512,11 @@ function openResolutionForm(res: DianResolution | null = null, registers: PosReg
         await (window as any).pb.delete('dian_resolutions', id);
         (window as any).showToast('Resolución eliminada con éxito.', 'success');
         (window as any).closeModal();
-        renderResoluciones(document.getElementById('page-content')!);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('resoluciones');
+        } else {
+          renderResoluciones((window as any).getTabPane?.('resoluciones'));
+        }
       } catch (err: any) {
         (window as any).showToast('Error al eliminar resolución.', 'error');
       }

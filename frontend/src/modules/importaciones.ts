@@ -33,11 +33,12 @@ const TRANSPORTS = [
 ];
 
 export async function renderImportaciones(container: HTMLElement) {
-  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
+  const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'importaciones') : container;
+  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
   try {
-    await _loadImportacionesPage(container);
+    await _loadImportacionesPage(c);
   } catch (err: any) {
-    container.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+    c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
   }
 }
 
@@ -395,6 +396,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         localPalletConfigs[key].push(pc);
       });
     }
+  }
+
+  // Deducción robusta de modo consolidado (por flag, por facturas existentes o por líneas con factura asignada)
+  const isImportConsolidated = Boolean(
+    imp?.is_consolidated || 
+    (localInvoices && localInvoices.length > 0) || 
+    (existingLines && existingLines.some((l: any) => l.import_invoice_id || (l.supplier_id && imp?.supplier_id && l.supplier_id !== imp?.supplier_id)))
+  );
+  if (imp) {
+    imp.is_consolidated = isImportConsolidated;
   }
 
   // Cargar o inicializar estructura multi-línea para cada etapa
@@ -1948,7 +1959,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const baseAnchoCm = preloadedLine?.ancho_cm ?? productObj?.ancho_cm ?? 0;
     const baseAltoCm = preloadedLine?.alto_cm ?? productObj?.alto_cm ?? 0;
 
-    const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
+    const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked ?? isImportConsolidated;
 
     // Preload pallet configs if exists
     const existingPcs = (lineId && localPalletConfigs[lineId]) || (productId && localPalletConfigs[productId]) || [];
@@ -2434,6 +2445,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   // --- Handlers de Modo Consolidado, Facturas Comerciales y Palletizado ---
 
   (window as any).impToggleConsolidatedMode = function(isConsolidated: boolean) {
+    const chk = document.getElementById('imp-is-consolidated') as HTMLInputElement;
+    if (chk && chk.checked !== isConsolidated) {
+      chk.checked = isConsolidated;
+    }
     const invWrap = document.getElementById('imp-consolidated-invoices-wrap');
     const thSupp = document.querySelectorAll('.col-consolidated-th');
     const tdSupp = document.querySelectorAll('.col-consolidated-td');
@@ -3300,6 +3315,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (tableWrap) setTimeout(() => { tableWrap.scrollTop = tableWrap.scrollHeight; }, 50);
   };
 
+  // Inicializar estado de modo consolidado antes de montar líneas
+  (window as any).impToggleConsolidatedMode(isImportConsolidated);
+
   // Cargar líneas existentes
   if (existingLines.length) {
     existingLines.forEach((l: any) => {
@@ -3314,8 +3332,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
   initImpGlobalProductSearch();
   
-  // Inicializar modo consolidado y tabla de facturas
-  (window as any).impToggleConsolidatedMode(Boolean(imp?.is_consolidated));
+  // Re-sincronizar modo consolidado y tabla de facturas tras montar líneas
+  (window as any).impToggleConsolidatedMode(isImportConsolidated);
   (window as any).impRenderInvoicesTable();
 
   // Ejecutar primera calculadora al abrir
@@ -3815,6 +3833,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
       // 1. Guardar facturas comerciales consolidadas
       if (isConsolidated && localInvoices.length) {
+        const savedLines = await (window as any).API.getImportLines(finalImportId);
+
         for (const inv of localInvoices) {
           const invData: any = {
             import_id: finalImportId,
@@ -3831,16 +3851,21 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           if (inv.id && !inv.id.startsWith('temp-')) {
             await (window as any).API.updateImportInvoice(inv.id, invData, inv._newFile);
           } else {
+            const oldTempId = inv.id;
             const createdInv = await (window as any).API.createImportInvoice(finalImportId, invData, inv._newFile);
-            // Relacionar líneas temporales con la factura recién creada
-            const savedLines = await (window as any).API.getImportLines(finalImportId);
-            for (const sl of savedLines) {
-              const matching = lines.find(l => l.product_id === sl.product_id && l._temp_invoice_id === inv.id);
-              if (matching) {
-                await (window as any).pb.update('import_lines', sl.id, {
-                  import_invoice_id: createdInv.id,
-                  supplier_id: invData.supplier_id
-                });
+            inv.id = createdInv.id;
+
+            // Relacionar líneas temporales con la factura recién creada de forma determinista por posición (line_order)
+            for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+              const memLine = lines[lineIdx];
+              if (memLine._temp_invoice_id === oldTempId) {
+                const sl = savedLines.find((s: any) => s.line_order === (lineIdx + 1)) || savedLines[lineIdx];
+                if (sl) {
+                  await (window as any).pb.update('import_lines', sl.id, {
+                    import_invoice_id: createdInv.id,
+                    supplier_id: invData.supplier_id
+                  });
+                }
               }
             }
           }
@@ -4442,9 +4467,13 @@ async function confirmFinalizarImportacion(importId: string) {
         (window as any).showToast(`Importación finalizada. Traslado a bodega registrado.${resMsg}`, 'success');
         closeModal();
         
-        // Recargar página
-        const container = document.getElementById('page-content');
-        if (container) renderImportaciones(container);
+        // Recargar página de importaciones
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('importaciones');
+        } else {
+          const container = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'importaciones') : document.getElementById('tab-pane-importaciones');
+          if (container) renderImportaciones(container);
+        }
       } catch (err: any) {
         (window as any).showToast(err.message, 'error');
         if (btn) {
@@ -4467,8 +4496,12 @@ async function cancelImportDirect(importId: string, number: string) {
       try {
         await (window as any).API.cancelImport(importId, 'Anulado manualmente desde la interfaz de usuario');
         (window as any).showToast('Importación anulada.', 'success');
-        const container = document.getElementById('page-content');
-        if (container) renderImportaciones(container);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('importaciones');
+        } else {
+          const container = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'importaciones') : document.getElementById('tab-pane-importaciones');
+          if (container) renderImportaciones(container);
+        }
       } catch (err: any) {
         (window as any).showToast(err.message, 'error');
       }
@@ -4479,8 +4512,12 @@ async function cancelImportDirect(importId: string, number: string) {
 // Exponer funciones globalmente para acceder desde onclick o eventos
 (window as any).renderImportaciones = renderImportaciones;
 (window as any).editImport = (id: string) => openImportForm(id, () => {
-  const container = document.getElementById('page-content');
-  if (container) renderImportaciones(container);
+  if (typeof (window as any).reloadTab === 'function') {
+    (window as any).reloadTab('importaciones');
+  } else {
+    const container = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'importaciones') : document.getElementById('tab-pane-importaciones');
+    if (container) renderImportaciones(container);
+  }
 });
 (window as any).viewImportDetail = viewImportDetail;
 (window as any).confirmFinalizarImportacion = confirmFinalizarImportacion;

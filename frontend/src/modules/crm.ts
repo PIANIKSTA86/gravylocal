@@ -35,13 +35,16 @@ const STAGES = [
   { key: 'PERDIDO',     label: 'Cierre Perdido',      color: '#EF4444', bg: '#FEF2F2', border: '#FCA5A5', icon: 'fa-circle-xmark' },
 ];
 
-export async function renderCRM(container: HTMLElement) {
-  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando embudo CRM...</div>`;
+export async function renderCRM(container?: HTMLElement) {
+  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
+  const target = getContainer(container, 'crm');
+  if (!target) return;
+  target.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando embudo CRM...</div>`;
 
   try {
-    await _loadCrmPage(container);
+    await _loadCrmPage(target);
   } catch (err: any) {
-    container.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+    target.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
   }
 }
 
@@ -319,10 +322,8 @@ function _renderDealCard(d: Deal, stage: any) {
     // Registrar Auditoría
     await (window as any).API.logAudit('MOVE_STAGE', 'crm_deals', dealId, `Oportunidad "${deal.title}" movida a ${STAGES[targetIdx].label}`);
 
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) {
-      renderCRM(activeContent);
-    }
+    if ((window as any).reloadTab) (window as any).reloadTab('crm');
+    else renderCRM();
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al mover oportunidad', 'error');
   }
@@ -335,10 +336,8 @@ function _renderDealCard(d: Deal, stage: any) {
   if (!deal) return;
 
   _openDealForm(deal, () => {
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) {
-      renderCRM(activeContent);
-    }
+    if ((window as any).reloadTab) (window as any).reloadTab('crm');
+    else renderCRM();
   });
 };
 
@@ -352,10 +351,8 @@ function _renderDealCard(d: Deal, stage: any) {
     
     await (window as any).API.logAudit('DELETE', 'crm_deals', dealId, `Oportunidad "${title}" eliminada del CRM`);
 
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) {
-      renderCRM(activeContent);
-    }
+    if ((window as any).reloadTab) (window as any).reloadTab('crm');
+    else renderCRM();
 } catch (err: any) {
     (window as any).showToast(err.message || 'Error al eliminar', 'error');
   }

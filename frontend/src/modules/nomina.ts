@@ -2581,7 +2581,14 @@ async function renderNominaContratos(c) {
                       ${emp.active ? '<span class="badge badge-green">Vigente</span>' : '<span class="badge badge-red">Finalizado</span>'}
                     </td>
                     <td class="text-right">
-                      <button class="btn btn-outline btn-sm btn-edit-contract" data-id="${esc(emp.id)}"><i class="fas fa-file-signature mr-1"></i>Editar Contrato</button>
+                      <div class="inline-flex gap-1 justify-end">
+                        <button class="btn btn-outline btn-sm btn-edit-contract" data-id="${esc(emp.id)}"><i class="fas fa-file-signature mr-1"></i>Editar Contrato</button>
+                        ${emp.active ? `
+                          <button class="btn btn-outline btn-sm text-red-600 hover:bg-red-50 font-semibold btn-liquidar-contract" data-id="${esc(emp.id)}" title="Liquidar y finalizar contrato de trabajo">
+                            <i class="fas fa-user-slash mr-1"></i>Liquidar
+                          </button>
+                        ` : ''}
+                      </div>
                     </td>
                   </tr>
                 `;
@@ -2596,6 +2603,14 @@ async function renderNominaContratos(c) {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
         openContractForm(employees, id);
+      });
+    });
+
+    c.querySelectorAll('.btn-liquidar-contract').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        (window as any)._pendingSettlementEmployeeId = id;
+        navigate('nomina-liquidacion-definitiva');
       });
     });
 
@@ -9546,3 +9561,1400 @@ async function renderNominaDistribucionDotacionPage(c: HTMLElement) {
 (window as any)._savePayPlanilla = savePayPlanilla;
 (window as any)._openPayPayrollModal = openPayPayrollNominaModal;
 (window as any)._savePayPayroll = savePayPayroll;
+
+// ============================================================
+//  MÓDULO: LIQUIDACIÓN DEFINITIVA DE CONTRATO DE TRABAJO
+//  Normativa: CST Colombia — Art. 249, 306, 186, 64
+//  Contable:  PUC / NIIF — Cruce automático de provisiones
+// ============================================================
+
+const SMMLV_2026 = 1423500;
+const AUX_TRANSPORTE_2026 = 200000;
+
+// ── Utilidades de días ─────────────────────────────────────────────────
+function _diffDays(fromStr: string, toStr: string): number {
+  const a = new Date(fromStr + 'T00:00:00');
+  const b = new Date(toStr + 'T00:00:00');
+  const msDay = 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / msDay));
+}
+
+/** Convierte días calendario a días de 30 (comerciales) */
+function _toDays30(fromStr: string, toStr: string): number {
+  if (!fromStr || !toStr) return 0;
+  const [ay, am, ad] = fromStr.split('-').map(Number);
+  const [by, bm, bd] = toStr.split('-').map(Number);
+  // Fórmula comercial 30/360 estándar colombiana
+  const d1 = Math.min(ad, 30);
+  const d2 = bd === 31 ? 30 : bd;
+  return Math.max(0, (by - ay) * 360 + (bm - am) * 30 + (d2 - d1));
+}
+
+function _yyyymmdd(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function _today(): string {
+  return _yyyymmdd(new Date());
+}
+
+function _semesterStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const m = d.getMonth() + 1;
+  const y = d.getFullYear();
+  return m <= 6 ? `${y}-01-01` : `${y}-07-01`;
+}
+
+/** Años completos entre dos fechas (para cálculo de indemnización) */
+function _fullYears(fromStr: string, toStr: string): number {
+  const [ay, am, ad] = fromStr.split('-').map(Number);
+  const [by, bm, bd] = toStr.split('-').map(Number);
+  let y = by - ay;
+  if (bm < am || (bm === am && bd < ad)) y--;
+  return Math.max(0, y);
+}
+
+// ── Motor de cálculo CST ───────────────────────────────────────────────
+function calcularLiquidacionDefinitiva(params: {
+  hire_date: string;
+  settlement_date: string;
+  basic_salary: number;
+  apply_transport: boolean;
+  smmlv: number;
+  contract_type: string;
+  pending_salary_days: number;
+  extra_deductions: number;
+  include_indemnity: boolean;
+  vacation_days_pending: number;
+}) {
+  const {
+    hire_date, settlement_date, basic_salary, apply_transport, smmlv,
+    contract_type, pending_salary_days, extra_deductions,
+    include_indemnity, vacation_days_pending
+  } = params;
+
+  const r2 = round2;
+  const transport = (apply_transport && basic_salary <= smmlv * 2) ? AUX_TRANSPORTE_2026 : 0;
+  const basePrest = r2(basic_salary + transport);                            // Base prestaciones Art. 7 Ley 1/1963
+  const semStart = _semesterStart(settlement_date);
+  const yearStart = settlement_date.slice(0, 4) + '-01-01';
+  const startForCes = hire_date > yearStart ? hire_date : yearStart;        // Si ingresó este año, usar fecha ingreso
+  const startForPrima = hire_date > semStart ? hire_date : semStart;
+
+  // Días 30/360
+  const daysCesantias = _toDays30(startForCes, settlement_date);
+  const daysPrima = _toDays30(startForPrima, settlement_date);
+  const daysVacaciones = vacation_days_pending;                              // Días pendientes por disfrutar
+
+  // ─── Prestaciones sociales CST ────────────────────────────────────────
+  const cesantias = r2((basePrest * daysCesantias) / 360);
+  const interesesCes = r2((cesantias * daysCesantias * 0.12) / 360);
+  const prima = r2((basePrest * daysPrima) / 360);
+  const vacaciones = r2((basic_salary * daysVacaciones) / 720);             // Art. 186 CST
+
+  // ─── Salario días pendientes del mes ─────────────────────────────────
+  const pendingSalary = r2((basic_salary / 30) * pending_salary_days);
+  const pendingTransport = r2((transport / 30) * pending_salary_days);
+
+  // ─── Seguridad social sobre salario pendiente (solo) ─────────────────
+  const ibcPending = r2(pendingSalary);                                      // Aux. transporte no cotiza SS
+  const healthDed = r2(ibcPending * 0.04);
+  const pensionDed = r2(ibcPending * 0.04);
+
+  // ─── Indemnización Art. 64 CST (opcional, despido sin justa causa) ───
+  let indemnity = 0;
+  if (include_indemnity && basic_salary > 0) {
+    const yearsCompleted = _fullYears(hire_date, settlement_date);
+    const remainingDays30 = _toDays30(settlement_date, _yyyymmdd(new Date(new Date(hire_date).setFullYear(new Date(hire_date).getFullYear() + yearsCompleted + 1))));
+    if (contract_type === 'TERMINADO_FIJO') {
+      indemnity = r2((basic_salary / 30) * Math.max(0, remainingDays30));
+    } else {
+      // Contrato indefinido: Art. 64 CST
+      const is10smmlv = basic_salary < smmlv * 10;
+      if (yearsCompleted < 1) {
+        indemnity = r2((basic_salary / 30) * 30);                           // 30 días primer año
+      } else {
+        const base30 = r2((basic_salary / 30) * 30);
+        const extra = is10smmlv
+          ? r2((basic_salary / 30) * 20 * (yearsCompleted - 1))            // 20 días años siguientes < 10 SMMLV
+          : r2((basic_salary / 30) * 40 * (yearsCompleted - 1));            // 40 días años siguientes >= 10 SMMLV
+        indemnity = r2(base30 + extra);
+      }
+    }
+  }
+
+  const totalEarnings = r2(pendingSalary + pendingTransport + cesantias + interesesCes + prima + vacaciones + indemnity);
+  const totalDeductions = r2(healthDed + pensionDed + extra_deductions);
+  const netPay = r2(totalEarnings - totalDeductions);
+
+  return {
+    daysCesantias, daysPrima, daysVacaciones,
+    pending_salary_days, pendingSalary, pendingTransport,
+    cesantias, interesesCes, prima, vacaciones, indemnity,
+    transport, basePrest,
+    healthDed, pensionDed,
+    totalEarnings, totalDeductions, netPay,
+  };
+}
+
+// ── Suma de provisiones acumuladas en payroll_lines para un empleado ──
+async function getAccumulatedProvisions(employeeId: string, fiscalYear: string): Promise<{
+  cesantias: number; intereses_ces: number; prima: number; vacaciones: number;
+}> {
+  try {
+    const yearFilter = `${fiscalYear}-01-01`;
+    const lines = await pb.listAll('payroll_lines', {
+      filter: `employee_id="${pb.escapeFilterValue(employeeId)}"`,
+      expand: 'period_id',
+    });
+    // Filtrar solo líneas del año fiscal indicado
+    const yearLines = lines.filter((l: any) => {
+      const pFrom = l.expand?.period_id?.date_from || '';
+      return pFrom >= yearFilter && pFrom < `${Number(fiscalYear) + 1}-01-01`;
+    });
+    return {
+      cesantias: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.cesantias) || 0), 0)),
+      intereses_ces: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.intereses_ces) || 0), 0)),
+      prima: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.prima) || 0), 0)),
+      vacaciones: round2(yearLines.reduce((s: number, l: any) => s + (Number(l.vacaciones) || 0), 0)),
+    };
+  } catch (_) {
+    return { cesantias: 0, intereses_ces: 0, prima: 0, vacaciones: 0 };
+  }
+}
+
+// ── Construcción del asiento contable con cruce de provisiones ─────────
+function buildSettlementAccountingLines(
+  calc: any,
+  provisions: { cesantias: number; intereses_ces: number; prima: number; vacaciones: number },
+  mappings: any,
+  empId: string,
+  settlementDate: string,
+  empName: string,
+  terceroSaludId: string,
+  terceroPensionId: string,
+  groupId = '',
+  empDocNumber = '',
+) {
+  const r2 = round2;
+  const lines: any[] = [];
+  const missingAccounts: string[] = [];
+  const label = (c: string) => `Liquidación Definitiva ${empName} - ${c}`;
+
+  function resolveAccount(conceptKey: string, side: 'debit' | 'credit'): string {
+    const active = (mappings || []).filter((m: any) => m.active !== false && m.concept === conceptKey && m.side === side);
+    // 1. Específico por empleado
+    const exact = active.find((m: any) => m.employee_id === empId);
+    if (exact?.account_id) return exact.account_id;
+    // 2. Por grupo de empleado
+    if (groupId) {
+      const groupMatch = active.find((m: any) => m.group_id === groupId && !m.employee_id);
+      if (groupMatch?.account_id) return groupMatch.account_id;
+    }
+    // 3. Mapeo general sin grupo ni empleado
+    const def = active.find((m: any) => !m.employee_id && !m.group_id);
+    if (def?.account_id) return def.account_id;
+    // 4. Fallback: cualquier mapeo activo para ese concepto y lado
+    return active[0]?.account_id || '';
+  }
+
+  function addLine(account_id: string, debit: number, credit: number, description: string, third_party_id = '', conceptKey = '', cross_doc_ref = '') {
+    if (debit <= 0 && credit <= 0) return;
+    if (!account_id) {
+      if (conceptKey && !missingAccounts.includes(conceptKey)) {
+        missingAccounts.push(conceptKey);
+      }
+      return;
+    }
+    lines.push({
+      account_id,
+      debit: r2(debit),
+      credit: r2(credit),
+      description,
+      third_party_id: third_party_id || undefined,
+      cross_doc_ref: cross_doc_ref || undefined,
+    });
+  }
+
+  // ─── Helper: débito al pasivo (hasta el saldo disponible) + ajuste al gasto ──
+  function crossProvision(
+    conceptKey: string,
+    liquidadoAmt: number,
+    provisionSaldo: number,
+    conceptLabel: string
+  ) {
+    if (liquidadoAmt <= 0) return;
+    const acctPasivo = resolveAccount(conceptKey, 'credit');   // Pasivo 26xx/25xx mapeado como credit del concepto
+    const acctGasto = resolveAccount(conceptKey, 'debit');     // Gasto 51xx mapeado como debit del concepto
+
+    const debitPasivo = r2(Math.min(liquidadoAmt, Math.max(0, provisionSaldo)));
+    const debitGasto = r2(liquidadoAmt - debitPasivo);
+    const sobreProv = r2(provisionSaldo - debitPasivo);
+
+    if (debitPasivo > 0)
+      addLine(acctPasivo, debitPasivo, 0, label(`Cancelación Provisión ${conceptLabel}`), empId, `${conceptKey} (Pasivo)`);
+    if (debitGasto > 0)
+      addLine(acctGasto, debitGasto, 0, label(`Gasto ${conceptLabel} no provisionado`), empId, `${conceptKey} (Gasto)`);
+    if (sobreProv > 0)
+      addLine(acctPasivo, sobreProv, 0, label(`Ajuste Sobreprovisión ${conceptLabel}`), empId, `${conceptKey} (Pasivo)`);
+    // Reintegro de sobreprovisión acreditado al gasto
+    if (sobreProv > 0)
+      addLine(acctGasto, 0, sobreProv, label(`Reintegro Sobreprovisión ${conceptLabel}`), empId, `${conceptKey} (Gasto)`);
+  }
+
+  // ─── Salario y Auxilio pendientes (van directo a gasto, no tienen provisión) ──
+  if ((calc.pendingSalary || 0) > 0) {
+    const acctSalary = resolveAccount('salary_base', 'debit');
+    addLine(acctSalary, calc.pendingSalary, 0, label('Salario Pendiente'), empId, 'salary_base (Gasto)');
+  }
+  if ((calc.pendingTransport || 0) > 0) {
+    const acctTransport = resolveAccount('transport_allowance', 'debit');
+    addLine(acctTransport, calc.pendingTransport, 0, label('Auxilio Transporte Pendiente'), empId, 'transport_allowance (Gasto)');
+  }
+
+  // ─── Prestaciones: cruce automático contra provisiones acumuladas ─────
+  crossProvision('cesantias',    calc.cesantias || 0,    provisions.cesantias || 0,    'Cesantías');
+  crossProvision('intereses_ces', calc.interesesCes || 0, provisions.intereses_ces || 0, 'Intereses Cesantías');
+  crossProvision('prima',        calc.prima || 0,        provisions.prima || 0,        'Prima de Servicios');
+  crossProvision('vacaciones',   calc.vacaciones || 0,   provisions.vacaciones || 0,   'Vacaciones');
+
+  // ─── Indemnización (gasto directo, sin provisión) ─────────────────────
+  if ((calc.indemnity || 0) > 0) {
+    const acctInd = resolveAccount('salary_base', 'debit');
+    addLine(acctInd, calc.indemnity, 0, label('Indemnización Art.64 CST'), empId, 'indemnizacion (Gasto)');
+  }
+
+  // ─── Deducciones SS (solo sobre salario pendiente) ────────────────────
+  if ((calc.healthDed || 0) > 0) {
+    const acctSalud = resolveAccount('deduction_health', 'credit');
+    addLine(acctSalud, 0, calc.healthDed, label('Deducción Salud Empleado'), terceroSaludId || empId, 'deduction_health (Pasivo EPS)');
+  }
+  if ((calc.pensionDed || 0) > 0) {
+    const acctPen = resolveAccount('deduction_pension', 'credit');
+    addLine(acctPen, 0, calc.pensionDed, label('Deducción Pensión Empleado'), terceroPensionId || empId, 'deduction_pension (Pasivo Pensión)');
+  }
+  if ((calc.otherDeductions || 0) > 0) {
+    const acctOther = resolveAccount('deduction_other', 'credit') || resolveAccount('cxc', 'credit');
+    addLine(acctOther, 0, calc.otherDeductions, label('Otras Deducciones / Descuentos'), empId, 'deduction_other (Pasivo/CxC)');
+  }
+
+  // ─── Neto a pagar (Prestaciones por Pagar / Salarios por Pagar) ─────────
+  if ((calc.netPay || 0) > 0) {
+    const acctNeto = resolveAccount('net_pay', 'credit');
+    addLine(acctNeto, 0, calc.netPay, label('Neto a Pagar Liquidación Definitiva'), empId, 'net_pay (Pasivo Salarios)');
+  }
+
+  (lines as any).missingAccounts = missingAccounts;
+  return lines;
+}
+
+// ── Función para Imprimir Acta de Liquidación Definitiva ───────────────
+async function _printSettlementActa(settlementOrId: any) {
+  try {
+    let rec = settlementOrId;
+    if (typeof settlementOrId === 'string') {
+      rec = await pb.get('payroll_settlements', settlementOrId, { expand: 'employee_id' });
+    }
+    if (!rec) throw new Error('No se encontró el registro de liquidación.');
+
+    let emp = rec.expand?.employee_id;
+    if (!emp && rec.employee_id && typeof rec.employee_id === 'string') {
+      try {
+        emp = await pb.get('third_parties', rec.employee_id);
+      } catch (_) {}
+    }
+    emp = emp || (typeof rec.employee_id === 'object' ? rec.employee_id : {});
+    const empName = emp.name || rec.employee_name || 'Empleado';
+    const empDoc = emp.doc_number || '';
+
+    const [rawCompanyName, rawCompanyNit] = await Promise.all([
+      API.getSetting?.('company_name').catch(() => 'EMPRESA') ?? 'EMPRESA',
+      API.getSetting?.('company_nit').catch(() => '') ?? '',
+    ]);
+    const companyName = rawCompanyName || 'EMPRESA';
+    const companyNit = rawCompanyNit || '';
+    const fmtCOP = (v: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 }).format(v || 0);
+
+    const reasonLabel2: Record<string, string> = {
+      RENUNCIA_VOLUNTARIA: 'Renuncia Voluntaria',
+      DESPIDO_SIN_JUSTA_CAUSA: 'Despido Sin Justa Causa (Aplica Indemnización Art. 64 CST)',
+      TERMINACION_JUSTA_CAUSA: 'Terminación con Justa Causa (Art. 62 CST)',
+      VENCIMIENTO_CONTRATO: 'Vencimiento del Plazo / Obra o Labor',
+      JUBILACION: 'Reconocimiento de Pensión / Jubilación',
+      MUTUO_ACUERDO: 'Mutuo Acuerdo entre las Partes',
+      FALLECIMIENTO: 'Fallecimiento del Trabajador',
+    };
+
+    const salary = Number(rec.basic_salary || 0);
+    const pendingSal = Number(rec.pending_salary_amount || 0);
+    const pendingTrans = Number(rec.pending_transport_amount || 0);
+    const ces = Number(rec.severance_amount || 0);
+    const intCes = Number(rec.severance_interest_amount || 0);
+    const prima = Number(rec.bonus_amount || 0);
+    const vac = Number(rec.vacation_amount || 0);
+    const ind = Number(rec.indemnity_amount || 0);
+    const totalEarnings = Number(rec.total_earnings || (pendingSal + pendingTrans + ces + intCes + prima + vac + ind));
+    const healthDed = Number(rec.health_deduction || 0);
+    const pensionDed = Number(rec.pension_deduction || 0);
+    const otherDed = Number(rec.other_deductions || 0);
+    const totalDed = Number(rec.total_deductions || (healthDed + pensionDed + otherDed));
+    const netPay = Number(rec.net_pay || (totalEarnings - totalDed));
+
+    const rows = [
+      pendingSal > 0 ? [`Salario días pendientes (${rec.pending_salary_days || 0} días)`, pendingSal] : null,
+      pendingTrans > 0 ? [`Auxilio de Transporte pendiente`, pendingTrans] : null,
+      ces > 0 ? [`Cesantías (${rec.severance_days || 0} días)`, ces] : null,
+      intCes > 0 ? [`Intereses sobre Cesantías (12% anual)`, intCes] : null,
+      prima > 0 ? [`Prima de Servicios (${rec.bonus_days || 0} días)`, prima] : null,
+      vac > 0 ? [`Vacaciones compensadas (${rec.vacation_days || 0} días)`, vac] : null,
+      ind > 0 ? ['Indemnización por Despido Injustificado (Art. 64 CST)', ind] : null,
+    ].filter(Boolean) as [string, number][];
+
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+      <title>Acta de Liquidación - ${esc(empName)}</title>
+      <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; color: #111; margin: 35px; line-height: 1.4; }
+        h2, h3 { text-align: center; margin: 4px 0; }
+        .header { border-bottom: 2px solid #0D2137; padding-bottom: 12px; margin-bottom: 16px; text-align: center; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-bottom: 14px; background: #F8FAFC; padding: 12px 16px; border-radius: 8px; border: 1px solid #E2E8F0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #CBD5E1; padding: 7px 10px; }
+        th { background: #F1F5F9; color: #1E293B; font-weight: 600; }
+        .text-right { text-align: right; }
+        .total-row { font-weight: bold; background: #E2E8F0; color: #0F172A; }
+        .net-row { font-size: 13px; font-weight: bold; background: #DCFCE7; color: #166534; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; margin-top: 55px; }
+        .sig-line { border-top: 1px solid #000; text-align: center; padding-top: 8px; font-size: 11px; }
+        @media print {
+          body { margin: 15mm; }
+          button { display: none; }
+        }
+      </style>
+    </head><body>
+      <div class="header">
+        <h2 style="color:#0D2137;margin-bottom:2px">${esc(companyName)}</h2>
+        ${companyNit ? `<p style="font-size:11px;color:#64748B;margin:0 0 6px">NIT: ${esc(companyNit)}</p>` : ''}
+        <h3 style="color:#1E293B">ACTA DE LIQUIDACIÓN DEFINITIVA Y FINIQUITO DE CONTRATO</h3>
+        <p style="font-size:11px;color:#64748B;margin:2px 0 0">Conforme al Código Sustantivo del Trabajo (Colombia)</p>
+      </div>
+
+      <div class="grid2">
+        <div><strong>Trabajador:</strong> ${esc(empName)}</div>
+        <div><strong>Identificación:</strong> ${esc(empDoc || '—')}</div>
+        <div><strong>Fecha de Ingreso:</strong> ${esc(rec.hire_date || '—')}</div>
+        <div><strong>Fecha de Retiro:</strong> ${esc(rec.settlement_date || '—')}</div>
+        <div><strong>Motivo Terminación:</strong> ${esc(reasonLabel2[rec.reason] || rec.reason || '—')}</div>
+        <div><strong>Tipo de Contrato:</strong> ${esc(rec.contract_type || 'INDEFINIDO')}</div>
+        <div><strong>Salario Base Mensual:</strong> ${fmtCOP(salary)}</div>
+        <div><strong>Base Prestaciones:</strong> ${fmtCOP(Number(rec.base_prestaciones || salary))}</div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th class="text-right" style="width:140px">Devengado</th>
+            <th class="text-right" style="width:140px">Deducción</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(([label, val]) => `<tr><td>${label}</td><td class="text-right">${fmtCOP(val)}</td><td class="text-right text-gray-400">—</td></tr>`).join('')}
+          <tr class="total-row"><td>TOTAL DEVENGADO</td><td class="text-right">${fmtCOP(totalEarnings)}</td><td></td></tr>
+          ${healthDed > 0 ? `<tr><td>Deducción Salud Empleado (4%)</td><td></td><td class="text-right">${fmtCOP(healthDed)}</td></tr>` : ''}
+          ${pensionDed > 0 ? `<tr><td>Deducción Pensión Empleado (4%)</td><td></td><td class="text-right">${fmtCOP(pensionDed)}</td></tr>` : ''}
+          ${otherDed > 0 ? `<tr><td>Otras Deducciones / Préstamos / Descuentos</td><td></td><td class="text-right">${fmtCOP(otherDed)}</td></tr>` : ''}
+          <tr class="total-row"><td>TOTAL DEDUCCIONES</td><td></td><td class="text-right">${fmtCOP(totalDed)}</td></tr>
+          <tr class="net-row"><td colspan="2">VALOR NETO A PAGAR AL TRABAJADOR</td><td class="text-right">${fmtCOP(netPay)}</td></tr>
+        </tbody>
+      </table>
+
+      <p style="margin-top:16px;font-size:11px;color:#475569;text-align:justify;line-height:1.5">
+        Con el pago de la suma neta indicada en la presente acta, el trabajador declara de manera expresa y libre que ha recibido a entera satisfacción el importe total de sus salarios, horas extras, prestaciones sociales legales (cesantías, intereses a las cesantías, prima de servicios), vacaciones compensadas y cualquier otra acreencia o indemnización dimanante del contrato de trabajo que los unió, declarando a la empresa a <strong>PAZ Y SALVO</strong> por todo concepto laboral.
+      </p>
+
+      <div class="signatures">
+        <div class="sig-line"><strong>EMPLEADOR</strong><br/>Firma y Sello / Representante Legal</div>
+        <div class="sig-line"><strong>TRABAJADOR</strong><br/>${esc(empName)}<br/>C.C. ${esc(empDoc || '—')}</div>
+      </div>
+    </body></html>`;
+
+    const w = window.open('', '_blank');
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 250);
+    }
+  } catch (err: any) {
+    showToast(`Error al generar acta: ${err.message}`, 'error');
+  }
+}
+(window as any)._printSettlementActa = _printSettlementActa;
+
+// ── Render principal de la página ─────────────────────────────────────
+async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
+  c.innerHTML = `<div class="p-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo...</div>`;
+  try {
+    const [allEmployees, approvedSettlements, { config }, allTxTypes] = await Promise.all([
+      pb.listAll('third_parties', { filter: 'type="EMPLEADO"', sort: 'name' }),
+      pb.listAll('payroll_settlements', { filter: 'status="approved"' }).catch(() => [] as any[]),
+      getNominaConfigWithRow(),
+      API.getTxTypes().catch(() => [] as any[]),
+    ]);
+
+    // Identificar empleados que ya cuentan con liquidación aprobada
+    const settledEmpIds = new Set(approvedSettlements.map((s: any) => s.employee_id));
+
+    // Solo empleados activos y sin liquidación previa (contrato no cerrado)
+    const employees = allEmployees.filter((e: any) => Boolean(e.active) && !settledEmpIds.has(e.id));
+
+    // Tipos de tx relevantes para nómina/liquidación
+    const nomTxTypes = (allTxTypes as any[]).filter((t: any) =>
+      ['LQ', 'NM', 'NC'].includes(t.code) || (t.name || '').toLowerCase().includes('nómin') ||
+      (t.name || '').toLowerCase().includes('liquid')
+    );
+    const defaultTxType = nomTxTypes.find((t: any) => t.code === 'LQ') || nomTxTypes[0] || null;
+    const txTypeOpts = nomTxTypes.map((t: any) =>
+      `<option value="${esc(t.id)}" ${defaultTxType?.id === t.id ? 'selected' : ''}>${esc(t.code)} — ${esc(t.name)}</option>`
+    ).join('');
+
+    const smmlv = config.company_rules?.smmlv || SMMLV_2026;
+    const preselectedId = (window as any)._pendingSettlementEmployeeId || '';
+    (window as any)._pendingSettlementEmployeeId = null;
+
+    if (preselectedId && !employees.some((e: any) => e.id === preselectedId)) {
+      const closedEmp = allEmployees.find((e: any) => e.id === preselectedId);
+      const isSettled = settledEmpIds.has(preselectedId);
+      const warningMsg = closedEmp
+        ? (isSettled
+            ? `El empleado ${closedEmp.name} ya cuenta con una liquidación definitiva aprobada. El proceso solo se realiza una vez.`
+            : `El contrato de ${closedEmp.name} ya está cerrado (empleado inactivo).`)
+        : 'El empleado seleccionado no está disponible para liquidación.';
+      setTimeout(() => showToast(warningMsg, 'warning'), 150);
+    }
+
+    // ── UI ──────────────────────────────────────────────────────────────
+    c.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h3 class="text-lg font-bold" style="color:#0D2137">Liquidación Definitiva y Cierre de Contrato</h3>
+          <p class="text-sm" style="color:#6B7280">Finiquito de prestaciones sociales al retiro. Conforme al Código Sustantivo del Trabajo (Colombia).</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Formulario -->
+        <div class="bg-white rounded-2xl border p-6" style="border-color:#F0F0F0">
+          <h4 class="font-bold text-sm mb-4" style="color:#0D2137">Datos del Finiquito</h4>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Empleado a liquidar *</label>
+              <select id="sld-employee" class="w-full form-input text-sm">
+                <option value="">${employees.length > 0 ? '-- Selecciona un empleado activo --' : '-- No hay empleados activos pendientes de liquidar --'}</option>
+                ${employees.map((e: any) =>
+                  `<option value="${esc(e.id)}" ${e.id === preselectedId ? 'selected' : ''}>${esc(e.name)} (${esc(e.doc_number || '')})</option>`
+                ).join('')}
+              </select>
+              <div class="flex justify-between items-center mt-1 text-xs text-gray-500">
+                <span><i class="fas fa-shield-alt mr-1 text-emerald-600"></i>Solo empleados activos sin liquidación previa.</span>
+                <span class="font-semibold text-indigo-700">${employees.length} disponible${employees.length === 1 ? '' : 's'}</span>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Fecha de Ingreso</label>
+                <input type="date" id="sld-hire-date" class="w-full form-input text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Fecha de Retiro / Finiquito *</label>
+                <input type="date" id="sld-settlement-date" class="w-full form-input text-sm" value="${_today()}" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Motivo de Terminación *</label>
+              <select id="sld-reason" class="w-full form-input text-sm">
+                <option value="RENUNCIA_VOLUNTARIA">Renuncia Voluntaria (Trabajador)</option>
+                <option value="TERMINACION_JUSTA_CAUSA">Terminación con Justa Causa (Art. 62 CST)</option>
+                <option value="DESPIDO_SIN_JUSTA_CAUSA">Despido Sin Justa Causa (Aplica Indemnización Art. 64 CST)</option>
+                <option value="VENCIMIENTO_CONTRATO">Vencimiento del Plazo / Obra o Labor</option>
+                <option value="JUBILACION">Reconocimiento de Pensión / Jubilación</option>
+                <option value="MUTUO_ACUERDO">Mutuo Acuerdo entre las Partes</option>
+                <option value="FALLECIMIENTO">Fallecimiento del Trabajador</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Días de salario pendientes</label>
+                <input type="number" id="sld-pending-days" class="w-full form-input text-sm" value="0" min="0" max="30" />
+                <span class="text-xs text-gray-400">Días laborados del mes no pagados</span>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Días vac. pendientes a compensar</label>
+                <input type="number" id="sld-vac-days" class="w-full form-input text-sm" value="0" min="0" />
+                <span class="text-xs text-gray-400">0 = cálculo proporcional automático</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Otras Deducciones al Empleado (COP)</label>
+              <input type="number" id="sld-extra-ded" class="w-full form-input text-sm" value="0" min="0" />
+              <span class="text-xs text-gray-400">Préstamos, embargos o libranzas a descontar del finiquito</span>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Tipo de Transacción Contable *</label>
+              <select id="sld-tx-type" class="w-full form-input text-sm">
+                ${txTypeOpts || '<option value="">Sin tipos disponibles</option>'}
+              </select>
+              <span class="text-xs text-gray-400">Documento que registrará la causación en el libro diario</span>
+            </div>
+
+            <div class="pt-1">
+              <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="checkbox" id="sld-include-indemnity" class="rounded" />
+                <span>Calcular Indemnización por Despido Injustificado (Art. 64 CST)</span>
+              </label>
+            </div>
+
+            <button id="sld-btn-calc" class="w-full btn btn-primary mt-2">
+              <i class="fas fa-calculator mr-2"></i>Calcular y Previsualizar Contabilización
+            </button>
+          </div>
+        </div>
+
+        <!-- Resultado del Cálculo y Previsualización -->
+        <div class="bg-white rounded-2xl border p-6" style="border-color:#F0F0F0">
+          <div id="sld-results">
+            <div class="p-8 text-center text-gray-400">
+              <i class="fas fa-file-invoice-dollar text-4xl mb-3 text-gray-300"></i>
+              <p class="font-medium text-sm">Ingresa los datos y haz clic en "Calcular y Previsualizar Contabilización"</p>
+              <p class="text-xs text-gray-400 mt-1">El sistema calculará las prestaciones y generará el asiento contable con cruce de provisiones y documento de referencia.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historial de liquidaciones realizadas -->
+      <div class="mt-6 bg-white rounded-2xl border p-6" style="border-color:#F0F0F0">
+        <h4 class="font-bold text-sm mb-4" style="color:#0D2137">
+          <i class="fas fa-history mr-2 text-indigo-500"></i>Historial de Liquidaciones Registradas
+        </h4>
+        <div id="sld-history">
+          <p class="text-sm text-gray-400 text-center py-4"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial...</p>
+        </div>
+      </div>
+    `;
+
+    // Autocargar datos del empleado al seleccionarlo
+    const empSelect = document.getElementById('sld-employee') as HTMLSelectElement;
+    const hireDateInput = document.getElementById('sld-hire-date') as HTMLInputElement;
+    const reasonSelect = document.getElementById('sld-reason') as HTMLSelectElement;
+    const indemnityCheck = document.getElementById('sld-include-indemnity') as HTMLInputElement;
+
+    const loadEmployeeData = () => {
+      const empId = empSelect.value;
+      if (!empId) return;
+      const emp = employees.find((e: any) => e.id === empId);
+      if (!emp || !emp.active) {
+        showToast('El contrato de este empleado ya está cerrado (empleado inactivo).', 'warning');
+        empSelect.value = '';
+        return;
+      }
+      if (emp?.hire_date) hireDateInput.value = emp.hire_date;
+      const rule = getEmployeePayrollRule(config, empId);
+      if (rule.contract_type) reasonSelect.value = rule.contract_type === 'TERMINADO_FIJO' ? 'VENCIMIENTO_CONTRATO' : 'RENUNCIA_VOLUNTARIA';
+    };
+
+    if (preselectedId) loadEmployeeData();
+    empSelect.addEventListener('change', loadEmployeeData);
+
+    // Mostrar/ocultar indemnización
+    reasonSelect.addEventListener('change', () => {
+      indemnityCheck.checked = reasonSelect.value === 'DESPIDO_SIN_JUSTA_CAUSA';
+    });
+
+    // Botón Calcular
+    document.getElementById('sld-btn-calc')?.addEventListener('click', async () => {
+      const empId = empSelect.value;
+      if (!empId) return showToast('Selecciona un empleado activo para liquidar', 'warning');
+
+      // 1. Validar que el empleado pertenezca al listado de activos elegibles
+      const emp = employees.find((e: any) => e.id === empId);
+      if (!emp || !emp.active) {
+        return showToast('No se puede liquidar este empleado: su contrato ya está cerrado o se encuentra inactivo.', 'error');
+      }
+
+      // 2. Validar en tiempo real contra la base de datos que no tenga liquidación aprobada
+      const alreadySettled = await pb.listAll('payroll_settlements', {
+        filter: `employee_id="${pb.escapeFilterValue(empId)}" && status="approved"`,
+        limit: 1,
+      }).catch(() => [] as any[]);
+
+      if (alreadySettled.length > 0) {
+        return showToast('Este empleado ya cuenta con una liquidación definitiva aprobada. El proceso solo se puede realizar una vez por contrato.', 'error');
+      }
+
+      const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement).value;
+      if (!settlementDate) return showToast('Indica la fecha de retiro', 'warning');
+      const hireDate = hireDateInput.value || settlementDate;
+      const pendingDays = Number((document.getElementById('sld-pending-days') as HTMLInputElement).value || 0);
+      const vacDays = Number((document.getElementById('sld-vac-days') as HTMLInputElement).value || 0);
+      const extraDed = Number((document.getElementById('sld-extra-ded') as HTMLInputElement).value || 0);
+      const includeInd = indemnityCheck.checked;
+      const reason = reasonSelect.value;
+      const rule = getEmployeePayrollRule(config, empId);
+      const salary = Number(rule.basic_salary || 0);
+      if (salary <= 0) return showToast('El empleado no tiene salario base configurado en Contratos.', 'warning');
+
+      const resultsEl = document.getElementById('sld-results')!;
+      resultsEl.innerHTML = `<div class="p-6 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Calculando y generando asiento contable...</div>`;
+
+      try {
+        const calc = calcularLiquidacionDefinitiva({
+          hire_date: hireDate, settlement_date: settlementDate,
+          basic_salary: salary, apply_transport: rule.apply_transport_allowance !== false,
+          smmlv, contract_type: rule.contract_type || 'INDEFINIDO',
+          pending_salary_days: pendingDays, extra_deductions: extraDed,
+          include_indemnity: includeInd, vacation_days_pending: vacDays,
+        });
+
+        const fiscal = settlementDate.slice(0, 4);
+        const prov = await getAccumulatedProvisions(empId, fiscal);
+        const empDoc = emp?.doc_number || empId;
+
+        // Previsualizar asiento contable de forma inmediata con el grupo y doc de cruce
+        const txLines = buildSettlementAccountingLines(
+          calc, prov, config.mappings || [], empId,
+          settlementDate, emp?.name || '',
+          rule.tercero_salud_id, rule.tercero_pension_id, rule.group_id,
+          empDoc
+        );
+
+        const uniqueAccountIds = [...new Set(txLines.map((l: any) => l.account_id).filter(Boolean))];
+        const accountsUsed = uniqueAccountIds.length
+          ? await pb.listAll('accounts', {
+              filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+            }).catch(() => [] as any[])
+          : [];
+        const acctById = new Map<string, any>(accountsUsed.map((a: any) => [a.id, a]));
+
+        // En esta transacción, EXCLUSIVAMENTE las cuentas 2505 (Salarios/Liquidación por pagar)
+        // que tengan configurado maneja_cruce = true deben llevar documento de cruce.
+        txLines.forEach((l: any) => {
+          const meta = acctById.get(l.account_id);
+          const is2505Cruce = meta && String(meta.code || '').startsWith('2505') && Boolean(meta.maneja_cruce);
+          if (is2505Cruce) {
+            l.cross_doc_ref = `LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`;
+          } else {
+            l.cross_doc_ref = undefined;
+          }
+        });
+
+        const totalD = round2(txLines.reduce((s: number, l: any) => s + (l.debit || 0), 0));
+        const totalC = round2(txLines.reduce((s: number, l: any) => s + (l.credit || 0), 0));
+        const isBalanced = Math.abs(totalD - totalC) <= 0.05 && txLines.length > 0;
+        const missing = (txLines as any).missingAccounts || [];
+
+        const fmtM = (v: number) => `<span class="font-bold text-blue-900">${fmt(v)}</span>`;
+        const fmtP = (provAmt: number, liqAmt: number) => {
+          if (provAmt <= 0) return `<span class="text-xs text-amber-600 font-semibold">$0 causado → 100% al gasto</span>`;
+          const diff = round2(liqAmt - provAmt);
+          if (Math.abs(diff) < 1) return `<span class="text-xs text-green-600 font-semibold">✓ Provisionado exacto</span>`;
+          if (diff > 0) return `<span class="text-xs text-amber-600 font-semibold">Subprov. ${fmt(diff)} → gasto</span>`;
+          return `<span class="text-xs text-purple-600 font-semibold">Sobreprov. ${fmt(Math.abs(diff))} → reintegro</span>`;
+        };
+
+        const reasonLabel: Record<string, string> = {
+          RENUNCIA_VOLUNTARIA: 'Renuncia Voluntaria', TERMINACION_JUSTA_CAUSA: 'Terminación Justa Causa',
+          DESPIDO_SIN_JUSTA_CAUSA: 'Despido Sin Justa Causa', VENCIMIENTO_CONTRATO: 'Vencimiento Contrato',
+          JUBILACION: 'Jubilación/Pensión', MUTUO_ACUERDO: 'Mutuo Acuerdo', FALLECIMIENTO: 'Fallecimiento',
+        };
+
+        resultsEl.innerHTML = `
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-sm" style="color:#0D2137">Resultado — ${esc(emp?.name || '')}</h4>
+              <span class="badge" style="background:#FEF3C7;color:#B45309">${esc(reasonLabel[reason] || reason)}</span>
+            </div>
+
+            <table class="w-full text-sm border-collapse">
+              <thead>
+                <tr style="background:#F8FAFC">
+                  <th class="text-left p-2 font-semibold text-gray-600 border-b">Concepto</th>
+                  <th class="text-center p-2 font-semibold text-gray-600 border-b">Días</th>
+                  <th class="text-right p-2 font-semibold text-gray-600 border-b">Valor</th>
+                  <th class="text-center p-2 font-semibold text-gray-600 border-b text-xs">Provisión Acumulada</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${calc.pendingSalary > 0 ? `<tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Salario días pendientes</td>
+                  <td class="p-2 text-center text-gray-500">${calc.pending_salary_days}</td>
+                  <td class="p-2 text-right">${fmtM(calc.pendingSalary)}</td>
+                  <td class="p-2 text-center text-xs text-gray-400">—</td>
+                </tr>` : ''}
+                ${calc.pendingTransport > 0 ? `<tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Aux. Transporte pendiente</td>
+                  <td class="p-2 text-center text-gray-500">${calc.pending_salary_days}</td>
+                  <td class="p-2 text-right">${fmtM(calc.pendingTransport)}</td>
+                  <td class="p-2 text-center text-xs text-gray-400">—</td>
+                </tr>` : ''}
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Cesantías (Art. 249 CST)</td>
+                  <td class="p-2 text-center text-gray-500">${calc.daysCesantias}</td>
+                  <td class="p-2 text-right">${fmtM(calc.cesantias)}</td>
+                  <td class="p-2 text-center">${fmtP(prov.cesantias, calc.cesantias)}</td>
+                </tr>
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Intereses Cesantías (12% anual)</td>
+                  <td class="p-2 text-center text-gray-500">${calc.daysCesantias}</td>
+                  <td class="p-2 text-right">${fmtM(calc.interesesCes)}</td>
+                  <td class="p-2 text-center">${fmtP(prov.intereses_ces, calc.interesesCes)}</td>
+                </tr>
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Prima de Servicios (Art. 306 CST)</td>
+                  <td class="p-2 text-center text-gray-500">${calc.daysPrima}</td>
+                  <td class="p-2 text-right">${fmtM(calc.prima)}</td>
+                  <td class="p-2 text-center">${fmtP(prov.prima, calc.prima)}</td>
+                </tr>
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-gray-700">Vacaciones compensadas (Art. 186 CST)</td>
+                  <td class="p-2 text-center text-gray-500">${calc.daysVacaciones}</td>
+                  <td class="p-2 text-right">${fmtM(calc.vacaciones)}</td>
+                  <td class="p-2 text-center">${fmtP(prov.vacaciones, calc.vacaciones)}</td>
+                </tr>
+                ${calc.indemnity > 0 ? `<tr class="border-b border-gray-50">
+                  <td class="p-2 text-orange-700 font-semibold">Indemnización (Art. 64 CST)</td>
+                  <td class="p-2 text-center text-gray-500">—</td>
+                  <td class="p-2 text-right text-orange-700 font-bold">${fmt(calc.indemnity)}</td>
+                  <td class="p-2 text-center text-xs text-gray-400">—</td>
+                </tr>` : ''}
+                <tr style="background:#EFF6FF">
+                  <td class="p-2 font-bold text-blue-900" colspan="2">TOTAL DEVENGADO</td>
+                  <td class="p-2 text-right font-bold text-blue-900">${fmt(calc.totalEarnings)}</td>
+                  <td></td>
+                </tr>
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-red-600">(-) Salud empleado (4% s/salario)</td>
+                  <td class="p-2 text-center text-gray-500">—</td>
+                  <td class="p-2 text-right text-red-600">(${fmt(calc.healthDed)})</td>
+                  <td></td>
+                </tr>
+                <tr class="border-b border-gray-50">
+                  <td class="p-2 text-red-600">(-) Pensión empleado (4% s/salario)</td>
+                  <td class="p-2 text-center text-gray-500">—</td>
+                  <td class="p-2 text-right text-red-600">(${fmt(calc.pensionDed)})</td>
+                  <td></td>
+                </tr>
+                ${extraDed > 0 ? `<tr class="border-b border-gray-50">
+                  <td class="p-2 text-red-600">(-) Otras deducciones</td>
+                  <td class="p-2 text-center text-gray-500">—</td>
+                  <td class="p-2 text-right text-red-600">(${fmt(extraDed)})</td>
+                  <td></td>
+                </tr>` : ''}
+                <tr style="background:#F0FDF4">
+                  <td class="p-2 font-bold text-green-800" colspan="2">NETO A PAGAR</td>
+                  <td class="p-2 text-right font-bold text-green-700 text-lg">${fmt(calc.netPay)}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="p-3 rounded-lg text-xs" style="background:#FEF9ED;border:1px solid #FDE68A">
+              <strong>Base prestaciones:</strong> ${fmt(calc.basePrest)} (salario + ${calc.transport > 0 ? 'aux. transporte' : 'sin aux. transporte'}) |
+              <strong>Año fiscal:</strong> ${fiscal} | <strong>Días cálculo cesantías/intereses:</strong> ${calc.daysCesantias} | <strong>Días prima semestre:</strong> ${calc.daysPrima}
+            </div>
+
+            <!-- Previsualización Contabilización y Asignación Contable -->
+            <div class="border rounded-xl overflow-hidden mt-3" style="border-color:#E2E8F0">
+              <div class="p-2.5 bg-gray-50 border-b flex items-center justify-between" style="border-color:#E2E8F0">
+                <div>
+                  <h5 class="font-bold text-xs uppercase tracking-wider text-gray-700">
+                    <i class="fas fa-balance-scale mr-1 text-indigo-600"></i>Previsualización Asignación Contable
+                  </h5>
+                  <p class="text-xs text-gray-500">Asiento contable a registrar en el comprobante con sus documentos de cruce.</p>
+                </div>
+                <div>
+                  ${isBalanced
+                    ? `<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Asiento Cuadrado</span>`
+                    : `<span class="badge badge-red"><i class="fas fa-exclamation-triangle mr-1"></i>Descuadre ${fmt(Math.abs(totalD - totalC))}</span>`}
+                </div>
+              </div>
+
+              ${missing.length > 0 ? `
+                <div class="p-2 bg-amber-50 text-amber-800 text-xs border-b border-amber-200">
+                  <i class="fas fa-exclamation-circle mr-1"></i><strong>Atención:</strong> Faltan cuentas contables en la configuración de nómina para: <em>${esc(missing.join(', '))}</em>.
+                </div>
+              ` : ''}
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-xs font-mono">
+                  <thead>
+                    <tr class="bg-gray-100 text-gray-600 border-b">
+                      <th class="p-2 text-left">Cuenta</th>
+                      <th class="p-2 text-left">Concepto / Glosa</th>
+                      <th class="p-2 text-left">Doc. Cruce</th>
+                      <th class="p-2 text-right">Débito</th>
+                      <th class="p-2 text-right">Crédito</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${txLines.length > 0 ? txLines.map((l: any) => {
+                      const acct = acctById.get(l.account_id);
+                      return `
+                        <tr class="border-b hover:bg-gray-50">
+                          <td class="p-2">
+                            <span class="font-bold text-indigo-700">${esc(acct?.code || l.account_id)}</span>
+                            <span class="text-gray-500 font-sans ml-1 text-xs">${esc(acct?.name || '')}</span>
+                          </td>
+                          <td class="p-2 text-gray-700 font-sans">${esc(l.description)}</td>
+                          <td class="p-2 font-mono">
+                            ${l.cross_doc_ref
+                              ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+                              : '<span class="text-gray-300">—</span>'}
+                          </td>
+                          <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-900' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
+                          <td class="p-2 text-right ${l.credit > 0 ? 'font-bold text-green-900' : 'text-gray-300'}">${l.credit > 0 ? fmt(l.credit) : '—'}</td>
+                        </tr>
+                      `;
+                    }).join('') : `<tr><td colspan="5" class="p-4 text-center text-red-500 font-sans">No se generaron líneas contables. Verifica los mapeos en Configuración de Nómina.</td></tr>`}
+                  </tbody>
+                  <tfoot>
+                    <tr class="bg-gray-50 font-bold">
+                      <td class="p-2" colspan="3">TOTALES</td>
+                      <td class="p-2 text-right text-blue-900">${fmt(totalD)}</td>
+                      <td class="p-2 text-right text-green-900">${fmt(totalC)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+              <button id="sld-btn-save" class="btn btn-success flex-1" ${!isBalanced ? 'disabled style="opacity:0.6;cursor:not-allowed"' : ''}>
+                <i class="fas fa-save mr-2"></i>Guardar y Contabilizar
+              </button>
+              <button id="sld-btn-print" class="btn btn-outline flex-1">
+                <i class="fas fa-print mr-2"></i>Imprimir Acta
+              </button>
+            </div>
+          </div>
+        `;
+
+        // ── Guardar y Contabilizar ──────────────────────────────────────
+        document.getElementById('sld-btn-save')?.addEventListener('click', async () => {
+          const btn = document.getElementById('sld-btn-save') as HTMLButtonElement;
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...';
+          try {
+            if (!isBalanced || txLines.length === 0) {
+              throw new Error(`El asiento no cuadra o faltan líneas contables (D:${fmt(totalD)} / C:${fmt(totalC)}). Verifica los mapeos contables.`);
+            }
+
+            // Revalidar en tiempo real que el empleado siga activo y no tenga liquidación previa aprobada
+            const [freshEmp, freshApproved] = await Promise.all([
+              pb.get('third_parties', empId).catch(() => null),
+              pb.listAll('payroll_settlements', {
+                filter: `employee_id="${pb.escapeFilterValue(empId)}" && status="approved"`,
+                limit: 1,
+              }).catch(() => [] as any[]),
+            ]);
+
+            if (!freshEmp || !freshEmp.active) {
+              throw new Error('Operación cancelada: El contrato de este empleado ya está cerrado (empleado inactivo).');
+            }
+            if (freshApproved.length > 0) {
+              throw new Error('Operación cancelada: Este empleado ya cuenta con una liquidación definitiva aprobada. El proceso solo se permite realizar una vez por contrato.');
+            }
+
+            // Usar el tipo seleccionado por el usuario en el formulario
+            const selectedTxTypeId = (document.getElementById('sld-tx-type') as HTMLSelectElement)?.value || '';
+            const txTypes = await API.getTxTypes();
+            const txType = txTypes.find((t: any) => t.id === selectedTxTypeId)
+              || txTypes.find((t: any) => t.code === 'LQ')
+              || txTypes.find((t: any) => t.code === 'NM');
+            if (!txType) throw new Error('No existe tipo de transacción para liquidaciones definitivas. Verifica la configuración.');
+
+            const cleanLines = txLines.map((l: any, i: number) => {
+              const meta = acctById.get(l.account_id);
+              const is2505Cruce = meta && String(meta.code || '').startsWith('2505') && Boolean(meta.maneja_cruce);
+              return {
+                account_id: l.account_id,
+                debit: l.debit,
+                credit: l.credit,
+                description: l.description,
+                third_party_id: l.third_party_id || empId,
+                cross_doc_ref: is2505Cruce ? (l.cross_doc_ref || `LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`) : undefined,
+                line_order: i + 1,
+              };
+            });
+
+            // 1. Crear transacción contable oficial con cross_doc_ref exclusivo para cuentas 2505 con maneja_cruce
+            const tx = await API.createTransaction({
+              tx_type_id: txType.id,
+              date: settlementDate,
+              description: `Liquidación Definitiva — ${emp?.name || ''} — ${settlementDate}`,
+              third_party_id: empId,
+            }, cleanLines);
+
+            // 2. Guardar en payroll_settlements como 'approved' con tx_id enlazado
+            await pb.create('payroll_settlements', {
+              employee_id: empId,
+              settlement_date: settlementDate,
+              hire_date: hireDate,
+              contract_type: rule.contract_type || 'INDEFINIDO',
+              reason,
+              basic_salary: salary,
+              transport_allowance: calc.transport,
+              base_prestaciones: calc.basePrest,
+              pending_salary_days: calc.pending_salary_days,
+              pending_salary_amount: calc.pendingSalary,
+              pending_transport_amount: calc.pendingTransport,
+              severance_days: calc.daysCesantias,
+              severance_amount: calc.cesantias,
+              severance_interest_amount: calc.interesesCes,
+              bonus_days: calc.daysPrima,
+              bonus_amount: calc.prima,
+              vacation_days: calc.daysVacaciones,
+              vacation_amount: calc.vacaciones,
+              indemnity_amount: calc.indemnity,
+              total_earnings: calc.totalEarnings,
+              health_deduction: calc.healthDed,
+              pension_deduction: calc.pensionDed,
+              other_deductions: extraDed,
+              total_deductions: calc.totalDeductions,
+              net_pay: calc.netPay,
+              provisions_applied: prov,
+              notes: `Motivo: ${reason}. Días vacaciones: ${vacDays}. Doc cruce: LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`,
+              status: 'approved',
+              tx_id: tx.id,
+            });
+
+            // 3. Marcar empleado como inactivo
+            await pb.update('third_parties', empId, { active: false });
+
+            showToast('Liquidación guardada y contabilizada correctamente. Empleado marcado como inactivo.', 'success');
+            (window as any).renderNominaLiquidacionDefinitivaPage(c);
+          } catch (err: any) {
+            showToast(`Error: ${err.message}`, 'error');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar y Contabilizar';
+          }
+        });
+
+        // ── Imprimir Acta de Finiquito ─────────────────────────────────
+        document.getElementById('sld-btn-print')?.addEventListener('click', () => {
+          _printSettlementActa({
+            employee_id: empId,
+            expand: { employee_id: emp },
+            hire_date: hireDate,
+            settlement_date: settlementDate,
+            reason,
+            contract_type: rule.contract_type || 'INDEFINIDO',
+            basic_salary: salary,
+            base_prestaciones: calc.basePrest,
+            pending_salary_days: calc.pending_salary_days,
+            pending_salary_amount: calc.pendingSalary,
+            pending_transport_amount: calc.pendingTransport,
+            severance_days: calc.daysCesantias,
+            severance_amount: calc.cesantias,
+            severance_interest_amount: calc.interesesCes,
+            bonus_days: calc.daysPrima,
+            bonus_amount: calc.prima,
+            vacation_days: calc.daysVacaciones,
+            vacation_amount: calc.vacaciones,
+            indemnity_amount: calc.indemnity,
+            total_earnings: calc.totalEarnings,
+            health_deduction: calc.healthDed,
+            pension_deduction: calc.pensionDed,
+            other_deductions: extraDed,
+            total_deductions: calc.totalDeductions,
+            net_pay: calc.netPay,
+          });
+        });
+
+      } catch (err: any) {
+        resultsEl.innerHTML = `<div class="p-4 text-red-500 text-sm">${esc(err.message)}</div>`;
+      }
+    });
+
+    await loadSettlementHistory();
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-8 text-center text-red-500">${esc(err.message)}</div>`;
+  }
+}
+
+async function loadSettlementHistory() {
+  const histEl = document.getElementById('sld-history');
+  if (!histEl) return;
+  try {
+    const records = await pb.listAll('payroll_settlements', {
+      sort: '-settlement_date',
+      expand: 'employee_id,tx_id',
+    });
+    if (!records.length) {
+      histEl.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">Aún no hay liquidaciones definitivas registradas.</p>';
+      return;
+    }
+    const statusLabel = (s: string) => ({
+      draft: '<span class="badge" style="background:#FEF3C7;color:#B45309"><i class="fas fa-clock mr-1"></i>Borrador</span>',
+      approved: '<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Contabilizado</span>',
+      paid: '<span class="badge" style="background:#DBEAFE;color:#1D4ED8"><i class="fas fa-money-bill mr-1"></i>Pagado</span>',
+    }[s] || s);
+
+    histEl.innerHTML = `
+      <div class="overflow-x-auto">
+        <table class="data-table text-sm w-full">
+          <thead><tr>
+            <th>Empleado</th><th>Fecha Retiro</th><th>Motivo</th>
+            <th class="text-right">Neto Liquidado</th><th>Estado</th><th>Comprobante</th>
+            <th class="text-right" style="width:160px">Acciones</th>
+          </tr></thead>
+          <tbody>
+            ${records.map((r: any) => `<tr>
+              <td class="font-semibold">${esc(r.expand?.employee_id?.name || r.employee_id)}</td>
+              <td>${esc(r.settlement_date)}</td>
+              <td><span class="text-xs text-gray-500">${esc(r.reason || '—')}</span></td>
+              <td class="text-right font-bold text-blue-900">${fmt(r.net_pay || 0)}</td>
+              <td>${statusLabel(r.status || 'draft')}</td>
+              <td>
+                ${r.tx_id
+                  ? `<span class="text-xs font-mono font-bold text-indigo-700"><i class="fas fa-receipt mr-1"></i>Asiento Contable</span>`
+                  : `<span class="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Sin Contabilizar</span>`}
+              </td>
+              <td class="text-right whitespace-nowrap">
+                <div class="flex items-center justify-end gap-1.5">
+                  <button
+                    class="btn btn-sm ${r.status === 'draft' ? 'btn-primary' : 'btn-outline'} text-xs"
+                    style="padding:3px 8px"
+                    onclick="window._openSettlementDetail('${esc(r.id)}','${esc(r.tx_id || '')}','${esc(r.expand?.employee_id?.name || r.employee_id)}')"
+                    title="Ver detalle de la liquidación y contabilización"
+                  >
+                    <i class="fas ${r.status === 'draft' ? 'fa-balance-scale' : 'fa-search'} mr-1"></i>${r.status === 'draft' ? 'Ver / Contabilizar' : 'Ver'}
+                  </button>
+                  <button
+                    class="btn btn-sm btn-outline text-xs text-gray-700 hover:text-blue-700"
+                    style="padding:3px 8px"
+                    onclick="window._printSettlementActa('${esc(r.id)}')"
+                    title="Imprimir Acta de Liquidación y Finiquito"
+                  >
+                    <i class="fas fa-print mr-1 text-gray-500"></i>Imprimir
+                  </button>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (_) {
+    histEl.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">No se pudo cargar el historial.</p>';
+  }
+}
+
+// ── Modal de detalle contable de una liquidación definitiva ──────────────
+(window as any)._openSettlementDetail = async function(settlementId: string, txId: string, empName: string) {
+  try {
+    // Cargar registro de liquidación
+    const rec = await pb.get('payroll_settlements', settlementId, { expand: 'employee_id' });
+    const { config } = await getNominaConfigWithRow();
+    const rule = getEmployeePayrollRule(config, rec.employee_id);
+    const empDoc = rec.expand?.employee_id?.doc_number || rec.employee_id;
+
+    // Cargar líneas contables si existe tx_id
+    let txLines: any[] = [];
+    let txRecord: any = null;
+    let isDraft = !txId || rec.status === 'draft';
+    let acctById = new Map<string, any>();
+
+    if (txId) {
+      try {
+        [txRecord, txLines] = await Promise.all([
+          pb.get('transactions', txId, { expand: 'tx_type_id' }),
+          pb.listAll('tx_lines', { filter: `tx_id="${pb.escapeFilterValue(txId)}"`, expand: 'account_id,third_party_id' }),
+        ]);
+      } catch (_) {}
+    }
+
+    // Si está en borrador o no tiene tx_lines guardadas, reconstruir/simular las líneas con la configuración contable
+    if (!txLines.length && isDraft) {
+      const prov = rec.provisions_applied ? (typeof rec.provisions_applied === 'string' ? JSON.parse(rec.provisions_applied) : rec.provisions_applied) : {};
+      const mockCalc = {
+        pendingSalary: Number(rec.pending_salary_amount || 0),
+        pendingTransport: Number(rec.pending_transport_amount || 0),
+        cesantias: Number(rec.severance_amount || 0),
+        interesesCes: Number(rec.severance_interest_amount || 0),
+        prima: Number(rec.bonus_amount || 0),
+        vacaciones: Number(rec.vacation_amount || 0),
+        indemnity: Number(rec.indemnity_amount || 0),
+        healthDed: Number(rec.health_deduction || 0),
+        pensionDed: Number(rec.pension_deduction || 0),
+        otherDeductions: Number(rec.other_deductions || 0),
+        netPay: Number(rec.net_pay || 0),
+      };
+      const rawLines = buildSettlementAccountingLines(
+        mockCalc as any, prov, config.mappings || [], rec.employee_id,
+        rec.settlement_date, empName,
+        rule.tercero_salud_id, rule.tercero_pension_id, rule.group_id,
+        empDoc
+      );
+
+      const uniqueAccountIds = [...new Set(rawLines.map((l: any) => l.account_id).filter(Boolean))];
+      const accountsUsed = uniqueAccountIds.length
+        ? await pb.listAll('accounts', {
+            filter: uniqueAccountIds.map((id: string) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+          }).catch(() => [] as any[])
+        : [];
+      acctById = new Map<string, any>(accountsUsed.map((a: any) => [a.id, a]));
+
+      txLines = rawLines.map((l: any) => {
+        const acct = acctById.get(l.account_id);
+        const is2505Cruce = acct && String(acct.code || '').startsWith('2505') && Boolean(acct.maneja_cruce);
+        const crossRef = is2505Cruce ? `LIQ-${String(rec.settlement_date || '').replace(/-/g, '')}-EMP-${empDoc}` : undefined;
+        return {
+          ...l,
+          cross_doc_ref: crossRef,
+          expand: {
+            account_id: acct,
+            third_party_id: { name: empName, id: l.third_party_id },
+          },
+        };
+      });
+    }
+
+    const totalD = round2(txLines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0));
+    const totalC = round2(txLines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0));
+    const balanced = Math.abs(totalD - totalC) <= 0.05 && txLines.length > 0;
+
+    const statusLabel = (s: string) => ({
+      draft: '<span class="badge" style="background:#FEF3C7;color:#B45309"><i class="fas fa-clock mr-1"></i>Borrador</span>',
+      approved: '<span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Contabilizado</span>',
+      paid: '<span class="badge" style="background:#DBEAFE;color:#1D4ED8"><i class="fas fa-money-bill mr-1"></i>Pagado</span>',
+    }[s] || `<span class="badge">${esc(s)}</span>`);
+
+    const linesHtml = txLines.length > 0
+      ? `
+        <table class="w-full text-xs border-collapse mt-3" style="font-family:monospace">
+          <thead>
+            <tr style="background:#F1F5F9">
+              <th class="text-left p-2 border-b font-semibold text-gray-600">Cuenta</th>
+              <th class="text-left p-2 border-b font-semibold text-gray-600">Descripción</th>
+              <th class="text-left p-2 border-b font-semibold text-gray-600">Doc. Cruce</th>
+              <th class="text-right p-2 border-b font-semibold text-gray-600">Débito</th>
+              <th class="text-right p-2 border-b font-semibold text-gray-600">Crédito</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${txLines.map((l: any) => `
+              <tr class="border-b border-gray-50 hover:bg-gray-50">
+                <td class="p-2">
+                  <span class="font-bold text-indigo-700">${esc(l.expand?.account_id?.code || l.account_id || '—')}</span>
+                  <div class="text-gray-500 font-sans" style="font-size:10px">${esc(l.expand?.account_id?.name || '')}</div>
+                </td>
+                <td class="p-2 text-gray-600 font-sans" style="font-size:10px;max-width:180px">${esc(l.description || '—')}</td>
+                <td class="p-2 font-mono">
+                  ${l.cross_doc_ref
+                    ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+                    : '<span class="text-gray-300">—</span>'}
+                </td>
+                <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-800' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
+                <td class="p-2 text-right ${l.credit > 0 ? 'font-bold text-green-800' : 'text-gray-300'}">${l.credit > 0 ? fmt(l.credit) : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#F8FAFC;font-weight:700">
+              <td class="p-2" colspan="3">TOTALES</td>
+              <td class="p-2 text-right text-blue-900">${fmt(totalD)}</td>
+              <td class="p-2 text-right text-green-900">${fmt(totalC)}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <div class="mt-2 text-xs p-2 rounded" style="background:${balanced ? '#F0FDF4' : '#FFF1F2'};color:${balanced ? '#166534' : '#991B1B'}">
+          <i class="fas ${balanced ? 'fa-check-circle' : 'fa-exclamation-triangle'} mr-1"></i>
+          ${balanced ? 'Asiento cuadrado correctamente.' : `Asiento descuadrado: Diferencia ${fmt(Math.abs(totalD - totalC))}`}
+        </div>
+      `
+      : `<div class="p-4 text-center text-gray-400 text-xs mt-2">
+          <i class="fas fa-info-circle mr-1"></i>
+          No se pudieron reconstruir las líneas contables. Verifica los mapeos contables de nómina.
+        </div>`;
+
+    const modalHtml = `
+      <div style="font-family:'Segoe UI',sans-serif;color:#1F2937;min-width:620px">
+
+        ${isDraft ? `
+          <div class="p-3 mb-4 rounded-xl text-xs bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-2">
+            <i class="fas fa-info-circle text-amber-600 mt-0.5"></i>
+            <div>
+              <strong>Registro en estado Borrador:</strong> Esta liquidación definitiva aún no ha sido asentada en el libro diario.
+              A continuación puedes revisar la asignación contable propuesta (incluyendo documento de cruce) y contabilizarla directamente.
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Cabecera resumen -->
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="p-3 rounded-xl" style="background:#F8FAFC;border:1px solid #E5E7EB">
+            <p class="text-xs text-gray-500 uppercase font-bold mb-1">Empleado</p>
+            <p class="font-bold text-sm text-gray-900">${esc(empName)}</p>
+            <p class="text-xs text-gray-400">${esc(rec.reason || '—')}</p>
+          </div>
+          <div class="p-3 rounded-xl" style="background:#F8FAFC;border:1px solid #E5E7EB">
+            <p class="text-xs text-gray-500 uppercase font-bold mb-1">Fecha Retiro</p>
+            <p class="font-bold text-sm text-gray-900">${esc(rec.settlement_date || '—')}</p>
+            <p class="text-xs text-gray-400">Ingreso: ${esc(rec.hire_date || '—')}</p>
+          </div>
+          <div class="p-3 rounded-xl text-right" style="background:#EFF6FF;border:1px solid #BFDBFE">
+            <p class="text-xs text-blue-600 uppercase font-bold mb-1">Neto a Pagar</p>
+            <p class="font-black text-xl text-blue-900">${fmt(rec.net_pay || 0)}</p>
+            <div class="mt-1">${statusLabel(rec.status || 'draft')}</div>
+          </div>
+        </div>
+
+        <!-- Conceptos resumidos -->
+        <div class="grid grid-cols-2 gap-2 mb-4 text-xs">
+          ${[
+            ['Salario pendiente', rec.pending_salary_amount],
+            ['Aux. Transporte pend.', rec.pending_transport_amount],
+            ['Cesantías', rec.severance_amount],
+            ['Int. Cesantías', rec.severance_interest_amount],
+            ['Prima', rec.bonus_amount],
+            ['Vacaciones comp.', rec.vacation_amount],
+            ['Indemnización', rec.indemnity_amount],
+            ['Deducción Salud', rec.health_deduction],
+            ['Deducción Pensión', rec.pension_deduction],
+            ['Otras Deducciones', rec.other_deductions],
+          ].filter(([, v]) => Number(v) > 0).map(([label, val]) =>
+            `<div class="flex justify-between p-2 rounded" style="background:#F9FAFB;border:1px solid #F3F4F6">
+              <span class="text-gray-600">${label}</span>
+              <span class="font-bold text-gray-900">${fmt(Number(val))}</span>
+            </div>`
+          ).join('')}
+        </div>
+
+        <!-- Documento contable -->
+        <div style="border:1px solid #E5E7EB;border-radius:10px;padding:12px">
+          <div class="flex items-center justify-between mb-1">
+            <p class="font-bold text-sm text-gray-800">
+              <i class="fas fa-book mr-1 text-indigo-500"></i>${isDraft ? 'Asignación Contable Propuesta' : 'Comprobante Contable Registrado'}
+            </p>
+            ${txRecord ? `<span class="text-xs text-gray-500 font-mono">
+              ${esc(txRecord.expand?.tx_type_id?.code || '')} #${esc(txRecord.number || '—')} &mdash; ${String(txRecord.date || '').slice(0, 10)}
+            </span>` : ''}
+          </div>
+          ${linesHtml}
+        </div>
+
+        ${isDraft ? `
+          <div class="flex justify-between items-center gap-3 mt-4 pt-3 border-t">
+            <button id="modal-btn-delete-draft" class="btn btn-outline text-red-600 btn-sm">
+              <i class="fas fa-trash-alt mr-1"></i>Eliminar Borrador
+            </button>
+            <div class="flex gap-2">
+              <button class="btn btn-outline btn-sm text-gray-700" onclick="window._printSettlementActa('${esc(rec.id)}')">
+                <i class="fas fa-print mr-1 text-gray-500"></i>Imprimir Acta
+              </button>
+              <button class="btn btn-outline btn-sm" onclick="closeModal()">Cerrar</button>
+              <button id="modal-btn-post-draft" class="btn btn-success btn-sm" ${!balanced ? 'disabled style="opacity:0.6"' : ''}>
+                <i class="fas fa-check-circle mr-1"></i>Contabilizar este Borrador Ahora
+              </button>
+            </div>
+          </div>
+        ` : `
+          <div class="flex justify-end items-center gap-2 mt-4 pt-3 border-t">
+            <button class="btn btn-outline btn-sm text-gray-700" onclick="window._printSettlementActa('${esc(rec.id)}')">
+              <i class="fas fa-print mr-1 text-gray-500"></i>Imprimir Acta
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="closeModal()">Cerrar</button>
+          </div>
+        `}
+
+      </div>
+    `;
+
+    openModal(`Detalle Liquidación — ${empName}`, modalHtml);
+
+    // Acciones para registros en borrador
+    if (isDraft) {
+      document.getElementById('modal-btn-post-draft')?.addEventListener('click', async () => {
+        const postBtn = document.getElementById('modal-btn-post-draft') as HTMLButtonElement;
+        if (!balanced || !txLines.length) {
+          return showToast('El asiento contable no está cuadrado o no tiene líneas válidas.', 'error');
+        }
+
+        // Revalidar que no exista otra liquidación ya aprobada para este empleado
+        const otherApproved = await pb.listAll('payroll_settlements', {
+          filter: `employee_id="${pb.escapeFilterValue(rec.employee_id)}" && status="approved" && id!="${pb.escapeFilterValue(rec.id)}"`,
+          limit: 1,
+        }).catch(() => [] as any[]);
+
+        if (otherApproved.length > 0) {
+          return showToast('Operación cancelada: Este empleado ya tiene otra liquidación aprobada en el sistema. Solo se permite una liquidación por contrato.', 'error');
+        }
+
+        try {
+          postBtn.disabled = true;
+          postBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Contabilizando...';
+          const txTypes = await API.getTxTypes();
+          const txType = txTypes.find((t: any) => t.code === 'LQ')
+            || txTypes.find((t: any) => t.code === 'NM')
+            || txTypes[0];
+          if (!txType) throw new Error('No existe tipo de transacción configurado.');
+
+          const cleanLines = txLines.map((l: any, i: number) => {
+            const acct = l.expand?.account_id || acctById.get(l.account_id);
+            const is2505Cruce = acct && String(acct.code || '').startsWith('2505') && Boolean(acct.maneja_cruce);
+            return {
+              account_id: l.account_id,
+              debit: l.debit,
+              credit: l.credit,
+              description: l.description,
+              third_party_id: l.third_party_id || rec.employee_id,
+              cross_doc_ref: is2505Cruce ? (l.cross_doc_ref || `LIQ-${String(rec.settlement_date || '').replace(/-/g, '')}-EMP-${empDoc}`) : undefined,
+              line_order: i + 1,
+            };
+          });
+
+          const tx = await API.createTransaction({
+            tx_type_id: txType.id,
+            date: rec.settlement_date,
+            description: `Liquidación Definitiva — ${empName} — ${rec.settlement_date}`,
+            third_party_id: rec.employee_id,
+          }, cleanLines);
+
+          await pb.update('payroll_settlements', rec.id, { tx_id: tx.id, status: 'approved' });
+          await pb.update('third_parties', rec.employee_id, { active: false }).catch(() => {});
+
+          showToast('Liquidación contabilizada exitosamente.', 'success');
+          closeModal();
+          await loadSettlementHistory();
+        } catch (err: any) {
+          showToast(`Error al contabilizar: ${err.message}`, 'error');
+          postBtn.disabled = false;
+          postBtn.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Contabilizar este Borrador Ahora';
+        }
+      });
+
+      document.getElementById('modal-btn-delete-draft')?.addEventListener('click', async () => {
+        if (!confirm(`¿Estás seguro de eliminar este registro en borrador de ${empName}?`)) return;
+        try {
+          await pb.delete('payroll_settlements', rec.id);
+          showToast('Borrador eliminado correctamente.', 'info');
+          closeModal();
+          await loadSettlementHistory();
+        } catch (err: any) {
+          showToast(`Error al eliminar: ${err.message}`, 'error');
+        }
+      });
+    }
+  } catch (err: any) {
+    showToast(`Error al cargar detalle: ${err.message}`, 'error');
+  }
+};
+
+(window as any).renderNominaLiquidacionDefinitivaPage = renderNominaLiquidacionDefinitivaPage;

@@ -20,8 +20,8 @@ const getHubUrl = (): string => {
 const HUB_URL = getHubUrl();
 
 async function renderSuperadmin(container: HTMLElement): Promise<void> {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'superadmin');
   if (!container) return;
 
   const role = pb?.currentUser?.role ?? 'viewer';
@@ -50,7 +50,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
           </div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2)" onclick="renderSuperadmin(document.getElementById('page-content'))">
+          <button class="btn" style="background:rgba(255,255,255,0.1);color:white;border:1px solid rgba(255,255,255,0.2)" onclick="(window.reloadTab ? window.reloadTab('superadmin') : renderSuperadmin())">
             <i class="fas fa-rotate-right"></i> Refrescar
           </button>
         </div>

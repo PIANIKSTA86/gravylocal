@@ -38,8 +38,8 @@ declare var docTypeAbbr: any;
    LISTA / TABLA
 ═══════════════════════════════════════════════════════════ */
 async function renderTerceros(c) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  c = getContainer(c, 'terceros');
   if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando terceros...</div>`;
   try {
@@ -1237,7 +1237,11 @@ function openTerceroForm(row = null, onSaveSuccess = null, onCancel = null, preS
         if (onSaveSuccess) {
           onSaveSuccess(savedRecord);
         } else {
-          renderTerceros($('#page-content'));
+          if (typeof (window as any).reloadTab === 'function') {
+            (window as any).reloadTab('terceros');
+          } else {
+            renderTerceros();
+          }
         }
       } catch (err: any) {
         showToast(err.message || 'Error al guardar el tercero', 'error');
@@ -1324,7 +1328,11 @@ function toggleTercero(id, active) {
         await API.logAudit('STATUS', 'Tercero', id,
           `${updated.doc_type} ${updated.doc_number} - ${updated.name} => ${active?'Activo':'Inactivo'}`);
         showToast('Estado actualizado', 'success');
-        renderTerceros($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('terceros');
+        } else {
+          renderTerceros();
+        }
       } catch (err) { showToast(err.message, 'error'); }
     }
   );
@@ -1340,7 +1348,11 @@ function deleteTercero(id) {
         await pb.delete('third_parties', id);
         await API.logAudit('DELETE', 'Tercero', id, 'Tercero eliminado permanentemente');
         showToast('Tercero eliminado correctamente', 'success');
-        renderTerceros($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('terceros');
+        } else {
+          renderTerceros();
+        }
       } catch (err) {
         showToast('No se puede eliminar el tercero porque ya tiene movimientos contables o facturas asociadas. Considera inactivarlo.', 'error');
       }

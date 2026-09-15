@@ -239,38 +239,48 @@ async function renderReportes(c) {
       </div>
     </div>`;
 
-  $('#btn-report-trial')?.addEventListener('click', () => launchReportModal('Balance de Prueba', () => renderTrialBalance()));
-  $('#btn-report-income')?.addEventListener('click', () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()));
-  $('#btn-report-position')?.addEventListener('click', () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()));
-  $('#btn-report-cost-centers')?.addEventListener('click', () => launchReportModal('Balance por Centro de Costo', () => renderCostCentersReport()));
-  $('#btn-report-journal')?.addEventListener('click', () => launchReportModal('Libro Diario', () => renderJournalBook()));
-  $('#btn-report-aux')?.addEventListener('click', () => launchReportModal('Libro Auxiliar', () => renderAuxiliaryBook()));
-  $('#btn-report-ar-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Cobrar', () => renderPortfolioBalances('cxc')));
-  $('#btn-report-ap-bal')?.addEventListener('click', () => launchReportModal('Saldos Cuentas por Pagar', () => renderPortfolioBalances('cxp')));
-  $('#btn-report-aging')?.addEventListener('click', () => launchReportModal('Cartera por Edades', () => renderAgingPortfolio()));
-  $('#btn-report-ret-cert')?.addEventListener('click', () => launchReportModal('Certificados de Retención', () => renderWithholdingCertificates()));
-  $('#btn-report-paz-salvo')?.addEventListener('click', () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()));
-  $('#btn-report-historial-pagos')?.addEventListener('click', () => launchReportModal('Historial de Pagos de Cartera de un Cliente', () => renderClientPaymentsHistory()));
-  $('#btn-report-iva')?.addEventListener('click', () => launchReportModal('Reporte de IVA', () => renderIvaReport()));
-  $('#btn-report-retenciones')?.addEventListener('click', () => launchReportModal('Reporte de Retenciones', () => renderRetencionesReport()));
-  $('#btn-report-cash-flow')?.addEventListener('click', () => launchReportModal('Reporte de Flujo de Caja', () => renderCashFlowReport()));
-  $('#btn-report-financial-analysis')?.addEventListener('click', () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()));
-  $('#btn-report-ventas-emision')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()));
-  $('#btn-report-ventas-vendedor')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Vendedor', () => renderSalesBySellerReport()));
-  $('#btn-report-ventas-productos')?.addEventListener('click', () => launchReportModal('Reporte de Ventas por Producto (Acumulado)', () => renderSalesProductsReport()));
-  $('#btn-report-ventas-calor')?.addEventListener('click', () => launchReportModal('Horarios de Calor de Ventas', () => renderSalesHeatmapReport()));
-  $('#btn-report-budget-execution')?.addEventListener('click', () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()));
-  $('#btn-report-financial-notes')?.addEventListener('click', () => launchReportModal('Notas a los Estados Financieros', () => renderFinancialNotesManager()));
-  $('#btn-report-consecutive-audit')?.addEventListener('click', () => launchReportModal('Auditoría de Consecutivos de Comprobantes', () => renderConsecutiveAuditReport()));
-  $('#btn-report-estado-cuenta-tercero')?.addEventListener('click', () => launchReportModal('Estado de Cuenta por Tercero', () => renderAccountStatementReport()));
+  const REPORT_LAUNCHERS: Record<string, () => void> = {
+    'trial': () => launchReportModal('Balance de Prueba', () => renderTrialBalance()),
+    'income': () => launchReportModal('Estado de Resultados', () => renderIncomeStatement()),
+    'position': () => launchReportModal('Estado de Situación Financiera', () => renderFinancialPosition()),
+    'cost-centers': () => launchReportModal('Balance por Centro de Costo', () => renderCostCentersReport()),
+    'journal': () => launchReportModal('Libro Diario', () => renderJournalBook()),
+    'aux': () => launchReportModal('Libro Auxiliar', () => renderAuxiliaryBook()),
+    'ar-bal': () => launchReportModal('Saldos Cuentas por Cobrar', () => renderPortfolioBalances('cxc')),
+    'ap-bal': () => launchReportModal('Saldos Cuentas por Pagar', () => renderPortfolioBalances('cxp')),
+    'aging': () => launchReportModal('Cartera por Edades', () => renderAgingPortfolio()),
+    'ret-cert': () => launchReportModal('Certificados de Retención', () => renderWithholdingCertificates()),
+    'paz-salvo': () => launchReportModal('Certificado de Paz y Salvo de Cartera', () => renderPazYSalvoCertificate()),
+    'historial-pagos': () => launchReportModal('Historial de Pagos de Cartera de un Cliente', () => renderClientPaymentsHistory()),
+    'iva': () => launchReportModal('Reporte de IVA', () => renderIvaReport()),
+    'retenciones': () => launchReportModal('Reporte de Retenciones', () => renderRetencionesReport()),
+    'cash-flow': () => launchReportModal('Reporte de Flujo de Caja', () => renderCashFlowReport()),
+    'financial-analysis': () => launchReportModal('Análisis Financiero Integrado', () => renderFinancialAnalysisReport()),
+    'ventas-emision': () => launchReportModal('Reporte de Ventas por Tipo de Emisión', () => renderSalesEmissionReport()),
+    'ventas-vendedor': () => launchReportModal('Reporte de Ventas por Vendedor', () => renderSalesBySellerReport()),
+    'ventas-productos': () => launchReportModal('Reporte de Ventas por Producto (Acumulado)', () => renderSalesProductsReport()),
+    'ventas-calor': () => launchReportModal('Horarios de Calor de Ventas', () => renderSalesHeatmapReport()),
+    'budget-execution': () => launchReportModal('Ejecución Presupuestal Detallada', () => renderDetailedBudgetExecutionReport()),
+    'financial-notes': () => launchReportModal('Notas a los Estados Financieros', () => renderFinancialNotesManager()),
+    'consecutive-audit': () => launchReportModal('Auditoría de Consecutivos de Comprobantes', () => renderConsecutiveAuditReport()),
+    'estado-cuenta-tercero': () => launchReportModal('Estado de Cuenta por Tercero', () => renderAccountStatementReport()),
+    'inv-general': () => launchReportModal('Reporte General de Inventarios', () => renderInventoryGeneralReport()),
+    'inv-comparativo': () => launchReportModal('Comparativo de Existencias entre Bodegas', () => renderInventoryComparativoReport()),
+    'inv-conteo': () => launchReportModal('Listado para Conteo Físico', () => renderInventoryConteoReport()),
+    'inv-precios': () => launchReportModal('Lista de Precios Vigentes', () => renderInventoryPreciosReport()),
+    'inv-alertas': () => launchReportModal('Alertas de Stock Mínimo y Máximo', () => renderInventoryAlertasReport()),
+    'inv-rotacion': () => launchReportModal('Análisis de Rotación de Inventarios', () => renderInventoryRotacionReport()),
+  };
 
-  // ── Listeners de Reportes de Inventario ──
-  $('#btn-report-inv-general')?.addEventListener('click', () => launchReportModal('Reporte General de Inventarios', () => renderInventoryGeneralReport()));
-  $('#btn-report-inv-comparativo')?.addEventListener('click', () => launchReportModal('Comparativo de Existencias entre Bodegas', () => renderInventoryComparativoReport()));
-  $('#btn-report-inv-conteo')?.addEventListener('click', () => launchReportModal('Listado para Conteo Físico', () => renderInventoryConteoReport()));
-  $('#btn-report-inv-precios')?.addEventListener('click', () => launchReportModal('Lista de Precios Vigentes', () => renderInventoryPreciosReport()));
-  $('#btn-report-inv-alertas')?.addEventListener('click', () => launchReportModal('Alertas de Stock Mínimo y Máximo', () => renderInventoryAlertasReport()));
-  $('#btn-report-inv-rotacion')?.addEventListener('click', () => launchReportModal('Análisis de Rotación de Inventarios', () => renderInventoryRotacionReport()));
+  c.addEventListener('click', (ev: MouseEvent) => {
+    const trigger = (ev.target as HTMLElement).closest('[data-report-id]') as HTMLElement;
+    if (!trigger) return;
+    const reportId = trigger.getAttribute('data-report-id');
+    if (reportId && typeof REPORT_LAUNCHERS[reportId] === 'function') {
+      ev.preventDefault();
+      REPORT_LAUNCHERS[reportId]();
+    }
+  });
 }
 
 // ── Vistas Interactivas para Reportes de Inventarios ───────────────────────
@@ -1838,10 +1848,14 @@ function launchReportModal(title, renderFn) {
 
 function reportCard(id, title, subtitle) {
   return `
-    <div class="bg-white rounded-2xl border p-4" style="border-color:#F0F0F0">
-      <h4 class="font-bold mb-1" style="color:#0D2137">${esc(title)}</h4>
-      <p class="text-sm mb-3" style="color:#6B7280">${esc(subtitle)}</p>
-      <button class="btn btn-primary btn-sm" id="btn-report-${esc(id)}"><i class="fas fa-play"></i> Generar</button>
+    <div class="bg-white rounded-2xl border p-4 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer report-card-item flex flex-col justify-between" data-report-id="${esc(id)}" style="border-color:#E2E8F0">
+      <div>
+        <h4 class="font-bold mb-1" style="color:#0D2137">${esc(title)}</h4>
+        <p class="text-sm mb-3" style="color:#6B7280">${esc(subtitle)}</p>
+      </div>
+      <div>
+        <button type="button" class="btn btn-primary btn-sm pointer-events-auto" id="btn-report-${esc(id)}" data-report-id="${esc(id)}"><i class="fas fa-play mr-1"></i> Generar</button>
+      </div>
     </div>`;
 }
 

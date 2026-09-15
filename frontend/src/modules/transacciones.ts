@@ -791,8 +791,8 @@ function _closeTxModal() {
 }
 
 async function renderNuevaTx(c) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  c = getContainer(c, 'consulta-tx');
   if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando datos...</div>`;
   try {
@@ -1718,8 +1718,8 @@ async function updateTypeOptionsForPeriod() {
 }
 
 async function renderConsultaTx(c) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  c = getContainer(c, 'consulta-tx');
   if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando transacciones...</div>`;
   try {
@@ -2120,8 +2120,9 @@ window.emitTxToDianFromDetail = async function(txId: string, txNumber: string) {
         if (res && res.success) {
           (window as any).showToast(`Documento ${txNumber} emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
           (window as any).closeModal();
-          const content = document.getElementById('page-content');
-          if (content && (window as any).currentPage === 'consulta-tx') {
+          if (typeof (window as any).reloadTab === 'function') {
+            (window as any).reloadTab('consulta-tx');
+          } else if (typeof (window as any).loadConsultaTxPage === 'function') {
             (window as any).loadConsultaTxPage();
           }
         } else {
@@ -2284,7 +2285,11 @@ function voidTx(id) {
 
         closeModal();
         showToast('Transacción y movimientos asociados anulados con éxito', 'success');
-        renderConsultaTx($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('consulta-tx');
+        } else {
+          renderConsultaTx();
+        }
       } catch (err: any) {
         showToast(err.message || 'Error al anular la transacción', 'error');
         btn.disabled = false;

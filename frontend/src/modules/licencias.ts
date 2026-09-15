@@ -7,8 +7,8 @@
 'use strict';
 
 async function renderLicencias(container: HTMLElement): Promise<void> {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'licencias');
   if (!container) return;
 
   // Solo admin puede acceder
@@ -34,7 +34,7 @@ async function renderLicencias(container: HTMLElement): Promise<void> {
           Activa o desactiva los módulos disponibles en esta instalación de GRAVY.
         </p>
       </div>
-      <button class="btn btn-outline btn-sm" onclick="renderLicencias(document.getElementById('page-content'))">
+      <button class="btn btn-outline btn-sm" onclick="(window.reloadTab ? window.reloadTab('licencias') : renderLicencias())">
         <i class="fas fa-rotate-right"></i> Actualizar
       </button>
     </div>
@@ -370,7 +370,7 @@ async function toggleLicense(moduleKey: string, enabled: boolean): Promise<void>
         if (typeof applyModuleVisibility === 'function')  applyModuleVisibility();
 
         // Re-renderizar el panel para reflejar el nuevo estado con animación
-        setTimeout(() => renderLicencias(document.getElementById('page-content') as HTMLElement), 300);
+        setTimeout(() => ((window as any).reloadTab ? (window as any).reloadTab('licencias') : renderLicencias()), 300);
       } catch (err: any) {
         showToast(err.message || 'No se pudo actualizar la licencia', 'error');
         if (toggle) { toggle.checked = !enabled; toggle.disabled = false; }

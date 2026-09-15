@@ -17,8 +17,8 @@
 };
 
 async function renderUsuarios(c) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  c = getContainer(c, 'usuarios');
   if (!c) return;
   const canManage = ['admin', 'superadmin'].includes(pb.currentUser?.role);
   if (!canManage) {
@@ -484,7 +484,11 @@ async function openUserForm(row = null) {
       }
       closeModal();
       showToast('Usuario guardado correctamente', 'success');
-      renderUsuarios($('#page-content'));
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('usuarios');
+      } else {
+        renderUsuarios();
+      }
     } catch (err) {
       const details = err?.data?.data
         ? Object.values(err.data.data).map(v => v?.message).filter(Boolean).join(' | ')
@@ -514,7 +518,11 @@ function toggleUser(id, active) {
         await pb.update('users', id, { active });
         await (window as any).API.logAudit('STATUS', 'users', id, `Usuario ${active ? 'reactivado' : 'inactivado'}`);
         showToast('Estado actualizado', 'success');
-        renderUsuarios($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('usuarios');
+        } else {
+          renderUsuarios();
+        }
       } catch (err) { showToast(err.message, 'error'); }
     }
   );
@@ -534,7 +542,11 @@ function deleteUser(id: string, identifier: string) {
         await pb.delete('users', id);
         await (window as any).API.logAudit('DELETE', 'users', id, `Usuario ${identifier} eliminado permanentemente`);
         showToast(`Usuario «${identifier}» eliminado permanentemente`, 'success');
-        renderUsuarios($('#page-content'));
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('usuarios');
+        } else {
+          renderUsuarios();
+        }
       } catch (err: any) {
         showToast(err.message || 'No se pudo eliminar el usuario', 'error');
       }

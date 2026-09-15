@@ -35,7 +35,7 @@ const INV_SECTION_META: Record<string, { title: string; subtitle: string; icon: 
 
 async function renderInventarioSection(c: any, sectionId = 'stock', ctx: any = {}) {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  c = getContainer(c, 'inventario-' + (sectionId || 'stock'));
   if (!c) return;
 
   const meta = INV_SECTION_META[sectionId] || { title: 'Gestión de Inventarios', subtitle: 'Stock actual, lotes, movimientos y bodegas.', icon: 'fa-warehouse' };
@@ -812,7 +812,8 @@ async function renumberInventoryMovements() {
         showToast('Procesando renumeración en la base de datos...', 'info');
         const res = await API.renumberLegacyInventoryMovements();
         showToast(`Proceso completado. ${res.updated} documentos renumerados de ${res.total} totales.`, 'success');
-        renderInventario($('#page-content'));
+        if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+        else renderInventario(undefined, 'movimientos');
       } catch (err: any) {
         showToast(err.message || 'Error al renumerar documentos', 'error');
       }
@@ -928,7 +929,10 @@ async function editMovement(movId) {
             showToast('Movimiento desaplicado. Puedes realizar los cambios y volver a aplicarlo.', 'success');
             const updatedMov = await pb.get('inventory_movements', movId);
             const lines = await API.getInventoryMovementLines(movId);
-            openMovForm({ mov: updatedMov, lines }, {}, () => renderInventario($('#page-content')));
+            openMovForm({ mov: updatedMov, lines }, {}, () => {
+              if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+              else renderInventario(undefined, 'movimientos');
+            });
           } catch (err) {
             showToast(err.message || 'Error al desaplicar el movimiento', 'error');
           }
@@ -939,7 +943,10 @@ async function editMovement(movId) {
 
     // Si es borrador, abrir directamente
     const lines = await API.getInventoryMovementLines(movId);
-    openMovForm({ mov, lines }, {}, () => renderInventario($('#page-content')));
+    openMovForm({ mov, lines }, {}, () => {
+      if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+      else renderInventario(undefined, 'movimientos');
+    });
 
   } catch (err) {
     showToast(err.message || 'Error al abrir el movimiento para edición', 'error');
@@ -1377,7 +1384,8 @@ async function applyMovement(id) {
       try {
         await API.applyInventoryMovement(id);
         showToast('Movimiento aplicado. Stock actualizado.', 'success');
-        renderInventario($('#page-content'));
+        if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+        else renderInventario(undefined, 'movimientos');
       } catch (err) { showToast(err.message, 'error'); }
     }
   );
@@ -1392,7 +1400,8 @@ function voidMovement(id, number) {
       try {
         await API.voidInventoryMovement(id);
         showToast('Movimiento anulado. Stock revertido.', 'success');
-        renderInventario($('#page-content'));
+        if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+        else renderInventario(undefined, 'movimientos');
       } catch (err) { showToast(err.message, 'error'); }
     }
   );
@@ -3986,7 +3995,8 @@ async function _saveTomaFisica() {
 
     showToast(`Ajuste contable e inventario aplicados con éxito en ${whName}.`, 'success');
     closeModal();
-    renderInventario(document.getElementById('page-content')!);
+    if ((window as any).reloadTab) (window as any).reloadTab('inventario-stock');
+    else renderInventario(undefined, 'stock');
   } catch (err: any) {
     showToast(`Error: ${err.message}`, 'error');
   } finally {
@@ -5632,7 +5642,8 @@ async function _applyRevaluation() {
     if (consolidatedTxNumber) parts.push(`asiento de ajuste consolidado ${consolidatedTxNumber} para salidas sin factura`);
     showToast(`Recálculo de costos aplicado con éxito: ${parts.join(' y ')}.`, 'success');
     closeModal();
-    renderInventario(document.getElementById('page-content')!);
+    if ((window as any).reloadTab) (window as any).reloadTab('inventario-kardex');
+    else renderInventario(undefined, 'kardex');
   } catch (err: any) {
     showToast(`Error al aplicar revalorización: ${err.message}`, 'error');
   } finally {
@@ -6370,7 +6381,8 @@ async function _saveImportInventario() {
 
     showToast(`Inventario cargado exitosamente. Se ingresaron ${validRows.length} productos.`, 'success');
     closeModal();
-    renderInventario(document.getElementById('page-content')!);
+    if ((window as any).reloadTab) (window as any).reloadTab('inventario-stock');
+    else renderInventario(undefined, 'stock');
   } catch (err: any) {
     showToast(`Error al ejecutar la carga: ${err.message}`, 'error');
   } finally {
@@ -6426,7 +6438,8 @@ async function _saveUnifiedInventoryConfig() {
 
     showToast('Configuración de productos e inventario guardada correctamente.', 'success');
     closeModal();
-    renderInventario($('#page-content'));
+    if ((window as any).reloadTab) (window as any).reloadTab('inventario-stock');
+    else renderInventario(undefined, 'stock');
   } catch (err: any) {
     showToast(`Error al guardar: ${err.message}`, 'error');
   } finally {
@@ -6460,7 +6473,8 @@ async function _deleteInventoryMovement(id: string, number: string) {
     await pb.delete('inventory_movements', id);
     
     showToast(`Movimiento ${number} eliminado exitosamente.`, 'success');
-    renderInventario(document.getElementById('page-content')!);
+    if ((window as any).reloadTab) (window as any).reloadTab('inventario-movimientos');
+    else renderInventario(undefined, 'movimientos');
   } catch (err: any) {
     showToast(`Error al eliminar: ${err.message}`, 'error');
   }

@@ -134,8 +134,8 @@ async function saveDocSoporteConfig(cfg: any) {
 
 // ── Render Principal ──────────────────────────────────────────────────────────
 export async function renderDocSoporte(container: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'doc-soporte');
   if (!container) return;
   container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Documentos Soporte Electrónicos...</div>`;
   try {
@@ -1241,7 +1241,11 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         showToast(`Borrador de Documento Soporte (${purInv.number || 'DS'}) guardado con éxito.`, 'success');
       }
 
-      renderDocSoporte((window as any).getPageContainer ? (window as any).getPageContainer() : document.getElementById('page-content')!);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('doc-soporte');
+      } else {
+        renderDocSoporte((window as any).getPageContainer ? (window as any).getPageContainer(null, 'doc-soporte') : container);
+      }
     } catch (err: any) {
       showToast(err.response?.message || err.message, 'error');
     }
@@ -1612,7 +1616,11 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
         (window as any).emitDocSoporteFromList(ndsTx.id, ndsTx.number || 'NDS');
       }
 
-      renderDocSoporte((window as any).getPageContainer ? (window as any).getPageContainer() : document.getElementById('page-content')!);
+      if (typeof (window as any).reloadTab === 'function') {
+        (window as any).reloadTab('doc-soporte');
+      } else {
+        renderDocSoporte((window as any).getPageContainer ? (window as any).getPageContainer(null, 'doc-soporte') : container);
+      }
     } catch (err: any) {
       showToast(err.response?.message || err.message, 'error');
     }
@@ -1652,8 +1660,8 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
     showToast('Contabilizando documento soporte...', 'info');
     const res = await (window as any).API.postPurchaseInvoice(id);
     showToast(`Documento soporte contabilizado con éxito. Consecutivo asignado: ${res.inv.number || 'DS'}`, 'success');
-    const container = document.getElementById('page-content');
-    if (container) renderDocSoporte(container);
+    if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
+    else renderDocSoporte();
   } catch (err: any) {
     showToast('Error al contabilizar: ' + (err.message || err), 'error');
   }
@@ -1675,19 +1683,19 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
       
       if (res && res.success) {
         showToast(`Documento Soporte emitido correctamente. Estado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
-        const container = document.getElementById('page-content');
-        if (container) renderDocSoporte(container);
+        if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
+        else renderDocSoporte();
       } else {
         const errorMsg = res?.dianResponse || res?.message || 'Rechazado por el servidor';
         showToast(`Facturatech / DIAN: ${errorMsg}`, 'error', 9000);
-        const container = document.getElementById('page-content');
-        if (container) renderDocSoporte(container);
+        if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
+        else renderDocSoporte();
       }
     } catch (err: any) {
       const errMsg = (window as any).getDianErrorMessage ? (window as any).getDianErrorMessage(err) : (err.data?.message || err.message || 'Error al emitir Documento Soporte');
       showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9500);
-      const container = document.getElementById('page-content');
-      if (container) renderDocSoporte(container);
+      if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
+      else renderDocSoporte();
     }
   });
 };
@@ -1708,8 +1716,8 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
             } else if (typeof (window as any).emitDianDocFromList === 'function') {
               await (window as any).emitDianDocFromList('', posted.tx.id, posted.inv.number || docNumber);
             }
-            const container = document.getElementById('page-content');
-            if (container) renderDocSoporte(container);
+            if ((window as any).reloadTab) (window as any).reloadTab('doc-soporte');
+            else renderDocSoporte();
           }
         } catch (err: any) {
           showToast('Error al contabilizar: ' + (err.message || err), 'error');

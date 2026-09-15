@@ -84,6 +84,8 @@ onBootstrap((e) => {
       }
 
       // Asegurar columnas SQLite
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN is_consolidated INTEGER DEFAULT 0").execute(); } catch (_) {}
+      try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN forwarder_supplier_id TEXT DEFAULT ''").execute(); } catch (_) {}
       try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN local_carrier_trm REAL DEFAULT 0").execute(); } catch (_) {}
       try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN local_other_trm REAL DEFAULT 0").execute(); } catch (_) {}
       try { $app.db().newQuery("ALTER TABLE imports ADD COLUMN freight_exchange_rate REAL DEFAULT 0").execute(); } catch (_) {}

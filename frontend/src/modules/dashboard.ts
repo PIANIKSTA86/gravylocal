@@ -82,7 +82,7 @@ function fmtCount(n: number): string {
 
 async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<void> {
   const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  c = getContainer(c);
+  c = getContainer(c, 'dashboard');
   if (!c) return;
 
   const pb = (window as any).pb;
@@ -1046,7 +1046,7 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
               : String(err.message || 'Error desconocido').replace(/</g,'&lt;')
           }</p>
         </div>
-        <button onclick="renderDashboard(document.getElementById('page-content'))"
+        <button onclick="if(window.reloadTab){window.reloadTab('dashboard')}else{renderDashboard(document.getElementById('page-content'))}"
           class="btn btn-outline" style="margin-top:4px">
           <i class="fas fa-rotate-right"></i> Reintentar
         </button>
@@ -1508,7 +1508,7 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
         <i class="fas fa-circle-exclamation text-3xl mb-2"></i>
         <h4 class="font-extrabold text-sm text-slate-900">Error al cargar el dashboard comercial</h4>
         <p class="text-xs text-slate-500 mt-1">${esc(err.message)}</p>
-        <button onclick="renderDashboard(document.getElementById('page-content'))" class="btn btn-outline btn-sm mt-3">
+        <button onclick="if(window.reloadTab){window.reloadTab('dashboard')}else{renderDashboard(document.getElementById('page-content'))}" class="btn btn-outline btn-sm mt-3">
           <i class="fas fa-rotate-right mr-1"></i> Reintentar
         </button>
       </div>

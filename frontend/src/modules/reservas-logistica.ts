@@ -19,8 +19,8 @@ const RES_STATUS: Record<string, ReservationStatusMeta> = {
 };
 
 export async function renderReservasImportacion(container: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  container = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  container = getContainer(container, 'reservas-logistica');
   if (!container) return;
   container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando reservas de importacion...</div>`;
   try {
@@ -1159,9 +1159,13 @@ async function openReservationForm(reservationId: any = null, onDone: any = null
 
           (window as any).showToast(`Reserva ${res.number} ACEPTADA. Se ha creado la Orden de Carga / Pedido ${order.number} para despacho.`, 'success');
 
-          const content = document.getElementById('page-content');
-          if (content && typeof (window as any).renderReservasImportacion === 'function') {
-            (window as any).renderReservasImportacion(content);
+          if (typeof (window as any).reloadTab === 'function') {
+            (window as any).reloadTab('reservas-logistica');
+          } else {
+            const content = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'reservas-logistica') : document.getElementById('tab-pane-reservas-logistica');
+            if (content && typeof (window as any).renderReservasImportacion === 'function') {
+              (window as any).renderReservasImportacion(content);
+            }
           }
         } catch (err: any) {
           (window as any).showToast('Error al aceptar la reserva: ' + (err.message || err), 'error');
@@ -1208,8 +1212,12 @@ async function openReservationForm(reservationId: any = null, onDone: any = null
     await (window as any).API.logAudit('CANCEL', 'SalesReservation', reservationId, `Reserva ${reservationNumber} cancelada | Motivo: ${reason.trim()}`);
 
     (window as any).showToast('Reserva cancelada', 'success');
-    const content = document.getElementById('page-content');
-    if (content) renderReservasImportacion(content);
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('reservas-logistica');
+    } else {
+      const content = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'reservas-logistica') : document.getElementById('tab-pane-reservas-logistica');
+      if (content) renderReservasImportacion(content);
+    }
   } catch (err: any) {
     (window as any).showToast(err.message || 'No se pudo cancelar la reserva', 'error');
   }
@@ -1402,9 +1410,13 @@ async function openReservationForm(reservationId: any = null, onDone: any = null
 
 (window as any).renderReservasImportacion = renderReservasImportacion;
 (window as any).editImportReservation = (reservationId: string) => {
-  const container = document.getElementById('page-content');
   openReservationForm(reservationId, () => {
-    if (container) renderReservasImportacion(container);
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('reservas-logistica');
+    } else {
+      const container = (window as any).getPageContainer ? (window as any).getPageContainer(null, 'reservas-logistica') : document.getElementById('tab-pane-reservas-logistica');
+      if (container) renderReservasImportacion(container);
+    }
   });
 };
 

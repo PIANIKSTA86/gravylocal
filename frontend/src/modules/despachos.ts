@@ -106,13 +106,16 @@ function _isClientOrSupplierType(typeVal: any) {
 
 let activeTab: 'deliveries' | 'vehicles' = 'deliveries';
 
-export async function renderDespachos(container: HTMLElement) {
-  container.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo de logística y despachos...</div>`;
+export async function renderDespachos(container?: HTMLElement) {
+  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
+  const target = getContainer(container, 'despachos');
+  if (!target) return;
+  target.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando módulo de logística y despachos...</div>`;
 
   try {
-    await _loadDespachosData(container);
+    await _loadDespachosData(target);
   } catch (err: any) {
-    container.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+    target.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
   }
 }
 
@@ -660,8 +663,8 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
   const veh = list.find(v => v.id === id);
   if (veh) {
     _openVehicleForm(veh, () => {
-      const activeContent = document.getElementById('page-content');
-      if (activeContent) renderDespachos(activeContent);
+      if ((window as any).reloadTab) (window as any).reloadTab('despachos');
+      else renderDespachos();
     });
   }
 };
@@ -674,8 +677,8 @@ async function _openVehicleForm(veh: Vehicle | null = null, onDone: any = null) 
     (window as any).showToast('Vehículo eliminado con éxito', 'success');
     await (window as any).API.logAudit('DELETE', 'logistica_vehicles', id, `Vehículo con placa "${plate}" eliminado de la flota`);
 
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) renderDespachos(activeContent);
+    if ((window as any).reloadTab) (window as any).reloadTab('despachos');
+    else renderDespachos();
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al eliminar vehículo', 'error');
   }
@@ -1691,8 +1694,8 @@ async function _getAndIncrementDeliveryConsecutive(): Promise<string> {
   const del = list.find(d => d.id === id);
   if (del) {
     _openDeliveryForm(del, () => {
-      const activeContent = document.getElementById('page-content');
-      if (activeContent) renderDespachos(activeContent);
+      if ((window as any).reloadTab) (window as any).reloadTab('despachos');
+      else renderDespachos();
     });
   }
 };
@@ -1713,8 +1716,8 @@ async function _getAndIncrementDeliveryConsecutive(): Promise<string> {
       await (window as any).pb.update('logistica_vehicles', del.vehicle_id, { status: 'DISPONIBLE' });
     }
 
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) renderDespachos(activeContent);
+    if ((window as any).reloadTab) (window as any).reloadTab('despachos');
+    else renderDespachos();
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al eliminar entrega', 'error');
   }

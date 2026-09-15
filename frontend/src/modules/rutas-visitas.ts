@@ -7,6 +7,10 @@
 
 'use strict';
 
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { geoTracking, TrackingTelemetry } from '../services/geo-tracking';
+
 export interface VendorVisit {
   id: string;
   seller_id: string;
@@ -114,6 +118,16 @@ export async function renderMiAgendaRutas(container: HTMLElement, initialDate?: 
       visits = myVisits.length > 0 ? myVisits : allVisits;
     }
 
+    // Iniciar rastreo satelital continuo en segundo plano para el vendedor
+    const activeSellerId = matchedSeller?.id || currentTpId || currentUserId;
+    if (activeSellerId) {
+      geoTracking.startTracking(activeSellerId, matchedSeller?.name || currentUserName || 'Vendedor', currentUserId);
+      const activeVisit = visits.find(v => v.status === 'EN_CURSO');
+      if (activeVisit) {
+        geoTracking.setCurrentVisit(activeVisit.id);
+      }
+    }
+
     _renderVendorAgendaUI(container, visits, targetDate, currentUserName || 'Vendedor');
   } catch (err: any) {
     container.innerHTML = `
@@ -144,6 +158,25 @@ function _renderVendorAgendaUI(container: HTMLElement, visits: VendorVisit[], ac
   container.innerHTML = `
     <div class="p-3 sm:p-5 max-w-2xl mx-auto space-y-4 pb-32 sm:pb-36">
       
+      <!-- Telemetría GPS Satelital en Vivo -->
+      <div id="vendor-gps-telemetry-badge" class="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-slate-900 text-white shadow-xs border border-slate-800 transition-all">
+        <div class="flex items-center gap-2.5">
+          <span class="relative flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+          </span>
+          <div>
+            <span id="gps-status-title" class="text-xs font-extrabold tracking-wide text-white block">Sincronización GPS en Tiempo Real</span>
+            <span id="gps-status-subtitle" class="text-[10px] text-slate-400">Transmitiendo ubicación a central</span>
+          </div>
+        </div>
+        <div class="text-right">
+          <span id="gps-status-meta" class="text-[11px] font-mono font-bold text-emerald-400 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60">
+            <i class="fas fa-satellite mr-1"></i>En Vivo
+          </span>
+        </div>
+      </div>
+
       <!-- Selector de Fecha & Cabecera de Ruta -->
       <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs space-y-3">
         <div class="flex items-center justify-between">
@@ -208,6 +241,34 @@ function _renderVendorAgendaUI(container: HTMLElement, visits: VendorVisit[], ac
 
     </div>
   `;
+
+  // Suscripción al estado del sensor telemétrico para actualizar el badge
+  geoTracking.subscribe((active, tel, err) => {
+    const titleEl = container.querySelector('#gps-status-title');
+    const subEl = container.querySelector('#gps-status-subtitle');
+    const metaEl = container.querySelector('#gps-status-meta');
+    if (!titleEl || !subEl || !metaEl) return;
+
+    if (err) {
+      titleEl.textContent = 'GPS con advertencia';
+      subEl.textContent = err;
+      metaEl.className = 'text-[11px] font-mono font-bold text-amber-400 bg-slate-800 px-2 py-0.5 rounded-lg';
+      metaEl.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i>Aviso';
+    } else if (active && tel) {
+      const spd = tel.speed !== null ? `${tel.speed} km/h` : 'Estacionario';
+      const batt = tel.batteryLevel !== null ? ` · 🔋 ${tel.batteryLevel}%` : '';
+      const stMap: Record<string, string> = {
+        EN_VISITA: 'Atención con cliente',
+        EN_TRANSITO: `En desplazamiento (${spd})`,
+        DETENIDO: 'Detenido en punto',
+        OFFLINE: 'Sin transmisión reciente'
+      };
+      titleEl.textContent = `🛰️ ${stMap[tel.status] || 'Transmitiendo en vivo'}`;
+      subEl.textContent = `Precisión ±${tel.accuracy}m${batt} · Ping: ${tel.lastPing.slice(11, 19)}`;
+      metaEl.className = 'text-[11px] font-mono font-bold text-emerald-400 bg-slate-800 px-2 py-0.5 rounded-lg';
+      metaEl.innerHTML = '<i class="fas fa-signal mr-1"></i>En Línea';
+    }
+  });
 
   // Event Listeners
   const dateInput = container.querySelector('#input-agenda-date') as HTMLInputElement;
@@ -397,6 +458,7 @@ function _bindVisitCardActions(container: HTMLElement, activeDate: string) {
           geo_lat: lat,
           geo_lng: lng,
         });
+        geoTracking.setCurrentVisit(visitId);
         (window as any).showToast('Check-In registrado con éxito');
         renderMiAgendaRutas(container, activeDate);
       } catch (err: any) {
@@ -537,6 +599,7 @@ function _openCheckoutModal(visitId: string, clientName: string, onDone: () => v
         no_order_reason: status === 'NO_EFECTIVA' ? reason : '',
         notes: notes || '',
       });
+      geoTracking.setCurrentVisit(null);
       (window as any).showToast('Visita finalizada exitosamente');
       close();
       onDone();
@@ -684,11 +747,18 @@ function _renderAdminRutasUI(container: HTMLElement, visits: VendorVisit[], sell
       </div>
 
       <!-- Main Navigation Tabs -->
-      <div class="flex border-b border-gray-200 gap-6">
-        <button id="tab-admin-tracker" class="pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2">
+      <div class="flex border-b border-gray-200 gap-6 overflow-x-auto no-scrollbar">
+        <button id="tab-admin-livemap" class="pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2 whitespace-nowrap">
+          <i class="fas fa-satellite-dish text-teal-600"></i> Monitoreo Satelital en Tiempo Real
+          <span class="flex h-2 w-2 relative">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+        </button>
+        <button id="tab-admin-tracker" class="pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap">
           <i class="fas fa-chart-line"></i> Tablero de Control & Seguimiento
         </button>
-        <button id="tab-admin-planner" class="pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2">
+        <button id="tab-admin-planner" class="pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap">
           <i class="fas fa-calendar-plus"></i> Asignador & Planificador Masivo
         </button>
       </div>
@@ -698,18 +768,35 @@ function _renderAdminRutasUI(container: HTMLElement, visits: VendorVisit[], sell
     </div>
   `;
 
+  let activeMapCleanup: (() => void) | null = null;
+
+  const livemapTabBtn = container.querySelector('#tab-admin-livemap');
   const trackerTabBtn = container.querySelector('#tab-admin-tracker');
   const plannerTabBtn = container.querySelector('#tab-admin-planner');
 
+  const setTabActive = (activeBtn: HTMLElement, otherBtns: HTMLElement[]) => {
+    if (activeMapCleanup) {
+      activeMapCleanup();
+      activeMapCleanup = null;
+    }
+    activeBtn.className = 'pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2 whitespace-nowrap';
+    otherBtns.forEach(b => {
+      b.className = 'pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2 whitespace-nowrap';
+    });
+  };
+
+  livemapTabBtn?.addEventListener('click', () => {
+    setTabActive(livemapTabBtn as HTMLElement, [trackerTabBtn as HTMLElement, plannerTabBtn as HTMLElement]);
+    activeMapCleanup = _renderAdminLiveMapTab(container, visits, sellers, clients, activeDate);
+  });
+
   trackerTabBtn?.addEventListener('click', () => {
-    trackerTabBtn.className = 'pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2';
-    plannerTabBtn!.className = 'pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2';
+    setTabActive(trackerTabBtn as HTMLElement, [livemapTabBtn as HTMLElement, plannerTabBtn as HTMLElement]);
     _renderAdminTrackerTab(container, visits, sellers, clients, activeDate);
   });
 
   plannerTabBtn?.addEventListener('click', () => {
-    plannerTabBtn.className = 'pb-3 text-sm font-bold text-[#006876] border-b-2 border-[#006876] flex items-center gap-2';
-    trackerTabBtn!.className = 'pb-3 text-sm font-semibold text-gray-500 hover:text-gray-700 flex items-center gap-2';
+    setTabActive(plannerTabBtn as HTMLElement, [livemapTabBtn as HTMLElement, trackerTabBtn as HTMLElement]);
     _renderAdminPlannerTab(container, visits, sellers, clients);
   });
 
@@ -719,7 +806,607 @@ function _renderAdminRutasUI(container: HTMLElement, visits: VendorVisit[], sell
     });
   });
 
-  _renderAdminTrackerTab(container, visits, sellers, clients, activeDate);
+  // Cargar por defecto el Monitoreo Satelital en Tiempo Real
+  activeMapCleanup = _renderAdminLiveMapTab(container, visits, sellers, clients, activeDate);
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// 3. VISTA MONITOREO SATELITAL EN TIEMPO REAL (MAPA LEAFLET + SSE REALTIME)
+// ═════════════════════════════════════════════════════════════════════════
+
+function _renderAdminLiveMapTab(
+  container: HTMLElement,
+  visits: VendorVisit[],
+  sellers: any[],
+  clients: any[],
+  activeDate: string
+): () => void {
+  const contentEl = container.querySelector('#admin-rutas-content');
+  if (!contentEl) return () => {};
+  const esc = (window as any).esc;
+  const pb = (window as any).pb;
+
+  let map: L.Map | null = null;
+  const vendorMarkers = new Map<string, L.Marker>();
+  let clientMarkersLayer: L.LayerGroup | null = null;
+  let historyPolylineLayer: L.LayerGroup | null = null;
+  let liveLocationsData: any[] = [];
+  let isSubscribed = false;
+
+  contentEl.innerHTML = `
+    <div class="space-y-4">
+      
+      <!-- Top Live Controls Bar -->
+      <div class="bg-white p-4 rounded-2xl border border-gray-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <div>
+            <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Fecha de Monitoreo</label>
+            <input type="date" id="live-filter-date" value="${activeDate}" class="form-input text-xs py-1 px-2.5 rounded-xl border-gray-300 font-bold text-slate-800">
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Foco Asesor</label>
+            <select id="live-filter-seller" class="form-input text-xs py-1 px-2.5 rounded-xl border-gray-300 font-bold min-w-44 text-slate-800">
+              <option value="">Todos los asesores en terreno</option>
+              ${sellers.map(s => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="flex items-center gap-2 pt-3 sm:pt-4">
+            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none">
+              <input type="checkbox" id="chk-show-clients" checked class="rounded text-teal-600 focus:ring-teal-500">
+              <span>Mostrar Clientes de Ruta</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span id="live-sse-status" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+            <span class="flex h-2 w-2 relative">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>Telemetría en Vivo</span>
+          </span>
+
+          <button id="btn-center-fleet" class="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3">
+            <i class="fas fa-crosshairs text-teal-700"></i> Centrar Flota
+          </button>
+          <button id="btn-refresh-live" class="btn btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3">
+            <i class="fas fa-rotate"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Map & Live Sellers Layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start">
+        
+        <!-- Live Sellers Telemetry Sidebar -->
+        <div class="lg:col-span-1 bg-white rounded-2xl border border-gray-200 shadow-xs p-4 space-y-3">
+          <div class="flex items-center justify-between border-b pb-2.5 border-gray-100">
+            <h3 class="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+              <i class="fas fa-users-viewfinder text-teal-700"></i> Asesores en Terreno
+            </h3>
+            <span id="live-seller-count" class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+              0 activos
+            </span>
+          </div>
+
+          <!-- List of Seller Telemetry Cards -->
+          <div id="live-sellers-sidebar" class="space-y-2.5 max-h-[580px] overflow-y-auto no-scrollbar pr-0.5">
+            <div class="p-6 text-center text-xs text-gray-400">
+              <i class="fas fa-spinner fa-spin mr-1.5 text-teal-600"></i> Conectando con dispositivos...
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Map Container -->
+        <div class="lg:col-span-3 bg-white rounded-2xl border border-gray-200 shadow-xs p-2.5 relative space-y-2">
+          <div id="live-map-element" class="w-full h-[620px] rounded-xl z-0 overflow-hidden" style="background:#e5e7eb;"></div>
+
+          <!-- Bottom Legend Overlay -->
+          <div class="flex flex-wrap items-center justify-between text-[11px] font-bold text-slate-600 px-2 py-1 bg-slate-50 rounded-xl border border-slate-200 gap-2">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300"></span> En Visita / Check-in
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-blue-500 ring-2 ring-blue-300"></span> En Ruta (Tránsito)
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-300"></span> Detenido
+              </span>
+              <span class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> Sin Señal
+              </span>
+            </div>
+            <div class="flex items-center gap-2 text-slate-500">
+              <span><i class="fas fa-location-pin text-teal-700 mr-1"></i>Pines numerados: Clientes programados</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  `;
+
+  // Inicializar Leaflet tras montaje en DOM
+  setTimeout(async () => {
+    const mapEl = document.getElementById('live-map-element');
+    if (!mapEl) return;
+
+    map = L.map(mapEl, {
+      zoomControl: true,
+      scrollWheelZoom: true,
+    }).setView([4.6097, -74.0817], 12); // Bogotá default
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    clientMarkersLayer = L.layerGroup().addTo(map);
+    historyPolylineLayer = L.layerGroup().addTo(map);
+
+    // Cargar datos iniciales
+    await loadInitialData();
+
+    // Suscribirse a SSE de PocketBase para recibir actualizaciones telemétricas en vivo
+    try {
+      pb.collection('seller_live_locations').subscribe('*', (e: any) => {
+        handleRealtimeLocationEvent(e);
+      });
+      isSubscribed = true;
+    } catch (err: any) {
+      console.warn('[GRAVY-MAP] No se pudo establecer suscripción SSE:', err.message);
+      const statusEl = contentEl.querySelector('#live-sse-status');
+      if (statusEl) {
+        statusEl.className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200';
+        statusEl.innerHTML = '<i class="fas fa-triangle-exclamation mr-1"></i> Modo Polling';
+      }
+    }
+  }, 60);
+
+  // Carga inicial de datos de PocketBase
+  async function loadInitialData() {
+    try {
+      const records = await pb.listAll('seller_live_locations', {
+        expand: 'seller_id,user_id,current_visit_id',
+      }).catch(() => []);
+
+      liveLocationsData = records;
+      updateMapMarkers();
+      renderSidebarCards();
+      renderClientMarkers();
+      fitMapToFleet();
+    } catch (err: any) {
+      console.error('[GRAVY-MAP] Error cargando live locations:', err);
+    }
+  }
+
+  // Manejar eventos en tiempo real recibidos vía SSE
+  function handleRealtimeLocationEvent(e: any) {
+    const record = e.record;
+    if (e.action === 'delete') {
+      liveLocationsData = liveLocationsData.filter(r => r.id !== record.id);
+      if (vendorMarkers.has(record.seller_id)) {
+        vendorMarkers.get(record.seller_id)?.remove();
+        vendorMarkers.delete(record.seller_id);
+      }
+    } else {
+      // create o update
+      const idx = liveLocationsData.findIndex(r => r.id === record.id || r.seller_id === record.seller_id);
+      if (idx >= 0) {
+        liveLocationsData[idx] = record;
+      } else {
+        liveLocationsData.push(record);
+      }
+      upsertVendorMarker(record, true);
+    }
+    renderSidebarCards();
+  }
+
+  // Actualizar marcadores de vendedores en el mapa
+  function updateMapMarkers() {
+    if (!map) return;
+    liveLocationsData.forEach(loc => {
+      upsertVendorMarker(loc, false);
+    });
+  }
+
+  function upsertVendorMarker(loc: any, animatePan: boolean = false) {
+    if (!map || !loc.lat || !loc.lng) return;
+
+    const sellerName = loc.seller_name || loc.expand?.seller_id?.name || 'Vendedor';
+    const status = loc.status || 'DETENIDO';
+    const initials = sellerName.split(' ').slice(0, 2).map((p: string) => p[0]?.toUpperCase()).join('') || 'VD';
+
+    // Configuración visual según estado
+    let bgCol = '#0284C7';
+    let ringClass = 'ring-4 ring-blue-300 animate-pulse';
+    let iconClass = 'fa-route';
+
+    if (status === 'EN_VISITA') {
+      bgCol = '#059669';
+      ringClass = 'ring-4 ring-emerald-300 animate-pulse';
+      iconClass = 'fa-handshake';
+    } else if (status === 'DETENIDO') {
+      bgCol = '#D97706';
+      ringClass = 'ring-3 ring-amber-200';
+      iconClass = 'fa-location-dot';
+    } else if (status === 'OFFLINE') {
+      bgCol = '#64748B';
+      ringClass = 'ring-2 ring-slate-200';
+      iconClass = 'fa-clock';
+    }
+
+    const customIcon = L.divIcon({
+      className: 'custom-seller-pin',
+      html: `
+        <div class="relative flex flex-col items-center group cursor-pointer">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-extrabold text-xs shadow-lg border-2 border-white ${ringClass}" style="background-color:${bgCol};">
+            <span class="tracking-tighter">${esc(initials)}</span>
+          </div>
+          <div class="w-3 h-3 rotate-45 -mt-1.5 border-r border-b border-white" style="background-color:${bgCol};"></div>
+          <div class="absolute -top-6 whitespace-nowrap bg-slate-900/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md pointer-events-none">
+            ${esc(sellerName)}
+          </div>
+        </div>
+      `,
+      iconSize: [40, 48],
+      iconAnchor: [20, 48],
+      popupAnchor: [0, -46]
+    });
+
+    const latLng: [number, number] = [loc.lat, loc.lng];
+    let marker = vendorMarkers.get(loc.seller_id);
+
+    const popupHtml = `
+      <div class="p-1 space-y-2 text-xs font-sans">
+        <div class="border-b pb-1.5 border-slate-100 flex items-center justify-between gap-3">
+          <div>
+            <h4 class="font-extrabold text-slate-900 text-sm">${esc(sellerName)}</h4>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full" style="background-color:${bgCol}20; color:${bgCol};">
+              <i class="fas ${iconClass} mr-1"></i>${status}
+            </span>
+          </div>
+        </div>
+
+        <div class="space-y-1 text-slate-600 text-[11px]">
+          <div class="flex justify-between">
+            <span>Velocidad:</span>
+            <strong class="text-slate-800">${loc.speed ? `${loc.speed} km/h` : '0 km/h'}</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>Batería:</span>
+            <strong class="text-slate-800">${loc.battery_level !== undefined && loc.battery_level !== null ? `${loc.battery_level}% ${loc.is_charging ? '⚡' : ''}` : 'No disponible'}</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>Precisión GPS:</span>
+            <strong class="text-slate-800">±${loc.accuracy || 10} m</strong>
+          </div>
+          <div class="flex justify-between">
+            <span>Último reporte:</span>
+            <strong class="text-slate-800">${loc.last_ping ? loc.last_ping.slice(11, 19) : 'Reciente'}</strong>
+          </div>
+        </div>
+
+        <div class="pt-1 flex gap-1.5 border-t border-slate-100">
+          <button class="btn-track-history w-full py-1.5 px-2.5 rounded-lg bg-[#006876] text-white font-extrabold text-[10px] flex items-center justify-center gap-1 hover:bg-[#004F5A]" data-seller="${esc(loc.seller_id)}" data-name="${esc(sellerName)}">
+            <i class="fas fa-route"></i> Ver Recorrido del Día
+          </button>
+        </div>
+      </div>
+    `;
+
+    if (marker) {
+      marker.setLatLng(latLng);
+      marker.setIcon(customIcon);
+      marker.setPopupContent(popupHtml);
+      if (animatePan) {
+        // Suave movimiento si se está siguiendo
+        const filterSeller = (contentEl.querySelector('#live-filter-seller') as HTMLSelectElement)?.value;
+        if (filterSeller === loc.seller_id) {
+          map.panTo(latLng);
+        }
+      }
+    } else {
+      marker = L.marker(latLng, { icon: customIcon }).addTo(map);
+      marker.bindPopup(popupHtml);
+      vendorMarkers.set(loc.seller_id, marker);
+    }
+
+    // Bind botón de ver historial en el popup
+    marker.on('popupopen', () => {
+      const btn = document.querySelector('.btn-track-history');
+      btn?.addEventListener('click', (e: any) => {
+        const sid = e.currentTarget.dataset.seller;
+        const sName = e.currentTarget.dataset.name;
+        loadAndRenderHistoricalTrail(sid, sName);
+      });
+    });
+  }
+
+  // Pintar clientes programados para el día actual
+  function renderClientMarkers() {
+    if (!clientMarkersLayer) return;
+    clientMarkersLayer.clearLayers();
+
+    const showClients = (contentEl.querySelector('#chk-show-clients') as HTMLInputElement)?.checked;
+    if (!showClients) return;
+
+    const dateVal = (contentEl.querySelector('#live-filter-date') as HTMLInputElement)?.value || activeDate;
+    const filterSeller = (contentEl.querySelector('#live-filter-seller') as HTMLSelectElement)?.value;
+
+    let dayVisits = visits.filter(v => v.visit_date === dateVal);
+    if (filterSeller) {
+      dayVisits = dayVisits.filter(v => v.seller_id === filterSeller);
+    }
+
+    dayVisits.forEach((v, idx) => {
+      const client = v.expand?.client_id as any;
+      const lat = v.geo_lat || client?.geo_lat;
+      const lng = v.geo_lng || client?.geo_lng;
+
+      if (lat && lng) {
+        const stCfg = VISIT_STATUS[v.status] || VISIT_STATUS.PROGRAMADA;
+        const clientIcon = L.divIcon({
+          className: 'custom-client-pin',
+          html: `
+            <div class="flex flex-col items-center cursor-pointer group">
+              <div class="w-6 h-6 rounded-full flex items-center justify-center text-white font-extrabold text-[10px] shadow-md border-2 border-white" style="background-color:${stCfg.color};">
+                #${v.order_seq || (idx + 1)}
+              </div>
+            </div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+        });
+
+        const m = L.marker([lat, lng], { icon: clientIcon }).addTo(clientMarkersLayer!);
+        m.bindPopup(`
+          <div class="text-xs p-1 space-y-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Cliente #${v.order_seq || (idx + 1)}</span>
+            <h4 class="font-extrabold text-slate-900">${esc(client?.name || 'Cliente')}</h4>
+            <p class="text-slate-600 text-[11px]">${esc(client?.address || 'Sin dirección')}</p>
+            <div class="pt-1">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:${stCfg.bg}; color:${stCfg.color};">
+                ${stCfg.label}
+              </span>
+            </div>
+          </div>
+        `);
+      }
+    });
+  }
+
+  // Pintar tarjetas de asesores en el sidebar izquierdo
+  function renderSidebarCards() {
+    const listEl = contentEl.querySelector('#live-sellers-sidebar');
+    const countEl = contentEl.querySelector('#live-seller-count');
+    if (!listEl) return;
+
+    if (countEl) countEl.textContent = `${liveLocationsData.length} en línea`;
+
+    if (liveLocationsData.length === 0) {
+      listEl.innerHTML = `
+        <div class="p-6 text-center text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl space-y-2">
+          <i class="fas fa-satellite text-2xl text-slate-300 block"></i>
+          <p class="font-bold text-slate-600">No hay asesores transmitiendo en este momento</p>
+          <p class="text-[11px] text-slate-400">La posición se activará automáticamente cuando los vendedores ingresen a su aplicación en 'Mi Agenda de Rutas'.</p>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = liveLocationsData.map(loc => {
+      const sName = loc.seller_name || loc.expand?.seller_id?.name || 'Vendedor';
+      const status = loc.status || 'DETENIDO';
+      const speed = loc.speed ? `${loc.speed} km/h` : '0 km/h';
+      const batt = loc.battery_level !== undefined && loc.battery_level !== null ? `${loc.battery_level}%` : '--';
+      const timeStr = loc.last_ping ? loc.last_ping.slice(11, 16) : '--:--';
+
+      let statusBadge = 'bg-blue-50 text-blue-700 border-blue-200';
+      let statusLabel = 'En Tránsito';
+      let dotColor = 'bg-blue-500';
+
+      if (status === 'EN_VISITA') {
+        statusBadge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        statusLabel = 'En Visita Activa';
+        dotColor = 'bg-emerald-500';
+      } else if (status === 'DETENIDO') {
+        statusBadge = 'bg-amber-50 text-amber-700 border-amber-200';
+        statusLabel = 'Detenido';
+        dotColor = 'bg-amber-500';
+      } else if (status === 'OFFLINE') {
+        statusBadge = 'bg-slate-100 text-slate-600 border-slate-200';
+        statusLabel = 'Desconectado';
+        dotColor = 'bg-slate-400';
+      }
+
+      return `
+        <div class="p-3 bg-white rounded-xl border border-slate-200 hover:border-teal-500 transition-all shadow-2xs space-y-2.5 seller-card" data-seller="${esc(loc.seller_id)}">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full ${dotColor} ${status === 'EN_VISITA' || status === 'EN_TRANSITO' ? 'animate-ping' : ''}"></span>
+              <h4 class="font-extrabold text-xs text-slate-900">${esc(sName)}</h4>
+            </div>
+            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${statusBadge}">
+              ${statusLabel}
+            </span>
+          </div>
+
+          <!-- Mini telemetry grid -->
+          <div class="grid grid-cols-3 gap-1 text-[10px] bg-slate-50 p-2 rounded-lg border border-slate-100 text-slate-600 font-medium">
+            <div>
+              <span class="text-slate-400 block text-[9px]">VELOCIDAD</span>
+              <strong class="text-slate-800">${speed}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[9px]">BATERÍA</span>
+              <strong class="text-slate-800">🔋 ${batt}</strong>
+            </div>
+            <div>
+              <span class="text-slate-400 block text-[9px]">HORA</span>
+              <strong class="text-slate-800">${timeStr}</strong>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex items-center gap-1.5 pt-1">
+            <button class="btn-locate-seller flex-1 py-1.5 px-2 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-[11px] font-extrabold flex items-center justify-center gap-1 hover:bg-teal-100" data-lat="${loc.lat}" data-lng="${loc.lng}" data-seller="${esc(loc.seller_id)}">
+              <i class="fas fa-crosshairs text-teal-600"></i> Ubicar
+            </button>
+            <button class="btn-trail-seller flex-1 py-1.5 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1" data-seller="${esc(loc.seller_id)}" data-name="${esc(sName)}">
+              <i class="fas fa-route text-slate-500"></i> Trayecto
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Bind acciones en tarjetas
+    listEl.querySelectorAll('.btn-locate-seller').forEach((btn: any) => {
+      btn.addEventListener('click', () => {
+        const lat = parseFloat(btn.dataset.lat);
+        const lng = parseFloat(btn.dataset.lng);
+        const sellerId = btn.dataset.seller;
+        if (map && !isNaN(lat) && !isNaN(lng)) {
+          map.flyTo([lat, lng], 16, { duration: 1.5 });
+          const marker = vendorMarkers.get(sellerId);
+          if (marker) marker.openPopup();
+        }
+      });
+    });
+
+    listEl.querySelectorAll('.btn-trail-seller').forEach((btn: any) => {
+      btn.addEventListener('click', () => {
+        const sellerId = btn.dataset.seller;
+        const sName = btn.dataset.name;
+        loadAndRenderHistoricalTrail(sellerId, sName);
+      });
+    });
+  }
+
+  // Centrar el mapa con todos los elementos visibles (vendedores y clientes)
+  function fitMapToFleet() {
+    if (!map) return;
+    const coords: [number, number][] = [];
+
+    liveLocationsData.forEach(l => {
+      if (l.lat && l.lng) coords.push([l.lat, l.lng]);
+    });
+
+    if (coords.length === 0) {
+      map.setView([4.6097, -74.0817], 12);
+      return;
+    }
+
+    if (coords.length === 1) {
+      map.setView(coords[0], 15);
+    } else {
+      const bounds = L.latLngBounds(coords);
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+  }
+
+  // Consultar historial de telemetría y dibujar el trazado del día
+  async function loadAndRenderHistoricalTrail(sellerId: string, sellerName: string) {
+    if (!map || !historyPolylineLayer) return;
+    historyPolylineLayer.clearLayers();
+
+    const dateVal = (contentEl.querySelector('#live-filter-date') as HTMLInputElement)?.value || activeDate;
+    (window as any).showToast(`Cargando recorrido de ${sellerName}...`);
+
+    try {
+      const logs = await pb.listAll('seller_tracking_logs', {
+        filter: `seller_id = "${sellerId}" && visit_date = "${dateVal}"`,
+        sort: 'timestamp',
+      }).catch(() => []);
+
+      if (logs.length === 0) {
+        alert(`No hay registros de trayectoria histórica grabados para ${sellerName} en la fecha ${dateVal}.`);
+        return;
+      }
+
+      const points: [number, number][] = logs.map((l: any) => [l.lat, l.lng]);
+
+      // Polilínea de trazado
+      const polyline = L.polyline(points, {
+        color: '#006876',
+        weight: 5,
+        opacity: 0.85,
+        lineJoin: 'round',
+        dashArray: '8, 6',
+      }).addTo(historyPolylineLayer);
+
+      // Marcador de inicio de jornada
+      const startPoint = points[0];
+      const startMarker = L.circleMarker(startPoint, {
+        radius: 7,
+        fillColor: '#10B981',
+        color: '#ffffff',
+        weight: 2,
+        fillOpacity: 1,
+      }).addTo(historyPolylineLayer);
+      startMarker.bindPopup(`<strong>Inicio de Jornada</strong><br>${logs[0].timestamp.slice(11, 19)}`);
+
+      // Marcador de último punto
+      const endPoint = points[points.length - 1];
+      const endMarker = L.circleMarker(endPoint, {
+        radius: 8,
+        fillColor: '#EF4444',
+        color: '#ffffff',
+        weight: 2,
+        fillOpacity: 1,
+      }).addTo(historyPolylineLayer);
+      endMarker.bindPopup(`<strong>Última Posición Registrada</strong><br>${logs[logs.length - 1].timestamp.slice(11, 19)}`);
+
+      map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
+      (window as any).showToast(`Recorrido cargado: ${logs.length} puntos registrados.`);
+    } catch (err: any) {
+      alert('Error cargando historial: ' + err.message);
+    }
+  }
+
+  // Event Listeners de la barra de control
+  contentEl.querySelector('#btn-center-fleet')?.addEventListener('click', fitMapToFleet);
+  contentEl.querySelector('#btn-refresh-live')?.addEventListener('click', loadInitialData);
+
+  contentEl.querySelector('#chk-show-clients')?.addEventListener('change', renderClientMarkers);
+
+  contentEl.querySelector('#live-filter-date')?.addEventListener('change', () => {
+    renderClientMarkers();
+  });
+
+  contentEl.querySelector('#live-filter-seller')?.addEventListener('change', (e: any) => {
+    const sId = e.target.value;
+    renderClientMarkers();
+    if (sId) {
+      const loc = liveLocationsData.find(l => l.seller_id === sId);
+      if (loc && loc.lat && loc.lng && map) {
+        map.flyTo([loc.lat, loc.lng], 16, { duration: 1.2 });
+        const marker = vendorMarkers.get(sId);
+        if (marker) marker.openPopup();
+      }
+    } else {
+      fitMapToFleet();
+    }
+  });
+
+  // Retornar función de limpieza
+  return () => {
+    if (isSubscribed) {
+      try {
+        pb.collection('seller_live_locations').unsubscribe('*');
+      } catch (_) {}
+    }
+    if (map) {
+      map.remove();
+      map = null;
+    }
+  };
 }
 
 function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], sellers: any[], clients: any[], defaultDate: string) {

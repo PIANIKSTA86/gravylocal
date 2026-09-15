@@ -85,6 +85,7 @@ const PAGE_TITLES: Record<string, string> = {
   'nomina-novedades': 'Novedades',
   'nomina-distribucion-dotacion': 'Distribución Dotación',
   'nomina-liquidacion':'Liquidación',
+  'nomina-liquidacion-definitiva': 'Liquidación Definitiva',
   'nomina-electronica-p':'Nómina Electrónica',
   'facturacion-dian':'Validación de documentos DIAN',
   'cierre':          'Cierre Contable',
@@ -199,6 +200,7 @@ const PAGE_ICONS: Record<string, string> = {
   'nomina-novedades': 'fa-notes-medical',
   'nomina-distribucion-dotacion': 'fa-shirt',
   'nomina-liquidacion': 'fa-calculator',
+  'nomina-liquidacion-definitiva': 'fa-user-slash',
   'nomina-electronica-p': 'fa-file-invoice-dollar',
   'niif-diagnostico': 'fa-stethoscope',
   'niif-politicas': 'fa-book',
@@ -262,6 +264,7 @@ const MODULE_LICENSE: Record<string, string> = {
   'nomina-novedades':  'nomina',
   'nomina-distribucion-dotacion': 'nomina',
   'nomina-liquidacion':'nomina',
+  'nomina-liquidacion-definitiva':'nomina',
   'nomina-electronica-p':'nomina',
   'copro-facturacion': 'copropiedades',
   'copro-cartera':     'copropiedades',
@@ -332,6 +335,7 @@ const PAGE_RENDERERS: Record<string, (container: HTMLElement) => void> = {
   'nomina-novedades':   (c) => typeof (window as any).renderNominaNovedadesPage === 'function' && (window as any).renderNominaNovedadesPage(c),
   'nomina-distribucion-dotacion': (c) => typeof (window as any).renderNominaDistribucionDotacionPage === 'function' && (window as any).renderNominaDistribucionDotacionPage(c),
   'nomina-liquidacion': (c) => typeof (window as any).renderNominaLiquidacionPage === 'function' && (window as any).renderNominaLiquidacionPage(c),
+  'nomina-liquidacion-definitiva': (c) => typeof (window as any).renderNominaLiquidacionDefinitivaPage === 'function' && (window as any).renderNominaLiquidacionDefinitivaPage(c),
   'nomina-electronica-p':(c) => typeof (window as any).renderNominaElectronicaPage === 'function' && (window as any).renderNominaElectronicaPage(c),
   'facturacion-dian': (c) => typeof renderFacturacionDIAN === 'function' && renderFacturacionDIAN(c),
   'documentos-electronicos': (c) => typeof renderDocumentosElectronicos === 'function' && renderDocumentosElectronicos(c),
@@ -679,6 +683,8 @@ function navigate(page: string, forceReload: boolean = false): void {
   }
 
   // Alias y redirecciones
+  if (page === 'importacion') page = 'importaciones';
+  if (page === 'reserva-importacion' || page === 'reservas-importacion') page = 'reservas-logistica';
   if (page === 'nueva-tx') page = 'consulta-tx';
   if (page === 'copropiedades') page = 'copro-facturacion';
   if (page === 'niif') page = 'niif-diagnostico';
@@ -717,16 +723,7 @@ function navigate(page: string, forceReload: boolean = false): void {
   // Verificar si la pestaña ya existe y si su contenedor pane sigue adjunto al DOM
   let tab = openTabs.find(t => t.page === page);
 
-  if (forceReload && tab && tab.pane && tab.pane.parentNode) {
-    // Recarga forzada de pestaña existente: limpiar y volver a renderizar con datos frescos
-    try {
-      if (typeof PAGE_RENDERERS[page] === 'function') {
-        PAGE_RENDERERS[page](tab.pane);
-      }
-    } catch (err: any) {
-      console.error(`[Router] Error recargando ${page}:`, err);
-    }
-  } else if (!tab || !tab.pane || !tab.pane.parentNode) {
+  if (!tab || !tab.pane || !tab.pane.parentNode) {
     // Verificar límite de 8 pestañas abiertas (solo si es una pestaña totalmente nueva)
     if (!tab && openTabs.length >= MAX_TABS) {
       if (typeof showToast === 'function') {
@@ -736,8 +733,21 @@ function navigate(page: string, forceReload: boolean = false): void {
     }
 
     // Crear o renovar el contenedor pane DOM para la pestaña
-    const pageContent = $('#page-content');
+    const pageContent = document.getElementById('page-content');
     if (!pageContent) return;
+
+    // Saneamiento de integridad estructural: purgar cualquier nodo huérfano fuera de un tab-pane
+    Array.from(pageContent.childNodes).forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (!el.classList.contains('tab-pane')) {
+          console.warn('[Router] Purgando nodo huérfano fuera de tab-pane:', el);
+          el.remove();
+        }
+      } else if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        node.remove();
+      }
+    });
 
     const pane = document.createElement('div');
     pane.id = `tab-pane-${page}`;
@@ -755,25 +765,10 @@ function navigate(page: string, forceReload: boolean = false): void {
       };
       openTabs.push(tab);
     }
-
-    // Renderizar la vista dentro del nuevo pane
-    try {
-      if (typeof PAGE_RENDERERS[page] === 'function') {
-        PAGE_RENDERERS[page](pane);
-      }
-    } catch (err: any) {
-      console.error(`[Router] Error renderizando ${page}:`, err);
-      pane.innerHTML = `
-        <div class="flex flex-col items-center justify-center" style="height:60vh;gap:16px">
-          <i class="fas fa-circle-exclamation text-4xl" style="color:#EF4444"></i>
-          <p class="font-semibold" style="color:#374151">Error al cargar el módulo</p>
-          <p class="text-sm" style="color:#9CA3AF">${esc(err.message)}</p>
-          <button class="btn btn-outline" onclick="navigate('${page}')"><i class="fas fa-rotate-right"></i> Reintentar</button>
-        </div>`;
-    }
   }
 
-  // Activar la pestaña solicitada y ocultar las demás
+  // Activar la pestaña solicitada y ocultar las demás ANTES de renderizar
+  // Esto garantiza que getActivePane() y $() reconozcan de inmediato el pane como activo
   currentPage = page;
   (window as any).currentPage = page;
 
@@ -782,6 +777,27 @@ function navigate(page: string, forceReload: boolean = false): void {
       t.pane.classList.toggle('active', t.page === page);
     }
   });
+
+  // Renderizar la vista dentro del pane si es nuevo o si se forzó la recarga
+  const targetTab = openTabs.find(t => t.page === page);
+  const targetPane = targetTab?.pane;
+  const isNewPane = targetPane && (!targetPane.hasChildNodes() || targetPane.innerHTML.trim() === '');
+  if ((forceReload || isNewPane) && targetPane) {
+    try {
+      if (typeof PAGE_RENDERERS[page] === 'function') {
+        PAGE_RENDERERS[page](targetPane);
+      }
+    } catch (err: any) {
+      console.error(`[Router] Error renderizando ${page}:`, err);
+      targetPane.innerHTML = `
+        <div class="flex flex-col items-center justify-center" style="height:60vh;gap:16px">
+          <i class="fas fa-circle-exclamation text-4xl" style="color:#EF4444"></i>
+          <p class="font-semibold" style="color:#374151">Error al cargar el módulo</p>
+          <p class="text-sm" style="color:#9CA3AF">${esc(err.message)}</p>
+          <button class="btn btn-outline" onclick="navigate('${page}')"><i class="fas fa-rotate-right"></i> Reintentar</button>
+        </div>`;
+    }
+  }
 
   // Activar modo POS si aplica
   if (page === 'pos') {
@@ -894,6 +910,18 @@ function reloadTab(page?: string): void {
   navigate(targetPage, true);
 }
 
+function getTabPane(pageKey: string): HTMLElement | null {
+  const targetPage = pageKey || currentPage || (window as any).currentPage || 'dashboard';
+  const tab = openTabs.find(t => t.page === targetPage);
+  if (tab && tab.pane && tab.pane.parentNode) {
+    return tab.pane;
+  }
+  const existingPane = document.getElementById(`tab-pane-${targetPage}`);
+  if (existingPane) return existingPane;
+  const activePane = document.querySelector('#page-content .tab-pane.active') as HTMLElement;
+  return activePane || null;
+}
+
 // --- GLOBALS EXPORTS ---
 (window as any).PAGE_RENDERERS = PAGE_RENDERERS;
 (window as any).currentPage = currentPage;
@@ -904,6 +932,7 @@ function reloadTab(page?: string): void {
 (window as any).navigate = navigate;
 (window as any).reloadTab = reloadTab;
 (window as any).refreshCurrentTab = reloadTab;
+(window as any).getTabPane = getTabPane;
 (window as any).closeTab = closeTab;
 (window as any).closeOtherTabs = closeOtherTabs;
 (window as any).closeAllTabs = closeAllTabs;

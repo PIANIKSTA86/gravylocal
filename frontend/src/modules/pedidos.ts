@@ -194,8 +194,8 @@ function convertQtyToUnits(qty: number, fromUnit: string, baseUnit: string, larg
 
 // --- Render Principal ---
 export async function renderPedidos(container?: HTMLElement) {
-  const getContainer = (window as any).getPageContainer || ((x: any) => x || document.getElementById('page-content'));
-  const target = getContainer(container);
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  const target = getContainer(container, 'pedidos');
   if (!target) return;
   target.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial de pedidos...</div>`;
   try {
@@ -1407,9 +1407,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 // Editar Pedido
 (window as any).editSalesOrder = function (orderId: string) {
   openOrderForm(orderId, () => {
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) {
-      renderPedidos(activeContent);
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('pedidos');
+    } else {
+      renderPedidos();
     }
   });
 };
@@ -1427,9 +1428,10 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
     await (window as any).API.cancelSalesOrder(orderId, reason.trim());
     (window as any).showToast('Pedido anulado con éxito', 'success');
 
-    const activeContent = document.getElementById('page-content');
-    if (activeContent) {
-      renderPedidos(activeContent);
+    if (typeof (window as any).reloadTab === 'function') {
+      (window as any).reloadTab('pedidos');
+    } else {
+      renderPedidos();
     }
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al anular pedido', 'error');
@@ -1522,8 +1524,11 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
 
         (window as any).showToast(`Despacho programado con éxito para el pedido ${ord.number}`, 'success');
         (window as any).closeModal();
-        const activeContent = document.getElementById('page-content');
-        if (activeContent) renderPedidos(activeContent);
+        if (typeof (window as any).reloadTab === 'function') {
+          (window as any).reloadTab('pedidos');
+        } else {
+          renderPedidos();
+        }
       } catch (err: any) {
         (window as any).showToast(err.message || 'Error al programar despacho', 'error');
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-truck-ramp-box mr-1"></i> Programar Despacho'; }

@@ -193,6 +193,179 @@ function resolveConceptGroup(line, cache) {
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Calcula el total de pagos contables ya aplicados a una factura PH.
+// Consulta tx_lines (cuentas 13xxxx) via cross_doc_ref o cross_number. Retorna total recaudado (créditos).
+// ─────────────────────────────────────────────────────────────────────────────
+function getNetPaymentsForPhInvoice(invoiceNumber, thirdPartyId) {
+  if (!invoiceNumber) return 0;
+  try {
+    var cleanNum = String(invoiceNumber).trim();
+    var sql =
+      "SELECT COALESCE(SUM(l.credit), 0) AS total_paid" +
+      " FROM tx_lines l" +
+      " INNER JOIN transactions t ON t.id = l.tx_id" +
+      " INNER JOIN accounts a ON a.id = l.account_id" +
+      " WHERE t.status = 'active'" +
+      "   AND a.code LIKE '13%'" +
+      "   AND (" +
+      "     l.cross_doc_ref = {:invoiceNumber}" +
+      "     OR l.cross_doc_ref LIKE {:invoiceNumberLike}" +
+      "     OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber})" +
+      "   )";
+    var binds = {
+      invoiceNumber: cleanNum,
+      invoiceNumberLike: cleanNum + '-%'
+    };
+    if (thirdPartyId && String(thirdPartyId).trim()) {
+      sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+      binds.thirdPartyId = String(thirdPartyId).trim();
+    }
+    var query = $app.db().newQuery(sql);
+    query.bind(binds);
+    var result = new DynamicModel({ total_paid: 0 });
+    query.one(result);
+    return Math.max(0, Number(result.total_paid || 0));
+  } catch (errPay) {
+    console.warn('[GRAVY PH] Error al calcular pagos para factura ' + invoiceNumber + ':', errPay);
+    return 0;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Marca automáticamente una factura PH como paid si el saldo
+// contable real (tx_lines) cubre el total de la factura.
+// ─────────────────────────────────────────────────────────────────────────────
+function autoMarkPaidIfSettled(invoiceRecord) {
+  try {
+    var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+    var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+    var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+    if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+    var paid = getNetPaymentsForPhInvoice(invNumber, null);
+    if (paid >= invTotal - 0.01) {
+      if (invoiceRecord.set) {
+        invoiceRecord.set("status", "paid");
+        $app.save(invoiceRecord);
+      } else if (invoiceRecord.id) {
+        var rec = $app.findRecordById("ph_invoices", invoiceRecord.id);
+        if (rec) {
+          rec.set("status", "paid");
+          $app.save(rec);
+        }
+      }
+      console.log('[GRAVY PH] Factura ' + invNumber + ' marcada automáticamente como paid (Total: ' + invTotal + ', Pagado: ' + paid + ').');
+    }
+  } catch (errMark) {
+    console.warn('[GRAVY PH] No se pudo auto-marcar factura como paid:', errMark);
+  }
+}
+
+// Sincroniza en lote facturas posted de una propiedad
+function syncPropertyInvoicesStatus(propertyId) {
+  if (!propertyId) return;
+  try {
+    var invoices = $app.findRecordsByFilter("ph_invoices", "property_id = '" + propertyId + "' && status = 'posted'", "", 500, 0);
+    if (invoices) {
+      for (var i = 0; i < invoices.length; i++) {
+        autoMarkPaidIfSettled(invoices[i]);
+      }
+    }
+  } catch (err) {
+    console.warn('[GRAVY PH] Error sincronizando estado de facturas de propiedad ' + propertyId + ':', err);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Obtiene el recaudo contable real del mes anterior tanto para la unidad
+// como para la copropiedad entera consultando directamente tx_lines (cuentas 13%).
+// ─────────────────────────────────────────────────────────────────────────────
+function getPreviousMonthRecaudos(propertyId, ownerId, prevPeriod) {
+  var unitRecaudo = 0;
+  var totalRecaudo = 0;
+  if (!prevPeriod) return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+  var startDate = prevPeriod + '-01';
+  var endDate = prevPeriod + '-31 23:59:59';
+
+  // 1. Total recaudo PH en el mes anterior (todas las cuentas 13% en el mes)
+  try {
+    var sqlAll =
+      "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+      " FROM tx_lines l" +
+      " INNER JOIN transactions t ON t.id = l.tx_id" +
+      " INNER JOIN accounts a ON a.id = l.account_id" +
+      " WHERE t.status = 'active'" +
+      "   AND a.code LIKE '13%'" +
+      "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+      "   AND t.date >= {:startDate}" +
+      "   AND t.date <= {:endDate}";
+    var qAll = $app.db().newQuery(sqlAll);
+    qAll.bind({ startDate: startDate, endDate: endDate });
+    var resAll = new DynamicModel({ total: 0 });
+    qAll.one(resAll);
+    totalRecaudo = Number(resAll.total || 0);
+  } catch (eAll) {
+    console.warn('[GRAVY PH] Error calculando totalRecaudo:', eAll);
+  }
+
+  // 2. Recaudo de la unidad en el mes anterior
+  try {
+    var sqlUnit =
+      "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+      " FROM tx_lines l" +
+      " INNER JOIN transactions t ON t.id = l.tx_id" +
+      " INNER JOIN accounts a ON a.id = l.account_id" +
+      " WHERE t.status = 'active'" +
+      "   AND a.code LIKE '13%'" +
+      "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+      "   AND t.date >= {:startDate}" +
+      "   AND t.date <= {:endDate}" +
+      "   AND (";
+    var conds = [];
+    var binds = { startDate: startDate, endDate: endDate };
+    if (ownerId && String(ownerId).trim()) {
+      conds.push("t.third_party_id = {:ownerId}");
+      conds.push("l.third_party_id = {:ownerId}");
+      binds.ownerId = String(ownerId).trim();
+    }
+    if (propertyId && String(propertyId).trim()) {
+      conds.push("t.teso_params LIKE {:propPattern}");
+      binds.propPattern = '%"ph_property_id":"' + String(propertyId).trim() + '"%';
+    }
+    if (conds.length > 0) {
+      sqlUnit += conds.join(" OR ") + ")";
+      var qUnit = $app.db().newQuery(sqlUnit);
+      qUnit.bind(binds);
+      var resUnit = new DynamicModel({ total: 0 });
+      qUnit.one(resUnit);
+      unitRecaudo = Number(resUnit.total || 0);
+    }
+  } catch (eUnit) {
+    console.warn('[GRAVY PH] Error calculando unitRecaudo:', eUnit);
+  }
+
+  // Fallback a ph_invoices si contabilidad arrojó 0
+  if (unitRecaudo <= 0 && propertyId) {
+    try {
+      var unitPaid = $app.findRecordsByFilter(
+        "ph_invoices",
+        "property_id = '" + propertyId + "' && period = '" + prevPeriod + "' && status = 'paid'",
+        "",
+        100,
+        0
+      );
+      if (unitPaid) {
+        for (var i = 0; i < unitPaid.length; i++) {
+          unitRecaudo += unitPaid[i].getFloat("total");
+        }
+      }
+    } catch (_) {}
+  }
+
+  return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+}
+
+
 // Constructor y clasificador unificado de conceptos (saldos anteriores vs cobros del mes)
 function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
   if (!cache) {
@@ -220,9 +393,26 @@ function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
     }
   }
 
+  // ── Saldo anterior: descuenta pagos contables reales via tx_lines ──────────
   if (outstandingInvoices) {
     for (var j = 0; j < outstandingInvoices.length; j++) {
       var oldInv = outstandingInvoices[j];
+      var invNumber    = oldInv.getString ? oldInv.getString("number")         : (oldInv.number         || "");
+      var invThirdId   = oldInv.getString ? oldInv.getString("third_party_id") : (oldInv.third_party_id || "");
+      var invoiceTotal = oldInv.getFloat  ? oldInv.getFloat("total")           : (Number(oldInv.total)  || 0);
+
+      // Pagos reales ya registrados en contabilidad para esta factura
+      var alreadyPaid    = getNetPaymentsForPhInvoice(invNumber, invThirdId);
+      var pendingBalance = Math.max(0, invoiceTotal - alreadyPaid);
+
+      if (pendingBalance < 0.01) {
+        try { autoMarkPaidIfSettled(oldInv); } catch (_) {}
+        continue;
+      }
+
+      // Factor de proporción para pagos parciales
+      var proportionFactor = (invoiceTotal > 0.01) ? (pendingBalance / invoiceTotal) : 1;
+
       var oldLines = $app.findRecordsByFilter(
         "ph_invoice_lines",
         "invoice_id = '" + oldInv.id + "'",
@@ -232,10 +422,12 @@ function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
       );
       if (oldLines) {
         for (var k = 0; k < oldLines.length; k++) {
-          var ol = oldLines[k];
-          var groupOld = resolveConceptGroup(ol, cache);
-          var keyOld = groupOld.groupKey;
+          var ol        = oldLines[k];
+          var groupOld  = resolveConceptGroup(ol, cache);
+          var keyOld    = groupOld.groupKey;
           var amountOld = ol.getFloat ? ol.getFloat("amount") : (Number(ol.amount) || 0);
+          var pendingAmt = Math.round(amountOld * proportionFactor * 100) / 100;
+          if (pendingAmt < 0.01) continue;
           if (!conceptsMap[keyOld]) {
             conceptsMap[keyOld] = {
               conceptId: groupOld.conceptId,
@@ -245,8 +437,8 @@ function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
               saldoActual: 0
             };
           }
-          conceptsMap[keyOld].saldoAnterior += amountOld;
-          conceptsMap[keyOld].saldoActual += amountOld;
+          conceptsMap[keyOld].saldoAnterior += pendingAmt;
+          conceptsMap[keyOld].saldoActual   += pendingAmt;
         }
       }
     }
@@ -1287,38 +1479,9 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
 
     const prevPeriod = getPreviousPeriod(invoice.getString("period"));
     const prevMonthName = getMonthNameUpper(prevPeriod);
-    let prevMonthUnitRecaudo = 0;
-    let prevMonthTotalRecaudo = 0;
-    if (prevPeriod) {
-      try {
-        const unitPaid = $app.findRecordsByFilter(
-          "ph_invoices",
-          `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
-          "",
-          200,
-          0
-        );
-        if (unitPaid) {
-          for (const p of unitPaid) {
-            prevMonthUnitRecaudo += p.getFloat("total");
-          }
-        }
-        const allPaid = $app.findRecordsByFilter(
-          "ph_invoices",
-          `period = '${prevPeriod}' && status = 'paid'`,
-          "",
-          1000,
-          0
-        );
-        if (allPaid) {
-          for (const p of allPaid) {
-            prevMonthTotalRecaudo += p.getFloat("total");
-          }
-        }
-      } catch (errRec) {
-        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
-      }
-    }
+    const prevRecaudos = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
+    const prevMonthUnitRecaudo = prevRecaudos.unitRecaudo;
+    const prevMonthTotalRecaudo = prevRecaudos.totalRecaudo;
 
     // Configuración de la empresa
     const companyName = getSetting("company_name", "GRAVY S.A.S");
@@ -2026,23 +2189,8 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         const ownerDocNumber = owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—");
         const ownerPhone = owner.getString("phone") || owner.getString("celular") || "—";
 
-        let prevMonthUnitRecaudo = 0;
-        if (prevPeriod) {
-          try {
-            const unitPaid = $app.findRecordsByFilter(
-              "ph_invoices",
-              `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
-              "",
-              200,
-              0
-            );
-            if (unitPaid) {
-              for (const p of unitPaid) {
-                prevMonthUnitRecaudo += p.getFloat("total");
-              }
-            }
-          } catch (_) {}
-        }
+        const prevRecaudosBatch = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
+        const prevMonthUnitRecaudo = prevRecaudosBatch.unitRecaudo;
 
         inv.set("email_sent_to", email);
 
@@ -2307,38 +2455,9 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
 
     const prevPeriod = getPreviousPeriod(inv.getString("period"));
     const prevMonthName = getMonthNameUpper(prevPeriod);
-    let prevMonthUnitRecaudo = 0;
-    let prevMonthTotalRecaudo = 0;
-    if (prevPeriod) {
-      try {
-        const unitPaid = $app.findRecordsByFilter(
-          "ph_invoices",
-          `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
-          "",
-          200,
-          0
-        );
-        if (unitPaid) {
-          for (const p of unitPaid) {
-            prevMonthUnitRecaudo += p.getFloat("total");
-          }
-        }
-        const allPaid = $app.findRecordsByFilter(
-          "ph_invoices",
-          `period = '${prevPeriod}' && status = 'paid'`,
-          "",
-          1000,
-          0
-        );
-        if (allPaid) {
-          for (const p of allPaid) {
-            prevMonthTotalRecaudo += p.getFloat("total");
-          }
-        }
-      } catch (errRec) {
-        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
-      }
-    }
+    const prevRecaudosSingle = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
+    const prevMonthUnitRecaudo = prevRecaudosSingle.unitRecaudo;
+    const prevMonthTotalRecaudo = prevRecaudosSingle.totalRecaudo;
 
     const companyName = getSetting("company_name", "GRAVY S.A.S");
     const companyNit = getSetting("company_nit", "");
@@ -2567,23 +2686,8 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
       const ownerPhone = owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—";
 
-      let prevMonthUnitRecaudo = 0;
-      if (prevPeriod) {
-        try {
-          const unitPaid = $app.findRecordsByFilter(
-            "ph_invoices",
-            `property_id = '${prop.id}' && period = '${prevPeriod}' && status = 'paid'`,
-            "",
-            200,
-            0
-          );
-          if (unitPaid) {
-            for (const p of unitPaid) {
-              prevMonthUnitRecaudo += p.getFloat("total");
-            }
-          }
-        } catch (_) {}
-      }
+      const prevRecaudosPeriod = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
+      const prevMonthUnitRecaudo = prevRecaudosPeriod.unitRecaudo;
 
       const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
       const numberText = inv.getString("number") || "0000";
@@ -2652,6 +2756,70 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
   } catch (err) {
     console.error("[GRAVY PH EMAIL] Error generando PDF unificado del período:", err);
     return e.json(500, { message: "Error al generar PDF unificado: " + err.message });
+  }
+});
+
+// ROUTE: GET /api/ph/unit-balance
+// Consulta saldo real pendiente por unidad via tx_lines.
+routerAdd('GET', '/api/ph/unit-balance', (c) => {
+  let propertyId = '';
+  let period = '';
+  let thirdId = '';
+  try {
+    propertyId = c.queryParam('propertyId') || c.queryParam('property_id') || '';
+    period = c.queryParam('period') || c.queryParam('periodo') || '';
+    thirdId = c.queryParam('thirdPartyId') || c.queryParam('third_party_id') || '';
+  } catch (_) {}
+  if (!propertyId && !thirdId) {
+    try {
+      const q = c.requestInfo ? c.requestInfo().query : {};
+      propertyId = String(q.propertyId || q.property_id || '').trim();
+      period = String(q.period || q.periodo || '').trim();
+      thirdId = String(q.thirdPartyId || q.third_party_id || '').trim();
+    } catch (_) {}
+  }
+  if (!propertyId && !thirdId) return c.json(400, { error: 'Se requiere propertyId o thirdPartyId.' });
+
+  try {
+    let filter = "status != 'voided'";
+    if (propertyId) filter += " && property_id = '" + propertyId + "'";
+    if (period) filter += " && period = '" + period + "'";
+    const invoices = $app.findRecordsByFilter('ph_invoices', filter, 'period', 500, 0);
+    const result = []; let totalPending = 0, totalInvoiced = 0, totalPaid = 0;
+    for (const inv of invoices) {
+      const invNumber = inv.getString('number'), invTotal = inv.getFloat('total'), invStatus = inv.getString('status');
+      const paidAmount = getNetPaymentsForPhInvoice(invNumber, thirdId || null);
+      const pendingAmount = Math.max(0, invTotal - paidAmount);
+      totalInvoiced += invTotal; totalPaid += Math.min(paidAmount, invTotal); totalPending += pendingAmount;
+      if (pendingAmount < 0.01 && invStatus !== 'paid' && invStatus !== 'voided') {
+        try { autoMarkPaidIfSettled(inv); } catch (_) {}
+      }
+      result.push({
+        invoiceId: inv.id,
+        invoiceNumber: invNumber,
+        period: inv.getString('period'),
+        date: inv.getString('date'),
+        dueDate: inv.getString('due_date'),
+        status: invStatus,
+        total: invTotal,
+        paidAmount: Math.min(paidAmount, invTotal),
+        pendingAmount: pendingAmount,
+        isSettled: pendingAmount < 0.01
+      });
+    }
+    return c.json(200, {
+      propertyId: propertyId || null,
+      period: period || null,
+      totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+      totalPaid: Math.round(totalPaid * 100) / 100,
+      totalPending: Math.round(totalPending * 100) / 100,
+      invoiceCount: result.length,
+      pendingCount: result.filter(r => !r.isSettled).length,
+      invoices: result
+    });
+  } catch (err) {
+    console.error('[GRAVY PH] Error en /api/ph/unit-balance:', err);
+    return c.json(500, { error: 'Error al calcular saldo de unidad: ' + err.message });
   }
 });
 

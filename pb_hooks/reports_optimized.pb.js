@@ -535,6 +535,11 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
   let accountPrefix = String(queryParams.accountPrefix || queryParams.accountCode || '').trim();
   accountPrefix = accountPrefix.replace(/[^a-zA-Z0-9]/g, "");
 
+  let propertyId = String(queryParams.propertyId || queryParams.property_id || '').trim();
+  if (propertyId) {
+    includeProperty = true;
+  }
+
   try {
     let sql = "";
     let toDateLimit = toDate + " 23:59:59";
@@ -551,6 +556,11 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
     if (accountPrefix) {
       accountWhere = " AND a.code LIKE {:accountPrefixPattern} ";
       binds.accountPrefixPattern = accountPrefix + "%";
+    }
+
+    if (propertyId) {
+      accountWhere += " AND prop.id = {:propertyId} ";
+      binds.propertyId = propertyId;
     }
 
     if (branchId) {
@@ -794,6 +804,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
   let toDate = String(queryParams.toDate || '').trim();
   let accountIdsStr = String(queryParams.accountIds || '').trim();
   let thirdId = String(queryParams.thirdId || '').trim();
+  let auxPropertyId = String(queryParams.propertyId || queryParams.property_id || '').trim();
 
   if (!fromDate || !toDate) {
     return c.json(400, { error: "Los parámetros fromDate y toDate son requeridos." });
@@ -839,6 +850,30 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       periodBinds.costCenterId = costCenterId;
     }
 
+    // ── Filtro por Unidad Habitacional (propertyId) ──────────────────
+    // Para el saldo inicial, el join con ph_invoices/ph_properties es necesario
+    let propertyJoinOpening = "";
+    let propertyCondOpening = "";
+    let propertyJoinPeriod = "";
+    let propertyCondPeriod = "";
+    if (auxPropertyId) {
+      openingBinds.auxPropertyId = auxPropertyId;
+      periodBinds.auxPropertyId = auxPropertyId;
+      propertyJoinOpening = `
+        LEFT JOIN ph_invoices phi_o ON (
+          (l.cross_doc_ref != '' AND (l.cross_doc_ref = phi_o.number OR l.cross_doc_ref LIKE phi_o.number || '-%'))
+          OR (t.cross_type = 'ph_invoices' AND t.cross_number != '' AND phi_o.number = t.cross_number)
+          OR (l.cross_doc_ref = '' AND phi_o.tx_id = t.id AND (SELECT count(*) FROM ph_invoices WHERE tx_id = t.id) = 1)
+        )
+        LEFT JOIN ph_properties prop_o ON prop_o.id = COALESCE(
+          phi_o.property_id,
+          CASE WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) ELSE NULL END
+        )`;
+      propertyCondOpening = " AND prop_o.id = {:auxPropertyId} ";
+      propertyJoinPeriod = "";
+      propertyCondPeriod = " AND prop.id = {:auxPropertyId} ";
+    }
+
     const sqlOpening = `
       SELECT
         l.account_id AS accountId,
@@ -848,11 +883,13 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       FROM tx_lines l
       INNER JOIN transactions t ON t.id = l.tx_id
       INNER JOIN accounts a ON a.id = l.account_id
+      ` + propertyJoinOpening + `
       WHERE t.status = 'active'
         AND t.date < {:fromDate}
         ` + accountFilter + `
         ` + thirdFilter + `
         ` + extraCond + `
+        ` + propertyCondOpening + `
       GROUP BY
         l.account_id,
         COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id, 'NO_TERCERO'),
@@ -910,6 +947,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         ` + accountFilter + `
         ` + thirdFilter + `
         ` + extraCond + `
+        ` + propertyCondPeriod + `
     `;
 
     const queryPeriod = $app.db().newQuery(sqlPeriod);
@@ -941,6 +979,218 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
     });
   } catch (err) {
     return c.json(500, { error: "Error en libro auxiliar optimizado: " + err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT OPTIMIZADO: Cartera de Propiedad Horizontal (ph_cartera)
+// Resuelve en una sola consulta SQLite: facturas + líneas + abonos de tesorería
+// Params: cutoffDate, propertyId (opcional), conceptId (opcional)
+// ─────────────────────────────────────────────────────────────────────────────
+routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
+  const authRecord = c.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(c).authRecord : null);
+  if (!authRecord) {
+    return c.json(401, { error: "No autorizado" });
+  }
+
+  const queryParams = c.requestInfo().query || {};
+  let cutoffDate = String(queryParams.cutoffDate || queryParams.asOfDate || '').trim();
+  if (!cutoffDate) {
+    cutoffDate = new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
+  } else {
+    cutoffDate = cutoffDate.slice(0, 10);
+  }
+
+  let phPropertyId = String(queryParams.propertyId || queryParams.property_id || '').trim();
+  let phConceptId  = String(queryParams.conceptId  || queryParams.concept_id  || '').trim();
+
+  try {
+    // ── 1. Facturas activas (no anuladas) hasta la fecha de corte ─────────────
+    let invFilter = `status IN ('draft','posted','paid') AND date <= {:cutoffDate}`;
+    const invBinds = { cutoffDate: cutoffDate + " 23:59:59" };
+
+    if (phPropertyId) {
+      invFilter += " AND property_id = {:phPropertyId}";
+      invBinds.phPropertyId = phPropertyId;
+    }
+
+    const sqlInvoices = `
+      SELECT
+        phi.id          AS invoice_id,
+        phi.number      AS invoice_number,
+        phi.period      AS period,
+        phi.date        AS invoice_date,
+        phi.due_date    AS due_date,
+        phi.total       AS total,
+        phi.status      AS status,
+        phi.property_id AS property_id,
+        prop.code       AS property_code,
+        prop.name       AS property_name,
+        COALESCE(prop.tower, '')     AS tower,
+        COALESCE(prop.apartment, '') AS apartment,
+        COALESCE(prop.coef_participacion, 0) AS coef,
+        COALESCE(tp.id,   '')        AS owner_id,
+        COALESCE(tp.name, '')        AS owner_name,
+        COALESCE(tp.doc_number, '')  AS owner_doc
+      FROM ph_invoices phi
+      LEFT JOIN ph_properties prop ON prop.id = phi.property_id
+      LEFT JOIN third_parties  tp  ON tp.id   = prop.owner_id
+      WHERE ${invFilter}
+      ORDER BY phi.date, phi.number
+    `;
+
+    const qInv = $app.db().newQuery(sqlInvoices);
+    qInv.bind(invBinds);
+    const invoices = arrayOf(new DynamicModel({
+      invoice_id: "", invoice_number: "", period: "", invoice_date: "",
+      due_date: "", total: -0, status: "", property_id: "",
+      property_code: "", property_name: "", tower: "", apartment: "",
+      coef: -0, owner_id: "", owner_name: "", owner_doc: ""
+    }));
+    qInv.all(invoices);
+
+    if (invoices.length === 0) {
+      return c.json(200, { rows: [], totals: { grandTotal: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0 } });
+    }
+
+    // ── 2. Líneas de factura con concepto ────────────────────────────────────
+    const invIds = invoices.map(i => i.invoice_id).filter(Boolean);
+    const invIdPlaceholders = invIds.map((_, idx) => `{:invId${idx}}`).join(",");
+    const linesBinds = {};
+    invIds.forEach((id, idx) => { linesBinds[`invId${idx}`] = id; });
+    if (phConceptId) linesBinds.phConceptId = phConceptId;
+
+    const sqlLines = `
+      SELECT
+        phl.invoice_id AS invoice_id,
+        phl.concept_id AS concept_id,
+        COALESCE(bc.name, phl.description, '') AS concept_name,
+        SUM(phl.amount) AS amount
+      FROM ph_invoice_lines phl
+      LEFT JOIN ph_billing_concepts bc ON bc.id = phl.concept_id
+      WHERE phl.invoice_id IN (${invIdPlaceholders})
+        ${phConceptId ? "AND phl.concept_id = {:phConceptId}" : ""}
+      GROUP BY phl.invoice_id, phl.concept_id, COALESCE(bc.name, phl.description, '')
+    `;
+    const qLines = $app.db().newQuery(sqlLines);
+    qLines.bind(linesBinds);
+    const lines = arrayOf(new DynamicModel({
+      invoice_id: "", concept_id: "", concept_name: "", amount: -0
+    }));
+    qLines.all(lines);
+
+    // ── 3. Abonos de tesorería (tx_lines que cruzan facturas PH) ────────────
+    // Agrupamos créditos netos por referencia de cruce hasta la fecha de corte
+    const invNumbers = invoices.map(i => String(i.invoice_number || '').toUpperCase()).filter(Boolean);
+    const numPlaceholders = invNumbers.map((_, idx) => `{:invNum${idx}}`).join(",");
+    const abonoBinds = { cutoffAbono: cutoffDate + " 23:59:59" };
+    invNumbers.forEach((n, idx) => { abonoBinds[`invNum${idx}`] = n; });
+
+    // También excluimos los tx de causación (status posted = causación original)
+    const causalTxIds = invoices.map(i => i.tx_id || '').filter(Boolean);
+
+    const sqlAbonos = `
+      SELECT
+        l.cross_doc_ref                     AS cross_ref,
+        SUM(l.credit - l.debit)             AS abono
+      FROM tx_lines l
+      INNER JOIN transactions t ON t.id = l.tx_id
+      WHERE t.status = 'active'
+        AND t.date <= {:cutoffAbono}
+        AND UPPER(TRIM(l.cross_doc_ref)) IN (${numPlaceholders})
+      GROUP BY l.cross_doc_ref
+    `;
+    const qAbonos = $app.db().newQuery(sqlAbonos);
+    qAbonos.bind(abonoBinds);
+    const abonosRaw = arrayOf(new DynamicModel({ cross_ref: "", abono: -0 }));
+    qAbonos.all(abonosRaw);
+
+    // Mapa de abonos acumulados por número de factura
+    const abonosMap = {};
+    for (const a of abonosRaw) {
+      const key = String(a.cross_ref || '').toUpperCase().trim();
+      abonosMap[key] = (abonosMap[key] || 0) + Number(a.abono || 0);
+    }
+
+    // ── 4. Ensamblar filas de respuesta ─────────────────────────────────────
+    // Mapa líneas por invoice_id
+    const linesByInv = {};
+    for (const l of lines) {
+      if (!linesByInv[l.invoice_id]) linesByInv[l.invoice_id] = [];
+      linesByInv[l.invoice_id].push(l);
+    }
+
+    const today = new Date(cutoffDate + "T00:00:00");
+    const daysDiff = (dateStr) => {
+      if (!dateStr) return 0;
+      const d = new Date(String(dateStr).slice(0, 10) + "T00:00:00");
+      return Math.floor((today - d) / 86400000);
+    };
+
+    const rows = [];
+    const totals = { grandTotal: 0, por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0 };
+
+    for (const inv of invoices) {
+      const numKey = String(inv.invoice_number || '').toUpperCase().trim();
+      const totalAbonado = abonosMap[numKey] || 0;
+      const saldo = Number(inv.total || 0) - totalAbonado;
+
+      if (saldo <= 0.01) continue; // factura totalmente pagada
+
+      const dueStr = String(inv.due_date || inv.invoice_date || '').slice(0, 10);
+      const daysOverdue = daysDiff(dueStr);
+
+      let por_vencer = 0, de_0_a_30 = 0, de_31_a_60 = 0, de_61_a_90 = 0, mayor_a_90 = 0;
+      if (daysOverdue < 0)       { por_vencer = saldo; }
+      else if (daysOverdue <= 30)  { de_0_a_30  = saldo; }
+      else if (daysOverdue <= 60)  { de_31_a_60 = saldo; }
+      else if (daysOverdue <= 90)  { de_61_a_90 = saldo; }
+      else                         { mayor_a_90 = saldo; }
+
+      totals.grandTotal  += saldo;
+      totals.por_vencer  += por_vencer;
+      totals.de_0_a_30   += de_0_a_30;
+      totals.de_31_a_60  += de_31_a_60;
+      totals.de_61_a_90  += de_61_a_90;
+      totals.mayor_a_90  += mayor_a_90;
+
+      const invLines = linesByInv[inv.invoice_id] || [];
+
+      rows.push({
+        invoice_id:      inv.invoice_id,
+        invoice_number:  inv.invoice_number,
+        period:          inv.period,
+        invoice_date:    inv.invoice_date,
+        due_date:        dueStr,
+        days_overdue:    daysOverdue,
+        property_id:     inv.property_id,
+        property_code:   inv.property_code,
+        property_name:   inv.property_name,
+        tower:           inv.tower,
+        apartment:       inv.apartment,
+        coef:            inv.coef,
+        owner_id:        inv.owner_id,
+        owner_name:      inv.owner_name,
+        owner_doc:       inv.owner_doc,
+        total_facturado: Number(inv.total || 0),
+        total_abonado:   totalAbonado,
+        saldo:           saldo,
+        por_vencer:      por_vencer,
+        de_0_a_30:       de_0_a_30,
+        de_31_a_60:      de_31_a_60,
+        de_61_a_90:      de_61_a_90,
+        mayor_a_90:      mayor_a_90,
+        lines:           invLines.map(l => ({
+          concept_id:   l.concept_id,
+          concept_name: l.concept_name,
+          amount:       Number(l.amount || 0)
+        }))
+      });
+    }
+
+    return c.json(200, { rows, totals });
+  } catch (err) {
+    return c.json(500, { error: "Error en report-ph-cartera: " + err.message });
   }
 });
 

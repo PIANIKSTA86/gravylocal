@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<definitions xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="urn:https://ws-dse.facturatech.co/v1/pro/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns="http://schemas.xmlsoap.org/wsdl/" targetNamespace="urn:https://ws-dse.facturatech.co/v1/pro/">
+<types>
+<xsd:schema targetNamespace="urn:https://ws-dse.facturatech.co/v1/pro/"
+>
+ <xsd:import namespace="http://schemas.xmlsoap.org/soap/encoding/" />
+ <xsd:import namespace="http://schemas.xmlsoap.org/wsdl/" />
+ <xsd:complexType name="uploadResponse">
+  <xsd:all>
+   <xsd:element name="code" type="xsd:string"/>
+   <xsd:element name="transactionID" type="xsd:string"/>
+   <xsd:element name="message" type="xsd:string"/>
+  </xsd:all>
+ </xsd:complexType>
+ <xsd:complexType name="documentStatusResponse">
+  <xsd:all>
+   <xsd:element name="code" type="xsd:string"/>
+   <xsd:element name="documentBase64" type="xsd:string"/>
+   <xsd:element name="message" type="xsd:string"/>
+   <xsd:element name="messageError" type="xsd:string"/>
+  </xsd:all>
+ </xsd:complexType>
+ <xsd:complexType name="downloadXMLResponse">
+  <xsd:all>
+   <xsd:element name="code" type="xsd:string"/>
+   <xsd:element name="documentBase64" type="xsd:string"/>
+   <xsd:element name="message" type="xsd:string"/>
+   <xsd:element name="messageError" type="xsd:string"/>
+  </xsd:all>
+ </xsd:complexType>
+ <xsd:complexType name="downloadPDFResponse">
+  <xsd:all>
+   <xsd:element name="code" type="xsd:string"/>
+   <xsd:element name="documentBase64" type="xsd:string"/>
+   <xsd:element name="message" type="xsd:string"/>
+   <xsd:element name="messageError" type="xsd:string"/>
+  </xsd:all>
+ </xsd:complexType>
+ <xsd:complexType name="downloadCUDSResponse">
+  <xsd:all>
+   <xsd:element name="code" type="xsd:string"/>
+   <xsd:element name="message" type="xsd:string"/>
+   <xsd:element name="resourceData" type="xsd:string"/>
+   <xsd:element name="messageError" type="xsd:string"/>
+  </xsd:all>
+ </xsd:complexType>
+</xsd:schema>
+</types>
+<message name="uploadDocumentRequest">
+  <part name="username" type="xsd:string" />
+  <part name="password" type="xsd:string" />
+  <part name="xmlBase64" type="xsd:string" /></message>
+<message name="uploadDocumentResponse">
+  <part name="return" type="tns:uploadResponse" /></message>
+<message name="documentStatusRequest">
+  <part name="username" type="xsd:string" />
+  <part name="password" type="xsd:string" />
+  <part name="transaccionID" type="xsd:string" /></message>
+<message name="documentStatusResponse">
+  <part name="return" type="tns:documentStatusResponse" /></message>
+<message name="downloadXMLRequest">
+  <part name="username" type="xsd:string" />
+  <part name="password" type="xsd:string" />
+  <part name="prefix" type="xsd:string" />
+  <part name="number" type="xsd:integer" /></message>
+<message name="downloadXMLResponse">
+  <part name="return" type="tns:downloadXMLResponse" /></message>
+<message name="downloadPDFRequest">
+  <part name="username" type="xsd:string" />
+  <part name="password" type="xsd:string" />
+  <part name="prefix" type="xsd:string" />
+  <part name="number" type="xsd:integer" /></message>
+<message name="downloadPDFResponse">
+  <part name="return" type="tns:downloadPDFResponse" /></message>
+<message name="downloadCUDSRequest">
+  <part name="username" type="xsd:string" />
+  <part name="password" type="xsd:string" />
+  <part name="prefix" type="xsd:string" />
+  <part name="number" type="xsd:integer" /></message>
+<message name="downloadCUDSResponse">
+  <part name="return" type="tns:downloadCUDSResponse" /></message>
+<portType name="DOCUMENTO-SOPORTE-FACTURATECHPortType">
+  <operation name="uploadDocument">
+    <documentation>La función recibe el usuario, password con formato hash 256, xml en base 64, y responde el folio de transacción del comprobante</documentation>
+    <input message="tns:uploadDocumentRequest"/>
+    <output message="tns:uploadDocumentResponse"/>
+  </operation>
+  <operation name="documentStatus">
+    <documentation>La función recibe el usuario, password en formato hash 256, transacciónId enviado de Ftech, y responde el estatus del comprobante</documentation>
+    <input message="tns:documentStatusRequest"/>
+    <output message="tns:documentStatusResponse"/>
+  </operation>
+  <operation name="downloadXML">
+    <documentation>Funcion para la recuperación del archivo XML</documentation>
+    <input message="tns:downloadXMLRequest"/>
+    <output message="tns:downloadXMLResponse"/>
+  </operation>
+  <operation name="downloadPDF">
+    <documentation>Funcion para la descarga del archivo PDF</documentation>
+    <input message="tns:downloadPDFRequest"/>
+    <output message="tns:downloadPDFResponse"/>
+  </operation>
+  <operation name="downloadCUDS">
+    <documentation>Funcion para la descarga del CUDS</documentation>
+    <input message="tns:downloadCUDSRequest"/>
+    <output message="tns:downloadCUDSResponse"/>
+  </operation>
+</portType>
+<binding name="DOCUMENTO-SOPORTE-FACTURATECHBinding" type="tns:DOCUMENTO-SOPORTE-FACTURATECHPortType">
+  <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+  <operation name="uploadDocument">
+    <soap:operation soapAction="urn:https://ws-dse.facturatech.co/v1/pro/uploadDocument" style="rpc"/>
+    <input><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    <output><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+  </operation>
+  <operation name="documentStatus">
+    <soap:operation soapAction="urn:https://ws-dse.facturatech.co/v1/pro/documentStatus" style="rpc"/>
+    <input><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    <output><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+  </operation>
+  <operation name="downloadXML">
+    <soap:operation soapAction="urn:https://ws-dse.facturatech.co/v1/pro/downloadXML" style="rpc"/>
+    <input><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    <output><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+  </operation>
+  <operation name="downloadPDF">
+    <soap:operation soapAction="urn:https://ws-dse.facturatech.co/v1/pro/downloadPDF" style="rpc"/>
+    <input><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    <output><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+  </operation>
+  <operation name="downloadCUDS">
+    <soap:operation soapAction="urn:https://ws-dse.facturatech.co/v1/pro/downloadCUDSResponse" style="rpc"/>
+    <input><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></input>
+    <output><soap:body use="encoded" namespace="urn:https://ws-dse.facturatech.co/v1/pro/" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/></output>
+  </operation>
+</binding>
+<service name="DOCUMENTO-SOPORTE-FACTURATECH">
+  <port name="DOCUMENTO-SOPORTE-FACTURATECHPort" binding="tns:DOCUMENTO-SOPORTE-FACTURATECHBinding">
+    <soap:address location="https://ws-dse.facturatech.co/v1/pro/index.php?wsdl"/>
+  </port>
+</service>
+</definitions>

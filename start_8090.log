@@ -1,0 +1,155 @@
+2026/09/16 08:44:12 [GRAVY] Actualizadas reglas de la colección cash_concepts.
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: pos_shifts
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: invoices
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: invoice_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: transactions
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: tx_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: inventory_movements
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: inventory_movement_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: inventory_stock
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: inventory_lots
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: inventory_pallets
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: sales_orders
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: sales_order_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: settings
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: third_parties
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: products
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: warehouses
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: accounts
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: purchase_orders
+2026/09/16 08:44:12 [GRAVY-PATCH] Aviso (purchase_lines): GoError: sql: no rows in result set
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: purchase_invoices
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: purchase_invoice_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: transaction_types
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: payroll_periods
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: payroll_lines
+2026/09/16 08:44:12 [GRAVY-PATCH] Reglas actualizadas: payroll_novelties
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: electronic_payrolls
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: payroll_documents
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: bank_accounts
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: bank_movements
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: inmo_properties
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: inmo_contracts
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: inmo_invoices
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: inmo_invoice_lines
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas actualizadas: inmo_property_history
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura de users actualizadas.
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura actualizadas para: products
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura actualizadas para: clientes
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura actualizadas para: listas_precios
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura actualizadas para: precios_producto
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura actualizadas para: third_parties
+2026/09/16 08:44:13 [GRAVY-PATCH] Reglas de lectura de audit_log actualizadas.
+2026/09/16 08:44:13 [GRAVY-PATCH] patch_collection_rules completado.
+2026/09/16 08:44:13 THIRD_PARTIES FIELD NAMES:
+2026/09/16 08:44:13 - id
+2026/09/16 08:44:13 - type
+2026/09/16 08:44:13 - doc_type
+2026/09/16 08:44:13 - doc_number
+2026/09/16 08:44:13 - dv
+2026/09/16 08:44:13 - name
+2026/09/16 08:44:13 - commercial_name
+2026/09/16 08:44:13 - email
+2026/09/16 08:44:13 - phone
+2026/09/16 08:44:13 - address
+2026/09/16 08:44:13 - city
+2026/09/16 08:44:13 - department
+2026/09/16 08:44:13 - country
+2026/09/16 08:44:13 - tax_regime
+2026/09/16 08:44:13 - is_retention_agent
+2026/09/16 08:44:13 - bank_name
+2026/09/16 08:44:13 - bank_account
+2026/09/16 08:44:13 - contact_name
+2026/09/16 08:44:13 - contact_phone
+2026/09/16 08:44:13 - notes
+2026/09/16 08:44:13 - active
+2026/09/16 08:44:13 - person_type
+2026/09/16 08:44:13 - first_name
+2026/09/16 08:44:13 - last_name
+2026/09/16 08:44:13 - business_name
+2026/09/16 08:44:13 - city_code
+2026/09/16 08:44:13 - dept_code
+2026/09/16 08:44:13 - advisor
+2026/09/16 08:44:13 - phone2
+2026/09/16 08:44:13 - email2
+2026/09/16 08:44:13 - credit_limit
+2026/09/16 08:44:13 - max_invoices
+2026/09/16 08:44:13 - payment_days
+2026/09/16 08:44:13 - ciiu
+2026/09/16 08:44:13 - tfe
+2026/09/16 08:44:13 - tfc
+2026/09/16 08:44:13 - rf
+2026/09/16 08:44:13 - prf
+2026/09/16 08:44:13 - pi
+2026/09/16 08:44:13 - piv
+2026/09/16 08:44:13 - gc
+2026/09/16 08:44:13 - ar
+2026/09/16 08:44:13 - ei
+2026/09/16 08:44:13 - resp
+2026/09/16 08:44:13 - gcm
+2026/09/16 08:44:13 - rut_pdf
+2026/09/16 08:44:13 - geo_lat
+2026/09/16 08:44:13 - geo_lng
+2026/09/16 08:44:13 - geo_radius
+2026/09/16 08:44:13 THIRD_PARTIES RECORD COUNT: 5
+2026/09/16 08:44:13 TP Record 0: id=89iwncs33camw8z, name=DEPTO DEL VALLE DEL CAUCA, type=PROVEEDOR
+2026/09/16 08:44:13 TP Record 1: id=oahhdhl3kv1e2k4, name=IMAGIQ SAS, type=PROVEEDOR
+2026/09/16 08:44:13 TP Record 2: id=d8hi6a79lgosp15, name=LA RECETA Y CIA SAS, type=PROVEEDOR
+2026/09/16 08:44:13 TP Record 3: id=w9v4ovfieb7pxeh, name=INTERWORLD FREIGHT SAS, type=PROVEEDOR
+2026/09/16 08:44:13 TP Record 4: id=55ejtipq61b0lz2, name=ANGELA MARIA REYES SARRIA, type=PROVEEDOR
+2026/09/16 08:44:13 CLIENTES RECORD COUNT: 0
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronizando 11 usuarios existentes con el HUB...
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para admin@contaco.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para cmartinez@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para bortega@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para amoncada@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para agarcia@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:13 [GRAVY SYNC] Sincronización legacy exitosa para caldana@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY SYNC] Sincronización legacy exitosa para jcaicedo@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY SYNC] Sincronización legacy exitosa para cgarcia@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY SYNC] Sincronización legacy exitosa para areyes@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY SYNC] Sincronización legacy exitosa para kfranco@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY SYNC] Sincronización legacy exitosa para ycalle@gravy.com (contraseña local alineada con el HUB)
+2026/09/16 08:44:14 [GRAVY] patch_settings_rules: Reglas de settings actualizadas correctamente.
+2026/09/16 08:44:14 [GRAVY-UNIFICATION] Encontrados 0 contratos NIIF 16 para migrar.
+2026/09/16 08:44:14 [GRAVY-UNIFICATION] 0 contratos NIIF 16 migrados a inmo_contracts.
+2026/09/16 08:44:14 [GRAVY-UNIFICATION] Antigua colección niif_leases eliminada.
+2026/09/16 08:44:14 [GRAVY-IMPORTACIONES] Migración de importaciones completada.
+2026/09/16 08:44:14 [GRAVY-VENTAS] Migración de Ventas y POS completada.
+2026/09/16 08:44:14 [GRAVY-PEDIDOS] Migración de Pedidos y Cotizaciones completa.
+2026/09/16 08:44:14 [GRAVY] La colección payroll_settlements ya existe.
+2026/09/16 08:44:14 [GRAVY-IMPORT-CONSOLIDADO] Aviso al extender imports: GoError: SQL logic error: error in table imports after rename: duplicate column name: is_consolidated (1)
+2026/09/16 08:44:14 [GRAVY-IMPORT-CONSOLIDADO] Migración de importaciones consolidadas completada con éxito.
+2026/09/16 08:44:14 [GRAVY-RESERVAS-IMPORT] Migracion de reservas de importacion completada.
+2026/09/16 08:44:14 [GRAVY] La colección payroll_novelties ya existe.
+2026/09/16 08:44:14 [GRAVY] La colección electronic_payrolls ya existe.
+2026/09/16 08:44:14 [GRAVY] La colección payroll_documents ya existe.
+2026/09/16 08:44:14 [GRAVY-INMO] Migración Inmobiliaria completada.
+2026/09/16 08:44:14 [GRAVY-CRM-LOGISTICA] Migración de CRM y Logística/Despachos completada.
+2026/09/16 08:44:14 [GRAVY-VENTAS-MULTIBODEGA] Inicialización y migración multi-bodega completada.
+2026/09/16 08:44:14 [GRAVY] Reglas de users actualizadas.
+2026/09/16 08:44:14 [GRAVY] Reglas de eliminación de transactions actualizadas (Superadmin habilitado).
+2026/09/16 08:44:14 [GRAVY] Reglas de eliminación de inventory_movements actualizadas.
+2026/09/16 08:44:14 [GRAVY] Reglas de eliminación de inventory_movement_lines actualizadas.
+2026/09/16 08:44:14 [GRAVY] Migración third_parties completada: campos nuevos agregados.
+2026/09/16 08:44:14 [GRAVY] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).
+2026/09/16 08:44:14 [GRAVY-PH] Reglas de settings sincronizadas con canWrite.
+2026/09/16 08:44:14 [GRAVY-PH] Colección ph_properties actualizada: reglas/campos sincronizados.
+2026/09/16 08:44:14 [GRAVY-PH] Aviso al asegurar concepto MORA: GoError: amount: cannot be blank.
+2026/09/16 08:44:14 [GRAVY-PH] Colección ph_invoices actualizada: reglas sincronizadas.
+2026/09/16 08:44:14 [GRAVY-PH] Colección ph_invoice_lines actualizada: reglas/campos sincronizados.
+2026/09/16 08:44:14 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de configuración PH: 4
+2026/09/16 08:44:14 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de facturación PH: 2
+2026/09/16 08:44:14 [GRAVY-PH] ph_pqrs sincronizada (create para propietarios + campo evidences).
+2026/09/16 08:44:15 [GRAVY-PH] Reglas sincronizadas para ph_reservations (create habilitado para usuarios autenticados).
+2026/09/16 08:44:15 [GRAVY-PH] Migración Copropiedades completada.
+2026/09/16 08:44:15 [GRAVY-NIIF] Creando colección niif_leases...
+2026/09/16 08:44:15 Server started at http://0.0.0.0:8090
+├─ REST API:  http://0.0.0.0:8090/api/
+└─ Dashboard: http://0.0.0.0:8090/_/
+2026/09/16 08:44:26 Failed to write log &{{ 0q0nido9rulx8f9} 2026-09-16 13:44:23.269Z {"auth":"","execTime":0,"method":"GET","referer":"http://localhost:8090/","remoteIP":"0000:0000:0000:0000:0000:0000:0000:0001","status":200,"type":"request","url":"/api/health","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0","userIP":"0000:0000:0000:0000:0000:0000:0000:0001"} GET /api/health 0} database disk image is malformed (11)
+2026/09/16 08:44:26 Failed to write log &{{ 6jvxcs4nl1f1rgq} 2026-09-16 13:44:23.276Z {"auth":"","details":null,"error":"The request requires valid record authorization token.","execTime":1.0863,"method":"POST","referer":"http://localhost:8090/","remoteIP":"0000:0000:0000:0000:0000:0000:0000:0001","status":401,"type":"request","url":"/api/session/heartbeat","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36 Edg/153.0.0.0","userIP":"0000:0000:0000:0000:0000:0000:0000:0001"} POST /api/session/heartbeat 8} database disk image is malformed (11)
+2026/09/16 08:44:41 Failed to write log &{{ 2dcz41fi1jsfemy} 2026-09-16 13:44:38.169Z {"auth":"","execTime":38.4664,"method":"POST","referer":"","remoteIP":"127.0.0.1","status":200,"type":"request","url":"/api/dian/download-zip","userAgent":"node","userIP":"127.0.0.1"} POST /api/dian/download-zip 0} database disk image is malformed (11)
+2026/09/16 08:44:52 Failed to write log &{{ e2gfnoi9gkgt51c} 2026-09-16 13:44:49.775Z {"auth":"","execTime":60.2507,"method":"POST","referer":"","remoteIP":"127.0.0.1","status":200,"type":"request","url":"/api/dian/download-zip","userAgent":"node","userIP":"127.0.0.1"} POST /api/dian/download-zip 0} database disk image is malformed (11)
+2026/09/16 08:45:31 Failed to write log &{{ mcjh3yefc83jq01} 2026-09-16 13:45:28.678Z {"auth":"","execTime":35.1701,"method":"POST","referer":"","remoteIP":"127.0.0.1","status":200,"type":"request","url":"/api/dian/download-zip","userAgent":"node","userIP":"127.0.0.1"} POST /api/dian/download-zip 0} database disk image is malformed (11)
+2026/09/16 08:46:10 Failed to write log &{{ 9oyhec6ln637o8g} 2026-09-16 13:46:07.093Z {"auth":"","execTime":37.5581,"method":"POST","referer":"","remoteIP":"127.0.0.1","status":200,"type":"request","url":"/api/dian/download-zip","userAgent":"node","userIP":"127.0.0.1"} POST /api/dian/download-zip 0} database disk image is malformed (11)

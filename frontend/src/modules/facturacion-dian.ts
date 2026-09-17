@@ -383,7 +383,13 @@ window.checkFtechStatus = async function(id: string, txId: string) {
     });
     
     if (res && res.success) {
-      showToast(`Estado actualizado: ${res.status}. ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success');
+      if (res.status === 'aceptada') {
+        showToast(`¡Documento aceptado y firmado por la DIAN! ${res.simulated ? '(MODO SIMULADO)' : ''}`, 'success', 6000);
+      } else if (res.status === 'rechazada') {
+        showToast(`Documento rechazado por DIAN: ${res.dianResponse || 'Rechazado'}`, 'error', 9000);
+      } else {
+        showToast(`Estado en Facturatech: ${res.status.toUpperCase()} (${res.dianResponse || 'En proceso de firma'}).`, 'info', 6000);
+      }
       const container = $('#page-content');
       if (container) {
         if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
@@ -396,8 +402,12 @@ window.checkFtechStatus = async function(id: string, txId: string) {
       const errMsg = res?.dianResponse || res?.message || 'Respuesta desconocida';
       showToast(`Facturatech / DIAN: ${errMsg}`, 'error', 9000);
       const container = $('#page-content');
-      if (container && (window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
-        (window as any).renderDocSoporte(container);
+      if (container) {
+        if ((window as any).currentPage === 'doc-soporte' && typeof (window as any).renderDocSoporte === 'function') {
+          (window as any).renderDocSoporte(container);
+        } else if (typeof renderFacturacionDIAN === 'function') {
+          renderFacturacionDIAN(container);
+        }
       }
     }
   } catch (err: any) {
@@ -647,17 +657,27 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
 
     showToast('Comprimiendo y descargando ZIP...', 'info');
     const zipFilename = docs[0].zip_filename || number;
-    const orchestratorHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-    const res = await fetch(`http://${orchestratorHost}:8088/api/dian/download-zip`, {
+    const downloadUrl = (typeof pb !== 'undefined' && pb.baseUrl) ? `${pb.baseUrl}/api/dian/download-zip` : '/api/dian/download-zip';
+    const res = await fetch(downloadUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(typeof pb !== 'undefined' && pb.authToken ? { 'Authorization': `Bearer ${pb.authToken}` } : {})
+      },
       body: JSON.stringify({
         xmlContent: xmlContent,
         filename: zipFilename,
         invoiceData: invoiceData
       })
     });
-    if (!res.ok) throw new Error('El orquestador no pudo generar el ZIP');
+    if (!res.ok) {
+      let errMsg = 'El orquestador no pudo generar el ZIP';
+      try {
+        const errJson = await res.json();
+        if (errJson.message || errJson.error) errMsg = errJson.message || errJson.error;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -4007,6 +4007,14 @@ async function _openMassRCModal() {
         </div>
         ${errList.length?`<div style="background:#FFF1F2;border-radius:8px;padding:8px;font-size:11px;color:#B91C1C">${errList.map(e=>`<div>• ${_esc(e)}</div>`).join('')}</div>`:`<p class="text-center text-xs text-green-700 font-medium">✓ Todos los recaudos fueron registrados exitosamente</p>`}
       </div>`;}
+      // Sincronizar estado de facturas PH para todas las unidades procesadas en lote
+      try {
+        const propIds = Array.from(new Set(valids.map(r => r.prop?.id).filter(Boolean)));
+        for (const pid of propIds) {
+          fetch(`${pb.baseUrl}/api/ph/unit-balance?propertyId=${encodeURIComponent(pid)}`, { headers: pb.headers() }).catch(() => {});
+        }
+      } catch (_) {}
+
       const cont=document.getElementById('teso-content'); if(cont) renderTesoListado(cont,'RC');
     }
   }, 120);

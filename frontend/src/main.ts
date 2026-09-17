@@ -32,6 +32,7 @@ import './modules/compra-sugerida.ts';
 import './modules/pedidos.ts';
 import './modules/reservas-logistica.ts';
 import './modules/importaciones.ts';
+import './modules/preliquidaciones.ts';
 import './modules/ventas.ts';
 import './modules/pos.ts';
 import './modules/spa.ts';

@@ -503,6 +503,54 @@ onRecordCreateRequest((e) => {
       $app.save(lineRec);
       savedLineRecords.push(lineRec);
     }
+
+    // ── Auto-sincronización de facturas PH saldadas tras el recaudo (individual o masivo) ──
+    try {
+      const phInvsToCheck = {};
+      for (const pl of plannedLines) {
+        if (pl.cross_doc_ref) {
+          const rawRef = String(pl.cross_doc_ref).trim();
+          const baseRef = rawRef.lastIndexOf('-') > 0 ? rawRef.substring(0, rawRef.lastIndexOf('-')) : rawRef;
+          phInvsToCheck[rawRef] = true;
+          phInvsToCheck[baseRef] = true;
+        }
+      }
+      for (const refNum in phInvsToCheck) {
+        if (!refNum || refNum.startsWith('ANT-')) continue;
+        const foundInvs = $app.findRecordsByFilter('ph_invoices', "number = '" + refNum + "' && status != 'voided'", "", 10, 0);
+        if (foundInvs && foundInvs.length > 0) {
+          for (const invRec of foundInvs) {
+            try {
+              if (typeof autoMarkPaidIfSettled === 'function') {
+                autoMarkPaidIfSettled(invRec);
+              } else {
+                var invNum = invRec.getString("number");
+                var invTot = invRec.getFloat("total");
+                var q = $app.db().newQuery(
+                  "SELECT COALESCE(SUM(l.credit), 0) AS total_paid FROM tx_lines l " +
+                  "INNER JOIN transactions t ON t.id = l.tx_id " +
+                  "INNER JOIN accounts a ON a.id = l.account_id " +
+                  "WHERE t.status = 'active' AND a.code LIKE '13%' " +
+                  "AND (l.cross_doc_ref = {:num} OR l.cross_doc_ref LIKE {:numLike})"
+                );
+                q.bind({ num: invNum, numLike: invNum + '-%' });
+                var resD = new DynamicModel({ total_paid: 0 });
+                q.one(resD);
+                if (Number(resD.total_paid || 0) >= invTot - 0.01) {
+                  invRec.set("status", "paid");
+                  $app.save(invRec);
+                  console.log('[GRAVY TESORERIA] Factura PH ' + invNum + ' marcada automáticamente como paid.');
+                }
+              }
+            } catch (errOne) {
+              console.warn('[GRAVY TESORERIA] Error evaluando saldo factura ' + refNum + ':', errOne);
+            }
+          }
+        }
+      }
+    } catch (errSync) {
+      console.warn('[GRAVY TESORERIA] Aviso sincronizando facturas PH tras recaudo:', errSync);
+    }
   } catch (saveErr) {
     // Si falla el guardado de alguna línea, ROLLBACK: eliminar líneas creadas y la cabecera
     for (const sl of savedLineRecords) {

@@ -1,0 +1,136 @@
+failed to execute migrate_consecutives.pb.js:
+ - ReferenceError: onAfterBootstrap is not defined at C:\Users\JULIAN\Desktop\GravyLocalTABS\pb.js:8:17(2)
+failed to execute cors.pb.js:
+ - ReferenceError: onBeforeServe is not defined at C:\Users\JULIAN\Desktop\GravyLocalTABS\pb.js:7:14(2)
+2026/09/16 08:43:36 [GRAVY-RESERVAS-IMPORT] Migracion de reservas de importacion completada.
+2026/09/16 08:43:36 [GRAVY-VENTAS-MULTIBODEGA] Inicialización y migración multi-bodega completada.
+2026/09/16 08:43:36 [GRAVY] Actualizadas reglas de la colección cash_concepts.
+2026/09/16 08:43:36 [GRAVY-INMO] Migración Inmobiliaria completada.
+2026/09/16 08:43:36 [GRAVY] Migración third_parties completada: campos nuevos agregados.
+2026/09/16 08:43:36 [GRAVY] Migración transaction_types: índice actualizado a UNIQUE(code, prefix).
+2026/09/16 08:43:36 [GRAVY SYNC] Sincronizando 1 usuarios existentes con el HUB...
+2026/09/16 08:43:36 [GRAVY SYNC] Error al establecer contraseña local para admin@contaco.com desde el HUB: GoError: role: cannot be blank.
+2026/09/16 08:43:36 [GRAVY] patch_settings_rules: Reglas de settings actualizadas correctamente.
+2026/09/16 08:43:36 [GRAVY-UNIFICATION] Encontrados 0 contratos NIIF 16 para migrar.
+2026/09/16 08:43:36 [GRAVY-UNIFICATION] 0 contratos NIIF 16 migrados a inmo_contracts.
+2026/09/16 08:43:36 [GRAVY-UNIFICATION] Antigua colección niif_leases eliminada.
+2026/09/16 08:43:36 [GRAVY-VENTAS] Migración de Ventas y POS completada.
+2026/09/16 08:43:36 [GRAVY] La colección payroll_settlements ya existe.
+2026/09/16 08:43:36 [GRAVY] Reglas de users actualizadas.
+2026/09/16 08:43:36 [GRAVY] Reglas de eliminación de transactions actualizadas (Superadmin habilitado).
+2026/09/16 08:43:36 [GRAVY] Reglas de eliminación de inventory_movements actualizadas.
+2026/09/16 08:43:36 [GRAVY] Reglas de eliminación de inventory_movement_lines actualizadas.
+2026/09/16 08:43:36 [GRAVY-PEDIDOS] Migración de Pedidos y Cotizaciones completa.
+2026/09/16 08:43:36 THIRD_PARTIES FIELD NAMES:
+2026/09/16 08:43:36 - id
+2026/09/16 08:43:36 - type
+2026/09/16 08:43:36 - doc_type
+2026/09/16 08:43:36 - doc_number
+2026/09/16 08:43:36 - dv
+2026/09/16 08:43:36 - name
+2026/09/16 08:43:36 - commercial_name
+2026/09/16 08:43:36 - email
+2026/09/16 08:43:36 - phone
+2026/09/16 08:43:36 - address
+2026/09/16 08:43:36 - city
+2026/09/16 08:43:36 - department
+2026/09/16 08:43:36 - country
+2026/09/16 08:43:36 - tax_regime
+2026/09/16 08:43:36 - is_retention_agent
+2026/09/16 08:43:36 - bank_name
+2026/09/16 08:43:36 - bank_account
+2026/09/16 08:43:36 - contact_name
+2026/09/16 08:43:36 - contact_phone
+2026/09/16 08:43:36 - notes
+2026/09/16 08:43:36 - active
+2026/09/16 08:43:36 - person_type
+2026/09/16 08:43:36 - first_name
+2026/09/16 08:43:36 - last_name
+2026/09/16 08:43:36 - business_name
+2026/09/16 08:43:36 - city_code
+2026/09/16 08:43:36 - dept_code
+2026/09/16 08:43:36 - advisor
+2026/09/16 08:43:36 - phone2
+2026/09/16 08:43:36 - ciiu
+2026/09/16 08:43:36 - rf
+2026/09/16 08:43:36 - email2
+2026/09/16 08:43:36 - credit_limit
+2026/09/16 08:43:36 - max_invoices
+2026/09/16 08:43:36 - prf
+2026/09/16 08:43:36 - pi
+2026/09/16 08:43:36 - piv
+2026/09/16 08:43:36 - gc
+2026/09/16 08:43:36 - ar
+2026/09/16 08:43:36 - ei
+2026/09/16 08:43:36 - resp
+2026/09/16 08:43:36 - payment_days
+2026/09/16 08:43:36 - gcm
+2026/09/16 08:43:36 - rut_pdf
+2026/09/16 08:43:36 - geo_lat
+2026/09/16 08:43:36 - geo_lng
+2026/09/16 08:43:36 - geo_radius
+2026/09/16 08:43:36 THIRD_PARTIES RECORD COUNT: 0
+2026/09/16 08:43:36 CLIENTES RECORD COUNT: 0
+2026/09/16 08:43:36 [GRAVY] La colección payroll_novelties ya existe.
+2026/09/16 08:43:36 [GRAVY] La colección electronic_payrolls ya existe.
+2026/09/16 08:43:36 [GRAVY] La colección payroll_documents ya existe.
+2026/09/16 08:43:36 [GRAVY-CRM-LOGISTICA] Migración de CRM y Logística/Despachos completada.
+2026/09/16 08:43:36 [GRAVY-NIIF] Creando colección niif_leases...
+2026/09/16 08:43:36 [GRAVY-IMPORT-CONSOLIDADO] Aviso al extender imports: GoError: SQL logic error: error in table imports after rename: duplicate column name: local_carrier_trm (1)
+2026/09/16 08:43:36 [GRAVY-IMPORT-CONSOLIDADO] Migración de importaciones consolidadas completada con éxito.
+2026/09/16 08:43:36 [GRAVY-IMPORTACIONES] Migración de importaciones completada.
+2026/09/16 08:43:36 [GRAVY-COMISIONES] Error al modificar la colección invoices: GoError: SQL logic error: error in table invoices after rename: duplicate column name: seller_id (1)
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: pos_shifts
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: invoices
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: invoice_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: transactions
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: tx_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inventory_movements
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inventory_movement_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inventory_stock
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inventory_lots
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inventory_pallets
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: sales_orders
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: sales_order_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: settings
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: third_parties
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: products
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: warehouses
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: accounts
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: purchase_orders
+2026/09/16 08:43:37 [GRAVY-PATCH] Aviso (purchase_lines): GoError: sql: no rows in result set
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: purchase_invoices
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: purchase_invoice_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: transaction_types
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: payroll_periods
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: payroll_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: payroll_novelties
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: electronic_payrolls
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: payroll_documents
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: bank_accounts
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: bank_movements
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inmo_properties
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inmo_contracts
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inmo_invoices
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inmo_invoice_lines
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas actualizadas: inmo_property_history
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura de users actualizadas.
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura actualizadas para: products
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura actualizadas para: clientes
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura actualizadas para: listas_precios
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura actualizadas para: precios_producto
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura actualizadas para: third_parties
+2026/09/16 08:43:37 [GRAVY-PATCH] Reglas de lectura de audit_log actualizadas.
+2026/09/16 08:43:37 [GRAVY-PATCH] patch_collection_rules completado.
+2026/09/16 08:43:37 [GRAVY-PH] Reglas de settings sincronizadas con canWrite.
+2026/09/16 08:43:37 [GRAVY-PH] Colección ph_properties actualizada: reglas/campos sincronizados.
+2026/09/16 08:43:37 [GRAVY-PH] Colección ph_invoices actualizada: reglas sincronizadas.
+2026/09/16 08:43:37 [GRAVY-PH] Colección ph_invoice_lines actualizada: reglas/campos sincronizados.
+2026/09/16 08:43:38 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de configuración PH: 4
+2026/09/16 08:43:38 [GRAVY-PH] Reglas sincronizadas (canWrite) en colecciones de facturación PH: 2
+2026/09/16 08:43:38 [GRAVY-PH] ph_pqrs sincronizada (create para propietarios + campo evidences).
+2026/09/16 08:43:38 [GRAVY-PH] Reglas sincronizadas para ph_reservations (create habilitado para usuarios autenticados).
+2026/09/16 08:43:38 [GRAVY-PH] Migración Copropiedades completada.
+2026/09/16 08:43:38 Server started at http://0.0.0.0:8091
+├─ REST API:  http://0.0.0.0:8091/api/
+└─ Dashboard: http://0.0.0.0:8091/_/

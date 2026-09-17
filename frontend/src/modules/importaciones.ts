@@ -32,14 +32,64 @@ const TRANSPORTS = [
   { value: 'courier', label: '📦 Courier' }
 ];
 
+let currentImportSubtab: 'operaciones' | 'preliquidaciones' = 'operaciones';
+
 export async function renderImportaciones(container: HTMLElement) {
   const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'importaciones') : container;
-  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
-  try {
-    await _loadImportacionesPage(c);
-  } catch (err: any) {
-    c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
-  }
+  
+  c.innerHTML = `
+    <!-- Barra de Pestañas Principales del Módulo de Importaciones -->
+    <div class="flex items-center gap-2 border-b mb-4 pb-0" style="border-color:#E5E7EB">
+      <button type="button" id="tab-btn-imp-operaciones" class="pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all ${currentImportSubtab === 'operaciones' ? 'text-blue-700 border-blue-700 font-extrabold' : 'text-gray-500 border-transparent hover:text-gray-700'}" style="margin-bottom:-1px">
+        <i class="fas fa-ship"></i>
+        <span>Gestión de Importaciones</span>
+      </button>
+      <button type="button" id="tab-btn-imp-preliquidaciones" class="pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all ${currentImportSubtab === 'preliquidaciones' ? 'text-blue-700 border-blue-700 font-extrabold' : 'text-gray-500 border-transparent hover:text-gray-700'}" style="margin-bottom:-1px">
+        <i class="fas fa-calculator text-indigo-600"></i>
+        <span>Preliquidación & Viabilidad (Simulador)</span>
+      </button>
+    </div>
+    <div id="imp-subtab-container"></div>
+  `;
+
+  const subContainer = c.querySelector('#imp-subtab-container') as HTMLElement;
+  const btnOp = c.querySelector('#tab-btn-imp-operaciones') as HTMLButtonElement;
+  const btnPre = c.querySelector('#tab-btn-imp-preliquidaciones') as HTMLButtonElement;
+
+  const loadActiveSubtab = async () => {
+    if (currentImportSubtab === 'operaciones') {
+      subContainer.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
+      try {
+        await _loadImportacionesPage(subContainer);
+      } catch (err: any) {
+        subContainer.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+      }
+    } else {
+      if (typeof (window as any).renderPreliquidaciones === 'function') {
+        await (window as any).renderPreliquidaciones(subContainer);
+      } else {
+        subContainer.innerHTML = `<div class="p-8 text-center text-slate-400">Cargando simulador...</div>`;
+      }
+    }
+  };
+
+  btnOp?.addEventListener('click', () => {
+    if (currentImportSubtab === 'operaciones') return;
+    currentImportSubtab = 'operaciones';
+    btnOp.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-blue-700 border-blue-700 font-extrabold';
+    btnPre.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-gray-500 border-transparent hover:text-gray-700';
+    loadActiveSubtab();
+  });
+
+  btnPre?.addEventListener('click', () => {
+    if (currentImportSubtab === 'preliquidaciones') return;
+    currentImportSubtab = 'preliquidaciones';
+    btnPre.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-blue-700 border-blue-700 font-extrabold';
+    btnOp.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-gray-500 border-transparent hover:text-gray-700';
+    loadActiveSubtab();
+  });
+
+  await loadActiveSubtab();
 }
 
 async function _loadImportacionesPage(c: HTMLElement) {
@@ -567,11 +617,20 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <h4 class="font-bold text-sm text-blue-950 flex items-center gap-2">
               <i class="fas fa-file-invoice-dollar text-blue-600"></i> Facturas Comerciales de Proveedores Internacionales
             </h4>
-            <p class="text-xs text-blue-700">Gestiona cada factura comercial con su respectivo proveedor extranjero y fecha de vencimiento para la Agenda de Pagos (CXP 220505).</p>
+            <p class="text-xs text-blue-700">Gestiona cada factura comercial con su respectivo proveedor extranjero, vencimiento de pago y porcentaje manual de distribución de costos al cierre.</p>
           </div>
-          <button type="button" class="btn btn-primary btn-xs flex items-center gap-1" onclick="window.impOpenInvoiceModal()">
-            <i class="fas fa-plus"></i> Agregar Factura Comercial
-          </button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold" id="badge-inv-dist-wrap" style="background:#F8FAFC;border-color:#E2E8F0" title="Suma total de los porcentajes de distribución asignados">
+              <span class="text-slate-500">Distribución Total:</span>
+              <span class="font-mono text-blue-800" id="lbl-inv-total-dist-pct">0%</span>
+            </div>
+            <button type="button" class="btn btn-outline btn-xs flex items-center gap-1 bg-white hover:bg-amber-50 hover:border-amber-300 text-amber-800" id="btn-inv-suggest-fob" onclick="window.impSuggestInvoiceDistFob()" title="Sugerir porcentajes proporcionalmente según el valor FOB de cada factura">
+              <i class="fas fa-wand-magic-sparkles text-amber-500"></i> Sugerir % FOB
+            </button>
+            <button type="button" class="btn btn-primary btn-xs flex items-center gap-1" onclick="window.impOpenInvoiceModal()">
+              <i class="fas fa-plus"></i> Agregar Factura Comercial
+            </button>
+          </div>
         </div>
 
         <div class="overflow-x-auto bg-white rounded-lg border border-blue-200">
@@ -584,6 +643,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                 <th class="py-2 px-3">Vencimiento (Agenda)</th>
                 <th class="py-2 px-3 text-right">Monto FOB USD</th>
                 <th class="py-2 px-3 text-right">Monto FOB COP</th>
+                <th class="py-2 px-3 text-right bg-amber-50/80 border-x border-amber-200" style="width:130px" title="Porcentaje manual al tanteo para asignar los costos al cierre de la importación">
+                  % Dist. Costo <i class="fas fa-sliders text-amber-600 text-[10px]"></i>
+                </th>
                 <th class="py-2 px-3 text-center">Soporte PDF</th>
                 <th class="py-2 px-3 text-center">Estado Contable</th>
                 <th class="py-2 px-3 text-center" style="width:100px">Acciones</th>
@@ -2500,6 +2562,51 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     (window as any).impRecalcTotals();
   };
 
+  (window as any).impUpdateInvoiceDistPct = function(invId: string, val: string) {
+    const inv = localInvoices.find(i => i.id === invId);
+    if (inv) {
+      inv.cost_distribution_pct = parseFloat(val) || 0;
+    }
+    (window as any).impUpdateInvoiceDistBadge();
+  };
+
+  (window as any).impUpdateInvoiceDistBadge = function() {
+    const sumPct = localInvoices.reduce((s: number, i: any) => s + (Number(i.cost_distribution_pct) || 0), 0);
+    const rounded = Math.round(sumPct * 100) / 100;
+    const lbl = document.getElementById('lbl-inv-total-dist-pct');
+    const wrap = document.getElementById('badge-inv-dist-wrap');
+    if (lbl) lbl.textContent = `${rounded}%`;
+    if (wrap) {
+      if (Math.abs(rounded - 100) < 0.01) {
+        wrap.style.background = '#ECFDF5';
+        wrap.style.borderColor = '#A7F3D0';
+        wrap.style.color = '#065F46';
+      } else if (rounded > 0) {
+        wrap.style.background = '#FFFBEB';
+        wrap.style.borderColor = '#FDE68A';
+        wrap.style.color = '#92400E';
+      } else {
+        wrap.style.background = '#F8FAFC';
+        wrap.style.borderColor = '#E2E8F0';
+        wrap.style.color = '#64748B';
+      }
+    }
+  };
+
+  (window as any).impSuggestInvoiceDistFob = function() {
+    const totalFob = localInvoices.reduce((s: number, i: any) => s + (Number(i._computed_fob ?? i.fob_amount) || 0), 0);
+    if (totalFob <= 0) {
+      (window as any).showToast('No hay montos FOB en las facturas para sugerir distribución.', 'warning');
+      return;
+    }
+    localInvoices.forEach(inv => {
+      const invFob = Number(inv._computed_fob ?? inv.fob_amount) || 0;
+      inv.cost_distribution_pct = Math.round((invFob / totalFob) * 10000) / 100;
+    });
+    (window as any).impRenderInvoicesTable();
+    (window as any).showToast('Distribución porcentual FOB sugerida. Puede ajustarla manualmente.', 'info');
+  };
+
   (window as any).impRenderInvoicesTable = function() {
     const tbody = document.getElementById('imp-invoices-tbody');
     const stageTbody = document.getElementById('imp-fob-stage-invoices-body');
@@ -2508,7 +2615,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
     if (tbody) {
       if (!localInvoices.length) {
-        tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-gray-400">No hay facturas comerciales agregadas aún. Haz clic en <strong>Agregar Factura Comercial</strong> arriba.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="p-4 text-center text-gray-400">No hay facturas comerciales agregadas aún. Haz clic en <strong>Agregar Factura Comercial</strong> arriba.</td></tr>`;
       } else {
         tbody.innerHTML = localInvoices.map((inv: any, i: number) => {
           const suppName = inv.expand?.supplier_id?.name || inv.expand?.third_party_id?.name || 'Proveedor Extranjero';
@@ -2525,6 +2632,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               <td class="py-2.5 px-3 font-bold text-amber-700">${(window as any).esc(invDueDate)}</td>
               <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-800" id="inv-fob-usd-${inv.id}">${(window as any).fmtN(invFob)} ${inv.currency || currency}</td>
               <td class="py-2.5 px-3 text-right font-mono font-semibold text-slate-600" id="inv-fob-cop-${inv.id}">${(window as any).fmt(invFobCop)}</td>
+              <td class="py-2.5 px-2 text-right bg-amber-50/40 border-x border-amber-200" style="width:130px">
+                <div class="flex items-center justify-end gap-1">
+                  <input type="number" class="form-input text-xs text-right font-mono font-bold text-amber-950 py-1 px-1.5 w-16 line-inv-dist-field rounded border-amber-300 bg-white focus:ring-1 focus:ring-amber-500 shadow-sm"
+                         min="0" max="100" step="0.01" data-invid="${inv.id}"
+                         value="${inv.cost_distribution_pct !== undefined && inv.cost_distribution_pct !== null ? inv.cost_distribution_pct : ''}"
+                         placeholder="0"
+                         oninput="window.impUpdateInvoiceDistPct('${inv.id}', this.value)">
+                  <span class="font-bold text-slate-500 text-[11px]">%</span>
+                </div>
+              </td>
               <td class="py-2.5 px-3 text-center">
                 ${inv.invoice_file ? `
                   <a href="${(window as any).PB_URL}/api/files/import_invoices/${inv.id}/${inv.invoice_file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="text-blue-600 hover:underline font-bold" title="Ver documento adjunto">
@@ -2547,6 +2664,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           `;
         }).join('');
       }
+
+      (window as any).impUpdateInvoiceDistBadge();
     }
 
     if (stageTbody) {
@@ -2668,6 +2787,19 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             </div>
           </div>
 
+          <div class="p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+            <div class="flex items-center justify-between">
+              <label class="form-label font-bold text-amber-950 mb-0 flex items-center gap-1.5">
+                <i class="fas fa-sliders text-amber-600"></i> % Dist. Costo al Cierre
+              </label>
+              <div class="flex items-center gap-1">
+                <input type="number" id="inv-modal-cost-dist-pct" class="form-input text-xs text-right font-mono font-bold text-amber-950 w-20 py-1 px-2 border-amber-300 bg-white" min="0" max="100" step="0.01" value="${inv?.cost_distribution_pct !== undefined && inv?.cost_distribution_pct !== null ? inv.cost_distribution_pct : ''}" placeholder="0.00">
+                <span class="font-bold text-amber-900 text-xs">%</span>
+              </div>
+            </div>
+            <p class="text-[10px] text-amber-800 mt-1">Porcentaje manual al tanteo para calcular el costo individual por producto exclusivamente en el momento del cierre de la importación.</p>
+          </div>
+
           <div class="form-group">
             <label class="form-label font-bold">Adjuntar Factura PDF / Imagen</label>
             <input type="file" id="inv-modal-file" class="form-input text-xs" accept="application/pdf,image/*">
@@ -2704,6 +2836,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const invDate = (document.getElementById('inv-modal-date') as HTMLInputElement)?.value;
       const dueDate = (document.getElementById('inv-modal-due-date') as HTMLInputElement)?.value;
       const exRate = parseFloat((document.getElementById('inv-modal-exchange-rate') as HTMLInputElement)?.value) || 1;
+      const distPct = parseFloat((document.getElementById('inv-modal-cost-dist-pct') as HTMLInputElement)?.value) || 0;
       const notesVal = (document.getElementById('inv-modal-notes') as HTMLInputElement)?.value.trim();
       const fileInput = document.getElementById('inv-modal-file') as HTMLInputElement;
 
@@ -2721,6 +2854,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         inv.payment_due_date = dueDate;
         inv.due_date = dueDate;
         inv.exchange_rate = exRate;
+        inv.cost_distribution_pct = distPct;
         inv.notes = notesVal;
         inv.expand = { supplier_id: suppObj, third_party_id: suppObj };
         if (fileInput?.files?.[0]) {
@@ -2737,6 +2871,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           due_date: dueDate,
           currency: currentCurrency,
           exchange_rate: exRate,
+          cost_distribution_pct: distPct,
           fob_amount: 0,
           notes: notesVal,
           expand: { supplier_id: suppObj, third_party_id: suppObj }
@@ -3845,6 +3980,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             currency: inv.currency || currency,
             exchange_rate: inv.exchange_rate || exchangeRate,
             fob_amount: inv._computed_fob ?? inv.fob_amount ?? 0,
+            cost_distribution_pct: Number(inv.cost_distribution_pct) || 0,
             notes: inv.notes || '',
           };
 
@@ -4000,6 +4136,7 @@ async function viewImportDetail(importId: string) {
                     <th class="py-2 px-3">Vencimiento (Agenda)</th>
                     <th class="py-2 px-3 text-right">Monto FOB USD</th>
                     <th class="py-2 px-3 text-right">Monto FOB COP</th>
+                    <th class="py-2 px-3 text-right bg-amber-50/70 border-x border-amber-200" style="width:110px">% Dist. Costo</th>
                     <th class="py-2 px-3 text-center">Estado Contable</th>
                   </tr>
                 </thead>
@@ -4019,6 +4156,9 @@ async function viewImportDetail(importId: string) {
                         <td class="py-2 px-3 font-bold text-amber-700">${(window as any).esc(invDueDate)}</td>
                         <td class="py-2 px-3 text-right font-mono font-bold text-slate-800">${(window as any).fmtN(invFob)} ${inv.currency || imp.currency}</td>
                         <td class="py-2 px-3 text-right font-mono text-slate-600">${(window as any).fmt(invFobCop)}</td>
+                        <td class="py-2 px-3 text-right font-mono font-bold text-amber-900 bg-amber-50/30 border-x border-amber-200">
+                          ${inv.cost_distribution_pct ? `${inv.cost_distribution_pct}%` : '—'}
+                        </td>
                         <td class="py-2 px-3 text-center">
                           ${isCaused ? `
                             <button onclick="closeModal(); window.viewStageTx('${inv.tx_fob_id}')" class="badge badge-emerald text-[11px] font-bold hover:underline cursor-pointer border-0">
@@ -4393,9 +4533,10 @@ async function viewImportPalletsLabels(importId: string) {
 // --- Acción: Finalizar e Ingresar a Bodega (Capitalización) ---
 async function confirmFinalizarImportacion(importId: string) {
   try {
-    const [imp, lines] = await Promise.all([
+    const [imp, lines, importInvoices] = await Promise.all([
       (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
       (window as any).API.getImportLines(importId),
+      (window as any).API.getImportInvoices(importId).catch(() => []),
     ]);
 
     if (imp.status === 'recibido') {
@@ -4407,12 +4548,58 @@ async function confirmFinalizarImportacion(importId: string) {
       (window as any).API.getTxTypes(),
     ]);
 
+    const invsWithPct = (importInvoices || []).filter((iv: any) => Number(iv.cost_distribution_pct) > 0);
+    const hasDistPct = imp.is_consolidated && invsWithPct.length > 0;
+    const totalDistPct = invsWithPct.reduce((s: number, iv: any) => s + Number(iv.cost_distribution_pct), 0);
+
     const formHtml = `
       <div class="space-y-4 text-sm" style="color:#374151">
         <div class="p-4 rounded-xl" style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E">
           <p class="font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>¡Atención!</p>
           <p class="text-xs">Estás por finalizar la importación <strong>${imp.number}</strong>. Esta acción creará automáticamente una Factura de Compra (FC) en estado borrador con los costos calculados en pesos (COP) e ingresará los productos a la bodega correspondiente.</p>
         </div>
+
+        ${hasDistPct ? `
+          <div class="p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-amber-950 flex items-center gap-1.5">
+                <i class="fas fa-sliders text-amber-600"></i> Distribución de Costos por Proveedor (${totalDistPct}% Asignado):
+              </span>
+              <span class="badge ${Math.abs(totalDistPct - 100) < 0.01 ? 'badge-emerald' : 'badge-amber'} text-[10px] font-bold">
+                ${Math.abs(totalDistPct - 100) < 0.01 ? 'Balance 100% ✓' : `Suma: ${totalDistPct}%`}
+              </span>
+            </div>
+            <p class="text-[11px] text-amber-800">En este cierre se aplicará el porcentaje manual configurado por cada proveedor para calcular el costo individual por producto con el que ingresará a bodega:</p>
+            <div class="overflow-x-auto bg-white rounded border border-amber-200">
+              <table class="w-full text-[11px] text-left border-collapse">
+                <thead>
+                  <tr class="bg-amber-100/60 text-amber-950 font-semibold border-b border-amber-200">
+                    <th class="p-1.5">Proveedor</th>
+                    <th class="p-1.5">Factura Nro.</th>
+                    <th class="p-1.5 text-right">% Dist. Costo</th>
+                    <th class="p-1.5 text-right">Costo Asignado (COP)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-amber-100">
+                  ${invsWithPct.map((iv: any) => {
+                    const supp = iv.expand?.supplier_id || iv.expand?.third_party_id;
+                    const sName = supp ? supp.name : 'Proveedor';
+                    const ratio = totalDistPct === 100 ? (Number(iv.cost_distribution_pct) / 100) : (Number(iv.cost_distribution_pct) / totalDistPct);
+                    const costAssigned = imp.total * ratio;
+                    return `
+                      <tr>
+                        <td class="p-1.5 font-medium text-slate-800">${(window as any).esc(sName)}</td>
+                        <td class="p-1.5 font-mono text-blue-900 font-semibold">${(window as any).esc(iv.invoice_number)}</td>
+                        <td class="p-1.5 text-right font-mono font-bold text-amber-900">${iv.cost_distribution_pct}%</td>
+                        <td class="p-1.5 text-right font-mono font-bold text-slate-900">${(window as any).fmt(costAssigned)}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ''}
 
         <div class="form-group">
           <label class="form-label font-bold">Bodega de Destino <span style="color:#EF4444">*</span></label>

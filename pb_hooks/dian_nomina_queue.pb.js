@@ -233,12 +233,16 @@ function processNominaBatchInBackground(recordIds, ano, mes) {
                 if (sData.message) statusMessage = sData.message;
                 if (sData.status === "aceptada" || sData.status === "APROBADO") {
                   finalStatus = "APROBADO";
+                  if (sData.cufe) {
+                    rec.set("cufe", sData.cufe.trim());
+                  }
                   if (sData.xmlContent && sData.xmlContent.includes("<")) {
                     rec.set("xml_generado", sData.xmlContent);
                     const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
                                    sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
-                                   sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
-                    if (cMatch && cMatch[1]) {
+                                   sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i) ||
+                                   sData.xmlContent.match(/([0-9a-fA-F]{64,96})/);
+                    if (cMatch && cMatch[1] && !rec.get("cufe")) {
                       rec.set("cufe", cMatch[1].trim());
                     }
                   }

@@ -1069,9 +1069,10 @@ function renderTxLines(repaint = true) {
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
             <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+            ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input id="tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
@@ -1549,6 +1550,22 @@ async function saveTransaction(approve = false) {
     if (missingThirdLine) {
       const idx = TX_STATE.lines.indexOf(missingThirdLine);
       return showToast(`La línea ${idx + 1} requiere tercero. Selecciónalo en la línea o en el encabezado.`, 'error');
+    }
+
+    // Regla 3: cuentas con documento de cruce obligatorio
+    if (!isSinRef) {
+      const missingCrossDocLine = validLines.find((l) => {
+        const a = TX_STATE.accountMap.get(l.account_id) || TX_STATE.accounts.find(x => x.id === l.account_id);
+        return !!a?.maneja_cruce && !String(l.cross_doc_ref || '').trim();
+      });
+      if (missingCrossDocLine) {
+        const idx = TX_STATE.lines.indexOf(missingCrossDocLine);
+        const a = TX_STATE.accountMap.get(missingCrossDocLine.account_id) || TX_STATE.accounts.find(x => x.id === missingCrossDocLine.account_id);
+        const accLabel = a ? `${a.code} - ${a.name}` : 'seleccionada';
+        const cruceInput = document.getElementById(`tx-line-cruce-${idx}`) as HTMLInputElement;
+        if (cruceInput) cruceInput.focus();
+        return showToast(`La línea ${idx + 1} (Cuenta ${accLabel}) está configurada para uso de documento de cruce. Es obligatorio ingresar un documento de cruce.`, 'warning');
+      }
     }
 
     const decimals = typeof (window as any).getDecimalPlaces === 'function' ? (window as any).getDecimalPlaces() : 2;
@@ -2663,9 +2680,10 @@ function renderEditTxLines(repaint = true) {
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
             <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+            ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input class="form-input" style="font-size:13px" ${needsCruce ? '' : 'disabled'} placeholder="N° factura" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input id="edit-tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
@@ -2747,6 +2765,20 @@ async function saveEditTx(txId) {
   if (missingThirdLine) {
     const idx = TX_EDIT_STATE.lines.indexOf(missingThirdLine);
     return showToast(`La línea ${idx + 1} requiere tercero. Selecciónalo en la línea o en el encabezado.`, 'error');
+  }
+
+  // Regla 3: cuentas con documento de cruce obligatorio en edición
+  const missingCrossDocLine = validLines.find((l) => {
+    const a = TX_EDIT_STATE.accountMap.get(l.account_id) || TX_EDIT_STATE.accounts.find(x => x.id === l.account_id);
+    return !!a?.maneja_cruce && !String(l.cross_doc_ref || '').trim();
+  });
+  if (missingCrossDocLine) {
+    const idx = TX_EDIT_STATE.lines.indexOf(missingCrossDocLine);
+    const a = TX_EDIT_STATE.accountMap.get(missingCrossDocLine.account_id) || TX_EDIT_STATE.accounts.find(x => x.id === missingCrossDocLine.account_id);
+    const accLabel = a ? `${a.code} - ${a.name}` : 'seleccionada';
+    const cruceInput = document.getElementById(`edit-tx-line-cruce-${idx}`) as HTMLInputElement;
+    if (cruceInput) cruceInput.focus();
+    return showToast(`La línea ${idx + 1} (Cuenta ${accLabel}) está configurada para uso de documento de cruce. Es obligatorio ingresar un documento de cruce.`, 'warning');
   }
 
   const decimals = typeof (window as any).getDecimalPlaces === 'function' ? (window as any).getDecimalPlaces() : 2;

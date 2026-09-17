@@ -3672,11 +3672,65 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
     conceptsMap[group.groupKey].saldoActual += Number(l.amount) || 0;
   });
 
-  // Cargar saldos anteriores
+  // Consultar el estado de cartera real (pagos contables via tx_lines)
+  let unitBalMap: Record<string, any> = {};
+  try {
+    const balUrl = `${(window as any).pb.baseUrl}/api/ph/unit-balance?propertyId=${encodeURIComponent(inv.property_id)}`;
+    const balRes = await fetch(balUrl, { headers: (window as any).pb.headers() });
+    if (balRes.ok) {
+      const balData = await balRes.json();
+      if (Array.isArray(balData?.invoices)) {
+        balData.invoices.forEach((b: any) => { unitBalMap[b.invoiceId] = b; });
+      }
+    }
+  } catch (balErr) {
+    console.warn('Error al consultar saldo contable de unidad:', balErr);
+  }
+
+  // Fallback directo a contabilidad (tx_lines) si el endpoint backend no devolvió datos
+  if (Object.keys(unitBalMap).length === 0 && outstandingInvoices.length > 0) {
+    try {
+      for (const oldInv of outstandingInvoices) {
+        const safeInvNum = (window as any).pb.escapeFilterValue(oldInv.number);
+        const credits = await (window as any).pb.listAll('tx_lines', {
+          filter: `(cross_doc_ref="${safeInvNum}" || cross_doc_ref~"${safeInvNum}-") && credit > 0`
+        }).catch(() => []);
+        const totalPaid = (credits || []).reduce((s: number, c: any) => s + (Number(c.credit) || 0), 0);
+        const invTotal = Number(oldInv.total || 0);
+        const pendingAmount = Math.max(0, invTotal - totalPaid);
+        unitBalMap[oldInv.id] = {
+          invoiceId: oldInv.id,
+          invoiceNumber: oldInv.number,
+          period: oldInv.period,
+          total: invTotal,
+          paidAmount: totalPaid,
+          pendingAmount: pendingAmount,
+          isSettled: pendingAmount < 0.01
+        };
+      }
+    } catch (fbErr) {
+      console.warn('Error en fallback contable de saldo anterior:', fbErr);
+    }
+  }
+
+  // Cargar saldos anteriores descontando pagos contables reales
   for (const oldInv of outstandingInvoices) {
     try {
+      const balInfo = unitBalMap[oldInv.id];
+      // Si la factura está completamente saldada en contabilidad, NO se arrastra al saldo anterior
+      if (balInfo && (balInfo.isSettled || Number(balInfo.pendingAmount || 0) < 0.01)) {
+        continue;
+      }
+      const invTotal = Number(oldInv.total || 0);
+      const pendingBalance = balInfo ? Number(balInfo.pendingAmount || 0) : invTotal;
+      const proportionFactor = (invTotal > 0.01 && pendingBalance < invTotal) ? (pendingBalance / invTotal) : 1;
+
       const oldLines = await (window as any).API.getPhInvoiceLines(oldInv.id);
       oldLines.forEach((ol: any) => {
+        const fullAmt = Number(ol.amount) || 0;
+        const pendingAmt = Math.round(fullAmt * proportionFactor);
+        if (pendingAmt < 0.01) return;
+
         const groupOld = resolveConceptGroup(ol);
         if (!conceptsMap[groupOld.groupKey]) {
           conceptsMap[groupOld.groupKey] = {
@@ -3687,8 +3741,8 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
             saldoActual: 0
           };
         }
-        conceptsMap[groupOld.groupKey].saldoAnterior += Number(ol.amount) || 0;
-        conceptsMap[groupOld.groupKey].saldoActual += Number(ol.amount) || 0;
+        conceptsMap[groupOld.groupKey].saldoAnterior += pendingAmt;
+        conceptsMap[groupOld.groupKey].saldoActual += pendingAmt;
       });
     } catch (_) {}
   }
@@ -3734,19 +3788,88 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
   if (prevPeriod) {
     try {
       const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
-      const [unitPrevPaid, allPrevPaid] = await Promise.all([
-        (window as any).pb.listAll('ph_invoices', {
-          filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
-        }).catch(() => []),
-        (window as any).pb.listAll('ph_invoices', {
-          filter: `period="${prevPeriod}" && status="paid"`
-        }).catch(() => [])
-      ]);
-      if (unitPrevPaid && unitPrevPaid.length > 0) {
-        prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+      const ownerId = prop?.owner_id || owner?.id || '';
+      const safeOwnerId = ownerId ? (window as any).pb.escapeFilterValue(ownerId) : '';
+      const prevStart = `${prevPeriod}-01`;
+      const prevEnd = `${prevPeriod}-31`;
+
+      // 1. Recaudo real de la unidad en el mes anterior (consultar transacciones activas de recaudo RC)
+      try {
+        let filterTx = `date >= "${prevStart}" && date <= "${prevEnd}" && status="active" && (number ~ "RC-" || teso_mode != "")`;
+        if (safeOwnerId) {
+          filterTx += ` && (third_party_id="${safeOwnerId}" || teso_params~"${safePropId}")`;
+        } else {
+          filterTx += ` && teso_params~"${safePropId}"`;
+        }
+        const rcs = await (window as any).pb.listAll('transactions', { filter: filterTx }).catch(() => []);
+        for (const tx of (rcs || [])) {
+          let amt = 0;
+          try {
+            const p = JSON.parse(tx.teso_params || '{}');
+            if (p.amount) amt = Number(p.amount) || 0;
+          } catch (_) {}
+          if (amt <= 0 && tx.id) {
+            const lines = await (window as any).pb.listAll('tx_lines', {
+              filter: `tx_id="${tx.id}" && credit > 0`,
+              expand: 'account_id'
+            }).catch(() => []);
+            amt = (lines || []).reduce((s: number, l: any) => {
+              const code = String(l.expand?.account_id?.code || l.account_code || '');
+              if (!code || code.startsWith('13')) {
+                return s + (Number(l.credit) || 0);
+              }
+              return s;
+            }, 0);
+          }
+          prevMonthUnitRecaudo += amt;
+        }
+      } catch (eTx) {
+        console.warn('Error al consultar transacciones de recaudo de unidad:', eTx);
       }
-      if (allPrevPaid && allPrevPaid.length > 0) {
-        prevMonthTotalRecaudo = allPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+
+      // Fallback a unitBalMap o ph_invoices pagadas si no se encontró en transacciones
+      if (prevMonthUnitRecaudo <= 0) {
+        const prevInv = Object.values(unitBalMap).find((b: any) => b.period === prevPeriod);
+        if (prevInv) {
+          prevMonthUnitRecaudo = Number(prevInv.paidAmount || 0);
+        }
+      }
+      if (prevMonthUnitRecaudo <= 0) {
+        const unitPrevPaid = await (window as any).pb.listAll('ph_invoices', {
+          filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
+        }).catch(() => []);
+        if (unitPrevPaid && unitPrevPaid.length > 0) {
+          prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+        }
+      }
+
+      // 2. Recaudo total de la copropiedad en el mes anterior
+      try {
+        const allRcs = await (window as any).pb.listAll('transactions', {
+          filter: `date >= "${prevStart}" && date <= "${prevEnd}" && status="active" && (number ~ "RC-" || teso_mode != "")`
+        }).catch(() => []);
+        if (allRcs && allRcs.length > 0) {
+          for (const tx of allRcs) {
+            try {
+              const p = JSON.parse(tx.teso_params || '{}');
+              if (p.amount) prevMonthTotalRecaudo += Number(p.amount) || 0;
+              else if (tx.total) prevMonthTotalRecaudo += Number(tx.total) || 0;
+            } catch (_) {
+              if (tx.total) prevMonthTotalRecaudo += Number(tx.total) || 0;
+            }
+          }
+        }
+      } catch (eAll) {
+        console.warn('Error al consultar recaudo total del mes:', eAll);
+      }
+
+      if (prevMonthTotalRecaudo <= 0) {
+        const allPrevPaid = await (window as any).pb.listAll('ph_invoices', {
+          filter: `period="${prevPeriod}" && status="paid"`
+        }).catch(() => []);
+        if (allPrevPaid && allPrevPaid.length > 0) {
+          prevMonthTotalRecaudo = allPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
+        }
       }
     } catch (err) {
       console.warn('Error al calcular recaudos del mes anterior:', err);

@@ -2315,7 +2315,7 @@ async function renderPortfolioBalances(mode) {
           <button class="btn btn-outline w-full" id="btn-pdf-bal" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
-          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-bal" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline w-full" id="btn-exp-bal" disabled><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
       <p class="text-xs mt-3" style="color:#6B7280">Reporte de saldo abierto por documento de cruce, agrupado por tercero y cuenta (${esc(entityLabel)}).</p>
@@ -2535,7 +2535,7 @@ async function renderAgingPortfolio() {
         </div>
         <div class="form-group flex items-end gap-2">
           <button class="btn btn-outline flex-1" id="btn-pdf-aging" disabled><i class="fas fa-file-pdf"></i> PDF</button>
-          ${can('canExport') ? '<button class="btn btn-outline flex-1" id="btn-exp-aging" disabled><i class="fas fa-file-excel"></i> Excel</button>' : ''}
+          <button class="btn btn-outline flex-1" id="btn-exp-aging" disabled><i class="fas fa-file-excel"></i> Excel</button>
         </div>
       </div>
       <p class="text-xs mt-2" style="color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>El tipo de cartera determina automáticamente las cuentas y el perfil de tercero a consultar. Puedes filtrar por vendedor para obtener cartera independiente.</p>
@@ -3009,7 +3009,7 @@ async function renderTrialBalance() {
           <button class="btn btn-outline w-full" id="btn-pdf-trial" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
-          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-trial" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline w-full" id="btn-exp-trial" disabled><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
     </div>
@@ -3671,7 +3671,7 @@ async function renderIncomeStatement() {
           <button class="btn btn-outline w-full" id="btn-pdf-er" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
-          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-er" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline w-full" id="btn-exp-er" disabled><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
     </div>
@@ -4223,7 +4223,7 @@ async function renderFinancialPosition() {
           <button class="btn btn-outline w-full" id="btn-pdf-position" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
-          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-position" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline w-full" id="btn-exp-position" disabled><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
     </div>
@@ -4812,7 +4812,7 @@ async function renderJournalBook() {
           <button class="btn btn-outline w-full" id="btn-pdf-journal" disabled><i class="fas fa-file-pdf"></i> PDF</button>
         </div>
         <div class="form-group flex items-end">
-          ${can('canExport') ? '<button class="btn btn-outline w-full" id="btn-exp-journal" disabled><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline w-full" id="btn-exp-journal" disabled><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
     </div>
@@ -5366,10 +5366,25 @@ async function renderAuxiliaryBook() {
   view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Libro Auxiliar...</div>';
 
   try {
+    const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+
     const [{ accounts }, thirdParties] = await Promise.all([
       ensureAccountsSaldos(),
       ensureThirdParties(),
     ]);
+
+    // Cargar unidades habitacionales si el módulo está activo
+    let phProperties: any[] = [];
+    if (isPhActive) {
+      try {
+        phProperties = await pb.send('/api/collections/ph_properties/records?sort=code&perPage=500', { method: 'GET' })
+          .then((r: any) => r.items || []);
+      } catch (_) { phProperties = []; }
+    }
+
+    const phUnidadesOptions = phProperties.map(p =>
+      `<option value="${esc(p.id)}">[${esc(p.code)}] ${esc(p.name)}${p.tower ? ' — Torre ' + esc(p.tower) : ''}${p.apartment ? ' Apto ' + esc(p.apartment) : ''}</option>`
+    ).join('');
 
     view.innerHTML = `
       <div class="p-4 border-b" style="border-color:#F3F4F6">
@@ -5391,6 +5406,18 @@ async function renderAuxiliaryBook() {
             <div id="aux-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
           </div>
         </div>
+        ${isPhActive && phProperties.length > 0 ? `
+        <!-- Filtro por Unidad Habitacional PH -->
+        <div class="mb-3">
+          <label class="text-xs font-semibold block mb-1" style="color:#6B7280">
+            <i class="fas fa-building mr-1" style="color:#1A4B8C"></i>
+            Filtrar por Unidad Habitacional <span class="ml-1 text-xs font-normal" style="color:#9CA3AF">(opcional — solo movimientos vinculados al inmueble)</span>
+          </label>
+          <select id="aux-property-id" class="form-input" style="max-width:480px">
+            <option value="">— Todas las unidades —</option>
+            ${phUnidadesOptions}
+          </select>
+        </div>` : `<input type="hidden" id="aux-property-id" value="" />`}
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label class="text-xs font-semibold" style="color:#6B7280">Fecha desde (saldo inicial)</label>
@@ -5425,6 +5452,7 @@ async function renderAuxiliaryBook() {
     view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
+
 
 function closeAuxTxDetailPanel() {
   const panel = $('#aux-tx-detail-overlay');
@@ -5565,8 +5593,10 @@ async function generateAuxiliaryRows() {
     }
 
     // Consultar el endpoint optimizado del Libro Auxiliar
-    const accIdsParam = allowedAccountIds ? Array.from(allowedAccountIds).join(',') : '';
-    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}${getScopeQueryParams()}`, { method: 'GET' });
+    const accIdsParam  = allowedAccountIds ? Array.from(allowedAccountIds).join(',') : '';
+    const auxPropId    = ((document.getElementById('aux-property-id') as HTMLSelectElement)?.value || '').trim();
+    const propParam    = auxPropId ? `&propertyId=${encodeURIComponent(auxPropId)}` : '';
+    const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}${propParam}${getScopeQueryParams()}`, { method: 'GET' });
     const { openingBalances, periodLines } = res;
 
     // ── Saldos anteriores (movimientos ANTES de dateFrom) ──
@@ -5894,7 +5924,7 @@ async function generateAuxiliaryRows() {
         <p class="text-sm" style="color:#6B7280">Orden actual: <strong>${esc(primaryLabel)}${mode === 'cuenta-sin-tercero' ? '' : ' → ' + esc(secondaryLabel)} → Fecha → Doc. Cruce</strong> · Registros: <strong>${fmtN(rows.length)}</strong></p>
         <div class="flex items-center gap-2">
           <button class="btn btn-outline btn-sm" id="btn-pdf-aux" style="border-color:#6B7280;color:#374151"><i class="fas fa-file-pdf"></i> PDF</button>
-          ${can('canExport') ? '<button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>' : ''}
+          <button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>
         </div>
       </div>
       <div class="overflow-x-auto" style="max-height:420px">
@@ -6586,50 +6616,146 @@ async function renderPazYSalvoCertificate() {
   const view = getReportViewHost();
   if (!view) return;
 
+  const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+
   const [thirds, companyCityRaw] = await Promise.all([
     API.getTerceros({}),
     API.getSetting('company_city').catch(() => 'Bogotá'),
   ]);
   const companyCity = String(companyCityRaw || 'Bogotá').trim();
-
   thirds.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Cargar unidades habitacionales si PH activo
+  let phProperties: any[] = [];
+  if (isPhActive) {
+    try {
+      phProperties = await pb.send('/api/collections/ph_properties/records?sort=code&perPage=500', { method: 'GET' })
+        .then((r: any) => r.items || []);
+    } catch (_) { phProperties = []; }
+  }
+
+  const phUnidadesOptions = phProperties.map(p =>
+    `<option value="${esc(p.id)}">[${esc(p.code)}] ${esc(p.name)}${p.tower ? ' — Torre ' + esc(p.tower) : ''}${p.apartment ? ' Apto ' + esc(p.apartment) : ''}</option>`
+  ).join('');
 
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-3" style="color:#0D2137">Certificado de Paz y Salvo de Cartera</h4>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div class="form-group md:col-span-2">
-          <label class="form-label">Tercero (Cliente / Copropietario)</label>
-          <div class="relative">
-            <input type="text" id="paz-third-search" class="form-input w-full text-xs" placeholder="— Seleccione Tercero (Escribe para buscar...) —" autocomplete="off" />
-            <input type="hidden" id="paz-third" value="" />
-            <div id="paz-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+
+      ${isPhActive ? `
+      <!-- Selector de modo -->
+      <div class="flex gap-2 mb-4 p-1 rounded-xl" style="background:#F1F5F9;width:fit-content">
+        <button id="paz-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#1A4B8C;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+          <i class="fas fa-user mr-1"></i>General (por Tercero)
+        </button>
+        <button id="paz-mode-unidad" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:transparent;color:#6B7280">
+          <i class="fas fa-building mr-1"></i>Notarial por Unidad PH
+        </button>
+      </div>` : ''}
+
+      <!-- Panel: Por Tercero -->
+      <div id="paz-panel-tercero">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="form-group md:col-span-2">
+            <label class="form-label">Tercero (Cliente / Copropietario)</label>
+            <div class="relative">
+              <input type="text" id="paz-third-search" class="form-input w-full text-xs" placeholder="— Seleccione Tercero (Escribe para buscar...) —" autocomplete="off" />
+              <input type="hidden" id="paz-third" value="" />
+              <div id="paz-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de Corte</label>
+            <input id="paz-cutoff" type="date" class="form-input" value="${todayStr()}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ciudad Exp.</label>
+            <input id="paz-city" class="form-input" value="${esc(companyCity)}">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Fecha de Corte</label>
-          <input id="paz-cutoff" type="date" class="form-input" value="${todayStr()}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Ciudad Exp.</label>
-          <input id="paz-city" class="form-input" value="${esc(companyCity)}">
-        </div>
       </div>
-      
+
+      ${isPhActive ? `
+      <!-- Panel: Por Unidad PH -->
+      <div id="paz-panel-unidad" style="display:none">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div class="form-group md:col-span-2">
+            <label class="form-label">Unidad Habitacional <span class="text-red-500">*</span></label>
+            <select id="paz-property-id" class="form-input">
+              <option value="">— Seleccionar Unidad —</option>
+              ${phUnidadesOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Fecha de Corte</label>
+            <input id="paz-cutoff-ph" type="date" class="form-input" value="${todayStr()}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ciudad Exp.</label>
+            <input id="paz-city-ph" class="form-input" value="${esc(companyCity)}">
+          </div>
+        </div>
+        <div id="paz-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#EEF4FF;border:1px solid #C7D7F5;color:#1A4B8C"></div>
+      </div>` : ''}
+
       <div class="form-group">
         <label class="form-label">Observaciones / Concepto (para incluir en el documento)</label>
         <input id="paz-concept" class="form-input" placeholder="Ej: Para trámites notariales, venta de inmueble, etc.">
       </div>
-      
+
       <div class="flex gap-3">
-        <button class="btn btn-primary" id="btn-gen-paz-salvo"><i class="fas fa-check-double"></i> Verificar Cartera y Generar</button>
+        <button class="btn btn-primary" id="btn-gen-paz-salvo"><i class="fas fa-check-double"></i> Verificar y Generar</button>
         <button class="btn btn-outline" id="btn-pdf-paz-salvo" disabled><i class="fas fa-file-pdf"></i> Descargar Paz y Salvo PDF</button>
       </div>
     </div>
     <div id="paz-salvo-results" class="p-8 text-center" style="color:#9CA3AF">
-      <i class="fas fa-check mr-2"></i>Selecciona filtros y pulsa Verificar Cartera y Generar.
+      <i class="fas fa-check mr-2"></i>Selecciona filtros y pulsa Verificar y Generar.
     </div>
   `;
+
+  // ── Modo switching para PH
+  let pazMode = 'tercero';
+  if (isPhActive) {
+    const btnPazTercero = $('#paz-mode-tercero') as HTMLButtonElement;
+    const btnPazUnidad  = $('#paz-mode-unidad')  as HTMLButtonElement;
+    const panelTercero  = document.getElementById('paz-panel-tercero');
+    const panelUnidad   = document.getElementById('paz-panel-unidad');
+
+    const setPazMode = (mode: string) => {
+      pazMode = mode;
+      const isTercero = mode === 'tercero';
+      btnPazTercero.style.background  = isTercero ? '#fff' : 'transparent';
+      btnPazTercero.style.color       = isTercero ? '#1A4B8C' : '#6B7280';
+      btnPazTercero.style.boxShadow   = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+      btnPazUnidad.style.background   = !isTercero ? '#fff' : 'transparent';
+      btnPazUnidad.style.color        = !isTercero ? '#1A4B8C' : '#6B7280';
+      btnPazUnidad.style.boxShadow    = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+      if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
+      if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
+    };
+    btnPazTercero?.addEventListener('click', () => setPazMode('tercero'));
+    btnPazUnidad?.addEventListener('click',  () => setPazMode('unidad'));
+
+    // Info al seleccionar unidad
+    const propSel = document.getElementById('paz-property-id') as HTMLSelectElement;
+    propSel?.addEventListener('change', () => {
+      const pid = propSel.value;
+      const box = document.getElementById('paz-property-info');
+      if (!box) return;
+      if (!pid) { box.classList.add('hidden'); return; }
+      const prop = phProperties.find(p => p.id === pid);
+      if (!prop) { box.classList.add('hidden'); return; }
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <div class="flex flex-wrap gap-4">
+          <span><i class="fas fa-building mr-1"></i><strong>Unidad:</strong> ${esc(prop.code)} — ${esc(prop.name)}</span>
+          ${prop.tower     ? `<span><i class="fas fa-layer-group mr-1"></i><strong>Torre:</strong> ${esc(prop.tower)}</span>` : ''}
+          ${prop.apartment ? `<span><i class="fas fa-door-open mr-1"></i><strong>Apto:</strong> ${esc(prop.apartment)}</span>` : ''}
+          ${prop.coef_participacion ? `<span><i class="fas fa-percent mr-1"></i><strong>Coef.:</strong> ${Number(prop.coef_participacion).toFixed(4)}%</span>` : ''}
+          ${prop.admin_fee ? `<span><i class="fas fa-coins mr-1"></i><strong>Cuota Admin.:</strong> ${fmt(prop.admin_fee)}</span>` : ''}
+        </div>`;
+    });
+  }
 
   initThirdSearch(
     document.getElementById('paz-third-search') as HTMLInputElement,
@@ -6640,16 +6766,17 @@ async function renderPazYSalvoCertificate() {
 
   let lastGeneratedData = null;
 
-  const generate = async () => {
+  // ── Generador para modo TERCERO (general) ─────────────────────────────────
+  const generateByTercero = async () => {
     const results = $('#paz-salvo-results');
     if (!results) return;
 
-    const thirdId = getSelectVal('paz-third');
+    const thirdId    = getSelectVal('paz-third');
     const cutoffDate = getInputVal('paz-cutoff');
-    const city = getInputVal('paz-city') || 'Bogotá';
-    const concept = getInputVal('paz-concept') || 'Trámites administrativos';
+    const city       = getInputVal('paz-city') || 'Bogotá';
+    const concept    = getInputVal('paz-concept') || 'Trámites administrativos';
 
-    if (!thirdId) return showToast('Seleccione un tercero.', 'warning');
+    if (!thirdId)    return showToast('Seleccione un tercero.', 'warning');
     if (!cutoffDate) return showToast('Ingrese la fecha de corte.', 'warning');
 
     results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Verificando saldos en cartera...</div>';
@@ -6657,7 +6784,7 @@ async function renderPazYSalvoCertificate() {
     try {
       const docs = await buildOpenPortfolioDocs({ mode: 'cxc', asOfDate: cutoffDate, thirdType: '' });
       const clientDocs = docs.filter(d => d.third_id === thirdId);
-      const totalOpen = clientDocs.reduce((s, r) => s + Number(r.open || 0), 0);
+      const totalOpen  = clientDocs.reduce((s, r) => s + Number(r.open || 0), 0);
       const selectedThird = thirds.find(t => t.id === thirdId);
 
       if (totalOpen > 0.01) {
@@ -6669,36 +6796,21 @@ async function renderPazYSalvoCertificate() {
             <div class="text-left bg-white p-4 rounded-xl border mb-3 overflow-x-auto" style="border-color:#F87171;color:#374151">
               <p class="font-bold text-xs uppercase mb-2" style="color:#991B1B">Detalle de Cartera Pendiente:</p>
               <table class="w-full text-xs">
-                <thead>
-                  <tr class="border-b" style="border-color:#E5E7EB"><th class="text-left pb-1">Doc. Ref</th><th class="text-left pb-1">Fecha</th><th class="text-right pb-1">Días Venc.</th><th class="text-right pb-1">Saldo Abierto</th></tr>
-                </thead>
-                <tbody>
-                  ${clientDocs.map(d => `
-                    <tr class="border-b" style="border-color:#F3F4F6">
-                      <td class="py-1 font-mono">${esc(d.doc_ref)}</td>
-                      <td class="py-1">${esc(d.doc_date)}</td>
-                      <td class="py-1 text-right">${fmtN(d.expired_days)}</td>
-                      <td class="py-1 text-right font-semibold">${fmt(d.open)}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-                <tfoot>
-                  <tr class="font-bold"><td colspan="3" class="pt-2 text-left">TOTAL DEUDA:</td><td class="pt-2 text-right" style="color:#DC2626">${fmt(totalOpen)}</td></tr>
-                </tfoot>
+                <thead><tr class="border-b" style="border-color:#E5E7EB"><th class="text-left pb-1">Doc. Ref</th><th class="text-left pb-1">Fecha</th><th class="text-right pb-1">Días Venc.</th><th class="text-right pb-1">Saldo Abierto</th></tr></thead>
+                <tbody>${clientDocs.map(d => `<tr class="border-b" style="border-color:#F3F4F6"><td class="py-1 font-mono">${esc(d.doc_ref)}</td><td class="py-1">${esc(d.doc_date)}</td><td class="py-1 text-right">${fmtN(d.expired_days)}</td><td class="py-1 text-right font-semibold">${fmt(d.open)}</td></tr>`).join('')}</tbody>
+                <tfoot><tr class="font-bold"><td colspan="3" class="pt-2 text-left">TOTAL DEUDA:</td><td class="pt-2 text-right" style="color:#DC2626">${fmt(totalOpen)}</td></tr></tfoot>
               </table>
             </div>
-            <p class="text-xs" style="color:#9CA3AF">El tercero debe registrar el pago de todos sus saldos pendientes para poder expedir un paz y salvo.</p>
-          </div>
-        `;
+            <p class="text-xs" style="color:#9CA3AF">El tercero debe regularizar todos sus saldos para poder expedir el paz y salvo.</p>
+          </div>`;
         lastGeneratedData = null;
-        const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
-        if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+        const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = true;
         return;
       }
 
-      const issueDate = new Date();
-      const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-      const dateText = `${issueDate.getDate()} de ${months[issueDate.getMonth()]} de ${issueDate.getFullYear()}`;
+      const months   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const now      = new Date();
+      const dateText = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
 
       results.innerHTML = `
         <div class="p-8 border rounded-2xl max-w-2xl mx-auto bg-white shadow-sm" style="border-color:#E5E7EB;color:#374151;font-family:serif;line-height:1.8">
@@ -6706,58 +6818,179 @@ async function renderPazYSalvoCertificate() {
             <h3 class="font-bold text-lg" style="color:#0D2137">PAZ Y SALVO VERIFICADO</h3>
             <span class="badge badge-green mt-2 px-3 py-1 font-semibold"><i class="fas fa-check-circle mr-1"></i>Apto para Expedición</span>
           </div>
-          
           <p class="text-right mb-6 text-sm font-sans" style="color:#6B7280">${esc(city)}, ${dateText}</p>
-          
-          <div class="text-center font-bold text-base mb-8">
-            CERTIFICADO DE PAZ Y SALVO
-          </div>
-          
-          <p class="mb-4 text-justify">
-            La administración y representación legal de la organización/copropiedad, hace constar que el Sr(a). 
-            <strong>${esc(selectedThird.name)}</strong>, identificado(a) con Nit / Cédula No. 
-            <strong>${esc(selectedThird.doc_number)}</strong>, a la fecha de corte de <strong>${esc(cutoffDate)}</strong>, se encuentra a 
-            <strong>PAZ Y SALVO</strong> por todo concepto de obligaciones financieras y cartera con nuestra entidad.
-          </p>
-          
-          <p class="mb-6 text-justify">
-            Se expide el presente certificado con destino a: <strong>${esc(concept)}</strong>.
-          </p>
-          
+          <div class="text-center font-bold text-base mb-8">CERTIFICADO DE PAZ Y SALVO</div>
+          <p class="mb-4 text-justify">La administración y representación legal de la organización/copropiedad, hace constar que el Sr(a). <strong>${esc(selectedThird.name)}</strong>, identificado(a) con Nit / Cédula No. <strong>${esc(selectedThird.doc_number)}</strong>, a la fecha de corte de <strong>${esc(cutoffDate)}</strong>, se encuentra a <strong>PAZ Y SALVO</strong> por todo concepto de obligaciones financieras y cartera con nuestra entidad.</p>
+          <p class="mb-6 text-justify">Se expide el presente certificado con destino a: <strong>${esc(concept)}</strong>.</p>
           <div class="mt-12 pt-8 border-t flex justify-around font-sans text-xs" style="border-color:#E5E7EB">
-            <div class="text-center">
-              <div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div>
-              <p class="font-bold">ADMINISTRACIÓN</p>
-              <p style="color:#6B7280">Representante Legal</p>
-            </div>
-            <div class="text-center">
-              <div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div>
-              <p class="font-bold">DEPARTAMENTO CONTABLE</p>
-              <p style="color:#6B7280">Contador Público</p>
-            </div>
+            <div class="text-center"><div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div><p class="font-bold">ADMINISTRACIÓN</p><p style="color:#6B7280">Representante Legal</p></div>
+            <div class="text-center"><div class="w-36 h-px bg-gray-400 mx-auto mb-2"></div><p class="font-bold">DEPARTAMENTO CONTABLE</p><p style="color:#6B7280">Contador Público</p></div>
           </div>
-        </div>
-      `;
+        </div>`;
 
-      lastGeneratedData = {
-        third: selectedThird,
-        cutoffDate,
-        city,
-        concept,
-        dateText,
-      };
-
-      const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
-      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = false;
+      lastGeneratedData = { third: selectedThird, cutoffDate, city, concept, dateText };
+      const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = false;
     } catch (err) {
       results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
       lastGeneratedData = null;
-      const pdfBtn = document.getElementById('btn-pdf-paz-salvo');
-      if (pdfBtn) (pdfBtn as HTMLButtonElement).disabled = true;
+      const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = true;
     }
   };
 
-  $('#btn-gen-paz-salvo')?.addEventListener('click', generate);
+  // ── Generador para modo UNIDAD PH (Notarial — Ley 675) ───────────────────
+  const generateByUnidad = async () => {
+    const results = $('#paz-salvo-results');
+    if (!results) return;
+
+    const propId     = (document.getElementById('paz-property-id') as HTMLSelectElement)?.value || '';
+    const cutoffDate = getInputVal('paz-cutoff-ph') || getInputVal('paz-cutoff');
+    const city       = getInputVal('paz-city-ph')   || getInputVal('paz-city') || 'Bogotá';
+    const concept    = getInputVal('paz-concept') || 'Trámites notariales de compraventa del inmueble';
+
+    if (!propId)     return showToast('Selecciona una Unidad Habitacional.', 'warning');
+    if (!cutoffDate) return showToast('Ingresa la fecha de corte.', 'warning');
+
+    const prop = phProperties.find(p => p.id === propId);
+    if (!prop) return showToast('Unidad no encontrada.', 'error');
+
+    results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Verificando cartera de la unidad...</div>';
+
+    try {
+      // Consultar cartera del inmueble usando el endpoint optimizado
+      const phCartera: any = await pb.send(
+        `/api/gravy/report-ph-cartera?cutoffDate=${cutoffDate}&propertyId=${encodeURIComponent(propId)}`,
+        { method: 'GET' }
+      );
+      const saldoTotal = Number(phCartera?.totals?.grandTotal || 0);
+      const rowsPendientes = (phCartera?.rows || []) as any[];
+
+      const months   = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+      const now      = new Date();
+      const dateText = `${now.getDate()} de ${months[now.getMonth()]} de ${now.getFullYear()}`;
+
+      const propCode  = prop.code || propId;
+      const propName  = prop.name || '';
+      const propTower = prop.tower    ? `Torre <strong>${esc(prop.tower)}</strong>, ` : '';
+      const propApto  = prop.apartment ? `Apartamento/Local <strong>${esc(prop.apartment)}</strong>, ` : '';
+      const propCoef  = prop.coef_participacion ? Number(prop.coef_participacion).toFixed(4) + '%' : 'N/A';
+
+      // Propietario de la unidad
+      let ownerName = prop.owner_name || '';
+      let ownerDoc  = prop.owner_doc  || '';
+      if (!ownerName && prop.owner_id) {
+        const ownerThird = thirds.find(t => t.id === prop.owner_id);
+        if (ownerThird) { ownerName = ownerThird.name; ownerDoc = ownerThird.doc_number; }
+      }
+
+      if (saldoTotal > 0.01) {
+        // Unidad con saldo pendiente — bloquear
+        const detailRows = rowsPendientes.map(r => `
+          <tr class="border-b" style="border-color:#F3F4F6">
+            <td class="py-1 font-mono text-xs">${esc(r.invoice_number)}</td>
+            <td class="py-1 text-xs">${esc(r.period)}</td>
+            <td class="py-1 text-xs">${esc(r.due_date)}</td>
+            <td class="py-1 text-right text-xs">${fmtN(Math.max(0, r.days_overdue))}</td>
+            <td class="py-1 text-right font-semibold text-xs">${fmt(r.saldo)}</td>
+          </tr>`).join('');
+
+        results.innerHTML = `
+          <div class="p-6 border rounded-2xl max-w-2xl mx-auto" style="border-color:#FCA5A5;background:#FEF2F2;color:#DC2626">
+            <div class="text-center mb-4">
+              <i class="fas fa-triangle-exclamation text-3xl mb-3"></i>
+              <h4 class="font-bold text-base mb-1">No se puede expedir el Paz y Salvo Notarial</h4>
+              <p class="text-xs font-sans" style="color:#6B7280">Unidad: <strong style="color:#0D2137">[${esc(propCode)}] ${esc(propName)}</strong></p>
+            </div>
+            <div class="text-left bg-white p-4 rounded-xl border mb-3 overflow-x-auto" style="border-color:#F87171;color:#374151">
+              <p class="font-bold text-xs uppercase mb-2" style="color:#991B1B">Cuotas Pendientes de Administración:</p>
+              <table class="w-full">
+                <thead><tr class="border-b" style="border-color:#E5E7EB"><th class="text-left text-xs pb-1">N° Factura</th><th class="text-left text-xs pb-1">Período</th><th class="text-left text-xs pb-1">Vcto.</th><th class="text-right text-xs pb-1">Días</th><th class="text-right text-xs pb-1">Saldo</th></tr></thead>
+                <tbody>${detailRows}</tbody>
+                <tfoot><tr class="font-bold"><td colspan="4" class="pt-2 text-sm">TOTAL PENDIENTE:</td><td class="pt-2 text-right text-sm" style="color:#DC2626">${fmt(saldoTotal)}</td></tr></tfoot>
+              </table>
+            </div>
+            <p class="text-xs text-center" style="color:#9CA3AF">La unidad debe estar a paz y salvo en cuotas ordinarias y extraordinarias para expedir este certificado (Ley 675 de 2001).</p>
+          </div>`;
+        lastGeneratedData = null;
+        const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = true;
+        return;
+      }
+
+      // ── UNIDAD A PAZ Y SALVO — Generar certificado notarial ───────────
+      results.innerHTML = `
+        <div class="p-8 border rounded-2xl max-w-2xl mx-auto bg-white shadow-sm" style="border-color:#E5E7EB;color:#374151;font-family:serif;line-height:1.85">
+          <!-- Encabezado -->
+          <div class="text-center mb-6 font-sans">
+            <h3 class="font-bold text-lg" style="color:#0D2137">PAZ Y SALVO NOTARIAL — PROPIEDAD HORIZONTAL</h3>
+            <p class="text-xs mt-1" style="color:#6B7280">Conforme a la Ley 675 de 2001 — Régimen de Propiedad Horizontal</p>
+            <span class="mt-2 inline-block px-3 py-1 rounded-full text-xs font-bold" style="background:#ECFDF5;color:#059669;border:1px solid #6EE7B7">
+              <i class="fas fa-check-circle mr-1"></i>Unidad a Paz y Salvo
+            </span>
+          </div>
+
+          <!-- Datos del inmueble -->
+          <div class="mb-5 p-3 rounded-xl font-sans text-xs" style="background:#F8FAFC;border:1px solid #E2E8F0">
+            <div class="grid grid-cols-2 gap-2">
+              <div><span style="color:#6B7280">Código / Nomenclatura:</span> <strong>${esc(propCode)}</strong></div>
+              <div><span style="color:#6B7280">Nombre Unidad:</span> <strong>${esc(propName)}</strong></div>
+              ${prop.tower     ? `<div><span style="color:#6B7280">Torre / Bloque:</span> <strong>${esc(prop.tower)}</strong></div>` : ''}
+              ${prop.apartment ? `<div><span style="color:#6B7280">Apto / Local:</span> <strong>${esc(prop.apartment)}</strong></div>` : ''}
+              <div><span style="color:#6B7280">Coef. Participación:</span> <strong>${propCoef}</strong></div>
+              <div><span style="color:#6B7280">Fecha de corte:</span> <strong>${esc(cutoffDate)}</strong></div>
+              ${ownerName ? `<div><span style="color:#6B7280">Propietario:</span> <strong>${esc(ownerName)}</strong></div>` : ''}
+              ${ownerDoc  ? `<div><span style="color:#6B7280">Identificación:</span> <strong>${esc(ownerDoc)}</strong></div>` : ''}
+            </div>
+          </div>
+
+          <p class="text-right mb-6 text-sm font-sans" style="color:#6B7280">${esc(city)}, ${dateText}</p>
+
+          <div class="text-center font-bold text-base mb-8 uppercase tracking-wide">Certificado de Paz y Salvo</div>
+
+          <p class="mb-4 text-justify">
+            La administración del conjunto residencial/comercial, en uso de sus facultades legales y reglamentarias, hace constar que la unidad privada identificada como ${propTower}${propApto}con nomenclatura
+            <strong>${esc(propCode)} — ${esc(propName)}</strong>, con coeficiente de copropiedad del <strong>${propCoef}</strong>,
+            se encuentra a <strong>PAZ Y SALVO</strong> por concepto de cuotas de administración ordinarias y extraordinarias,
+            intereses de mora, sanciones y demás obligaciones con la copropiedad, a la fecha de corte del <strong>${esc(cutoffDate)}</strong>.
+          </p>
+
+          <p class="mb-4 text-justify">
+            ${ownerName ? `El propietario registrado, <strong>${esc(ownerName)}</strong>${ownerDoc ? ', identificado con documento No. <strong>' + esc(ownerDoc) + '</strong>' : ''}, no registra deudas pendientes ante la administración de la copropiedad a la fecha indicada.` : 'La unidad no registra deudas pendientes ante la administración de la copropiedad a la fecha indicada.'}
+          </p>
+
+          <p class="mb-6 text-justify">
+            El presente certificado se expide para: <strong>${esc(concept)}</strong>.
+          </p>
+
+          <div class="mt-12 pt-8 border-t flex flex-wrap justify-around gap-8 font-sans text-xs" style="border-color:#E5E7EB">
+            <div class="text-center">
+              <div class="w-40 h-px bg-gray-400 mx-auto mb-2"></div>
+              <p class="font-bold">ADMINISTRADOR(A)</p>
+              <p style="color:#6B7280">Representante Legal</p>
+            </div>
+            <div class="text-center">
+              <div class="w-40 h-px bg-gray-400 mx-auto mb-2"></div>
+              <p class="font-bold">CONTADOR PÚBLICO</p>
+              <p style="color:#6B7280">T.P. —</p>
+            </div>
+          </div>
+
+          <p class="mt-6 text-center text-xs font-sans" style="color:#9CA3AF">
+            Este certificado es válido únicamente con los sellos y firmas de los representantes autorizados de la copropiedad.
+          </p>
+        </div>`;
+
+      lastGeneratedData = { isPh: true, prop, ownerName, ownerDoc, propCode, propName, propCoef, propTower, propApto, cutoffDate, city, concept, dateText };
+      const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = false;
+    } catch (err: any) {
+      results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+      lastGeneratedData = null;
+      const b = document.getElementById('btn-pdf-paz-salvo'); if (b) (b as HTMLButtonElement).disabled = true;
+    }
+  };
+
+  $('#btn-gen-paz-salvo')?.addEventListener('click', () => {
+    if (pazMode === 'unidad') generateByUnidad();
+    else generateByTercero();
+  });
 
   $('#btn-pdf-paz-salvo')?.addEventListener('click', async () => {
     if (!lastGeneratedData) return;
@@ -15025,41 +15258,94 @@ function exportCostCentersPDF(rows, fromDate, toDate) {
 async function renderAccountStatementReport() {
   const view = getReportViewHost();
   if (!view) return;
-  view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Estado de Cuenta por Tercero...</div>';
+  view.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando Estado de Cuenta...</div>';
 
   try {
+    const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
+
     const [{ accounts }, thirdParties] = await Promise.all([
       ensureAccountsSaldos(),
       ensureThirdParties(),
     ]);
 
+    // Cargar unidades habitacionales si el módulo está activo
+    let phProperties: any[] = [];
+    if (isPhActive) {
+      try {
+        phProperties = await pb.send('/api/collections/ph_properties/records?sort=code&perPage=500', { method: 'GET' })
+          .then((r: any) => r.items || []);
+      } catch (_) { phProperties = []; }
+    }
+
     const firstDayOfMonth = todayStr().slice(0, 8) + '01';
     const today = todayStr();
+
+    const phUnidadesOptions = phProperties.map(p =>
+      `<option value="${esc(p.id)}">[${esc(p.code)}] ${esc(p.name)}</option>`
+    ).join('');
 
     view.innerHTML = `
       <div class="p-4 border-b" style="border-color:#F3F4F6">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h4 class="font-bold text-base flex items-center" style="color:#0D2137"><i class="fas fa-file-invoice mr-2" style="color:#1A4B8C"></i>Estado de Cuenta por Tercero</h4>
-            <p class="text-xs" style="color:#6B7280">Consulta saldos iniciales, débitos, créditos y saldo final acumulado de un tercero en un lapso de tiempo.</p>
+            <h4 class="font-bold text-base flex items-center" style="color:#0D2137"><i class="fas fa-file-invoice mr-2" style="color:#1A4B8C"></i>Estado de Cuenta</h4>
+            <p class="text-xs" style="color:#6B7280">Consulta saldos iniciales, débitos, créditos y saldo acumulado de un tercero o unidad habitacional.</p>
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div class="relative md:col-span-2">
-            <label class="text-xs font-semibold" style="color:#6B7280">Tercero <span class="text-red-500">*</span></label>
-            <input type="text" id="stmt-third-search" class="form-input w-full mt-1" placeholder="Buscar por Nit, Cédula o Nombre..." autocomplete="off" />
-            <input type="hidden" id="stmt-third" value="" />
-            <div id="stmt-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
-          </div>
-          <div>
-            <label class="text-xs font-semibold" style="color:#6B7280">Filtrar por Cuentas</label>
-            <select id="stmt-acct-type" class="form-input mt-1 w-full">
-              <option value="all" selected>Todas las Cuentas</option>
-              <option value="cxc">Cuentas por Cobrar (Clase 13 - Cartera)</option>
-              <option value="cxp">Cuentas por Pagar (Clase 22 / 23 - Proveedores)</option>
-            </select>
+
+        ${isPhActive ? `
+        <!-- Selector de modo -->
+        <div class="flex gap-2 mb-4 p-1 rounded-xl" style="background:#F1F5F9;width:fit-content">
+          <button id="stmt-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#1A4B8C;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <i class="fas fa-user mr-1"></i>Por Tercero
+          </button>
+          <button id="stmt-mode-unidad" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:transparent;color:#6B7280">
+            <i class="fas fa-building mr-1"></i>Por Unidad PH
+          </button>
+        </div>` : ''}
+
+        <!-- Panel: Por Tercero -->
+        <div id="stmt-panel-tercero">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div class="relative md:col-span-2">
+              <label class="text-xs font-semibold" style="color:#6B7280">Tercero <span class="text-red-500">*</span></label>
+              <input type="text" id="stmt-third-search" class="form-input w-full mt-1" placeholder="Buscar por Nit, Cédula o Nombre..." autocomplete="off" />
+              <input type="hidden" id="stmt-third" value="" />
+              <div id="stmt-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
+            </div>
+            <div>
+              <label class="text-xs font-semibold" style="color:#6B7280">Filtrar por Cuentas</label>
+              <select id="stmt-acct-type" class="form-input mt-1 w-full">
+                <option value="all" selected>Todas las Cuentas</option>
+                <option value="cxc">Cuentas por Cobrar (Clase 13)</option>
+                <option value="cxp">Cuentas por Pagar (Clase 22/23)</option>
+              </select>
+            </div>
           </div>
         </div>
+
+        ${isPhActive ? `
+        <!-- Panel: Por Unidad PH -->
+        <div id="stmt-panel-unidad" style="display:none">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="text-xs font-semibold" style="color:#6B7280">Unidad Habitacional <span class="text-red-500">*</span></label>
+              <select id="stmt-property-id" class="form-input mt-1 w-full">
+                <option value="">— Seleccionar Unidad —</option>
+                ${phUnidadesOptions}
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-semibold" style="color:#6B7280">Filtrar por Cuentas</label>
+              <select id="stmt-acct-type-ph" class="form-input mt-1 w-full">
+                <option value="all" selected>Todas las Cuentas</option>
+                <option value="cxc">Cuentas por Cobrar (Clase 13)</option>
+              </select>
+            </div>
+          </div>
+          <div id="stmt-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#EEF4FF;border:1px solid #C7D7F5;color:#1A4B8C"></div>
+        </div>` : ''}
+
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
             <label class="text-xs font-semibold" style="color:#6B7280">Fecha desde</label>
@@ -15077,14 +15363,60 @@ async function renderAccountStatementReport() {
           <div class="flex gap-2">
             <button class="btn btn-primary flex-1" id="btn-gen-account-statement"><i class="fas fa-filter"></i> Generar</button>
             <button class="btn btn-outline" id="btn-pdf-account-statement" disabled><i class="fas fa-file-pdf"></i> PDF</button>
-            ${can('canExport') ? '<button class="btn btn-outline" id="btn-exp-account-statement" disabled><i class="fas fa-file-excel"></i> Excel</button>' : ''}
+            <button class="btn btn-outline" id="btn-exp-account-statement" disabled><i class="fas fa-file-excel"></i> Excel</button>
           </div>
         </div>
       </div>
       <div id="account-statement-results" class="p-6 text-sm text-center" style="color:#6B7280">
         <i class="fas fa-user-tag text-2xl mb-2" style="color:#9CA3AF"></i><br>
-        Selecciona un tercero y rango de fechas para generar el Estado de Cuenta.
+        Selecciona ${isPhActive ? 'un tercero o una unidad habitacional' : 'un tercero'} y un rango de fechas para generar el Estado de Cuenta.
       </div>`;
+
+    // Modo switching (solo si PH activo)
+    let stmtMode = 'tercero';
+    if (isPhActive) {
+      const btnModoTercero = $('#stmt-mode-tercero') as HTMLButtonElement;
+      const btnModoUnidad  = $('#stmt-mode-unidad') as HTMLButtonElement;
+      const panelTercero   = document.getElementById('stmt-panel-tercero');
+      const panelUnidad    = document.getElementById('stmt-panel-unidad');
+
+      const setMode = (mode: string) => {
+        stmtMode = mode;
+        const isTercero = mode === 'tercero';
+        btnModoTercero.style.background = isTercero ? '#fff' : 'transparent';
+        btnModoTercero.style.color = isTercero ? '#1A4B8C' : '#6B7280';
+        btnModoTercero.style.boxShadow = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+        btnModoUnidad.style.background = !isTercero ? '#fff' : 'transparent';
+        btnModoUnidad.style.color = !isTercero ? '#1A4B8C' : '#6B7280';
+        btnModoUnidad.style.boxShadow = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
+        if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
+        if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
+      };
+
+      btnModoTercero?.addEventListener('click', () => setMode('tercero'));
+      btnModoUnidad?.addEventListener('click',  () => setMode('unidad'));
+
+      // Mostrar info de la unidad seleccionada
+      const propSelect = document.getElementById('stmt-property-id') as HTMLSelectElement;
+      propSelect?.addEventListener('change', () => {
+        const propId = propSelect.value;
+        const infoBox = document.getElementById('stmt-property-info');
+        if (!infoBox) return;
+        if (!propId) { infoBox.classList.add('hidden'); return; }
+        const prop = phProperties.find(p => p.id === propId);
+        if (!prop) { infoBox.classList.add('hidden'); return; }
+        const owner = prop.expand?.owner_id;
+        infoBox.classList.remove('hidden');
+        infoBox.innerHTML = `
+          <div class="flex flex-wrap gap-4">
+            <span><i class="fas fa-building mr-1"></i><strong>Unidad:</strong> ${esc(prop.code)} — ${esc(prop.name)}</span>
+            ${prop.tower ? `<span><i class="fas fa-layer-group mr-1"></i><strong>Torre:</strong> ${esc(prop.tower)}</span>` : ''}
+            ${prop.apartment ? `<span><i class="fas fa-door-open mr-1"></i><strong>Apto:</strong> ${esc(prop.apartment)}</span>` : ''}
+            ${prop.coef_participacion ? `<span><i class="fas fa-percent mr-1"></i><strong>Coef.:</strong> ${Number(prop.coef_participacion).toFixed(4)}%</span>` : ''}
+            ${prop.admin_fee ? `<span><i class="fas fa-coins mr-1"></i><strong>Cuota Adm.:</strong> ${fmt(prop.admin_fee)}</span>` : ''}
+          </div>`;
+      });
+    }
 
     initThirdSearch(
       document.getElementById('stmt-third-search') as HTMLInputElement,
@@ -15116,10 +15448,207 @@ async function renderAccountStatementReport() {
       (document.getElementById('stmt-date-to') as HTMLInputElement).value = todayStr();
     });
 
-    $('#btn-gen-account-statement')?.addEventListener('click', generateAccountStatementRows);
+    $('#btn-gen-account-statement')?.addEventListener('click', () => {
+      const mode = stmtMode;
+      if (mode === 'unidad') {
+        generateAccountStatementByProperty(phProperties);
+      } else {
+        generateAccountStatementRows();
+      }
+    });
 
   } catch (err: any) {
     view.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
+  }
+}
+
+// ── Estado de Cuenta por UNIDAD HABITACIONAL (PH) ─────────────────────────────
+async function generateAccountStatementByProperty(phProperties: any[]) {
+  const results = $('#account-statement-results');
+  if (!results) return;
+
+  const propId   = (document.getElementById('stmt-property-id') as HTMLSelectElement)?.value || '';
+  const acctType = (document.getElementById('stmt-acct-type-ph') as HTMLSelectElement)?.value || 'all';
+  const dateFrom = ($('#stmt-date-from') as HTMLInputElement)?.value?.trim() || '';
+  const dateTo   = ($('#stmt-date-to')   as HTMLInputElement)?.value?.trim() || '';
+
+  if (!propId) {
+    showToast('Selecciona una Unidad Habitacional.', 'warning');
+    return;
+  }
+  if (!dateFrom || !dateTo) {
+    showToast('Selecciona ambas fechas.', 'warning');
+    return;
+  }
+
+  const prop = phProperties.find(p => p.id === propId);
+
+  results.innerHTML = '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos de la unidad...</div>';
+
+  try {
+    const { accounts } = await ensureAccountsSaldos();
+    let allowedAccIdsStr = '';
+    if (acctType === 'cxc') {
+      allowedAccIdsStr = accounts.filter(a => String(a.code || '').startsWith('13')).map(a => a.id).join(',');
+    }
+
+    const url = `/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&propertyId=${encodeURIComponent(propId)}&accountIds=${allowedAccIdsStr}${getScopeQueryParams()}`;
+    const res: any = await pb.send(url, { method: 'GET' });
+    const { openingBalances, periodLines } = res;
+
+    let initialBalance = 0;
+    for (const ob of (openingBalances || [])) initialBalance += Number(ob.balance || 0);
+
+    const lines = ((periodLines || []) as any[]).map(l => ({
+      fecha:       l.fecha || '',
+      comprobante: l.comprobante || '',
+      txId:        l.txId || '',
+      accountCode: l.accountCode || '',
+      accountName: l.accountName || '',
+      cuenta:      `${l.accountCode} - ${l.accountName}`.trim(),
+      doc_cruce:   l.doc_cruce || '—',
+      descripcion: l.descripcion || '',
+      debito:      Number(l.debito  || 0),
+      credito:     Number(l.credito || 0),
+    })).sort((a, b) => `${a.fecha}|${a.comprobante}`.localeCompare(`${b.fecha}|${b.comprobante}`));
+
+    let running = initialBalance;
+    const processed = lines.map(l => {
+      running += (l.debito - l.credito);
+      return { ...l, saldo: running };
+    });
+
+    const totalDebits  = lines.reduce((s, l) => s + l.debito, 0);
+    const totalCredits = lines.reduce((s, l) => s + l.credito, 0);
+
+    const btnPdf = $('#btn-pdf-account-statement') as HTMLButtonElement;
+    const btnExp = $('#btn-exp-account-statement') as HTMLButtonElement;
+    if (btnPdf) btnPdf.disabled = processed.length === 0;
+    if (btnExp) btnExp.disabled = processed.length === 0;
+
+    (window as any).lastAccountStatementData = {
+      isPropertyMode: true,
+      prop,
+      dateFrom,
+      dateTo,
+      acctType,
+      initialBalance,
+      processedLines: processed,
+      totalDebits,
+      totalCredits,
+      finalBalance: running,
+    };
+
+    if (processed.length === 0) {
+      results.innerHTML = `
+        <div class="p-6 text-center" style="color:#6B7280">
+          <i class="fas fa-building text-2xl mb-2" style="color:#9CA3AF"></i><br>
+          No hay movimientos contables para <strong>${esc(prop?.name || propId)}</strong> en el período seleccionado.
+        </div>`;
+      return;
+    }
+
+    const propCode  = esc(prop?.code || propId);
+    const propName  = esc(prop?.name || '');
+    const propTower = prop?.tower    ? `Torre: <strong>${esc(prop.tower)}</strong> &nbsp;` : '';
+    const propApto  = prop?.apartment ? `Apto: <strong>${esc(prop.apartment)}</strong> &nbsp;` : '';
+    const propCoef  = prop?.coef_participacion ? `Coef.: <strong>${Number(prop.coef_participacion).toFixed(4)}%</strong>` : '';
+
+    const rowsHtml = processed.map(l => {
+      const saldoStyle = l.saldo > 0 ? 'color:#DC2626' : l.saldo < 0 ? 'color:#059669' : 'color:#374151';
+      return `<tr>
+        <td class="font-mono text-xs">${esc(l.fecha)}</td>
+        <td class="font-mono text-xs">${esc(l.comprobante)}</td>
+        <td class="text-xs">${esc(l.cuenta)}</td>
+        <td class="font-mono text-xs">${esc(l.doc_cruce)}</td>
+        <td class="text-xs max-w-xs truncate" title="${esc(l.descripcion)}">${esc(l.descripcion)}</td>
+        <td class="text-right font-mono">${l.debito  ? fmt(l.debito)  : ''}</td>
+        <td class="text-right font-mono">${l.credito ? fmt(l.credito) : ''}</td>
+        <td class="text-right font-mono font-semibold" style="${saldoStyle}">${fmt(l.saldo)}</td>
+      </tr>`;
+    }).join('');
+
+    const initStyle = initialBalance > 0 ? 'color:#DC2626' : initialBalance < 0 ? 'color:#059669' : 'color:#6B7280';
+    const finalStyle = running > 0 ? 'color:#DC2626' : running < 0 ? 'color:#059669' : 'color:#059669';
+
+    results.innerHTML = `
+      <!-- Encabezado de la Unidad -->
+      <div class="bg-white border rounded-2xl p-4 mb-4 text-left" style="border-color:#E5E7EB;background:#F8FAFC">
+        <div class="flex flex-wrap items-start justify-between gap-3 pb-3 border-b mb-3" style="border-color:#E2E8F0">
+          <div>
+            <span class="text-xs uppercase font-bold tracking-wider px-2 py-0.5 rounded" style="background:#E0E7FF;color:#3730A3">UNIDAD HABITACIONAL</span>
+            <h3 class="text-lg font-bold mt-1" style="color:#0D2137">[${propCode}] ${propName}</h3>
+            <p class="text-xs mt-1" style="color:#6B7280">${propTower}${propApto}${propCoef}</p>
+          </div>
+          <div class="text-right text-xs" style="color:#4B5563">
+            <div><i class="fas fa-calendar-range mr-1"></i> Período: <strong>${esc(dateFrom)}</strong> al <strong>${esc(dateTo)}</strong></div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+          <div class="rounded-xl p-3" style="background:#F1F5F9">
+            <div class="text-xs font-semibold" style="color:#6B7280">Saldo Inicial</div>
+            <div class="text-base font-bold mt-1" style="${initStyle}">${fmt(initialBalance)}</div>
+          </div>
+          <div class="rounded-xl p-3" style="background:#FFF7ED">
+            <div class="text-xs font-semibold" style="color:#6B7280">Débitos (Cargos)</div>
+            <div class="text-base font-bold mt-1" style="color:#C46516">${fmt(totalDebits)}</div>
+          </div>
+          <div class="rounded-xl p-3" style="background:#ECFDF5">
+            <div class="text-xs font-semibold" style="color:#6B7280">Créditos (Abonos)</div>
+            <div class="text-base font-bold mt-1" style="color:#059669">${fmt(totalCredits)}</div>
+          </div>
+          <div class="rounded-xl p-3" style="background:#EEF4FF">
+            <div class="text-xs font-semibold" style="color:#6B7280">Saldo Final</div>
+            <div class="text-base font-bold mt-1" style="${finalStyle}">${fmt(running)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de movimientos -->
+      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+        <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:#F0F0F0">
+          <span class="font-bold text-sm" style="color:#0D2137">Detalle de Movimientos — ${propCode} ${propName}</span>
+          <span class="text-xs" style="color:#9CA3AF">${processed.length} registro(s)</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="data-table" id="stmt-ph-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Comprobante</th>
+                <th>Cuenta</th>
+                <th>Doc. Cruce</th>
+                <th>Descripción</th>
+                <th class="text-right">Débito</th>
+                <th class="text-right">Crédito</th>
+                <th class="text-right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="font-semibold text-xs" style="background:#F8FAFC">
+                <td colspan="7" style="color:#6B7280"><i class="fas fa-arrow-right mr-1"></i>Saldo anterior al período</td>
+                <td class="text-right font-mono font-bold" style="${initStyle}">${fmt(initialBalance)}</td>
+              </tr>
+              ${rowsHtml}
+            </tbody>
+            <tfoot>
+              <tr class="font-bold text-sm" style="background:#EEF4FF">
+                <td colspan="5" style="color:#0D2137">SALDO FINAL</td>
+                <td class="text-right font-mono" style="color:#C46516">${fmt(totalDebits)}</td>
+                <td class="text-right font-mono" style="color:#059669">${fmt(totalCredits)}</td>
+                <td class="text-right font-mono" style="${finalStyle}">${fmt(running)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>`;
+
+    const tbl = document.getElementById('stmt-ph-table') as HTMLTableElement;
+    if (tbl && typeof (window as any).makeTableSortable === 'function') {
+      (window as any).makeTableSortable(tbl);
+    }
+  } catch (err: any) {
+    results.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
 }
 
@@ -15546,7 +16075,7 @@ async function renderSalesBySellerReport() {
         <div class="flex gap-2">
           <button class="btn btn-primary" id="btn-gen-sv"><i class="fas fa-filter mr-1"></i> Generar</button>
           <button class="btn btn-outline" id="btn-pdf-sv" disabled><i class="fas fa-file-pdf mr-1"></i> PDF</button>
-          ${can('canExport') ? '<button class="btn btn-outline" id="btn-exp-sv" disabled><i class="fas fa-file-excel mr-1"></i> Excel</button>' : ''}
+          <button class="btn btn-outline" id="btn-exp-sv" disabled><i class="fas fa-file-excel mr-1"></i> Excel</button>
         </div>
       </div>
     </div>

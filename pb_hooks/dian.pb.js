@@ -6,12 +6,14 @@ function sanitizeName(val) {
 
 function getSetting(key, defaultValue) {
   try {
-    const r = $app.findFirstRecordByFilter("settings", "key = '" + key.replace(/'/g, "''") + "'");
-    return r.get("value") || defaultValue;
+    const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+    return (r ? r.get("value") : null) || defaultValue;
   } catch (_) {
     return defaultValue;
   }
 }
+globalThis.getSetting = getSetting;
+
 
 function getAndIncrementDianShipmentConsecutive() {
   const currentYear = new Date().getFullYear();
@@ -3064,7 +3066,19 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
 routerAdd('POST', '/api/dian/check-status', (e) => {
 
+  const getSetting = (typeof globalThis.getSetting === 'function')
+    ? globalThis.getSetting
+    : function(key, defaultValue) {
+        try {
+          const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+          return (r ? r.get("value") : null) || defaultValue;
+        } catch (_) {
+          return defaultValue;
+        }
+      };
+
 function sendInvoiceEmailHelper(txId, customEmail) {
+
 
   const syncSmtpSettings = function() {
     const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
@@ -3592,10 +3606,41 @@ function sendInvoiceEmailHelper(txId, customEmail) {
   }
   
   try {
-    const docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
-    if (!docRecord) {
-      e.json(404, { message: "Documento de facturación no encontrado para esta transacción." });
+    let docRecord = null;
+    try {
+      docRecord = $app.findFirstRecordByFilter("einvoice_docs", "tx_id = '" + txId + "'");
+    } catch (_) {}
+
+    const tx = $app.findRecordById("transactions", txId);
+    if (!tx) {
+      e.json(404, { message: "Transacción no encontrada." });
       return;
+    }
+    $app.expandRecord(tx, ["tx_type_id"], null);
+    const txType = tx.expandedOne("tx_type_id");
+    const prefix = txType ? txType.getString("prefix") : "";
+    const docNumber = tx.getString("number") || "";
+    let folio = docNumber;
+    if (prefix && folio.startsWith(prefix)) {
+      folio = folio.substring(prefix.length);
+    }
+    folio = folio.replace(/[^0-9]/g, '').replace(/^0+/, '');
+    if (!folio) folio = "0";
+
+    const txTypeCode = txType ? String(txType.getString("code") || '').toUpperCase() : "";
+    const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : "";
+    const isDS = (txTypeCode === "DS" || txPrefix === "DS" || txPrefix === "DSE" || docNumber.startsWith("DS"));
+    const isNDS = (txTypeCode === "NDS" || txPrefix === "NDS");
+    const isPOS = (txTypeCode === "POS");
+    const isNC = (txTypeCode === "NC");
+    const isND = (txTypeCode === "ND");
+
+    if (!docRecord) {
+      const col = $app.findCollectionByNameOrId("einvoice_docs");
+      docRecord = new Record(col);
+      docRecord.set("tx_id", txId);
+      docRecord.set("status", "pendiente");
+      $app.save(docRecord);
     }
     
     if (docRecord.getString("status") === "aceptada") {
@@ -3611,39 +3656,25 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       }
     }
     
-    const transId = docRecord.getString("ftech_transaction_id");
+    let transId = docRecord.getString("ftech_transaction_id");
     if (!transId) {
-      e.json(400, { message: "El documento no tiene un ID de transacción de Facturatech asociado." });
-      return;
+      // Para Documento Soporte (DS/NDS) o POS, Facturatech permite consultar por prefijo y folio directamente
+      if (!isDS && !isNDS && !isPOS) {
+        e.json(400, { message: "El documento no tiene un ID de transacción de Facturatech asociado." });
+        return;
+      }
+      transId = "";
     }
     
-    const tx = $app.findRecordById("transactions", txId);
-    $app.expandRecord(tx, ["tx_type_id"], null);
-    const txType = tx.expandedOne("tx_type_id");
-    const prefix = txType ? txType.getString("prefix") : "";
-    const docNumber = tx.getString("number") || "";
-    let folio = docNumber;
-    if (prefix && folio.startsWith(prefix)) {
-      folio = folio.substring(prefix.length);
+    let ftechUsername = getSetting("ftech_username", "");
+    if (!ftechUsername) {
+      ftechUsername = getSetting("company_nit", "900123456").split('-')[0].replace(/[^0-9]/g, '');
     }
-    folio = folio.replace(/[^0-9]/g, '').replace(/^0+/, '');
-    if (!folio) folio = "0";
-    
-    const ftechUsername = getSetting("ftech_username", "");
     const ftechPassword = getSetting("ftech_password", "");
     const ftechEnvironment = getSetting("ftech_environment", "2");
     
     const hubUrl = "http://127.0.0.1:8088/api/facturatech/check-status";
     console.log("[GRAVY HOOK] Consultando estado en Hub: " + hubUrl);
-    
-    const txTypeCode = txType ? String(txType.getString("code") || '').toUpperCase() : "";
-    const txPrefix = txType ? String(txType.getString("prefix") || '').toUpperCase() : "";
-    const isDS = (txTypeCode === "DS" || txPrefix === "DS" || txPrefix === "DSE");
-    const isNDS = (txTypeCode === "NDS" || txPrefix === "NDS");
-    const isPOS = (txTypeCode === "POS");
-
-    const isNC = (txTypeCode === "NC");
-    const isND = (txTypeCode === "ND");
 
     const requestBody = {
       transId,
@@ -3676,14 +3707,20 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       throw new Error(responseData.error || responseData.message || "Error al consultar estado en Facturatech.");
     }
     
-    docRecord.set("status", responseData.status || "enviada");
+    const incomingStatus = responseData.status || "enviada";
+    // Si ya estaba aceptada previamente, nunca degradar a enviada por desfase del hub
+    if (docRecord.getString("status") !== "aceptada" || incomingStatus === "aceptada") {
+      docRecord.set("status", incomingStatus);
+    }
     if (responseData.cufe) {
       docRecord.set("cufe", responseData.cufe);
     }
     if (responseData.xmlContent) {
       docRecord.set("xml_content", responseData.xmlContent);
     }
-    docRecord.set("dian_response", responseData.message || "Procesado.");
+    if (incomingStatus === "aceptada" || docRecord.getString("status") !== "aceptada") {
+      docRecord.set("dian_response", responseData.message || "Procesado.");
+    }
     $app.save(docRecord);
 
     // Auto-send email if accepted
@@ -3718,7 +3755,19 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 
 routerAdd('POST', '/api/dian/resend-email', (e) => {
 
+  const getSetting = (typeof globalThis.getSetting === 'function')
+    ? globalThis.getSetting
+    : function(key, defaultValue) {
+        try {
+          const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+          return (r ? r.get("value") : null) || defaultValue;
+        } catch (_) {
+          return defaultValue;
+        }
+      };
+
 function sendInvoiceEmailHelper(txId, customEmail) {
+
 
   const syncSmtpSettings = function() {
     const smtpEnabled = getSetting("smtp_enabled", "0") === "1";
@@ -4255,6 +4304,17 @@ function sendInvoiceEmailHelper(txId, customEmail) {
 });
 
 routerAdd("POST", "/api/dian/pdf-bytes", (e) => {
+  const getSetting = (typeof globalThis.getSetting === 'function')
+    ? globalThis.getSetting
+    : function(key, defaultValue) {
+        try {
+          const r = $app.findFirstRecordByFilter("settings", "key = '" + String(key || '').replace(/'/g, "''") + "'");
+          return (r ? r.get("value") : null) || defaultValue;
+        } catch (_) {
+          return defaultValue;
+        }
+      };
+
   const body = e.requestInfo()?.body || {};
   const invoiceId = body.invoiceId || body.invoice_id;
   if (!invoiceId) {
@@ -4713,7 +4773,7 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
     const consecutivo = rec.getInt("consecutivo") || 1;
     const transId = rec.getString("ftech_transaction_id");
 
-    if (transId && ftechUsername) {
+    if ((transId || (prefijo && consecutivo)) && ftechUsername) {
       try {
         const statusHubRes = $http.send({
           url: "http://127.0.0.1:8088/api/facturatech/check-status",
@@ -4737,12 +4797,16 @@ routerAdd('POST', '/api/dian/nomina/check-status', (e) => {
           let estadoFinal = "EN_PROCESO";
           if (sData.status === "aceptada" || sData.status === "APROBADO") {
             estadoFinal = "APROBADO";
+            if (sData.cufe) {
+              rec.set("cufe", sData.cufe.trim());
+            }
             if (sData.xmlContent && sData.xmlContent.includes("<")) {
               rec.set("xml_generado", sData.xmlContent);
               const cMatch = sData.xmlContent.match(/<cbc:UUID[^>]*>(.*?)<\/cbc:UUID>/i) ||
                              sData.xmlContent.match(/<CUNE[^>]*>(.*?)<\/CUNE>/i) ||
-                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i);
-              if (cMatch && cMatch[1]) {
+                             sData.xmlContent.match(/CUNE="([0-9a-fA-F]{64,96})"/i) ||
+                             sData.xmlContent.match(/([0-9a-fA-F]{64,96})/);
+              if (cMatch && cMatch[1] && !rec.get("cufe")) {
                 rec.set("cufe", cMatch[1].trim());
               }
             }

@@ -5375,6 +5375,18 @@ async function calculateCune(params: {
   return await computeSha384Hex(canonicalString);
 }
 
+function calcNitDV(nit: string): string {
+  const clean = String(nit || '').replace(/\D/g, '');
+  if (!clean) return '0';
+  const primes = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+  let sum = 0;
+  for (let i = 0; i < clean.length; i++) {
+    sum += Number(clean[clean.length - 1 - i]) * primes[i];
+  }
+  const remainder = sum % 11;
+  return String(remainder < 2 ? remainder : 11 - remainder);
+}
+
 function buildSingleWorkerUblXml(
   emp: any,
   company: any,
@@ -5495,7 +5507,10 @@ function buildSingleWorkerUblXml(
   }
 
   const cleanCompanyNit = String(company.companyNit || '').split('-')[0].replace(/[^0-9]/g, '') || '900000000';
-  const cleanCompanyDv = String(company.companyDv || '').replace(/[^0-9]/g, '') || '0';
+  let cleanCompanyDv = String(company.companyDv || '').replace(/[^0-9]/g, '');
+  if (!cleanCompanyDv || cleanCompanyDv === '0') {
+    cleanCompanyDv = calcNitDV(cleanCompanyNit);
+  }
   const deptCode = esc(company.deptCode || '76');
   const cityCode = esc(company.cityCode || '76001');
 
@@ -5567,7 +5582,7 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       return showToast('No hay liquidaciones registradas en los períodos de este mes.', 'warning');
     }
 
-    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit" || key="company_address" || key="ftech_software_pin" || key="ftech_environment"' }).catch(() => []);
+    const settingsList = await pb.listAll('settings', { filter: 'key="company_rules" || key="company" || key="company_name" || key="company_nit" || key="company_address" || key="company_dv" || key="ftech_software_pin" || key="ftech_environment"' }).catch(() => []);
     let companyName = 'Empresa S.A.S.';
     let companyNit = '900000000';
     let companyDv = '0';
@@ -5592,9 +5607,11 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
       const nameS = settingsList.find((s: any) => s.key === 'company_name');
       const nitS = settingsList.find((s: any) => s.key === 'company_nit');
       const dirS = settingsList.find((s: any) => s.key === 'company_address');
+      const dvS = settingsList.find((s: any) => s.key === 'company_dv');
       if (nameS) companyName = nameS.value;
       if (nitS) companyNit = nitS.value;
       if (dirS) companyDir = dirS.value;
+      if (dvS && dvS.value) companyDv = dvS.value;
     }
 
     const pinS = settingsList.find((s: any) => s.key === 'ftech_software_pin' || s.key === 'dian_software_pin');
@@ -5606,7 +5623,10 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
     }
 
     companyNit = String(companyNit).split('-')[0].replace(/[^0-9]/g, '') || '900000000';
-    companyDv = String(companyDv).replace(/[^0-9]/g, '') || '0';
+    companyDv = String(companyDv).replace(/[^0-9]/g, '');
+    if (!companyDv || companyDv === '0') {
+      companyDv = calcNitDV(companyNit);
+    }
 
     // ── Resolución DIAN Independiente para Nómina Electrónica (document_type = "NE") ──
     const neResolutions = await pb.listAll('dian_resolutions', { filter: 'document_type="NE" && active=true' }).catch(() => []);

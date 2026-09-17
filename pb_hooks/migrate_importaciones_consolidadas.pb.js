@@ -128,6 +128,7 @@ onBootstrap((e) => {
           { name: "fob_amount_cop", type: "number", required: false, min: 0 },
           { name: "payment_due_date", type: "text", required: false },
           { name: "notes", type: "text", required: false },
+          { name: "cost_distribution_pct", type: "number", required: false, min: 0, max: 100 },
           { name: "invoice_file", type: "file", required: false, maxSelect: 1, maxSize: 10485760, mimeTypes: ["application/pdf", "image/*"] },
           { name: "created", type: "autodate", onCreate: true, onUpdate: false },
           { name: "updated", type: "autodate", onCreate: true, onUpdate: true }
@@ -155,6 +156,26 @@ onBootstrap((e) => {
     } catch (err) {
       console.log("[GRAVY-IMPORT-CONSOLIDADO] Error al crear import_invoices: " + err);
     }
+  }
+
+  // Asegurar que import_invoices tenga cost_distribution_pct si ya existía
+  try {
+    if (importInvoicesId) {
+      const invCol = $app.findCollectionByNameOrId("import_invoices");
+      const invFieldNames = new Set(invCol.fields.fieldNames());
+      if (!invFieldNames.has("cost_distribution_pct")) {
+        invCol.fields.add(new NumberField({
+          name: "cost_distribution_pct",
+          required: false,
+          min: 0,
+          max: 100
+        }));
+        $app.save(invCol);
+        console.log("[GRAVY-IMPORT-CONSOLIDADO] Campo 'cost_distribution_pct' agregado a 'import_invoices'.");
+      }
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORT-CONSOLIDADO] Aviso al extender import_invoices: " + err);
   }
 
   // ──────────────────────────────────────────────────────────

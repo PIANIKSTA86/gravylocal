@@ -292,6 +292,21 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           throw new Error(`Línea ${i + 1}: account_id es obligatorio.`);
         }
 
+        const crossRef = String(line.cross_doc_ref || "").trim();
+        const isSinRef = String(txData.description || "").includes("[SIN_REFERENCIA]");
+        if (!crossRef && !isSinRef) {
+          try {
+            const accRec = txApp.findRecordById("accounts", accountId);
+            if (accRec && (accRec.getBool("maneja_cruce") || accRec.get("maneja_cruce") === true || accRec.get("maneja_cruce") === 1)) {
+              throw new Error(`Línea ${i + 1}: La cuenta "${accRec.getString("code")} - ${accRec.getString("name")}" está configurada para uso de documento de cruce. Es obligatorio registrar un documento de cruce.`);
+            }
+          } catch (accErr) {
+            if (accErr.message && accErr.message.includes("documento de cruce")) {
+              throw accErr;
+            }
+          }
+        }
+
         const lineRec = new Record(linesCol);
         lineRec.set("tx_id",          txId);
         lineRec.set("account_id",     accountId);
@@ -299,7 +314,7 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
         lineRec.set("credit",         Number(line.credit || 0));
         lineRec.set("description",    String(line.description || ""));
         lineRec.set("line_order",     Number(line.line_order != null ? line.line_order : i + 1));
-        lineRec.set("cross_doc_ref",  String(line.cross_doc_ref || ""));
+        lineRec.set("cross_doc_ref",  crossRef);
         if (line.cross_doc_date) {
           lineRec.set("cross_doc_date", String(line.cross_doc_date || "").trim());
         }

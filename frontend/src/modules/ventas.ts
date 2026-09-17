@@ -90,6 +90,7 @@ function defaultSalesConfig() {
       default_warehouse_id: '',
       enable_multi_unit_conversions: false,
       dian_dependent_posting: false,
+      enable_multi_warehouse_billing: false,
     },
     accounting: {
       accounts: {
@@ -163,6 +164,7 @@ function normalizeSalesConfig(cfg: any) {
       default_warehouse_id: String(op.default_warehouse_id || '').trim(),
       enable_multi_unit_conversions: op.enable_multi_unit_conversions === true,
       dian_dependent_posting: op.dian_dependent_posting === true,
+      enable_multi_warehouse_billing: op.enable_multi_warehouse_billing === true,
     },
     accounting: {
       accounts: {
@@ -246,6 +248,7 @@ async function openSalesSettingsModal(onSaved: any = null) {
             <label class="inline-flex items-center gap-2"><input id="so-cfg-allow-price-edit" type="checkbox" ${cfg.operational.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-allow-negative-stock" type="checkbox" ${cfg.operational.allow_negative_stock ? 'checked' : ''}>Permitir stock negativo</label>
             <label class="inline-flex items-center gap-2"><input id="so-cfg-multi-unit" type="checkbox" ${cfg.operational.enable_multi_unit_conversions ? 'checked' : ''}>Habilitar conversión de unidades dinámica (Pisos/Peso/M2)</label>
+            <label class="inline-flex items-center gap-2 md:col-span-2"><input id="so-cfg-multi-warehouse-billing" type="checkbox" ${cfg.operational.enable_multi_warehouse_billing ? 'checked' : ''}><strong>Habilitar facturación multi-bodega (despacho por ítem / línea de factura)</strong></label>
             <label class="inline-flex items-center gap-2 md:col-span-2"><input id="so-cfg-immediate-posting" type="checkbox" ${cfg.operational.immediate_posting ? 'checked' : ''}><strong>Contabilización inmediata al guardar (Evitar Borrador)</strong></label>
             <label class="inline-flex items-center gap-2 md:col-span-2"><input id="so-cfg-dian-dependent" type="checkbox" ${cfg.operational.dian_dependent_posting ? 'checked' : ''}><strong>Vincular Contabilización a Firma DIAN (Firmar y Contabilizar)</strong></label>
             
@@ -465,6 +468,7 @@ async function openSalesSettingsModal(onSaved: any = null) {
             allow_negative_stock: getCheckVal('so-cfg-allow-negative-stock'),
             default_warehouse_id: getSelectVal('so-cfg-default-warehouse') || '',
             enable_multi_unit_conversions: getCheckVal('so-cfg-multi-unit'),
+            enable_multi_warehouse_billing: getCheckVal('so-cfg-multi-warehouse-billing'),
           },
           accounting: {
             accounts: {
@@ -1165,6 +1169,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   (window as any).__soTxTypesCache = txTypes;
   (window as any).__soResolutionsCache = dianResolutions;
+  (window as any).__soWarehousesCache = warehouses;
+  const isMultiWhEnabled = soConfig.operational?.enable_multi_warehouse_billing === true;
 
   const sellers = customers.filter((c: any) => c.type === 'EMPLEADO');
 
@@ -1353,7 +1359,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   (window as any).__soCurrentWhStock = currentWhStock;
 
   (window as any).soUpdateStockDisplay = async function(idx: number, productId: string) {
-    const whId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value;
+    const lineWhSel = document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement;
+    const whId = lineWhSel ? lineWhSel.value : ((document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId);
     const qtyInput = document.getElementById(`sol-qty-${idx}`) as HTMLInputElement;
     const qtyRequested = parseFloat(qtyInput?.value || '0') || 0;
 
@@ -1419,6 +1426,49 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     }
   };
 
+  (window as any).soLineWarehouseChanged = function(idx: number) {
+    const sel = document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement;
+    if (sel) sel.dataset.manualOverride = 'true';
+    const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+    if (prodId && (window as any).soUpdateStockDisplay) {
+      (window as any).soUpdateStockDisplay(idx, prodId);
+    }
+    window.soRecalcLine(idx);
+    if (typeof (window as any).soSaveTempState === 'function') {
+      (window as any).soSaveTempState();
+    }
+  };
+
+  (window as any).soApplyHeaderWarehouseToAllLines = function() {
+    const whSelect = document.getElementById('so-warehouse') as HTMLSelectElement;
+    const whId = whSelect?.value || '';
+    if (!whId) {
+      (window as any).showToast('Selecciona primero una bodega en el encabezado.', 'warning');
+      return;
+    }
+    const rows = document.querySelectorAll('#so-lines-body tr');
+    let count = 0;
+    rows.forEach((row: any) => {
+      const idx = row.id.split('-').pop();
+      const lineWhSel = document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement;
+      if (lineWhSel) {
+        lineWhSel.value = whId;
+        lineWhSel.dataset.manualOverride = 'true';
+        count++;
+        const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+        if (prodId && (window as any).soUpdateStockDisplay) {
+          (window as any).soUpdateStockDisplay(idx, prodId);
+        }
+      }
+    });
+    const whName = warehouses.find((w: any) => w.id === whId)?.name || 'la bodega seleccionada';
+    (window as any).showToast(`Bodega "${whName}" aplicada a ${count} línea(s).`, 'info');
+    window.soRecalcLine(0);
+    if (typeof (window as any).soSaveTempState === 'function') {
+      (window as any).soSaveTempState();
+    }
+  };
+
   const whSelect = document.getElementById('so-warehouse') as HTMLSelectElement;
   if (whSelect) {
     const handleWhChange = async () => {
@@ -1428,6 +1478,10 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       const rows = document.querySelectorAll('#so-lines-body tr');
       rows.forEach((row: any) => {
         const idx = row.id.split('-').pop();
+        const lineWhSel = document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement;
+        if (lineWhSel && (!isMultiWhEnabled || !lineWhSel.dataset.manualOverride) && newWhId) {
+          lineWhSel.value = newWhId;
+        }
         const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
         if (prodId && (window as any).soUpdateStockDisplay) {
           (window as any).soUpdateStockDisplay(idx, prodId);
@@ -1638,9 +1692,12 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           </div>
           <!-- Bodega -->
           <div>
-            <label class="so-hdr-label">Bodega <span style="font-size:10px;color:#9CA3AF">(despacho)</span></label>
+            <div class="flex items-center justify-between">
+              <label class="so-hdr-label">Bodega ${isMultiWhEnabled ? '<span style="font-size:10px;color:#1A4B8C;font-weight:700">(Predeterminada)</span>' : ''}</label>
+              ${isMultiWhEnabled ? `<button type="button" class="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer" onclick="window.soApplyHeaderWarehouseToAllLines()" title="Asignar esta bodega a todas las líneas actuales">Aplicar a todas</button>` : ''}
+            </div>
             <select id="so-warehouse" class="form-input so-compact-inp" onchange="window.soRecalcLine(0)">
-              <option value="">— Sin bodega —</option>
+              <option value="">${isMultiWhEnabled ? '— Sin bodega predeterminada —' : '— Seleccionar Bodega —'}</option>
               ${warehouses.map(w => `<option value="${(window as any).esc(w.id)}"${(inv?.warehouse_id === w.id || (!inv && (soConfig.operational.default_warehouse_id === w.id || warehouses.length === 1))) ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
             </select>
           </div>
@@ -1777,6 +1834,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <thead style="position:sticky;top:0;z-index:10">
               <tr>
                 <th style="min-width:200px;background:#F4F8FF;color:#374151">Código / Referencia — Producto</th>
+                <th class="so-wh-col" style="width:140px;background:#F4F8FF;color:#374151;${isMultiWhEnabled ? '' : 'display:none'}">Bodega</th>
                 <th class="text-right" style="width:110px;background:#F4F8FF;color:#374151">Cantidad</th>
                 <th class="text-right" style="width:155px;background:#F4F8FF;color:#374151">P. Unitario</th>
                 <th class="text-right" style="width:95px;background:#F4F8FF;color:#374151">IVA %</th>
@@ -2301,10 +2359,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
   (window as any).soOpenLineLotPalletModal = async function(idx: number) {
     const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
-    const whId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
+    const lineWhSel = document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement;
+    const whId = lineWhSel?.value || (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
 
     if (!whId) {
-      (window as any).showToast('Selecciona primero la bodega en el encabezado de la venta.', 'warning');
+      (window as any).showToast('Selecciona primero la bodega para este producto o en el encabezado de la venta.', 'warning');
       return;
     }
 
@@ -2637,6 +2696,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const initialPalletCode = preloadedLine?.pallet_code || '';
     const initialBoxesQty = preloadedLine?.boxes_qty || 0;
 
+    const currentHdrWh = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
+    const lineWhId = isMultiWhEnabled
+      ? (preloadedLine?.warehouse_id || currentHdrWh || (warehouses[0]?.id || ''))
+      : (currentHdrWh || (warehouses[0]?.id || ''));
+
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
     tr.dataset.baseUnit = baseUnit;
@@ -2684,6 +2748,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           <input type="hidden" id="sol-pallet-code-${idx}" value="${(window as any).esc(initialPalletCode)}">
           <input type="hidden" id="sol-boxes-qty-${idx}" value="${initialBoxesQty}">
         </div>
+      </td>
+      <td class="so-wh-col" style="${isMultiWhEnabled ? '' : 'display:none'}">
+        <select id="sol-wh-${idx}" class="form-input so-compact-inp text-xs font-semibold sol-warehouse" onchange="window.soLineWarehouseChanged(${idx})" style="height:28px;padding:2px 4px;font-size:11px" title="Bodega origen de despacho">
+          ${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}"${w.id === lineWhId ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}
+        </select>
       </td>
       <td>
         <div class="flex flex-col gap-1">
@@ -3075,6 +3144,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         pallet_id: palletId || null,
         pallet_code: palletCode || '',
         boxes_qty: boxesQty,
+        warehouse_id: (document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement)?.value || null,
       });
     });
 
@@ -3173,6 +3243,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 // --- Persistencia Borrador Factura ---
 async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = null, inv: any = null) {
   const soConfig = await getSalesConfig();
+  const isMultiWhEnabled = soConfig.operational?.enable_multi_warehouse_billing === true;
+  const warehouses: any[] = (window as any).__soWarehousesCache || (await (window as any).API.getWarehouses(true).catch(() => []));
   const btn = document.getElementById('btn-save-so') as HTMLButtonElement;
   if (btn) {
     btn.disabled = true;
@@ -3191,7 +3263,10 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     // Map to legacy payMethod for compatibility:
     const payMethod = payForm === '2' ? 'CREDITO' : (payDianCode === '10' ? 'EFECTIVO' : 'TRANSFERENCIA');
 
-    const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value;
+    let warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || '';
+    if (!warehouseId && warehouses.length === 1) {
+      warehouseId = warehouses[0].id;
+    }
     const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value;
     const domInvoiceId = (document.getElementById('so-invoice-id') as HTMLInputElement)?.value || null;
     const effectiveInvoiceId = invoiceId || domInvoiceId;
@@ -3219,7 +3294,6 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     if (!payMethod) throw new Error('Selecciona la forma de pago.');
     // Se valida más abajo después de calcular gross y retTotal
     if (!txTypeId) throw new Error('Selecciona el tipo de comprobante.');
-    if (!warehouseId) throw new Error('Debes seleccionar la bodega origen (despacho).');
 
     const tableRows = document.querySelectorAll('#so-lines-body tr');
     const lines: any[] = [];
@@ -3232,6 +3306,10 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
       const idx = idParts[idParts.length - 1];
 
       const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
+      const rawLineWhId = (document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement)?.value;
+      const lineWhId = isMultiWhEnabled
+        ? (rawLineWhId || warehouseId || (warehouses.length === 1 ? warehouses[0].id : null))
+        : (warehouseId || (warehouses.length === 1 ? warehouses[0].id : null));
       const qty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const price = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const ivaRate = parseFloat((document.getElementById(`sol-iva-${idx}`) as HTMLInputElement)?.value || '0') || 0;
@@ -3240,6 +3318,13 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
       if (!prodId) throw new Error(`Fila ${lineIdx + 1}: selecciona un producto.`);
       if (qty <= 0) throw new Error(`Fila ${lineIdx + 1}: la cantidad debe ser mayor que cero.`);
+
+      const prodsCache = (window as any).__soProductsCache || [];
+      const prodObj = prodsCache.find((p: any) => p.id === prodId);
+      const isService = prodObj && (String(prodObj.type || '').toUpperCase() === 'SERVICIO' || prodObj.is_service === true);
+      if (!isService && !lineWhId) {
+        throw new Error(`Fila ${lineIdx + 1}: debes seleccionar la bodega origen (despacho) para "${prodObj?.name || 'este producto'}".`);
+      }
 
       const roundDec = (v: number) => typeof (window as any).roundDecimals === 'function'
         ? (window as any).roundDecimals(v)
@@ -3279,6 +3364,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
       lines.push({
         product_id: prodId,
+        warehouse_id: lineWhId,
         qty: roundDec(qty),
         unit_price: storedPrice,
         iva_rate: ivaRate,
@@ -3299,20 +3385,21 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
     if (!lines.length) throw new Error('Agrega al menos una línea de venta.');
 
-    // Validar existencias disponibles si stock negativo no está permitido
+    // Validar existencias disponibles por (producto + bodega) si stock negativo no está permitido
     const allowNegative = (window as any).__soConfig?.operational?.allow_negative_stock === true;
     const prodsCache = (window as any).__soProductsCache || [];
-    const currentWhStock = (window as any).__soCurrentWhStock || [];
     const txTypesCache = (window as any).__soTxTypesCache || [];
     const selectedTxType = txTypesCache.find((t: any) => t.id === txTypeId);
     const isNC = (selectedTxType?.code === 'NC') || (selectedTxType?.prefix === 'NC') || ((window as any).__soNoteConfig?.type === 'NC');
 
     if (!allowNegative && !isNC) {
-      // Agrupar cantidades solicitadas por producto
-      const qtyByProd: Record<string, number> = {};
+      // Agrupar cantidades solicitadas por producto y bodega
+      const qtyByProdWh: Record<string, number> = {};
       lines.forEach(l => {
         if (l.product_id) {
-          qtyByProd[l.product_id] = (qtyByProd[l.product_id] || 0) + Number(l.qty || 0);
+          const wId = l.warehouse_id || warehouseId || '';
+          const key = `${l.product_id}_${wId}`;
+          qtyByProdWh[key] = (qtyByProdWh[key] || 0) + Number(l.qty || 0);
         }
       });
 
@@ -3321,21 +3408,33 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
         const prodObj = (prodsCache || []).find((p: any) => p.id === line.product_id);
         const isService = prodObj && (String(prodObj.type || '').toUpperCase() === 'SERVICIO' || prodObj.is_service === true);
         if (!isService && line.product_id) {
-          const stockRow = (currentWhStock || []).find((s: any) => s.product_id === line.product_id);
-          let availableStock = stockRow ? Number(stockRow.qty_on_hand || 0) : 0;
+          const lWhId = line.warehouse_id || warehouseId;
+          const key = `${line.product_id}_${lWhId || ''}`;
+          let availableStock = 0;
+          let whName = 'la bodega seleccionada';
 
-          // Si estamos editando una factura existente (effectiveInvoiceId), sumar las cantidades
-          // previamente asociadas a esta factura para no bloquear el guardado si la factura ya las descontó
+          if (lWhId) {
+            const stockRows = await (window as any).API.getInventoryStock({ warehouseId: lWhId, productId: line.product_id }).catch(() => []);
+            const stockRow = stockRows.find((s: any) => s.product_id === line.product_id);
+            availableStock = stockRow ? Number(stockRow.qty_on_hand || 0) : 0;
+            whName = (warehouses || []).find((w: any) => w.id === lWhId)?.name || 'la bodega seleccionada';
+          } else {
+            const stockRows = await (window as any).API.getInventoryStock({ productId: line.product_id }).catch(() => []);
+            availableStock = stockRows.reduce((sum: number, s: any) => sum + Number(s.qty_on_hand || 0), 0);
+            whName = 'todas las bodegas';
+          }
+
+          // Si estamos editando una factura existente, sumar las cantidades previamente asociadas
           if (effectiveInvoiceId && existingLines && existingLines.length > 0) {
             const origQty = existingLines
-              .filter((el: any) => el.product_id === line.product_id)
+              .filter((el: any) => el.product_id === line.product_id && (el.warehouse_id || inv?.warehouse_id) === lWhId)
               .reduce((sum: number, el: any) => sum + Number(el.qty || 0), 0);
             availableStock += origQty;
           }
 
-          const totalReqQty = qtyByProd[line.product_id] || line.qty;
+          const totalReqQty = qtyByProdWh[key] || line.qty;
           if (totalReqQty > availableStock + 0.0001) {
-            throw new Error(`Fila ${i + 1}: La cantidad solicitada para "${prodObj?.name || 'Producto'}" (${(window as any).fmtN(totalReqQty)} unds) supera las existencias disponibles (${(window as any).fmtN(availableStock)} unds) en la bodega seleccionada.`);
+            throw new Error(`Fila ${i + 1}: La cantidad solicitada para "${prodObj?.name || 'Producto'}" (${(window as any).fmtN(totalReqQty)} unds) supera las existencias disponibles (${(window as any).fmtN(availableStock)} unds) en ${whName}.`);
           }
         }
       }

@@ -190,6 +190,18 @@ const pb = {
     return true;
   },
 
+  /** Compatibilidad PocketBase SDK: pb.collection(col).getList / getOne / getFullList / create / update / delete */
+  collection(collectionName) {
+    return {
+      getList: (page = 1, perPage = 200, options = {}) => this.list(collectionName, { page, perPage, ...options }),
+      getFullList: (options = {}) => this.listAll(collectionName, options),
+      getOne: (id, options = {}) => this.get(collectionName, id, options),
+      create: (data) => this.create(collectionName, data),
+      update: (id, data) => this.update(collectionName, id, data),
+      delete: (id) => this.delete(collectionName, id)
+    };
+  },
+
   /** Autenticaciï¿½n de usuario */
   async authWithPassword(email, password) {
     const res = await fetch(`${pb.baseUrl}/api/collections/users/auth-with-password`, {
@@ -2632,14 +2644,22 @@ const API = {
       await this.createImportReservationForInvoice(invoiceId, { createDelivery: true, allowExisting: true });
     }
 
-    // ── Validar stock en tiempo real y preparar COGS ───────────────────
-    const movLines = [];
+    // ── Validar stock en tiempo real y preparar COGS (Soporte Multi-Bodega) ──
+    const movLinesByWh: { [whId: string]: any[] } = {};
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       if (prod && prod.type === 'BIEN') {
         if (isImportReservationMode) {
           continue;
         }
+        const effectiveWhId = line.warehouse_id || inv.warehouse_id;
+        if (!effectiveWhId) {
+          throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${prod.code || ''} ${prod.name || ''}.`);
+        }
+        if (!movLinesByWh[effectiveWhId]) {
+          movLinesByWh[effectiveWhId] = [];
+        }
+
         if (prod.is_combo) {
           const comps = await pb.listAll('product_components', { filter: `parent_id="${pb.escapeFilterValue(prod.id)}"`, expand: 'component_id' });
           if (!comps.length) {
@@ -2650,16 +2670,13 @@ const API = {
             const compName = compProd ? compProd.name : (comp.expand?.component_id?.name || 'Componente');
             const compCode = compProd ? compProd.code : (comp.expand?.component_id?.code || '');
             const compQty = rDec(line.qty * comp.qty);
-            if (!inv.warehouse_id) {
-              throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${compCode} ${compName}.`);
-            }
-            const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: comp.component_id }).catch(() => []);
+            const stockRows = await this.getInventoryStock({ warehouseId: effectiveWhId, productId: comp.component_id }).catch(() => []);
             const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
             if (!allowNegative && qtyOnHand + 0.0001 < compQty) {
               throw new Error(`Existencias insuficientes para el componente "${compName}" (necesario para el combo "${prod.name}") en la bodega seleccionada. Solicitado: ${fmtN(compQty)}, Disponible: ${fmtN(qtyOnHand)}.`);
             }
             const avgCost = Number(stockRows[0]?.avg_cost || (compProd ? compProd.cost_price : 0) || 0);
-            movLines.push({
+            movLinesByWh[effectiveWhId].push({
               product_id: comp.component_id,
               qty: compQty,
               unit_cost: rDec(avgCost),
@@ -2667,10 +2684,7 @@ const API = {
             });
           }
         } else {
-          if (!inv.warehouse_id) {
-            throw new Error(`Se requiere seleccionar una bodega origen para el producto inventariable ${prod.code || ''} ${prod.name || ''}.`);
-          }
-          const stockRows = await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []);
+          const stockRows = await this.getInventoryStock({ warehouseId: effectiveWhId, productId: line.product_id }).catch(() => []);
           const qtyOnHand = Number(stockRows[0]?.qty_on_hand || 0);
           const lineQty = rDec(line.qty);
           if (!isCreditNote && !allowNegative && qtyOnHand + 0.0001 < lineQty) {
@@ -2681,7 +2695,7 @@ const API = {
           if (isLineLoss) {
             console.log(`[GRAVY] Producto "${prod.name}" marcado como pérdida/gasto en Nota Crédito. Se omite movimiento de inventario.`);
           } else {
-            movLines.push({
+            movLinesByWh[effectiveWhId].push({
               product_id: line.product_id,
               qty: lineQty,
               unit_cost: rDec(avgCost),
@@ -3190,7 +3204,8 @@ const API = {
       const prod = products.find(p => p.id === line.product_id);
       if (!prod || prod.type !== 'BIEN' || isImportReservationMode) continue;
 
-      const stockRows = inv.warehouse_id ? await this.getInventoryStock({ warehouseId: inv.warehouse_id, productId: line.product_id }).catch(() => []) : [];
+      const effectiveWhId = line.warehouse_id || inv.warehouse_id;
+      const stockRows = effectiveWhId ? await this.getInventoryStock({ warehouseId: effectiveWhId, productId: line.product_id }).catch(() => []) : [];
       const avgCost = Number(stockRows[0]?.avg_cost || prod.cost_price || 0);
       const lineQty = rDec(line.qty);
       const cogsAmt = rDec(lineQty * avgCost);
@@ -3368,48 +3383,65 @@ const API = {
         txCreated = await this.createTransaction(txPayload, txLines);
       }
 
-      // ── Movimiento de Inventario ──────────────────────────────
+      // ── Movimientos de Inventario (Soporte Multi-Bodega) ──────────────────
       let invMovId = inv.inv_movement_id || null;
+      const createdMovements: any[] = [];
+      const createdMovIds: string[] = [];
+
       if (invMovId) {
         const existingMov = await pb.get('inventory_movements', invMovId).catch(() => null);
         if (existingMov && existingMov.status === 'applied') {
           console.log(`[GRAVY] Reutilizando movimiento de inventario previamente aplicado (${invMovId}) para la factura ${inv.number}`);
-          movCreated = null;
+          createdMovIds.push(invMovId);
         } else {
           invMovId = null;
         }
       }
 
-      if (!invMovId && movLines.length && inv.warehouse_id) {
+      if (!invMovId && Object.keys(movLinesByWh).length > 0) {
         const today = inv.date || new Date().toISOString().slice(0, 10);
         const movType = isCreditNote ? 'ENTRADA' : 'SALIDA';
-        const movNumber = await this.getNextInventoryMovementNumber(today, movType);
-        movCreated = await pb.create('inventory_movements', {
-          number: movNumber,
-          mov_type: movType,
-          date: inv.date,
-          warehouse_id: inv.warehouse_id,
-          third_party_id: inv.customer_id,
-          notes: `${docLabel} ${inv.number}`,
-          status: 'draft',
-          tx_id: txCreated.id,
-          branch_id: inv.branch_id || null,
-        });
-        invMovId = movCreated.id;
-        for (let i = 0; i < movLines.length; i++) {
-          await pb.create('inventory_movement_lines', { movement_id: movCreated.id, line_order: i + 1, ...movLines[i] });
+
+        for (const whId of Object.keys(movLinesByWh)) {
+          const whLines = movLinesByWh[whId];
+          if (!whLines || !whLines.length) continue;
+
+          const movNumber = await this.getNextInventoryMovementNumber(today, movType);
+          const movCreated = await pb.create('inventory_movements', {
+            number: movNumber,
+            mov_type: movType,
+            date: inv.date,
+            warehouse_id: whId,
+            third_party_id: inv.customer_id,
+            notes: `${docLabel} ${inv.number}`,
+            status: 'draft',
+            tx_id: txCreated.id,
+            branch_id: inv.branch_id || null,
+          });
+
+          for (let i = 0; i < whLines.length; i++) {
+            await pb.create('inventory_movement_lines', { movement_id: movCreated.id, line_order: i + 1, ...whLines[i] });
+          }
+          await this.applyInventoryMovement(movCreated.id);
+          createdMovements.push(movCreated);
+          createdMovIds.push(movCreated.id);
         }
-        await this.applyInventoryMovement(movCreated.id);
+        invMovId = createdMovIds[0] || null;
       }
 
       // ── Actualizar Factura Comercial ─────────────────────────────────
-      const updatedInvRec = await pb.update('invoices', invoiceId, {
+      const updatePayload: any = {
         status: 'posted',
         tx_id: txCreated.id,
         inv_movement_id: invMovId,
         tx_type_id: effectiveTxTypeId,
         tx_number: txNumber,
-      });
+      };
+      if (createdMovIds.length > 0) {
+        updatePayload.inv_movement_ids = createdMovIds;
+      }
+
+      const updatedInvRec = await pb.update('invoices', invoiceId, updatePayload);
 
       if (updatedInvRec && updatedInvRec.number && updatedInvRec.number !== txNumber && !updatedInvRec.number.startsWith('BORR-')) {
         try {
@@ -3432,18 +3464,20 @@ const API = {
       return { inv, tx: txCreated };
     } catch (postErr) {
       // ROLLBACK atómico en caso de fallo intermedio
-      if (movCreated) {
-        try {
-          const currentMov = await pb.get('inventory_movements', movCreated.id).catch(() => null);
-          if (currentMov && currentMov.status === 'applied') {
-            await this.voidInventoryMovement(movCreated.id, 'Rollback por fallo de contabilización');
-          }
-          const mLines = await pb.listAll('inventory_movement_lines', { filter: `movement_id="${pb.escapeFilterValue(movCreated.id)}"` }).catch(() => []);
-          for (const ml of mLines) {
-            await pb.delete('inventory_movement_lines', ml.id).catch(() => {});
-          }
-          await pb.delete('inventory_movements', movCreated.id).catch(() => {});
-        } catch (_) {}
+      if (createdMovements && createdMovements.length > 0) {
+        for (const movCreated of createdMovements) {
+          try {
+            const currentMov = await pb.get('inventory_movements', movCreated.id).catch(() => null);
+            if (currentMov && currentMov.status === 'applied') {
+              await this.voidInventoryMovement(movCreated.id, 'Rollback por fallo de contabilización');
+            }
+            const mLines = await pb.listAll('inventory_movement_lines', { filter: `movement_id="${pb.escapeFilterValue(movCreated.id)}"` }).catch(() => []);
+            for (const ml of mLines) {
+              await pb.delete('inventory_movement_lines', ml.id).catch(() => {});
+            }
+            await pb.delete('inventory_movements', movCreated.id).catch(() => {});
+          } catch (_) {}
+        }
       }
       if (txCreated) {
         try {
@@ -3504,10 +3538,10 @@ const API = {
     return { valid: true, inv, customer, lines };
   },
 
-  /** Revierte los efectos contables e inventario de una factura */
+  /** Revierte los efectos contables e inventario de una factura (Soporte Multi-Bodega) */
   async rollbackInvoicePosting(invoiceId, actionLabel = 'anular', reason = '') {
     const inv = await pb.get('invoices', invoiceId);
-    if (inv.status !== 'posted' && !inv.tx_id && !inv.inv_movement_id) {
+    if (inv.status !== 'posted' && !inv.tx_id && !inv.inv_movement_id && !(Array.isArray(inv.inv_movement_ids) && inv.inv_movement_ids.length)) {
       return { inv, txVoided: false, movementVoided: false };
     }
 
@@ -3524,13 +3558,36 @@ const API = {
       }
     }
 
-    if (inv.inv_movement_id) {
-      const mov = await pb.get('inventory_movements', inv.inv_movement_id).catch(() => null);
-      if (mov && mov.status === 'applied') {
-        await this.voidInventoryMovement(inv.inv_movement_id, reason);
-      } else if (mov && mov.status !== 'voided') {
-        await pb.update('inventory_movements', inv.inv_movement_id, { status: 'voided' });
-        await this.logAudit('VOID', 'InventoryMovement', inv.inv_movement_id, `Anulación ${mov.mov_type || 'MOV'} - ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+    // Identificar todos los movimientos de inventario asociados (soporte multi-bodega)
+    const movIdsToVoid = new Set<string>();
+    if (inv.inv_movement_id) movIdsToVoid.add(inv.inv_movement_id);
+    if (inv.inv_movement_ids) {
+      const ids = Array.isArray(inv.inv_movement_ids)
+        ? inv.inv_movement_ids
+        : (typeof inv.inv_movement_ids === 'string' ? JSON.parse(inv.inv_movement_ids || '[]') : []);
+      ids.forEach((id: string) => id && movIdsToVoid.add(id));
+    }
+    if (inv.tx_id) {
+      try {
+        const linkedMovs = await pb.listAll('inventory_movements', { filter: `tx_id="${pb.escapeFilterValue(inv.tx_id)}"` }).catch(() => []);
+        linkedMovs.forEach((m: any) => movIdsToVoid.add(m.id));
+      } catch (_) {}
+    }
+
+    let movementsVoidedCount = 0;
+    for (const movId of movIdsToVoid) {
+      try {
+        const mov = await pb.get('inventory_movements', movId).catch(() => null);
+        if (mov && mov.status === 'applied') {
+          await this.voidInventoryMovement(movId, reason);
+          movementsVoidedCount++;
+        } else if (mov && mov.status !== 'voided') {
+          await pb.update('inventory_movements', movId, { status: 'voided' });
+          await this.logAudit('VOID', 'InventoryMovement', movId, `Anulación ${mov.mov_type || 'MOV'} - ${mov.number || ''}${reason ? ` | Motivo: ${reason}` : ''}`.trim());
+          movementsVoidedCount++;
+        }
+      } catch (err) {
+        console.warn(`[rollbackInvoicePosting] Error al anular movimiento ${movId}:`, err);
       }
     }
 
@@ -3541,7 +3598,7 @@ const API = {
         has_pending_delivery: false,
         fulfillment_status: 'SIN_GESTION',
       });
-      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulaciÃ³n/reapertura de factura ${inv.number}`);
+      await this.logAudit('UPDATE_STATUS', 'SalesOrder', inv.sales_order_id, `Pedido devuelto a pendiente por anulación/reapertura de factura ${inv.number}`);
     }
 
     await this.releaseReservationsByInvoice(invoiceId, `${actionLabel} venta ${inv.number}${reason ? ` | ${reason}` : ''}`).catch(() => {});
@@ -3549,7 +3606,7 @@ const API = {
     return {
       inv,
       txVoided: !!inv.tx_id,
-      movementVoided: !!inv.inv_movement_id,
+      movementVoided: movementsVoidedCount > 0,
     };
   },
 
@@ -3842,6 +3899,8 @@ const API = {
     let phCfg = {};
     try { phCfg = rawCfg ? JSON.parse(rawCfg) : {}; } catch (_) { phCfg = {}; }
     const lateFeeRate = Number(phCfg?.late_fee_rate || 0);
+    const incomeCode = String(phCfg?.income_code || '413505').trim();
+    const lateFeeIncomeCode = String(phCfg?.late_fee_income_code || incomeCode).trim();
     let moraConcept = (concepts || []).find(c => String(c?.code || '').trim().toUpperCase() === 'MORA');
     if (!moraConcept) {
       try {
@@ -3935,12 +3994,67 @@ const API = {
           perPage: 200,
         });
 
+        // Consultar cartera contable real de esta unidad para no liquidar mora sobre facturas saldadas
+        let unitBalMap: Record<string, any> = {};
+        try {
+          const balUrl = `${pb.baseUrl}/api/ph/unit-balance?propertyId=${encodeURIComponent(prop.id)}`;
+          const balRes = await fetch(balUrl, { headers: pb.headers() });
+          if (balRes.ok) {
+            const balData = await balRes.json();
+            if (Array.isArray(balData?.invoices)) {
+              balData.invoices.forEach((b: any) => { unitBalMap[b.invoiceId] = b; });
+            }
+          }
+        } catch (balErr) {
+          console.warn(`[generatePhInvoices] No se pudo verificar saldo contable para propiedad ${prop.id}:`, balErr);
+        }
+
+        // Fallback directo a contabilidad (tx_lines) si el endpoint backend no devolvió datos
+        if (Object.keys(unitBalMap).length === 0 && overdueInvoices.length > 0) {
+          try {
+            for (const oldInv of overdueInvoices) {
+              const safeInvNum = pb.escapeFilterValue(oldInv.number);
+              const credits = await pb.listAll('tx_lines', {
+                filter: `(cross_doc_ref="${safeInvNum}" || cross_doc_ref~"${safeInvNum}-") && credit > 0`
+              }).catch(() => []);
+              const totalPaid = (credits || []).reduce((s: number, c: any) => s + (Number(c.credit) || 0), 0);
+              const invTotal = Number(oldInv.total || 0);
+              const pendingAmount = Math.max(0, invTotal - totalPaid);
+              unitBalMap[oldInv.id] = {
+                invoiceId: oldInv.id,
+                invoiceNumber: oldInv.number,
+                period: oldInv.period,
+                total: invTotal,
+                paidAmount: totalPaid,
+                pendingAmount: pendingAmount,
+                isSettled: pendingAmount < 0.01
+              };
+            }
+          } catch (fbErr) {
+            console.warn(`[generatePhInvoices] Error en fallback contable:`, fbErr);
+          }
+        }
+
         let lateAmount = 0;
         for (const oldInv of overdueInvoices) {
           if (!oldInv?.due_date) continue;
           const due = new Date(`${oldInv.due_date}T00:00:00`);
           if (Number.isNaN(due.getTime())) continue;
           if (due.getTime() >= asOf.getTime()) continue;
+
+          // Verificar si ya fue pagada contablemente
+          const balInfo = unitBalMap[oldInv.id];
+          if (balInfo) {
+            if (balInfo.isSettled || Number(balInfo.pendingAmount || 0) < 0.01) {
+              // Factura completamente cubierta en contabilidad: omitir del cálculo de mora
+              continue;
+            }
+          }
+
+          const invTotal = Number(oldInv.total || 0);
+          const pendingBalance = balInfo ? Number(balInfo.pendingAmount || 0) : invTotal;
+          // Factor de proporción si hubo pagos parciales: la mora se liquida ÚNICAMENTE sobre el capital insoluto
+          const proportionFactor = (invTotal > 0.01 && pendingBalance < invTotal) ? (pendingBalance / invTotal) : 1;
 
           const safeOldInv = pb.escapeFilterValue(oldInv.id);
           const oldLines = await pb.listAll('ph_invoice_lines', {
@@ -3954,9 +4068,12 @@ const API = {
             const selectedById = conceptId && lateConceptSet.has(conceptId);
             const selectedByDesc = !conceptId && lateConceptNameSet.has(descNorm);
             if (!selectedById && !selectedByDesc) continue;
-            const principal = Number(oldLn.amount || 0);
-            if (principal <= 0) continue;
-            lateAmount += principal * (lateFeeRate / 100);
+            const fullPrincipal = Number(oldLn.amount || 0);
+            if (fullPrincipal <= 0) continue;
+            // Mora sobre la porción de capital efectivamente pendiente
+            const unpaidPrincipal = fullPrincipal * proportionFactor;
+            if (unpaidPrincipal < 0.01) continue;
+            lateAmount += unpaidPrincipal * (lateFeeRate / 100);
           }
         }
 
@@ -4565,12 +4682,15 @@ const API = {
     return res.json();
   },
 
-  /** Genera el PDF oficial de una cuenta o estado de cuenta PH directamente en el orquestador */
+  /** Genera el PDF oficial de una cuenta o estado de cuenta PH a través del backend/proxy seguro */
   async generatePhStatementPdfDirect(statementData: any, filename = 'cuenta_cobro') {
-    const orchestratorHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
-    const res = await fetch(`http://${orchestratorHost}:8088/api/ph/generate-pdf`, {
+    const targetUrl = (this && this.baseUrl) ? `${this.baseUrl}/api/ph/generate-pdf` : '/api/ph/generate-pdf';
+    const res = await fetch(targetUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this && this.authToken ? { 'Authorization': `Bearer ${this.authToken}` } : {})
+      },
       body: JSON.stringify({
         filename,
         format: 'base64',
@@ -6740,6 +6860,77 @@ const API = {
     };
 
     const mov = await pb.create('inventory_movements', movData);
+
+    // CÁLCULO DE COSTO INDIVIDUAL POR PRODUCTO AL CIERRE:
+    // Si la importación es consolidada y se definieron porcentajes manuales de distribución de costos
+    // por proveedor/factura comercial (cost_distribution_pct), estos se aplican EXCLUSIVAMENTE AQUÍ
+    // en el momento del cierre definitivo de la importación para determinar el costo unitario de ingreso.
+    if (imp.is_consolidated) {
+      try {
+        const importInvoices = await this.getImportInvoices(importId);
+        const invoicesWithPct = importInvoices.filter((iv: any) => Number(iv.cost_distribution_pct) > 0);
+
+        if (invoicesWithPct.length > 0) {
+          const totalPct = invoicesWithPct.reduce((s: number, iv: any) => s + Number(iv.cost_distribution_pct), 0);
+
+          if (totalPct > 0) {
+            const totalImportCOP = totalAmount;
+
+            for (const inv of invoicesWithPct) {
+              const invPct = Number(inv.cost_distribution_pct);
+              const normalizedRatio = totalPct === 100 ? (invPct / 100) : (invPct / totalPct);
+              const invCostPool = totalImportCOP * normalizedRatio;
+
+              // Líneas asociadas a esta factura o al proveedor de la factura
+              const invLines = lines.filter((l: any) =>
+                l.import_invoice_id === inv.id ||
+                (!l.import_invoice_id && l.supplier_id && (l.supplier_id === inv.supplier_id || l.supplier_id === inv.third_party_id))
+              );
+
+              if (invLines.length > 0) {
+                let totalMetric = 0;
+                if (imp.proration_method === 'GROSS_WEIGHT') {
+                  totalMetric = invLines.reduce((s: number, l: any) => s + (Number(l.peso_bruto_total) || 0), 0);
+                } else if (imp.proration_method === 'CUBIC_VOLUME') {
+                  totalMetric = invLines.reduce((s: number, l: any) => s + (Number(l.cubic_meters_total) || 0), 0);
+                }
+                if (totalMetric <= 0) {
+                  totalMetric = invLines.reduce((s: number, l: any) => s + (Number(l.qty || 0) * Number(l.fob_price || 0)), 0);
+                }
+
+                invLines.forEach((l: any) => {
+                  let lineMetric = 0;
+                  if (imp.proration_method === 'GROSS_WEIGHT') {
+                    lineMetric = Number(l.peso_bruto_total) || 0;
+                  } else if (imp.proration_method === 'CUBIC_VOLUME') {
+                    lineMetric = Number(l.cubic_meters_total) || 0;
+                  }
+                  if (lineMetric <= 0) {
+                    lineMetric = Number(l.qty || 0) * Number(l.fob_price || 0);
+                  }
+
+                  const lineRatio = totalMetric > 0 ? (lineMetric / totalMetric) : (1 / invLines.length);
+                  const assignedLineTotalCOP = Math.round(invCostPool * lineRatio);
+                  const assignedUnitCostCOP = Number(l.qty || 0) > 0 ? Math.round((assignedLineTotalCOP / Number(l.qty)) * 100) / 100 : 0;
+
+                  l.unit_cost_cop = assignedUnitCostCOP;
+                  l.total_cop = assignedLineTotalCOP;
+
+                  // Actualizar en import_lines para auditoría permanente
+                  pb.update('import_lines', l.id, {
+                    unit_cost_cop: assignedUnitCostCOP,
+                    total_cop: assignedLineTotalCOP,
+                    notes: `${l.notes || ''} [Cierre Consolidado: ${invPct}% Proveedor]`.trim()
+                  }).catch(() => {});
+                });
+              }
+            }
+          }
+        }
+      } catch (distErr) {
+        console.warn('[CapitalizeImport] Error aplicando distribución manual de costos por proveedor:', distErr);
+      }
+    }
 
     for (let i = 0; i < lines.length; i++) {
       const l = lines[i];

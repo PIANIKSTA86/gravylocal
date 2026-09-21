@@ -32,6 +32,187 @@ const TRANSPORTS = [
   { value: 'courier', label: '📦 Courier' }
 ];
 
+const IMPORT_CONCEPTS_META: Record<string, { label: string; puc: string; name: string; icon: string; iconColor: string; iconBg: string }> = {
+  fob: { label: '1. FOB Mercancía', puc: '220505', name: 'Proveedores del Exterior', icon: 'fas fa-ship', iconColor: 'text-indigo-600', iconBg: 'bg-indigo-50' },
+  freight: { label: '2. Flete Internacional', puc: '233545', name: 'Costos y Gastos Fletes', icon: 'fas fa-plane-departure', iconColor: 'text-sky-600', iconBg: 'bg-sky-50' },
+  insurance: { label: '3. Seguro Internacional', puc: '233555', name: 'Seguros y Pólizas Int.', icon: 'fas fa-shield-alt', iconColor: 'text-amber-600', iconBg: 'bg-amber-50' },
+  customs: { label: '4. Aduana / DIAN / SIA', puc: '233595', name: 'Agenciamiento Aduanero y Aranceles', icon: 'fas fa-building-columns', iconColor: 'text-purple-600', iconBg: 'bg-purple-50' },
+  local_carrier: { label: '5. Transporte Local', puc: '233545', name: 'Acarreos y Fletes Terrestres Locales', icon: 'fas fa-truck', iconColor: 'text-emerald-600', iconBg: 'bg-emerald-50' },
+  local_other: { label: '6. Otros Gastos Portuarios', puc: '233595', name: 'Gastos Portuarios y Bodegaje', icon: 'fas fa-box', iconColor: 'text-orange-600', iconBg: 'bg-orange-50' },
+};
+
+function renderStageAccountingViewer({
+  stageKey,
+  stageTitle,
+  pucCode,
+  pucName,
+  icon,
+  iconColor,
+  iconBg,
+  lines,
+  importId,
+}: {
+  stageKey: string;
+  stageTitle: string;
+  pucCode: string;
+  pucName: string;
+  icon: string;
+  iconColor: string;
+  iconBg: string;
+  lines: any[];
+  importId: string | null;
+}) {
+  const totalDebit = (lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+  const totalCredit = (lines || []).reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+  const netTotal = totalDebit - totalCredit;
+  const hasLines = (lines || []).length > 0;
+
+  return `
+    <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl ${iconBg} ${iconColor} flex items-center justify-center font-bold text-base">
+            <i class="${icon}"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h5 class="font-bold text-sm text-slate-800">${stageTitle}</h5>
+              <span class="badge badge-purple text-[10px] font-bold"><i class="fas fa-arrow-right-arrow-left mr-1"></i>Modo Inverso</span>
+            </div>
+            <p class="text-xs text-slate-500">Contrapartida esperada: <strong>PUC ${pucCode} (${pucName})</strong> · Asientos registrados en contabilidad</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${importId ? `
+            <button type="button" class="btn btn-outline btn-xs" onclick="window.openLinkTxLineModal('${importId}', '${stageKey}')">
+              <i class="fas fa-link mr-1"></i> Vincular Movimiento
+            </button>
+            <button type="button" class="btn btn-primary btn-xs" onclick="window.openRegisterTxForImport('${importId}', '${stageKey}')">
+              <i class="fas fa-plus mr-1"></i> Registrar en Contabilidad
+            </button>
+          ` : `
+            <span class="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200 font-medium">
+              <i class="fas fa-circle-info mr-1"></i> Guarda el borrador primero para vincular movimientos
+            </span>
+          `}
+          <button type="button" class="btn btn-outline btn-xs" onclick="window.switchImpStageTab('resumen')">
+            <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabla de Asientos Contables Vinculados -->
+      <div class="border rounded-xl overflow-hidden bg-white shadow-sm">
+        <table class="w-full text-xs text-left border-collapse">
+          <thead class="bg-slate-50 text-slate-600 border-b font-semibold">
+            <tr>
+              <th class="py-2.5 px-3" style="width:90px">Fecha</th>
+              <th class="py-2.5 px-3" style="width:120px">Comprobante</th>
+              <th class="py-2.5 px-3" style="min-width:160px">Tercero</th>
+              <th class="py-2.5 px-3" style="width:130px">Factura Ref.</th>
+              <th class="py-2.5 px-3 text-right" style="width:100px">TRM ($)</th>
+              <th class="py-2.5 px-3" style="min-width:180px">Cuenta PUC</th>
+              <th class="py-2.5 px-3 text-right" style="width:120px">Débito (COP)</th>
+              <th class="py-2.5 px-3 text-right" style="width:120px">Crédito (COP)</th>
+              <th class="py-2.5 px-3 text-center" style="width:90px">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${hasLines ? lines.map((l: any) => {
+              const tx = l.expand?.tx_id || {};
+              const third = l.expand?.third_party_id || tx.expand?.third_party_id || {};
+              const acct = l.expand?.account_id || {};
+              const txDate = tx.date || (l.created ? l.created.slice(0, 10) : '—');
+              const txNum = tx.number || 'Asiento';
+              const invRef = l.import_invoice_ref || tx.import_invoice_ref || '—';
+              const trm = l.import_trm || tx.import_trm || 0;
+              const debit = Number(l.debit || 0);
+              const credit = Number(l.credit || 0);
+
+              return `
+                <tr class="hover:bg-slate-50 transition-colors">
+                  <td class="py-2.5 px-3 font-mono text-slate-600">${(window as any).esc(txDate)}</td>
+                  <td class="py-2.5 px-3 font-mono font-bold">
+                    <button type="button" class="text-blue-600 hover:underline cursor-pointer bg-transparent border-0 p-0 font-mono font-bold" onclick="window.viewStageTx('${l.tx_id || tx.id}')" title="Ver comprobante completo">
+                      ${(window as any).esc(txNum)}
+                    </button>
+                  </td>
+                  <td class="py-2.5 px-3">
+                    <div class="font-bold text-slate-800">${(window as any).esc(third.name || 'Sin Tercero')}</div>
+                    ${third.doc_number ? `<div class="text-[10px] text-slate-400 font-mono">Doc: ${(window as any).esc(third.doc_number)}</div>` : ''}
+                  </td>
+                  <td class="py-2.5 px-3 font-mono font-semibold text-slate-700">${(window as any).esc(invRef)}</td>
+                  <td class="py-2.5 px-3 text-right font-mono text-slate-600">${trm > 0 ? '$ ' + (window as any).fmtN(trm) : '—'}</td>
+                  <td class="py-2.5 px-3">
+                    <span class="font-mono font-semibold text-slate-700">${(window as any).esc(acct.code || '')}</span>
+                    <span class="text-slate-500 ml-1 text-[11px]">${(window as any).esc(acct.name || '')}</span>
+                  </td>
+                  <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${debit > 0 ? (window as any).fmt(debit) : '—'}</td>
+                  <td class="py-2.5 px-3 text-right font-mono text-rose-600 font-medium">${credit > 0 ? (window as any).fmt(credit) : '—'}</td>
+                  <td class="py-2.5 px-3 text-center">
+                    <div class="flex items-center justify-center gap-1">
+                      <button type="button" class="btn btn-outline btn-xs text-blue-600 p-1" title="Ver Asiento" onclick="window.viewStageTx('${l.tx_id || tx.id}')">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                      <button type="button" class="btn btn-danger btn-xs p-1" title="Desvincular de esta etapa" onclick="window.unlinkStageTxLine('${l.id}', '${importId}')">
+                        <i class="fas fa-unlink"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('') : `
+              <tr>
+                <td colspan="9" class="p-8 text-center bg-slate-50/50">
+                  <div class="flex flex-col items-center justify-center text-slate-400">
+                    <div class="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center text-xl mb-2">
+                      <i class="fas fa-receipt"></i>
+                    </div>
+                    <div class="font-bold text-slate-700 text-sm">Sin movimientos contables asociados</div>
+                    <p class="text-xs text-slate-400 max-w-md mt-1 mb-3">Esta etapa aún no tiene asientos registrados o vinculados. Puedes registrar un nuevo comprobante desde Contabilidad marcando la casilla de importación, o vincular un asiento ya existente.</p>
+                    ${importId ? `
+                      <div class="flex gap-2">
+                        <button type="button" class="btn btn-primary btn-xs" onclick="window.openLinkTxLineModal('${importId}', '${stageKey}')">
+                          <i class="fas fa-link mr-1"></i> Vincular Movimiento
+                        </button>
+                        <button type="button" class="btn btn-outline btn-xs text-purple-700" onclick="window.openRegisterTxForImport('${importId}', '${stageKey}')">
+                          <i class="fas fa-plus mr-1"></i> Registrar en Contabilidad
+                        </button>
+                      </div>
+                    ` : ''}
+                  </div>
+                </td>
+              </tr>
+            `}
+          </tbody>
+          ${hasLines ? `
+            <tfoot class="bg-slate-50 border-t font-semibold text-slate-700">
+              <tr>
+                <td colspan="6" class="py-2.5 px-3 text-right uppercase text-[11px] tracking-wider text-slate-500">Total Acumulado Etapa:</td>
+                <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${(window as any).fmt(totalDebit)}</td>
+                <td class="py-2.5 px-3 text-right font-mono font-bold text-rose-600">${totalCredit > 0 ? (window as any).fmt(totalCredit) : '—'}</td>
+                <td class="py-2.5 px-3 text-center">
+                  <span class="badge badge-emerald font-mono font-bold text-xs">${(window as any).fmt(netTotal)}</span>
+                </td>
+              </tr>
+            </tfoot>
+          ` : ''}
+        </table>
+      </div>
+
+      <div class="flex justify-between items-center p-3.5 bg-purple-50/70 rounded-xl border border-purple-100 text-xs">
+        <div class="text-purple-950 font-medium">
+          <i class="fas fa-circle-check text-purple-600 mr-1.5"></i>
+          Total Asientos Vinculados: <strong>${(lines || []).length}</strong> · Saldo Neto Acumulado: <strong class="font-mono text-purple-900">${(window as any).fmt(netTotal)}</strong>
+        </div>
+        <div class="text-right font-mono text-xs text-purple-800">
+          Contrapartida activa hacia cuenta de tránsito <strong>143505</strong>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 let currentImportSubtab: 'operaciones' | 'preliquidaciones' = 'operaciones';
 
 export async function renderImportaciones(container: HTMLElement) {
@@ -267,10 +448,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   let localInvoices: any[] = [];
   let localPalletConfigs: Record<string, any[]> = {};
 
-  const [suppliers, products] = await Promise.all([
+  const [suppliers, products, cfg, linkedTxLinesRes] = await Promise.all([
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
     (window as any).API.getProducts({ activeOnly: true }),
+    (window as any).API.getImportConfig().catch(() => ({ costing: { mode: 'direct' } })),
+    importId ? (window as any).API.getImportTxLines(importId).catch(() => []) : Promise.resolve([]),
   ]);
+  let linkedTxLines: any[] = linkedTxLinesRes || [];
+  const isInverseMode = cfg?.costing?.mode === 'inverse';
 
   // --- HELPERS DE BUSCADORES DINÁMICOS DE TERCEROS ---
   const renderTerceroDynamicPicker = ({
@@ -828,8 +1013,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       <!-- 4. Causaciones por Etapas y Gastos de Nacionalización (Sistema de Pestañas con Pipeline) -->
       ${(() => {
         const stagesList = [imp?.tx_fob_id, imp?.tx_freight_id, imp?.tx_insurance_id, imp?.tx_customs_id, imp?.tx_local_carrier_id, imp?.tx_local_other_id];
-        const causedCount = stagesList.filter(Boolean).length;
+        const stagesWithLines = ['fob', 'freight', 'insurance', 'customs', 'local_carrier', 'local_other'].filter(c => (linkedTxLines || []).some((l: any) => l.import_concept === c));
+        const causedCount = isInverseMode ? stagesWithLines.length : stagesList.filter(Boolean).length;
         const progressPct = Math.round((causedCount / 6) * 100);
+
+        const getStageDot = (stageKey: string) => {
+          if (isInverseMode) {
+            const count = (linkedTxLines || []).filter((l: any) => l.import_concept === stageKey).length;
+            return count > 0
+              ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="${count} movimiento(s) vinculados"></span>`
+              : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Sin movimientos vinculados"></span>`;
+          }
+          const legacyTx = stageKey === 'fob' ? imp?.tx_fob_id : imp?.[`tx_${stageKey}_id`];
+          return legacyTx
+            ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>`
+            : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`;
+        };
 
         return `
         <div class="rounded-xl border shadow-sm overflow-hidden bg-white mb-6" style="border-color:#E2E8F0">
@@ -837,16 +1036,18 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           <!-- Stepper & Progress Header -->
           <div class="p-4 border-b bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-400/30 text-blue-300">
-                <i class="fas fa-calculator text-lg"></i>
+              <div class="w-10 h-10 rounded-lg ${isInverseMode ? 'bg-purple-500/20 text-purple-300 border border-purple-400/30' : 'bg-blue-500/20 text-blue-300 border border-blue-400/30'} flex items-center justify-center">
+                <i class="fas ${isInverseMode ? 'fa-arrow-right-arrow-left' : 'fa-calculator'} text-lg"></i>
               </div>
               <div>
                 <h4 class="font-bold text-sm md:text-base text-white flex items-center gap-2">
-                  Causación Contable por Etapas
-                  <span class="text-[10px] px-2 py-0.5 rounded-full font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/30">Hoja de Costos</span>
+                  ${isInverseMode ? 'Rastreo y Visor de Costos por Etapas' : 'Causación Contable por Etapas'}
+                  <span class="text-[10px] px-2 py-0.5 rounded-full font-extrabold ${isInverseMode ? 'bg-purple-500/30 text-purple-200 border border-purple-400/30' : 'bg-blue-500/30 text-blue-200 border border-blue-400/30'}">
+                    ${isInverseMode ? '<i class="fas fa-arrow-right-arrow-left mr-1"></i>Modo Inverso (Contabilidad)' : 'Hoja de Costos'}
+                  </span>
                 </h4>
                 <p class="text-xs text-slate-300">
-                  Gestión contable secuencial para registro de compras FOB, fletes, seguros, impuestos DIAN y acarreos.
+                  ${isInverseMode ? 'Modo Inverso Activo: Los costos de cada etapa se leen directamente de los asientos contables vinculados por código de importación.' : 'Gestión contable secuencial para registro de compras FOB, fletes, seguros, impuestos DIAN y acarreos.'}
                 </p>
               </div>
             </div>
@@ -854,8 +1055,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <!-- Progress Bar -->
             <div class="flex items-center gap-3 bg-slate-800/90 px-3.5 py-2 rounded-lg border border-slate-700">
               <div class="text-right">
-                <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Avance Contable</div>
-                <div class="text-xs font-bold text-white" id="imp-stage-progress-text">${causedCount} de 6 Etapas Causadas</div>
+                <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">${isInverseMode ? 'Etapas con Asientos' : 'Avance Contable'}</div>
+                <div class="text-xs font-bold text-white" id="imp-stage-progress-text">${causedCount} de 6 Etapas ${isInverseMode ? 'Vinculadas' : 'Causadas'}</div>
               </div>
               <div class="w-16 bg-slate-700 h-2.5 rounded-full overflow-hidden">
                 <div class="bg-emerald-400 h-full transition-all duration-300" id="imp-stage-progress-bar" style="width: ${progressPct}%"></div>
@@ -874,37 +1075,37 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="fob" onclick="window.switchImpStageTab('fob')">
               <i class="fas fa-ship text-indigo-500"></i>
               <span>1. FOB Mercancía</span>
-              ${imp?.tx_fob_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('fob')}
             </button>
 
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="freight" onclick="window.switchImpStageTab('freight')">
               <i class="fas fa-plane-departure text-sky-500"></i>
               <span>2. Flete Int.</span>
-              ${imp?.tx_freight_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('freight')}
             </button>
 
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="insurance" onclick="window.switchImpStageTab('insurance')">
               <i class="fas fa-shield-alt text-amber-500"></i>
               <span>3. Seguro Int.</span>
-              ${imp?.tx_insurance_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('insurance')}
             </button>
 
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="customs" onclick="window.switchImpStageTab('customs')">
               <i class="fas fa-building-columns text-purple-500"></i>
               <span>4. Aduana / DIAN</span>
-              ${imp?.tx_customs_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('customs')}
             </button>
 
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="local_carrier" onclick="window.switchImpStageTab('local_carrier')">
               <i class="fas fa-truck text-emerald-600"></i>
               <span>5. Transporte Local</span>
-              ${imp?.tx_local_carrier_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('local_carrier')}
             </button>
 
             <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="local_other" onclick="window.switchImpStageTab('local_other')">
               <i class="fas fa-box text-orange-500"></i>
               <span>6. Otros Gastos</span>
-              ${imp?.tx_local_other_id ? `<span class="w-2 h-2 rounded-full bg-emerald-500" title="Causado"></span>` : `<span class="w-2 h-2 rounded-full bg-slate-300" title="Pendiente"></span>`}
+              ${getStageDot('local_other')}
             </button>
           </div>
 
@@ -1038,6 +1239,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
             <!-- Panel 1: FOB Mercancía -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-fob">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'fob',
+                stageTitle: 'Etapa 1: FOB Mercancía (Proveedor del Exterior)',
+                pucCode: '220505',
+                pucName: 'Proveedores del Exterior',
+                icon: 'fas fa-ship',
+                iconColor: 'text-indigo-600',
+                iconBg: 'bg-indigo-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'fob'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1115,10 +1327,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </div>
                 </div>
               </div>
+              `}
             </div>
 
             <!-- Panel 2: Flete Internacional -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-freight">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'freight',
+                stageTitle: 'Etapa 2: Flete Internacional (Naviera / Aerolínea / Forwarder)',
+                pucCode: '233545',
+                pucName: 'Costos y Gastos Fletes',
+                icon: 'fas fa-plane-departure',
+                iconColor: 'text-sky-600',
+                iconBg: 'bg-sky-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'freight'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1168,10 +1392,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </div>
                 </div>
               </div>
+              `}
             </div>
 
             <!-- Panel 3: Seguro Internacional -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-insurance">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'insurance',
+                stageTitle: 'Etapa 3: Seguro Internacional (Aseguradora / Póliza de Carga)',
+                pucCode: '233555',
+                pucName: 'Seguros y Pólizas Int.',
+                icon: 'fas fa-shield-alt',
+                iconColor: 'text-amber-600',
+                iconBg: 'bg-amber-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'insurance'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1221,10 +1457,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </div>
                 </div>
               </div>
+              `}
             </div>
 
             <!-- Panel 4: Aduana / DIAN -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-customs">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'customs',
+                stageTitle: 'Etapa 4: Nacionalización (Aduana / DIAN / SIA)',
+                pucCode: '233595',
+                pucName: 'Agenciamiento Aduanero y Aranceles',
+                icon: 'fas fa-building-columns',
+                iconColor: 'text-purple-600',
+                iconBg: 'bg-purple-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'customs'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1276,10 +1524,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </table>
                 </div>
               </div>
+              `}
             </div>
 
             <!-- Panel 5: Transporte Local -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-local_carrier">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'local_carrier',
+                stageTitle: 'Etapa 5: Transporte Local / Acarreos Terrestres',
+                pucCode: '233545',
+                pucName: 'Acarreos y Fletes Terrestres Locales',
+                icon: 'fas fa-truck',
+                iconColor: 'text-emerald-600',
+                iconBg: 'bg-emerald-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'local_carrier'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1329,10 +1589,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </div>
                 </div>
               </div>
+              `}
             </div>
 
             <!-- Panel 6: Otros Gastos -->
             <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-local_other">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'local_other',
+                stageTitle: 'Etapa 6: Otros Gastos Operativos y Portuarios',
+                pucCode: '233595',
+                pucName: 'Gastos Portuarios y Bodegaje',
+                icon: 'fas fa-box',
+                iconColor: 'text-orange-600',
+                iconBg: 'bg-orange-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'local_other'),
+                importId,
+              }) : `
               <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
                 <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
                   <div class="flex items-center gap-3">
@@ -1382,6 +1654,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   </div>
                 </div>
               </div>
+              `}
             </div>
 
           </div>
@@ -1946,6 +2219,38 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     }
   };
 
+  // Helper para control de Pesos y Medidas en línea
+  (window as any).impTogglePesosFields = function(idx: number) {
+    const wrap = document.getElementById(`wrap-pesos-fields-${idx}`);
+    if (wrap) {
+      wrap.classList.toggle('hidden');
+      if (!wrap.classList.contains('hidden')) {
+        const netInput = document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement;
+        netInput?.focus();
+      }
+    }
+  };
+
+  (window as any).impUpdateLinePesosStatus = function(idx: number) {
+    const netInput = document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement;
+    const grossInput = document.getElementById(`impl-peso-bruto-${idx}`) as HTMLInputElement;
+    const btn = document.getElementById(`btn-toggle-pesos-${idx}`);
+    const lbl = document.getElementById(`lbl-pesos-btn-${idx}`);
+    if (netInput && grossInput && btn && lbl) {
+      const net = parseFloat(netInput.value || '0');
+      const gross = parseFloat(grossInput.value || '0');
+      if (net > 0 || gross > 0) {
+        lbl.textContent = `P: ${gross > 0 ? gross : net} Kg`;
+        btn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-300', 'font-bold');
+        btn.classList.remove('text-gray-600');
+      } else {
+        lbl.textContent = 'Pesos/Medidas';
+        btn.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-300', 'font-bold');
+        btn.classList.add('text-gray-600');
+      }
+    }
+  };
+
   // Helper para verificar concordancia entre estibas y cantidad del ítem
   (window as any).impUpdateLinePalletStatus = function(idx: number) {
     const tr = document.getElementById(`imp-row-${idx}`);
@@ -2058,10 +2363,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             ${preloadedLine?.pais_origen ? `<span>Origen: ${(window as any).esc(preloadedLine.pais_origen)}</span>` : ''}
           </div>
 
-          <!-- Barra de controles compactos para Lotes y Estibas -->
+          <!-- Barra de controles compactos para Lotes, Pesos y Estibas -->
           <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
             <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md ${preloadedLine?.lot_number ? 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' : 'text-gray-600 hover:text-blue-700'}" id="btn-toggle-lot-${idx}" onclick="window.impToggleLotFields(${idx})" title="Gestionar lote de fabricación y fecha de vencimiento">
               <i class="fas fa-barcode mr-1 text-indigo-500"></i><span id="lbl-lot-btn-${idx}">${preloadedLine?.lot_number ? `Lote: ${(window as any).esc(preloadedLine.lot_number)}` : '+ Lote'}</span>
+            </button>
+
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-toggle-pesos-${idx}" onclick="window.impTogglePesosFields(${idx})" title="Modificar pesos (neto/bruto) y dimensiones de la mercancía">
+              <i class="fas fa-weight-hanging mr-1 text-emerald-600"></i><span id="lbl-pesos-btn-${idx}">Pesos/Medidas</span>
             </button>
 
             <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-pallet-${idx}" onclick="window.impOpenPalletModal(${idx})" title="Configurar desglose por pallets/estibas para las ${initQty} ${prodUnit}">
@@ -2087,18 +2396,44 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             </div>
           </div>
 
+          <!-- Micro-formulario expandible de pesos y dimensiones -->
+          <div id="wrap-pesos-fields-${idx}" class="hidden mt-1.5 p-2 bg-emerald-50/70 border border-emerald-200 rounded-lg space-y-1.5">
+            <div class="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <span class="text-[9px] text-emerald-900 font-bold uppercase block">Peso Neto Tot (Kg):</span>
+                <input type="number" step="0.01" min="0" id="impl-peso-neto-${idx}" class="form-input text-[10px] font-mono py-0.5 px-1.5 h-6 bg-white text-right font-semibold" value="${preloadedLine?.peso_neto_total ?? (productObj?.peso_neto ? (productObj.peso_neto * initQty).toFixed(2) : '0.00')}" oninput="this.dataset.overridden='true'; window.impUpdateLinePesosStatus(${idx}); window.impRecalcTotals();">
+              </div>
+              <div>
+                <span class="text-[9px] text-emerald-900 font-bold uppercase block">Peso Bruto Tot (Kg):</span>
+                <input type="number" step="0.01" min="0" id="impl-peso-bruto-${idx}" class="form-input text-[10px] font-mono py-0.5 px-1.5 h-6 bg-white text-right font-semibold" value="${preloadedLine?.peso_bruto_total ?? (productObj?.peso_bruto ? (productObj.peso_bruto * initQty).toFixed(2) : '0.00')}" oninput="this.dataset.overridden='true'; window.impUpdateLinePesosStatus(${idx}); window.impRecalcTotals();">
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-1 text-[9px]">
+              <div>
+                <span class="text-[8px] text-gray-600 uppercase block">Largo(cm)</span>
+                <input type="number" step="0.1" min="0" id="impl-largo-cm-${idx}" class="form-input text-[9px] font-mono p-0.5 h-5 bg-white text-right" value="${baseLargoCm}" oninput="this.dataset.overridden='true'; window.impRecalcTotals();">
+              </div>
+              <div>
+                <span class="text-[8px] text-gray-600 uppercase block">Ancho(cm)</span>
+                <input type="number" step="0.1" min="0" id="impl-ancho-cm-${idx}" class="form-input text-[9px] font-mono p-0.5 h-5 bg-white text-right" value="${baseAnchoCm}" oninput="this.dataset.overridden='true'; window.impRecalcTotals();">
+              </div>
+              <div>
+                <span class="text-[8px] text-gray-600 uppercase block">Alto(cm)</span>
+                <input type="number" step="0.1" min="0" id="impl-alto-cm-${idx}" class="form-input text-[9px] font-mono p-0.5 h-5 bg-white text-right" value="${baseAltoCm}" oninput="this.dataset.overridden='true'; window.impRecalcTotals();">
+              </div>
+              <div>
+                <span class="text-[8px] text-gray-600 uppercase block">CBM Tot</span>
+                <input type="number" step="0.0001" min="0" id="impl-cbm-${idx}" class="form-input text-[9px] font-mono p-0.5 h-5 bg-white text-right" value="${preloadedLine?.cubic_meters_total ?? '0.0000'}" oninput="this.dataset.overridden='true';">
+              </div>
+            </div>
+          </div>
+
           <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
 
           <!-- Campos técnicos ocultos (prorrateo/cumplimiento) -->
           <input type="hidden" id="impl-pos-arancel-${idx}" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria || '')}">
           <input type="hidden" id="impl-pais-origen-${idx}" value="${(window as any).esc(preloadedLine?.pais_origen || productObj?.pais_origen || '')}">
           <input type="hidden" id="impl-cert-origen-${idx}" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}">
-          <input type="hidden" id="impl-peso-neto-${idx}" value="${preloadedLine?.peso_neto_total ?? (productObj?.peso_neto ? (productObj.peso_neto * initQty).toFixed(2) : '0.00')}">
-          <input type="hidden" id="impl-peso-bruto-${idx}" value="${preloadedLine?.peso_bruto_total ?? (productObj?.peso_bruto ? (productObj.peso_bruto * initQty).toFixed(2) : '0.00')}">
-          <input type="hidden" id="impl-largo-cm-${idx}" value="${baseLargoCm}">
-          <input type="hidden" id="impl-ancho-cm-${idx}" value="${baseAnchoCm}">
-          <input type="hidden" id="impl-alto-cm-${idx}" value="${baseAltoCm}">
-          <input type="hidden" id="impl-cbm-${idx}" value="${preloadedLine?.cubic_meters_total ?? '0.0000'}">
         </div>
       </td>
 
@@ -2147,8 +2482,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     `;
     tbody.appendChild(tr);
 
-    // Initial label and reconciliation check for pallets
+    // Initial label and reconciliation check for pallets and weights
     (window as any).impUpdateLinePalletStatus(idx);
+    (window as any).impUpdateLinePesosStatus(idx);
 
     (window as any).impRecalcTotals();
   };
@@ -2159,26 +2495,31 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
     const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked;
 
-    // Calcular costos desde localStageExpenses
+    // Calcular costos desde localStageExpenses o desde linkedTxLines si está en modo inverso
+    const getNetConceptCOP = (concept: string) => {
+      const matching = (linkedTxLines || []).filter((l: any) => l.import_concept === concept);
+      return matching.reduce((sum: number, l: any) => sum + (Number(l.debit || 0) - Number(l.credit || 0)), 0);
+    };
+
     const freightLines = localStageExpenses['freight'] || [];
     const insuranceLines = localStageExpenses['insurance'] || [];
     const customsLines = localStageExpenses['customs'] || [];
     const localCarrierLines = localStageExpenses['local_carrier'] || [];
     const localOtherLines = localStageExpenses['local_other'] || [];
 
-    const freightCost = freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const insuranceCost = insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const gastosNacionalizacion = customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const transporteNacional = localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
-    const otrosGastos = localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const freightCost = isInverseMode ? 0 : freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const insuranceCost = isInverseMode ? 0 : insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const gastosNacionalizacion = isInverseMode ? 0 : customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const transporteNacional = isInverseMode ? 0 : localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const otrosGastos = isInverseMode ? 0 : localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
 
-    const freightCostCOP = freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const insuranceCostCOP = insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const freightCostCOP = isInverseMode ? getNetConceptCOP('freight') : freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const insuranceCostCOP = isInverseMode ? getNetConceptCOP('insurance') : insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalCIFExpensesCOP = freightCostCOP + insuranceCostCOP;
 
-    const gastosNacCOP = customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const transporteCOP = localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const otrosGastosCOP = localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const gastosNacCOP = isInverseMode ? getNetConceptCOP('customs') : customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const transporteCOP = isInverseMode ? getNetConceptCOP('local_carrier') : localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const otrosGastosCOP = isInverseMode ? getNetConceptCOP('local_other') : localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const totalLocalExpensesCOP = gastosNacCOP + transporteCOP + otrosGastosCOP;
 
     const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
@@ -2186,6 +2527,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     let totalFOB = 0;
     let totalWeight = 0;
     let totalVolume = 0;
+    let displayFOBUSD = 0;
 
     // Reset computed FOB on localInvoices if in consolidated mode
     if (isConsolidated) {
@@ -2244,10 +2586,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       }
     });
 
-    const totalFOBCop = totalFOB * exchangeRate;
+    const inverseFobCOP = isInverseMode ? getNetConceptCOP('fob') : 0;
+    const totalFOBCop = (isInverseMode && inverseFobCOP > 0) ? inverseFobCOP : (totalFOB * exchangeRate);
     let arancelTotalCOP = 0;
 
     // Second pass: distribute costs and update line totals
+    const rowDataList: any[] = [];
     rows.forEach((tr: any) => {
       const idx = tr.id.split('-').pop();
       const qty = parseFloat((document.getElementById(`impl-qty-${idx}`) as HTMLInputElement)?.value || '0');
@@ -2257,36 +2601,99 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const pesoBrutoLine = parseFloat(grossInput?.value || '0');
       const lineCbm = parseFloat((document.getElementById(`impl-cbm-${idx}`) as HTMLInputElement)?.value || '0');
 
-      const lineFOBCop = qty * price * exchangeRate;
-      
+      rowDataList.push({
+        idx,
+        tr,
+        qty,
+        price,
+        arancelRate,
+        pesoBrutoLine,
+        lineCbm,
+        rawFob: qty * price,
+        lineFOBCop: 0
+      });
+    });
+
+    const fobTx = isInverseMode ? (linkedTxLines || []).find((l: any) => l.import_concept === 'fob') : null;
+    const effectiveTrm = Number(fobTx?.import_trm) || exchangeRate || 1;
+
+    // En Modo Inverso, el valor acumulado de compra asignado (inverseFobCOP) se reparte proporcionalmente entre las referencias
+    if (isInverseMode && inverseFobCOP > 0) {
+      if (rowDataList.length === 1) {
+        rowDataList[0].lineFOBCop = inverseFobCOP;
+      } else {
+        let totalMetric = 0;
+        if (prorationMethod === 'GROSS_WEIGHT') {
+          totalMetric = totalWeight;
+        } else if (prorationMethod === 'CUBIC_VOLUME') {
+          totalMetric = totalVolume;
+        } else {
+          totalMetric = rowDataList.reduce((s, r) => s + (r.rawFob > 0 ? r.rawFob : (r.qty > 0 ? r.qty : 1)), 0);
+        }
+
+        rowDataList.forEach(r => {
+          let m = 0;
+          if (prorationMethod === 'GROSS_WEIGHT') m = r.pesoBrutoLine;
+          else if (prorationMethod === 'CUBIC_VOLUME') m = r.lineCbm;
+          else m = r.rawFob > 0 ? r.rawFob : (r.qty > 0 ? r.qty : 1);
+
+          const ratio = totalMetric > 0 ? (m / totalMetric) : (1 / rowDataList.length);
+          r.lineFOBCop = ratio * inverseFobCOP;
+        });
+      }
+
+      // Indicar y sincronizar el precio de compra unitario en base al valor contable
+      rowDataList.forEach(r => {
+        if (r.qty > 0) {
+          const calcPriceCOP = r.lineFOBCop / r.qty;
+          const calcPriceUSD = effectiveTrm > 0 ? (calcPriceCOP / effectiveTrm) : calcPriceCOP;
+          const priceInput = document.getElementById(`impl-price-${r.idx}`) as HTMLInputElement;
+          if (priceInput && document.activeElement !== priceInput) {
+            priceInput.value = (Math.round(calcPriceUSD * 100) / 100).toFixed(2);
+            r.price = calcPriceUSD;
+          }
+        }
+      });
+    } else {
+      rowDataList.forEach(r => {
+        r.lineFOBCop = r.qty * r.price * exchangeRate;
+      });
+    }
+
+    // Calcular costos prorrateados y totales por línea
+    rowDataList.forEach(r => {
       let factor = 0;
       if (prorationMethod === 'GROSS_WEIGHT' && totalWeight > 0) {
-        factor = pesoBrutoLine / totalWeight;
+        factor = r.pesoBrutoLine / totalWeight;
       } else if (prorationMethod === 'CUBIC_VOLUME' && totalVolume > 0) {
-        factor = lineCbm / totalVolume;
+        factor = r.lineCbm / totalVolume;
       } else if (totalFOBCop > 0) {
-        factor = lineFOBCop / totalFOBCop;
+        factor = r.lineFOBCop / totalFOBCop;
       }
 
       const proratedCost = factor * totalExpensesToProrateCOP;
-      const arancelAmount = lineFOBCop * (arancelRate / 100);
-      const lineTotalCOP = lineFOBCop + proratedCost + arancelAmount;
-      const unitCostCOP = qty > 0 ? (lineTotalCOP / qty) : 0;
+      const arancelAmount = r.lineFOBCop * (r.arancelRate / 100);
+      const lineTotalCOP = r.lineFOBCop + proratedCost + arancelAmount;
+      const unitCostCOP = r.qty > 0 ? (lineTotalCOP / r.qty) : 0;
 
       arancelTotalCOP += arancelAmount;
 
       // Update line labels
-      const unitLabel = document.getElementById(`impl-unit-cop-${idx}`);
-      const totalLabel = document.getElementById(`impl-total-cop-${idx}`);
+      const unitLabel = document.getElementById(`impl-unit-cop-${r.idx}`);
+      const totalLabel = document.getElementById(`impl-total-cop-${r.idx}`);
       if (unitLabel) unitLabel.textContent = (window as any).fmt(unitCostCOP);
       if (totalLabel) totalLabel.textContent = (window as any).fmt(lineTotalCOP);
     });
+
+    displayFOBUSD = (isInverseMode && inverseFobCOP > 0 && effectiveTrm > 0)
+      ? (inverseFobCOP / effectiveTrm)
+      : totalFOB;
 
     const grandTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
 
     // Update global inputs/labels
     const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
-    if (fobTotalInput) fobTotalInput.value = totalFOB.toFixed(2);
+    if (fobTotalInput) fobTotalInput.value = displayFOBUSD.toFixed(2);
 
     // KPI Cards Superiores
     const kpiFobUsd = document.getElementById('kpi-fob-usd');
@@ -2298,12 +2705,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const lblResTotal = document.getElementById('lbl-res-total-cop');
     const customsArancel = document.getElementById('stage-customs-arancel');
 
-    if (kpiFobUsd) kpiFobUsd.textContent = `$ ${(window as any).fmtN(totalFOB)} ${currency}`;
+    if (kpiFobUsd) kpiFobUsd.textContent = `$ ${(window as any).fmtN(displayFOBUSD)} ${currency}`;
     if (lblResFob) lblResFob.textContent = (window as any).fmt(totalFOBCop);
     if (lblResCif) lblResCif.textContent = (window as any).fmt(totalCIFExpensesCOP);
     if (lblResArancel) lblResArancel.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
     if (lblResLocales) lblResLocales.textContent = (window as any).fmt(transporteCOP + otrosGastosCOP);
-    if (lblResTotalUsd) lblResTotalUsd.textContent = `Equiv. $ ${(window as any).fmtN(grandTotalCOP / exchangeRate)} USD`;
+    if (lblResTotalUsd) lblResTotalUsd.textContent = `Equiv. $ ${(window as any).fmtN(grandTotalCOP / (effectiveTrm || exchangeRate))} USD`;
     if (lblResTotal) lblResTotal.textContent = (window as any).fmt(grandTotalCOP);
     if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
 
@@ -2366,66 +2773,87 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             return suppObj ? `<span class="font-semibold text-slate-800">${(window as any).esc(suppObj.name)}</span> ${invNum ? `<span class="text-[10px] text-slate-500 font-mono">(${invNum})</span>` : ''}` : '<span class="text-slate-400">Sin asignar</span>';
           })();
 
+      const getConceptTxLines = (concept: string) => (linkedTxLines || []).filter((l: any) => l.import_concept === concept);
+
+      const getInverseTerceros = (concept: string) => {
+        const lines = getConceptTxLines(concept);
+        if (!lines.length) return '<span class="text-slate-400">Sin asientos</span>';
+        const distinctSupps = Array.from(new Set(lines.map((l: any) => l.expand?.third_party_id?.name || l.expand?.tx_id?.expand?.third_party_id?.name).filter(Boolean)));
+        const distinctRefs = Array.from(new Set(lines.map((l: any) => l.import_invoice_ref || l.expand?.tx_id?.import_invoice_ref).filter(Boolean)));
+        if (distinctSupps.length === 1) {
+          return `<span class="font-semibold text-slate-800">${(window as any).esc(distinctSupps[0])}</span> ${distinctRefs.length ? `<span class="text-[10px] text-slate-500 font-mono">(${distinctRefs.join(', ')})</span>` : ''}`;
+        }
+        return `<span class="font-semibold text-slate-800">${distinctSupps.length} Tercero(s)</span> · <span class="text-slate-500">${lines.length} Movimiento(s)</span>`;
+      };
+
+      const getInverseBadge = (concept: string) => {
+        const lines = getConceptTxLines(concept);
+        if (lines.length > 0) {
+          return `<span class="badge badge-emerald text-[11px]"><i class="fas fa-check-circle mr-1"></i>${lines.length} Asiento(s)</span>`;
+        }
+        return `<span class="badge badge-slate text-[11px]">⏳ Sin Asientos</span>`;
+      };
+
       const rowsData = [
         {
           rubro: '1. FOB Mercancía',
           tab: 'fob',
           puc: '220505 - Proveedores del Exterior',
-          terceros: fobTerceros,
-          divisa: `${(window as any).fmtN(totalFOB)} ${currency}`,
+          terceros: isInverseMode ? getInverseTerceros('fob') : fobTerceros,
+          divisa: isInverseMode ? `${(window as any).fmtN(displayFOBUSD)} ${currency}` : `${(window as any).fmtN(totalFOB)} ${currency}`,
           cop: totalFOBCop,
-          badge: fobBadge,
-          btnLabel: 'Gestionar FOB'
+          badge: isInverseMode ? getInverseBadge('fob') : fobBadge,
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('fob').length})` : 'Gestionar FOB'
         },
         {
           rubro: '2. Flete Internacional',
           tab: 'freight',
           puc: '233545 - Costos y Gastos Fletes',
-          terceros: getTercerosSummary(freightLines),
-          divisa: `${(window as any).fmtN(freightCost)} USD`,
+          terceros: isInverseMode ? getInverseTerceros('freight') : getTercerosSummary(freightLines),
+          divisa: isInverseMode ? '—' : `${(window as any).fmtN(freightCost)} USD`,
           cop: freightCostCOP,
-          badge: getStageBadge(freightLines),
-          btnLabel: `Gestionar (${freightLines.length})`
+          badge: isInverseMode ? getInverseBadge('freight') : getStageBadge(freightLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('freight').length})` : `Gestionar (${freightLines.length})`
         },
         {
           rubro: '3. Seguro Internacional',
           tab: 'insurance',
           puc: '233555 - Seguros y Pólizas Int.',
-          terceros: getTercerosSummary(insuranceLines),
-          divisa: `${(window as any).fmtN(insuranceCost)} USD`,
+          terceros: isInverseMode ? getInverseTerceros('insurance') : getTercerosSummary(insuranceLines),
+          divisa: isInverseMode ? '—' : `${(window as any).fmtN(insuranceCost)} USD`,
           cop: insuranceCostCOP,
-          badge: getStageBadge(insuranceLines),
-          btnLabel: `Gestionar (${insuranceLines.length})`
+          badge: isInverseMode ? getInverseBadge('insurance') : getStageBadge(insuranceLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('insurance').length})` : `Gestionar (${insuranceLines.length})`
         },
         {
           rubro: '4. Aduana / DIAN (Arancel + SIA)',
           tab: 'customs',
           puc: '233595 - Agenciamiento Aduanero',
-          terceros: `Arancel Mercancías + ${getTercerosSummary(customsLines)}`,
+          terceros: isInverseMode ? getInverseTerceros('customs') : `Arancel Mercancías + ${getTercerosSummary(customsLines)}`,
           divisa: '—',
-          cop: arancelTotalCOP + gastosNacCOP,
-          badge: getStageBadge(customsLines),
-          btnLabel: `Gestionar (${customsLines.length})`
+          cop: isInverseMode ? gastosNacCOP : (arancelTotalCOP + gastosNacCOP),
+          badge: isInverseMode ? getInverseBadge('customs') : getStageBadge(customsLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('customs').length})` : `Gestionar (${customsLines.length})`
         },
         {
           rubro: '5. Transporte Local Terrestre',
           tab: 'local_carrier',
           puc: '233545 - Acarreos y Fletes Locales',
-          terceros: getTercerosSummary(localCarrierLines),
+          terceros: isInverseMode ? getInverseTerceros('local_carrier') : getTercerosSummary(localCarrierLines),
           divisa: '—',
           cop: transporteCOP,
-          badge: getStageBadge(localCarrierLines),
-          btnLabel: `Gestionar (${localCarrierLines.length})`
+          badge: isInverseMode ? getInverseBadge('local_carrier') : getStageBadge(localCarrierLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('local_carrier').length})` : `Gestionar (${localCarrierLines.length})`
         },
         {
           rubro: '6. Otros Gastos Portuarios',
           tab: 'local_other',
           puc: '233595 - Gastos Portuarios y Bodega',
-          terceros: getTercerosSummary(localOtherLines),
+          terceros: isInverseMode ? getInverseTerceros('local_other') : getTercerosSummary(localOtherLines),
           divisa: '—',
           cop: otrosGastosCOP,
-          badge: getStageBadge(localOtherLines),
-          btnLabel: `Gestionar (${localOtherLines.length})`
+          badge: isInverseMode ? getInverseBadge('local_other') : getStageBadge(localOtherLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('local_other').length})` : `Gestionar (${localOtherLines.length})`
         },
       ];
 
@@ -3702,13 +4130,13 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const isConsolidated = (document.getElementById('imp-is-consolidated') as HTMLInputElement)?.checked || false;
       const supplierId = (document.getElementById('imp-supplier-id') as HTMLInputElement)?.value || (localInvoices[0]?.supplier_id || localInvoices[0]?.third_party_id || null);
       const status = (document.getElementById('imp-status') as HTMLSelectElement)?.value || 'planeacion';
-      const incoterm = (document.getElementById('imp-incoterm') as HTMLSelectElement)?.value || null;
+      const incoterm = (document.getElementById('imp-incoterm') as HTMLSelectElement)?.value || '';
       const currency = (document.getElementById('imp-currency') as HTMLSelectElement)?.value || 'USD';
       const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '1');
-      const blAwb = (document.getElementById('imp-bl-awb') as HTMLInputElement)?.value.trim() || null;
-      const transportType = (document.getElementById('imp-transport-type') as HTMLSelectElement)?.value || null;
-      const estimatedArrival = (document.getElementById('imp-estimated-arrival') as HTMLInputElement)?.value || null;
-      const notes = (document.getElementById('imp-notes') as HTMLInputElement)?.value.trim() || null;
+      const blAwb = (document.getElementById('imp-bl-awb') as HTMLInputElement)?.value.trim() || '';
+      const transportType = (document.getElementById('imp-transport-type') as HTMLSelectElement)?.value || '';
+      const estimatedArrival = (document.getElementById('imp-estimated-arrival') as HTMLInputElement)?.value || '';
+      const notes = (document.getElementById('imp-notes') as HTMLInputElement)?.value.trim() || '';
 
       // Gastos y proveedores derivados de localStageExpenses
       const freightLines = localStageExpenses['freight'] || [];
@@ -3731,22 +4159,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const localOtherSupplierId = localOtherLines[0]?.supplier_id || null;
 
       // Facturas de Etapas
-      const supplierInvoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim() || null;
-      const freightInvoiceNum = freightLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
-      const insuranceInvoiceNum = insuranceLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
-      const customsInvoiceNum = customsLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
-      const localCarrierInvoiceNum = localCarrierLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
-      const localOtherInvoiceNum = localOtherLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || null;
+      const supplierInvoiceNum = (document.getElementById('imp-supplier-invoice-num') as HTMLInputElement)?.value.trim() || '';
+      const freightInvoiceNum = freightLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || '';
+      const insuranceInvoiceNum = insuranceLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || '';
+      const customsInvoiceNum = customsLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || '';
+      const localCarrierInvoiceNum = localCarrierLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || '';
+      const localOtherInvoiceNum = localOtherLines.map((l: any) => l.invoice_num).filter(Boolean).join(', ') || '';
 
       // Cumplimiento y prorrateo
-      const vuceRegistroNum = (document.getElementById('imp-vuce-registro') as HTMLInputElement)?.value.trim() || null;
-      const modalidadImportacion = (document.getElementById('imp-modalidad-importacion') as HTMLSelectElement)?.value || null;
-      const canalInspeccion = (document.getElementById('imp-canal-inspeccion') as HTMLSelectElement)?.value || null;
+      const vuceRegistroNum = (document.getElementById('imp-vuce-registro') as HTMLInputElement)?.value.trim() || '';
+      const modalidadImportacion = (document.getElementById('imp-modalidad-importacion') as HTMLSelectElement)?.value || '';
+      const canalInspeccion = (document.getElementById('imp-canal-inspeccion') as HTMLSelectElement)?.value || '';
       const prorationMethod = (document.getElementById('imp-proration-method') as HTMLSelectElement)?.value || 'FOB_VALUE';
-      const dianDeclaracionNum = (document.getElementById('imp-dian-declaracion') as HTMLInputElement)?.value.trim() || null;
-      const dianDeclaracionDate = (document.getElementById('imp-dian-declaracion-date') as HTMLInputElement)?.value || null;
-      const dianLevanteDate = (document.getElementById('imp-dian-levante-date') as HTMLInputElement)?.value || null;
-      const dianTrm = parseFloat((document.getElementById('imp-dian-trm') as HTMLInputElement)?.value) || null;
+      const dianDeclaracionNum = (document.getElementById('imp-dian-declaracion') as HTMLInputElement)?.value.trim() || '';
+      const dianDeclaracionDate = (document.getElementById('imp-dian-declaracion-date') as HTMLInputElement)?.value || '';
+      const dianLevanteDate = (document.getElementById('imp-dian-levante-date') as HTMLInputElement)?.value || '';
+      const dianTrm = parseFloat((document.getElementById('imp-dian-trm') as HTMLInputElement)?.value) || 0;
 
       if (!isConsolidated && !supplierId) throw new Error('Por favor selecciona un proveedor internacional.');
       if (isConsolidated && !localInvoices.length) throw new Error('En modo consolidado debes registrar al menos una factura comercial de proveedor.');
@@ -3759,13 +4187,29 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const localCarrierTrm = localCarrierLines[0]?.trm || 1;
       const localOtherTrm = localOtherLines[0]?.trm || 1;
 
-      // Totales con TRM individual
-      const totalCIFExpensesCOP = freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
+      // Totales con TRM individual o desde movimientos contables en modo inverso
+      let totalCIFExpensesCOP = freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
                                   insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-      const totalLocalExpensesCOP = customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
+      let totalLocalExpensesCOP = customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
                                     localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0) +
                                     localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-      const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
+      let totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
+
+      if (isInverseMode) {
+        const getNetConceptAmt = (c: string) => (linkedTxLines || [])
+          .filter((l: any) => l.import_concept === c)
+          .reduce((sum: number, l: any) => sum + (Number(l.debit || 0) - Number(l.credit || 0)), 0);
+        
+        const invFreightCOP = getNetConceptAmt('freight');
+        const invInsuranceCOP = getNetConceptAmt('insurance');
+        const invCustomsCOP = getNetConceptAmt('customs');
+        const invCarrierCOP = getNetConceptAmt('local_carrier');
+        const invOtherCOP = getNetConceptAmt('local_other');
+        
+        totalCIFExpensesCOP = invFreightCOP + invInsuranceCOP;
+        totalLocalExpensesCOP = invCustomsCOP + invCarrierCOP + invOtherCOP;
+        totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
+      }
 
       const lines: any[] = [];
       const rows = document.querySelectorAll('#imp-lines-body tr');
@@ -3817,7 +4261,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const isBien = prod ? (prod.type === 'BIEN') : false;
         if (isBien) {
           if (pesoNeto <= 0 || pesoBruto <= 0 || largoCm <= 0 || anchoCm <= 0 || altoCm <= 0) {
-            throw new Error(`El producto "${prod?.name || 'Físico'}" (línea ${i + 1}) requiere peso y dimensiones mayores a cero en el catálogo maestro.`);
+            if (status === 'recibido' || status === 'nacionalizacion') {
+              throw new Error(`El producto "${prod?.name || 'Físico'}" (línea ${i + 1}) requiere peso y dimensiones mayores a cero para finalizar o nacionalizar. Puedes ajustarlos con el botón "Pesos/Medidas".`);
+            }
           }
         }
 
@@ -3861,8 +4307,45 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (!lines.length) throw new Error('La importación debe tener al menos un producto.');
 
       // Finalizar cálculos para guardado
-      const totalFOBCop = totalFOB * exchangeRate;
+      const inverseFobCOP = isInverseMode 
+        ? (linkedTxLines || []).filter((l: any) => l.import_concept === 'fob').reduce((s: number, l: any) => s + (Number(l.debit || 0) - Number(l.credit || 0)), 0)
+        : 0;
+      const totalFOBCop = (isInverseMode && inverseFobCOP > 0) ? inverseFobCOP : (totalFOB * exchangeRate);
       const totalWeight = lines.reduce((s, l) => s + (l.peso_bruto_total || 0), 0);
+      const fobTx = isInverseMode ? (linkedTxLines || []).find((l: any) => l.import_concept === 'fob') : null;
+      const effectiveTrm = Number(fobTx?.import_trm) || exchangeRate || 1;
+
+      // En Modo Inverso, repartir el FOB contable proporcionalmente entre las referencias
+      if (isInverseMode && inverseFobCOP > 0) {
+        if (lines.length === 1) {
+          lines[0].lineFOBCop = inverseFobCOP;
+          if (lines[0].qty > 0) {
+            lines[0].fob_price = Math.round(((inverseFobCOP / lines[0].qty) / effectiveTrm) * 100) / 100;
+          }
+        } else {
+          let totalMetric = 0;
+          if (prorationMethod === 'GROSS_WEIGHT') {
+            totalMetric = totalWeight;
+          } else if (prorationMethod === 'CUBIC_VOLUME') {
+            totalMetric = totalVolume;
+          } else {
+            totalMetric = lines.reduce((s, l) => s + (((l.qty * l.fob_price) > 0) ? (l.qty * l.fob_price) : (l.qty > 0 ? l.qty : 1)), 0);
+          }
+
+          lines.forEach(l => {
+            let m = 0;
+            if (prorationMethod === 'GROSS_WEIGHT') m = l.peso_bruto_total || 0;
+            else if (prorationMethod === 'CUBIC_VOLUME') m = l.cubic_meters_total || 0;
+            else m = ((l.qty * l.fob_price) > 0) ? (l.qty * l.fob_price) : (l.qty > 0 ? l.qty : 1);
+
+            const ratio = totalMetric > 0 ? (m / totalMetric) : (1 / lines.length);
+            l.lineFOBCop = ratio * inverseFobCOP;
+            if (l.qty > 0) {
+              l.fob_price = Math.round(((l.lineFOBCop / l.qty) / effectiveTrm) * 100) / 100;
+            }
+          });
+        }
+      }
 
       lines.forEach(l => {
         let factor = 0;
@@ -3966,8 +4449,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       }
       const finalImportId = importId || savedImport?.id;
 
-      // 1. Guardar facturas comerciales consolidadas
-      if (isConsolidated && localInvoices.length) {
+      // 1. Guardar facturas comerciales de proveedores internacionales
+      // Capturar cualquier valor modificado en los inputs de % dist en la tabla antes de guardar
+      document.querySelectorAll('.line-inv-dist-field').forEach((el: any) => {
+        const invId = el.getAttribute('data-invid');
+        const inv = localInvoices.find(i => i.id === invId);
+        if (inv) {
+          inv.cost_distribution_pct = parseFloat(el.value) || 0;
+        }
+      });
+
+      if (localInvoices.length) {
         const savedLines = await (window as any).API.getImportLines(finalImportId);
 
         for (const inv of localInvoices) {
@@ -4014,9 +4506,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
       lines.forEach((l) => {
         const rowIdx = l._row_idx;
-        const pcs = localPalletConfigs[rowIdx] || [];
         const matchingSavedLine = savedLines.find((sl: any) => sl.product_id === l.product_id);
         const lineIdToLink = matchingSavedLine?.id || l.id || null;
+        const pcs = localPalletConfigs[rowIdx] || (l.id ? localPalletConfigs[l.id] : null) || (lineIdToLink ? localPalletConfigs[lineIdToLink] : null) || (l.product_id ? localPalletConfigs[l.product_id] : null) || [];
 
         pcs.forEach((pc: any) => {
           const pQty = Number(pc.pallet_qty) || 1;
@@ -4720,6 +5212,203 @@ async function cancelImportDirect(importId: string, number: string) {
   }, 300);
 };
 
+async function openLinkTxLineModal(importId: string, stageConcept: string) {
+  if (!importId) {
+    (window as any).showToast('Debes guardar la importación como borrador antes de vincular movimientos contables.', 'warning');
+    return;
+  }
+
+  const meta = IMPORT_CONCEPTS_META[stageConcept] || { label: stageConcept, name: stageConcept, puc: '' };
+  
+  (window as any).openModal(
+    `Vincular Movimiento Contable · ${meta.label}`,
+    `<div class="p-8 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando movimientos contables disponibles...</div>`,
+    '',
+    true
+  );
+
+  try {
+    const candidates = await (window as any).API.searchCandidateTxLinesForImport({ limit: 100, importId });
+    
+    const renderCandidateRows = (items: any[]) => {
+      if (!items.length) {
+        return `<tr><td colspan="9" class="text-center py-8 text-slate-400"><i class="fas fa-circle-info mr-1"></i>No hay movimientos contables disponibles para vincular.</td></tr>`;
+      }
+      return items.map((l: any) => {
+        const tx = l.expand?.tx_id || {};
+        const third = l.expand?.third_party_id || tx.expand?.third_party_id || {};
+        const acct = l.expand?.account_id || {};
+        const txDate = tx.date || (l.created ? l.created.slice(0, 10) : '—');
+        const txNum = tx.number || 'Asiento';
+        const debit = Number(l.debit || 0);
+        const credit = Number(l.credit || 0);
+        const refVal = l.import_invoice_ref || tx.import_invoice_ref || '';
+        const trmVal = l.import_trm || tx.import_trm || '';
+        const isTransitMatch = !!(acct.code && acct.code.startsWith('146505'));
+
+        return `
+          <tr class="hover:bg-slate-50 transition-colors border-b ${isTransitMatch ? 'bg-blue-50/30' : ''}" data-cand-id="${l.id}">
+            <td class="py-2.5 px-3 font-mono text-slate-600">${(window as any).esc(txDate)}</td>
+            <td class="py-2.5 px-3 font-mono font-bold text-blue-700">${(window as any).esc(txNum)}</td>
+            <td class="py-2.5 px-3">
+              <div class="font-bold text-slate-800">${(window as any).esc(third.name || 'Sin Tercero')}</div>
+              ${third.doc_number ? `<div class="text-[10px] text-slate-400 font-mono">Doc: ${(window as any).esc(third.doc_number)}</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="flex items-center gap-1.5">
+                <span class="font-mono font-semibold text-slate-700">${(window as any).esc(acct.code || '')}</span>
+                ${isTransitMatch ? `<span class="badge badge-blue text-[9px] font-bold py-0.5 px-1.5"><i class="fas fa-bullseye mr-1"></i>Tránsito</span>` : ''}
+              </div>
+              <div class="text-[11px] text-slate-500">${(window as any).esc(acct.name || '')}</div>
+            </td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-slate-900">${debit > 0 ? (window as any).fmt(debit) : '—'}</td>
+            <td class="py-2.5 px-3 text-right font-mono text-rose-600 font-medium">${credit > 0 ? (window as any).fmt(credit) : '—'}</td>
+            <td class="py-2.5 px-2" style="width:130px">
+              <input type="text" id="cand-ref-${l.id}" class="form-input text-xs py-1 font-mono w-full" placeholder="Factura Ref" value="${(window as any).esc(refVal)}">
+            </td>
+            <td class="py-2.5 px-2" style="width:85px">
+              <input type="number" id="cand-trm-${l.id}" class="form-input text-xs py-1 font-mono text-right w-full" placeholder="TRM" value="${trmVal || ''}">
+            </td>
+            <td class="py-2.5 px-3 text-center" style="width:95px">
+              <button type="button" class="btn btn-primary btn-xs w-full py-1" onclick="window.doLinkCandidateTxLine('${l.id}', '${importId}', '${stageConcept}')">
+                <i class="fas fa-link mr-1"></i> Vincular
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    const modalBody = `
+      <div class="space-y-4">
+        <div class="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+          <i class="fas fa-info-circle text-blue-600 mt-0.5 text-sm"></i>
+          <div>
+            <span class="font-bold">Asignación Inversa a la Etapa "${meta.label}":</span>
+            <p class="mt-0.5 text-blue-800">Selecciona el movimiento contable que respalda este costo. Al vincularlo, quedará asignado a la importación y alimentará la Hoja de Costos y la liquidación final.</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <input type="text" id="cand-filter-input" class="form-input text-xs w-full pl-8" placeholder="Filtrar por tercero, cuenta PUC, comprobante o factura...">
+            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          </div>
+        </div>
+
+        <div class="border rounded-xl overflow-hidden bg-white max-h-[380px] overflow-y-auto">
+          <table class="w-full text-xs text-left border-collapse" id="cand-table">
+            <thead class="bg-slate-50 text-slate-600 font-semibold sticky top-0 border-b z-10">
+              <tr>
+                <th class="py-2.5 px-3">Fecha</th>
+                <th class="py-2.5 px-3">Comprobante</th>
+                <th class="py-2.5 px-3">Tercero</th>
+                <th class="py-2.5 px-3">Cuenta PUC</th>
+                <th class="py-2.5 px-3 text-right">Débito</th>
+                <th class="py-2.5 px-3 text-right">Crédito</th>
+                <th class="py-2.5 px-2">Factura Ref</th>
+                <th class="py-2.5 px-2 text-right">TRM</th>
+                <th class="py-2.5 px-3 text-center">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="cand-tbody" class="divide-y divide-slate-100">
+              ${renderCandidateRows(candidates)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button type="button" class="btn btn-outline" onclick="window.closeLinkTxModalAndReopen('${importId}')">Cancelar</button>
+    `;
+
+    (window as any).openModal(`Vincular Movimiento Contable · ${meta.label}`, modalBody, modalFooter, true);
+
+    const filterInput = document.getElementById('cand-filter-input') as HTMLInputElement;
+    filterInput?.addEventListener('input', () => {
+      const q = filterInput.value.toLowerCase().trim();
+      const filtered = !q ? candidates : candidates.filter((l: any) => {
+        const txNum = (l.expand?.tx_id?.number || '').toLowerCase();
+        const third = (l.expand?.third_party_id?.name || '').toLowerCase();
+        const doc = (l.expand?.third_party_id?.doc_number || '').toLowerCase();
+        const acct = ((l.expand?.account_id?.code || '') + ' ' + (l.expand?.account_id?.name || '')).toLowerCase();
+        const desc = (l.description || '').toLowerCase();
+        const ref = (l.import_invoice_ref || '').toLowerCase();
+        return txNum.includes(q) || third.includes(q) || doc.includes(q) || acct.includes(q) || desc.includes(q) || ref.includes(q);
+      });
+      const tbody = document.getElementById('cand-tbody');
+      if (tbody) tbody.innerHTML = renderCandidateRows(filtered);
+    });
+
+  } catch (err: any) {
+    (window as any).showToast(err.message, 'error');
+  }
+}
+
+async function doLinkCandidateTxLine(lineId: string, importId: string, stageConcept: string) {
+  try {
+    const invRef = (document.getElementById(`cand-ref-${lineId}`) as HTMLInputElement)?.value.trim() || '';
+    const trm = parseFloat((document.getElementById(`cand-trm-${lineId}`) as HTMLInputElement)?.value || '0') || 0;
+    
+    await (window as any).API.linkTxLineToImport(lineId, importId, stageConcept, invRef, trm);
+    (window as any).showToast('Movimiento contable vinculado a la etapa con éxito', 'success');
+    (window as any).closeModal();
+    setTimeout(() => {
+      openImportForm(importId);
+    }, 200);
+  } catch (err: any) {
+    (window as any).showToast(err.message, 'error');
+  }
+}
+
+async function unlinkStageTxLine(lineId: string, importId: string) {
+  const ok = confirm('¿Estás seguro de desvincular este movimiento contable de la importación? El comprobante contable permanecerá intacto en contabilidad.');
+  if (!ok) return;
+
+  try {
+    await (window as any).API.unlinkTxLineFromImport(lineId);
+    (window as any).showToast('Movimiento contable desvinculado con éxito', 'success');
+    (window as any).closeModal();
+    setTimeout(() => {
+      openImportForm(importId);
+    }, 200);
+  } catch (err: any) {
+    (window as any).showToast(err.message, 'error');
+  }
+}
+
+function openRegisterTxForImport(importId: string, stageConcept: string) {
+  (window as any).closeModal();
+  setTimeout(() => {
+    if (typeof (window as any).openNuevaTxModal === 'function') {
+      (window as any).openNuevaTxModal({
+        is_import: true,
+        import_id: importId,
+        import_concept: stageConcept,
+        onSaved: () => {
+          openImportForm(importId);
+        }
+      });
+    } else {
+      (window as any).showToast('Módulo de transacciones no disponible.', 'error');
+    }
+  }, 200);
+}
+
+function closeLinkTxModalAndReopen(importId: string) {
+  (window as any).closeModal();
+  setTimeout(() => {
+    openImportForm(importId);
+  }, 200);
+}
+
+(window as any).openLinkTxLineModal = openLinkTxLineModal;
+(window as any).doLinkCandidateTxLine = doLinkCandidateTxLine;
+(window as any).unlinkStageTxLine = unlinkStageTxLine;
+(window as any).openRegisterTxForImport = openRegisterTxForImport;
+(window as any).closeLinkTxModalAndReopen = closeLinkTxModalAndReopen;
+
 async function openImportSettingsModal(onSaved = null) {
   try {
     const [cfg, accounts] = await Promise.all([
@@ -4823,6 +5512,22 @@ async function openImportSettingsModal(onSaved = null) {
             </div>
           </div>
         </div>
+
+        <div class="rounded-xl border p-4 bg-white" style="border-color:#E5E7EB">
+          <h4 class="font-bold mb-1" style="color:#0D2137"><i class="fas fa-arrows-turn-to-dots text-purple-600 mr-2"></i>Metodología y Modo de Control de Costos</h4>
+          <p class="text-xs mb-3" style="color:#6B7280">Define la metodología global con la que la empresa liquida y causa los costos de importación.</p>
+          
+          <div class="form-group">
+            <label class="form-label font-bold text-xs">Modo de Causación Contable</label>
+            <select id="imp-cfg-costing-mode" class="form-input py-1.5 text-xs font-semibold">
+              <option value="direct" ${cfg.costing?.mode !== 'inverse' ? 'selected' : ''}>Directo (Causación secuencial por etapas desde el formulario de importación)</option>
+              <option value="inverse" ${cfg.costing?.mode === 'inverse' ? 'selected' : ''}>Inverso (Lectura, visor y selector de transacciones acumuladas desde Contabilidad)</option>
+            </select>
+            <p class="text-[11px] text-gray-500 mt-1.5 leading-relaxed">
+              <strong>Modo Inverso:</strong> En la captura de transacciones contables se marca cada comprobante/movimiento con el código de importación y su concepto (FOB, Flete, Seguro, Aduana, etc.). El módulo de importaciones transforma cada etapa en un visor de transacciones acumuladas, calculando automáticamente la Hoja de Costos con las cifras contables reales.
+            </p>
+          </div>
+        </div>
       </div>
     `;
 
@@ -4854,7 +5559,12 @@ async function openImportSettingsModal(onSaved = null) {
         const localCarrier = (document.getElementById('imp-cfg-local-carrier') as HTMLSelectElement)?.value || '233545';
         const localOther = (document.getElementById('imp-cfg-local-other') as HTMLSelectElement)?.value || '233595';
 
+        const costingMode = (document.getElementById('imp-cfg-costing-mode') as HTMLSelectElement)?.value || 'direct';
+
         const payload = {
+          costing: {
+            mode: costingMode
+          },
           accounting: {
             accounts: {
               transito_account_code: transito,
@@ -5285,3 +5995,4 @@ async function buildTraceabilityPrintHTML(data: any) {
 }
 
 (window as any).viewImportTraceability = viewImportTraceability;
+(window as any).openImportForm = openImportForm;

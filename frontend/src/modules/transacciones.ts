@@ -93,6 +93,145 @@ async function ensurePhPropertiesForTx(): Promise<any[]> {
   return PH_PROPERTIES_PROMISE;
 }
 
+async function ensureActiveImportsForTx(): Promise<any[]> {
+  try {
+    const res = await API.getImports({
+      page: 1,
+      perPage: 200,
+      filter: 'status != "anulado" && status != "recibido"',
+      sort: '-date_created',
+    });
+    if (res && Array.isArray(res.items) && res.items.length > 0) {
+      return res.items;
+    }
+  } catch (err) {
+    console.warn('[ensureActiveImportsForTx] API.getImports error:', err);
+  }
+
+  try {
+    const list = await pb.listAll('imports', {
+      filter: 'status != "anulado" && status != "recibido"',
+      sort: '-date_created',
+    });
+    return list || [];
+  } catch (err) {
+    console.warn('[ensureActiveImportsForTx] pb.listAll error:', err);
+    try {
+      const all = await pb.listAll('imports');
+      return (all || []).filter((i: any) => i.status !== 'anulado' && i.status !== 'recibido');
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+function buildImportHeaderHtml(activeImports: any[] = [], currentData: any = {}, prefix = 'tx') {
+  const isImport = !!currentData.is_import;
+  const impId = currentData.import_id || '';
+  const invRef = currentData.import_invoice_ref || '';
+  const trmVal = currentData.import_trm || '';
+
+  return `
+    <div class="col-span-1 md:col-span-4 p-3.5 rounded-xl border border-blue-200/90 bg-gradient-to-r from-slate-50 via-blue-50/40 to-indigo-50/30 shadow-xs mb-1" id="${prefix}-import-container">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <label class="flex items-center gap-2.5 cursor-pointer select-none">
+          <input type="checkbox" id="${prefix}-is-import" class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300" ${isImport ? 'checked' : ''} onchange="window.toggleTxImportMode(this.checked, '${prefix}')">
+          <span class="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+            <i class="fas fa-ship text-blue-600"></i>
+            Transacción / Gasto de Importación
+          </span>
+        </label>
+        <span id="${prefix}-import-badge" class="${isImport ? 'badge badge-blue text-[10px] font-bold' : 'badge badge-gray text-[10px] font-semibold'}">
+          ${isImport ? 'Importación Activa' : 'Contabilidad Estándar'}
+        </span>
+      </div>
+
+      <div id="${prefix}-import-fields" class="${isImport ? '' : 'hidden'} grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 pt-3 border-t border-blue-100">
+        <div>
+          <label class="block font-semibold text-xs text-slate-700 mb-1">Código de Importación <span class="text-red-500">*</span></label>
+          <select id="${prefix}-import-id" class="form-input text-xs py-1.5 w-full font-semibold" onchange="window.onTxImportSelected(this.value, '${prefix}')">
+            <option value="">-- Seleccionar Importación Activa --</option>
+            ${(!activeImports || activeImports.length === 0) ? '<option value="" disabled>⚠️ No hay importaciones activas registradas</option>' : ''}
+            ${(activeImports || []).map((imp: any) => {
+              const supp = imp.expand?.supplier_id?.name || '';
+              const desc = supp ? `(${supp})` : (imp.notes ? `(${imp.notes.slice(0, 25)})` : '');
+              return `<option value="${esc(imp.id)}" ${imp.id === impId ? 'selected' : ''}>${esc(imp.number)} ${desc ? ` - ${esc(desc)}` : ''}</option>`;
+            }).join('')}
+          </select>
+          ${(!activeImports || activeImports.length === 0) ? `
+            <div class="mt-1.5 p-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-tight">
+              <i class="fas fa-circle-exclamation text-amber-600 mr-1"></i>
+              No hay importaciones activas en el sistema. Crea una en el menú lateral: <strong>Logística e Importaciones &gt; Importaciones &gt; + Nueva Importación</strong>.
+            </div>
+          ` : ''}
+        </div>
+        <div>
+          <label class="block font-semibold text-xs text-slate-700 mb-1">N° Factura de Referencia</label>
+          <input id="${prefix}-import-invoice-ref" class="form-input text-xs py-1.5 font-mono w-full" placeholder="Ej: INV-98765 / BL / Factura Soporte" value="${esc(invRef)}" oninput="window.onTxImportRefChanged(this.value, '${prefix}')">
+        </div>
+        <div>
+          <label class="block font-semibold text-xs text-slate-700 mb-1">TRM de la Transacción (COP)</label>
+          <input id="${prefix}-import-trm" type="number" step="0.01" class="form-input text-xs py-1.5 text-right font-mono w-full" placeholder="Ej: 4250.00" value="${trmVal || ''}" oninput="window.onTxImportTrmChanged(this.value, '${prefix}')">
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+(window as any).toggleTxImportMode = function(isChecked: boolean, prefix = 'tx') {
+  if (prefix === 'edit-tx') {
+    if ((window as any).TX_EDIT_STATE) (window as any).TX_EDIT_STATE.isImport = isChecked;
+    const f = document.getElementById('edit-tx-import-fields');
+    const badge = document.getElementById('edit-tx-import-badge');
+    if (f) {
+      if (isChecked) f.classList.remove('hidden');
+      else f.classList.add('hidden');
+    }
+    if (badge) {
+      badge.className = isChecked ? 'badge badge-blue text-[10px] font-bold' : 'badge badge-gray text-[10px] font-semibold';
+      badge.textContent = isChecked ? 'Importación Activa' : 'Contabilidad Estándar';
+    }
+    if (typeof (window as any).renderEditTxLines === 'function') (window as any).renderEditTxLines(true);
+  } else {
+    TX_STATE.isImport = isChecked;
+    const f = document.getElementById('tx-import-fields');
+    const badge = document.getElementById('tx-import-badge');
+    if (f) {
+      if (isChecked) f.classList.remove('hidden');
+      else f.classList.add('hidden');
+    }
+    if (badge) {
+      badge.className = isChecked ? 'badge badge-blue text-[10px] font-bold' : 'badge badge-gray text-[10px] font-semibold';
+      badge.textContent = isChecked ? 'Importación Activa' : 'Contabilidad Estándar';
+    }
+    renderTxLines(true);
+  }
+};
+
+(window as any).onTxImportSelected = function(impId: string, prefix = 'tx') {
+  const importsList = prefix === 'edit-tx' ? ((window as any).TX_EDIT_STATE?.activeImports || TX_ACTIVE_IMPORTS_CACHE) : (TX_STATE?.activeImports || TX_ACTIVE_IMPORTS_CACHE);
+  const selectedImp = importsList?.find((x: any) => x.id === impId);
+  const trmInput = document.getElementById(`${prefix}-import-trm`) as HTMLInputElement;
+  if (selectedImp && selectedImp.exchange_rate && trmInput && !trmInput.value) {
+    trmInput.value = String(selectedImp.exchange_rate);
+    if (prefix === 'edit-tx' && (window as any).TX_EDIT_STATE) (window as any).TX_EDIT_STATE.importTrm = selectedImp.exchange_rate;
+    else if (TX_STATE) TX_STATE.importTrm = selectedImp.exchange_rate;
+  }
+  if (prefix === 'edit-tx' && (window as any).TX_EDIT_STATE) (window as any).TX_EDIT_STATE.importId = impId;
+  else if (TX_STATE) TX_STATE.importId = impId;
+};
+
+(window as any).onTxImportRefChanged = function(ref: string, prefix = 'tx') {
+  if (prefix === 'edit-tx' && (window as any).TX_EDIT_STATE) (window as any).TX_EDIT_STATE.importInvoiceRef = ref;
+  else if (TX_STATE) TX_STATE.importInvoiceRef = ref;
+};
+
+(window as any).onTxImportTrmChanged = function(trm: string, prefix = 'tx') {
+  const val = parseFloat(trm) || 0;
+  if (prefix === 'edit-tx' && (window as any).TX_EDIT_STATE) (window as any).TX_EDIT_STATE.importTrm = val;
+  else if (TX_STATE) TX_STATE.importTrm = val;
+};
+
 function thirdDisplay(t) {
   return `${t?.doc_number || ''} - ${t?.name || ''}`.trim();
 }
@@ -455,18 +594,19 @@ function bindTxLineAccountSearches(mode = 'new') {
 }
 
 
-async function openNuevaTxModal() {
+async function openNuevaTxModal(initialOpts: any = null) {
   if (!can('canWrite')) return showToast('Sin permisos para registrar transacciones', 'error');
   (window as any).__txModalOpen = true;
   openModal('Nueva Transacci\u00f3n', '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true);
   try {
-    const [accounts, txTypes, terceros, branches, costCenters] = await Promise.all([
+    const [accounts, txTypes, terceros, branches, costCenters, _phProps, activeImports] = await Promise.all([
       API.getAccounts(true),
       API.getTxTypes(),
       API.getTerceros({}),
       pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
       ensurePhPropertiesForTx(),
+      ensureActiveImportsForTx(),
     ]);
     const user = pb.currentUser;
     let allowedBranches = branches;
@@ -481,7 +621,26 @@ async function openNuevaTxModal() {
       accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id)
     );
     const accountMap = new Map(accounts.map(a => [a.id, a]));
-    TX_STATE = { accounts, txTypes, terceros, branches: allowedBranches, costCenters, lines: [], postableAccountIds, accountMap, inModal: true };
+    const isInitImport = Boolean(initialOpts?.is_import || initialOpts?.import_id);
+    TX_STATE = {
+      accounts,
+      txTypes,
+      terceros,
+      branches: allowedBranches,
+      costCenters,
+      lines: [],
+      postableAccountIds,
+      accountMap,
+      inModal: true,
+      activeImports,
+      isImport: isInitImport,
+      selectedImportId: initialOpts?.import_id || '',
+      importConcept: initialOpts?.import_concept || 'fob',
+      defaultConcept: initialOpts?.import_concept || 'fob',
+      importInvoiceRef: initialOpts?.import_invoice_ref || '',
+      importTrm: initialOpts?.import_trm || null,
+      onSavedCallback: initialOpts?.onSaved || null,
+    };
     (window as any).TX_STATE = TX_STATE;
 
     const body = `
@@ -517,6 +676,7 @@ async function openNuevaTxModal() {
             <option value="niif">Solo NIIF</option>
           </select>
         </div>
+        ${buildImportHeaderHtml(activeImports, initialOpts || {}, 'tx')}
       </div>
       <div class="p-4">
         <div class="flex items-center justify-between mb-3">
@@ -569,6 +729,10 @@ function bindNewTxModalEvents() {
       const fDesc    = ($('#tx-desc') as HTMLInputElement)?.value || '';
       const fDueDate = ($('#tx-due-date') as HTMLInputElement)?.value || ($('#tx-date') as HTMLInputElement)?.value || todayStr();
       const fBook    = ($('#tx-book-type') as HTMLSelectElement)?.value || 'both';
+      const fIsImport = ($('#tx-is-import') as HTMLInputElement)?.checked || false;
+      const fImpId   = ($('#tx-import-id') as HTMLSelectElement)?.value || '';
+      const fImpRef  = ($('#tx-import-invoice-ref') as HTMLInputElement)?.value || '';
+      const fImpTrm  = ($('#tx-import-trm') as HTMLInputElement)?.value || '';
 
       const restoreTxModal = (newThird = null) => {
         openModal(prevTitle, prevBody, prevFooter, isWide);
@@ -581,6 +745,10 @@ function bindNewTxModalEvents() {
           const nDesc = $('#tx-desc') as HTMLInputElement;
           const nDueDate = $('#tx-due-date') as HTMLInputElement;
           const nBook = $('#tx-book-type') as HTMLSelectElement;
+          const nIsImport = $('#tx-is-import') as HTMLInputElement;
+          const nImpId = $('#tx-import-id') as HTMLSelectElement;
+          const nImpRef = $('#tx-import-invoice-ref') as HTMLInputElement;
+          const nImpTrm = $('#tx-import-trm') as HTMLInputElement;
 
           if (nType) nType.value = fType;
           if (nNum)  nNum.value = fNum;
@@ -588,6 +756,13 @@ function bindNewTxModalEvents() {
           if (nDesc) nDesc.value = fDesc;
           if (nDueDate) nDueDate.value = fDueDate;
           if (nBook) nBook.value = fBook;
+          if (nIsImport) {
+            nIsImport.checked = fIsImport;
+            (window as any).toggleTxImportMode(fIsImport, 'tx');
+          }
+          if (nImpId) nImpId.value = fImpId;
+          if (nImpRef) nImpRef.value = fImpRef;
+          if (nImpTrm) nImpTrm.value = fImpTrm;
           
           if (nThird && newThird) {
             nThird.value = newThird.id;
@@ -796,18 +971,19 @@ async function renderNuevaTx(c) {
   if (!c) return;
   c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF">Cargando datos...</div>`;
   try {
-    const [accounts, txTypes, terceros] = await Promise.all([
+    const [accounts, txTypes, terceros, _phProps, activeImports] = await Promise.all([
       API.getAccounts(true),
       API.getTxTypes(),
       API.getTerceros({}),
       ensurePhPropertiesForTx(),
+      ensureActiveImportsForTx(),
     ]);
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
     const postableAccountIds = new Set(
       accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id)
     );
     const accountMap = new Map(accounts.map(a => [a.id, a]));
-    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: false };
+    TX_STATE = { accounts, txTypes, terceros, lines: [], postableAccountIds, accountMap, inModal: false, activeImports, isImport: false };
     (window as any).TX_STATE = TX_STATE;
 
     c.innerHTML = `
@@ -846,6 +1022,7 @@ async function renderNuevaTx(c) {
               <option value="niif">Solo NIIF</option>
             </select>
           </div>
+          ${buildImportHeaderHtml(activeImports, {}, 'tx')}
         </div>
       </div>
 
@@ -915,8 +1092,20 @@ async function refreshConsecutive() {
   setInputVal('tx-number', previewTxNumber(tt, ($('#tx-date') as HTMLInputElement)?.value));
 }
 
-function addTxLine(row = null) {
-  TX_STATE.lines.push(row || { account_id: '', third_party_id: '', cost_center_id: '', debit: 0, credit: 0, description: '', cross_doc_ref: '', ret_base: '', ret_rate: '' });
+function addTxLine(row: any = null) {
+  const defaultConcept = TX_STATE?.defaultConcept || (TX_STATE?.isImport ? 'fob' : '');
+  TX_STATE.lines.push(row || {
+    account_id: '',
+    third_party_id: '',
+    cost_center_id: '',
+    debit: 0,
+    credit: 0,
+    description: '',
+    cross_doc_ref: '',
+    ret_base: '',
+    ret_rate: '',
+    import_concept: defaultConcept
+  });
   renderTxLines(true);
 }
 
@@ -955,6 +1144,32 @@ function updateTxLine(i, field, value) {
       TX_STATE.lines[i].ret_rate = String(defaultRetRate(tipos, acct));
     } else {
       TX_STATE.lines[i].ret_rate = '';
+    }
+
+    // Auto-detectar importación si la cuenta es de tránsito (ej: 14650596 -> IMP-96, 14650593 -> IMP-93)
+    if (acct?.code && acct.code.startsWith('146505')) {
+      const digits = acct.code.replace(/^146505/, '').trim();
+      const importsList = Array.isArray(TX_STATE.activeImports) ? TX_STATE.activeImports : [];
+      const matchedImp = importsList.find((imp: any) => {
+        const numDigits = String(imp.number || '').replace(/\D/g, '');
+        return (digits && numDigits === digits) || (digits && String(imp.number || '').toLowerCase().includes(digits.toLowerCase()));
+      });
+      if (matchedImp) {
+        const chk = document.getElementById('tx-is-import') as HTMLInputElement;
+        if (chk && !chk.checked) {
+          chk.checked = true;
+          (window as any).toggleTxImportMode(true, 'tx');
+        }
+        const impSel = document.getElementById('tx-import-id') as HTMLSelectElement;
+        if (impSel) {
+          impSel.value = matchedImp.id;
+          (window as any).onTxImportSelected(matchedImp.id, 'tx');
+        }
+        if (!TX_STATE.lines[i].import_concept) {
+          TX_STATE.lines[i].import_concept = 'fob';
+        }
+        (window as any).showToast?.(`Importación ${matchedImp.number} detectada por la cuenta ${acct.code}`, 'info');
+      }
     }
     renderTxLines(value !== ''); // No repintar si el valor es vacío (el usuario está escribiendo)
   } else if (field === 'ret_base' || field === 'ret_rate') {
@@ -1022,6 +1237,11 @@ function updateTxBalance() {
 }
 
 function renderTxLines(repaint = true) {
+  const isImportMode = !!(TX_STATE.isImport || ($('#tx-is-import') as HTMLInputElement)?.checked);
+  const gridTemplate = isImportMode
+    ? 'minmax(170px,210px) minmax(170px,210px) minmax(95px,115px) minmax(125px,145px) minmax(95px,110px) minmax(95px,110px) minmax(90px,110px) minmax(90px,110px) auto auto'
+    : 'minmax(190px,220px) minmax(190px,220px) minmax(100px,120px) minmax(100px,120px) minmax(100px,120px) minmax(90px,110px) minmax(90px,110px) auto auto';
+
   if (repaint) {
     const html = TX_STATE.lines.map((line, i) => {
       const acct       = TX_STATE.accountMap.get(line.account_id);
@@ -1038,7 +1258,7 @@ function renderTxLines(repaint = true) {
       const headerBranchId = getSelectVal('tx-branch');
       const lineBranchId = line.branch_id || headerBranchId || '';
       return `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(190px,220px) minmax(190px,220px) minmax(100px,120px) minmax(100px,120px) minmax(100px,120px) minmax(90px,110px) minmax(90px,110px) auto auto;gap:8px;align-items:center">
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:${gridTemplate};gap:8px;align-items:center">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
@@ -1076,6 +1296,24 @@ function renderTxLines(repaint = true) {
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
+
+        ${isImportMode ? `
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-boxes-stacked" style="color:#2563EB;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#2563EB;white-space:nowrap">Concepto Imp.</span>
+          </div>
+          <select class="form-input" style="font-size:12px;padding:4px 6px;height:32px;border-color:#93C5FD;background:#EFF6FF" onchange="updateTxLine(${i}, 'import_concept', this.value)">
+            <option value="">-- Sin concepto --</option>
+            <option value="fob" ${line.import_concept === 'fob' ? 'selected' : ''}>1. FOB Mercancía</option>
+            <option value="freight" ${line.import_concept === 'freight' ? 'selected' : ''}>2. Flete Int.</option>
+            <option value="insurance" ${line.import_concept === 'insurance' ? 'selected' : ''}>3. Seguro Int.</option>
+            <option value="customs" ${line.import_concept === 'customs' ? 'selected' : ''}>4. Aduana / DIAN</option>
+            <option value="local_carrier" ${line.import_concept === 'local_carrier' ? 'selected' : ''}>5. Transporte Local</option>
+            <option value="local_other" ${line.import_concept === 'local_other' ? 'selected' : ''}>6. Otros Gastos</option>
+          </select>
+        </div>
+        ` : ''}
 
         <div style="display:flex;flex-direction:column;gap:3px">
           <div style="display:flex;align-items:center;gap:6px">
@@ -1582,6 +1820,15 @@ async function saveTransaction(approve = false) {
       return showToast(`La transacción no está cuadrada. Diferencia: ${fmt(diff)}`, 'error');
     }
 
+    const isImportMode = !!(TX_STATE.isImport || ($('#tx-is-import') as HTMLInputElement)?.checked);
+    const impId = isImportMode ? (($('#tx-import-id') as HTMLSelectElement)?.value || '') : '';
+    const invRef = isImportMode ? (($('#tx-import-invoice-ref') as HTMLInputElement)?.value.trim() || '') : '';
+    const trmVal = isImportMode ? (parseFloat(($('#tx-import-trm') as HTMLInputElement)?.value || '0') || 0) : 0;
+
+    if (isImportMode && !impId) {
+      return showToast('Has marcado esta transacción como Gasto de Importación. Debes seleccionar la importación correspondiente.', 'warning');
+    }
+
     const txBranchId = getSelectVal('tx-branch') || null;
     const txDueDate = getInputVal('tx-due-date') || txDate;
     const payDays = calcPaymentDays(txDate, txDueDate);
@@ -1598,6 +1845,10 @@ async function saveTransaction(approve = false) {
       status: 'draft',
       branch_id: txBranchId,
       book_type: bookType,
+      is_import: isImportMode,
+      import_id: isImportMode ? impId : null,
+      import_invoice_ref: isImportMode ? invRef : '',
+      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
     }, validLines.map((l, i) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,
@@ -1608,6 +1859,10 @@ async function saveTransaction(approve = false) {
       line_order: i + 1,
       cross_doc_ref: l.cross_doc_ref || '',
       branch_id: l.branch_id || txBranchId || null,
+      import_id: isImportMode ? impId : null,
+      import_concept: isImportMode ? (l.import_concept || '') : null,
+      import_invoice_ref: isImportMode ? invRef : '',
+      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
     })));
 
     if (approve && can('canApprove')) {
@@ -1626,6 +1881,9 @@ async function saveTransaction(approve = false) {
     }
     if (TX_STATE.inModal) {
       closeModal();
+      if (typeof TX_STATE.onSavedCallback === 'function') {
+        try { TX_STATE.onSavedCallback(tx); } catch (_) {}
+      }
       // Invalidate the period cache so the new type appears in the dropdown
       const savedPeriodKey = txDate.slice(0, 7);
       if (CTXQ_STATE.typeIdsByPeriod[savedPeriodKey]) {
@@ -2337,7 +2595,7 @@ async function editTx(id) {
     '<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando datos...</div>', '', true, tabKey);
 
   try {
-    const [tx, lines, accounts, txTypes, terceros, branches, costCenters] = await Promise.all([
+    const [tx, lines, accounts, txTypes, terceros, branches, costCenters, _phProps, activeImports] = await Promise.all([
       pb.get('transactions', id, { expand: 'tx_type_id,third_party_id' }),
       API.getTxLines(id),
       API.getAccounts(true),
@@ -2346,6 +2604,7 @@ async function editTx(id) {
       pb.listAll('branches', { filter: 'active=true', ignoreBranch: true }),
       pb.listAll('cost_centers', { filter: 'active=true', sort: 'code' }),
       ensurePhPropertiesForTx(),
+      ensureActiveImportsForTx(),
     ]);
 
     if (tx.status !== 'draft') {
@@ -2390,10 +2649,16 @@ async function editTx(id) {
     const parentCodes = new Set(accounts.map(a => a.parent_code).filter(Boolean));
     const postableAccountIds = new Set(accounts.filter(a => !parentCodes.has(a.code)).map(a => a.id));
     const accountMap = new Map(accounts.map(a => [a.id, a]));
+    const hasImportData = !!(tx.is_import || tx.import_id);
     TX_EDIT_STATE = {
       txId: id, accounts, txTypes, terceros, branches: allowedBranches, costCenters, postableAccountIds, accountMap,
       txBranchId: tx.branch_id || '',
       selectedThird: tx.third_party_id || '',
+      activeImports,
+      isImport: hasImportData,
+      importId: tx.import_id || '',
+      importInvoiceRef: tx.import_invoice_ref || '',
+      importTrm: tx.import_trm || 0,
       lines: lines.map(l => ({
         account_id: l.account_id,
         third_party_id: l.third_party_id || tx.third_party_id || '',
@@ -2406,6 +2671,10 @@ async function editTx(id) {
         ret_rate: '',
         line_order: l.line_order || 0,
         branch_id: l.branch_id || tx.branch_id || '',
+        import_id: l.import_id || tx.import_id || '',
+        import_concept: l.import_concept || '',
+        import_invoice_ref: l.import_invoice_ref || tx.import_invoice_ref || '',
+        import_trm: l.import_trm || tx.import_trm || 0,
       })),
     };
     (window as any).TX_EDIT_STATE = TX_EDIT_STATE;
@@ -2465,6 +2734,7 @@ async function editTx(id) {
             <option value="niif" ${tx.book_type === 'niif' ? 'selected' : ''}>Solo NIIF</option>
           </select>
         </div>
+        ${buildImportHeaderHtml(activeImports, { is_import: hasImportData, import_id: tx.import_id, import_invoice_ref: tx.import_invoice_ref, import_trm: tx.import_trm }, 'edit-tx')}
       </div>
       <div class="border-t pt-4" style="border-color:#F0F0F0">
         <div class="flex items-center justify-between mb-3">
@@ -2569,6 +2839,32 @@ function updateEditTxLine(i, field, value) {
     } else {
       TX_EDIT_STATE.lines[i].ret_rate = '';
     }
+
+    // Auto-detectar importación si la cuenta es de tránsito (ej: 14650596 -> IMP-96, 14650593 -> IMP-93)
+    if (acct?.code && acct.code.startsWith('146505')) {
+      const digits = acct.code.replace(/^146505/, '').trim();
+      const importsList = Array.isArray(TX_EDIT_STATE.activeImports) ? TX_EDIT_STATE.activeImports : [];
+      const matchedImp = importsList.find((imp: any) => {
+        const numDigits = String(imp.number || '').replace(/\D/g, '');
+        return (digits && numDigits === digits) || (digits && String(imp.number || '').toLowerCase().includes(digits.toLowerCase()));
+      });
+      if (matchedImp) {
+        const chk = document.getElementById('edit-tx-is-import') as HTMLInputElement;
+        if (chk && !chk.checked) {
+          chk.checked = true;
+          (window as any).toggleTxImportMode(true, 'edit-tx');
+        }
+        const impSel = document.getElementById('edit-tx-import-id') as HTMLSelectElement;
+        if (impSel) {
+          impSel.value = matchedImp.id;
+          (window as any).onTxImportSelected(matchedImp.id, 'edit-tx');
+        }
+        if (!TX_EDIT_STATE.lines[i].import_concept) {
+          TX_EDIT_STATE.lines[i].import_concept = 'fob';
+        }
+        (window as any).showToast?.(`Importación ${matchedImp.number} detectada por la cuenta ${acct.code}`, 'info');
+      }
+    }
     renderEditTxLines(value !== ''); // No repintar si el valor es vacío (el usuario está escribiendo)
   } else if (field === 'ret_base' || field === 'ret_rate') {
     const base = Number(TX_EDIT_STATE.lines[i].ret_base || 0);
@@ -2633,6 +2929,11 @@ function updateEditTxBalance() {
 }
 
 function renderEditTxLines(repaint = true) {
+  const isImportMode = !!(TX_EDIT_STATE.isImport || ($('#edit-tx-is-import') as HTMLInputElement)?.checked);
+  const gridTemplate = isImportMode
+    ? 'minmax(170px,210px) minmax(170px,210px) minmax(95px,115px) minmax(125px,145px) minmax(95px,110px) minmax(95px,110px) minmax(90px,110px) minmax(90px,110px) auto auto'
+    : 'minmax(190px,220px) minmax(190px,220px) minmax(100px,120px) minmax(100px,120px) minmax(100px,120px) minmax(90px,110px) minmax(90px,110px) auto auto';
+
   if (repaint) {
     const html = TX_EDIT_STATE.lines.map((line, i) => {
       const acct      = TX_EDIT_STATE.accountMap.get(line.account_id);
@@ -2649,7 +2950,7 @@ function renderEditTxLines(repaint = true) {
       const headerBranchId = (document.getElementById('edit-tx-branch') as HTMLSelectElement)?.value || TX_EDIT_STATE.txBranchId || '';
       const lineBranchId = line.branch_id || headerBranchId || '';
       return `
-      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:minmax(190px,220px) minmax(190px,220px) minmax(100px,120px) minmax(100px,120px) minmax(100px,120px) minmax(90px,110px) minmax(90px,110px) auto auto;gap:8px;align-items:center">
+      <div class="tx-line-row" data-i="${i}" style="display:grid;grid-template-columns:${gridTemplate};gap:8px;align-items:center">
         <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px">
             <i class="fas fa-list-tree" style="color:#334155;font-size:11px"></i>
@@ -2687,6 +2988,24 @@ function renderEditTxLines(repaint = true) {
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
+
+        ${isImportMode ? `
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <i class="fas fa-boxes-stacked" style="color:#2563EB;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#2563EB;white-space:nowrap">Concepto Imp.</span>
+          </div>
+          <select class="form-input" style="font-size:12px;padding:4px 6px;height:32px;border-color:#93C5FD;background:#EFF6FF" onchange="updateEditTxLine(${i}, 'import_concept', this.value)">
+            <option value="">-- Sin concepto --</option>
+            <option value="fob" ${line.import_concept === 'fob' ? 'selected' : ''}>1. FOB Mercancía</option>
+            <option value="freight" ${line.import_concept === 'freight' ? 'selected' : ''}>2. Flete Int.</option>
+            <option value="insurance" ${line.import_concept === 'insurance' ? 'selected' : ''}>3. Seguro Int.</option>
+            <option value="customs" ${line.import_concept === 'customs' ? 'selected' : ''}>4. Aduana / DIAN</option>
+            <option value="local_carrier" ${line.import_concept === 'local_carrier' ? 'selected' : ''}>5. Transporte Local</option>
+            <option value="local_other" ${line.import_concept === 'local_other' ? 'selected' : ''}>6. Otros Gastos</option>
+          </select>
+        </div>
+        ` : ''}
 
         <div style="display:flex;flex-direction:column;gap:3px">
           <div style="display:flex;align-items:center;gap:6px">
@@ -2804,6 +3123,16 @@ async function saveEditTx(txId) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...'; }
 
   try {
+    const isImportMode = !!(TX_EDIT_STATE.isImport || ($('#edit-tx-is-import') as HTMLInputElement)?.checked);
+    const impId = isImportMode ? (($('#edit-tx-import-id') as HTMLSelectElement)?.value || '') : '';
+    const invRef = isImportMode ? (($('#edit-tx-import-invoice-ref') as HTMLInputElement)?.value.trim() || '') : '';
+    const trmVal = isImportMode ? (parseFloat(($('#edit-tx-import-trm') as HTMLInputElement)?.value || '0') || 0) : 0;
+
+    if (isImportMode && !impId) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar cambios'; }
+      return showToast('Has marcado esta transacción como Gasto de Importación. Debes seleccionar la importación correspondiente.', 'warning');
+    }
+
     const txBranchId = (document.getElementById('edit-tx-branch') as HTMLSelectElement)?.value || null;
 
     const bookType = (document.getElementById('edit-tx-book-type') as HTMLSelectElement)?.value || 'both';
@@ -2815,6 +3144,10 @@ async function saveEditTx(txId) {
       payment_days: calcPaymentDays(txDate, (document.getElementById('edit-tx-due-date') as HTMLInputElement)?.value || txDate),
       branch_id: txBranchId,
       book_type: bookType,
+      is_import: isImportMode,
+      import_id: isImportMode ? impId : null,
+      import_invoice_ref: isImportMode ? invRef : '',
+      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
     }, validLines.map((l, idx) => ({
       account_id: l.account_id,
       third_party_id: l.third_party_id || thirdId || null,
@@ -2825,6 +3158,10 @@ async function saveEditTx(txId) {
       line_order: idx + 1,
       cross_doc_ref: l.cross_doc_ref || '',
       branch_id: l.branch_id || txBranchId || null,
+      import_id: isImportMode ? impId : null,
+      import_concept: isImportMode ? (l.import_concept || '') : null,
+      import_invoice_ref: isImportMode ? invRef : '',
+      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
     })));
     _closeTxModal();
     showToast('Transacción modificada exitosamente', 'success');

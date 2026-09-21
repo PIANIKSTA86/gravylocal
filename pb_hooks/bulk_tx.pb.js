@@ -278,6 +278,18 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
       if (txData.pos_shift_id && String(txData.pos_shift_id).trim()) {
         txRec.set("pos_shift_id", String(txData.pos_shift_id).trim());
       }
+      if (txData.is_import != null) {
+        txRec.set("is_import", !!txData.is_import);
+      }
+      if (txData.import_id && String(txData.import_id).trim()) {
+        txRec.set("import_id", String(txData.import_id).trim());
+      }
+      if (txData.import_invoice_ref != null) {
+        txRec.set("import_invoice_ref", String(txData.import_invoice_ref).trim());
+      }
+      if (txData.import_trm != null && Number(txData.import_trm) > 0) {
+        txRec.set("import_trm", Number(txData.import_trm));
+      }
 
       txApp.save(txRec);
       const txId = txRec.id;
@@ -331,6 +343,23 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
         }
         if (line.cost_center_id && String(line.cost_center_id).trim()) {
           lineRec.set("cost_center_id", String(line.cost_center_id).trim());
+        }
+
+        // Tracking contable de importación
+        const targetImpId = (line.import_id && String(line.import_id).trim()) || (txData.import_id && String(txData.import_id).trim()) || "";
+        if (targetImpId) {
+          lineRec.set("import_id", targetImpId);
+        }
+        if (line.import_concept && String(line.import_concept).trim()) {
+          lineRec.set("import_concept", String(line.import_concept).trim());
+        }
+        const targetInvRef = (line.import_invoice_ref != null && String(line.import_invoice_ref).trim()) || (txData.import_invoice_ref != null && String(txData.import_invoice_ref).trim()) || "";
+        if (targetInvRef) {
+          lineRec.set("import_invoice_ref", targetInvRef);
+        }
+        const targetTrm = Number(line.import_trm || txData.import_trm || 0);
+        if (targetTrm > 0) {
+          lineRec.set("import_trm", targetTrm);
         }
 
         txApp.save(lineRec);

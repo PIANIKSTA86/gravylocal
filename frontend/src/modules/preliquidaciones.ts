@@ -578,6 +578,34 @@ function _renderPreliqRow(s: any) {
   `;
 }
 
+// Conjunto de campos que se representan en la UI como porcentaje (0 - 100)
+const PERCENTAGE_FIELDS = new Set([
+  'cost_distribution_pct',
+  'arancel_rate',
+  'iva_rate',
+  'landed_allocation_pct',
+  'breakage_rate',
+  'commission_rate',
+  'target_margin'
+]);
+
+// Convierte un valor decimal/porcentual (ej. 0.65 o 65) a string entero o decimal para el input
+function pctToInput(val: number | undefined | null): string {
+  if (val === undefined || val === null || isNaN(Number(val))) return '0';
+  const num = Number(val);
+  const pct = num > 1 ? num : num * 100;
+  const rounded = Math.round(pct * 1000) / 1000;
+  return String(rounded);
+}
+
+// Normaliza un valor cargado de BD o parámetros a su representación interna en fracción (0 - 1)
+function normPct(v: any, def: number): number {
+  if (v === undefined || v === null || v === '') return def;
+  const n = Number(v);
+  if (isNaN(n)) return def;
+  return n > 1 ? n / 100 : n;
+}
+
 /**
  * Abre el Modal Interactivo del Simulador de Preliquidación.
  */
@@ -631,25 +659,25 @@ export async function openPreliquidacionModal(
           qty_base: l.qty_base || 0,
           fob_unit: l.fob_unit || 0,
           fob_total: l.fob_total || 0,
-          cost_distribution_pct: l.cost_distribution_pct || 0,
+          cost_distribution_pct: normPct(l.cost_distribution_pct, 0),
           freight_usd: 0,
           insurance_usd: 0,
           base_cif_usd: 0,
-          arancel_rate: l.arancel_rate || 0,
-          iva_rate: l.iva_rate || 0.19,
+          arancel_rate: normPct(l.arancel_rate, 0),
+          iva_rate: normPct(l.iva_rate, 0.19),
           arancel_usd: 0,
           arancel_cop: 0,
           iva_usd: 0,
           iva_cop: 0,
-          landed_allocation_pct: l.landed_allocation_pct || 0,
+          landed_allocation_pct: normPct(l.landed_allocation_pct, 0),
           landed_total_item_cop: 0,
           unit_initial_cost_cop: 0,
-          breakage_rate: l.breakage_rate || 0.02,
+          breakage_rate: normPct(l.breakage_rate, 0.02),
           breakage_amount_cop: 0,
-          commission_rate: l.commission_rate || 0.01,
+          commission_rate: normPct(l.commission_rate, 0.01),
           commission_amount_cop: 0,
           unit_final_cost_cop: 0,
-          target_margin: l.target_margin || 0.23,
+          target_margin: normPct(l.target_margin, 0.23),
           suggested_price_cop: 0,
           unit_profit_cop: 0,
           total_profit_cop: 0
@@ -1049,8 +1077,8 @@ export async function openPreliquidacionModal(
 
   document.body.appendChild(overlay);
 
-  // Funciones de recálculo y repintado de la tabla de partidas
-  function renderLines() {
+  // Función reactiva que actualiza cálculos, celdas de resultado y resúmenes SIN destruir inputs
+  function updateCalculationsUI() {
     const tbody = overlay.querySelector('#preliq-lines-tbody');
     const tfoot = overlay.querySelector('#preliq-lines-tfoot');
     if (!tbody || !tfoot) return;
@@ -1133,7 +1161,69 @@ export async function openPreliquidacionModal(
     const kpiMargin = overlay.querySelector('#kpi-overall-margin');
     if (kpiMargin) kpiMargin.textContent = `${(calc.overallMarginPct * 100).toFixed(1)} %`;
 
-    // Renderizado de Filas de Partidas
+    // Actualizar celdas calculadas en cada fila sin tocar el DOM de los inputs
+    tbody.querySelectorAll<HTMLTableRowElement>('tr[data-line-index]').forEach(tr => {
+      const idx = Number(tr.dataset.lineIndex);
+      const l = data.lines[idx];
+      if (!l) return;
+
+      const setCell = (cls: string, text: string) => {
+        const el = tr.querySelector(`.${cls}`);
+        if (el) el.textContent = text;
+      };
+
+      setCell('cell-fob-total', `$ ${(l.fob_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-insurance-usd', `$ ${(l.insurance_usd || 0).toFixed(2)}`);
+      setCell('cell-freight-usd', `$ ${(l.freight_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-base-cif-usd', `$ ${(l.base_cif_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-arancel-cop', `${(l.arancel_cop || 0).toLocaleString()}`);
+      setCell('cell-iva-cop', `${(l.iva_cop || 0).toLocaleString()}`);
+      setCell('cell-landed-total-item-cop', `${(l.landed_total_item_cop || 0).toLocaleString()}`);
+      setCell('cell-unit-initial-cost-cop', `${(l.unit_initial_cost_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-unit-final-cost-cop', `${(l.unit_final_cost_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-suggested-price-cop', `${(l.suggested_price_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-unit-profit-cop', `${(l.unit_profit_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      setCell('cell-total-profit-cop', `${(l.total_profit_cop || 0).toLocaleString()}`);
+
+      // Si qty_base fue calculado por cajas * factor y el usuario no está posicionado en ese campo, actualizarlo
+      const qtyInp = tr.querySelector<HTMLInputElement>('input[data-field="qty_base"]');
+      if (qtyInp && document.activeElement !== qtyInp) {
+        qtyInp.value = String(l.qty_base);
+      }
+    });
+
+    // Renderizar Totales en tfoot
+    tfoot.innerHTML = `
+      <tr>
+        <td colspan="2" class="py-2.5 px-3 whitespace-nowrap" style="width:265px">TOTALES</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:110px">${data.lines.reduce((s, l) => s + (Number(l.boxes_count) || 0), 0).toLocaleString()}</td>
+        <td class="py-2.5 px-2" style="width:100px"></td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:130px">${data.lines.reduce((s, l) => s + (Number(l.qty_base) || 0), 0).toLocaleString()}</td>
+        <td class="py-2.5 px-2" style="width:95px"></td>
+        <td class="py-2.5 px-2" style="width:125px"></td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalFobUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="py-2.5 px-2 text-right font-mono bg-blue-50/70 border-x border-blue-200 whitespace-nowrap" style="width:125px">${Math.round(calc.sumDistCostPct * 100)}%</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:110px">$ ${calc.totalInsuranceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:125px">$ ${calc.totalFreightUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalCifUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+        <td class="py-2.5 px-2" style="width:100px"></td>
+        <td class="py-2.5 px-2" style="width:100px"></td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">${calc.totalArancelCop.toLocaleString()}</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">${calc.totalIvaCop.toLocaleString()}</td>
+        <td class="py-2.5 px-2 text-right font-mono bg-amber-50/80 border-x border-amber-200 whitespace-nowrap" style="width:125px">${Math.round(calc.sumLandedAllocPct * 100)}%</td>
+        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:145px">${calc.totalBolsaCostosCop.toLocaleString()}</td>
+        <td colspan="7" class="py-2.5 px-2" style="width:880px"></td>
+        <td class="py-2.5 px-2 text-right font-mono text-emerald-800 font-extrabold whitespace-nowrap" style="width:145px">${calc.totalProfitCop.toLocaleString()}</td>
+        <td class="py-2.5 px-2" style="width:50px"></td>
+      </tr>
+    `;
+  }
+
+  // Construye las filas y campos editables de la tabla. Sólo se llama al abrir, agregar/eliminar filas o cargar muestra.
+  function buildTableRows() {
+    const tbody = overlay.querySelector('#preliq-lines-tbody');
+    if (!tbody) return;
+
     tbody.innerHTML = data.lines.map((l, idx) => `
       <tr class="hover:bg-slate-50/80 transition-colors" data-line-index="${idx}">
         <td class="py-2.5 px-2 text-center text-slate-400 font-mono" style="width:45px">${idx + 1}</td>
@@ -1169,97 +1259,97 @@ export async function openPreliquidacionModal(
         </td>
 
         <!-- FOB Total USD -->
-        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 whitespace-nowrap" style="width:135px">
+        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 whitespace-nowrap cell-fob-total" style="width:135px">
           $ ${(l.fob_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
-        <!-- % Distribución Costo Flete (AL TANTEO) -->
+        <!-- % Distribución Costo Flete (AL TANTEO: 0 - 100) -->
         <td class="py-2.5 px-2 text-right bg-blue-50/40 border-x border-blue-200" style="width:125px">
-          <input type="number" class="form-input text-xs text-right font-mono font-bold text-blue-900 py-1.5 px-2 w-full line-field rounded-lg border-blue-300 bg-blue-50/50 focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="cost_distribution_pct" min="0" max="1" step="0.01" value="${l.cost_distribution_pct}">
+          <input type="number" class="form-input text-xs text-right font-mono font-bold text-blue-900 py-1.5 px-2 w-full line-field rounded-lg border-blue-300 bg-blue-50/50 focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="cost_distribution_pct" min="0" max="100" step="any" value="${pctToInput(l.cost_distribution_pct)}" placeholder="0">
         </td>
 
         <!-- Seguro USD -->
-        <td class="py-2.5 px-2 text-right font-mono text-slate-600 whitespace-nowrap" style="width:110px">
+        <td class="py-2.5 px-2 text-right font-mono text-slate-600 whitespace-nowrap cell-insurance-usd" style="width:110px">
           $ ${(l.insurance_usd || 0).toFixed(2)}
         </td>
 
         <!-- Flete USD -->
-        <td class="py-2.5 px-2 text-right font-mono text-sky-800 whitespace-nowrap" style="width:125px">
+        <td class="py-2.5 px-2 text-right font-mono text-sky-800 whitespace-nowrap cell-freight-usd" style="width:125px">
           $ ${(l.freight_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
         <!-- Base CIF USD -->
-        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-900 whitespace-nowrap" style="width:135px">
+        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-900 whitespace-nowrap cell-base-cif-usd" style="width:135px">
           $ ${(l.base_cif_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
-        <!-- % Arancel -->
+        <!-- % Arancel (0 - 100) -->
         <td class="py-2.5 px-2 text-right" style="width:100px">
-          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="arancel_rate" min="0" max="1" step="0.01" value="${l.arancel_rate}">
+          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="arancel_rate" min="0" max="100" step="any" value="${pctToInput(l.arancel_rate)}" placeholder="0">
         </td>
 
-        <!-- % IVA -->
+        <!-- % IVA (0 - 100) -->
         <td class="py-2.5 px-2 text-right" style="width:100px">
-          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="iva_rate" min="0" max="1" step="0.01" value="${l.iva_rate}">
+          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="iva_rate" min="0" max="100" step="any" value="${pctToInput(l.iva_rate)}" placeholder="19">
         </td>
 
         <!-- Arancel COP -->
-        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap" style="width:135px">
+        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap cell-arancel-cop" style="width:135px">
           ${(l.arancel_cop || 0).toLocaleString()}
         </td>
 
         <!-- IVA COP -->
-        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap" style="width:135px">
+        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap cell-iva-cop" style="width:135px">
           ${(l.iva_cop || 0).toLocaleString()}
         </td>
 
-        <!-- % Asignación Bolsa Total (AL TANTEO) -->
+        <!-- % Asignación Bolsa Total (AL TANTEO: 0 - 100) -->
         <td class="py-2.5 px-2 text-right bg-amber-50/60 border-x border-amber-200" style="width:125px">
-          <input type="number" class="form-input text-xs text-right font-mono font-bold text-amber-950 py-1.5 px-2 w-full line-field rounded-lg border-amber-300 bg-amber-50/50 focus:ring-1 focus:ring-amber-500 shadow-sm" data-field="landed_allocation_pct" min="0" max="1" step="0.01" value="${l.landed_allocation_pct}">
+          <input type="number" class="form-input text-xs text-right font-mono font-bold text-amber-950 py-1.5 px-2 w-full line-field rounded-lg border-amber-300 bg-amber-50/50 focus:ring-1 focus:ring-amber-500 shadow-sm" data-field="landed_allocation_pct" min="0" max="100" step="any" value="${pctToInput(l.landed_allocation_pct)}" placeholder="0">
         </td>
 
         <!-- Costo Asignado COP -->
-        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 whitespace-nowrap" style="width:145px">
+        <td class="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 whitespace-nowrap cell-landed-total-item-cop" style="width:145px">
           ${(l.landed_total_item_cop || 0).toLocaleString()}
         </td>
 
         <!-- Costo Inicial Unitario COP -->
-        <td class="py-2.5 px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap" style="width:140px">
+        <td class="py-2.5 px-2 text-right font-mono font-bold text-slate-900 whitespace-nowrap cell-unit-initial-cost-cop" style="width:140px">
           ${(l.unit_initial_cost_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
-        <!-- Rotura % -->
+        <!-- Rotura % (0 - 100) -->
         <td class="py-2.5 px-2 text-right" style="width:105px">
-          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="breakage_rate" min="0" max="0.5" step="0.005" value="${l.breakage_rate}">
+          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="breakage_rate" min="0" max="100" step="any" value="${pctToInput(l.breakage_rate)}" placeholder="0">
         </td>
 
-        <!-- Comisión % -->
+        <!-- Comisión % (0 - 100) -->
         <td class="py-2.5 px-2 text-right" style="width:105px">
-          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="commission_rate" min="0" max="0.5" step="0.005" value="${l.commission_rate}">
+          <input type="number" class="form-input text-xs text-right font-mono py-1.5 px-2 w-full line-field rounded-lg border-slate-300 bg-white focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="commission_rate" min="0" max="100" step="any" value="${pctToInput(l.commission_rate)}" placeholder="0">
         </td>
 
         <!-- Costo Final Unitario COP -->
-        <td class="py-2.5 px-2 text-right font-mono font-extrabold bg-indigo-50/50 text-indigo-950 border-x border-indigo-200 whitespace-nowrap" style="width:145px">
+        <td class="py-2.5 px-2 text-right font-mono font-extrabold bg-indigo-50/50 text-indigo-950 border-x border-indigo-200 whitespace-nowrap cell-unit-final-cost-cop" style="width:145px">
           ${(l.unit_final_cost_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
-        <!-- Margen % -->
+        <!-- Margen % (0 - 100) -->
         <td class="py-2.5 px-2 text-right bg-emerald-50/30" style="width:105px">
-          <input type="number" class="form-input text-xs text-right font-mono font-bold py-1.5 px-2 w-full line-field rounded-lg border-emerald-300 bg-white focus:ring-1 focus:ring-emerald-500 shadow-sm" data-field="target_margin" min="0" max="0.95" step="0.01" value="${l.target_margin}">
+          <input type="number" class="form-input text-xs text-right font-mono font-bold py-1.5 px-2 w-full line-field rounded-lg border-emerald-300 bg-white focus:ring-1 focus:ring-emerald-500 shadow-sm" data-field="target_margin" min="0" max="100" step="any" value="${pctToInput(l.target_margin)}" placeholder="0">
         </td>
 
         <!-- Precio Sugerido Venta -->
-        <td class="py-2.5 px-2 text-right font-mono font-black text-emerald-900 bg-emerald-50/70 border-x border-emerald-200 whitespace-nowrap" style="width:150px">
+        <td class="py-2.5 px-2 text-right font-mono font-black text-emerald-900 bg-emerald-50/70 border-x border-emerald-200 whitespace-nowrap cell-suggested-price-cop" style="width:150px">
           ${(l.suggested_price_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
         <!-- Margen Unitario $ -->
-        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap" style="width:130px">
+        <td class="py-2.5 px-2 text-right font-mono text-slate-700 whitespace-nowrap cell-unit-profit-cop" style="width:130px">
           ${(l.unit_profit_cop || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
         <!-- Utilidad Total $ -->
-        <td class="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 whitespace-nowrap" style="width:145px">
+        <td class="py-2.5 px-2 text-right font-mono font-bold text-emerald-700 whitespace-nowrap cell-total-profit-cop" style="width:145px">
           ${(l.total_profit_cop || 0).toLocaleString()}
         </td>
 
@@ -1272,34 +1362,13 @@ export async function openPreliquidacionModal(
       </tr>
     `).join('');
 
-    // Renderizar Totales en tfoot
-    tfoot.innerHTML = `
-      <tr>
-        <td colspan="2" class="py-2.5 px-3 whitespace-nowrap" style="width:265px">TOTALES</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:110px">${data.lines.reduce((s, l) => s + (Number(l.boxes_count) || 0), 0).toLocaleString()}</td>
-        <td class="py-2.5 px-2" style="width:100px"></td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:130px">${data.lines.reduce((s, l) => s + (Number(l.qty_base) || 0), 0).toLocaleString()}</td>
-        <td class="py-2.5 px-2" style="width:95px"></td>
-        <td class="py-2.5 px-2" style="width:125px"></td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalFobUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="py-2.5 px-2 text-right font-mono bg-blue-50/70 border-x border-blue-200 whitespace-nowrap" style="width:125px">${Math.round(calc.sumDistCostPct * 100)}%</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:110px">$ ${calc.totalInsuranceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:125px">$ ${calc.totalFreightUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalCifUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="py-2.5 px-2" style="width:100px"></td>
-        <td class="py-2.5 px-2" style="width:100px"></td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">${calc.totalArancelCop.toLocaleString()}</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">${calc.totalIvaCop.toLocaleString()}</td>
-        <td class="py-2.5 px-2 text-right font-mono bg-amber-50/80 border-x border-amber-200 whitespace-nowrap" style="width:125px">${Math.round(calc.sumLandedAllocPct * 100)}%</td>
-        <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:145px">${calc.totalBolsaCostosCop.toLocaleString()}</td>
-        <td colspan="7" class="py-2.5 px-2" style="width:880px"></td>
-        <td class="py-2.5 px-2 text-right font-mono text-emerald-800 font-extrabold whitespace-nowrap" style="width:145px">${calc.totalProfitCop.toLocaleString()}</td>
-        <td class="py-2.5 px-2" style="width:50px"></td>
-      </tr>
-    `;
-
-    // Bind listeners a los inputs de cada línea
+    // Bind listeners a los inputs de cada línea sin destruir el DOM en cada tecla
     tbody.querySelectorAll<HTMLInputElement>('.line-field').forEach(input => {
+      // Auto-seleccionar texto al enfocar para facilitar sobreescritura rápida
+      input.addEventListener('focus', () => {
+        input.select();
+      });
+
       input.addEventListener('input', (ev: any) => {
         const tr = ev.target.closest('tr');
         const idx = Number(tr?.dataset.lineIndex);
@@ -1309,10 +1378,14 @@ export async function openPreliquidacionModal(
         const val = ev.target.value;
         if (field === 'product_type' || field === 'unit_measure') {
           (data.lines[idx] as any)[field] = val;
+        } else if (PERCENTAGE_FIELDS.has(field)) {
+          // El usuario ingresa un porcentaje entero (ej. 65 o 19), se almacena en base decimal (0.65 o 0.19)
+          const parsed = parseFloat(val);
+          (data.lines[idx] as any)[field] = isNaN(parsed) ? 0 : parsed / 100;
         } else {
           (data.lines[idx] as any)[field] = parseFloat(val) || 0;
         }
-        renderLines();
+        updateCalculationsUI();
       });
     });
 
@@ -1324,12 +1397,15 @@ export async function openPreliquidacionModal(
           return;
         }
         data.lines.splice(idx, 1);
-        renderLines();
+        buildTableRows();
       });
     });
+
+    // Actualiza los cálculos y celdas tras construir las filas
+    updateCalculationsUI();
   }
 
-  // Eventos de Parámetros Globales
+  // Eventos de Parámetros Globales (actualizan cálculos sin destruir las filas de la tabla)
   const bindGlobalParam = (elementId: string, prop: keyof PreliqData, isNumber: boolean = true) => {
     const el = overlay.querySelector(`#${elementId}`) as HTMLInputElement;
     if (!el) return;
@@ -1339,7 +1415,7 @@ export async function openPreliquidacionModal(
       } else {
         (data as any)[prop] = el.value;
       }
-      renderLines();
+      updateCalculationsUI();
     });
   };
 
@@ -1389,7 +1465,7 @@ export async function openPreliquidacionModal(
       unit_profit_cop: 0,
       total_profit_cop: 0
     });
-    renderLines();
+    buildTableRows();
   });
 
   // Botón Sugerir Distribución Proporcional al FOB
@@ -1406,8 +1482,21 @@ export async function openPreliquidacionModal(
       l.cost_distribution_pct = pct;
       l.landed_allocation_pct = pct;
     });
-    renderLines();
-    (window as any).showToast('Distribución FOB aplicada como base. Puede ajustarla al tanteo.', 'info');
+    // Actualizar valores en los inputs existentes sin perder estructura ni foco
+    const tbody = overlay.querySelector('#preliq-lines-tbody');
+    if (tbody) {
+      tbody.querySelectorAll<HTMLTableRowElement>('tr[data-line-index]').forEach(tr => {
+        const idx = Number(tr.dataset.lineIndex);
+        const l = data.lines[idx];
+        if (!l) return;
+        const distInp = tr.querySelector<HTMLInputElement>('input[data-field="cost_distribution_pct"]');
+        if (distInp) distInp.value = pctToInput(l.cost_distribution_pct);
+        const allocInp = tr.querySelector<HTMLInputElement>('input[data-field="landed_allocation_pct"]');
+        if (allocInp) allocInp.value = pctToInput(l.landed_allocation_pct);
+      });
+    }
+    updateCalculationsUI();
+    (window as any).showToast('Distribución FOB sugerida aplicada. Puede ajustarla al tanteo.', 'info');
   });
 
   // Botón Cargar Muestra Excel
@@ -1426,7 +1515,7 @@ export async function openPreliquidacionModal(
     (overlay.querySelector('#preliq-inspection-bl') as HTMLInputElement).value = String(data.inspection_per_bl_cop);
     (overlay.querySelector('#preliq-agency-bl') as HTMLInputElement).value = String(data.customs_agency_per_bl_cop);
     (overlay.querySelector('#preliq-other-local') as HTMLInputElement).value = String(data.other_local_costs_cop);
-    renderLines();
+    buildTableRows();
     (window as any).showToast('Datos de muestra_preliq.xlsx cargados.', 'success');
   });
 
@@ -1529,7 +1618,7 @@ export async function openPreliquidacionModal(
   overlay.querySelector('#btn-preliq-cancel')?.addEventListener('click', closeModal);
 
   // Primer renderizado
-  renderLines();
+  buildTableRows();
 }
 
 /**
@@ -1716,25 +1805,25 @@ export function exportPreliquidacionToExcel(data: PreliqData) {
         qty_base: l.qty_base || 0,
         fob_unit: l.fob_unit || 0,
         fob_total: l.fob_total || 0,
-        cost_distribution_pct: l.cost_distribution_pct || 0,
+        cost_distribution_pct: normPct(l.cost_distribution_pct, 0),
         freight_usd: 0,
         insurance_usd: 0,
         base_cif_usd: 0,
-        arancel_rate: l.arancel_rate || 0,
-        iva_rate: l.iva_rate || 0.19,
+        arancel_rate: normPct(l.arancel_rate, 0),
+        iva_rate: normPct(l.iva_rate, 0.19),
         arancel_usd: 0,
         arancel_cop: 0,
         iva_usd: 0,
         iva_cop: 0,
-        landed_allocation_pct: l.landed_allocation_pct || 0,
+        landed_allocation_pct: normPct(l.landed_allocation_pct, 0),
         landed_total_item_cop: 0,
         unit_initial_cost_cop: 0,
-        breakage_rate: l.breakage_rate || 0.02,
+        breakage_rate: normPct(l.breakage_rate, 0.02),
         breakage_amount_cop: 0,
-        commission_rate: l.commission_rate || 0.01,
+        commission_rate: normPct(l.commission_rate, 0.01),
         commission_amount_cop: 0,
         unit_final_cost_cop: 0,
-        target_margin: l.target_margin || 0.23,
+        target_margin: normPct(l.target_margin, 0.23),
         suggested_price_cop: 0,
         unit_profit_cop: 0,
         total_profit_cop: 0

@@ -3161,15 +3161,17 @@ app.post('/api/dian/generate-pdf', async (req, res) => {
 /**
  * Renderiza una página completa (LETTER) para una Cuenta de Cobro / Estado de Cuenta PH
  */
-function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1) {
+function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1, sharedOptions = {}) {
   const d = statementData || {};
-  const companyName = d.companyName || 'COPROPIEDAD RESIDENCIAL P.H.';
-  const companyNit = d.companyNit || '';
-  const companyAddress = d.companyAddress || '';
-  const companyPhone = d.companyPhone || '';
-  const companyEmail = d.companyEmail || '';
-  const companyCity = d.companyCity || '';
-  const companyLogo = d.companyLogo || '';
+  const c = sharedOptions.companyData || {};
+  const companyName = d.companyName || c.companyName || 'COPROPIEDAD RESIDENCIAL P.H.';
+  const companyNit = d.companyNit || c.companyNit || '';
+  const companyAddress = d.companyAddress || c.companyAddress || '';
+  const companyPhone = d.companyPhone || c.companyPhone || '';
+  const companyEmail = d.companyEmail || c.companyEmail || '';
+  const companyCity = d.companyCity || c.companyCity || '';
+  const companyLogo = d.companyLogo || c.companyLogo || '';
+  const sharedLogo = sharedOptions.sharedLogo || null;
 
   const docType = d.docType || 'invoice';
   const docLabel = docType === 'statement' ? 'ESTADO DE CUENTA' : 'CUENTA DE COBRO';
@@ -3359,7 +3361,14 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
   const headerBoxH = 72;
 
   let logoRendered = false;
-  if (companyLogo) {
+  if (sharedLogo) {
+    try {
+      doc.image(sharedLogo, L, y + 2, { fit: [colLogoW - 5, headerBoxH - 4] });
+      logoRendered = true;
+    } catch (e) {
+      console.warn('[ORCHESTRATOR PH] Error rendering shared logo:', e.message);
+    }
+  } else if (companyLogo) {
     try {
       const base64Data = companyLogo.replace(/^data:image\/\w+;base64,/, '');
       const imgBuf = Buffer.from(base64Data, 'base64');
@@ -3635,8 +3644,9 @@ function generatePhStatementPdf(statementData) {
 
 /**
  * Generador de PDF ÚNICO MULTIPÁGINA consolidando todas las facturas de un lote/período
+ * Optimizado: Streaming directo (sin bufferPages en RAM) y logo pre-parseado una sola vez.
  */
-function generatePhMultiStatementPdf(statementsArray) {
+function generatePhMultiStatementPdf(statementsArray, companyData = {}) {
   return new Promise((resolve, reject) => {
     try {
       const list = Array.isArray(statementsArray) ? statementsArray : [];
@@ -3645,7 +3655,7 @@ function generatePhMultiStatementPdf(statementsArray) {
       const doc = new PDFDocument({
         margins: { top: 22, bottom: 10, left: 28, right: 28 },
         size: 'LETTER',
-        bufferPages: true,
+        bufferPages: false, // STREAMING DIRECTO: libera cada página de RAM inmediatamente (elimina GC Thrashing)
         autoFirstPage: false
       });
 
@@ -3654,13 +3664,31 @@ function generatePhMultiStatementPdf(statementsArray) {
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
+      // Pre-cargar y pre-parsear el logotipo UNA SOLA VEZ para todo el documento
+      let sharedLogo = null;
+      const rawLogo = (companyData && companyData.companyLogo) || (list[0] && list[0].companyLogo) || '';
+      if (rawLogo) {
+        try {
+          const base64Data = rawLogo.replace(/^data:image\/\w+;base64,/, '');
+          const imgBuf = Buffer.from(base64Data, 'base64');
+          sharedLogo = doc.openImage(imgBuf);
+        } catch (e) {
+          console.warn('[ORCHESTRATOR PH] Advertencia al pre-parsear logo único:', e.message);
+        }
+      }
+
+      const sharedOptions = {
+        sharedLogo,
+        companyData: companyData || {}
+      };
+
       if (list.length === 0) {
         doc.addPage({ margins: { top: 22, bottom: 10, left: 28, right: 28 } });
         doc.font('Helvetica').fontSize(12).text('No hay facturas para mostrar en este período.', 50, 100);
       } else {
         for (let i = 0; i < list.length; i++) {
           doc.addPage({ margins: { top: 22, bottom: 10, left: 28, right: 28 } });
-          renderPhStatementPage(doc, list[i], i, totalPages);
+          renderPhStatementPage(doc, list[i], i, totalPages, sharedOptions);
         }
       }
 
@@ -3723,10 +3751,10 @@ app.post('/api/ph/generate-pdf', async (req, res) => {
 // ──────────────────────────────────────────────────────────
 app.post('/api/ph/generate-bulk-pdf', async (req, res) => {
   try {
-    const { filename = 'Facturas_Copropiedad', statements = [], format = 'base64' } = req.body;
-    console.log(`[GRAVY ORCHESTRATOR] Generando PDF unificado con ${statements.length} facturas/páginas...`);
+    const { filename = 'Facturas_Copropiedad', statements = [], companyData = {}, format = 'base64' } = req.body;
+    console.log(`[GRAVY ORCHESTRATOR] Generando PDF unificado con ${statements.length} facturas/páginas (modo streaming de alto rendimiento)...`);
 
-    const pdfBuffer = await generatePhMultiStatementPdf(statements);
+    const pdfBuffer = await generatePhMultiStatementPdf(statements, companyData);
     const sanitizedFilename = String(filename).replace(/[^a-zA-Z0-9_\-]/g, '_');
 
     if (format === 'base64') {

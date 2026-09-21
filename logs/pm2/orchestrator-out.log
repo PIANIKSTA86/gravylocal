@@ -64,3 +64,88 @@
 2026-09-11T12:19:10: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
 2026-09-11T12:19:10: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
 2026-09-11T12:19:10: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T16:32:02: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 568 minutos).
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T16:32:03: GRAVY Orchestrator running on port 8088
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T16:32:03: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T16:36:13: [GRAVY ORCHESTRATOR] Generando PDF unificado con 0 facturas/páginas...
+2026-09-18T16:39:59: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 560 minutos).
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T16:39:59: GRAVY Orchestrator running on port 8088
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T16:39:59: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T16:43:02: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 557 minutos).
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T16:43:02: GRAVY Orchestrator running on port 8088
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T16:43:02: [GRAVY ORCHESTRATOR] Auto-arrancando empresa existente en puerto 8094 (bind: 127.0.0.1)...
+2026-09-18T16:43:45: [GRAVY ORCHESTRATOR] Generando PDF unificado con 96 facturas/páginas...
+2026-09-18T16:43:55: [GRAVY ORCHESTRATOR] Generando PDF unificado con 96 facturas/páginas...
+2026-09-18T20:24:56: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 335 minutos).
+2026-09-18T20:24:56: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T20:24:56: GRAVY Orchestrator running on port 8088
+2026-09-18T20:24:56: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T20:24:57: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T20:25:09: [GRAVY ORCHESTRATOR] Generando PDF unificado con 100 facturas/páginas (modo streaming de alto rendimiento)...
+2026-09-18T20:25:16: [GRAVY ORCHESTRATOR] Generando PDF unificado con 200 facturas/páginas (modo streaming de alto rendimiento)...
+2026-09-18T20:26:21: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 334 minutos).
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T20:26:21: GRAVY Orchestrator running on port 8088
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T20:26:21: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T20:26:40: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 333 minutos).
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T20:26:40: GRAVY Orchestrator running on port 8088
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T20:26:40: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T21:02:05: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 298 minutos).
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T21:02:05: GRAVY Orchestrator running on port 8088
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T21:02:05: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.
+2026-09-18T21:12:35: [BACKUP SCHEDULER] Programado el próximo respaldo automático diario para: 19/9/2026, 2:00:00 a. m. (en 287 minutos).
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8091.
+2026-09-18T21:12:35: GRAVY Orchestrator running on port 8088
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Empresa en puerto 8091 ya está activa/escuchando.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8092.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Empresa en puerto 8092 ya está activa/escuchando.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8093.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Empresa en puerto 8093 ya está activa/escuchando.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Hooks genéricos sincronizados para empresa 8094.
+2026-09-18T21:12:35: [GRAVY ORCHESTRATOR] Empresa en puerto 8094 ya está activa/escuchando.

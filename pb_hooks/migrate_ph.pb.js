@@ -257,16 +257,29 @@ onBootstrap((e) => {
     console.log('[GRAVY-PH] Colección ph_invoices creada.');
   }
 
-  // Normalizar ph_invoices si ya existía: reglas sincronizadas
+  // Normalizar ph_invoices si ya existía: reglas sincronizadas y campos de email
   try {
     const phInvCol = $app.findCollectionByNameOrId('ph_invoices');
     const writeRule = "@request.auth.collectionName = 'users' && (@request.auth.role = 'admin' || @request.auth.role = 'contador' || @request.auth.role = 'auxiliar' || @request.auth.role = 'superadmin')";
     let changed = false;
     if (phInvCol.createRule !== writeRule) { phInvCol.createRule = writeRule; changed = true; }
     if (phInvCol.updateRule !== writeRule) { phInvCol.updateRule = writeRule; changed = true; }
+    
+    // Campos de tracking de envío de correos
+    let emailSentField = null;
+    try { emailSentField = phInvCol.fields.getByName("email_sent"); } catch (_) {}
+    if (!emailSentField) {
+      phInvCol.fields.add(new BoolField({ name: "email_sent", required: false }));
+      phInvCol.fields.add(new TextField({ name: "email_sent_to", required: false }));
+      phInvCol.fields.add(new TextField({ name: "email_sent_at", required: false }));
+      phInvCol.fields.add(new TextField({ name: "email_status", required: false }));
+      phInvCol.fields.add(new TextField({ name: "email_last_error", required: false }));
+      changed = true;
+    }
+
     if (changed) {
       $app.save(phInvCol);
-      console.log('[GRAVY-PH] Colección ph_invoices actualizada: reglas sincronizadas.');
+      console.log('[GRAVY-PH] Colección ph_invoices actualizada: reglas y campos de email sincronizados.');
     }
   } catch (err) {
     console.log('[GRAVY-PH] Aviso al normalizar ph_invoices: ' + err);

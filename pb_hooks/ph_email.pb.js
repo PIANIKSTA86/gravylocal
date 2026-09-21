@@ -460,6 +460,22 @@ function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
   return list;
 }
 
+// Exponer helpers en globalThis para que estén disponibles en callbacks de routerAdd (Goja)
+try {
+  globalThis.getSetting = getSetting;
+  globalThis.fmtCurrency = fmtCurrency;
+  globalThis.getMonthNameUpper = getMonthNameUpper;
+  globalThis.fmtDateDDMMYYYY = fmtDateDDMMYYYY;
+  globalThis.getPreviousPeriod = getPreviousPeriod;
+  globalThis.getCanonicalConceptName = getCanonicalConceptName;
+  globalThis.getPhConceptsCache = getPhConceptsCache;
+  globalThis.resolveConceptGroup = resolveConceptGroup;
+  globalThis.getNetPaymentsForPhInvoice = getNetPaymentsForPhInvoice;
+  globalThis.autoMarkPaidIfSettled = autoMarkPaidIfSettled;
+  globalThis.syncPropertyInvoicesStatus = syncPropertyInvoicesStatus;
+  globalThis.getPreviousMonthRecaudos = getPreviousMonthRecaudos;
+  globalThis.buildGroupedConceptsList = buildGroupedConceptsList;
+} catch (_) {}
 
 // Helper de números a letras en español
 function numeroALetras(num) {
@@ -950,6 +966,14 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     }
     return y + '-' + (m < 10 ? '0' + m : m);
   };
+
+  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function') ? globalThis.getCanonicalConceptName : function(rawDesc) { return String(rawDesc || '').trim() || 'CONCEPTO'; };
+  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function') ? globalThis.getPhConceptsCache : function() { return { byId:{}, moraId:'', admId:'', byCanonicalName:{} }; };
+  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function') ? globalThis.resolveConceptGroup : function(line, cache) { return { groupKey: "__CONCEPT__", conceptId: "", description: "CONCEPTO" }; };
+  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function') ? globalThis.getNetPaymentsForPhInvoice : function() { return 0; };
+  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function') ? globalThis.autoMarkPaidIfSettled : function() {};
+  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function') ? globalThis.getPreviousMonthRecaudos : function() { return { unitRecaudo: 0, totalRecaudo: 0 }; };
+  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function') ? globalThis.buildGroupedConceptsList : function() { return []; };
 
   const numeroALetras = function(num) {
     var tempNum = parseFloat(String(num)).toFixed(2).split('.');
@@ -1578,8 +1602,24 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       }
 
       $app.newMailClient().send(message);
+
+      try {
+        invoice.set("email_sent", true);
+        invoice.set("email_sent_to", targetEmail);
+        invoice.set("email_sent_at", new Date().toISOString().replace('T', ' ').substring(0, 19));
+        invoice.set("email_status", "sent");
+        invoice.set("email_last_error", "");
+        $app.save(invoice);
+      } catch (saveErr) {
+        console.warn("[GRAVY PH EMAIL] No se pudo persistir estado individual:", saveErr);
+      }
     } catch (mailErr) {
       console.error("[GRAVY PH EMAIL] Falló el envío SMTP:", mailErr);
+      try {
+        invoice.set("email_status", "failed");
+        invoice.set("email_last_error", String(mailErr && mailErr.message ? mailErr.message : mailErr || "").substring(0, 250));
+        $app.save(invoice);
+      } catch (_) {}
       e.json(500, {
         message: "Error al enviar el correo. Por favor verifique la configuración de correo (SMTP) en el panel administrativo de PocketBase.",
         details: mailErr.message || String(mailErr)
@@ -1644,6 +1684,14 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     }
     return y + '-' + (m < 10 ? '0' + m : m);
   };
+
+  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function') ? globalThis.getCanonicalConceptName : function(rawDesc) { return String(rawDesc || '').trim() || 'CONCEPTO'; };
+  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function') ? globalThis.getPhConceptsCache : function() { return { byId:{}, moraId:'', admId:'', byCanonicalName:{} }; };
+  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function') ? globalThis.resolveConceptGroup : function(line, cache) { return { groupKey: "__CONCEPT__", conceptId: "", description: "CONCEPTO" }; };
+  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function') ? globalThis.getNetPaymentsForPhInvoice : function() { return 0; };
+  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function') ? globalThis.autoMarkPaidIfSettled : function() {};
+  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function') ? globalThis.getPreviousMonthRecaudos : function() { return { unitRecaudo: 0, totalRecaudo: 0 }; };
+  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function') ? globalThis.buildGroupedConceptsList : function() { return []; };
 
   const numeroALetras = function(num) {
     var tempNum = parseFloat(String(num)).toFixed(2).split('.');
@@ -1761,7 +1809,9 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     notes: customNotes,
     prevMonthUnitRecaudo,
     prevMonthTotalRecaudo,
-    prevMonthName
+    prevMonthName,
+    customMessageHtml,
+    customNoticeHtml
   }) {
     const numberText = invoice.getString("number");
     
@@ -1836,6 +1886,19 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         </td>
       </tr>
     </table>
+
+    <!-- Mensaje Personalizado de la Administración -->
+    ${customMessageHtml ? `
+    <div style="margin-bottom: 14px; padding: 12px 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #1e293b;">
+      ${customMessageHtml}
+    </div>` : ''}
+
+    <!-- Aviso Especial / Circular / Asamblea -->
+    ${customNoticeHtml ? `
+    <div style="margin-bottom: 14px; padding: 12px 16px; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #92400e;">
+      <div style="font-weight: bold; margin-bottom: 4px; font-size: 12.5px;">📢 AVISO IMPORTANTE DE LA ADMINISTRACIÓN</div>
+      <div>${customNoticeHtml}</div>
+    </div>` : ''}
 
     <!-- Ficha de Datos / Metadatos (Fondo Blanco Puro) -->
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
@@ -2106,22 +2169,85 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
   const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
   const customSubject = String(body?.subject || '').trim();
+  const customMessage = String(body?.message || '').trim();
+  const customNotice = String(body?.notice !== undefined ? body.notice : '').trim();
+
+  let targetInvoiceIds = null;
+  if (Array.isArray(body?.invoiceIds) && body.invoiceIds.length > 0) {
+    targetInvoiceIds = body.invoiceIds.map(id => String(id || '').trim()).filter(Boolean);
+  }
+
+  // Filtro inteligente para reanudar envíos pendientes (omite los ya despachados)
+  let onlyPending = true;
+  if (body?.onlyPending !== undefined) {
+    onlyPending = !!body.onlyPending;
+  } else {
+    try {
+      const q = e.requestInfo()?.query || {};
+      if (q.onlyPending !== undefined) onlyPending = q.onlyPending !== 'false';
+      else if (q.only_pending !== undefined) onlyPending = q.only_pending !== 'false';
+    } catch (_) {}
+  }
 
   if (!period) {
     return e.json(400, { message: "El período es requerido (formato YYYY-MM)." });
   }
 
+  // Plantillas de asunto y cuerpo configurables con tokens
+  const defaultSubjectTemplate = type === 'statement'
+    ? (getSetting("ph_email_template_statement_subject", "") || "{copropiedad} — Estado de Cuenta {periodo} — Unidad {unidad}")
+    : (getSetting("ph_email_template_invoice_subject", "") || "{copropiedad} — Cuenta de Cobro No. {numero_factura} — Unidad {unidad}");
+
+  const defaultBodyTemplate = type === 'statement'
+    ? (getSetting("ph_email_template_statement_body", "") || "Estimado(a) {propietario},\n\nLe compartimos su estado de cuenta integral correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAtentamente,\nAdministración {copropiedad}")
+    : (getSetting("ph_email_template_invoice_body", "") || "Estimado(a) {propietario},\n\nLe compartimos su cuenta de cobro correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}");
+
+  const effectiveSubjectTemplate = customSubject || defaultSubjectTemplate;
+  const effectiveBodyTemplate = customMessage || defaultBodyTemplate;
+  const rawNotice = customNotice || getSetting("ph_email_monthly_notice", "");
+
+  const interpolatePhTokens = function(templateStr, ctx) {
+    if (!templateStr) return "";
+    let res = String(templateStr);
+    res = res.replace(/\{aviso_adicional\}/gi, ctx.noticeText || "");
+    res = res.replace(/\{propietario\}/gi, ctx.ownerName || "Copropietario");
+    res = res.replace(/\{unidad\}/gi, ctx.unitName || "Unidad");
+    res = res.replace(/\{periodo\}/gi, ctx.periodLabel || "");
+    res = res.replace(/\{numero_factura\}/gi, ctx.invoiceNumber || "");
+    res = res.replace(/\{total_mes\}/gi, ctx.totalMesFmt || "$ 0");
+    res = res.replace(/\{saldo_anterior\}/gi, ctx.saldoAnteriorFmt || "$ 0");
+    res = res.replace(/\{total_pagar\}/gi, ctx.totalPagarFmt || "$ 0");
+    res = res.replace(/\{fecha_emision\}/gi, ctx.dateFmt || "");
+    res = res.replace(/\{fecha_vencimiento\}/gi, ctx.dueDateFmt || "");
+    res = res.replace(/\{copropiedad\}/gi, ctx.companyName || "Copropiedad");
+    res = res.replace(/\{nit_copropiedad\}/gi, ctx.companyNit || "");
+    res = res.replace(/\{instrucciones_pago\}/gi, ctx.paymentInstructions || "");
+    return res;
+  };
+
   try {
-    const invoices = $app.findRecordsByFilter(
-      "ph_invoices",
-      `period = '${period}' && status != 'voided'`,
-      "number",
-      2000,
-      0
-    );
+    let invoices = [];
+    if (targetInvoiceIds && targetInvoiceIds.length > 0) {
+      for (const invId of targetInvoiceIds) {
+        try {
+          const inv = $app.findRecordById("ph_invoices", invId);
+          if (inv && inv.getString("status") !== "voided") {
+            invoices.push(inv);
+          }
+        } catch (_) {}
+      }
+    } else {
+      invoices = $app.findRecordsByFilter(
+        "ph_invoices",
+        `period = '${period}' && status != 'voided'`,
+        "number",
+        2000,
+        0
+      );
+    }
 
     if (!invoices.length) {
-      return e.json(404, { message: "No se encontraron facturas activas para el período " + period });
+      return e.json(404, { message: "No se encontraron facturas activas para procesar en el período " + period });
     }
 
     // Configuración de la empresa
@@ -2159,6 +2285,8 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     let sent = 0;
     let skipped = 0;
     let failed = 0;
+    let circuitBreakerTriggered = false;
+    let circuitBreakerReason = "";
     const details = [];
 
     for (const inv of invoices) {
@@ -2182,7 +2310,27 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         const email = owner.getString("email") || owner.getString("correo") || "";
         if (!email) {
           skipped++;
+          try {
+            inv.set("email_status", "skipped");
+            inv.set("email_last_error", "Propietario sin email registrado");
+            $app.save(inv);
+          } catch (_) {}
           details.push({ number: inv.getString("number"), unit: prop.getString("name"), status: "skipped", reason: "Propietario sin email registrado" });
+          continue;
+        }
+
+        // Si onlyPending está activo, omitir si la factura ya fue enviada con éxito previamente
+        const alreadySent = (inv.getBool && inv.getBool("email_sent")) || inv.getString("email_status") === "sent";
+        if (onlyPending && alreadySent) {
+          skipped++;
+          const sentAtStr = inv.getString("email_sent_at") ? ` el ${inv.getString("email_sent_at")}` : "";
+          details.push({
+            number: inv.getString("number"),
+            unit: prop.getString("name"),
+            email: inv.getString("email_sent_to") || email,
+            status: "skipped",
+            reason: `Ya enviada exitosamente${sentAtStr} (Omitida para reanudar pendientes)`
+          });
           continue;
         }
 
@@ -2191,8 +2339,6 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
         const prevRecaudosBatch = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
         const prevMonthUnitRecaudo = prevRecaudosBatch.unitRecaudo;
-
-        inv.set("email_sent_to", email);
 
         const lines = $app.findRecordsByFilter(
           "ph_invoice_lines",
@@ -2225,6 +2371,43 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
         const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
 
+        const saldoAnterior = conceptsList.reduce((s, c) => s + (c.saldoAnterior || 0), 0);
+        const cobrosMes = conceptsList.reduce((s, c) => s + (c.cobrosMes || 0), 0);
+        const totalPagar = totalActual;
+        const periodParts = String(inv.getString("period") || "").split("-");
+        const periodMonthYear = getMonthNameUpper(inv.getString("period")) + (periodParts.length > 1 ? (" " + periodParts[0]) : "");
+
+        const tokenCtx = {
+          ownerName: owner.getString("name") || "Copropietario",
+          unitName: prop.getString("name") || prop.getString("code") || "Unidad",
+          periodLabel: periodMonthYear,
+          invoiceNumber: inv.getString("number"),
+          totalMesFmt: fmtCurrency(cobrosMes),
+          saldoAnteriorFmt: fmtCurrency(saldoAnterior),
+          totalPagarFmt: fmtCurrency(totalPagar),
+          dateFmt: fmtDateDDMMYYYY(inv.getString("date")),
+          dueDateFmt: fmtDateDDMMYYYY(inv.getString("due_date") || inv.getString("date")),
+          companyName: companyName,
+          companyNit: companyNit,
+          paymentInstructions: invoiceNotes,
+          noticeText: rawNotice
+        };
+
+        const emailSubject = interpolatePhTokens(effectiveSubjectTemplate, tokenCtx);
+
+        let interpolatedBody = interpolatePhTokens(effectiveBodyTemplate, tokenCtx);
+        let noticeBlockHtml = "";
+        if (rawNotice) {
+          if (!effectiveBodyTemplate.includes("{aviso_adicional}")) {
+            noticeBlockHtml = rawNotice.split('\n').map(p => p.trim() ? `<p style="margin: 0 0 6px 0;">${p}</p>` : '').join('');
+          }
+        }
+
+        const messageParagraphsHtml = interpolatedBody
+          .split('\n')
+          .map(p => p.trim() ? `<p style="margin: 0 0 8px 0;">${p}</p>` : '')
+          .join('');
+
         // Generar plantilla de correo
         const htmlContent = buildPhEmailHtml({
           invoice: inv,
@@ -2249,11 +2432,10 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           notes: invoiceNotes,
           prevMonthUnitRecaudo,
           prevMonthTotalRecaudo,
-          prevMonthName
+          prevMonthName,
+          customMessageHtml: messageParagraphsHtml,
+          customNoticeHtml: noticeBlockHtml
         });
-
-        const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
-        const emailSubject = customSubject || `${companyName} - ${docLabel} No. ${inv.getString("number")} - Unidad ${prop.getString("name")}`;
 
         // Generar y adjuntar archivo PDF oficial de copropiedad
         const pdfAttachment = generatePhPdfAttachment({
@@ -2306,6 +2488,19 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
         $app.newMailClient().send(message);
         sent++;
+
+        // Registrar persistencia del envío exitoso en la factura
+        try {
+          inv.set("email_sent", true);
+          inv.set("email_sent_to", email);
+          inv.set("email_sent_at", new Date().toISOString().replace('T', ' ').substring(0, 19));
+          inv.set("email_status", "sent");
+          inv.set("email_last_error", "");
+          $app.save(inv);
+        } catch (saveErr) {
+          console.warn("[GRAVY PH EMAIL] Advertencia al persistir estado enviado:", saveErr);
+        }
+
         details.push({
           number: inv.getString("number"),
           unit: prop.getString("name"),
@@ -2314,12 +2509,39 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           pdfAttached: !!(pdfAttachment && pdfAttachment.pdfPath)
         });
 
-        // Pausa defensiva (Throttling de 350ms) entre envíos para respetar límites de tasa y anti-spam de Gmail SMTP
-        try { if (typeof sleep === 'function') sleep(350); } catch (_) {}
+        // Pausa defensiva (Throttling de 450ms) entre envíos para respetar límites de tasa
+        try { if (typeof sleep === 'function') sleep(450); } catch (_) {}
 
       } catch (err) {
         failed++;
-        details.push({ number: inv.getString("number"), status: "failed", reason: err.message || String(err) });
+        const errMsg = String(err && err.message ? err.message : err || "");
+
+        // Registrar fallo en la factura
+        try {
+          inv.set("email_status", "failed");
+          inv.set("email_last_error", errMsg.substring(0, 250));
+          $app.save(inv);
+        } catch (_) {}
+
+        details.push({ number: inv.getString("number"), status: "failed", reason: errMsg });
+
+        // CIRCUIT BREAKER INTELIGENTE: Detectar bloqueo o cuota superada en el servidor SMTP
+        const isDailyLimit = errMsg.includes("550") || errMsg.includes("Daily user sending limit") || errMsg.includes("limit exceeded") || errMsg.includes("Quota exceeded");
+        const isLoginBlocked = errMsg.includes("454") || errMsg.includes("Too many login attempts") || errMsg.includes("try again later");
+        const isAuthFailed = errMsg.includes("535") || errMsg.includes("Authentication failed") || errMsg.includes("BadCredentials") || errMsg.includes("Username and Password not accepted");
+
+        if (isDailyLimit || isLoginBlocked || isAuthFailed) {
+          circuitBreakerTriggered = true;
+          if (isDailyLimit) {
+            circuitBreakerReason = "Límite diario de envío de correos excedido en el servidor SMTP (Código 550). Proceso detenido preventivamente.";
+          } else if (isLoginBlocked) {
+            circuitBreakerReason = "Bloqueo por exceso de conexiones/intentos de login (Código 454). Proceso detenido preventivamente para evitar sanciones.";
+          } else {
+            circuitBreakerReason = "Credenciales SMTP o autenticación rechazada por el servidor (Código 535).";
+          }
+          console.error("[GRAVY PH EMAIL] Circuit Breaker activado:", circuitBreakerReason);
+          break; // Detener de inmediato el bucle para proteger la cuenta
+        }
       }
     }
 
@@ -2328,6 +2550,10 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
       sent,
       skipped,
       failed,
+      circuitBreaker: {
+        triggered: circuitBreakerTriggered,
+        reason: circuitBreakerReason
+      },
       details
     });
 
@@ -2371,6 +2597,195 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
     }
     return y + '-' + (m < 10 ? '0' + m : m);
   };
+
+  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function')
+    ? globalThis.getCanonicalConceptName
+    : function(rawDesc) {
+        if (!rawDesc) return 'CONCEPTO';
+        var str = String(rawDesc).trim();
+        var norm = str.toLowerCase()
+          .replace(/[áàäâ]/g, 'a')
+          .replace(/[éèëê]/g, 'e')
+          .replace(/[íìïî]/g, 'i')
+          .replace(/[óòöô]/g, 'o')
+          .replace(/[úùüû]/g, 'u');
+        if ((norm.indexOf('interes') !== -1 && norm.indexOf('mora') !== -1) || norm === 'mora' || norm.indexOf('mora ') === 0 || norm.indexOf(' intereses mora') !== -1) return 'INTERESES DE MORA';
+        if (norm.indexOf('cuota de administracion') !== -1 || norm.indexOf('cuota administracion') !== -1 || norm.indexOf('cuota ordinaria') !== -1 || norm === 'administracion') return 'CUOTA ADMINISTRACION';
+        if (norm.indexOf('fondo de imprevistos') !== -1 || norm.indexOf('fondo imprevistos') !== -1) return 'FONDO DE IMPREVISTOS';
+        return str;
+      };
+
+  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function')
+    ? globalThis.getPhConceptsCache
+    : function() {
+        var cache = { byId: {}, moraId: '', admId: '', byCanonicalName: {} };
+        try {
+          var records = $app.findRecordsByFilter("ph_billing_concepts", "", "code", 500, 0);
+          if (records) {
+            for (var i = 0; i < records.length; i++) {
+              var r = records[i];
+              var id = r.id || (r.getString ? r.getString("id") : "");
+              var code = (r.getString ? r.getString("code") : (r.code || "")).trim().toUpperCase();
+              var name = (r.getString ? r.getString("name") : (r.name || "")).trim();
+              var upperName = name.toUpperCase();
+              cache.byId[id] = { id: id, code: code, name: name };
+              if (code === "MORA" || upperName.indexOf("MORA") !== -1) cache.moraId = id;
+              if (code === "ADM" || upperName.indexOf("ADMIN") !== -1) cache.admId = id;
+              var canonical = getCanonicalConceptName(name);
+              cache.byCanonicalName[canonical] = id;
+            }
+          }
+        } catch (e) { console.warn("[GRAVY PH] Advertencia al cargar catálogo de conceptos:", e); }
+        return cache;
+      };
+
+  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function')
+    ? globalThis.resolveConceptGroup
+    : function(line, cache) {
+        var rawId = line.getString ? line.getString("concept_id") : (line.concept_id || "");
+        var rawDesc = line.getString ? line.getString("description") : (line.description || "Concepto");
+        var canonicalDesc = getCanonicalConceptName(rawDesc);
+        var conceptObj = (rawId && cache && cache.byId) ? cache.byId[rawId] : null;
+        var isMoraById = rawId && (rawId === (cache ? cache.moraId : '') || (conceptObj && (conceptObj.code === "MORA" || conceptObj.name.toUpperCase().indexOf("MORA") !== -1)));
+        var isMoraByText = canonicalDesc === "INTERESES DE MORA";
+        if (isMoraById || isMoraByText) return { groupKey: "__MORA__", conceptId: (conceptObj ? conceptObj.id : (cache ? cache.moraId : "")) || "", description: "INTERESES DE MORA" };
+        if (conceptObj) return { groupKey: "ID_" + conceptObj.id, conceptId: conceptObj.id, description: conceptObj.name.toUpperCase() };
+        if (cache && cache.byCanonicalName && cache.byCanonicalName[canonicalDesc]) {
+          var matchedId = cache.byCanonicalName[canonicalDesc];
+          var matchedConcept = cache.byId[matchedId];
+          if (matchedConcept) return { groupKey: "ID_" + matchedConcept.id, conceptId: matchedConcept.id, description: matchedConcept.name.toUpperCase() };
+        }
+        if (rawId) return { groupKey: "ID_" + rawId, conceptId: rawId, description: canonicalDesc || String(rawDesc).toUpperCase() };
+        return { groupKey: "__TEXT_" + canonicalDesc, conceptId: "", description: canonicalDesc || "CONCEPTO" };
+      };
+
+  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function')
+    ? globalThis.getNetPaymentsForPhInvoice
+    : function(invoiceNumber, thirdPartyId) {
+        if (!invoiceNumber) return 0;
+        try {
+          var cleanNum = String(invoiceNumber).trim();
+          var sql = "SELECT COALESCE(SUM(l.credit), 0) AS total_paid FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (l.cross_doc_ref = {:invoiceNumber} OR l.cross_doc_ref LIKE {:invoiceNumberLike} OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber}))";
+          var binds = { invoiceNumber: cleanNum, invoiceNumberLike: cleanNum + '-%' };
+          if (thirdPartyId && String(thirdPartyId).trim()) {
+            sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+            binds.thirdPartyId = String(thirdPartyId).trim();
+          }
+          var query = $app.db().newQuery(sql);
+          query.bind(binds);
+          var result = new DynamicModel({ total_paid: 0 });
+          query.one(result);
+          return Math.max(0, Number(result.total_paid || 0));
+        } catch (_) { return 0; }
+      };
+
+  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function')
+    ? globalThis.autoMarkPaidIfSettled
+    : function(invoiceRecord) {
+        try {
+          var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+          var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+          var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+          if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+          var paid = getNetPaymentsForPhInvoice(invNumber, null);
+          if (paid >= invTotal - 0.01) {
+            if (invoiceRecord.set) { invoiceRecord.set("status", "paid"); $app.save(invoiceRecord); }
+            else if (invoiceRecord.id) { var rec = $app.findRecordById("ph_invoices", invoiceRecord.id); if (rec) { rec.set("status", "paid"); $app.save(rec); } }
+          }
+        } catch (_) {}
+      };
+
+  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function')
+    ? globalThis.getPreviousMonthRecaudos
+    : function(propertyId, ownerId, prevPeriod) {
+        var unitRecaudo = 0; var totalRecaudo = 0;
+        if (!prevPeriod) return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+        var startDate = prevPeriod + '-01'; var endDate = prevPeriod + '-31 23:59:59';
+        try {
+          var sqlAll = "SELECT COALESCE(SUM(l.credit), 0) AS total FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (t.number LIKE 'RC-%' OR t.teso_mode != '') AND t.date >= {:startDate} AND t.date <= {:endDate}";
+          var qAll = $app.db().newQuery(sqlAll); qAll.bind({ startDate: startDate, endDate: endDate });
+          var resAll = new DynamicModel({ total: 0 }); qAll.one(resAll);
+          totalRecaudo = Number(resAll.total || 0);
+        } catch (_) {}
+        try {
+          var sqlUnit = "SELECT COALESCE(SUM(l.credit), 0) AS total FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (t.number LIKE 'RC-%' OR t.teso_mode != '') AND t.date >= {:startDate} AND t.date <= {:endDate} AND (";
+          var conds = []; var binds = { startDate: startDate, endDate: endDate };
+          if (ownerId && String(ownerId).trim()) { conds.push("t.third_party_id = {:ownerId}"); conds.push("l.third_party_id = {:ownerId}"); binds.ownerId = String(ownerId).trim(); }
+          if (propertyId && String(propertyId).trim()) { conds.push("t.teso_params LIKE {:propPattern}"); binds.propPattern = '%"ph_property_id":"' + String(propertyId).trim() + '"%'; }
+          if (conds.length > 0) {
+            sqlUnit += conds.join(" OR ") + ")";
+            var qUnit = $app.db().newQuery(sqlUnit); qUnit.bind(binds);
+            var resUnit = new DynamicModel({ total: 0 }); qUnit.one(resUnit);
+            unitRecaudo = Number(resUnit.total || 0);
+          }
+        } catch (_) {}
+        if (unitRecaudo <= 0 && propertyId) {
+          try {
+            var unitPaid = $app.findRecordsByFilter("ph_invoices", "property_id = '" + propertyId + "' && period = '" + prevPeriod + "' && status = 'paid'", "", 100, 0);
+            if (unitPaid) { for (var i = 0; i < unitPaid.length; i++) unitRecaudo += unitPaid[i].getFloat("total"); }
+          } catch (_) {}
+        }
+        return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+      };
+
+  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function')
+    ? globalThis.buildGroupedConceptsList
+    : function(lines, outstandingInvoices, cache) {
+        if (!cache) cache = getPhConceptsCache();
+        var conceptsMap = {};
+        if (lines) {
+          for (var i = 0; i < lines.length; i++) {
+            var l = lines[i];
+            var group = resolveConceptGroup(l, cache);
+            var key = group.groupKey;
+            var amount = l.getFloat ? l.getFloat("amount") : (Number(l.amount) || 0);
+            if (!conceptsMap[key]) conceptsMap[key] = { conceptId: group.conceptId, description: group.description, saldoAnterior: 0, cobrosMes: 0, saldoActual: 0 };
+            conceptsMap[key].cobrosMes += amount;
+            conceptsMap[key].saldoActual += amount;
+          }
+        }
+        if (outstandingInvoices) {
+          for (var j = 0; j < outstandingInvoices.length; j++) {
+            var oldInv = outstandingInvoices[j];
+            var invNumber = oldInv.getString ? oldInv.getString("number") : (oldInv.number || "");
+            var invThirdId = oldInv.getString ? oldInv.getString("third_party_id") : (oldInv.third_party_id || "");
+            var invoiceTotal = oldInv.getFloat ? oldInv.getFloat("total") : (Number(oldInv.total) || 0);
+            var alreadyPaid = getNetPaymentsForPhInvoice(invNumber, invThirdId);
+            var pendingBalance = Math.max(0, invoiceTotal - alreadyPaid);
+            if (pendingBalance < 0.01) { try { autoMarkPaidIfSettled(oldInv); } catch (_) {} continue; }
+            var proportionFactor = (invoiceTotal > 0.01) ? (pendingBalance / invoiceTotal) : 1;
+            var oldLines = $app.findRecordsByFilter("ph_invoice_lines", "invoice_id = '" + oldInv.id + "'", "line_order", 200, 0);
+            if (oldLines) {
+              for (var k = 0; k < oldLines.length; k++) {
+                var ol = oldLines[k];
+                var groupOld = resolveConceptGroup(ol, cache);
+                var keyOld = groupOld.groupKey;
+                var amountOld = ol.getFloat ? ol.getFloat("amount") : (Number(ol.amount) || 0);
+                var pendingAmt = Math.round(amountOld * proportionFactor * 100) / 100;
+                if (pendingAmt < 0.01) continue;
+                if (!conceptsMap[keyOld]) conceptsMap[keyOld] = { conceptId: groupOld.conceptId, description: groupOld.description, saldoAnterior: 0, cobrosMes: 0, saldoActual: 0 };
+                conceptsMap[keyOld].saldoAnterior += pendingAmt;
+                conceptsMap[keyOld].saldoActual += pendingAmt;
+              }
+            }
+          }
+        }
+        var list = Object.keys(conceptsMap).map(function(k) { return conceptsMap[k]; });
+        list.sort(function(a, b) {
+          var aDesc = (a.description || '').toUpperCase();
+          var bDesc = (b.description || '').toUpperCase();
+          var aIsMora = aDesc.indexOf('MORA') !== -1;
+          var bIsMora = bDesc.indexOf('MORA') !== -1;
+          var aIsAdm = aDesc.indexOf('ADMIN') !== -1;
+          var bIsAdm = bDesc.indexOf('ADMIN') !== -1;
+          if (aIsAdm && !bIsAdm) return -1;
+          if (!aIsAdm && bIsAdm) return 1;
+          if (aIsMora && !bIsMora) return 1;
+          if (!aIsMora && bIsMora) return -1;
+          return aDesc.localeCompare(bDesc);
+        });
+        return list;
+      };
 
   let auth = null;
   try { auth = e.requestInfo()?.auth || e.auth; } catch (_) {
@@ -2569,6 +2984,195 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
     return y + '-' + (m < 10 ? '0' + m : m);
   };
 
+  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function')
+    ? globalThis.getCanonicalConceptName
+    : function(rawDesc) {
+        if (!rawDesc) return 'CONCEPTO';
+        var str = String(rawDesc).trim();
+        var norm = str.toLowerCase()
+          .replace(/[áàäâ]/g, 'a')
+          .replace(/[éèëê]/g, 'e')
+          .replace(/[íìïî]/g, 'i')
+          .replace(/[óòöô]/g, 'o')
+          .replace(/[úùüû]/g, 'u');
+        if ((norm.indexOf('interes') !== -1 && norm.indexOf('mora') !== -1) || norm === 'mora' || norm.indexOf('mora ') === 0 || norm.indexOf(' intereses mora') !== -1) return 'INTERESES DE MORA';
+        if (norm.indexOf('cuota de administracion') !== -1 || norm.indexOf('cuota administracion') !== -1 || norm.indexOf('cuota ordinaria') !== -1 || norm === 'administracion') return 'CUOTA ADMINISTRACION';
+        if (norm.indexOf('fondo de imprevistos') !== -1 || norm.indexOf('fondo imprevistos') !== -1) return 'FONDO DE IMPREVISTOS';
+        return str;
+      };
+
+  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function')
+    ? globalThis.getPhConceptsCache
+    : function() {
+        var cache = { byId: {}, moraId: '', admId: '', byCanonicalName: {} };
+        try {
+          var records = $app.findRecordsByFilter("ph_billing_concepts", "", "code", 500, 0);
+          if (records) {
+            for (var i = 0; i < records.length; i++) {
+              var r = records[i];
+              var id = r.id || (r.getString ? r.getString("id") : "");
+              var code = (r.getString ? r.getString("code") : (r.code || "")).trim().toUpperCase();
+              var name = (r.getString ? r.getString("name") : (r.name || "")).trim();
+              var upperName = name.toUpperCase();
+              cache.byId[id] = { id: id, code: code, name: name };
+              if (code === "MORA" || upperName.indexOf("MORA") !== -1) cache.moraId = id;
+              if (code === "ADM" || upperName.indexOf("ADMIN") !== -1) cache.admId = id;
+              var canonical = getCanonicalConceptName(name);
+              cache.byCanonicalName[canonical] = id;
+            }
+          }
+        } catch (e) { console.warn("[GRAVY PH] Advertencia al cargar catálogo de conceptos:", e); }
+        return cache;
+      };
+
+  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function')
+    ? globalThis.resolveConceptGroup
+    : function(line, cache) {
+        var rawId = line.getString ? line.getString("concept_id") : (line.concept_id || "");
+        var rawDesc = line.getString ? line.getString("description") : (line.description || "Concepto");
+        var canonicalDesc = getCanonicalConceptName(rawDesc);
+        var conceptObj = (rawId && cache && cache.byId) ? cache.byId[rawId] : null;
+        var isMoraById = rawId && (rawId === (cache ? cache.moraId : '') || (conceptObj && (conceptObj.code === "MORA" || conceptObj.name.toUpperCase().indexOf("MORA") !== -1)));
+        var isMoraByText = canonicalDesc === "INTERESES DE MORA";
+        if (isMoraById || isMoraByText) return { groupKey: "__MORA__", conceptId: (conceptObj ? conceptObj.id : (cache ? cache.moraId : "")) || "", description: "INTERESES DE MORA" };
+        if (conceptObj) return { groupKey: "ID_" + conceptObj.id, conceptId: conceptObj.id, description: conceptObj.name.toUpperCase() };
+        if (cache && cache.byCanonicalName && cache.byCanonicalName[canonicalDesc]) {
+          var matchedId = cache.byCanonicalName[canonicalDesc];
+          var matchedConcept = cache.byId[matchedId];
+          if (matchedConcept) return { groupKey: "ID_" + matchedConcept.id, conceptId: matchedConcept.id, description: matchedConcept.name.toUpperCase() };
+        }
+        if (rawId) return { groupKey: "ID_" + rawId, conceptId: rawId, description: canonicalDesc || String(rawDesc).toUpperCase() };
+        return { groupKey: "__TEXT_" + canonicalDesc, conceptId: "", description: canonicalDesc || "CONCEPTO" };
+      };
+
+  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function')
+    ? globalThis.getNetPaymentsForPhInvoice
+    : function(invoiceNumber, thirdPartyId) {
+        if (!invoiceNumber) return 0;
+        try {
+          var cleanNum = String(invoiceNumber).trim();
+          var sql = "SELECT COALESCE(SUM(l.credit), 0) AS total_paid FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (l.cross_doc_ref = {:invoiceNumber} OR l.cross_doc_ref LIKE {:invoiceNumberLike} OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber}))";
+          var binds = { invoiceNumber: cleanNum, invoiceNumberLike: cleanNum + '-%' };
+          if (thirdPartyId && String(thirdPartyId).trim()) {
+            sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+            binds.thirdPartyId = String(thirdPartyId).trim();
+          }
+          var query = $app.db().newQuery(sql);
+          query.bind(binds);
+          var result = new DynamicModel({ total_paid: 0 });
+          query.one(result);
+          return Math.max(0, Number(result.total_paid || 0));
+        } catch (_) { return 0; }
+      };
+
+  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function')
+    ? globalThis.autoMarkPaidIfSettled
+    : function(invoiceRecord) {
+        try {
+          var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+          var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+          var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+          if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+          var paid = getNetPaymentsForPhInvoice(invNumber, null);
+          if (paid >= invTotal - 0.01) {
+            if (invoiceRecord.set) { invoiceRecord.set("status", "paid"); $app.save(invoiceRecord); }
+            else if (invoiceRecord.id) { var rec = $app.findRecordById("ph_invoices", invoiceRecord.id); if (rec) { rec.set("status", "paid"); $app.save(rec); } }
+          }
+        } catch (_) {}
+      };
+
+  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function')
+    ? globalThis.getPreviousMonthRecaudos
+    : function(propertyId, ownerId, prevPeriod) {
+        var unitRecaudo = 0; var totalRecaudo = 0;
+        if (!prevPeriod) return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+        var startDate = prevPeriod + '-01'; var endDate = prevPeriod + '-31 23:59:59';
+        try {
+          var sqlAll = "SELECT COALESCE(SUM(l.credit), 0) AS total FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (t.number LIKE 'RC-%' OR t.teso_mode != '') AND t.date >= {:startDate} AND t.date <= {:endDate}";
+          var qAll = $app.db().newQuery(sqlAll); qAll.bind({ startDate: startDate, endDate: endDate });
+          var resAll = new DynamicModel({ total: 0 }); qAll.one(resAll);
+          totalRecaudo = Number(resAll.total || 0);
+        } catch (_) {}
+        try {
+          var sqlUnit = "SELECT COALESCE(SUM(l.credit), 0) AS total FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND (t.number LIKE 'RC-%' OR t.teso_mode != '') AND t.date >= {:startDate} AND t.date <= {:endDate} AND (";
+          var conds = []; var binds = { startDate: startDate, endDate: endDate };
+          if (ownerId && String(ownerId).trim()) { conds.push("t.third_party_id = {:ownerId}"); conds.push("l.third_party_id = {:ownerId}"); binds.ownerId = String(ownerId).trim(); }
+          if (propertyId && String(propertyId).trim()) { conds.push("t.teso_params LIKE {:propPattern}"); binds.propPattern = '%"ph_property_id":"' + String(propertyId).trim() + '"%'; }
+          if (conds.length > 0) {
+            sqlUnit += conds.join(" OR ") + ")";
+            var qUnit = $app.db().newQuery(sqlUnit); qUnit.bind(binds);
+            var resUnit = new DynamicModel({ total: 0 }); qUnit.one(resUnit);
+            unitRecaudo = Number(resUnit.total || 0);
+          }
+        } catch (_) {}
+        if (unitRecaudo <= 0 && propertyId) {
+          try {
+            var unitPaid = $app.findRecordsByFilter("ph_invoices", "property_id = '" + propertyId + "' && period = '" + prevPeriod + "' && status = 'paid'", "", 100, 0);
+            if (unitPaid) { for (var i = 0; i < unitPaid.length; i++) unitRecaudo += unitPaid[i].getFloat("total"); }
+          } catch (_) {}
+        }
+        return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+      };
+
+  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function')
+    ? globalThis.buildGroupedConceptsList
+    : function(lines, outstandingInvoices, cache) {
+        if (!cache) cache = getPhConceptsCache();
+        var conceptsMap = {};
+        if (lines) {
+          for (var i = 0; i < lines.length; i++) {
+            var l = lines[i];
+            var group = resolveConceptGroup(l, cache);
+            var key = group.groupKey;
+            var amount = l.getFloat ? l.getFloat("amount") : (Number(l.amount) || 0);
+            if (!conceptsMap[key]) conceptsMap[key] = { conceptId: group.conceptId, description: group.description, saldoAnterior: 0, cobrosMes: 0, saldoActual: 0 };
+            conceptsMap[key].cobrosMes += amount;
+            conceptsMap[key].saldoActual += amount;
+          }
+        }
+        if (outstandingInvoices) {
+          for (var j = 0; j < outstandingInvoices.length; j++) {
+            var oldInv = outstandingInvoices[j];
+            var invNumber = oldInv.getString ? oldInv.getString("number") : (oldInv.number || "");
+            var invThirdId = oldInv.getString ? oldInv.getString("third_party_id") : (oldInv.third_party_id || "");
+            var invoiceTotal = oldInv.getFloat ? oldInv.getFloat("total") : (Number(oldInv.total) || 0);
+            var alreadyPaid = getNetPaymentsForPhInvoice(invNumber, invThirdId);
+            var pendingBalance = Math.max(0, invoiceTotal - alreadyPaid);
+            if (pendingBalance < 0.01) { try { autoMarkPaidIfSettled(oldInv); } catch (_) {} continue; }
+            var proportionFactor = (invoiceTotal > 0.01) ? (pendingBalance / invoiceTotal) : 1;
+            var oldLines = $app.findRecordsByFilter("ph_invoice_lines", "invoice_id = '" + oldInv.id + "'", "line_order", 200, 0);
+            if (oldLines) {
+              for (var k = 0; k < oldLines.length; k++) {
+                var ol = oldLines[k];
+                var groupOld = resolveConceptGroup(ol, cache);
+                var keyOld = groupOld.groupKey;
+                var amountOld = ol.getFloat ? ol.getFloat("amount") : (Number(ol.amount) || 0);
+                var pendingAmt = Math.round(amountOld * proportionFactor * 100) / 100;
+                if (pendingAmt < 0.01) continue;
+                if (!conceptsMap[keyOld]) conceptsMap[keyOld] = { conceptId: groupOld.conceptId, description: groupOld.description, saldoAnterior: 0, cobrosMes: 0, saldoActual: 0 };
+                conceptsMap[keyOld].saldoAnterior += pendingAmt;
+                conceptsMap[keyOld].saldoActual += pendingAmt;
+              }
+            }
+          }
+        }
+        var list = Object.keys(conceptsMap).map(function(k) { return conceptsMap[k]; });
+        list.sort(function(a, b) {
+          var aDesc = (a.description || '').toUpperCase();
+          var bDesc = (b.description || '').toUpperCase();
+          var aIsMora = aDesc.indexOf('MORA') !== -1;
+          var bIsMora = bDesc.indexOf('MORA') !== -1;
+          var aIsAdm = aDesc.indexOf('ADMIN') !== -1;
+          var bIsAdm = bDesc.indexOf('ADMIN') !== -1;
+          if (aIsAdm && !bIsAdm) return -1;
+          if (!aIsAdm && bIsAdm) return 1;
+          if (aIsMora && !bIsMora) return 1;
+          if (!aIsMora && bIsMora) return -1;
+          return aDesc.localeCompare(bDesc);
+        });
+        return list;
+      };
+
   let auth = null;
   try { auth = e.requestInfo()?.auth || e.auth; } catch (_) {
     try { auth = $apis.requestInfo(e).authRecord; } catch (_) {}
@@ -2612,72 +3216,118 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       return e.json(404, { message: `No hay facturas activas para el período ${period}.` });
     }
 
-    const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyNit = getSetting("company_nit", "");
-    const companyAddress = getSetting("company_address", "");
-    const companyPhone = getSetting("company_phone", "");
-    const companyEmail = getSetting("company_email", "");
-    const companyCity = getSetting("company_city", "");
-    const companyLogo = getSetting("company_logo", "");
+    const companyData = {
+      companyName: getSetting("company_name", "GRAVY S.A.S"),
+      companyNit: getSetting("company_nit", ""),
+      companyAddress: getSetting("company_address", ""),
+      companyPhone: getSetting("company_phone", ""),
+      companyEmail: getSetting("company_email", ""),
+      companyCity: getSetting("company_city", ""),
+      companyLogo: getSetting("company_logo", "")
+    };
     const companyFooterNote = getSetting("ph_invoice_footer_note", "");
 
     const prevPeriod = getPreviousPeriod(period);
     const prevMonthName = getMonthNameUpper(prevPeriod);
     let prevMonthTotalRecaudo = 0;
+    const unitRecaudoMap = {};
 
+    // 1. Precarga en lote de recaudos del mes anterior (evita cientos de queries individuales)
     if (prevPeriod) {
       try {
-        const allPaid = $app.findRecordsByFilter(
+        const prevPaid = $app.findRecordsByFilter(
           "ph_invoices",
           `period = '${prevPeriod}' && status = 'paid'`,
           "",
           1000,
           0
-        );
-        if (allPaid) {
-          for (const p of allPaid) {
-            prevMonthTotalRecaudo += p.getFloat("total");
-          }
+        ) || [];
+        for (const p of prevPaid) {
+          const t = p.getFloat("total");
+          prevMonthTotalRecaudo += t;
+          const pid = p.getString("property_id");
+          unitRecaudoMap[pid] = (unitRecaudoMap[pid] || 0) + t;
         }
       } catch (errRec) {
-        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos globales mes anterior:", errRec);
+        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
       }
+    }
+
+    // 2. Precarga de todas las propiedades y sus propietarios en memoria (Map)
+    const allProps = $app.findRecordsByFilter("ph_properties", "", "code", 2000, 0) || [];
+    const propsMap = {};
+    for (const p of allProps) {
+      try { $app.expandRecord(p, ["owner_id"], null); } catch (_) {}
+      propsMap[p.id] = p;
+    }
+
+    // 3. Precarga de todas las líneas de factura del período en una sola consulta rápida
+    const linesByInvoiceId = {};
+    for (const inv of invoices) {
+      linesByInvoiceId[inv.id] = [];
+    }
+    try {
+      const invIdList = invoices.map(i => "'" + i.id + "'").join(",");
+      if (invIdList) {
+        const rawLines = [];
+        $app.db().newQuery("SELECT * FROM ph_invoice_lines WHERE invoice_id IN (" + invIdList + ") ORDER BY line_order ASC")
+          .all(rawLines);
+        for (const rl of rawLines) {
+          if (linesByInvoiceId[rl.invoice_id]) {
+            linesByInvoiceId[rl.invoice_id].push(rl);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 4. Precarga de facturas pendientes de períodos anteriores si es statement
+    const pendingByPropId = {};
+    if (type === 'statement') {
+      try {
+        const allPending = $app.findRecordsByFilter(
+          "ph_invoices",
+          `status != 'paid' && status != 'voided' && period < '${period}'`,
+          "period",
+          2000,
+          0
+        ) || [];
+        for (const pInv of allPending) {
+          const propId = pInv.getString("property_id");
+          if (!pendingByPropId[propId]) pendingByPropId[propId] = [];
+          pendingByPropId[propId].push(pInv);
+        }
+      } catch (_) {}
     }
 
     const conceptsCache = getPhConceptsCache();
     const statements = [];
 
     for (const inv of invoices) {
-      $app.expandRecord(inv, ["property_id"], null);
-      const prop = inv.expandedOne("property_id");
+      const propId = inv.getString("property_id");
+      let prop = propsMap[propId];
+      if (!prop) {
+        try {
+          $app.expandRecord(inv, ["property_id"], null);
+          prop = inv.expandedOne("property_id");
+          if (prop) $app.expandRecord(prop, ["owner_id"], null);
+        } catch (_) {}
+      }
       if (!prop) continue;
 
-      $app.expandRecord(prop, ["owner_id"], null);
-      const owner = prop.expandedOne("owner_id");
+      const owner = prop.expandedOne ? prop.expandedOne("owner_id") : null;
 
-      const lines = $app.findRecordsByFilter(
-        "ph_invoice_lines",
-        `invoice_id = '${inv.id}'`,
-        "line_order",
-        200,
-        0
-      );
-
-      const outstandingInvoices = [];
-      if (type === 'statement') {
-        const res = $app.findRecordsByFilter(
-          "ph_invoices",
-          `property_id = '${prop.id}' && id != '${inv.id}' && status != 'paid' && status != 'voided' && period < '${inv.getString("period")}'`,
-          "period",
+      let lines = linesByInvoiceId[inv.id];
+      if (!lines || lines.length === 0) {
+        lines = $app.findRecordsByFilter(
+          "ph_invoice_lines",
+          `invoice_id = '${inv.id}'`,
+          "line_order",
           200,
           0
         );
-        if (res) {
-          for (const oldInv of res) {
-            outstandingInvoices.push(oldInv);
-          }
-        }
       }
+
+      const outstandingInvoices = (type === 'statement') ? (pendingByPropId[prop.id] || []) : [];
 
       // Agrupar por conceptos de forma canónica (unificando saldos anteriores y cobros del mes)
       const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache);
@@ -2686,20 +3336,11 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
       const ownerPhone = owner ? (owner.getString("phone") || owner.getString("celular") || "—") : "—";
 
-      const prevRecaudosPeriod = getPreviousMonthRecaudos(prop ? prop.id : '', owner ? owner.id : '', prevPeriod);
-      const prevMonthUnitRecaudo = prevRecaudosPeriod.unitRecaudo;
-
+      const prevMonthUnitRecaudo = unitRecaudoMap[prop.id] || 0;
       const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
       const numberText = inv.getString("number") || "0000";
 
       statements.push({
-        companyName,
-        companyNit,
-        companyAddress,
-        companyPhone,
-        companyEmail,
-        companyCity,
-        companyLogo,
         docType: type,
         docNumber: numberText,
         period: inv.getString("period"),
@@ -2725,6 +3366,10 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       });
     }
 
+    if (!statements || statements.length === 0) {
+      return e.json(404, { message: `No se encontraron unidades con facturas válidas para compilar en el período ${period}.` });
+    }
+
     const docTypeLabel = type === 'statement' ? 'EstadosCuenta' : 'Facturas';
     const cleanPeriod = period.replace(/[^0-9\-]/g, '');
     const filename = `${docTypeLabel}_Copropiedad_${cleanPeriod}`;
@@ -2735,6 +3380,7 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         filename: filename,
+        companyData: companyData,
         statements: statements,
         format: "base64"
       })
@@ -2750,6 +3396,10 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
           totalInvoices: statements.length
         });
       }
+    } else {
+      let orchError = "";
+      try { orchError = JSON.parse(orchestratorRes.raw)?.error || ""; } catch (_) {}
+      return e.json(500, { message: "Error del orquestador PDF (" + orchestratorRes.statusCode + "): " + (orchError || orchestratorRes.raw || "Fallo en orquestador") });
     }
 
     return e.json(500, { message: "No se pudo generar el archivo PDF consolidado en el orquestador." });

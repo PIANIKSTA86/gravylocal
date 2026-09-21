@@ -1,22 +1,14 @@
-import socket
 import urllib.request
 import json
 
-def check_ports():
-    ports = [8090, 8091, 8092, 8093, 8094, 8095, 8080, 3000, 5173]
-    for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.5)
-        result = sock.connect_ex(('127.0.0.1', port))
-        if result == 0:
-            print(f"Port {port} is OPEN!")
-            # Try health check
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=1) as resp:
-                    print(f"  -> Health check {port}: {resp.status} {resp.read().decode()}")
-            except Exception as e:
-                print(f"  -> Health check {port} error: {e}")
-        sock.close()
-
-if __name__ == '__main__':
-    check_ports()
+for port in [8090, 8091, 8092, 8093, 8094]:
+    try:
+        url = f'http://127.0.0.1:{port}/api/collections/ph_invoices/records?perPage=5&filter=(period=%272026-09%27)'
+        req = urllib.request.urlopen(url)
+        data = json.loads(req.read().decode())
+        total = data.get('totalItems')
+        print(f"Port {port}: totalItems = {total}")
+        for item in data.get('items', []):
+            print(f"   {item.get('number')} - {item.get('status')}")
+    except Exception as e:
+        print(f"Port {port}: {e}")

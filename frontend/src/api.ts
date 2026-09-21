@@ -4644,15 +4644,23 @@ const API = {
     return res.json();
   },
 
-  /** Envia correos masivos de facturación PH para un período */
-  async sendPhBulkEmails(period, type = 'invoice', subject = '', message = '') {
+  /** Envia correos masivos de facturación PH para un período o un lote específico de facturas */
+  async sendPhBulkEmails(period: string, type = 'invoice', subject = '', message = '', notice = '', onlyPending = true, invoiceIds: string[] = []) {
     const cleanPeriod = String(period || '').trim();
     if (!cleanPeriod) throw new Error('El período de facturación es requerido (formato YYYY-MM).');
-    const url = `${pb.baseUrl}/api/ph/send-bulk-emails?period=${encodeURIComponent(cleanPeriod)}`;
+    const url = `${pb.baseUrl}/api/ph/send-bulk-emails?period=${encodeURIComponent(cleanPeriod)}&onlyPending=${onlyPending ? 'true' : 'false'}`;
     const res = await fetch(url, {
       method: 'POST',
       headers: pb.headers(),
-      body: JSON.stringify({ period: cleanPeriod, type, subject, message }),
+      body: JSON.stringify({
+        period: cleanPeriod,
+        type,
+        subject,
+        message,
+        notice,
+        onlyPending: !!onlyPending,
+        invoiceIds: Array.isArray(invoiceIds) && invoiceIds.length > 0 ? invoiceIds : undefined
+      }),
     });
     if (!res.ok) throw await pb._err(res);
     return res.json();
@@ -5979,8 +5987,15 @@ const API = {
     const formData = new FormData();
     for (const key of Object.keys(header)) {
       const val = header[key];
-      if (val === undefined || val === null) continue;
-      if (typeof val === 'number' && isNaN(val)) continue;
+      if (val === undefined) continue;
+      if (val === null) {
+        formData.append(key, '');
+        continue;
+      }
+      if (typeof val === 'number' && isNaN(val)) {
+        formData.append(key, '0');
+        continue;
+      }
       formData.append(key, String(val));
     }
     if (files.bl_document) {
@@ -6367,9 +6382,12 @@ const API = {
     }
   },
 
-  /** Obtener la configuraciÃ³n del mÃ³dulo de importaciones */
+  /** Obtener la configuración del módulo de importaciones */
   async getImportConfig() {
     const defaultCfg = {
+      costing: {
+        mode: 'direct' // 'direct' = causación directa tradicional; 'inverse' = contabilización inversa
+      },
       accounting: {
         accounts: {
           transito_account_code: '143505',
@@ -6390,6 +6408,9 @@ const API = {
       const raw = await this.getSetting('import_config_v1');
       if (!raw) return defaultCfg;
       const parsed = JSON.parse(raw);
+      parsed.costing = parsed.costing || { mode: 'direct' };
+      parsed.costing.mode = parsed.costing.mode || 'direct';
+
       if (parsed.accounting && parsed.accounting.accounts) {
         const accs = parsed.accounting.accounts;
         accs.transito_account_code = accs.transito_account_code || '143505';
@@ -6412,11 +6433,134 @@ const API = {
     }
   },
 
-  /** Guardar la configuraciÃ³n del mÃ³dulo de importaciones */
+  /** Guardar la configuración del módulo de importaciones */
   async saveImportConfig(cfg) {
     await this.setSetting('import_config_v1', JSON.stringify(cfg));
-    await this.logAudit('CONFIG', 'ImportConfig', null, 'ConfiguraciÃ³n de importaciones actualizada');
+    await this.logAudit('CONFIG', 'ImportConfig', null, 'Configuración de importaciones actualizada');
     return cfg;
+  },
+
+  /** Obtiene las líneas contables vinculadas a una importación */
+  async getImportTxLines(importId: string) {
+    if (!importId) return [];
+    try {
+      const filterStr = `import_id="${pb.escapeFilterValue(importId)}"`;
+
+      const lines = await pb.listAll('tx_lines', {
+        filter: filterStr,
+        expand: 'tx_id,account_id,third_party_id,cost_center_id',
+        sort: 'line_order'
+      });
+
+      for (const l of lines) {
+        if (!l.import_concept) {
+          l.import_concept = 'fob';
+        }
+      }
+
+      return lines;
+    } catch (err) {
+      console.warn('[getImportTxLines] Error al listar líneas:', err);
+      return [];
+    }
+  },
+
+  /** Vincula una línea contable preexistente a una importación y etapa */
+  async linkTxLineToImport(txLineId: string, importId: string, importConcept: string, invoiceRef: string = '', trm: number = 0) {
+    if (!txLineId) throw new Error('ID de la línea contable requerido');
+    if (!importId) throw new Error('ID de la importación requerido');
+    if (!importConcept) throw new Error('Concepto de importación requerido');
+    
+    const payload: any = {
+      import_id: importId,
+      import_concept: importConcept
+    };
+    if (invoiceRef) payload.import_invoice_ref = invoiceRef;
+    if (trm > 0) payload.import_trm = trm;
+
+    const updated = await pb.update('tx_lines', txLineId, payload);
+    // Asegurar que la cabecera de la transacción también quede asociada a la importación
+    if (updated.tx_id) {
+      try {
+        await pb.update('transactions', updated.tx_id, {
+          is_import: true,
+          import_id: importId,
+          ...(invoiceRef ? { import_invoice_ref: invoiceRef } : {}),
+          ...(trm > 0 ? { import_trm: trm } : {})
+        });
+      } catch (_) {}
+    }
+    return updated;
+  },
+
+  /** Desvincula una línea contable de una importación */
+  async unlinkTxLineFromImport(txLineId: string) {
+    if (!txLineId) throw new Error('ID de la línea contable requerido');
+    return await pb.update('tx_lines', txLineId, {
+      import_id: null,
+      import_concept: null,
+      import_invoice_ref: '',
+      import_trm: null
+    });
+  },
+
+  /** Busca movimientos contables candidatos para vincular a una importación */
+  async searchCandidateTxLinesForImport(opts: any = {}) {
+    try {
+      let transitAccId = '';
+      if (opts.importId) {
+        try {
+          const imp = await pb.get('imports', opts.importId);
+          if (imp && imp.number) {
+            const cfg = await this.getImportConfig();
+            const baseCode = cfg.accounting?.accounts?.transito_account_code || '146505';
+            const expectedCode = this.getImportTransitAccountCode(baseCode, imp.number);
+            const safeCode = pb.escapeFilterValue(expectedCode);
+            const accRes = await pb.list('accounts', { filter: `code="${safeCode}"`, perPage: 1 });
+            if (accRes.items && accRes.items.length) {
+              transitAccId = accRes.items[0].id;
+            }
+          }
+        } catch (_) {}
+      }
+
+      let transitItems: any[] = [];
+      if (transitAccId) {
+        try {
+          const tRes = await pb.list('tx_lines', {
+            filter: `account_id = "${pb.escapeFilterValue(transitAccId)}" && (import_id = "" || import_id = null || import_concept = "" || import_concept = null)`,
+            expand: 'tx_id,account_id,third_party_id',
+            sort: '-created',
+            perPage: 50
+          });
+          transitItems = tRes.items || [];
+        } catch (_) {}
+      }
+
+      const otherParts: string[] = ['(import_id = "" || import_id = null || import_concept = "" || import_concept = null)'];
+      if (opts.thirdPartyId) {
+        otherParts.push(`third_party_id = "${pb.escapeFilterValue(opts.thirdPartyId)}"`);
+      }
+      if (transitAccId) {
+        otherParts.push(`account_id != "${pb.escapeFilterValue(transitAccId)}"`);
+      }
+      const otherFilter = otherParts.join(' && ');
+
+      const oRes = await pb.list('tx_lines', {
+        filter: otherFilter,
+        expand: 'tx_id,account_id,third_party_id',
+        sort: '-created',
+        perPage: opts.limit || 50
+      });
+      const otherItems = oRes.items || [];
+
+      const combined = [...transitItems, ...otherItems];
+      const finalItems = combined.filter((l: any) => !l.import_id || !l.import_concept);
+      return finalItems;
+    } catch (err) {
+      console.warn('[searchCandidateTxLinesForImport] Error:', err);
+      return [];
+    }
   },
 
   /** Formatea el cÃ³digo de la cuenta contable de trÃ¡nsito para una importaciÃ³n especÃ­fica (ej: 146505 + 099 = 146505099) */

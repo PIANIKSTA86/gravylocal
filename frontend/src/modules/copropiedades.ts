@@ -2313,7 +2313,7 @@ async function renderPhConfig(c) {
   c.id = c.id || 'ph-config-container';
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
-    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes, rawFooterNote] = await Promise.all([
+    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes, rawFooterNote, rawMailSubject, rawMailBody, rawMailNotice] = await Promise.all([
       API.getPhBillingConcepts(false),
       API.getPhCommonAreas(false),
       API.getSetting('ph_config_v1'),
@@ -2321,6 +2321,9 @@ async function renderPhConfig(c) {
       API.getPhProperties(true),
       API.getPhIndividualCharges({ filter: '' }).catch(() => ({ items: [] })),
       API.getSetting('ph_invoice_footer_note').catch(() => ''),
+      API.getSetting('ph_email_template_invoice_subject').catch(() => ''),
+      API.getSetting('ph_email_template_invoice_body').catch(() => ''),
+      API.getSetting('ph_email_monthly_notice').catch(() => ''),
     ]);
     const indConcepts = (indConceptsRes?.items || []).slice().sort((a, b) => {
       const an = String(a?.name || a?.description || '').toLowerCase();
@@ -2332,6 +2335,13 @@ async function renderPhConfig(c) {
     try { phCfg = phCfgRaw ? JSON.parse(phCfgRaw) : {}; } catch (_) { phCfg = {}; }
     const defaultFooterNote = 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.';
     const invoiceFooterNote = (rawFooterNote || phCfg.invoice_footer_note || defaultFooterNote).trim();
+
+    const defaultEmailSubject = '{copropiedad} — Cuenta de Cobro No. {numero_factura} — Unidad {unidad}';
+    const defaultEmailBody = `Estimado(a) {propietario},\n\nLe compartimos su cuenta de cobro correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
+    const emailSubject = rawMailSubject || defaultEmailSubject;
+    const emailBody = rawMailBody || defaultEmailBody;
+    const emailNotice = rawMailNotice || '';
+
     const cxcCode    = phCfg.cxc_code    || '130505';
     const incomeCode = phCfg.income_code || '413505';
     const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
@@ -2354,6 +2364,66 @@ async function renderPhConfig(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Plantilla de Correo y Avisos para Facturación PH -->
+        <div class="bg-white rounded-2xl border p-5 lg:col-span-2" style="border-color:#F0F0F0">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h4 class="font-bold text-base" style="color:#0D2137">
+                <i class="fas fa-envelope-open-text mr-2" style="color:#7F7CFF"></i>Plantilla de Correo y Avisos para Facturación PH
+              </h4>
+              <p class="text-xs text-gray-500">
+                Personaliza el asunto predeterminado, el cuerpo del correo y los avisos o circulares (ej: convocatorias a asamblea) que recibirán los copropietarios.
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="ph-cfg-save-email-btn">
+              <i class="fas fa-save mr-1"></i>Guardar Plantilla de Correo
+            </button>
+          </div>
+
+          <!-- Barra de ayuda de variables dinámicas -->
+          <div class="p-3 rounded-xl bg-purple-50 border border-purple-100 mb-4 text-xs">
+            <span class="font-bold text-purple-900 block mb-1.5"><i class="fas fa-tags mr-1"></i>Variables dinámicas disponibles (haz clic para insertar en el campo activo):</span>
+            <div class="flex flex-wrap gap-1.5" id="ph-cfg-email-tokens">
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{propietario}">{propietario}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{unidad}">{unidad}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{periodo}">{periodo}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{numero_factura}">{numero_factura}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{total_mes}">{total_mes}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{saldo_anterior}">{saldo_anterior}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{total_pagar}">{total_pagar}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{fecha_vencimiento}">{fecha_vencimiento}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{copropiedad}">{copropiedad}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-white border border-purple-200 text-purple-700 font-mono hover:bg-purple-100 transition cursor-pointer" data-token="{instrucciones_pago}">{instrucciones_pago}</button>
+              <button type="button" class="ph-token-chip px-2 py-1 rounded bg-amber-100 border border-amber-300 text-amber-800 font-mono font-bold hover:bg-amber-200 transition cursor-pointer" data-token="{aviso_adicional}">📢 {aviso_adicional}</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="space-y-3">
+              <div class="form-group mb-0">
+                <label class="form-label font-semibold">Asunto Predeterminado del Correo</label>
+                <input id="ph-cfg-email-subject" class="form-input text-xs font-mono" value="${esc(emailSubject)}" placeholder="[{copropiedad}] Cuenta de Cobro No. {numero_factura} — Unidad {unidad}">
+                <p class="text-xs text-gray-400 mt-1">Soporta tokens como {copropiedad}, {periodo}, {unidad}, {propietario}, etc.</p>
+              </div>
+              <div class="form-group mb-0">
+                <label class="form-label font-semibold">
+                  <span class="text-amber-600 mr-1">📢</span>Aviso / Circular del Mes (Opcional)
+                </label>
+                <textarea id="ph-cfg-email-notice" class="form-input font-sans text-xs bg-amber-50/40 border-amber-200" rows="4" style="resize:vertical;"
+                  placeholder="Ej: Recuerde la asamblea extraordinaria de copropietarios el sábado 28 de marzo a las 9:00 a.m. en el salón comunal.">${esc(emailNotice)}</textarea>
+                <p class="text-xs text-amber-700 mt-1">Si se diligencia, se resalta como comunicado oficial de la administración.</p>
+              </div>
+            </div>
+
+            <div class="form-group mb-0">
+              <label class="form-label font-semibold">Cuerpo Predeterminado del Correo</label>
+              <textarea id="ph-cfg-email-body" class="form-input font-sans text-xs" rows="8" style="resize:vertical;"
+                placeholder="Texto del cuerpo del correo...">${esc(emailBody)}</textarea>
+              <p class="text-xs text-gray-400 mt-1">La cuenta de cobro oficial siempre irá adjunta en formato PDF.</p>
+            </div>
+          </div>
+        </div>
 
         <!-- Parámetros de Facturación y Pie de Factura -->
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
@@ -2508,6 +2578,47 @@ async function renderPhConfig(c) {
           </div>
         </div>
       </div>`;
+
+    // Guardar plantilla de correo y avisos
+    document.getElementById('ph-cfg-save-email-btn')?.addEventListener('click', async () => {
+      const subj = ((document.getElementById('ph-cfg-email-subject') as HTMLInputElement)?.value || '').trim();
+      const body = ((document.getElementById('ph-cfg-email-body') as HTMLTextAreaElement)?.value || '').trim();
+      const noti = ((document.getElementById('ph-cfg-email-notice') as HTMLTextAreaElement)?.value || '').trim();
+      const btn = document.getElementById('ph-cfg-save-email-btn') as HTMLButtonElement;
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...'; }
+      try {
+        await Promise.all([
+          API.setSetting('ph_email_template_invoice_subject', subj),
+          API.setSetting('ph_email_template_invoice_body', body),
+          API.setSetting('ph_email_monthly_notice', noti),
+        ]);
+        showToast('Plantilla de correo y avisos guardados exitosamente.', 'success');
+      } catch (err: any) {
+        showToast(err.message || 'Error al guardar plantilla.', 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Plantilla de Correo'; }
+      }
+    });
+
+    // Helper para insertar tokens en el campo enfocado
+    let lastFocusedConfigInput: HTMLInputElement | HTMLTextAreaElement | null = document.getElementById('ph-cfg-email-body') as HTMLTextAreaElement;
+    ['ph-cfg-email-subject', 'ph-cfg-email-body', 'ph-cfg-email-notice'].forEach(id => {
+      document.getElementById(id)?.addEventListener('focus', (e) => {
+        lastFocusedConfigInput = e.target as any;
+      });
+    });
+    document.querySelectorAll('#ph-cfg-email-tokens .ph-token-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const token = btn.getAttribute('data-token');
+        if (!token || !lastFocusedConfigInput) return;
+        const start = lastFocusedConfigInput.selectionStart || 0;
+        const end = lastFocusedConfigInput.selectionEnd || 0;
+        const text = lastFocusedConfigInput.value;
+        lastFocusedConfigInput.value = text.substring(0, start) + token + text.substring(end);
+        lastFocusedConfigInput.focus();
+        lastFocusedConfigInput.selectionStart = lastFocusedConfigInput.selectionEnd = start + token.length;
+      });
+    });
 
     // Guardar parámetros de facturación (Pie de factura)
     document.getElementById('ph-cfg-save-note-btn')?.addEventListener('click', async () => {
@@ -4265,45 +4376,148 @@ async function openPhBulkEmailModal() {
   const filterInput = document.getElementById('ph-period-filter') as HTMLInputElement;
   const initialPeriod = (filterInput && filterInput.value ? filterInput.value.trim() : '') || currentPeriod();
 
+  // Consultar configuración guardada de plantillas y muestra de datos reales
+  let savedSubject = '';
+  let savedBody = '';
+  let savedNotice = '';
+  let companyName = 'Copropiedad';
+  let sampleInv: any = null;
+  let initialTotalCount = 0;
+  let initialPendingCount = 0;
+
+  try {
+    const [subRes, bodyRes, notRes, compRes, invsRes] = await Promise.all([
+      (window as any).API.getSetting('ph_email_template_invoice_subject').catch(() => ''),
+      (window as any).API.getSetting('ph_email_template_invoice_body').catch(() => ''),
+      (window as any).API.getSetting('ph_email_monthly_notice').catch(() => ''),
+      (window as any).API.getSetting('company_name').catch(() => 'Copropiedad'),
+      (window as any).API.getPhInvoices({
+        filter: `period="${(window as any).pb.escapeFilterValue(initialPeriod)}" && status != 'voided'`,
+        perPage: 500,
+        expand: 'property_id,property_id.owner_id'
+      }).catch(() => ({ items: [] }))
+    ]);
+    savedSubject = subRes || '';
+    savedBody = bodyRes || '';
+    savedNotice = notRes || '';
+    companyName = compRes || 'Copropiedad';
+    if (invsRes && invsRes.items && invsRes.items.length > 0) {
+      sampleInv = invsRes.items[0];
+      initialTotalCount = invsRes.items.length;
+      initialPendingCount = invsRes.items.filter((i: any) => !i.email_sent && i.email_status !== 'sent').length;
+    }
+  } catch (_) {}
+
+  const defaultSubject = savedSubject || '{copropiedad} — Cuenta de Cobro No. {numero_factura} — Unidad {unidad}';
+  const defaultBody = savedBody || `Estimado(a) {propietario},\n\nLe compartimos su cuenta de cobro correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
+  const defaultNotice = savedNotice || '';
+
   (window as any).openModal(
-    'Envío Masivo por Correo (Con PDF)',
+    'Envío Masivo por Correo (Con PDF Adjunto)',
     `<div class="space-y-4">
-      <p class="text-sm text-gray-600">
-        Esta acción generará y enviará las facturas o estados de cuenta con su respectivo <strong>archivo PDF adjunto</strong> a todos los propietarios que tengan cobros activos en el período <strong>${(window as any).fmtPeriod(initialPeriod)}</strong> y cuenten con correo registrado.
-      </p>
       <div class="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
         <i class="fas fa-shield-alt text-amber-600 text-base"></i>
-        <span>El proceso aplica control de ráfagas (rate limiting) para garantizar la compatibilidad con el servidor <strong>SMTP de Gmail</strong> sin bloqueos de cuenta.</span>
+        <span>El proceso aplicará la plantilla personalizada y control de ráfagas (rate limiting) para garantizar la compatibilidad con el servidor <strong>SMTP de Gmail</strong> sin bloqueos.</span>
       </div>
-      <div class="grid grid-cols-2 gap-4">
+
+      <!-- Selector de Período y Documento -->
+      <div class="grid grid-cols-2 gap-3">
         <div class="form-group mb-0">
-          <label class="form-label">Período</label>
+          <label class="form-label font-semibold">Período</label>
           <input id="ph-bulk-email-period" type="month" class="form-input" value="${(window as any).esc(initialPeriod)}" disabled>
         </div>
         <div class="form-group mb-0">
-          <label class="form-label">Tipo de Documento</label>
+          <label class="form-label font-semibold">Tipo de Documento</label>
           <select id="ph-bulk-email-type" class="form-input">
             <option value="invoice">Factura del Período</option>
             <option value="statement">Estado de Cuenta (Con Cartera)</option>
           </select>
         </div>
       </div>
-      <div class="form-group mb-0">
-        <label class="form-label">Asunto General Personalizado (Opcional)</label>
-        <input id="ph-bulk-email-subject" class="form-input" placeholder="Asunto predeterminado del sistema">
+
+      <!-- Pestañas del Modal -->
+      <div class="flex border-b border-gray-200 text-xs font-semibold gap-4">
+        <button type="button" id="ph-bulk-tab-edit-btn" class="pb-2 text-blue-600 border-b-2 border-blue-600 flex items-center gap-1 cursor-pointer">
+          <i class="fas fa-pen-to-square"></i> Mensaje y Parámetros
+        </button>
+        <button type="button" id="ph-bulk-tab-prev-btn" class="pb-2 text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer">
+          <i class="fas fa-eye"></i> Vista Previa Simulada
+        </button>
+      </div>
+
+      <!-- Pestaña 1: Editor -->
+      <div id="ph-bulk-pane-edit" class="space-y-3">
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold">Asunto del Correo (Con Tokens)</label>
+          <input id="ph-bulk-email-subject" class="form-input font-mono text-xs" value="${(window as any).esc(defaultSubject)}" placeholder="Asunto...">
+        </div>
+
+        <!-- Chips interactivos de tokens -->
+        <div class="p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-xs">
+          <span class="font-bold text-gray-700 block mb-1"><i class="fas fa-tags mr-1"></i>Insertar variable en el campo activo:</span>
+          <div class="flex flex-wrap gap-1" id="ph-bulk-email-tokens">
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{propietario}">{propietario}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{unidad}">{unidad}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{periodo}">{periodo}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{numero_factura}">{numero_factura}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{total_pagar}">{total_pagar}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-white border border-gray-300 text-gray-700 font-mono hover:bg-gray-100 transition cursor-pointer" data-token="{fecha_vencimiento}">{fecha_vencimiento}</button>
+            <button type="button" class="ph-bulk-token px-2 py-0.5 rounded bg-amber-100 border border-amber-300 text-amber-800 font-mono font-bold hover:bg-amber-200 transition cursor-pointer" data-token="{aviso_adicional}">📢 {aviso_adicional}</button>
+          </div>
+        </div>
+
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold">
+            <span class="text-amber-600 mr-1">📢</span>Aviso / Circular Especial del Mes (Opcional)
+          </label>
+          <textarea id="ph-bulk-email-notice" class="form-input font-sans text-xs bg-amber-50/50 border-amber-200" rows="2" style="resize:vertical;"
+            placeholder="Ej: Recuerde la asamblea extraordinaria de copropietarios convocada para el sábado 28 de marzo...">${(window as any).esc(defaultNotice)}</textarea>
+          <p class="text-xs text-amber-700 mt-0.5">Se resalta en el correo como comunicado oficial o sustituye el token {aviso_adicional}.</p>
+        </div>
+
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold">Cuerpo / Mensaje del Correo</label>
+          <textarea id="ph-bulk-email-message" class="form-input font-sans text-xs" rows="5" style="resize:vertical;"
+            placeholder="Texto que recibirá el copropietario...">${(window as any).esc(defaultBody)}</textarea>
+        </div>
+
+        <!-- Filtro inteligente para reanudar envíos pendientes -->
+        <div class="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 text-xs mt-1">
+          <label class="flex items-center gap-2 cursor-pointer font-semibold text-blue-950 select-none">
+            <input type="checkbox" id="ph-bulk-email-only-pending" checked class="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer" />
+            <span><i class="fas fa-filter text-blue-600 mr-1"></i> Omitir facturas ya enviadas exitosamente <span class="font-normal text-blue-700">(Reanudar solo pendientes del período)</span></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Pestaña 2: Vista Previa Simulada -->
+      <div id="ph-bulk-pane-prev" class="hidden border rounded-xl p-3.5 bg-gray-50 border-gray-200 space-y-2.5">
+        <div class="text-xs text-gray-500 font-semibold border-b pb-1.5 flex justify-between">
+          <span>Vista Previa con datos de: <strong id="ph-prev-unit-label" class="text-blue-600">${sampleInv?.expand?.property_id?.name || 'Unidad de Ejemplo'}</strong></span>
+          <span class="text-green-600"><i class="fas fa-paperclip"></i> PDF adjunto incluido</span>
+        </div>
+        <div class="bg-white p-3 rounded-lg border border-gray-200 text-xs space-y-2">
+          <div><strong class="text-gray-500">Asunto:</strong> <span id="ph-prev-subject" class="font-bold text-gray-800"></span></div>
+          <hr class="border-gray-100">
+          <div id="ph-prev-notice-box" class="hidden p-2.5 rounded bg-amber-50 border-l-4 border-amber-500 text-amber-900 text-xs">
+            <strong class="block text-amber-800 mb-0.5">📢 AVISO IMPORTANTE DE LA ADMINISTRACIÓN</strong>
+            <span id="ph-prev-notice-text"></span>
+          </div>
+          <div id="ph-prev-body" class="text-gray-700 whitespace-pre-line leading-relaxed"></div>
+        </div>
       </div>
       
       <!-- Panel de Registro / Progreso -->
       <div id="ph-bulk-email-progress-container" class="hidden border rounded-xl p-3 bg-gray-50" style="border-color:#e2e8f0;">
         <div class="flex justify-between items-center mb-2">
           <span class="text-xs font-bold text-gray-500 uppercase">Estado del Envío</span>
-          <span id="ph-bulk-email-progress-counts" class="text-xs font-bold text-blue-600">0 / 0 Procesados</span>
+          <span id="ph-bulk-email-progress-counts" class="text-xs font-bold text-blue-600">${initialPendingCount} / ${initialTotalCount} Pendientes</span>
         </div>
         <div class="w-full bg-gray-200 rounded-full h-2.5 mb-3 overflow-hidden">
           <div id="ph-bulk-email-progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
         </div>
         <div id="ph-bulk-email-log" class="text-xs font-mono bg-white border p-2 rounded-lg overflow-y-auto max-h-36 space-y-1" style="height: 120px; border-color:#e2e8f0;">
-          <p class="text-gray-400">Listo para iniciar...</p>
+          <p class="text-gray-400">${initialTotalCount > 0 ? (initialPendingCount > 0 ? `Listo para enviar ${initialPendingCount} facturas pendientes.` : `Todas las facturas (${initialTotalCount}) de este período ya fueron enviadas.`) : `No se encontraron facturas activas para el período seleccionado.`}</p>
         </div>
       </div>
     </div>`,
@@ -4312,6 +4526,95 @@ async function openPhBulkEmailModal() {
   );
 
   setTimeout(() => {
+    // Manejo de inserción de tokens con click en chips
+    let lastFocusedBulkInput: HTMLInputElement | HTMLTextAreaElement | null = document.getElementById('ph-bulk-email-message') as HTMLTextAreaElement;
+    ['ph-bulk-email-subject', 'ph-bulk-email-notice', 'ph-bulk-email-message'].forEach(id => {
+      document.getElementById(id)?.addEventListener('focus', (e) => {
+        lastFocusedBulkInput = e.target as any;
+      });
+    });
+
+    document.querySelectorAll('#ph-bulk-email-tokens .ph-bulk-token').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const token = btn.getAttribute('data-token');
+        if (!token || !lastFocusedBulkInput) return;
+        const start = lastFocusedBulkInput.selectionStart || 0;
+        const end = lastFocusedBulkInput.selectionEnd || 0;
+        const text = lastFocusedBulkInput.value;
+        lastFocusedBulkInput.value = text.substring(0, start) + token + text.substring(end);
+        lastFocusedBulkInput.focus();
+        lastFocusedBulkInput.selectionStart = lastFocusedBulkInput.selectionEnd = start + token.length;
+      });
+    });
+
+    // Pestañas (Editar vs Vista Previa)
+    const tabEditBtn = document.getElementById('ph-bulk-tab-edit-btn');
+    const tabPrevBtn = document.getElementById('ph-bulk-tab-prev-btn');
+    const paneEdit = document.getElementById('ph-bulk-pane-edit');
+    const panePrev = document.getElementById('ph-bulk-pane-prev');
+
+    const updatePreview = () => {
+      const subjTpl = (document.getElementById('ph-bulk-email-subject') as HTMLInputElement)?.value || '';
+      const bodyTpl = (document.getElementById('ph-bulk-email-message') as HTMLTextAreaElement)?.value || '';
+      const noticeVal = (document.getElementById('ph-bulk-email-notice') as HTMLTextAreaElement)?.value.trim() || '';
+
+      const prop = sampleInv?.expand?.property_id;
+      const owner = prop?.expand?.owner_id;
+
+      const dummyCtx: Record<string, string> = {
+        '{propietario}': owner?.name || 'Carlos Alberto Gómez',
+        '{unidad}': prop?.name || 'Apto 302 - Torre A',
+        '{periodo}': (window as any).fmtPeriod(initialPeriod),
+        '{numero_factura}': sampleInv?.number || 'CC-2026-0001',
+        '{total_mes}': (window as any).fmt(sampleInv?.total || 245000),
+        '{saldo_anterior}': '$ 0',
+        '{total_pagar}': (window as any).fmt(sampleInv?.total || 245000),
+        '{fecha_vencimiento}': sampleInv?.due_date ? (window as any).fmtDate(sampleInv.due_date) : '15/03/2026',
+        '{copropiedad}': companyName || 'Copropiedad',
+        '{instrucciones_pago}': 'Consignar a la Cuenta de Ahorros Bancolombia No. 123-456789-00 a nombre de la copropiedad.',
+        '{aviso_adicional}': noticeVal
+      };
+
+      let simSubj = subjTpl;
+      let simBody = bodyTpl;
+      Object.keys(dummyCtx).forEach(k => {
+        const re = new RegExp(k, 'gi');
+        simSubj = simSubj.replace(re, dummyCtx[k]);
+        simBody = simBody.replace(re, dummyCtx[k]);
+      });
+
+      const prevSubjElem = document.getElementById('ph-prev-subject');
+      const prevBodyElem = document.getElementById('ph-prev-body');
+      const prevNoticeBox = document.getElementById('ph-prev-notice-box');
+      const prevNoticeText = document.getElementById('ph-prev-notice-text');
+
+      if (prevSubjElem) prevSubjElem.textContent = simSubj;
+      if (prevBodyElem) prevBodyElem.textContent = simBody;
+
+      if (noticeVal && !bodyTpl.includes('{aviso_adicional}')) {
+        if (prevNoticeBox) prevNoticeBox.classList.remove('hidden');
+        if (prevNoticeText) prevNoticeText.textContent = noticeVal;
+      } else {
+        if (prevNoticeBox) prevNoticeBox.classList.add('hidden');
+      }
+    };
+
+    tabEditBtn?.addEventListener('click', () => {
+      tabEditBtn.className = 'pb-2 text-blue-600 border-b-2 border-blue-600 flex items-center gap-1 cursor-pointer';
+      tabPrevBtn!.className = 'pb-2 text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer';
+      paneEdit?.classList.remove('hidden');
+      panePrev?.classList.add('hidden');
+    });
+
+    tabPrevBtn?.addEventListener('click', () => {
+      tabPrevBtn.className = 'pb-2 text-blue-600 border-b-2 border-blue-600 flex items-center gap-1 cursor-pointer';
+      tabEditBtn!.className = 'pb-2 text-gray-500 hover:text-gray-700 flex items-center gap-1 cursor-pointer';
+      panePrev?.classList.remove('hidden');
+      paneEdit?.classList.add('hidden');
+      updatePreview();
+    });
+
+    // Acción de envío masivo
     document.getElementById('ph-bulk-email-confirm-btn')?.addEventListener('click', async () => {
       const modalPeriodInput = document.getElementById('ph-bulk-email-period') as HTMLInputElement;
       const pagePeriodInput = document.getElementById('ph-period-filter') as HTMLInputElement;
@@ -4327,6 +4630,9 @@ async function openPhBulkEmailModal() {
 
       const type = (document.getElementById('ph-bulk-email-type') as HTMLSelectElement)?.value || 'invoice';
       const subject = (document.getElementById('ph-bulk-email-subject') as HTMLInputElement)?.value.trim();
+      const message = (document.getElementById('ph-bulk-email-message') as HTMLTextAreaElement)?.value.trim();
+      const notice = (document.getElementById('ph-bulk-email-notice') as HTMLTextAreaElement)?.value.trim();
+      const onlyPending = (document.getElementById('ph-bulk-email-only-pending') as HTMLInputElement)?.checked ?? true;
       
       const confirmBtn = document.getElementById('ph-bulk-email-confirm-btn') as HTMLButtonElement;
       const cancelBtn = document.getElementById('ph-bulk-email-cancel') as HTMLButtonElement;
@@ -4338,42 +4644,162 @@ async function openPhBulkEmailModal() {
       confirmBtn.disabled = true;
       cancelBtn.disabled = true;
       progressContainer.classList.remove('hidden');
-      log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Generando PDFs y enviando correos por Gmail SMTP...</p>`;
+      log.innerHTML = `<p class="text-blue-500 font-bold"><i class="fas fa-spinner fa-spin mr-1"></i> Consultando facturas del período ${effectivePeriod}...</p>`;
 
       try {
-        const res = await (window as any).API.sendPhBulkEmails(effectivePeriod, type, subject, '');
+        // 1. Consultar facturas activas del período
+        const allInvsRes = await (window as any).API.getPhInvoices({
+          filter: `period="${(window as any).pb.escapeFilterValue(effectivePeriod)}" && status != 'voided'`,
+          perPage: 1000,
+          sort: 'number'
+        });
         
-        const total = (res.sent || 0) + (res.skipped || 0) + (res.failed || 0);
-        progressCounts.textContent = `${total} / ${total} Procesados`;
-        progressBar.style.width = '100%';
-
-        let logContent = `<p class="text-green-600 font-bold mb-1">¡Proceso de envío masivo finalizado!</p>`;
-        logContent += `<p class="text-xs font-semibold text-gray-600 mb-2">Resumen: ${res.sent} enviados (con PDF adjunto), ${res.skipped} omitidos, ${res.failed} fallidos.</p>`;
-        
-        if (res.details && res.details.length > 0) {
-          res.details.forEach((det: any) => {
-            if (det.status === 'sent') {
-              const pdfTag = det.pdfAttached ? '<span style="color:#10b981;font-weight:bold;">[+PDF]</span>' : '';
-              logContent += `<p class="text-green-600">[ENV] Unidad ${det.unit} — Enviado a ${det.email} ${pdfTag}</p>`;
-            } else if (det.status === 'skipped') {
-              logContent += `<p class="text-orange-500">[OMI] Factura ${det.number} ${det.unit ? 'Unidad ' + det.unit : ''} — Omitido: ${det.reason}</p>`;
-            } else {
-              logContent += `<p class="text-red-500">[ERR] Factura ${det.number} — Error: ${det.reason}</p>`;
-            }
-          });
+        const allInvoices = (allInvsRes && allInvsRes.items) ? allInvsRes.items : [];
+        if (!allInvoices.length) {
+          log.innerHTML = `<div class="p-3 bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded text-xs font-semibold">
+            <i class="fas fa-exclamation-triangle text-amber-600 mr-1.5"></i> No se encontraron facturas activas para el período <strong>${effectivePeriod}</strong>.<br>
+            <span class="text-gray-600 font-normal">Por favor verifique que la facturación de dicho mes ya haya sido emitida en el módulo.</span>
+          </div>`;
+          (window as any).showToast(`No hay facturas activas para el período ${effectivePeriod}.`, 'warning');
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="fas fa-mail-bulk mr-1"></i> Iniciar Envío Masivo';
+          cancelBtn.disabled = false;
+          return;
         }
-        log.innerHTML = logContent;
+
+        // 2. Filtrar si onlyPending está activo
+        let targetInvoices = allInvoices;
+        if (onlyPending) {
+          targetInvoices = allInvoices.filter((inv: any) => !inv.email_sent && inv.email_status !== 'sent');
+        }
+
+        if (!targetInvoices.length) {
+          progressCounts.textContent = `${allInvoices.length} / ${allInvoices.length} Enviadas`;
+          progressBar.style.width = '100%';
+          log.innerHTML = `<div class="p-3 bg-green-50 border-l-4 border-green-500 text-green-900 rounded text-xs font-semibold">
+            <i class="fas fa-check-circle text-green-600 mr-1.5"></i> Todas las facturas (${allInvoices.length}) de este período ya fueron enviadas exitosamente.<br>
+            <span class="text-gray-600 font-normal">Si desea reenviarlas a todos los copropietarios, desmarque la casilla "Omitir facturas ya enviadas".</span>
+          </div>`;
+          (window as any).showToast('Todas las facturas ya fueron enviadas previamente.', 'info');
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Completado';
+          cancelBtn.disabled = false;
+          cancelBtn.textContent = 'Cerrar';
+          return;
+        }
+
+        const totalToProcess = targetInvoices.length;
+        progressCounts.textContent = `0 / ${totalToProcess} Procesados`;
+        progressBar.style.width = '0%';
+        log.innerHTML = `<p class="text-blue-600 font-bold mb-1">Iniciando envío seguro por lotes (${totalToProcess} facturas a procesar)...</p>`;
+
+        // 3. Dividir en Chunks de 3 facturas por lote
+        const chunkSize = 3;
+        const chunks: any[][] = [];
+        for (let i = 0; i < targetInvoices.length; i += chunkSize) {
+          chunks.push(targetInvoices.slice(i, i + chunkSize));
+        }
+
+        let sentTotal = 0;
+        let skippedTotal = 0;
+        let failedTotal = 0;
+        let processedTotal = 0;
+        let circuitBreakerHit = false;
+        let circuitBreakerReason = '';
+
+        for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
+          const currentChunk = chunks[cIdx];
+          const chunkIds = currentChunk.map((inv: any) => inv.id);
+
+          try {
+            const res = await (window as any).API.sendPhBulkEmails(
+              effectivePeriod,
+              type,
+              subject,
+              message,
+              notice,
+              onlyPending,
+              chunkIds
+            );
+
+            sentTotal += (res.sent || 0);
+            skippedTotal += (res.skipped || 0);
+            failedTotal += (res.failed || 0);
+            processedTotal += currentChunk.length;
+
+            // Actualizar progreso visual en tiempo real
+            const pct = Math.min(100, Math.round((processedTotal / totalToProcess) * 100));
+            progressBar.style.width = `${pct}%`;
+            progressCounts.textContent = `${processedTotal} / ${totalToProcess} (${pct}%)`;
+
+            // Insertar líneas de log en tiempo real
+            if (res.details && res.details.length > 0) {
+              res.details.forEach((det: any) => {
+                const p = document.createElement('p');
+                if (det.status === 'sent') {
+                  const pdfTag = det.pdfAttached ? ' <span style="color:#10b981;font-weight:bold;">[+PDF]</span>' : '';
+                  p.className = 'text-green-600';
+                  p.innerHTML = `[ENV] Unidad ${det.unit || ''} — Enviado a ${det.email} ${pdfTag}`;
+                } else if (det.status === 'skipped') {
+                  p.className = 'text-orange-500';
+                  p.textContent = `[OMI] Factura ${det.number || ''} ${det.unit ? 'Unidad ' + det.unit : ''} — ${det.reason || ''}`;
+                } else {
+                  p.className = 'text-red-500';
+                  p.textContent = `[ERR] Factura ${det.number || ''} — Error: ${det.reason || ''}`;
+                }
+                log.appendChild(p);
+              });
+              log.scrollTop = log.scrollHeight;
+            }
+
+            // Validar si saltó el Circuit Breaker de Gmail / SMTP
+            if (res.circuitBreaker && res.circuitBreaker.triggered) {
+              circuitBreakerHit = true;
+              circuitBreakerReason = res.circuitBreaker.reason || 'Protección SMTP activada.';
+              break; // Detener el bucle de chunks inmediatamente
+            }
+
+          } catch (chunkErr: any) {
+            console.error('[GRAVY PH CHUNK ERROR]', chunkErr);
+            failedTotal += currentChunk.length;
+            processedTotal += currentChunk.length;
+            const p = document.createElement('p');
+            p.className = 'text-red-500 font-bold';
+            p.textContent = `[ERR LOTE] Error en lote ${cIdx + 1}: ${chunkErr.message || chunkErr}`;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+          }
+        }
+
+        // Resumen final
+        let finalBanner = '';
+        if (circuitBreakerHit) {
+          finalBanner = `<div class="p-2.5 mt-2 bg-amber-50 border-l-4 border-amber-500 text-amber-900 rounded text-xs font-semibold">
+            <i class="fas fa-shield-alt text-amber-600 mr-1.5"></i><strong>Envío en pausa preventiva (Circuit Breaker):</strong><br>
+            <span>${circuitBreakerReason}</span><br>
+            <span class="text-gray-600 font-normal">Los correos ya enviados están registrados. Cuando se renueve la cuota o configure Brevo, presione "Reintentar Pendientes".</span>
+          </div>`;
+          (window as any).showToast(`Envío pausado por seguridad: ${circuitBreakerReason}`, 'warning');
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="fas fa-redo mr-1"></i> Reintentar Pendientes';
+        } else {
+          finalBanner = `<p class="text-green-600 font-bold mt-2">¡Proceso de envío finalizado!</p>`;
+          (window as any).showToast(`Envío masivo completo. ${sentTotal} enviados con PDF, ${skippedTotal} omitidos, ${failedTotal} fallidos.`, failedTotal > 0 ? 'warning' : 'success');
+          confirmBtn.disabled = false;
+          confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Finalizado';
+        }
+
+        const summaryDiv = document.createElement('div');
+        summaryDiv.innerHTML = finalBanner + `<p class="text-xs font-semibold text-gray-700 mt-1 mb-2">Total procesado: ${sentTotal} enviados (+PDF), ${skippedTotal} omitidos, ${failedTotal} fallidos.</p>`;
+        log.appendChild(summaryDiv);
         log.scrollTop = log.scrollHeight;
 
-        (window as any).showToast(`Envío masivo completo. ${res.sent} enviados con PDF, ${res.skipped} omitidos, ${res.failed} fallidos.`, res.failed > 0 ? 'warning' : 'success');
-        
-        confirmBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Finalizado';
         cancelBtn.disabled = false;
         cancelBtn.textContent = 'Cerrar';
 
       } catch (err: any) {
         console.error('[GRAVY PH BULK EMAIL ERROR]', err);
-        log.innerHTML = `<p class="text-red-500 font-bold"><i class="fas fa-exclamation-circle mr-1"></i> Fallo en el proceso: ${err.message}</p>`;
+        log.innerHTML += `<p class="text-red-500 font-bold"><i class="fas fa-exclamation-circle mr-1"></i> Fallo general: ${err.message}</p>`;
         (window as any).showToast(err.message || 'Error en envío masivo', 'error');
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-mail-bulk mr-1"></i> Iniciar Envío Masivo';

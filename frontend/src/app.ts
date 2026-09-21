@@ -35,7 +35,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ── Botones de login ───────────────────────────────────────
-  $('#btn-login')?.addEventListener('click', doLogin);
+  $('#form-login')?.addEventListener('submit', (e) => { e.preventDefault(); doLogin(); });
+  $('#btn-login')?.addEventListener('click', (e) => { e.preventDefault(); doLogin(); });
   $('#btn-toggle-pass')?.addEventListener('click', togglePassVisibility);
   $('#login-pass')?.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('#login-email')?.addEventListener('keydown', e => { if (e.key === 'Enter') $('#login-pass')?.focus(); });

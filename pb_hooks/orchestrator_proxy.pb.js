@@ -96,3 +96,41 @@ routerAdd('POST', '/api/ph/generate-pdf', (c) => {
     return c.json(500, { error: 'Error interno en proxy de PDF PH: ' + err.message });
   }
 });
+
+// --- GENERACIÓN PDF DIAN (FACTURAS, NOTAS, DOCUMENTO SOPORTE) ---
+routerAdd('POST', '/api/dian/generate-pdf', (c) => {
+  try {
+    const rawBody = c.requestInfo()?.body || {};
+
+    const res = $http.send({
+      url: 'http://127.0.0.1:8088/api/dian/generate-pdf',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rawBody),
+      timeout: 120
+    });
+
+    if (res.statusCode === 200) {
+      const filename = rawBody.filename || 'documento_dian';
+      try {
+        if (c.response && c.response.Header) {
+          c.response.Header().Set('Content-Disposition', 'inline; filename="' + filename + '.pdf"');
+          c.response.Header().Set('Access-Control-Allow-Origin', '*');
+        }
+      } catch (_) {}
+      return c.blob(200, 'application/pdf', res.raw);
+    }
+
+    let errMsg = 'Error en el orquestador generando PDF DIAN.';
+    try {
+      const parsed = JSON.parse(res.raw);
+      if (parsed.error) errMsg = parsed.error;
+    } catch (_) {}
+
+    return c.json(res.statusCode || 500, { error: errMsg, message: errMsg });
+  } catch (err) {
+    console.error('[GRAVY PROXY] Error en /api/dian/generate-pdf:', err);
+    return c.json(500, { error: 'Error interno en proxy de PDF DIAN: ' + err.message });
+  }
+});
+

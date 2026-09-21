@@ -2495,7 +2495,7 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
           
-          let desc = line.getString("description");
+          let desc = (line.getString("description") || '').trim();
           let itemCode = '99999999';
           let itemUnit = 'ZZ';
           
@@ -2513,7 +2513,19 @@ function sendInvoiceEmailHelper(txId, customEmail) {
             } catch (_) {}
           }
           if (!desc) {
-            desc = "Producto/Servicio";
+            const accId = line.getString("account_id");
+            if (accId) {
+              try {
+                const acc = $app.findRecordById("accounts", accId);
+                if (acc) {
+                  desc = (acc.getString("code") + " - " + acc.getString("name")).trim();
+                  itemCode = acc.getString("code") || itemCode;
+                }
+              } catch (_) {}
+            }
+          }
+          if (!desc) {
+            desc = (isDS || isNDS) ? "Servicio / Concepto No Obligado" : "Producto/Servicio";
           }
 
           items.push({

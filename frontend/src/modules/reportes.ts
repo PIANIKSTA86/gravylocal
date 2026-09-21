@@ -13872,6 +13872,8 @@ async function renderConsecutiveAuditReport() {
       const retefuenteTotals = new Map<string, number>();
       const reteicaTotals = new Map<string, number>();
       const reteivaTotals = new Map<string, number>();
+      const costoVentasTotals = new Map<string, number>();
+      const ingresosTotals = new Map<string, number>();
       const crossDocRefs = new Map<string, string>();
       const BATCH = 50;
       for (let i = 0; i < allIds.length; i += BATCH) {
@@ -13890,6 +13892,17 @@ async function renderConsecutiveAuditReport() {
 
             if (code.startsWith('24')) {
               taxTotals.set(l.tx_id, (taxTotals.get(l.tx_id) || 0) + val);
+            }
+
+            // Costo de ventas: 61 o 6
+            if (code.startsWith('61') || code.startsWith('6')) {
+              costoVentasTotals.set(l.tx_id, (costoVentasTotals.get(l.tx_id) || 0) + Number(l.debit || 0));
+            }
+
+            // Ingresos operacionales: 4
+            if (code.startsWith('4')) {
+              const netRev = Number(l.credit || 0) - Number(l.debit || 0);
+              ingresosTotals.set(l.tx_id, (ingresosTotals.get(l.tx_id) || 0) + netRev);
             }
 
             // Retención en la Fuente: 2365 o 135515 (o cualquier 1355 que no sea ReteIVA/ReteICA)
@@ -14003,7 +14016,7 @@ async function renderConsecutiveAuditReport() {
             retefuente = lineRetefuente;
             reteica = lineReteica;
             retenciones = lineRet || Number(pinv.ret_total || 0);
-            total = (pinv.total && Math.abs(Number(pinv.total) - tot.debit) < 1) ? Number(pinv.total) : (tot.debit || (subtotal + iva));
+            total = (pinv.total !== undefined && pinv.total !== null && Number(pinv.total) > 0) ? Number(pinv.total) : (subtotal + iva);
             if (subtotal === 0 && total > 0) {
               subtotal = Math.max(0, total - iva);
             }
@@ -14015,11 +14028,13 @@ async function renderConsecutiveAuditReport() {
             desctoFinanciero = pinv.discount_amount || 0;
           } else if (sinv) {
             subtotal = Number(sinv.subtotal || 0);
-            iva = (sinv.tax_amount !== undefined && sinv.tax_amount !== null && Number(sinv.tax_amount) > 0) ? Number(sinv.tax_amount) : lineIva;
+            iva = (sinv.iva_total !== undefined && sinv.iva_total !== null && Number(sinv.iva_total) > 0) 
+              ? Number(sinv.iva_total) 
+              : (sinv.tax_amount !== undefined && sinv.tax_amount !== null && Number(sinv.tax_amount) > 0 ? Number(sinv.tax_amount) : lineIva);
             retefuente = lineRetefuente;
             reteica = lineReteica;
-            retenciones = lineRet;
-            total = (sinv.total && Math.abs(Number(sinv.total) - tot.debit) < 1) ? Number(sinv.total) : (tot.debit || (subtotal + iva));
+            retenciones = lineRet || Number(sinv.ret_total || 0);
+            total = (sinv.total !== undefined && sinv.total !== null && Number(sinv.total) > 0) ? Number(sinv.total) : (subtotal + iva);
             if (subtotal === 0 && total > 0) {
               subtotal = Math.max(0, total - iva);
             }
@@ -14035,8 +14050,15 @@ async function renderConsecutiveAuditReport() {
             retefuente = lineRetefuente;
             reteica = lineReteica;
             retenciones = lineRet;
-            total = tot.debit > 0 ? tot.debit : tot.credit;
-            subtotal = Math.max(0, total - iva);
+            const revVal = ingresosTotals.get(tx.id) || 0;
+            const costVal = costoVentasTotals.get(tx.id) || 0;
+            if (revVal > 0) {
+              subtotal = revVal;
+              total = subtotal + iva;
+            } else {
+              total = tot.debit > 0 ? Math.max(0, tot.debit - costVal) : tot.credit;
+              subtotal = Math.max(0, total - iva);
+            }
             neto = total - retenciones;
             extRef = lineAffects || '';
             affects = lineAffects || '';

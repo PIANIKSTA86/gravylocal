@@ -11,6 +11,20 @@ const PDFDocument = require('pdfkit');
 const backupService = require('./backup-service');
 const crypto = require('crypto');
 
+// Cargar configuración de puertos si existe config/ports.env
+try {
+  const portsEnvPath = path.resolve(__dirname, '..', 'config', 'ports.env');
+  if (fs.existsSync(portsEnvPath)) {
+    const lines = fs.readFileSync(portsEnvPath, 'utf8').split('\n');
+    for (const line of lines) {
+      const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*([^\s#]+)/);
+      if (match && !process.env[match[1]]) {
+        process.env[match[1]] = match[2];
+      }
+    }
+  }
+} catch (_) {}
+
 /**
  * hashFtechPassword: Returns SHA-256 hex of the password.
  * If the password is ALREADY a 64-char hex string (pre-hashed), use it as-is.
@@ -2350,7 +2364,29 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         let lineMatch;
         while ((lineMatch = linePattern.exec(cleanXml)) !== null) {
           const lineXml = lineMatch[1];
-          const desc = stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Description>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
+
+          // 1. Extraer la descripción prioritariamente dentro del sub-bloque <cac:Item>
+          // para evitar falsos positivos con <cac:InvoicePeriod><cbc:Description> ("Por operación" obligatorio en Documento Soporte)
+          const itemBlockMatch = lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Item\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Item>/i);
+          const itemXml = itemBlockMatch ? itemBlockMatch[1] : '';
+
+          let desc = '';
+          if (itemXml) {
+            desc = stripTags((itemXml.match(/<(?:[a-zA-Z0-9_-]+:)?Description\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
+          }
+
+          // Si no se encontró dentro de <cac:Item>, remover <InvoicePeriod> antes de buscar <Description> general
+          if (!desc) {
+            const lineWithoutPeriod = lineXml.replace(/<(?:[a-zA-Z0-9_-]+:)?InvoicePeriod\b[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?InvoicePeriod>/gi, '');
+            desc = stripTags((lineWithoutPeriod.match(/<(?:[a-zA-Z0-9_-]+:)?Description\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
+          }
+
+          // Extraer comentario o nota por concepto a nivel de línea si existe (<cbc:Note>)
+          const lineNote = stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Note\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Note>/i) || [])[1] || '');
+          if (lineNote && lineNote !== desc && !desc.includes(lineNote)) {
+            desc = desc ? `${desc} — ${lineNote}` : lineNote;
+          }
+
           const qty = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity>/i) || [])[1] || '0'));
           const unitPrice = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?PriceAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?PriceAmount>/i) || [])[1] || '0'));
           const lineTotal = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount>/i) || [])[1] || '0'));
@@ -2387,12 +2423,12 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
             taxName = stripTags((taxSubxml.match(/<cac:TaxScheme>[\s\S]*?<cbc:Name[^>]*>([\s\S]*?)<\/cbc:Name>/i) || [])[1] || 'IVA');
           }
 
-          if (desc) {
+          if (desc || lineTotal > 0) {
             const hasSellerId = sellerId && sellerId !== '—';
             const hasStandardId = standardId && standardId !== '—';
 
             lines.push({
-              desc,
+              desc: desc || 'Concepto / Servicio No Obligado',
               code: hasSellerId ? sellerId : (hasStandardId ? standardId : '—'),
               standardId: hasSellerId ? standardId : '—',
               qty,
@@ -2406,6 +2442,67 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
               um
             });
           }
+        }
+
+        // 2. Si no se encontraron líneas UBL estándar, intentar parsear formato SOAP FacturaTech <ITE>
+        if (lines.length === 0) {
+          const itePattern = /<ITE>([\s\S]*?)<\/ITE>/gi;
+          let iteMatch;
+          while ((iteMatch = itePattern.exec(cleanXml)) !== null) {
+            const iteXml = iteMatch[1];
+            const desc = stripTags((iteXml.match(/<ITE_11\b[^>]*>([\s\S]*?)<\/ITE_11>/i) || [])[1] || '');
+            const qty = parseFloat(stripTags((iteXml.match(/<ITE_3\b[^>]*>([\s\S]*?)<\/ITE_3>/i) || iteXml.match(/<ITE_27\b[^>]*>([\s\S]*?)<\/ITE_27>/i) || [])[1] || '1'));
+            const unitPrice = parseFloat(stripTags((iteXml.match(/<ITE_7\b[^>]*>([\s\S]*?)<\/ITE_7>/i) || [])[1] || '0'));
+            const lineTotal = parseFloat(stripTags((iteXml.match(/<ITE_5\b[^>]*>([\s\S]*?)<\/ITE_5>/i) || iteXml.match(/<ITE_19\b[^>]*>([\s\S]*?)<\/ITE_19>/i) || [])[1] || '0')) || (qty * unitPrice);
+            const um = stripTags((iteXml.match(/<ITE_4\b[^>]*>([\s\S]*?)<\/ITE_4>/i) || iteXml.match(/<ITE_28\b[^>]*>([\s\S]*?)<\/ITE_28>/i) || [])[1] || 'ZZ');
+            const code = stripTags((iteXml.match(/<IAE_1\b[^>]*>([\s\S]*?)<\/IAE_1>/i) || [])[1] || '—');
+
+            if (desc || lineTotal > 0) {
+              lines.push({
+                desc: desc || 'Concepto / Servicio No Obligado',
+                code: (code && code !== '99999999' && code !== 'R001') ? code : '—',
+                standardId: '—',
+                qty: qty || 1,
+                unitPrice: unitPrice || lineTotal,
+                lineTotal: lineTotal,
+                ivaRate: 0,
+                taxName: 'IVA',
+                taxVal: 0,
+                discountRate: 0,
+                discountVal: 0,
+                um: um || 'EA'
+              });
+            }
+          }
+        }
+
+        // 3. Fallback a invoiceData.lines si no hubo líneas en el XML o el XML es borrador
+        if (lines.length === 0 && invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length > 0) {
+          lines = invoiceData.lines.map(l => ({
+            desc: l.desc || l.description || 'Concepto / Servicio No Obligado',
+            code: l.code || '—',
+            standardId: l.standardId || '—',
+            qty: Number(l.qty || 1),
+            unitPrice: Number(l.unitPrice || l.unit_price || 0),
+            lineTotal: Number(l.lineTotal || l.total || 0),
+            ivaRate: Number(l.ivaRate || l.iva_rate || 0),
+            taxName: l.taxName || 'IVA',
+            taxVal: Number(l.taxVal || l.tax_amount || 0),
+            discountRate: Number(l.discountRate || l.discount_rate || 0),
+            discountVal: Number(l.discountVal || l.discount_amount || 0),
+            um: l.um || l.unit || 'EA'
+          }));
+        } else if (invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length === lines.length) {
+          // Si lines se extrajo del XML pero alguna descripción dice 'Por operación', 'Producto/Servicio' o 'Producto', enriquecer con invoiceData.lines
+          lines.forEach((l, idx) => {
+            const dbLine = invoiceData.lines[idx];
+            if (dbLine && dbLine.desc && (!l.desc || l.desc === 'Por operación' || l.desc === 'Producto/Servicio' || l.desc === 'Producto')) {
+              l.desc = dbLine.desc;
+            }
+            if (dbLine && dbLine.code && dbLine.code !== '—' && (!l.code || l.code === '—' || l.code === '99999999' || l.code === 'R001')) {
+              l.code = dbLine.code;
+            }
+          });
         }
 
         // Retrieve specs and calculate equivalences
@@ -3021,7 +3118,22 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
            .text(fmt(payableAmount - totalWithholdingVal), rightColX + 90, rightY, { width: rightColW - 90, align: 'right' });
         rightY += 16;
         
-        y = Math.max(leftY, rightY) + 20;
+        y = Math.max(leftY, rightY) + 14;
+
+        // Render Observaciones / Comentarios si existen en invoiceData o en el XML
+        const generalNotes = ((invoiceData && invoiceData.notes) || getTag('Note') || '').trim();
+        if (generalNotes) {
+          if (y > doc.page.height - 140) {
+            doc.addPage();
+            y = 50;
+          }
+          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000');
+          doc.text('OBSERVACIONES / COMENTARIOS:', L, y);
+          y += 10;
+          doc.font('Helvetica').fontSize(7).fillColor('#374151');
+          doc.text(generalNotes, L, y, { width: W });
+          y += doc.heightOfString(generalNotes, { width: W }) + 14;
+        }
 
         // --- 8. SIGNATURES SECTION ---
         if (y > doc.page.height - 90) {
@@ -3780,7 +3892,7 @@ app.post('/api/ph/generate-bulk-pdf', async (req, res) => {
 
 
 
-const ORCHESTRATOR_PORT = 8088;
+const ORCHESTRATOR_PORT = parseInt(process.env.GRAVY_ORCHESTRATOR_PORT || '8088', 10);
 
 function isPortInUse(port, host = '127.0.0.1') {
   return new Promise((resolve) => {

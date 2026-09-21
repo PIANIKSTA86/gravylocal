@@ -7,6 +7,23 @@ set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 cd /d "%ROOT%"
 
+:: Cargar configuración dinámica de puertos si existe config/ports.env
+set "PORT_MAIN=8090"
+set "PORT_HUB=8089"
+set "PORT_ORCH=8088"
+
+if exist "%ROOT%\config\ports.env" (
+    for /f "usebackq tokens=1,2 delims==" %%A in ("%ROOT%\config\ports.env") do (
+        set "KEY=%%A"
+        set "VAL=%%B"
+        for /f "tokens=* delims= " %%K in ("!KEY!") do set "KEY=%%K"
+        for /f "tokens=* delims= " %%V in ("!VAL!") do set "VAL=%%V"
+        if /i "!KEY!"=="GRAVY_MAIN_PORT" set "PORT_MAIN=!VAL!"
+        if /i "!KEY!"=="GRAVY_HUB_PORT" set "PORT_HUB=!VAL!"
+        if /i "!KEY!"=="GRAVY_ORCHESTRATOR_PORT" set "PORT_ORCH=!VAL!"
+    )
+)
+
 if not exist "%ROOT%\pocketbase.exe" (
     echo.
     echo  [ERROR] No se encontró pocketbase.exe en %ROOT%
@@ -73,13 +90,15 @@ if /i "!MODE!" == "lan" (
     netsh advfirewall firewall add rule name="Gravy Suite (8080-8150)" dir=in action=allow protocol=TCP localport=8080-8150 >nul 2>&1
 )
 
-:: 3. Iniciar GRAVY HUB (Puerto 8089)
-echo  [2/5] Iniciando GRAVY HUB (!BIND_IP!:8089)...
-start "Gravy HUB" cmd /k "pocketbase.exe serve --http=!BIND_IP!:8089 --dir="%ROOT%\hub\pb_data" --hooksDir="%ROOT%\hub\pb_hooks""
+:: 3. Iniciar GRAVY HUB (Puerto !PORT_HUB!)
+echo  [2/5] Iniciando GRAVY HUB (!BIND_IP!:!PORT_HUB!)...
+start "Gravy HUB" cmd /k "pocketbase.exe serve --http=!BIND_IP!:!PORT_HUB! --dir="%ROOT%\hub\pb_data" --hooksDir="%ROOT%\hub\pb_hooks""
 
-:: 4. Iniciar Orquestador (Puerto 8088)
-echo  [3/5] Iniciando Orquestador (Puerto 8088)...
+:: 4. Iniciar Orquestador (Puerto !PORT_ORCH!)
+echo  [3/5] Iniciando Orquestador (Puerto !PORT_ORCH!)...
 set "GRAVY_BIND_IP=!BIND_IP!"
+set "GRAVY_ORCHESTRATOR_PORT=!PORT_ORCH!"
+set "GRAVY_HUB_PORT=!PORT_HUB!"
 if /i "!MODE!" == "portable" (
     if exist "%ROOT%\bin\node.exe" (
         start "Gravy Orchestrator" /B cmd /c ""%ROOT%\bin\node.exe" hub\orchestrator.js"
@@ -101,9 +120,9 @@ if /i "!MODE!" == "portable" (
     )
 )
 
-:: 5. Iniciar Empresa Principal (8090) y Empresas Registradas
-echo  [4/5] Iniciando Empresa Principal (!BIND_IP!:8090)...
-start "Gravy Empresa Principal" cmd /k "pocketbase.exe serve --http=!BIND_IP!:8090 --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks""
+:: 5. Iniciar Empresa Principal (!PORT_MAIN!) y Empresas Registradas
+echo  [4/5] Iniciando Empresa Principal (!BIND_IP!:!PORT_MAIN!)...
+start "Gravy Empresa Principal" cmd /k "pocketbase.exe serve --http=!BIND_IP!:!PORT_MAIN! --dir="%ROOT%\pb_data" --publicDir="%ROOT%\pb_public" --hooksDir="%ROOT%\pb_hooks""
 echo    - El Orquestador auto-arranca y supervisa todas las sub-empresas en 'empresas\'...
 
 :: 6. Si es modo Cloud, iniciar Cloudflare Tunnel
@@ -157,18 +176,17 @@ echo  ================================================
 echo   GRAVY v2.0 listo en modo: !MODE!
 echo.
 if /i "!MODE!" == "lan" (
-    echo    - Web/Backend (PC Local):  http://localhost:8090
-    echo    - Web/Backend (Red LAN):   http://!LOCAL_IP!:8090
-    echo    - Hub (PC Local):          http://localhost:8089
-    echo    - Hub (Red LAN):           http://!LOCAL_IP!:8089
+    echo    - Web/Backend (PC Local):  http://localhost:!PORT_MAIN!
+    echo    - Web/Backend (Red LAN):   http://!LOCAL_IP!:!PORT_MAIN!
+    echo    - Hub (PC Local):          http://localhost:!PORT_HUB!
+    echo    - Hub (Red LAN):           http://!LOCAL_IP!:!PORT_HUB!
 ) else if /i "!MODE!" == "cloud" (
     echo    - Web/App (Nube):          https://app.gravy-ms.com
     echo    - Hub (Nube):              https://hub.gravy-ms.com
-    echo    - Local:                   http://localhost:8090
+    echo    - Local:                   http://localhost:!PORT_MAIN!
 ) else (
-    echo    - Web/Backend:             http://localhost:8090
-    echo    - Hub:                     http://localhost:8089
-    echo    - Empresa 4PATAS:          http://localhost:8091
+    echo    - Web/Backend:             http://localhost:!PORT_MAIN!
+    echo    - Hub:                     http://localhost:!PORT_HUB!
 )
 echo  ================================================
 echo.
@@ -177,7 +195,7 @@ if /i "!MODE!" == "cloud" (
     timeout /t 4 >nul
     start "" https://app.gravy-ms.com
 ) else (
-    start "" http://localhost:8090
+    start "" http://localhost:!PORT_MAIN!
 )
 
 exit /b 0

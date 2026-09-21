@@ -8,6 +8,9 @@ let _filterPeriod = '';
 let _filterFrom = '';
 let _filterTo = '';
 let _isInitialized = false;
+let _isPeriodLocked = false;
+let _activeReconciliation: any = null;
+let _retroactiveTxLines: any[] = [];
 
 function _computeMonthRange(periodStr: string) {
   const s = String(periodStr || '').trim();
@@ -111,8 +114,14 @@ async function renderConciliacion(c?: any) {
             <button class="btn btn-primary" id="btn-pair-selected" disabled>
               <i class="fas fa-link mr-1"></i> Conciliar Selección
             </button>
+            <button class="btn btn-secondary" id="btn-save-draft" style="background:#F0F9FF;color:#0369A1;border-color:#BAE6FD" title="Guardar avance preliminar de la conciliación sin emitir cierre formal">
+              <i class="fas fa-bookmark mr-1 text-sky-600"></i> Guardar Borrador
+            </button>
             <button class="btn btn-secondary" id="btn-close-recon" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0" title="Cerrar período y certificar conciliación formal">
               <i class="fas fa-lock mr-1"></i> Cerrar Conciliación
+            </button>
+            <button class="btn btn-secondary" id="btn-export-excel" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0" title="Exportar Papel de Trabajo Completo a Excel (NIIF / Revisoría)">
+              <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Papel de Trabajo (Excel)
             </button>
             <button class="btn btn-secondary" id="btn-history-recon" style="background:#F8FAFC;color:#475569;border-color:#CBD5E1" title="Ver actas y certificados emitidos">
               <i class="fas fa-certificate mr-1"></i> Actas / Certificados
@@ -128,8 +137,12 @@ async function renderConciliacion(c?: any) {
         ` : ''}
       </div>
 
-      <!-- Banner de Período con Conciliación Cerrada -->
+      <!-- Banner de Período con Conciliación Cerrada / Bloqueada -->
       <div id="recon-closed-banner" style="display:none" class="mb-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      </div>
+
+      <!-- Banner de Alerta de Asientos Contables Retroactivos -->
+      <div id="recon-retroactive-banner" style="display:none" class="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl p-4 shadow-xs">
       </div>
 
       <!-- Tarjetas de Métricas KPI -->
@@ -159,6 +172,53 @@ async function renderConciliacion(c?: any) {
         </div>
       </div>
 
+      <!-- BARRA DE TOTALIZACIÓN Y COMPARACIÓN DE SELECCIÓN EN TIEMPO REAL -->
+      <div id="selection-summary-bar" style="display:none;" class="mb-4 bg-white border border-blue-200 rounded-2xl p-3.5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <!-- Columna Izquierda: Libro Auxiliar Seleccionado -->
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-base shrink-0">
+              <i class="fas fa-book"></i>
+            </div>
+            <div>
+              <div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                Libro Auxiliar Seleccionado (<span id="sel-aux-count" class="text-blue-700 font-extrabold">0</span>)
+              </div>
+              <div class="text-base font-extrabold text-gray-900" id="sel-aux-net">$0</div>
+              <div class="text-[11px] text-gray-500" id="sel-aux-detail">Déb: $0 | Cré: $0</div>
+            </div>
+          </div>
+
+          <!-- Centro: Diferencia / Delta en Tiempo Real -->
+          <div class="text-center px-5 py-2 rounded-xl border bg-gray-50" id="sel-diff-container" style="min-width: 220px;">
+            <div class="text-[10px] uppercase font-bold text-gray-500">Diferencia de Selección</div>
+            <div class="text-base font-black text-amber-600" id="sel-diff-val">$0</div>
+            <div class="text-[11px] font-semibold text-gray-600" id="sel-diff-msg">Selecciona ítems para comparar</div>
+          </div>
+
+          <!-- Columna Derecha: Extracto Bancario Seleccionado -->
+          <div class="flex items-center gap-3">
+            <div class="text-right">
+              <div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">
+                Extracto Bancario Seleccionado (<span id="sel-bank-count" class="text-emerald-700 font-extrabold">0</span>)
+              </div>
+              <div class="text-base font-extrabold text-gray-900" id="sel-bank-net">$0</div>
+              <div class="text-[11px] text-gray-500" id="sel-bank-detail">Ingresos: $0 | Egresos: $0</div>
+            </div>
+            <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-base shrink-0">
+              <i class="fas fa-building-columns"></i>
+            </div>
+          </div>
+
+          <!-- Acciones de Selección -->
+          <div class="flex items-center gap-2 shrink-0">
+            <button class="btn btn-outline btn-sm text-gray-600 hover:text-red-600 font-semibold" id="btn-clear-selection" title="Desmarcar todos los movimientos seleccionados">
+              <i class="fas fa-xmark mr-1"></i> Desmarcar Todo
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- DUAL PANEL SIDE-BY-SIDE GRID -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <!-- COLUMNA IZQUIERDA: LIBRO AUXILIAR CONTABLE -->
@@ -180,7 +240,9 @@ async function renderConciliacion(c?: any) {
             <table class="data-table w-full text-xs" id="table-aux">
               <thead class="sticky top-0 bg-gray-100 z-10">
                 <tr>
-                  <th style="width:30px"></th>
+                  <th style="width:30px; text-align:center;">
+                    <input type="checkbox" id="check-all-aux" title="Marcar / Desmarcar todos en Libros" style="cursor:pointer; accent-color:#2563EB;">
+                  </th>
                   <th>Fecha</th>
                   <th>Comprobante</th>
                   <th>Detalle / Tercero</th>
@@ -215,7 +277,9 @@ async function renderConciliacion(c?: any) {
             <table class="data-table w-full text-xs" id="table-bank">
               <thead class="sticky top-0 bg-gray-100 z-10">
                 <tr>
-                  <th style="width:30px"></th>
+                  <th style="width:30px; text-align:center;">
+                    <input type="checkbox" id="check-all-bank" title="Marcar / Desmarcar todos en Extracto" style="cursor:pointer; accent-color:#059669;">
+                  </th>
                   <th>Fecha</th>
                   <th>Descripción / Concepto</th>
                   <th class="text-right">Ingreso ($)</th>
@@ -236,11 +300,94 @@ async function renderConciliacion(c?: any) {
     // Mapas de vinculo pareado
     const movByTxLineId = new Map<string, any>();
     const txLineByMovId = new Map<string, any>();
+    const movCountByTxLineId = new Map<string, number>();
+
+    let lastCheckedAux: HTMLInputElement | null = null;
+    let lastCheckedBank: HTMLInputElement | null = null;
 
     const updatePairingButtonState = () => {
       const selectedLeft = Array.from(document.querySelectorAll('#table-aux tbody .check-left:checked')) as HTMLInputElement[];
       const selectedRight = Array.from(document.querySelectorAll('#table-bank tbody .check-right:checked')) as HTMLInputElement[];
       const btnPair = $('#btn-pair-selected') as HTMLButtonElement | null;
+      const summaryBar = $('#selection-summary-bar');
+
+      // Calcular subtotales exactos de las selecciones
+      let auxDebSelected = 0;
+      let auxCredSelected = 0;
+      selectedLeft.forEach(cb => {
+        const line = txLines.find(l => l.id === cb.value);
+        if (line) {
+          auxDebSelected += (line.debit || 0);
+          auxCredSelected += (line.credit || 0);
+        }
+      });
+      const netAux = auxDebSelected - auxCredSelected;
+
+      let bankIncSelected = 0;
+      let bankExpSelected = 0;
+      selectedRight.forEach(cb => {
+        const m = movements.find(mov => mov.id === cb.value);
+        if (m) {
+          bankIncSelected += (m.credit || 0);
+          bankExpSelected += (m.debit || 0);
+        }
+      });
+      const netBank = bankIncSelected - bankExpSelected;
+
+      const diff = Math.abs(netAux - netBank);
+      const isBalanced = diff < 1.0;
+      const hasSelection = selectedLeft.length > 0 || selectedRight.length > 0;
+
+      // Actualizar la Barra de Resumen en tiempo real
+      if (summaryBar) {
+        if (hasSelection) {
+          summaryBar.style.display = 'block';
+
+          const auxCountEl = $('#sel-aux-count');
+          const auxNetEl = $('#sel-aux-net');
+          const auxDetailEl = $('#sel-aux-detail');
+          if (auxCountEl) auxCountEl.textContent = String(selectedLeft.length);
+          if (auxNetEl) auxNetEl.textContent = `${fmt(Math.abs(netAux))} (${netAux >= 0 ? 'Débito' : 'Crédito'})`;
+          if (auxDetailEl) auxDetailEl.textContent = `Déb: ${fmt(auxDebSelected)} | Cré: ${fmt(auxCredSelected)}`;
+
+          const bankCountEl = $('#sel-bank-count');
+          const bankNetEl = $('#sel-bank-net');
+          const bankDetailEl = $('#sel-bank-detail');
+          if (bankCountEl) bankCountEl.textContent = String(selectedRight.length);
+          if (bankNetEl) bankNetEl.textContent = `${fmt(Math.abs(netBank))} (${netBank >= 0 ? 'Ingreso' : 'Egreso'})`;
+          if (bankDetailEl) bankDetailEl.textContent = `Ing: ${fmt(bankIncSelected)} | Egr: ${fmt(bankExpSelected)}`;
+
+          const diffValEl = $('#sel-diff-val');
+          const diffMsgEl = $('#sel-diff-msg');
+          const diffContainer = $('#sel-diff-container');
+
+          if (selectedLeft.length > 0 && selectedRight.length > 0) {
+            if (diffValEl) {
+              diffValEl.textContent = diff < 0.001 ? '$0,00' : fmt(diff);
+              diffValEl.className = `text-base font-black ${isBalanced ? 'text-emerald-600' : 'text-amber-600'}`;
+            }
+            if (diffMsgEl) {
+              diffMsgEl.innerHTML = isBalanced 
+                ? '<span class="text-emerald-700 font-bold"><i class="fas fa-circle-check mr-1"></i>¡Cuadre Exacto! Listo para conciliar</span>'
+                : `<span class="text-amber-700 font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>Descuadre de ${fmt(diff)}</span>`;
+            }
+            if (diffContainer) {
+              diffContainer.className = `text-center px-5 py-2 rounded-xl border ${isBalanced ? 'bg-emerald-50/80 border-emerald-300' : 'bg-amber-50/80 border-amber-300'}`;
+            }
+          } else if (selectedLeft.length > 0) {
+            if (diffValEl) { diffValEl.textContent = fmt(Math.abs(netAux)); diffValEl.className = 'text-base font-black text-blue-600'; }
+            if (diffMsgEl) diffMsgEl.innerHTML = '<span class="text-blue-700 font-medium">Selecciona los conceptos del extracto</span>';
+            if (diffContainer) diffContainer.className = 'text-center px-5 py-2 rounded-xl border bg-blue-50/70 border-blue-200';
+          } else {
+            if (diffValEl) { diffValEl.textContent = fmt(Math.abs(netBank)); diffValEl.className = 'text-base font-black text-emerald-600'; }
+            if (diffMsgEl) diffMsgEl.innerHTML = '<span class="text-emerald-700 font-medium">Selecciona el apunte contable a cruzar</span>';
+            if (diffContainer) diffContainer.className = 'text-center px-5 py-2 rounded-xl border bg-emerald-50/70 border-emerald-200';
+          }
+        } else {
+          summaryBar.style.display = 'none';
+        }
+      }
+
       if (!btnPair) return;
 
       if (selectedLeft.length === 0 || selectedRight.length === 0) {
@@ -249,21 +396,6 @@ async function renderConciliacion(c?: any) {
         btnPair.innerHTML = `<i class="fas fa-link mr-1"></i> Conciliar Selección (0:0)`;
         return;
       }
-
-      let netAux = 0;
-      selectedLeft.forEach(cb => {
-        const line = txLines.find(l => l.id === cb.value);
-        if (line) netAux += ((line.debit || 0) - (line.credit || 0));
-      });
-
-      let netBank = 0;
-      selectedRight.forEach(cb => {
-        const m = movements.find(mov => mov.id === cb.value);
-        if (m) netBank += ((m.credit || 0) - (m.debit || 0));
-      });
-
-      const diff = Math.abs(netAux - netBank);
-      const isBalanced = diff < 1.0;
 
       btnPair.disabled = !isBalanced;
       if (isBalanced) {
@@ -283,12 +415,6 @@ async function renderConciliacion(c?: any) {
       const q = getInputVal('mov-q').toLowerCase();
       const filtered = txLines.filter(l => {
         const isReconciled = movByTxLineId.has(l.id);
-        const lDate = l.expand?.tx_id?.date || '';
-
-        // Si la línea es del mes anterior (partida en tránsito), solo mostrarla si está conciliada con este extracto o si sigue pendiente
-        if (_filterFrom && lDate < _filterFrom) {
-          if (!movByTxLineId.has(l.id) && isReconciled) return false;
-        }
 
         if (leftFilter === 'pending' && isReconciled) return false;
         if (leftFilter === 'reconciled' && !isReconciled) return false;
@@ -312,34 +438,62 @@ async function renderConciliacion(c?: any) {
         const third = l.expand?.third_party_id?.name || '';
         const det = l.description || third || 'Sin detalle';
         const partnerMov = movByTxLineId.get(l.id);
-        const isReconciled = !!partnerMov;
-        const isTransitPrior = _filterFrom && date < _filterFrom;
+        const partnerCount = movCountByTxLineId.get(l.id) || 0;
+        const isReconciled = partnerCount > 0;
 
         const rowBgClass = isReconciled 
           ? 'bg-emerald-50/50 hover:bg-emerald-100/60' 
-          : (isTransitPrior ? 'bg-indigo-50/40 hover:bg-indigo-100/50' : 'bg-amber-50/40 hover:bg-amber-100/50');
+          : 'bg-amber-50/40 hover:bg-amber-100/50';
 
         return `
-          <tr class="${rowBgClass} transition-colors cursor-pointer" data-tx-line-id="${esc(l.id)}" data-partner-mov-id="${partnerMov ? esc(partnerMov.id) : ''}">
-            <td><input type="checkbox" class="check-left" value="${esc(l.id)}"></td>
-            <td class="whitespace-nowrap font-medium">
-              ${esc(date.slice(0, 10))}
-              ${isTransitPrior ? '<span class="badge badge-blue ml-1 text-[9px]" title="Partida en tránsito del mes anterior">Tránsito</span>' : ''}
-            </td>
+          <tr class="${rowBgClass} transition-colors cursor-pointer select-row-aux" data-tx-line-id="${esc(l.id)}" data-partner-mov-id="${partnerMov ? esc(partnerMov.id) : ''}">
+            <td style="text-align:center;"><input type="checkbox" class="check-left" value="${esc(l.id)}" ${_isPeriodLocked ? 'disabled title="Período con conciliación bloqueada y certificada"' : ''} style="cursor:pointer; accent-color:#2563EB;"></td>
+            <td class="whitespace-nowrap font-medium">${esc(date.slice(0, 10))}</td>
             <td><span class="font-bold text-blue-700">${esc(comp)}</span></td>
             <td title="${esc(det)}"><div class="truncate max-w-[180px]">${esc(det)}</div></td>
             <td class="text-right font-medium text-emerald-700">${l.debit > 0 ? fmt(l.debit) : '-'}</td>
             <td class="text-right font-medium text-red-700">${l.credit > 0 ? fmt(l.credit) : '-'}</td>
             <td class="text-center">
               ${isReconciled 
-                ? `<span class="badge badge-green" title="Conciliado con extracto"><i class="fas fa-check-double mr-1"></i>Conciliado</span>` 
+                ? `<span class="badge badge-green" title="Conciliado con ${partnerCount} movimiento(s) del extracto"><i class="fas fa-check-double mr-1"></i>Conciliado${partnerCount > 1 ? ` (${partnerCount})` : ''}</span>` 
                 : `<span class="badge badge-orange" title="Pendiente de cruce contable">Pendiente</span>`}
             </td>
           </tr>
         `;
       }).join('');
 
-      $$('#table-aux tbody .check-left').forEach(cb => cb.addEventListener('change', updatePairingButtonState));
+      // Eventos de selección con Shift + Click y Click en fila
+      const auxChecks = Array.from($$('#table-aux tbody .check-left')) as HTMLInputElement[];
+      auxChecks.forEach((cb, idx) => {
+        cb.addEventListener('click', (e: MouseEvent) => {
+          if (e.shiftKey && lastCheckedAux && lastCheckedAux !== cb) {
+            const start = auxChecks.indexOf(lastCheckedAux);
+            const end = idx;
+            if (start >= 0) {
+              const [minI, maxI] = [Math.min(start, end), Math.max(start, end)];
+              const targetState = lastCheckedAux.checked;
+              for (let i = minI; i <= maxI; i++) {
+                if (!auxChecks[i].disabled) auxChecks[i].checked = targetState;
+              }
+            }
+          }
+          lastCheckedAux = cb;
+          updatePairingButtonState();
+        });
+      });
+
+      $$('#table-aux tbody tr.select-row-aux').forEach(row => {
+        row.addEventListener('click', (e: MouseEvent) => {
+          const target = e.target as HTMLElement;
+          if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.closest('button')) return;
+          const cb = row.querySelector('.check-left') as HTMLInputElement | null;
+          if (cb && !cb.disabled) {
+            cb.checked = !cb.checked;
+            lastCheckedAux = cb;
+            updatePairingButtonState();
+          }
+        });
+      });
     };
 
     const renderRightTable = () => {
@@ -375,8 +529,8 @@ async function renderConciliacion(c?: any) {
           : 'bg-amber-50/40 hover:bg-amber-100/50';
 
         return `
-          <tr class="${rowBgClass} transition-colors cursor-pointer" data-bank-mov-id="${esc(m.id)}" data-partner-tx-id="${partnerTx ? esc(partnerTx.id || partnerTx) : ''}">
-            <td><input type="checkbox" class="check-right" value="${esc(m.id)}"></td>
+          <tr class="${rowBgClass} transition-colors cursor-pointer select-row-bank" data-bank-mov-id="${esc(m.id)}" data-partner-tx-id="${partnerTx ? esc(partnerTx.id || partnerTx) : ''}">
+            <td style="text-align:center;"><input type="checkbox" class="check-right" value="${esc(m.id)}" ${_isPeriodLocked ? 'disabled title="Período con conciliación bloqueada y certificada"' : ''} style="cursor:pointer; accent-color:#059669;"></td>
             <td class="whitespace-nowrap font-medium">${esc(date.slice(0, 10))}</td>
             <td title="${esc(desc)}"><div class="truncate max-w-[200px] font-medium text-gray-800">${esc(desc)}</div></td>
             <td class="text-right font-medium text-emerald-700">${m.credit > 0 ? fmt(m.credit) : '-'}</td>
@@ -388,7 +542,8 @@ async function renderConciliacion(c?: any) {
             </td>
             <td class="text-center">
               ${can('canWrite') ? `
-                <button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:10px" onclick="toggleRecon('${esc(m.id)}', ${isReconciled ? 'false' : 'true'})" title="${isReconciled ? 'Desconciliar movimiento' : 'Marcar conciliado'}">
+                <button class="btn btn-outline btn-sm" style="padding:1px 6px;font-size:10px; ${_isPeriodLocked ? 'opacity:0.35; cursor:not-allowed;' : ''}" 
+                  ${_isPeriodLocked ? 'disabled title="Período bloqueado por conciliación certificada"' : `onclick="toggleRecon('${esc(m.id)}', ${isReconciled ? 'false' : 'true'})" title="${isReconciled ? 'Desconciliar movimiento' : 'Marcar conciliado'}"`}>
                   <i class="fas ${isReconciled ? 'fa-xmark text-red-500' : 'fa-check text-emerald-600'}"></i>
                 </button>
               ` : ''}
@@ -397,7 +552,38 @@ async function renderConciliacion(c?: any) {
         `;
       }).join('');
 
-      $$('#table-bank tbody .check-right').forEach(cb => cb.addEventListener('change', updatePairingButtonState));
+      // Eventos de selección con Shift + Click y Click en fila
+      const bankChecks = Array.from($$('#table-bank tbody .check-right')) as HTMLInputElement[];
+      bankChecks.forEach((cb, idx) => {
+        cb.addEventListener('click', (e: MouseEvent) => {
+          if (e.shiftKey && lastCheckedBank && lastCheckedBank !== cb) {
+            const start = bankChecks.indexOf(lastCheckedBank);
+            const end = idx;
+            if (start >= 0) {
+              const [minI, maxI] = [Math.min(start, end), Math.max(start, end)];
+              const targetState = lastCheckedBank.checked;
+              for (let i = minI; i <= maxI; i++) {
+                if (!bankChecks[i].disabled) bankChecks[i].checked = targetState;
+              }
+            }
+          }
+          lastCheckedBank = cb;
+          updatePairingButtonState();
+        });
+      });
+
+      $$('#table-bank tbody tr.select-row-bank').forEach(row => {
+        row.addEventListener('click', (e: MouseEvent) => {
+          const target = e.target as HTMLElement;
+          if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.closest('button')) return;
+          const cb = row.querySelector('.check-right') as HTMLInputElement | null;
+          if (cb && !cb.disabled) {
+            cb.checked = !cb.checked;
+            lastCheckedBank = cb;
+            updatePairingButtonState();
+          }
+        });
+      });
     };
 
     const updateKPIs = () => {
@@ -445,7 +631,6 @@ async function renderConciliacion(c?: any) {
       const range = _computeMonthRange(_filterPeriod);
       _filterFrom = range.from;
       _filterTo = range.to;
-      const transitFrom = _dateMinusDays(_filterFrom, 30);
 
       const tbodyAux = $('#table-aux tbody');
       const tbodyBank = $('#table-bank tbody');
@@ -453,11 +638,11 @@ async function renderConciliacion(c?: any) {
       if (tbodyBank) tbodyBank.innerHTML = `<tr><td colspan="7" class="text-center py-10 text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando extracto del mes...</td></tr>`;
 
       try {
-        // 1. Cargar Extracto Bancario del mes completo (bank_movements)
+        // 1. Cargar Extracto Bancario del mes exacto (bank_movements)
         const bankFilters = [];
         if (_selectedBankId) bankFilters.push(`bank_account_id = "${pb.escapeFilterValue(_selectedBankId)}"`);
         if (_filterFrom) bankFilters.push(`date >= "${pb.escapeFilterValue(_filterFrom)}"`);
-        if (_filterTo) bankFilters.push(`date <= "${pb.escapeFilterValue(_filterTo)}"`);
+        if (_filterTo) bankFilters.push(`date <= "${pb.escapeFilterValue(_filterTo)} 23:59:59"`);
 
         movements = await pb.listAll('bank_movements', {
           sort: 'date',
@@ -465,7 +650,7 @@ async function renderConciliacion(c?: any) {
           expand: 'bank_account_id,tx_line_id',
         });
 
-        // 2. Cargar Libro Auxiliar Contable (tx_lines) incluyendo partidas en tránsito de hasta 30 días previos
+        // 2. Cargar Libro Auxiliar Contable exacto del mes seleccionado (tx_lines)
         const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
         const bankAccId = currentBankAcc?.account_id;
 
@@ -487,8 +672,8 @@ async function renderConciliacion(c?: any) {
 
           const safeAccountFilter = targetAccountIds.map(id => `account_id="${pb.escapeFilterValue(id)}"`).join(' || ');
           const txFilters = [`(${safeAccountFilter})`, 'tx_id.status != "voided"'];
-          // Incluye mes actual y lookback de 30 días para tránsito
-          txFilters.push(`tx_id.date >= "${pb.escapeFilterValue(transitFrom)}"`);
+          // Filtrar estricta y exclusivamente por el mes seleccionado
+          txFilters.push(`tx_id.date >= "${pb.escapeFilterValue(_filterFrom)}"`);
           txFilters.push(`tx_id.date <= "${pb.escapeFilterValue(_filterTo)} 23:59:59"`);
 
           txLines = await pb.listAll('tx_lines', {
@@ -505,10 +690,13 @@ async function renderConciliacion(c?: any) {
         // 3. Reconstruir mapas de vínculos
         movByTxLineId.clear();
         txLineByMovId.clear();
+        movCountByTxLineId.clear();
         movements.forEach(m => {
           if (m.tx_line_id) {
             movByTxLineId.set(m.tx_line_id, m);
             txLineByMovId.set(m.id, m.expand?.tx_line_id || { id: m.tx_line_id });
+            const prevCount = movCountByTxLineId.get(m.tx_line_id) || 0;
+            movCountByTxLineId.set(m.tx_line_id, prevCount + 1);
           }
         });
 
@@ -517,9 +705,14 @@ async function renderConciliacion(c?: any) {
         updateKPIs();
         updatePairingButtonState();
 
-        // Verificar si existe conciliación cerrada en el período para esta cuenta bancaria
+        // 4. Verificar si existe conciliación cerrada / bloqueada en el período para esta cuenta bancaria
         const closedBanner = $('#recon-closed-banner');
-        if (closedBanner && _selectedBankId) {
+        const retroBanner = $('#recon-retroactive-banner');
+        _isPeriodLocked = false;
+        _activeReconciliation = null;
+        _retroactiveTxLines = [];
+
+        if (_selectedBankId) {
           try {
             const safeBId = pb.escapeFilterValue(_selectedBankId);
             const closures = await pb.listAll('bank_reconciliations', {
@@ -528,42 +721,136 @@ async function renderConciliacion(c?: any) {
               expand: 'closed_by,bank_account_id'
             });
             if (closures.length > 0) {
-              const c = closures[0];
-              closedBanner.style.display = 'flex';
-              closedBanner.innerHTML = `
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-lg shadow-xs">
-                    <i class="fas fa-lock"></i>
-                  </div>
-                  <div>
-                    <div class="font-bold text-emerald-900 text-sm flex items-center gap-2">
-                      <span>Período con Conciliación Bancaria Formal Certificada</span>
-                      <span class="badge badge-green text-xs"><i class="fas fa-certificate mr-1"></i>Auditada</span>
-                    </div>
-                    <p class="text-xs text-emerald-700 mb-0">
-                      Período mensual del <strong>${esc(c.period_start)}</strong> al <strong>${esc(c.period_end)}</strong> | Cerrado por: <strong>${esc(c.expand?.closed_by?.name || 'Contabilidad')}</strong>. Saldo libros: <strong>${fmt(c.book_balance || 0)}</strong> | Extracto: <strong>${fmt(c.bank_balance || 0)}</strong>.
-                    </p>
-                  </div>
+              _isPeriodLocked = true;
+              _activeReconciliation = closures[0];
+            }
+          } catch (_) {}
+        }
+
+        // 5. Detectar asientos contables retroactivos ingresados después del cierre formal
+        if (_isPeriodLocked && _activeReconciliation?.closed_at) {
+          const closedTime = new Date(_activeReconciliation.closed_at).getTime();
+          _retroactiveTxLines = txLines.filter(l => {
+            const txCreated = l.expand?.tx_id?.created;
+            if (!txCreated) return false;
+            const createdTime = new Date(txCreated).getTime();
+            return createdTime > (closedTime + 3000); // 3 segundos de tolerancia posterior al cierre
+          });
+        }
+
+        renderLeftTable();
+        renderRightTable();
+        updateKPIs();
+        updatePairingButtonState();
+
+        // 6. Configurar banners y estado de botones (Bloqueo UI de Seguridad)
+        const btnSuggest = $('#btn-suggest-recon') as HTMLButtonElement | null;
+        const btnGenAdj = $('#btn-gen-adjustment-note') as HTMLButtonElement | null;
+        const btnPair = $('#btn-pair-selected') as HTMLButtonElement | null;
+        const btnSaveDraft = $('#btn-save-draft') as HTMLButtonElement | null;
+        const btnClose = $('#btn-close-recon') as HTMLButtonElement | null;
+        const btnImport = $('#btn-import-ext') as HTMLButtonElement | null;
+        const btnClear = $('#btn-clear-movs') as HTMLButtonElement | null;
+        const btnNewMov = $('#btn-new-mov') as HTMLButtonElement | null;
+
+        if (_isPeriodLocked && _activeReconciliation) {
+          const c = _activeReconciliation;
+          if (btnSuggest) { btnSuggest.disabled = true; btnSuggest.style.opacity = '0.5'; btnSuggest.title = 'Conciliación bloqueada'; }
+          if (btnGenAdj) { btnGenAdj.disabled = true; btnGenAdj.style.opacity = '0.5'; btnGenAdj.title = 'Conciliación bloqueada'; }
+          if (btnPair) { btnPair.disabled = true; btnPair.style.opacity = '0.5'; btnPair.title = 'Conciliación bloqueada'; }
+          if (btnSaveDraft) { btnSaveDraft.disabled = true; btnSaveDraft.style.opacity = '0.5'; btnSaveDraft.title = 'Conciliación bloqueada'; }
+          if (btnImport) { btnImport.disabled = true; btnImport.style.opacity = '0.5'; btnImport.title = 'Conciliación bloqueada'; }
+          if (btnClear) { btnClear.disabled = true; btnClear.style.opacity = '0.5'; btnClear.title = 'Conciliación bloqueada'; }
+          if (btnNewMov) { btnNewMov.disabled = true; btnNewMov.style.opacity = '0.5'; btnNewMov.title = 'Conciliación bloqueada'; }
+
+          if (btnClose) {
+            btnClose.innerHTML = '<i class="fas fa-lock text-emerald-600 mr-1"></i> Conciliación Bloqueada';
+            btnClose.className = 'btn btn-secondary border-emerald-300 text-emerald-800 bg-emerald-50';
+            btnClose.title = 'Este período está cerrado y bloqueado exclusivamente para esta cuenta bancaria. Solo lectura.';
+          }
+
+          if (closedBanner) {
+            closedBanner.style.display = 'flex';
+            closedBanner.innerHTML = `
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-lg shadow-xs shrink-0">
+                  <i class="fas fa-lock"></i>
                 </div>
-                <div class="flex gap-2">
-                  <button class="btn btn-outline btn-sm bg-white text-emerald-800 border-emerald-300 font-semibold" onclick="window.openReconciliationCertificateModal('${esc(c.id)}')">
-                    <i class="fas fa-certificate mr-1 text-emerald-600"></i> Ver Acta / Certificado
-                  </button>
-                  <button class="btn btn-outline btn-sm bg-white text-gray-600 border-gray-300 font-semibold" id="btn-banner-history">
-                    <i class="fas fa-clock-rotate-left mr-1"></i> Historial Actas
+                <div>
+                  <div class="font-bold text-emerald-900 text-sm flex items-center gap-2">
+                    <span>Período con Conciliación Bancaria Bloqueada y Certificada</span>
+                    <span class="badge badge-green text-xs"><i class="fas fa-certificate mr-1"></i>Auditada</span>
+                  </div>
+                  <p class="text-xs text-emerald-700 mb-0">
+                    Período mensual del <strong>${esc(c.period_start)}</strong> al <strong>${esc(c.period_end)}</strong> | Cerrado por: <strong>${esc(c.expand?.closed_by?.name || 'Contabilidad')}</strong>. Saldo libros oficial: <strong>${fmt(c.book_balance || 0)}</strong> | Extracto oficial: <strong>${fmt(c.bank_balance || 0)}</strong>.
+                    <span class="text-emerald-800 italic block mt-0.5"><i class="fas fa-shield-halved mr-1"></i>Modo solo lectura activo: extracto y cruces inmutables. El resto del ERP permanece abierto.</span>
+                  </p>
+                </div>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <button class="btn btn-outline btn-sm bg-white text-emerald-800 border-emerald-300 font-semibold" onclick="window.openReconciliationCertificateModal('${esc(c.id)}')">
+                  <i class="fas fa-certificate mr-1 text-emerald-600"></i> Ver Acta / Certificado
+                </button>
+                <button class="btn btn-outline btn-sm bg-white text-gray-600 border-gray-300 font-semibold" id="btn-banner-history">
+                  <i class="fas fa-clock-rotate-left mr-1"></i> Historial Actas
+                </button>
+              </div>
+            `;
+            $('#btn-banner-history')?.addEventListener('click', () => {
+              const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
+              openReconciliationsHistoryModal(currentBankAcc);
+            });
+          }
+
+          if (retroBanner) {
+            if (_retroactiveTxLines.length > 0) {
+              retroBanner.style.display = 'block';
+              retroBanner.innerHTML = `
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div class="flex items-start gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-amber-200 text-amber-800 flex items-center justify-center font-bold text-sm shrink-0 mt-0.5">
+                      <i class="fas fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                      <div class="font-bold text-amber-900 text-sm flex items-center gap-2">
+                        <span>Alerta de Auditoría: Se detectaron ${_retroactiveTxLines.length} movimiento(s) contables registrados con posterioridad al cierre</span>
+                        <span class="badge badge-orange text-[10px]">Extemporáneo</span>
+                      </div>
+                      <p class="text-xs text-amber-800 mb-0">
+                        Estos asientos contables fueron digitados en el software con fecha de este período después de que se emitió el Acta Oficial. <strong>No alteran las cifras del acta certificada</strong>. Si deben incorporarse formalmente a la conciliación bancaria, un usuario autorizado debe <em>Reabrir</em> el período en el Historial de Actas.
+                      </p>
+                    </div>
+                  </div>
+                  <button class="btn btn-outline btn-sm bg-white text-amber-900 border-amber-300 font-semibold shrink-0" id="btn-view-retro-movs">
+                    <i class="fas fa-list-check mr-1"></i> Ver ${_retroactiveTxLines.length} Asiento(s)
                   </button>
                 </div>
               `;
-              $('#btn-banner-history')?.addEventListener('click', () => {
-                const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
-                openReconciliationsHistoryModal(currentBankAcc);
+              $('#btn-view-retro-movs')?.addEventListener('click', () => {
+                openRetroactiveLinesModal(_retroactiveTxLines);
               });
             } else {
-              closedBanner.style.display = 'none';
+              retroBanner.style.display = 'none';
             }
-          } catch (_) {
-            closedBanner.style.display = 'none';
           }
+
+        } else {
+          // Período abierto
+          if (btnSuggest) { btnSuggest.disabled = false; btnSuggest.style.opacity = '1'; btnSuggest.title = ''; }
+          if (btnGenAdj) { btnGenAdj.disabled = false; btnGenAdj.style.opacity = '1'; btnGenAdj.title = ''; }
+          if (btnSaveDraft) { btnSaveDraft.disabled = false; btnSaveDraft.style.opacity = '1'; btnSaveDraft.title = 'Guardar avance preliminar de la conciliación sin emitir cierre formal'; }
+          if (btnImport) { btnImport.disabled = false; btnImport.style.opacity = '1'; btnImport.title = ''; }
+          if (btnClear) { btnClear.disabled = false; btnClear.style.opacity = '1'; btnClear.title = ''; }
+          if (btnNewMov) { btnNewMov.disabled = false; btnNewMov.style.opacity = '1'; btnNewMov.title = ''; }
+
+          if (btnClose) {
+            btnClose.innerHTML = '<i class="fas fa-lock mr-1"></i> Cerrar Conciliación';
+            btnClose.className = 'btn btn-secondary';
+            btnClose.title = 'Cerrar período y certificar conciliación formal';
+          }
+
+          if (closedBanner) closedBanner.style.display = 'none';
+          if (retroBanner) retroBanner.style.display = 'none';
         }
       } catch (err: any) {
         showToast('Error cargando conciliación: ' + (err.message || ''), 'error');
@@ -597,8 +884,42 @@ async function renderConciliacion(c?: any) {
       });
     });
 
+    // Selección rápida: Marcar / Desmarcar todos en Libros
+    $('#check-all-aux')?.addEventListener('change', (e) => {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      $$('#table-aux tbody .check-left').forEach((cb: any) => {
+        if (!cb.disabled) cb.checked = isChecked;
+      });
+      updatePairingButtonState();
+    });
+
+    // Selección rápida: Marcar / Desmarcar todos en Extracto
+    $('#check-all-bank')?.addEventListener('change', (e) => {
+      const isChecked = (e.target as HTMLInputElement).checked;
+      $$('#table-bank tbody .check-right').forEach((cb: any) => {
+        if (!cb.disabled) cb.checked = isChecked;
+      });
+      updatePairingButtonState();
+    });
+
+    // Acción: Desmarcar todo
+    $('#btn-clear-selection')?.addEventListener('click', () => {
+      $$('#table-aux tbody .check-left').forEach((cb: any) => { cb.checked = false; });
+      $$('#table-bank tbody .check-right').forEach((cb: any) => { cb.checked = false; });
+      const chkAllAux = $('#check-all-aux') as HTMLInputElement | null;
+      const chkAllBank = $('#check-all-bank') as HTMLInputElement | null;
+      if (chkAllAux) chkAllAux.checked = false;
+      if (chkAllBank) chkAllBank.checked = false;
+      lastCheckedAux = null;
+      lastCheckedBank = null;
+      updatePairingButtonState();
+    });
+
     // Acción: Conciliar Selección Manualmente (1:1, 1:N o N:1)
     $('#btn-pair-selected')?.addEventListener('click', async () => {
+      if (_isPeriodLocked) {
+        return showToast('Acción bloqueada: la conciliación de este período está cerrada y certificada (solo lectura).', 'warning');
+      }
       const selectedLeft = Array.from(document.querySelectorAll('#table-aux tbody .check-left:checked')) as HTMLInputElement[];
       const selectedRight = Array.from(document.querySelectorAll('#table-bank tbody .check-right:checked')) as HTMLInputElement[];
       if (!selectedLeft.length || !selectedRight.length) {
@@ -609,19 +930,39 @@ async function renderConciliacion(c?: any) {
       if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Conciliando...'; }
 
       try {
-        const primaryLineId = selectedLeft[0].value;
         const promises: Promise<any>[] = [];
 
-        selectedRight.forEach((cb, idx) => {
-          const assignedLineId = selectedLeft[idx] ? selectedLeft[idx].value : primaryLineId;
-          promises.push(pb.update('bank_movements', cb.value, {
+        if (selectedLeft.length === 1) {
+          // 1 asiento contable a la izquierda y N movimientos de extracto a la derecha (Ej: 1 Nota Bancaria contra varios cobros de extracto)
+          const primaryLineId = selectedLeft[0].value;
+          selectedRight.forEach(cb => {
+            promises.push(pb.update('bank_movements', cb.value, {
+              reconciled: true,
+              tx_line_id: primaryLineId
+            }));
+          });
+        } else if (selectedRight.length === 1) {
+          // N asientos contables a la izquierda y 1 movimiento de extracto a la derecha (Ej: N recibos contra 1 consignación bancaria global)
+          const primaryMovId = selectedRight[0].value;
+          const primaryLineId = selectedLeft[0].value;
+          promises.push(pb.update('bank_movements', primaryMovId, {
             reconciled: true,
-            tx_line_id: assignedLineId
+            tx_line_id: primaryLineId
           }));
-        });
+        } else {
+          // M a N
+          const primaryLineId = selectedLeft[0].value;
+          selectedRight.forEach((cb, idx) => {
+            const assignedLineId = selectedLeft[idx] ? selectedLeft[idx].value : primaryLineId;
+            promises.push(pb.update('bank_movements', cb.value, {
+              reconciled: true,
+              tx_line_id: assignedLineId
+            }));
+          });
+        }
 
         await Promise.all(promises);
-        showToast(`Conciliación exitosa: ${selectedRight.length} movimiento(s) vinculados con ${selectedLeft.length} apunte(s) contables.`, 'success');
+        showToast(`Conciliación exitosa: ${selectedRight.length} movimiento(s) de extracto vinculados con ${selectedLeft.length} apunte(s) contables.`, 'success');
         await reloadAllData();
       } catch (err: any) {
         showToast('Error conciliando selección: ' + (err.message || ''), 'error');
@@ -632,6 +973,9 @@ async function renderConciliacion(c?: any) {
 
     // Acción: Sugerir Conciliación Automática (Apertura de Modal Interactivo de Previsualización)
     $('#btn-suggest-recon')?.addEventListener('click', async () => {
+      if (_isPeriodLocked) {
+        return showToast('Acción bloqueada: la conciliación de este período está cerrada y certificada.', 'warning');
+      }
       const bankId = getSelectVal('bank-filter');
       if (!bankId) return showToast('Selecciona una cuenta bancaria para sugerir conciliación', 'warning');
       const bank = bankAccounts.find(b => b.id === bankId);
@@ -668,14 +1012,39 @@ async function renderConciliacion(c?: any) {
 
     // Acción: Generar Nota de Ajuste Bancario
     $('#btn-gen-adjustment-note')?.addEventListener('click', () => {
+      if (_isPeriodLocked) {
+        return showToast('Acción bloqueada: la conciliación de este período está cerrada y certificada.', 'warning');
+      }
       const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
       openAdjustmentNoteModal(currentBankAcc, movements, accounts, reloadAllData);
     });
 
-    // Acción: Cerrar Conciliación Formal del Período
+    // Acción: Guardar Avance / Borrador de la Conciliación
+    $('#btn-save-draft')?.addEventListener('click', async () => {
+      if (_isPeriodLocked) {
+        return showToast('Este período ya está cerrado y certificado.', 'info');
+      }
+      const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
+      if (!currentBankAcc) return showToast('Selecciona una cuenta bancaria', 'warning');
+      await saveReconciliationDraft(currentBankAcc, movements, txLines, _filterFrom, _filterTo);
+    });
+
+    // Acción: Cerrar / Bloquear Conciliación Formal del Período
     $('#btn-close-recon')?.addEventListener('click', () => {
       const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
+      if (_isPeriodLocked && _activeReconciliation) {
+        // Si ya está cerrada, abrir directamente el acta o certificado
+        openReconciliationCertificateModal(_activeReconciliation);
+        return;
+      }
       openCloseReconciliationModal(currentBankAcc, movements, txLines, _filterFrom, _filterTo, reloadAllData);
+    });
+
+    // Acción: Exportar Papel de Trabajo Oficial a Excel (.xlsx)
+    $('#btn-export-excel')?.addEventListener('click', () => {
+      const currentBankAcc = bankAccounts.find(b => b.id === _selectedBankId);
+      if (!currentBankAcc) return showToast('Selecciona una cuenta bancaria para exportar la conciliación', 'warning');
+      exportReconciliationToExcel(currentBankAcc, _filterFrom, _filterTo, txLines, movements, _activeReconciliation);
     });
 
     // Acción: Historial de Actas y Certificados
@@ -686,14 +1055,73 @@ async function renderConciliacion(c?: any) {
 
     $('#btn-manage-banks')?.addEventListener('click', () => (window as any).navigate('cuentas-bancarias'));
     $('#btn-config-recon-mapping')?.addEventListener('click', () => openBankReconConfigModal(accounts));
-    $('#btn-new-mov')?.addEventListener('click', () => openBankMovementForm(bankAccounts));
-    $('#btn-import-ext')?.addEventListener('click', () => openImportModal(bankAccounts));
-    $('#btn-clear-movs')?.addEventListener('click', () => openClearMovementsModal(bankAccounts, movements));
+    $('#btn-new-mov')?.addEventListener('click', () => {
+      if (_isPeriodLocked) return showToast('No se pueden ingresar movimientos manuales en un período cerrado y bloqueado.', 'warning');
+      openBankMovementForm(bankAccounts);
+    });
+    $('#btn-import-ext')?.addEventListener('click', () => {
+      if (_isPeriodLocked) return showToast('No se puede importar extracto: la cuenta bancaria en este período mensual está bloqueada y certificada.', 'warning');
+      openImportModal(bankAccounts);
+    });
+    $('#btn-clear-movs')?.addEventListener('click', () => {
+      if (_isPeriodLocked) return showToast('No se puede limpiar extracto: la conciliación de este período está bloqueada y certificada.', 'warning');
+      openClearMovementsModal(bankAccounts, movements);
+    });
 
     await reloadAllData();
   } catch (err: any) {
     c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</div>`;
   }
+}
+
+function openRetroactiveLinesModal(lines: any[]) {
+  if (!lines || !lines.length) return;
+  const rowsHtml = lines.map(l => {
+    const tx = l.expand?.tx_id;
+    const third = l.expand?.third_party_id;
+    return `
+      <tr class="text-xs hover:bg-amber-50/40">
+        <td class="font-bold text-blue-700">${esc(tx?.number || 'Comp')}</td>
+        <td>${esc((tx?.date || '').slice(0, 10))}</td>
+        <td class="text-gray-500 font-mono text-[11px]">${esc((tx?.created || '').slice(0, 19).replace('T', ' '))}</td>
+        <td>${esc(third?.name || third?.doc_number || 'Sin tercero')}</td>
+        <td title="${esc(l.description || tx?.description || '')}"><div class="truncate max-w-[220px]">${esc(l.description || tx?.description || 'Sin detalle')}</div></td>
+        <td class="text-right font-medium text-emerald-700">${l.debit > 0 ? fmt(l.debit) : '-'}</td>
+        <td class="text-right font-medium text-red-700">${l.credit > 0 ? fmt(l.credit) : '-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  openModal(
+    '<i class="fas fa-triangle-exclamation mr-2 text-amber-600"></i> Asientos Contables Registrados Posterior al Cierre',
+    `
+    <div class="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+      <div class="font-bold mb-1"><i class="fas fa-info-circle mr-1"></i> Auditoría de Comprobantes Extemporáneos (${lines.length})</div>
+      Estos comprobantes fueron guardados en la contabilidad general con fecha de este período <strong>después</strong> de haberse cerrado y certificado formalmente la Conciliación Bancaria. 
+      <strong>No modifican el Acta Certificada ya emitida</strong>. Si deben incorporarse a la conciliación, un usuario autorizado debe reabrir la conciliación desde "Historial Actas".
+    </div>
+    <div style="max-height:360px; overflow-y:auto;" class="border rounded-xl">
+      <table class="data-table w-full text-xs">
+        <thead class="bg-gray-100 sticky top-0">
+          <tr>
+            <th>Comprobante</th>
+            <th>Fecha Contable</th>
+            <th>Fecha Grabado en ERP</th>
+            <th>Tercero</th>
+            <th>Concepto / Detalle</th>
+            <th class="text-right">Débito ($)</th>
+            <th class="text-right">Crédito ($)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+    `,
+    '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
+    true
+  );
 }
 
 function openBankAccountsManager(bankAccountsList, accounts) {
@@ -1014,7 +1442,17 @@ function openBankMovementForm(bankAccounts) {
 }
 
 async function toggleRecon(id: string, reconciled: boolean) {
+  if (_isPeriodLocked) {
+    return showToast('Acción bloqueada: la conciliación de este período está cerrada y certificada.', 'warning');
+  }
   try {
+    const currentMov = await pb.get('bank_movements', id).catch(() => null);
+    if (currentMov?.reconciliation_id) {
+      const reconRec = await pb.get('bank_reconciliations', currentMov.reconciliation_id).catch(() => null);
+      if (reconRec && reconRec.status === 'closed') {
+        return showToast('No se puede desconciliar: este movimiento forma parte de un Acta de Conciliación cerrada.', 'warning');
+      }
+    }
     if (!reconciled) {
       await pb.update('bank_movements', id, { reconciled: false, tx_line_id: '', reconciliation_id: '' });
       showToast('Desconciliado: se liberó el vínculo contable del movimiento', 'info');
@@ -1082,10 +1520,18 @@ async function buildReconSuggestions(bankAccount: any, movements: any[], dayWind
   }
 
   // 2. Construir filtro PocketBase soportando múltiples subcuentas y filtrando transacciones anuladas
+  const dates = movements.map(m => (m.date || '').slice(0, 10)).filter(Boolean).sort();
+  let dateFilter = '';
+  if (dates.length > 0) {
+    const minD = dates[0];
+    const maxD = dates[dates.length - 1];
+    dateFilter = ` && tx_id.date >= "${pb.escapeFilterValue(minD)}" && tx_id.date <= "${pb.escapeFilterValue(maxD)} 23:59:59"`;
+  }
+
   const safeFilter = targetAccountIds.map(id => `account_id="${pb.escapeFilterValue(id)}"`).join(' || ');
   const filterStr = targetAccountIds.length > 1 
-    ? `(${safeFilter}) && tx_id.status != "voided"`
-    : `account_id="${pb.escapeFilterValue(accountId)}" && tx_id.status != "voided"`;
+    ? `(${safeFilter}) && tx_id.status != "voided"${dateFilter}`
+    : `account_id="${pb.escapeFilterValue(accountId)}" && tx_id.status != "voided"${dateFilter}`;
 
   let txLines: any[] = [];
   try {
@@ -1099,7 +1545,7 @@ async function buildReconSuggestions(bankAccount: any, movements: any[], dayWind
   } catch (err) {
     console.warn('[buildReconSuggestions] Error consultando tx_lines con filtro amplio, usando fallback:', err);
     txLines = await pb.listAll('tx_lines', {
-      filter: `account_id="${pb.escapeFilterValue(accountId)}" && tx_id.status != "voided"`,
+      filter: `account_id="${pb.escapeFilterValue(accountId)}" && tx_id.status != "voided"${dateFilter}`,
       expand: 'tx_id,third_party_id',
       sort: '-tx_id.date,line_order',
       ignoreBranch: true,
@@ -1367,6 +1813,10 @@ function openSuggestionsModal(suggestions: any[], bankAccount: any, onApplyCallb
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function openClearMovementsModal(bankAccounts, movements) {
+  if (_isPeriodLocked) {
+    return showToast('No se pueden eliminar movimientos: la conciliación de este período está bloqueada y certificada.', 'warning');
+  }
+
   // Pre-poblar desde/hasta con lo que ya tiene el filtro activo mensual
   const preFrom = _filterFrom || getInputVal('filter-from') || '';
   const preTo   = _filterTo   || getInputVal('filter-to')   || '';
@@ -1408,45 +1858,31 @@ function openClearMovementsModal(bankAccounts, movements) {
     const bid  = getSelectVal('clr-bank');
     const from = getInputVal('clr-from');
     const to   = getInputVal('clr-to');
+    const prev = $('#clr-preview');
+    const btn  = $('#btn-clr-confirm') as HTMLButtonElement | null;
     if (!from || !to) {
-      $('#clr-preview').innerHTML = '<span style="color:#9CA3AF">Selecciona ambas fechas para ver cuántos registros se eliminarán.</span>';
-      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+      if (prev) prev.innerHTML = '<span style="color:#9CA3AF">Selecciona el rango de fechas</span>';
       if (btn) btn.disabled = true;
       return;
     }
     if (from > to) {
-      $('#clr-preview').innerHTML = '<span style="color:#EF4444"><i class="fas fa-circle-exclamation mr-1"></i>La fecha inicial no puede ser mayor que la final.</span>';
-      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
+      if (prev) prev.innerHTML = '<span style="color:#EF4444">La fecha "Desde" no puede ser mayor que "Hasta"</span>';
       if (btn) btn.disabled = true;
       return;
     }
-
     try {
       const filters = [];
       if (bid) filters.push(`bank_account_id = "${pb.escapeFilterValue(bid)}"`);
       filters.push(`date >= "${pb.escapeFilterValue(from)}"`);
       filters.push(`date <= "${pb.escapeFilterValue(to)}"`);
-      
-      const affected = await pb.listAll('bank_movements', { filter: filters.join(' && ') });
-      const recon = affected.filter(m => m.reconciled).length;
-      
-      if (!affected.length) {
-        $('#clr-preview').innerHTML = '<span style="color:#6B7280">Ningún movimiento coincide con ese rango.</span>';
-        const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
-        if (btn) btn.disabled = true;
-        return;
+      const count = (await pb.list('bank_movements', { filter: filters.join(' && '), perPage: 1 })).totalItems;
+      if (prev) {
+        prev.innerHTML = count > 0
+          ? `Se encontraron <strong style="color:#DC2626">${count}</strong> movimientos en el rango.`
+          : '<span style="color:#9CA3AF">No hay movimientos en el rango seleccionado.</span>';
       }
-      
-      $('#clr-preview').innerHTML = `
-        <span style="color:#DC2626;font-weight:700"><i class="fas fa-triangle-exclamation mr-1"></i>
-        Se eliminarán <strong>${affected.length}</strong> movimiento(s)
-        ${recon ? `<span style="color:#92400E"> — de los cuales <strong>${recon}</strong> ya están conciliados</span>` : ''}
-        </span>`;
-      const btn = $('#btn-clr-confirm') as HTMLButtonElement | null;
-      if (btn) btn.disabled = false;
-    } catch (err: any) {
-      $('#clr-preview').innerHTML = `<span style="color:#EF4444">Error al cargar vista previa: ${esc(err.message)}</span>`;
-    }
+      if (btn) btn.disabled = count === 0;
+    } catch (_) {}
   };
 
   $('#clr-bank')?.addEventListener('change', updatePreview);
@@ -1463,6 +1899,17 @@ function openClearMovementsModal(bankAccounts, movements) {
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Eliminando...'; }
     
     try {
+      // Verificar si alguna cuenta en ese rango tiene conciliación cerrada
+      if (bid) {
+        const closures = await pb.listAll('bank_reconciliations', {
+          filter: `bank_account_id="${pb.escapeFilterValue(bid)}" && status="closed" && period_end>="${pb.escapeFilterValue(from)}" && period_start<="${pb.escapeFilterValue(to)}"`
+        });
+        if (closures.length > 0) {
+          closeModal();
+          return showToast('No se puede eliminar: existe un período con Conciliación Bancaria cerrada y certificada en este rango.', 'error');
+        }
+      }
+
       const filters = [];
       if (bid) filters.push(`bank_account_id = "${pb.escapeFilterValue(bid)}"`);
       filters.push(`date >= "${pb.escapeFilterValue(from)}"`);
@@ -1472,6 +1919,16 @@ function openClearMovementsModal(bankAccounts, movements) {
       if (!toDelete.length) {
         closeModal();
         return;
+      }
+
+      // Verificar que ningún movimiento pertenezca a conciliación cerrada
+      const protectedMov = toDelete.find(m => m.reconciliation_id);
+      if (protectedMov) {
+        const rec = await pb.get('bank_reconciliations', protectedMov.reconciliation_id).catch(() => null);
+        if (rec && rec.status === 'closed') {
+          closeModal();
+          return showToast('No se puede eliminar: hay movimientos asociados a una Conciliación cerrada.', 'error');
+        }
       }
       
       let ok = 0, fail = 0;
@@ -1944,43 +2401,118 @@ function _parsePdfText(text: string, format = 'tres') {
 
 // ─── VISTA PREVIA Y CONFIRMACIÓN DE IMPORTACIÓN ──────────────────────────────
 
-function _renderImportPreview(rows: any[], bankAccounts: any[], bankAccId: string) {
-  _importRows = rows.map((r, i) => ({ ...r, _id: i, _skip: false }));
-  _importBankAccId = bankAccId;
+// ─── VISTA PREVIA Y CONFIRMACIÓN DE IMPORTACIÓN (CON DETECCIÓN DE DUPLICADOS) ───
 
+async function _renderImportPreview(rows: any[], bankAccounts: any[], bankAccId: string) {
   const container = document.getElementById('import-wizard-container');
   if (!container) return;
 
+  container.innerHTML = `
+    <div class="p-8 text-center" style="color:#6B7280">
+      <i class="fas fa-spinner fa-spin text-blue-600 mr-2 text-lg"></i>
+      Analizando movimientos y verificando duplicados en el extracto bancario...
+    </div>
+  `;
+
+  // 1. Consultar movimientos ya existentes en base de datos para esta cuenta en el rango de fechas
+  let existingMovs: any[] = [];
+  try {
+    const dates = rows.map(r => r.date).filter(Boolean).sort();
+    if (dates.length > 0 && bankAccId) {
+      const minD = dates[0];
+      const maxD = dates[dates.length - 1];
+      existingMovs = await pb.listAll('bank_movements', {
+        filter: `bank_account_id="${pb.escapeFilterValue(bankAccId)}" && date>="${minD}" && date<="${maxD}"`
+      });
+    }
+  } catch (err) {
+    console.warn('Error verificando duplicados existentes:', err);
+  }
+
+  // 2. Construir Set de huellas de movimientos existentes
+  const existingSet = new Set<string>();
+  existingMovs.forEach(m => {
+    const d = (m.date || '').slice(0, 10);
+    const deb = Number(m.debit || 0).toFixed(2);
+    const cred = Number(m.credit || 0).toFixed(2);
+    const descNorm = _normText(m.ref || m.description || '').slice(0, 30);
+    existingSet.add(`${d}_${deb}_${cred}_${descNorm}`);
+  });
+
+  // 3. Evaluar duplicados en las filas a importar
+  let dupCount = 0;
+  _importRows = rows.map((r, i) => {
+    const d = (r.date || '').slice(0, 10);
+    const deb = Number(r.debit || 0).toFixed(2);
+    const cred = Number(r.credit || 0).toFixed(2);
+    const descNorm = _normText(r.ref || r.description || '').slice(0, 30);
+    const isDup = existingSet.has(`${d}_${deb}_${cred}_${descNorm}`);
+    if (isDup) dupCount++;
+    return {
+      ...r,
+      _id: i,
+      _isDuplicate: isDup,
+      _skip: isDup // Omitir duplicados por defecto
+    };
+  });
+  _importBankAccId = bankAccId;
+
   const bankLabel = bankAccounts.find(b => b.id === bankAccId);
   const bankName = bankLabel ? `${bankLabel.bank} — ${bankLabel.number}` : bankAccId;
+  const initialRemaining = _importRows.filter(r => !r._skip).length;
 
   container.innerHTML = `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap">
       <div>
         <p style="font-weight:700;font-size:14px;color:#374151;margin:0 0 2px">Vista previa de importación</p>
         <p style="font-size:12px;color:#6B7280;margin:0">
-          Cuenta: <strong>${esc(bankName)}</strong> &nbsp;·&nbsp; Elimina filas no deseadas antes de confirmar.
+          Cuenta: <strong>${esc(bankName)}</strong> &nbsp;·&nbsp; Total en archivo: <strong>${rows.length}</strong> movimientos.
         </p>
       </div>
-      <span id="imp-count-badge" class="badge badge-blue" style="white-space:nowrap">
-        ${rows.length} movimientos
-      </span>
+      <div class="flex items-center gap-2">
+        ${dupCount > 0 ? `<span class="badge badge-orange font-semibold"><i class="fas fa-copy mr-1"></i>${dupCount} duplicado(s) detectado(s)</span>` : ''}
+        <span id="imp-count-badge" class="badge badge-blue" style="white-space:nowrap">
+          ${initialRemaining} a importar
+        </span>
+      </div>
     </div>
+
+    ${dupCount > 0 ? `
+    <div class="p-3 mb-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs text-amber-900">
+      <div>
+        <i class="fas fa-triangle-exclamation text-amber-600 mr-1.5"></i>
+        Se detectaron <strong>${dupCount} movimientos duplicados</strong> que ya están registrados en esta cuenta bancaria.
+      </div>
+      <label class="flex items-center gap-1.5 font-bold cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-amber-300 text-amber-900 shadow-xs shrink-0">
+        <input type="checkbox" id="chk-skip-dups" checked style="accent-color:#D97706">
+        <span>Omitir duplicados automáticamente</span>
+      </label>
+    </div>` : ''}
 
     <div style="max-height:320px;overflow-y:auto;border:1px solid #F0F0F0;border-radius:12px">
       <table class="data-table" style="font-size:12px" id="imp-preview-table">
         <thead>
-          <tr><th>Fecha</th><th>Descripción</th><th style="text-align:right">Débito</th>
-              <th style="text-align:right">Crédito</th><th>Ref.</th><th></th></tr>
+          <tr>
+            <th>Fecha</th>
+            <th>Descripción</th>
+            <th style="text-align:right">Débito</th>
+            <th style="text-align:right">Crédito</th>
+            <th>Ref.</th>
+            <th style="text-align:center">Estado</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>
           ${_importRows.map(r => `
-            <tr id="imp-row-${r._id}">
+            <tr id="imp-row-${r._id}" class="${r._isDuplicate ? 'bg-amber-50/50' : ''}" style="${r._isDuplicate ? 'opacity:0.6' : ''}">
               <td>${esc(r.date)}</td>
               <td>${esc(r.description)}</td>
               <td style="text-align:right">${r.debit ? fmt(r.debit) : '<span style="color:#D1D5DB">—</span>'}</td>
               <td style="text-align:right">${r.credit ? fmt(r.credit) : '<span style="color:#D1D5DB">—</span>'}</td>
               <td>${esc(r.ref || '—')}</td>
+              <td style="text-align:center">
+                ${r._isDuplicate ? '<span class="badge badge-orange text-[10px]"><i class="fas fa-copy mr-1"></i>Ya existe</span>' : '<span class="badge badge-green text-[10px]">Nuevo</span>'}
+              </td>
               <td>
                 <button class="btn btn-outline btn-sm btn-del-row" data-id="${r._id}"
                   style="color:#EF4444;border-color:#FECACA;padding:2px 8px" title="Eliminar fila">
@@ -1996,11 +2528,35 @@ function _renderImportPreview(rows: any[], bankAccounts: any[], bankAccId: strin
       <button class="btn btn-outline" id="btn-imp-back">
         <i class="fas fa-arrow-left mr-1"></i> Volver
       </button>
-      <button class="btn btn-primary" id="btn-imp-confirm">
-        <i class="fas fa-file-import mr-1"></i> Importar <span id="imp-confirm-count">${rows.length}</span> movimientos
+      <button class="btn btn-primary" id="btn-imp-confirm" ${initialRemaining === 0 ? 'disabled style="opacity:0.5"' : ''}>
+        <i class="fas fa-file-import mr-1"></i> Importar <span id="imp-confirm-count">${initialRemaining}</span> movimientos
       </button>
     </div>
   `;
+
+  // Control de omisión / inclusión de duplicados
+  container.querySelector('#chk-skip-dups')?.addEventListener('change', (e) => {
+    const skip = (e.target as HTMLInputElement).checked;
+    _importRows.forEach(r => {
+      if (r._isDuplicate) {
+        r._skip = skip;
+        const rowEl = document.getElementById(`imp-row-${r._id}`);
+        if (rowEl) {
+          rowEl.style.opacity = skip ? '0.5' : '1';
+        }
+      }
+    });
+    const rem = _importRows.filter(r => !r._skip).length;
+    const badge = document.getElementById('imp-count-badge');
+    const countSpan = document.getElementById('imp-confirm-count');
+    const btn = document.getElementById('btn-imp-confirm') as HTMLButtonElement | null;
+    if (badge) badge.textContent = `${rem} a importar`;
+    if (countSpan) countSpan.textContent = String(rem);
+    if (btn) {
+      btn.disabled = rem === 0;
+      btn.style.opacity = rem === 0 ? '0.5' : '1';
+    }
+  });
 
   container.querySelectorAll('.btn-del-row').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -2025,7 +2581,7 @@ function _removeImportRow(id: number) {
   
   const badge = document.getElementById('imp-count-badge');
   const countSpan = document.getElementById('imp-confirm-count');
-  if (badge) badge.textContent = `${remaining} movimientos`;
+  if (badge) badge.textContent = `${remaining} a importar`;
   if (countSpan) countSpan.textContent = String(remaining);
 
   if (!remaining) {
@@ -2110,6 +2666,9 @@ async function getBankReconMappingsAsync() {
   _cachedReconMappings = {
     gmf: '511505',
     comision: '511515',
+    iva_comision: '240801',
+    retencion: '135515',
+    cuota_manejo: '511515',
     interes: '421005',
     general: '511595',
     default_tx_type_id: '',
@@ -2127,6 +2686,9 @@ function getBankReconMappings() {
   return {
     gmf: '511505',
     comision: '511515',
+    iva_comision: '240801',
+    retencion: '135515',
+    cuota_manejo: '511515',
     interes: '421005',
     general: '511595',
     default_tx_type_id: '',
@@ -2171,7 +2733,7 @@ async function openBankReconConfigModal(accounts: any[]) {
     `
     <div class="mb-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
       <i class="fas fa-info-circle mr-1"></i>
-      Configura el <strong>Tipo de Comprobante</strong>, el <strong>Tercero/Banco por Defecto</strong> y las <strong>Cuentas PUC</strong> automáticas que utilizará el generador de Notas de Ajuste Bancario. Esta configuración se guarda de forma centralizada en el sistema.
+      Configura el <strong>Tipo de Comprobante</strong>, el <strong>Tercero/Banco por Defecto</strong> y las <strong>Cuentas PUC</strong> automáticas que utilizará el motor de Notas de Ajuste y Reconocimiento Inteligente. Esta parametrización centralizada agiliza la conciliación mensual.
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 text-xs">
@@ -2199,13 +2761,13 @@ async function openBankReconConfigModal(accounts: any[]) {
       </div>
     </div>
 
-    <div class="space-y-3 text-xs">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
       <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
         <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
           <span class="badge badge-red">4x1000 / GMF</span>
-          <span>Gravamen a los Movimientos Financieros</span>
+          <span>Gravamen Financiero</span>
         </label>
-        <p class="text-gray-500 mb-2">Para movimientos con descripciones como "4X1000", "GMF", "IMPTO GOBIERNO".</p>
+        <p class="text-gray-500 mb-2">Para descripciones como "4X1000", "GMF", "GRAVAMEN".</p>
         <select id="cfg-map-gmf" class="form-input w-full font-medium">
           <option value="">-- Seleccionar Cuenta PUC --</option>
           ${accounts.map(a => `<option value="${esc(a.id)}" ${a.id === current.gmf || a.code === current.gmf ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
@@ -2214,10 +2776,10 @@ async function openBankReconConfigModal(accounts: any[]) {
 
       <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
         <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
-          <span class="badge badge-blue">Comisiones / Servicios</span>
-          <span>Comisiones Bancarias, Cuotas y PSE</span>
+          <span class="badge badge-blue">Comisiones / PSE</span>
+          <span>Comisiones Bancarias</span>
         </label>
-        <p class="text-gray-500 mb-2">Para transferencias, comisiones por pagos PSE, cuotas de manejo y corresponsales.</p>
+        <p class="text-gray-500 mb-2">Para transferencias, comisiones de datáfono, PSE y transaccionales.</p>
         <select id="cfg-map-comision" class="form-input w-full font-medium">
           <option value="">-- Seleccionar Cuenta PUC --</option>
           ${accounts.map(a => `<option value="${esc(a.id)}" ${a.id === current.comision || a.code === current.comision ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
@@ -2226,10 +2788,34 @@ async function openBankReconConfigModal(accounts: any[]) {
 
       <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
         <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
-          <span class="badge badge-green">Intereses / Rendimientos</span>
-          <span>Abonos de Interés y Rendimientos Financieros</span>
+          <span class="badge badge-purple">IVA Comisión</span>
+          <span>IVA de Gastos Bancarios</span>
         </label>
-        <p class="text-gray-500 mb-2">Para notas de crédito por rendimientos, abonos de interés o dividendos de saldos.</p>
+        <p class="text-gray-500 mb-2">Para cobros de IVA discriminados en extracto.</p>
+        <select id="cfg-map-iva" class="form-input w-full font-medium">
+          <option value="">-- Seleccionar Cuenta PUC --</option>
+          ${accounts.map(a => `<option value="${esc(a.id)}" ${a.id === current.iva_comision || a.code === current.iva_comision ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
+        <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
+          <span class="badge badge-orange">Cuota de Manejo</span>
+          <span>Cuotas y Portafolios</span>
+        </label>
+        <p class="text-gray-500 mb-2">Para cobros periódicos de administración de cuenta o tarjetas.</p>
+        <select id="cfg-map-cuota" class="form-input w-full font-medium">
+          <option value="">-- Seleccionar Cuenta PUC --</option>
+          ${accounts.map(a => `<option value="${esc(a.id)}" ${a.id === current.cuota_manejo || a.code === current.cuota_manejo ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
+        <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
+          <span class="badge badge-green">Intereses / Rendimientos</span>
+          <span>Abonos Financieros</span>
+        </label>
+        <p class="text-gray-500 mb-2">Para notas de crédito por rendimientos y abonos de interés.</p>
         <select id="cfg-map-interes" class="form-input w-full font-medium">
           <option value="">-- Seleccionar Cuenta PUC --</option>
           ${accounts.map(a => `<option value="${esc(a.id)}" ${a.id === current.interes || a.code === current.interes ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
@@ -2239,7 +2825,7 @@ async function openBankReconConfigModal(accounts: any[]) {
       <div class="form-group mb-0 border p-3 rounded-xl bg-gray-50">
         <label class="font-bold text-gray-800 block mb-1 flex items-center gap-2">
           <span class="badge badge-gray">Gastos Generales</span>
-          <span>Otros Egresos y Gastos Bancarios</span>
+          <span>Otros Egresos Bancarios</span>
         </label>
         <p class="text-gray-500 mb-2">Para cualquier otro egreso bancario pendiente no clasificado.</p>
         <select id="cfg-map-general" class="form-input w-full font-medium">
@@ -2265,6 +2851,9 @@ async function openBankReconConfigModal(accounts: any[]) {
     const newMappings = {
       gmf: getSelectVal('cfg-map-gmf') || '511505',
       comision: getSelectVal('cfg-map-comision') || '511515',
+      iva_comision: getSelectVal('cfg-map-iva') || '240801',
+      cuota_manejo: getSelectVal('cfg-map-cuota') || '511515',
+      retencion: current.retencion || '135515',
       interes: getSelectVal('cfg-map-interes') || '421005',
       general: getSelectVal('cfg-map-general') || '511595',
       default_tx_type_id: getSelectVal('cfg-map-tx-type') || '',
@@ -2310,7 +2899,7 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
     if (matchedThird) defaultThirdPartyId = matchedThird.id;
   }
 
-  // Pre-clasificación inteligente de rubros por concepto usando parametrización
+  // Pre-clasificación inteligente de rubros por concepto usando reglas de texto ampliadas
   const items = pendingMovs.map(m => {
     const desc = (m.description || '').toUpperCase();
     let targetKey = mappings.general || '511595';
@@ -2321,7 +2910,19 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
       targetKey = mappings.gmf || '511505';
       category = '4x1000 / GMF';
       catClass = 'badge-red';
-    } else if (desc.includes('COMISION') || desc.includes('SERVICIO') || desc.includes('CUOTA') || desc.includes('PSE') || desc.includes('CORRESPONSAL')) {
+    } else if (desc.includes('IVA') || desc.includes('IMPUESTO DE LAS VENTAS') || desc.includes('IVA COMISION')) {
+      targetKey = mappings.iva_comision || mappings.general || '240801';
+      category = 'IVA Bancario';
+      catClass = 'badge-purple';
+    } else if (desc.includes('CUOTA') || desc.includes('MANEJO') || desc.includes('PORTAFOLIO') || desc.includes('MENSUALIDAD')) {
+      targetKey = mappings.cuota_manejo || mappings.comision || '511515';
+      category = 'Cuota de Manejo';
+      catClass = 'badge-orange';
+    } else if (desc.includes('RETE') || desc.includes('RETENCION') || desc.includes('RTE FTE')) {
+      targetKey = mappings.retencion || mappings.general || '135515';
+      category = 'Retención';
+      catClass = 'badge-orange';
+    } else if (desc.includes('COMISION') || desc.includes('SERVICIO') || desc.includes('PSE') || desc.includes('CORRESPONSAL') || desc.includes('DATAFONO')) {
       targetKey = mappings.comision || '511515';
       category = 'Comisión / Servicio';
       catClass = 'badge-blue';
@@ -2808,18 +3409,23 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
         // Consultar líneas contables del comprobante seleccionado
         const safeTxId = pb.escapeFilterValue(linkedTxId);
         const existingTxLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeTxId}"` });
-        const bankAccLine = existingTxLines.find(l => l.account_id === bankAccount.account_id);
+        const bankAccLine = existingTxLines.find(l => l.account_id === bankAccount.account_id) || existingTxLines[0];
 
         let reconciledCount = 0;
-        for (const it of selectedItems) {
-          // Buscar una línea contable coincidente o asociar a la línea del banco
-          const matchingLine = existingTxLines.find(l => l.account_id === it.selectedAccountId) || bankAccLine || existingTxLines[0];
-          if (matchingLine) {
-            await pb.update('bank_movements', it.mov.id, {
-              reconciled: true,
-              tx_line_id: matchingLine.id
-            });
-            reconciledCount++;
+        if (bankAccLine) {
+          const allMovIds = selectedItems.map(it => it.mov.id);
+          const chunkSize = 15;
+          for (let i = 0; i < allMovIds.length; i += chunkSize) {
+            const chunk = allMovIds.slice(i, i + chunkSize);
+            await Promise.all(chunk.map(async mId => {
+              try {
+                await pb.update('bank_movements', mId, {
+                  reconciled: true,
+                  tx_line_id: bankAccLine.id
+                });
+                reconciledCount++;
+              } catch (_) {}
+            }));
           }
         }
 
@@ -2851,7 +3457,6 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
       let totExp = 0;
       let totInc = 0;
       const lines: any[] = [];
-      const lineMovMap: { lineOrder: number; movIds: string[] }[] = [];
 
       if (unifyChecked) {
         // Modo Unificado: Agrupar por cuenta contable PUC
@@ -2895,7 +3500,6 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
               description: `Ajuste ${grp.category} (${grp.debitMovIds.length} movimientos extracto)`,
               line_order: order,
             });
-            lineMovMap.push({ lineOrder: order, movIds: grp.debitMovIds });
           }
           if (grp.credit > 0) {
             totInc += grp.credit;
@@ -2908,7 +3512,6 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
               description: `Ajuste ${grp.category} (${grp.creditMovIds.length} movimientos extracto)`,
               line_order: order,
             });
-            lineMovMap.push({ lineOrder: order, movIds: grp.creditMovIds });
           }
         });
 
@@ -2927,7 +3530,6 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
               description: m.description,
               line_order: order,
             });
-            lineMovMap.push({ lineOrder: order, movIds: [m.id] });
           } else if (m.credit > 0) {
             totInc += m.credit;
             lines.push({
@@ -2938,7 +3540,6 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
               description: m.description,
               line_order: order,
             });
-            lineMovMap.push({ lineOrder: order, movIds: [m.id] });
           }
         });
       }
@@ -2976,27 +3577,30 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
 
       const createdTx = await (window as any).API.createTransaction(txPayload, lines);
 
-      // Consultar las líneas creadas para enlazar los bank_movements
+      // Consultar las líneas creadas para enlazar los bank_movements a la cuenta bancaria
       const safeTxId = pb.escapeFilterValue(createdTx.id);
       const createdTxLines = await pb.listAll('tx_lines', { filter: `tx_id="${safeTxId}"` });
 
+      // Localizar la línea contable correspondiente a la cuenta bancaria (PUC 1110)
+      const bankTxLine = createdTxLines.find(c => c.account_id === bankAccount.account_id)
+        || createdTxLines.find(c => c.line_order === 0)
+        || createdTxLines[0];
+
       let reconciledOk = 0;
-      for (const mapItem of lineMovMap) {
-        const matchingTxLine = createdTxLines.find(c => c.line_order === mapItem.lineOrder);
-        if (matchingTxLine) {
-          const chunkSize = 15;
-          for (let i = 0; i < mapItem.movIds.length; i += chunkSize) {
-            const chunk = mapItem.movIds.slice(i, i + chunkSize);
-            await Promise.all(chunk.map(async mId => {
-              try {
-                await pb.update('bank_movements', mId, {
-                  reconciled: true,
-                  tx_line_id: matchingTxLine.id
-                });
-                reconciledOk++;
-              } catch (_) {}
-            }));
-          }
+      if (bankTxLine) {
+        const allMovIds = selectedItems.map(it => it.mov.id);
+        const chunkSize = 15;
+        for (let i = 0; i < allMovIds.length; i += chunkSize) {
+          const chunk = allMovIds.slice(i, i + chunkSize);
+          await Promise.all(chunk.map(async mId => {
+            try {
+              await pb.update('bank_movements', mId, {
+                reconciled: true,
+                tx_line_id: bankTxLine.id
+              });
+              reconciledOk++;
+            } catch (_) {}
+          }));
         }
       }
 
@@ -3014,6 +3618,98 @@ async function openAdjustmentNoteModal(bankAccount: any, movements: any[], accou
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// GUARDAR AVANCE / BORRADOR TEMPORAL DE CONCILIACIÓN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function saveReconciliationDraft(
+  bankAccount: any,
+  movements: any[],
+  txLines: any[],
+  fromDate: string,
+  toDate: string,
+  notesVal: string = '',
+  customBankBal?: number
+) {
+  if (!bankAccount) return showToast('Selecciona una cuenta bancaria', 'warning');
+
+  const auxDeb = txLines.reduce((s, l) => s + (l.debit || 0), 0);
+  const auxCred = txLines.reduce((s, l) => s + (l.credit || 0), 0);
+  const bookBalance = auxDeb - auxCred;
+
+  const bankInc = movements.reduce((s, m) => s + (m.credit || 0), 0);
+  const bankExp = movements.reduce((s, m) => s + (m.debit || 0), 0);
+  const calcBankBalance = bankInc - bankExp;
+  const finalBankBal = typeof customBankBal === 'number' && !isNaN(customBankBal) ? customBankBal : calcBankBalance;
+
+  const difference = bookBalance - finalBankBal;
+  const reconciledMovs = movements.filter(m => m.reconciled);
+  const pendingBankMovs = movements.filter(m => !m.reconciled);
+  const pendingTxLines = txLines.filter(l => !movements.some(m => m.tx_line_id === l.id));
+
+  const snapshotData = {
+    bankAccount: {
+      id: bankAccount.id,
+      bank: bankAccount.bank,
+      number: bankAccount.number,
+      name: bankAccount.name,
+      account_code: bankAccount.expand?.account_id?.code || '',
+      account_name: bankAccount.expand?.account_id?.name || '',
+    },
+    balances: {
+      bookBalance,
+      bankBalance: finalBankBal,
+      difference,
+      auxDeb,
+      auxCred,
+      bankInc,
+      bankExp,
+    },
+    counts: {
+      totalExtracto: movements.length,
+      totalLibros: txLines.length,
+      reconciledCount: reconciledMovs.length,
+      pendingBankCount: pendingBankMovs.length,
+      pendingBookCount: pendingTxLines.length,
+    },
+    notes: notesVal,
+    savedAt: new Date().toISOString(),
+  };
+
+  const draftPayload = {
+    bank_account_id: bankAccount.id,
+    period_start: fromDate,
+    period_end: toDate,
+    book_balance: bookBalance,
+    bank_balance: finalBankBal,
+    difference,
+    status: 'draft',
+    reconciled_count: reconciledMovs.length,
+    pending_bank_count: pendingBankMovs.length,
+    pending_book_count: pendingTxLines.length,
+    notes: notesVal,
+    snapshot_data: snapshotData,
+  };
+
+  try {
+    const safeBId = pb.escapeFilterValue(bankAccount.id);
+    const existingDrafts = await pb.listAll('bank_reconciliations', {
+      filter: `bank_account_id="${safeBId}" && status="draft" && period_start="${fromDate}" && period_end="${toDate}"`
+    });
+
+    if (existingDrafts.length > 0) {
+      await pb.update('bank_reconciliations', existingDrafts[0].id, draftPayload);
+    } else {
+      await pb.create('bank_reconciliations', draftPayload);
+    }
+
+    showToast(`Borrador guardado: ${reconciledMovs.length} partidas conciliadas conservadas. Puedes retomar cuando desees.`, 'success');
+  } catch (err: any) {
+    showToast('Error al guardar borrador: ' + (err.message || ''), 'error');
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MOTOR DE CIERRE FORMAL DE CONCILIACIÓN BANCARIA
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3027,6 +3723,16 @@ async function openCloseReconciliationModal(
 ) {
   if (!bankAccount) return showToast('Selecciona una cuenta bancaria para cerrar conciliación', 'warning');
 
+  // 1. Buscar si ya existe un borrador guardado para precargar datos
+  let existingDraft: any = null;
+  try {
+    const safeBId = pb.escapeFilterValue(bankAccount.id);
+    const drafts = await pb.listAll('bank_reconciliations', {
+      filter: `bank_account_id="${safeBId}" && status="draft" && period_start="${fromDate}" && period_end="${toDate}"`
+    });
+    if (drafts.length > 0) existingDraft = drafts[0];
+  } catch (_) {}
+
   const auxDeb = txLines.reduce((s, l) => s + (l.debit || 0), 0);
   const auxCred = txLines.reduce((s, l) => s + (l.credit || 0), 0);
   const bookBalance = auxDeb - auxCred;
@@ -3035,7 +3741,8 @@ async function openCloseReconciliationModal(
   const bankExp = movements.reduce((s, m) => s + (m.debit || 0), 0);
   const bankBalance = bankInc - bankExp;
 
-  const difference = bookBalance - bankBalance;
+  const initialCustomBankBal = existingDraft?.bank_balance ?? bankBalance;
+  const difference = bookBalance - initialCustomBankBal;
 
   // Partidas pendientes en extracto y en libros
   const pendingBankMovs = movements.filter(m => !m.reconciled);
@@ -3043,19 +3750,23 @@ async function openCloseReconciliationModal(
   const reconciledMovs = movements.filter(m => m.reconciled);
 
   const isExactMatch = Math.abs(difference) < 1;
+  const initialNotes = existingDraft?.notes || (isExactMatch ? 'Conciliación bancaria efectuada a satisfacción sin diferencias de auditoría.' : '');
 
   openModal(
     '<i class="fas fa-lock mr-2 text-emerald-600"></i> Cierre y Certificación de Conciliación Bancaria',
     `
     <div class="mb-3 p-3 rounded-xl border ${isExactMatch ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'} text-xs">
-      <div class="flex items-center gap-2 font-bold mb-1">
-        <i class="fas ${isExactMatch ? 'fa-circle-check text-emerald-600' : 'fa-triangle-exclamation text-amber-600'} text-sm"></i>
-        <span>${isExactMatch ? 'Conciliación Cuadrada y Lista para Certificar' : 'Conciliación con Diferencia de Saldos'}</span>
+      <div class="flex items-center justify-between gap-2 font-bold mb-1">
+        <div class="flex items-center gap-2">
+          <i class="fas ${isExactMatch ? 'fa-circle-check text-emerald-600' : 'fa-triangle-exclamation text-amber-600'} text-sm"></i>
+          <span>${isExactMatch ? 'Conciliación Cuadrada y Lista para Certificar' : 'Conciliación con Diferencia de Saldos'}</span>
+        </div>
+        ${existingDraft ? '<span class="badge badge-blue text-[10px]"><i class="fas fa-bookmark mr-1"></i>Borrador Previsto</span>' : ''}
       </div>
       <p class="mb-0 text-[11px]">
         ${isExactMatch 
-          ? 'El saldo en libros auxiliares y el saldo del extracto bancario coinciden perfectamente ($0 diferencia). Al cerrar, se generará el Acta Oficial no transaccional con firmas de auditoría. <em>Nota: este cierre aplica de manera exclusiva a la conciliación bancaria de esta cuenta y no bloquea la contabilidad general del ERP.</em>' 
-          : 'Existe un delta entre el Libro Auxiliar y el Extracto Bancario. Si corresponde a partidas en tránsito justificadas (ej: cheques girados y no cobrados), registra la justificación contable para expedir el Acta. <em>Nota: este cierre aplica de manera exclusiva a la conciliación bancaria de esta cuenta y no bloquea la contabilidad general del ERP.</em>'}
+          ? 'El saldo en libros auxiliares y el saldo del extracto bancario coinciden perfectamente ($0 diferencia). Puedes guardar tu borrador o cerrar para expedir el Acta Oficial.' 
+          : 'Existe un delta entre el Libro Auxiliar y el Extracto Bancario. Puedes guardar tu avance como <strong>Borrador</strong> para continuar después, o justificar las partidas en tránsito para cerrar.'}
       </p>
     </div>
 
@@ -3101,7 +3812,7 @@ async function openCloseReconciliationModal(
       </div>
       <div class="form-group mb-0">
         <label class="font-bold text-gray-700 block mb-1">Saldo Final Oficial según Extracto del Banco ($)</label>
-        <input id="close-recon-bank-bal" type="number" step="0.01" class="form-input w-full font-bold text-gray-800" value="${bankBalance}">
+        <input id="close-recon-bank-bal" type="number" step="0.01" class="form-input w-full font-bold text-gray-800" value="${initialCustomBankBal}">
       </div>
     </div>
 
@@ -3110,17 +3821,36 @@ async function openCloseReconciliationModal(
         Observaciones y Notas Contables de Auditoría
         ${!isExactMatch ? '<span class="text-red-500 font-normal">(Requeridas para justificar partidas en tránsito)</span>' : ''}
       </label>
-      <textarea id="close-recon-notes" class="form-input w-full text-xs" rows="3" placeholder="Ej: Se certifica que las partidas conciliatorias en tránsito corresponden a 2 cheques girados pendientes de cobro por proveedores...">${isExactMatch ? 'Conciliación bancaria efectuada a satisfacción sin diferencias de auditoría.' : ''}</textarea>
+      <textarea id="close-recon-notes" class="form-input w-full text-xs" rows="3" placeholder="Ej: Se certifica que las partidas conciliatorias en tránsito corresponden a 2 cheques girados pendientes de cobro por proveedores...">${esc(initialNotes)}</textarea>
     </div>
     `,
     `
     <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-secondary" id="btn-do-save-draft" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE">
+      <i class="fas fa-bookmark mr-1"></i> Guardar Avance (Borrador)
+    </button>
     <button class="btn btn-primary" id="btn-do-close-recon" style="background:#059669;border-color:#047857">
       <i class="fas fa-lock mr-1"></i> Cerrar Período y Emitir Acta Oficial
     </button>
     `,
     true
   );
+
+  // Botón Guardar Avance como Borrador
+  $('#btn-do-save-draft')?.addEventListener('click', async () => {
+    const notesVal = (getInputVal('close-recon-notes') || '').trim();
+    const customBankBal = parseFloat(getInputVal('close-recon-bank-bal')) || bankBalance;
+    const btnDraft = $('#btn-do-save-draft') as HTMLButtonElement | null;
+    if (btnDraft) { btnDraft.disabled = true; btnDraft.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...'; }
+
+    try {
+      await saveReconciliationDraft(bankAccount, movements, txLines, fromDate, toDate, notesVal, customBankBal);
+      closeModal();
+      if (onDoneCb) onDoneCb();
+    } finally {
+      if (btnDraft) { btnDraft.disabled = false; btnDraft.innerHTML = '<i class="fas fa-bookmark mr-1"></i> Guardar Avance (Borrador)'; }
+    }
+  });
 
   $('#btn-do-close-recon')?.addEventListener('click', async () => {
     const notesVal = (getInputVal('close-recon-notes') || '').trim();
@@ -3430,6 +4160,9 @@ async function openReconciliationCertificateModal(reconIdOrRecord: any) {
         <button class="btn btn-primary btn-sm" id="btn-cert-pdf" style="background:#059669;border-color:#047857">
           <i class="fas fa-file-pdf mr-1"></i> Descargar PDF
         </button>
+        <button class="btn btn-secondary btn-sm" id="btn-cert-excel" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0">
+          <i class="fas fa-file-excel mr-1 text-emerald-600"></i> Descargar Excel
+        </button>
       </div>
     </div>
     <div style="max-height:calc(100vh - 280px); overflow-y:auto;" class="border rounded-xl p-2 bg-gray-100">
@@ -3448,6 +4181,11 @@ async function openReconciliationCertificateModal(reconIdOrRecord: any) {
   // Botón Descargar PDF
   $('#btn-cert-pdf')?.addEventListener('click', () => {
     downloadReconciliationPdf(companyName, companyNit, bankAcc, recon, balances, pendingBookItems, pendingBankItems, auditorName, closedDateStr);
+  });
+
+  // Botón Descargar Excel (Papel de Trabajo Oficial)
+  $('#btn-cert-excel')?.addEventListener('click', () => {
+    exportReconciliationToExcel(bankAcc, recon.period_start, recon.period_end, pendingBookItems, pendingBankItems, recon);
   });
 }
 
@@ -3774,6 +4512,257 @@ async function openReconciliationsHistoryModal(bankAccount: any) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXPORTACIÓN A EXCEL: PAPEL DE TRABAJO OFICIAL (NIIF / REVISORÍA FISCAL)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function exportReconciliationToExcel(
+  bankAcc: any,
+  fromDate: string,
+  toDate: string,
+  txLines: any[] = [],
+  movements: any[] = [],
+  activeRecon: any = null
+) {
+  const XLSX = (window as any).XLSX;
+  if (!XLSX) {
+    return showToast('Librería XLSX (SheetJS) no disponible en el sistema', 'error');
+  }
+
+  showToast('Generando Papel de Trabajo en Excel...', 'info');
+
+  try {
+    // Si no hay movimientos en memoria pero hay recon, intentar cargar movimientos
+    if ((!movements || !movements.length) && bankAcc?.id) {
+      try {
+        const safeBId = pb.escapeFilterValue(bankAcc.id);
+        movements = await pb.listAll('bank_movements', {
+          filter: `bank_account_id="${safeBId}" && date >= "${fromDate} 00:00:00" && date <= "${toDate} 23:59:59"`,
+          sort: 'date',
+          expand: 'tx_line_id.tx_id,tx_line_id.third_party_id'
+        });
+      } catch (_) {}
+    }
+
+    // Cargar datos de la empresa para la carátula
+    let companyName = 'EMPRESA PRINCIPAL';
+    let companyNit = '';
+    try {
+      const sets = await pb.listAll('settings', {
+        filter: 'key="company" || key="company_name" || key="company_nit"'
+      });
+      sets.forEach(s => {
+        if (s.key === 'company_name' || s.key === 'company') companyName = s.value || companyName;
+        if (s.key === 'company_nit') companyNit = s.value || '';
+      });
+    } catch (_) {}
+
+    const snap = activeRecon?.snapshot_data || {};
+    const bookBalance = activeRecon?.book_balance ?? snap.balances?.bookBalance ?? txLines.reduce((s, l) => s + ((l.debit || 0) - (l.credit || 0)), 0);
+    const bankBalance = activeRecon?.bank_balance ?? snap.balances?.bankBalance ?? movements.reduce((s, m) => s + ((m.credit || 0) - (m.debit || 0)), 0);
+    const diff = bookBalance - bankBalance;
+
+    const reconciledMovs = movements.filter(m => m.reconciled || m.tx_line_id);
+    const pendingBankMovs = movements.filter(m => !m.reconciled && !m.tx_line_id);
+    
+    // Partidas contables en tránsito (no conciliadas)
+    const reconciledTxIds = new Set(reconciledMovs.map(m => m.tx_line_id || m.expand?.tx_line_id?.id).filter(Boolean));
+    const pendingBookLines = txLines.filter(l => !reconciledTxIds.has(l.id));
+
+    const transitDeposits = pendingBookLines.filter(l => (l.debit || 0) > 0).reduce((s, l) => s + l.debit, 0);
+    const transitChecks = pendingBookLines.filter(l => (l.credit || 0) > 0).reduce((s, l) => s + l.credit, 0);
+
+    const wb = XLSX.utils.book_new();
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // HOJA 1: RESUMEN DE CONCILIACIÓN (Carátula y Ecuación)
+    // ──────────────────────────────────────────────────────────────────────────
+    const sheet1Data: any[] = [
+      [companyName.toUpperCase()],
+      [`NIT: ${companyNit || 'S.N.'} - PAPEL DE TRABAJO DE CONCILIACIÓN BANCARIA`],
+      [`Período Auditado: Del ${fromDate || ''} al ${toDate || ''}`],
+      [''],
+      ['INFORMACIÓN INSTITUCIONAL DE LA CUENTA'],
+      ['Banco / Entidad Financiera:', bankAcc.bank || 'BANCO'],
+      ['Número de Cuenta:', bankAcc.number || ''],
+      ['Tipo / Denominación:', bankAcc.name || 'Cuenta Bancaria'],
+      ['Cuenta Contable PUC:', `${bankAcc.account_code || bankAcc.expand?.account_id?.code || '1110'} - ${bankAcc.account_name || bankAcc.expand?.account_id?.name || 'Bancos'}`],
+      ['Estado de la Conciliación:', activeRecon ? 'CERRADA Y CERTIFICADA (AUDITADA)' : 'EN PROCESO (BORRADOR)'],
+      ['Fecha de Emisión:', new Date().toLocaleDateString('es-CO')],
+      [''],
+      ['ESTADO CUANTITATIVO DE CONCILIACIÓN DE SALDOS', 'MONTO ($)'],
+      ['Saldo Final según Libro Auxiliar Contable', bookBalance],
+      ['(+) Consignaciones en tránsito (libros no reflejadas en banco)', transitDeposits],
+      ['(-) Cheques girados y no cobrados / Giros en tránsito', -transitChecks],
+      ['(+) Partidas del extracto no registradas en contabilidad (Notas Crédito)', 0],
+      ['(-) Partidas del extracto no registradas en contabilidad (Notas Débito)', 0],
+      ['(=) Saldo Conciliado según Extracto Oficial del Banco', bankBalance],
+      ['DIFERENCIA NETA DE CONCILIACIÓN', diff],
+      [''],
+      ['ESTADÍSTICAS DEL PERÍODO'],
+      ['Total Registros en Extracto Bancario:', movements.length],
+      ['Total Asientos en Libro Auxiliar:', txLines.length],
+      ['Partidas Cruzadas / Conciliadas:', reconciledMovs.length],
+      ['Partidas en Tránsito Pendientes:', pendingBankMovs.length + pendingBookLines.length],
+      [''],
+      ['RESPONSABLES Y FIRMAS'],
+      ['Elaboró (Tesorero / Auxiliar):', activeRecon?.expand?.closed_by?.name || pb.currentUser?.name || 'Contabilidad'],
+      ['Revisó (Contador Público):', '______________________________  T.P.: _____________'],
+      ['Aprobó (Revisor Fiscal / Gerente):', '______________________________  C.C.: _____________'],
+    ];
+
+    const ws1 = XLSX.utils.aoa_to_sheet(sheet1Data);
+    ws1['!cols'] = [{ wch: 45 }, { wch: 25 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Resumen Conciliacion');
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // HOJA 2: PARTIDAS CONCILIADAS (Cruce 1 a 1 y N a 1)
+    // ──────────────────────────────────────────────────────────────────────────
+    const sheet2Data: any[] = [
+      ['RELACIÓN DE MOVIMIENTOS CONCILIADOS (EXTRACTO VS CONTABILIDAD)'],
+      ['Período:', `${fromDate} al ${toDate}`, 'Cuenta:', `${bankAcc.bank} ${bankAcc.number}`],
+      [''],
+      [
+        'ID Cruce',
+        'Fecha Banco',
+        'Descripción Extracto',
+        'Referencia',
+        'Egreso Banco ($)',
+        'Ingreso Banco ($)',
+        'Fecha Libro',
+        'Comprobante',
+        'Tercero',
+        'Detalle Contable',
+        'Débito Libro ($)',
+        'Crédito Libro ($)',
+        'Estado'
+      ]
+    ];
+
+    reconciledMovs.forEach(m => {
+      const partnerTx = txLines.find(l => l.id === (m.tx_line_id || m.expand?.tx_line_id?.id)) || m.expand?.tx_line_id;
+      const txParent = partnerTx?.expand?.tx_id;
+      const third = partnerTx?.expand?.third_party_id;
+
+      sheet2Data.push([
+        m.id.slice(-6).toUpperCase(),
+        (m.date || '').slice(0, 10),
+        m.description || '',
+        m.ref || '',
+        m.debit || 0,
+        m.credit || 0,
+        partnerTx ? (txParent?.date || partnerTx.date || '').slice(0, 10) : '',
+        txParent?.number || partnerTx?.comp || 'N/A',
+        third?.name || third?.doc_number || '',
+        partnerTx?.description || '',
+        partnerTx?.debit || 0,
+        partnerTx?.credit || 0,
+        'CONCILIADO'
+      ]);
+    });
+
+    if (reconciledMovs.length === 0) {
+      sheet2Data.push(['No hay partidas conciliadas registradas para este período.', '', '', '', 0, 0, '', '', '', '', 0, 0, '']);
+    }
+
+    const ws2 = XLSX.utils.aoa_to_sheet(sheet2Data);
+    ws2['!cols'] = [
+      { wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 14 },
+      { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 14 },
+      { wch: 25 }, { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 14 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Partidas Conciliadas');
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // HOJA 3: PARTIDAS EN TRÁNSITO (Pendientes)
+    // ──────────────────────────────────────────────────────────────────────────
+    const sheet3Data: any[] = [
+      ['PARTIDAS CONCILIATORIAS EN TRÁNSITO Y PENDIENTES DE AJUSTE'],
+      ['Período:', `${fromDate} al ${toDate}`, 'Cuenta:', `${bankAcc.bank} ${bankAcc.number}`],
+      [''],
+      ['1. PARTIDAS EN LIBROS NO REFLEJADAS EN EL EXTRACTO (LIBRO AUXILIAR)'],
+      [
+        'Origen',
+        'Fecha',
+        'Comprobante',
+        'Tercero',
+        'Detalle Contable',
+        'Débito ($)',
+        'Crédito ($)',
+        'Naturaleza / Clasificación'
+      ]
+    ];
+
+    pendingBookLines.forEach(l => {
+      const tx = l.expand?.tx_id;
+      const third = l.expand?.third_party_id;
+      const isDeposit = (l.debit || 0) > 0;
+      sheet3Data.push([
+        'Libro Auxiliar',
+        (tx?.date || l.date || '').slice(0, 10),
+        tx?.number || l.comp || 'Comp',
+        third?.name || third?.doc_number || '',
+        l.description || '',
+        l.debit || 0,
+        l.credit || 0,
+        isDeposit ? 'Consignación en tránsito (+)' : 'Cheque girado no cobrado (-)'
+      ]);
+    });
+
+    if (pendingBookLines.length === 0) {
+      sheet3Data.push(['Libro Auxiliar', 'N/A', 'N/A', '', 'Sin partidas pendientes en libros', 0, 0, 'Al día']);
+    }
+
+    sheet3Data.push(['']);
+    sheet3Data.push(['2. PARTIDAS DEL EXTRACTO NO REGISTRADAS EN LIBROS (BANCO)']);
+    sheet3Data.push([
+      'Origen',
+      'Fecha',
+      'Referencia',
+      'Concepto Extracto',
+      'Retiro / Egreso ($)',
+      'Depósito / Ingreso ($)',
+      'Acción Requerida',
+      'Naturaleza'
+    ]);
+
+    pendingBankMovs.forEach(m => {
+      const isIncome = (m.credit || 0) > 0;
+      sheet3Data.push([
+        'Extracto Banco',
+        (m.date || '').slice(0, 10),
+        m.ref || '',
+        m.description || '',
+        m.debit || 0,
+        m.credit || 0,
+        'Requiere Nota Contable de Ajuste',
+        isIncome ? 'Nota Crédito Banco (Ingreso no causado)' : 'Nota Débito Banco (Gasto/Comisión/GMF no causado)'
+      ]);
+    });
+
+    if (pendingBankMovs.length === 0) {
+      sheet3Data.push(['Extracto Banco', 'N/A', '', 'Sin partidas pendientes en extracto', 0, 0, 'Al día', 'Al día']);
+    }
+
+    const ws3 = XLSX.utils.aoa_to_sheet(sheet3Data);
+    ws3['!cols'] = [
+      { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 25 },
+      { wch: 30 }, { wch: 16 }, { wch: 16 }, { wch: 35 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Partidas en Transito');
+
+    // Generar y descargar archivo
+    const safeBank = (bankAcc.bank || 'BANCO').replace(/[^a-zA-Z0-9]/g, '_');
+    const safePeriod = (toDate || '').slice(0, 7).replace('-', '');
+    const fileName = `Conciliacion_${safeBank}_${safePeriod}_PapelDeTrabajo.xlsx`;
+    
+    XLSX.writeFile(wb, fileName);
+    showToast(`Archivo Excel exportado exitosamente: ${fileName}`, 'success');
+  } catch (err: any) {
+    showToast('Error exportando conciliación a Excel: ' + err.message, 'error');
+  }
+}
+
 // --- VITE MIGRATION GLOBALS ---
 (window as any).openBankReconConfigModal = openBankReconConfigModal;
 (window as any).openAdjustmentNoteModal = openAdjustmentNoteModal;
@@ -3807,4 +4796,6 @@ async function openReconciliationsHistoryModal(bankAccount: any) {
 (window as any).openReconciliationsHistoryModal = openReconciliationsHistoryModal;
 (window as any).printReconciliationCertificate = printReconciliationCertificate;
 (window as any).downloadReconciliationPdf = downloadReconciliationPdf;
+(window as any).exportReconciliationToExcel = exportReconciliationToExcel;
+(window as any).saveReconciliationDraft = saveReconciliationDraft;
 

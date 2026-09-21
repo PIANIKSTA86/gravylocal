@@ -457,206 +457,210 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
   });
 };
 
-(window as any).downloadDianZip = async function(txId: string, number: string) {
-  try {
-    showToast('Obteniendo XML firmado...', 'info');
-    const docs = await pb.listAll('einvoice_docs', {
-      filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
-    });
-    if (!docs.length || !docs[0].xml_content) {
-      showToast('No hay XML firmado disponible para descargar.', 'warning');
-      return;
-    }
-    const xmlContent = docs[0].xml_content;
+async function buildDianInvoiceDataPayload(txId: string, number: string) {
+  const docs = await pb.listAll('einvoice_docs', {
+    filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
+  });
+  if (!docs.length || !docs[0].xml_content) {
+    throw new Error('No hay XML firmado disponible para este documento.');
+  }
+  const doc = docs[0];
+  const xmlContent = doc.xml_content;
 
-    showToast('Obteniendo detalles del documento...', 'info');
-    const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
-    const customer = tx.expand?.third_party_id;
-    
-    let invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
-    let isPurchase = false;
-    let invoice = invoices[0];
-    if (!invoice) {
-      invoices = await pb.listAll('purchase_invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
-      invoice = invoices[0];
-      isPurchase = true;
-    }
+  const tx = await pb.get('transactions', txId, { expand: 'third_party_id' });
+  const customer = tx.expand?.third_party_id;
 
-    let linesList = [];
-    let isPOSFallback = false;
-    if (invoice) {
-      if (!isPurchase) {
-        linesList = await pb.listAll('invoice_lines', {
-          filter: `invoice_id = "${invoice.id}"`,
-          expand: 'product_id'
-        });
-      } else {
-        linesList = await pb.listAll('purchase_invoice_lines', {
-          filter: `invoice_id = "${invoice.id}"`,
-          expand: 'product_id'
-        });
-      }
-    } else {
-      linesList = await pb.listAll('tx_lines', {
-        filter: `tx_id = "${pb.escapeFilterValue(txId)}"`
+  let invoices = await pb.listAll('invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
+  let isPurchase = false;
+  let invoice = invoices[0];
+  if (!invoice) {
+    invoices = await pb.listAll('purchase_invoices', { filter: `tx_id = "${pb.escapeFilterValue(txId)}"` });
+    invoice = invoices[0];
+    isPurchase = true;
+  }
+
+  const isDS = (doc && (doc.doc_type === 'DS' || doc.doc_type === 'NDS')) || 
+               (tx.number && (tx.number.toUpperCase().includes('DS') || tx.number.toUpperCase().includes('DSE'))) || 
+               isPurchase;
+
+  let linesList = [];
+  let isPOSFallback = false;
+  if (invoice) {
+    if (!isPurchase) {
+      linesList = await pb.listAll('invoice_lines', {
+        filter: `invoice_id = "${invoice.id}"`,
+        expand: 'product_id,account_id'
       });
-      isPOSFallback = true;
+    } else {
+      linesList = await pb.listAll('purchase_invoice_lines', {
+        filter: `invoice_id = "${invoice.id}"`,
+        expand: 'product_id,account_id'
+      });
     }
+  } else {
+    linesList = await pb.listAll('tx_lines', {
+      filter: `tx_id = "${pb.escapeFilterValue(txId)}"`,
+      expand: 'account_id'
+    });
+    isPOSFallback = true;
+  }
 
-    const linesData = isPOSFallback
-      ? linesList.filter((l: any) => (l.debit || 0) > 0 || (l.credit || 0) > 0).map((l: any) => {
-          const amount = (l.debit || 0) > 0 ? (l.debit || 0) : (l.credit || 0);
-          return {
-            desc: l.description || 'Concepto Contable',
-            code: '—',
-            qty: 1,
-            unitPrice: amount,
-            lineTotal: amount,
-            ivaRate: 0
-          };
-        })
-      : linesList.map((line: any) => ({
-          desc: line.expand?.product_id?.name || 'Producto',
-          code: line.expand?.product_id?.code || '—',
-          qty: line.qty || 0,
+  const linesData = isPOSFallback
+    ? linesList.filter((l: any) => (l.debit || 0) > 0 || (l.credit || 0) > 0).map((l: any) => {
+        const amount = (l.debit || 0) > 0 ? (l.debit || 0) : (l.credit || 0);
+        const directDesc = (l.description || '').trim();
+        const accDesc = l.expand?.account_id ? `${l.expand.account_id.code} - ${l.expand.account_id.name}` : '';
+        return {
+          desc: directDesc || accDesc || 'Concepto Contable',
+          code: l.expand?.account_id?.code || '—',
+          qty: 1,
+          unitPrice: amount,
+          lineTotal: amount,
+          ivaRate: 0
+        };
+      })
+    : linesList.map((line: any) => {
+        const directDesc = (line.description || '').trim();
+        const prodName = line.expand?.product_id?.name;
+        const accDesc = line.expand?.account_id ? `${line.expand.account_id.code} - ${line.expand.account_id.name}` : '';
+        const finalDesc = directDesc || prodName || accDesc || (isDS ? 'Servicio / Concepto No Obligado' : 'Producto');
+        const finalCode = line.expand?.product_id?.code || line.expand?.account_id?.code || '—';
+        return {
+          desc: finalDesc,
+          code: finalCode,
+          qty: line.qty || 1,
           unitPrice: line.unit_price || 0,
-          lineTotal: line.total || 0,
+          lineTotal: line.total || (line.subtotal || 0),
           ivaRate: line.iva_rate || 0
-        }));
+        };
+      });
 
-    const totalFromLines = linesData.reduce((acc: number, cur: any) => acc + cur.lineTotal, 0);
-    const payableAmount = invoice?.total || totalFromLines || tx.amount || 0;
+  const totalFromLines = linesData.reduce((acc: number, cur: any) => acc + cur.lineTotal, 0);
+  const payableAmount = invoice?.total || totalFromLines || tx.amount || 0;
 
-    const settingsList = await pb.listAll('settings');
-    const settingsMap = new Map<string, string>();
-    settingsList.forEach((s: any) => settingsMap.set(s.key, s.value));
+  const settingsList = await pb.listAll('settings');
+  const settingsMap = new Map<string, string>();
+  settingsList.forEach((s: any) => settingsMap.set(s.key, s.value));
 
-    // Resolve cashier (cajero)
-    let cashierName = 'Admin';
-    const posShiftId = invoice?.pos_shift_id || tx.pos_shift_id;
-    if (posShiftId) {
-      try {
-        const shift = await pb.get('pos_shifts', posShiftId, { expand: 'user_id' });
-        if (shift.expand?.user_id?.name) {
-          cashierName = shift.expand.user_id.name;
-        }
-      } catch (_) {}
-    }
-
-    // Determine if Documento Soporte (DS)
-    const isDS = (docs[0] && (docs[0].doc_type === 'DS' || docs[0].doc_type === 'NDS')) || 
-                 (tx.number && (tx.number.toUpperCase().includes('DS') || tx.number.toUpperCase().includes('DSE'))) || 
-                 isPurchase;
-
-    // Resolve resolution info
-    let resName = isDS ? "Documento Soporte Electrónico" : "Factura de Venta POS";
-    let resDesc = "";
-    let resNum = "";
-    let resDate = "";
-    let resExpiry = "";
-    let resFrom = "";
-    let resTo = "";
-    let resPrefix = "";
-    
-    let prefix = "";
-    if (tx.number && tx.number.includes('-')) {
-      prefix = tx.number.split('-')[0].trim().toUpperCase();
-    }
-    let docType = (invoice?.pos_shift_id || tx.pos_shift_id) ? "POS" : (isDS ? "DS" : "FV");
-    
+  let cashierName = 'Admin';
+  const posShiftId = invoice?.pos_shift_id || tx.pos_shift_id;
+  if (posShiftId) {
     try {
-      const registerId = (invoice?.pos_shift_id || tx.pos_shift_id) 
-        ? (await pb.get('pos_shifts', invoice?.pos_shift_id || tx.pos_shift_id).then((s: any) => s.pos_register_id || ''))
-        : '';
-      let filter = `document_type="${docType}" && active=true`;
-      let resList: any[] = [];
-      if (registerId && docType === 'POS') {
-        resList = await pb.listAll('dian_resolutions', { 
-          filter: `${filter} && pos_register_id="${pb.escapeFilterValue(registerId)}"` 
-        });
-      }
-      if (!resList.length) {
-        let fallbackFilter = filter;
-        if (docType === 'POS') {
-          fallbackFilter += ` && pos_register_id=""`;
-        }
-        if (prefix) {
-          fallbackFilter += ` && prefix="${pb.escapeFilterValue(prefix)}"`;
-        }
-        resList = await pb.listAll('dian_resolutions', { filter: fallbackFilter });
-      }
-      if (!resList.length) {
-        resList = await pb.listAll('dian_resolutions', { filter: `document_type="${docType}" && active=true` });
-      }
-      if (resList.length) {
-        const parts = tx.number.split('-');
-        const invNum = parseInt(parts[parts.length - 1], 10) || 0;
-        let resolution = resList.find((r: any) => invNum >= r.number_from && invNum <= r.number_to);
-        if (!resolution) {
-          resolution = resList.find((r: any) => r.active) || resList[0];
-        }
-        if (resolution) {
-          resName = resolution.name || (isDS ? "Documento Soporte Electrónico" : "Factura de Venta POS");
-          resDesc = resolution.description || "";
-          resNum = resolution.resolution_number || "";
-          resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
-          resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
-          resFrom = resolution.number_from || "";
-          resTo = resolution.number_to || "";
-          resPrefix = resolution.prefix || (isDS ? "DS" : "");
-        }
+      const shift = await pb.get('pos_shifts', posShiftId, { expand: 'user_id' });
+      if (shift.expand?.user_id?.name) {
+        cashierName = shift.expand.user_id.name;
       }
     } catch (_) {}
+  }
 
-    const companyName = settingsMap.get('company_name') || 'GRAVY S.A.S';
-    const companyNit = settingsMap.get('company_nit') || '900123456';
-    const companyAddr = settingsMap.get('company_address') || '';
-    const companyPhone = settingsMap.get('company_phone') || '';
-    const companyEmail = settingsMap.get('company_email') || '';
+  // Resolve resolution info
+  let resName = isDS ? "Documento Soporte Electrónico" : "Factura de Venta POS";
+  let resDesc = "";
+  let resNum = "";
+  let resDate = "";
+  let resExpiry = "";
+  let resFrom = "";
+  let resTo = "";
+  let resPrefix = "";
 
-    const vendorName = customer?.name || 'Proveedor / Vendedor No Obligado';
-    const vendorNit = customer?.doc_number || '222222222';
-    const vendorAddr = customer?.address || '';
-    const vendorPhone = customer?.phone || '';
-    const vendorEmail = customer?.email || '';
+  let prefix = "";
+  if (tx.number && tx.number.includes('-')) {
+    prefix = tx.number.split('-')[0].trim().toUpperCase();
+  }
+  let docType = (invoice?.pos_shift_id || tx.pos_shift_id) ? "POS" : (isDS ? "DS" : "FV");
 
-    const invoiceData = {
-      docId: tx.number,
-      issueDate: tx.date,
-      issueTime: docs[0].sent_at ? docs[0].sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
-      cufe: docs[0].cufe || 'N/A',
-      payableAmount: payableAmount,
-      isDS: isDS,
-      supplierName: isDS ? vendorName : companyName,
-      supplierNit: isDS ? vendorNit : companyNit,
-      supplierAddress: isDS ? vendorAddr : companyAddr,
-      supplierPhone: isDS ? vendorPhone : companyPhone,
-      supplierEmail: isDS ? vendorEmail : companyEmail,
+  try {
+    const registerId = (invoice?.pos_shift_id || tx.pos_shift_id) 
+      ? (await pb.get('pos_shifts', invoice?.pos_shift_id || tx.pos_shift_id).then((s: any) => s.pos_register_id || ''))
+      : '';
+    const resRecords = await pb.listAll('dian_resolutions', { filter: 'active = true' });
+    let resolution = null;
+    if (resRecords.length > 0) {
+      if (docType === 'POS' && registerId) {
+        resolution = resRecords.find((r: any) => r.pos_register_id === registerId && r.document_type === 'POS');
+      }
+      if (!resolution && prefix) {
+        resolution = resRecords.find((r: any) => (r.prefix || '').trim().toUpperCase() === prefix);
+      }
+      if (!resolution) {
+        resolution = resRecords.find((r: any) => r.document_type === docType);
+      }
+      if (!resolution) {
+        resolution = resRecords[0];
+      }
+      if (resolution) {
+        resName = resolution.name || (isDS ? "Documento Soporte Electrónico" : "Factura Electrónica de Venta");
+        resDesc = resolution.description || "";
+        resNum = resolution.resolution_number || "";
+        resDate = resolution.resolution_date ? resolution.resolution_date.slice(0, 10) : "";
+        resExpiry = resolution.expiration_date ? resolution.expiration_date.slice(0, 10) : "";
+        resFrom = resolution.number_from || "";
+        resTo = resolution.number_to || "";
+        resPrefix = resolution.prefix || (isDS ? "DS" : "");
+      }
+    }
+  } catch (_) {}
 
-      customerName: isDS ? companyName : vendorName,
-      customerNit: isDS ? companyNit : vendorNit,
-      customerAddress: isDS ? companyAddr : vendorAddr,
-      customerPhone: isDS ? companyPhone : vendorPhone,
-      customerEmail: isDS ? companyEmail : vendorEmail,
+  const companyName = settingsMap.get('company_name') || 'GRAVY S.A.S';
+  const companyNit = settingsMap.get('company_nit') || '900123456';
+  const companyAddr = settingsMap.get('company_address') || '';
+  const companyPhone = settingsMap.get('company_phone') || '';
+  const companyEmail = settingsMap.get('company_email') || '';
 
-      lines: linesData,
-      companyLogo: settingsMap.get('company_logo') || '',
-      cajero: cashierName,
-      paymentMethod: invoice?.payment_method || 'EFECTIVO',
-      received: 0,
-      change: 0,
-      resolutionName: resName,
-      resolutionDesc: resDesc,
-      resolutionNumber: resNum,
-      resolutionDate: resDate,
-      resolutionExpiry: resExpiry,
-      resolutionRangeFrom: resFrom,
-      resolutionRangeTo: resTo,
-      resolutionPrefix: resPrefix
-    };
+  const vendorName = customer?.name || 'Proveedor / Vendedor No Obligado';
+  const vendorNit = customer?.doc_number || '222222222';
+  const vendorAddr = customer?.address || '';
+  const vendorPhone = customer?.phone || '';
+  const vendorEmail = customer?.email || '';
 
-    showToast('Comprimiendo y descargando ZIP...', 'info');
-    const zipFilename = docs[0].zip_filename || number;
+  const docNotes = (invoice?.notes || tx.description || '').trim();
+
+  const invoiceData = {
+    docId: tx.number,
+    issueDate: tx.date,
+    issueTime: doc.sent_at ? doc.sent_at.split(' ')[1] || '12:00:00' : '12:00:00',
+    cufe: doc.cufe || 'N/A',
+    payableAmount: payableAmount,
+    isDS: isDS,
+    supplierName: isDS ? vendorName : companyName,
+    supplierNit: isDS ? vendorNit : companyNit,
+    supplierAddress: isDS ? vendorAddr : companyAddr,
+    supplierPhone: isDS ? vendorPhone : companyPhone,
+    supplierEmail: isDS ? vendorEmail : companyEmail,
+
+    customerName: isDS ? companyName : vendorName,
+    customerNit: isDS ? companyNit : vendorNit,
+    customerAddress: isDS ? companyAddr : vendorAddr,
+    customerPhone: isDS ? companyPhone : vendorPhone,
+    customerEmail: isDS ? companyEmail : vendorEmail,
+
+    lines: linesData,
+    notes: docNotes,
+    companyLogo: settingsMap.get('company_logo') || '',
+    cajero: cashierName,
+    paymentMethod: invoice?.payment_method || 'EFECTIVO',
+    received: 0,
+    change: 0,
+    resolutionName: resName,
+    resolutionDesc: resDesc,
+    resolutionNumber: resNum,
+    resolutionDate: resDate,
+    resolutionExpiry: resExpiry,
+    resolutionRangeFrom: resFrom,
+    resolutionRangeTo: resTo,
+    resolutionPrefix: resPrefix
+  };
+
+  const filename = doc.zip_filename || number || tx.number || 'documento_dian';
+
+  return { xmlContent, filename, invoiceData };
+}
+
+(window as any).downloadDianZip = async function(txId: string, number: string) {
+  try {
+    showToast('Generando paquete ZIP oficial...', 'info');
+    const { xmlContent, filename, invoiceData } = await buildDianInvoiceDataPayload(txId, number);
+
     const downloadUrl = (typeof pb !== 'undefined' && pb.baseUrl) ? `${pb.baseUrl}/api/dian/download-zip` : '/api/dian/download-zip';
     const res = await fetch(downloadUrl, {
       method: 'POST',
@@ -665,9 +669,9 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
         ...(typeof pb !== 'undefined' && pb.authToken ? { 'Authorization': `Bearer ${pb.authToken}` } : {})
       },
       body: JSON.stringify({
-        xmlContent: xmlContent,
-        filename: zipFilename,
-        invoiceData: invoiceData
+        xmlContent,
+        filename,
+        invoiceData
       })
     });
     if (!res.ok) {
@@ -682,7 +686,7 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${zipFilename}.zip`;
+    a.download = `${filename}.zip`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Archivo ZIP descargado exitosamente.', 'success');
@@ -690,6 +694,43 @@ window.emitDianDocFromList = async function(id: string, txId: string, docNumber:
     showToast(err.message || 'Error al descargar el ZIP', 'error');
   }
 };
+
+(window as any).viewDianPdf = async function(txId: string, number: string) {
+  try {
+    showToast('Generando representación gráfica PDF...', 'info');
+    const { xmlContent, filename, invoiceData } = await buildDianInvoiceDataPayload(txId, number);
+
+    const pdfUrl = (typeof pb !== 'undefined' && pb.baseUrl) ? `${pb.baseUrl}/api/dian/generate-pdf` : '/api/dian/generate-pdf';
+    const res = await fetch(pdfUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(typeof pb !== 'undefined' && pb.authToken ? { 'Authorization': `Bearer ${pb.authToken}` } : {})
+      },
+      body: JSON.stringify({
+        xmlContent,
+        filename,
+        invoiceData
+      })
+    });
+    if (!res.ok) {
+      let errMsg = 'El orquestador no pudo generar el PDF';
+      try {
+        const errJson = await res.json();
+        if (errJson.message || errJson.error) errMsg = errJson.message || errJson.error;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, '_blank');
+    showToast('PDF generado exitosamente.', 'success');
+  } catch (err: any) {
+    showToast(err.message || 'Error al generar el PDF', 'error');
+  }
+};
+
+(window as any).printDocSoportePdf = (window as any).viewDianPdf;
 
 (window as any).resendDianEmail = async function(txId: string, number: string) {
   try {

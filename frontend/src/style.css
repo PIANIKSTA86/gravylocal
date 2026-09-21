@@ -213,10 +213,204 @@
   .toast-warning { background: linear-gradient(135deg, #F59E0B, #D97706); }
   .toast-info    { background: linear-gradient(135deg, var(--accent-violet), #4F46E5); }
 
-  /* Login */
-  .login-left { background: radial-gradient(circle at 26% 30%, rgba(99, 102, 241, 0.08), transparent 24%), radial-gradient(circle at 78% 42%, rgba(56, 189, 248, 0.12), transparent 26%), linear-gradient(135deg, #FFFFFF 0%, #F1F5F9 54%, #E2E8F0 100%); border-right: 1px solid var(--border-soft); position: relative; overflow: hidden; }
-  .login-left::before { content: ''; position: absolute; width: 420px; height: 420px; border-radius: 50%; background: rgba(99, 102, 241, 0.04); top: -120px; right: -100px; filter: blur(8px); }
-  .login-left::after  { content: ''; position: absolute; width: 340px; height: 340px; border-radius: 50%; background: rgba(56, 189, 248, 0.04); bottom: -90px; left: -80px; filter: blur(8px); }
+  /* ─── Login & Auth Experience ─────────────────────── */
+  .login-left {
+    background: radial-gradient(circle at 18% 22%, rgba(129, 140, 248, 0.22), transparent 32%),
+                radial-gradient(circle at 82% 78%, rgba(168, 85, 247, 0.20), transparent 35%),
+                linear-gradient(145deg, #1E1B4B 0%, #312E81 45%, #4338CA 80%, #4F46E5 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+    position: relative;
+    overflow: hidden;
+    color: #F8FAFC;
+  }
+  .login-left::before {
+    content: '';
+    position: absolute;
+    width: 480px;
+    height: 480px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.28) 0%, transparent 70%);
+    top: -140px;
+    right: -100px;
+    filter: blur(25px);
+    pointer-events: none;
+  }
+  .login-left::after {
+    content: '';
+    position: absolute;
+    width: 380px;
+    height: 380px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(168, 85, 247, 0.22) 0%, transparent 70%);
+    bottom: -100px;
+    left: -80px;
+    filter: blur(25px);
+    pointer-events: none;
+  }
+
+  .login-feature-card {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.25s ease;
+  }
+  .login-feature-card:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(165, 180, 252, 0.4);
+    transform: translateX(4px);
+  }
+
+  .login-card {
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1.5px solid rgba(99, 102, 241, 0.16);
+    border-radius: 22px;
+    box-shadow: 0 24px 50px -12px rgba(79, 70, 229, 0.12), 0 0 0 1px rgba(99, 102, 241, 0.04);
+    padding: 38px 34px;
+    width: 100%;
+    max-width: 424px;
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Halo ambiental detrás de la tarjeta */
+  .login-ambient-glow {
+    position: absolute;
+    width: 360px;
+    height: 360px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 70%);
+    filter: blur(50px);
+    pointer-events: none;
+    z-index: 1;
+    animation: ambientFloat 8s infinite alternate ease-in-out;
+  }
+  @keyframes ambientFloat {
+    0% { transform: translate(-10px, -10px) scale(0.95); opacity: 0.8; }
+    100% { transform: translate(15px, 15px) scale(1.05); opacity: 1; }
+  }
+
+  /* Badge de versión con micro-acento oro/champagne */
+  .login-gold-badge {
+    background: rgba(245, 158, 11, 0.14);
+    color: #FDE68A;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    letter-spacing: 0.3px;
+  }
+
+  /* Tecla visual en botón */
+  .login-kbd-badge {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    padding: 2px 6px;
+    border-radius: 5px;
+    letter-spacing: -0.2px;
+  }
+
+  /* Botón de acceso con paleta violeta/índigo corporativa */
+  #btn-login {
+    background: linear-gradient(135deg, #6366F1 0%, #4F46E5 55%, #4338CA 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 4px 16px rgba(79, 70, 229, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.2px;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+  #btn-login:hover {
+    background: linear-gradient(135deg, #818CF8 0%, #6366F1 50%, #4F46E5 100%) !important;
+    box-shadow: 0 8px 24px rgba(79, 70, 229, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
+    transform: translateY(-1.5px) !important;
+  }
+  #btn-login:active {
+    transform: translateY(1px) !important;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+  }
+  #btn-login:disabled {
+    opacity: 0.75 !important;
+    cursor: wait !important;
+    transform: none !important;
+  }
+
+  .caps-lock-pill {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #B45309;
+    background: #FEF3C7;
+    border: 1px solid #FDE68A;
+    padding: 4px 10px;
+    border-radius: 6px;
+    margin-top: 6px;
+    animation: fadeIn 0.2s ease;
+  }
+  .caps-lock-pill.active {
+    display: inline-flex;
+  }
+
+  .status-pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #10B981;
+    position: relative;
+    display: inline-block;
+  }
+  .status-pulse-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background-color: rgba(16, 185, 129, 0.4);
+    animation: pulseGlow 2s infinite ease-out;
+  }
+  @keyframes pulseGlow {
+    0% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  /* Selector de empresas (HUB) */
+  .hub-search-box {
+    position: relative;
+    max-width: 440px;
+    margin: 0 auto 28px;
+  }
+  .hub-search-input {
+    width: 100%;
+    padding: 12px 16px 12px 42px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border-soft);
+    background: #FFFFFF;
+    color: var(--text-strong);
+    font-size: 14px;
+    font-family: inherit;
+    transition: all 0.2s ease;
+  }
+  .hub-search-input:focus {
+    outline: none;
+    border-color: var(--accent-violet-strong);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  }
+
 
   /* Plan de cuentas */
   .acct-tree-item { border-left: 2px solid #E5E7EB; margin-left: 20px; padding-left: 16px; }

@@ -1677,6 +1677,54 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
               </div>
             </div>
           </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3 pt-3" style="border-top:1px solid #E5E7EB">
+            <p class="md:col-span-4 text-xs font-semibold text-emerald-800"><i class="fas fa-building-columns mr-1"></i>DATOS BANCARIOS Y DISPERSIÓN DE NÓMINA (para nómina electrónica DIAN)</p>
+            <datalist id="nom-emp-colombian-banks">
+              <option value="Bancolombia">
+              <option value="Banco de Bogotá">
+              <option value="Davivienda">
+              <option value="BBVA Colombia">
+              <option value="Banco de Occidente">
+              <option value="Nequi">
+              <option value="Daviplata">
+              <option value="Scotiabank Colpatria">
+              <option value="Banco Popular">
+              <option value="Banco AV Villas">
+              <option value="Banco Caja Social">
+              <option value="Banco Agrario de Colombia">
+              <option value="Banco Falabella">
+              <option value="Banco Pichincha">
+              <option value="Lulo Bank">
+              <option value="Dale!">
+              <option value="Nubank">
+            </datalist>
+            <div class="form-group">
+              <label class="form-label">Entidad Bancaria</label>
+              <input id="nom-emp-bank-name" list="nom-emp-colombian-banks" class="form-input" placeholder="Ej: Bancolombia">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tipo de Cuenta</label>
+              <select id="nom-emp-bank-account-type" class="form-input">
+                <option value="Ahorros">Ahorros</option>
+                <option value="Corriente">Corriente</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Número de Cuenta</label>
+              <input id="nom-emp-bank-account" type="text" class="form-input font-mono" placeholder="Ej: 123456789">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Método de Pago DIAN</label>
+              <select id="nom-emp-payment-method" class="form-input">
+                <option value="30">30 - Transferencia Débito ACH</option>
+                <option value="47">47 - Transferencia Mismo Banco</option>
+                <option value="10">10 - Efectivo</option>
+                <option value="42">42 - Consignación Bancaria</option>
+              </select>
+            </div>
+          </div>
+
           <div class="mt-3 flex gap-2">
             <button class="btn btn-primary" id="btn-nom-emp-rule-upsert"><i class="fas fa-floppy-disk"></i> Guardar en Lista</button>
             <button class="btn btn-outline" id="btn-nom-emp-rule-clear">Limpiar</button>
@@ -1685,7 +1733,7 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
 
         <div class="overflow-x-auto">
           <table class="data-table text-sm">
-            <thead><tr><th>Empleado</th><th>Grupo</th><th>Estado</th><th>Salario básico</th><th>ARL</th><th>Pensionado</th><th>Aux. Transp</th><th>Solidaridad</th><th>Retefuente</th><th></th></tr></thead>
+            <thead><tr><th>Empleado</th><th>Grupo</th><th>Dispersión / Banco</th><th>Estado</th><th>Salario básico</th><th>ARL</th><th>Pensionado</th><th>Aux. Transp</th><th>Solidaridad</th><th>Retefuente</th><th></th></tr></thead>
             <tbody id="nom-emp-rules-body"></tbody>
           </table>
         </div>
@@ -1709,6 +1757,10 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
       setInputVal('nom-emp-rule-tercero-pension', '');
       setInputVal('nom-emp-rule-tercero-arl', '');
       setInputVal('nom-emp-rule-tercero-caja', '');
+      setInputVal('nom-emp-bank-name', '');
+      setInputVal('nom-emp-bank-account', '');
+      setInputVal('nom-emp-bank-account-type', 'Ahorros');
+      setInputVal('nom-emp-payment-method', '30');
       syncRuleThirdSearchInputs();
     };
 
@@ -1746,6 +1798,14 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
       if ($('#nom-emp-rule-tercero-arl')) $('#nom-emp-rule-tercero-arl').value = explicit.tercero_arl_id || '';
       if ($('#nom-emp-rule-tercero-caja')) $('#nom-emp-rule-tercero-caja').value = explicit.tercero_caja_id || '';
       syncRuleThirdSearchInputs();
+
+      const empData = employees.find((e: any) => e.id === employeeId);
+      if (empData) {
+        setInputVal('nom-emp-bank-name', empData.bank_name || '');
+        setInputVal('nom-emp-bank-account', empData.bank_account || '');
+        setInputVal('nom-emp-bank-account-type', empData.bank_account_type || 'Ahorros');
+        setInputVal('nom-emp-payment-method', empData.payment_method || (empData.bank_account ? '30' : '10'));
+      }
     };
 
     const renderEmployeeRules = () => {
@@ -1774,9 +1834,13 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
           const complete = isEmployeePayrollRuleComplete(effective);
           const groupName = effective.group_id ? (groupNameById[effective.group_id] || 'Grupo no encontrado') : 'Sin grupo';
           const rowBg = complete ? '' : ' style="background:#FFF7ED"';
+          const bankDisplay = emp.bank_account
+            ? `<span class="badge badge-green text-3xs font-mono"><i class="fas fa-building-columns mr-1"></i>${esc(emp.bank_name || 'Banco')} ${esc(emp.bank_account)}</span>`
+            : `<span class="badge text-3xs" style="background:#F3F4F6;color:#6B7280"><i class="fas fa-money-bill-wave mr-1"></i>Efectivo (10)</span>`;
           return `<tr${rowBg}>
             <td>${esc(emp.name || 'Empleado')}</td>
             <td>${esc(groupName)}</td>
+            <td>${bankDisplay}</td>
             <td>${complete ? '<span class="badge badge-green">Completo</span>' : '<span class="badge" style="background:#FEE2E2;color:#991B1B">Pendiente</span>'}</td>
             <td>${fmt(effective.basic_salary || 0)}</td>
             <td>${esc(arlText(effective.arl_risk_level || 1))}</td>
@@ -1792,7 +1856,7 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
             </td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="9" class="text-center py-6" style="color:#9CA3AF">Sin empleados activos.</td></tr>';
+        : '<tr><td colspan="11" class="text-center py-6" style="color:#9CA3AF">Sin empleados activos.</td></tr>';
     };
 
     renderEmployeeRules();
@@ -1809,7 +1873,7 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
       loadRuleToForm(employeeId);
     });
 
-    $('#btn-nom-emp-rule-upsert')?.addEventListener('click', () => {
+    $('#btn-nom-emp-rule-upsert')?.addEventListener('click', async () => {
       const employeeId = getSelectVal('nom-emp-rule-employee');
       if (!employeeId) return showToast('Selecciona un empleado.', 'warning');
 
@@ -1832,10 +1896,33 @@ async function openNominaEmployeeSettings(employees = [], selectedEmployeeId = n
         tercero_caja_id: getSelectVal('nom-emp-rule-tercero-caja') || '',
       };
 
+      const bankName = (getInputVal('nom-emp-bank-name') || '').trim();
+      const bankAccount = (getInputVal('nom-emp-bank-account') || '').trim();
+      const bankAccountType = getSelectVal('nom-emp-bank-account-type') || 'Ahorros';
+      const paymentMethod = getSelectVal('nom-emp-payment-method') || (bankAccount ? '30' : '10');
+
+      try {
+        await pb.update('third_parties', employeeId, {
+          bank_name: bankName,
+          bank_account: bankAccount,
+          bank_account_type: bankAccountType,
+          payment_method: paymentMethod
+        });
+        const empRec = employees.find((e: any) => e.id === employeeId);
+        if (empRec) {
+          empRec.bank_name = bankName;
+          empRec.bank_account = bankAccount;
+          empRec.bank_account_type = bankAccountType;
+          empRec.payment_method = paymentMethod;
+        }
+      } catch (err: any) {
+        console.warn('No se pudieron actualizar los datos bancarios en third_parties:', err);
+      }
+
       local.config.employee_rules = (local.config.employee_rules || []).filter((r) => r.employee_id !== employeeId);
       local.config.employee_rules.push(rule);
       renderEmployeeRules();
-      showToast('Parámetro de empleado agregado/actualizado', 'success');
+      showToast('Parámetro y datos bancarios de empleado actualizados', 'success');
     });
 
     $('#btn-nom-emp-rule-clear')?.addEventListener('click', () => {
@@ -2413,6 +2500,7 @@ async function renderNominaEmpleados(c) {
                 <th>Nombre</th>
                 <th>Identificación</th>
                 <th>Grupo / Mapeo</th>
+                <th>Dispersión / Pago</th>
                 <th class="text-right">Salario Básico</th>
                 <th>ARL</th>
                 <th>Salud/Pensión</th>
@@ -2425,12 +2513,19 @@ async function renderNominaEmpleados(c) {
                 const rule = getEmployeePayrollRule(config, emp.id);
                 const groupName = config.employee_groups?.find(g => g.id === rule.group_id)?.name || 'Sin grupo';
                 const arlText = `Nivel ${rule.arl_risk_level}`;
+                const bankDisplay = emp.bank_account
+                  ? `<div>
+                       <span class="text-xs font-semibold text-emerald-800"><i class="fas fa-building-columns mr-1 text-emerald-600"></i>${esc(emp.bank_name || 'Banco')}</span>
+                       <div class="text-[11px] text-gray-500 font-mono">${esc(emp.bank_account_type || 'Ahorros')}: ${esc(emp.bank_account)}</div>
+                     </div>`
+                  : `<span class="badge text-xs" style="background:#F3F4F6;color:#6B7280"><i class="fas fa-money-bill-wave mr-1"></i>Efectivo (10)</span>`;
                 
                 return `
                   <tr>
                     <td class="font-semibold">${esc(emp.name)}</td>
                     <td>${esc(emp.doc_type || 'CC')} ${esc(emp.doc_number || '')}</td>
                     <td><span class="badge" style="background:#E2E8F0;color:#334155">${esc(groupName)}</span></td>
+                    <td>${bankDisplay}</td>
                     <td class="text-right font-medium text-blue-900">${rule.basic_salary ? fmt(rule.basic_salary) : '<span class="text-red-500 font-semibold">No parametrizado</span>'}</td>
                     <td>${esc(arlText)}</td>
                     <td>
@@ -2450,7 +2545,7 @@ async function renderNominaEmpleados(c) {
                     </td>
                   </tr>
                 `;
-              }).join('') : '<tr><td colspan="8" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
+              }).join('') : '<tr><td colspan="9" class="text-center py-8 text-gray-400">No se encontraron empleados registrados.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -5497,7 +5592,7 @@ function buildSingleWorkerUblXml(
   }
 
   let pagoXml = '';
-  if (emp.metodoPago === 'EFECTIVO' || emp.formaPago === '10') {
+  if (emp.metodoPagoCode === '10' || emp.metodoPago === 'EFECTIVO' || emp.formaPago === '10') {
     pagoXml = `  <Pago Forma="1" Metodo="10" />`;
   } else {
     const bancoNombre = esc(emp.banco || company.bancoDefault || 'Entidad Bancaria');
@@ -5805,11 +5900,11 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           numeroDocumento: emp.doc_number || '00000000',
           cargo: emp.notes || 'Colaborador',
           email: emp.email || '',
-          banco: emp.bank_name || '',
-          numeroCuenta: emp.bank_account || '',
-          tipoCuenta: 'Ahorros',
-          metodoPago: emp.bank_account ? 'TRANSFERENCIA' : 'EFECTIVO',
-          metodoPagoCode: emp.bank_account ? '30' : '10',
+          banco: (emp.bank_name || '').trim(),
+          numeroCuenta: (emp.bank_account || '').trim(),
+          tipoCuenta: emp.bank_account_type || 'Ahorros',
+          metodoPago: (emp.payment_method === '10' || (!emp.bank_account && emp.payment_method !== '30' && emp.payment_method !== '47' && emp.payment_method !== '42')) ? 'EFECTIVO' : 'TRANSFERENCIA',
+          metodoPagoCode: emp.payment_method || (emp.bank_account ? '30' : '10'),
           fechaIngreso: emp.hire_date || `${year}-01-01`,
           tipoTrabajador: '01',
           subTipoTrabajador: '00',
@@ -6339,35 +6434,39 @@ function parseNominaXmlConcepts(xmlStr: string) {
     // 1. Devengados
     const devNode = doc.querySelector('Devengados');
     if (devNode) {
+      // Básico
       const basico = devNode.querySelector('Basico');
       if (basico) {
-        const val = parseFloat(basico.getAttribute('SueldoTrabajado') || '0');
+        const val = parseFloat(basico.getAttribute('SueldoTrabajado') || basico.textContent || '0');
         const dias = basico.getAttribute('DiasTrabajados') || '30';
         if (val > 0) devengos.push({ code: '001', name: 'Sueldo Básico', qty: `${dias} días`, value: val });
       }
 
+      // Transporte y viáticos
       const transp = devNode.querySelector('Transporte');
       if (transp) {
         const aux = parseFloat(transp.getAttribute('AuxilioTransporte') || '0');
         if (aux > 0) devengos.push({ code: '040', name: 'Auxilio de Transporte', qty: '30 días', value: aux });
-        const viatS = parseFloat(transp.getAttribute('ViaticoManutS') || '0');
+        const viatS = parseFloat(transp.getAttribute('ViaticoManuAlojS') || transp.getAttribute('ViaticoManutS') || '0');
         if (viatS > 0) devengos.push({ code: '041', name: 'Viáticos Salariales', qty: '—', value: viatS });
-        const viatNS = parseFloat(transp.getAttribute('ViaticoManutNS') || '0');
+        const viatNS = parseFloat(transp.getAttribute('ViaticoManuAlojNS') || transp.getAttribute('ViaticoManutNS') || '0');
         if (viatNS > 0) devengos.push({ code: '042', name: 'Viáticos No Salariales', qty: '—', value: viatNS });
       }
 
-      const comisiones = devNode.querySelectorAll('Comisiones Comision');
-      comisiones.forEach((c) => {
-        const val = parseFloat(c.textContent || '0');
+      // Comisiones
+      devNode.querySelectorAll('Comisiones Comision, Comision').forEach((c) => {
+        const val = parseFloat(c.textContent || c.getAttribute('Pago') || '0');
         if (val > 0) devengos.push({ code: '050', name: 'Comisiones', qty: '—', value: val });
       });
 
+      // Horas Extras y Recargos UBL 2.1
       const otTypes: Record<string, { code: string; name: string }> = {
         HED: { code: '101', name: 'Hora Extra Diurna (25%)' },
         HEN: { code: '102', name: 'Hora Extra Nocturna (75%)' },
         HRN: { code: '103', name: 'Recargo Nocturno (35%)' },
         HEDDF: { code: '104', name: 'Hora Extra Diurna Dominical/Festiva (100%)' },
         HRDF: { code: '105', name: 'Recargo Dominical/Festivo (75%)' },
+        HRDDF: { code: '105', name: 'Recargo Dominical/Festivo (75%)' },
         HENDF: { code: '106', name: 'Hora Extra Nocturna Dominical/Festiva (150%)' },
         HRNDF: { code: '107', name: 'Recargo Nocturno Dominical/Festivo (110%)' }
       };
@@ -6375,104 +6474,191 @@ function parseNominaXmlConcepts(xmlStr: string) {
       Object.keys(otTypes).forEach((tag) => {
         const otNodes = devNode.querySelectorAll(tag);
         otNodes.forEach((node) => {
-          const val = parseFloat(node.getAttribute('Pago') || '0');
+          const val = parseFloat(node.getAttribute('Pago') || node.textContent || '0');
           const cant = node.getAttribute('Cantidad') || '1';
-          if (val > 0) devengos.push({ code: otTypes[tag].code, name: otTypes[tag].name, qty: `${cant} hrs`, value: val });
+          const porc = node.getAttribute('Porcentaje') || '';
+          if (val > 0) {
+            devengos.push({ 
+              code: otTypes[tag].code, 
+              name: otTypes[tag].name, 
+              qty: `${cant} hrs${porc ? ` (${porc}%)` : ''}`, 
+              value: val 
+            });
+          }
         });
       });
 
-      devNode.querySelectorAll('BonificacionS, BonificacionNS').forEach((b) => {
-        const val = parseFloat(b.getAttribute('Pago') || b.textContent || '0');
-        const isSal = b.tagName.includes('BonificacionS');
-        if (val > 0) devengos.push({ code: isSal ? '060' : '061', name: isSal ? 'Bonificación Salarial' : 'Bonificación No Salarial', qty: '—', value: val });
+      // Vacaciones (Comunes o Compensadas)
+      devNode.querySelectorAll('VacacionesComunes, VacacionesCompensadas').forEach((v) => {
+        const val = parseFloat(v.getAttribute('Pago') || v.textContent || '0');
+        const cant = v.getAttribute('Cantidad') || '—';
+        const isComp = v.tagName.toLowerCase().includes('compensada');
+        if (val > 0) {
+          devengos.push({
+            code: isComp ? '086' : '085',
+            name: isComp ? 'Vacaciones Compensadas' : 'Vacaciones Disfrutadas / Comunes',
+            qty: `${cant} días`,
+            value: val
+          });
+        }
       });
 
-      devNode.querySelectorAll('AuxilioS, AuxilioNS').forEach((a) => {
-        const val = parseFloat(a.getAttribute('Pago') || a.textContent || '0');
-        const isSal = a.tagName.includes('AuxilioS');
-        if (val > 0) devengos.push({ code: isSal ? '070' : '071', name: isSal ? 'Auxilio Salarial' : 'Auxilio No Salarial', qty: '—', value: val });
+      // Primas de Servicios
+      devNode.querySelectorAll('Primas, Prima').forEach((p) => {
+        const val = parseFloat(p.getAttribute('Pago') || p.textContent || '0');
+        const cant = p.getAttribute('Cantidad') || '';
+        if (val > 0) {
+          devengos.push({
+            code: '080',
+            name: 'Prima de Servicios (Pagada)',
+            qty: cant ? `${cant} días` : '—',
+            value: val
+          });
+        }
       });
 
-      const primas = devNode.querySelectorAll('Prima');
-      primas.forEach((p) => {
-        const val = parseFloat(p.getAttribute('Pago') || '0');
-        if (val > 0) devengos.push({ code: '080', name: 'Prima de Servicios (Pagada)', qty: '—', value: val });
-      });
-
-      const cesantias = devNode.querySelectorAll('Cesantias');
-      cesantias.forEach((cs) => {
+      // Cesantías e Intereses de Cesantías
+      devNode.querySelectorAll('Cesantias').forEach((cs) => {
         const valP = parseFloat(cs.getAttribute('Pago') || '0');
         const valInt = parseFloat(cs.getAttribute('PagoIntereses') || '0');
+        const pctInt = cs.getAttribute('Porcentaje') || '12.00';
         if (valP > 0) devengos.push({ code: '090', name: 'Cesantías Pagadas', qty: '—', value: valP });
-        if (valInt > 0) devengos.push({ code: '091', name: 'Intereses a las Cesantías Pagados', qty: '—', value: valInt });
+        if (valInt > 0) devengos.push({ code: '091', name: 'Intereses a las Cesantías Pagados', qty: `${pctInt}%`, value: valInt });
       });
 
-      const incapacidades = devNode.querySelectorAll('Incapacidad');
-      incapacidades.forEach((inc) => {
-        const val = parseFloat(inc.getAttribute('Pago') || '0');
+      // Incapacidades
+      devNode.querySelectorAll('Incapacidad').forEach((inc) => {
+        const val = parseFloat(inc.getAttribute('Pago') || inc.textContent || '0');
         const cant = inc.getAttribute('Cantidad') || '1';
-        if (val > 0) devengos.push({ code: '120', name: 'Incapacidad', qty: `${cant} días`, value: val });
+        const tipo = inc.getAttribute('Tipo') || '1';
+        const tipoLabel = tipo === '1' ? 'Común' : (tipo === '2' ? 'Profesional' : 'Laboral');
+        if (val > 0) devengos.push({ code: '120', name: `Incapacidad (${tipoLabel})`, qty: `${cant} días`, value: val });
       });
 
+      // Licencias (Maternidad/Paternidad, Remunerada, No Remunerada)
       devNode.querySelectorAll('LicenciaMP, LicenciaR, LicenciaNR').forEach((lic) => {
-        const val = parseFloat(lic.getAttribute('Pago') || '0');
+        const val = parseFloat(lic.getAttribute('Pago') || lic.textContent || '0');
         const cant = lic.getAttribute('Cantidad') || '1';
-        const nameStr = lic.tagName === 'LicenciaMP' ? 'Licencia de Maternidad/Paternidad' : (lic.tagName === 'LicenciaR' ? 'Licencia Remunerada' : 'Licencia No Remunerada');
-        if (val > 0) devengos.push({ code: '130', name: nameStr, qty: `${cant} días`, value: val });
+        const nameStr = lic.tagName === 'LicenciaMP' ? 'Licencia Maternidad / Paternidad' : (lic.tagName === 'LicenciaR' ? 'Licencia Remunerada' : 'Licencia No Remunerada');
+        const codeStr = lic.tagName === 'LicenciaMP' ? '131' : (lic.tagName === 'LicenciaR' ? '130' : '132');
+        if (val > 0) devengos.push({ code: codeStr, name: nameStr, qty: `${cant} días`, value: val });
       });
 
+      // Bonificaciones
+      devNode.querySelectorAll('Bonificacion, BonificacionS, BonificacionNS').forEach((b) => {
+        if (b.tagName === 'Bonificacion') {
+          const bonS = parseFloat(b.getAttribute('BonificacionS') || '0');
+          const bonNS = parseFloat(b.getAttribute('BonificacionNS') || '0');
+          if (bonS > 0) devengos.push({ code: '060', name: 'Bonificación Salarial', qty: '—', value: bonS });
+          if (bonNS > 0) devengos.push({ code: '061', name: 'Bonificación No Salarial', qty: '—', value: bonNS });
+        } else {
+          const val = parseFloat(b.getAttribute('Pago') || b.textContent || '0');
+          const isSal = b.tagName.includes('BonificacionS');
+          if (val > 0) devengos.push({ code: isSal ? '060' : '061', name: isSal ? 'Bonificación Salarial' : 'Bonificación No Salarial', qty: '—', value: val });
+        }
+      });
+
+      // Auxilios
+      devNode.querySelectorAll('Auxilio, AuxilioS, AuxilioNS').forEach((a) => {
+        if (a.tagName === 'Auxilio') {
+          const auxS = parseFloat(a.getAttribute('AuxilioS') || '0');
+          const auxNS = parseFloat(a.getAttribute('AuxilioNS') || '0');
+          if (auxS > 0) devengos.push({ code: '070', name: 'Auxilio Salarial', qty: '—', value: auxS });
+          if (auxNS > 0) devengos.push({ code: '071', name: 'Auxilio No Salarial', qty: '—', value: auxNS });
+        } else {
+          const val = parseFloat(a.getAttribute('Pago') || a.textContent || '0');
+          const isSal = a.tagName.includes('AuxilioS');
+          if (val > 0) devengos.push({ code: isSal ? '070' : '071', name: isSal ? 'Auxilio Salarial' : 'Auxilio No Salarial', qty: '—', value: val });
+        }
+      });
+
+      // Dotación
+      devNode.querySelectorAll('Dotacion').forEach((dot) => {
+        const val = parseFloat(dot.textContent || dot.getAttribute('Pago') || '0');
+        if (val > 0) devengos.push({ code: '140', name: 'Dotación', qty: '—', value: val });
+      });
+
+      // Otros Conceptos
       devNode.querySelectorAll('OtroConcepto').forEach((oc) => {
-        const val = parseFloat(oc.getAttribute('PagoConcepto') || oc.getAttribute('PagoS') || oc.getAttribute('PagoNS') || '0');
-        const concConcepto = oc.getAttribute('Conceptoo') || oc.getAttribute('Descripcion') || 'Otros Conceptos';
-        if (val > 0) devengos.push({ code: '190', name: concConcepto, qty: '—', value: val });
+        const cS = parseFloat(oc.getAttribute('ConceptoS') || oc.getAttribute('PagoS') || '0');
+        const cNS = parseFloat(oc.getAttribute('ConceptoNS') || oc.getAttribute('PagoNS') || oc.getAttribute('PagoConcepto') || '0');
+        const desc = oc.getAttribute('DescripcionConcepto') || oc.getAttribute('Conceptoo') || oc.getAttribute('Descripcion') || 'Otros Conceptos';
+        if (cS > 0) devengos.push({ code: '190', name: `${desc} (Salarial)`, qty: '—', value: cS });
+        if (cNS > 0) devengos.push({ code: '191', name: `${desc} (No Salarial)`, qty: '—', value: cNS });
       });
     }
 
     // 2. Deducciones
     const dedNode = doc.querySelector('Deducciones');
     if (dedNode) {
+      // Salud
       const salud = dedNode.querySelector('Salud');
       if (salud) {
-        const val = parseFloat(salud.getAttribute('Deduccion') || '0');
-        if (val > 0) deducciones.push({ code: '201', name: 'Salud (Aporte Trabajador)', qty: '4%', value: val });
+        const val = parseFloat(salud.getAttribute('Deduccion') || salud.textContent || '0');
+        const pct = salud.getAttribute('Porcentaje') || '4';
+        if (val > 0) deducciones.push({ code: '201', name: 'Salud (Aporte Trabajador)', qty: `${pct}%`, value: val });
       }
 
+      // Pensión
       const pension = dedNode.querySelector('FondoPension');
       if (pension) {
-        const val = parseFloat(pension.getAttribute('Deduccion') || '0');
-        if (val > 0) deducciones.push({ code: '202', name: 'Fondo Pensión (Aporte Trabajador)', qty: '4%', value: val });
+        const val = parseFloat(pension.getAttribute('Deduccion') || pension.textContent || '0');
+        const pct = pension.getAttribute('Porcentaje') || '4';
+        if (val > 0) deducciones.push({ code: '202', name: 'Fondo Pensión (Aporte Trabajador)', qty: `${pct}%`, value: val });
       }
 
+      // Fondo Solidaridad Pensional
       const fsp = dedNode.querySelector('FondoSP');
       if (fsp) {
-        const val = parseFloat(fsp.getAttribute('Deduccion') || fsp.getAttribute('DeduccionSP') || '0');
-        if (val > 0) deducciones.push({ code: '203', name: 'Fondo de Solidaridad Pensional', qty: '—', value: val });
+        const valSP = parseFloat(fsp.getAttribute('DeduccionSP') || fsp.getAttribute('Deduccion') || fsp.textContent || '0');
+        const valSub = parseFloat(fsp.getAttribute('DeduccionSub') || '0');
+        const pct = fsp.getAttribute('Porcentaje') || '1';
+        if (valSP > 0) deducciones.push({ code: '203', name: 'Fondo de Solidaridad Pensional', qty: `${pct}%`, value: valSP });
+        if (valSub > 0) deducciones.push({ code: '204', name: 'Fondo de Subsistencia Pensional', qty: '—', value: valSub });
       }
 
+      // Sindicatos
       dedNode.querySelectorAll('Sindicato').forEach((s) => {
-        const val = parseFloat(s.getAttribute('Deduccion') || '0');
-        if (val > 0) deducciones.push({ code: '210', name: 'Cuota Sindical', qty: '—', value: val });
+        const val = parseFloat(s.getAttribute('Deduccion') || s.textContent || '0');
+        const pct = s.getAttribute('Porcentaje') || '';
+        if (val > 0) deducciones.push({ code: '210', name: 'Cuota Sindical', qty: pct ? `${pct}%` : '—', value: val });
       });
 
+      // Sanciones
       dedNode.querySelectorAll('Sancion').forEach((s) => {
-        const val = parseFloat(s.getAttribute('SancionP') || s.getAttribute('SancionV') || '0');
+        const val = parseFloat(s.getAttribute('SancionP') || s.getAttribute('SancionV') || s.textContent || '0');
         if (val > 0) deducciones.push({ code: '220', name: 'Sanciones Disciplinarias', qty: '—', value: val });
       });
 
+      // Libranzas
       dedNode.querySelectorAll('Libranza').forEach((l) => {
-        const val = parseFloat(l.getAttribute('Deduccion') || '0');
+        const val = parseFloat(l.getAttribute('Deduccion') || l.textContent || '0');
         const desc = l.getAttribute('Descripcion') || 'Libranza';
-        if (val > 0) deducciones.push({ code: '230', name: desc, qty: '—', value: val });
+        if (val > 0) deducciones.push({ code: '230', name: `Libranza (${desc})`, qty: '—', value: val });
       });
 
-      const ret = dedNode.querySelector('RetencionFuente');
-      if (ret) {
-        const val = parseFloat(ret.getAttribute('Deduccion') || '0');
-        if (val > 0) deducciones.push({ code: '240', name: 'Retención en la Fuente', qty: '—', value: val });
-      }
+      // Anticipos
+      dedNode.querySelectorAll('Anticipo').forEach((ant) => {
+        const val = parseFloat(ant.textContent || ant.getAttribute('Deduccion') || '0');
+        if (val > 0) deducciones.push({ code: '235', name: 'Anticipos de Nómina', qty: '—', value: val });
+      });
 
-      dedNode.querySelectorAll('OtraDeduccion').forEach((od) => {
-        const val = parseFloat(od.textContent || od.getAttribute('Deduccion') || '0');
+      // Retención en la Fuente
+      dedNode.querySelectorAll('RetencionFuente').forEach((ret) => {
+        const val = parseFloat(ret.textContent || ret.getAttribute('Deduccion') || '0');
+        const pct = ret.getAttribute('Porcentaje') || '';
+        if (val > 0) deducciones.push({ code: '240', name: 'Retención en la Fuente', qty: pct ? `${pct}%` : '—', value: val });
+      });
+
+      // Embargos Fiscales / Judiciales
+      dedNode.querySelectorAll('EmbargoFiscal').forEach((emb) => {
+        const val = parseFloat(emb.textContent || emb.getAttribute('Deduccion') || '0');
+        if (val > 0) deducciones.push({ code: '250', name: 'Embargo Fiscal / Judicial', qty: '—', value: val });
+      });
+
+      // Deudas / Préstamos / Otras Deducciones
+      dedNode.querySelectorAll('Deuda, OtraDeduccion').forEach((d) => {
+        const val = parseFloat(d.textContent || d.getAttribute('Deduccion') || '0');
         if (val > 0) deducciones.push({ code: '290', name: 'Otras Deducciones / Préstamos', qty: '—', value: val });
       });
     }
@@ -6575,61 +6761,130 @@ function parseNominaXmlConcepts(xmlStr: string) {
     const qrData = encodeURIComponent(`NumFac=${numSec}&FecFac=${rec.fecha_envio || todayStr()}&NitFac=${companyNit}&DocAdq=${doc}&ValDev=${devengosVal}&ValDed=${deduccionesVal}&ValTol=${netoVal}&CUFE=${cune}`);
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${qrData}`;
 
-    // Parsear conceptos reales del XML
-    const parsedConcepts = parseNominaXmlConcepts(xml);
-    let conceptRowsHtml = '';
-    const maxRows = Math.max(parsedConcepts.devengos.length, parsedConcepts.deducciones.length, 1);
-
-    for (let i = 0; i < maxRows; i++) {
-      const d = parsedConcepts.devengos[i] || null;
-      const ded = parsedConcepts.deducciones[i] || null;
-
-      if (d) {
-        conceptRowsHtml += `
-          <tr>
-            <td class="font-mono">${esc(d.code)}</td>
-            <td class="font-semibold">${esc(d.name)}</td>
-            <td class="text-center">${esc(d.qty)}</td>
-            <td class="text-right font-medium text-blue-900">${fmt(d.value)}</td>
-            <td class="text-right">—</td>
-          </tr>
-        `;
+    // ── Consultar configuración de nómina del empleado para resolver entidades reales ──
+    let empRule: any = null;
+    try {
+      const { config: nomConfig } = await getNominaConfigWithRow();
+      if (nomConfig && emp.id) {
+        empRule = getEmployeePayrollRule(nomConfig, emp.id);
       }
-      if (ded) {
-        conceptRowsHtml += `
-          <tr>
-            <td class="font-mono">${esc(ded.code)}</td>
-            <td class="font-semibold">${esc(ded.name)}</td>
-            <td class="text-center">${esc(ded.qty)}</td>
-            <td class="text-right">—</td>
-            <td class="text-right font-medium text-red-900">${fmt(ded.value)}</td>
-          </tr>
-        `;
+    } catch (_) {}
+
+    const thirdIdsToResolve = [
+      empRule?.tercero_salud_id,
+      empRule?.tercero_pension_id,
+      empRule?.tercero_arl_id,
+      empRule?.tercero_caja_id
+    ].filter(Boolean);
+
+    const resolvedThirdsMap = new Map<string, string>();
+    if (thirdIdsToResolve.length > 0) {
+      try {
+        const filterExpr = thirdIdsToResolve.map((tid: string) => `id = "${tid}"`).join(' || ');
+        const thirds = await pb.listAll('third_parties', { filter: filterExpr });
+        thirds.forEach((t: any) => {
+          resolvedThirdsMap.set(t.id, t.name || t.razon_social || '');
+        });
+      } catch (_) {}
+    }
+
+    // Parsear conceptos reales del XML oficial UBL 2.1
+    const parsedConcepts = parseNominaXmlConcepts(xml);
+
+    // Verificación y ajuste de consistencia para garantizar que la suma de conceptos coincida con los totales oficiales
+    const sumDev = round2(parsedConcepts.devengos.reduce((acc, x) => acc + x.value, 0));
+    const diffDev = round2(devengosVal - sumDev);
+    if (Math.abs(diffDev) >= 0.01) {
+      if (parsedConcepts.devengos.length === 0) {
+        parsedConcepts.devengos.push({ code: '001', name: 'Sueldo Básico / Devengados', qty: '30 días', value: devengosVal });
+      } else if (diffDev > 0) {
+        parsedConcepts.devengos.push({ code: '099', name: 'Otros Devengados Período', qty: '—', value: diffDev });
       }
     }
+
+    const sumDed = round2(parsedConcepts.deducciones.reduce((acc, x) => acc + x.value, 0));
+    const diffDed = round2(deduccionesVal - sumDed);
+    if (Math.abs(diffDed) >= 0.01) {
+      if (parsedConcepts.deducciones.length === 0 && deduccionesVal > 0) {
+        parsedConcepts.deducciones.push({ code: '299', name: 'Deducciones de Nómina', qty: '—', value: deduccionesVal });
+      } else if (diffDed > 0) {
+        parsedConcepts.deducciones.push({ code: '299', name: 'Otras Deducciones Período', qty: '—', value: diffDed });
+      }
+    }
+
+    let conceptRowsHtml = '';
+    parsedConcepts.devengos.forEach((d) => {
+      conceptRowsHtml += `
+        <tr>
+          <td class="font-mono text-gray-700">${esc(d.code)}</td>
+          <td class="font-semibold text-gray-900">${esc(d.name)}</td>
+          <td class="text-center text-gray-600">${esc(d.qty)}</td>
+          <td class="text-right font-medium text-blue-900">${fmt(d.value)}</td>
+          <td class="text-right text-gray-300">—</td>
+        </tr>
+      `;
+    });
+
+    parsedConcepts.deducciones.forEach((ded) => {
+      conceptRowsHtml += `
+        <tr>
+          <td class="font-mono text-gray-700">${esc(ded.code)}</td>
+          <td class="font-semibold text-gray-900">${esc(ded.name)}</td>
+          <td class="text-center text-gray-600">${esc(ded.qty)}</td>
+          <td class="text-right text-gray-300">—</td>
+          <td class="text-right font-medium text-red-900">${fmt(ded.value)}</td>
+        </tr>
+      `;
+    });
 
     if (!conceptRowsHtml) {
       conceptRowsHtml = `
         <tr>
-          <td class="font-mono">001</td>
-          <td class="font-semibold">Sueldo Básico</td>
-          <td class="text-center">30 días</td>
+          <td class="font-mono text-gray-700">001</td>
+          <td class="font-semibold text-gray-900">Sueldo Básico</td>
+          <td class="text-center text-gray-600">30 días</td>
           <td class="text-right font-medium text-blue-900">${fmt(devengosVal)}</td>
-          <td class="text-right">—</td>
+          <td class="text-right text-gray-300">—</td>
         </tr>
       `;
     }
 
-    const bancoNombre = bancoXml || emp.bank_name || 'Bancolombia';
-    const numeroCuenta = numeroCuentaXml || emp.bank_account || '—';
-    const metodoPagoLabel = metodoPagoXml === '10' ? 'Efectivo' : (metodoPagoXml === '30' ? 'Transferencia Bancaria' : (metodoPagoXml === '40' ? 'Consignación Bancaria' : 'Transferencia Bancaria'));
+    const bancoNombre = bancoXml || emp.bank_name || '';
+    const tipoCuentaXmlDesc = tipoCuentaXml || emp.bank_account_type || 'Ahorros';
+    const numeroCuenta = numeroCuentaXml || emp.bank_account || '';
+    const cuentaBancariaLabel = numeroCuenta ? `${bancoNombre || 'Banco'} · ${tipoCuentaXmlDesc}: ${numeroCuenta}` : 'Efectivo / Sin cuenta';
+    const metodoPagoLabel = metodoPagoXml === '10' ? '10 - Efectivo' : (metodoPagoXml === '30' ? '30 - Transferencia Débito Interbancaria (ACH)' : (metodoPagoXml === '47' ? '47 - Transferencia Débito Bancaria (Mismo Banco)' : (metodoPagoXml === '42' ? '42 - Consignación Bancaria' : (metodoPagoXml ? `${metodoPagoXml} - Transferencia Bancaria` : '30 - Transferencia ACH'))));
     const fechaIngresoLabel = fechaIngresoXml || emp.date_hired || emp.fecha_ingreso || '01/01/2020';
     const fechaPagoLabel = fechaLiqFinXml || `${rec.ano}-${String(rec.mes).padStart(2, '0')}-30`;
     const centroCostoLabel = emp.cost_center || emp.centro_costo || 'General / Colaboradores';
-    const epsLabel = emp.eps || emp.health_entity || 'EPS Registrada';
-    const afpLabel = emp.pension_fund || emp.afp || 'AFP Registrada';
-    const arlLabel = emp.arl || 'ARL Sura / Positiva';
-    const cajaLabel = emp.caja_compensacion || 'Caja de Compensación';
+
+    // Resolver nombres reales de entidades de seguridad social
+    const epsName = empRule?.tercero_salud_id ? resolvedThirdsMap.get(empRule.tercero_salud_id) : '';
+    const epsLabel = epsName || (emp.eps && emp.eps !== 'EPS Registrada' ? emp.eps : (emp.health_entity && emp.health_entity !== 'EPS Registrada' ? emp.health_entity : 'No asignada'));
+
+    const afpName = empRule?.tercero_pension_id ? resolvedThirdsMap.get(empRule.tercero_pension_id) : '';
+    const afpLabel = afpName || (emp.pension_fund && emp.pension_fund !== 'AFP Registrada' ? emp.pension_fund : (emp.afp && emp.afp !== 'AFP Registrada' ? emp.afp : (empRule?.is_pensioner ? 'Pensionado (Exento)' : 'No asignada')));
+
+    const arlName = empRule?.tercero_arl_id ? resolvedThirdsMap.get(empRule.tercero_arl_id) : '';
+    const arlRiskLevel = empRule?.arl_risk_level || 1;
+    const arlRiskRates: Record<number, string> = { 1: '0.522%', 2: '1.044%', 3: '2.436%', 4: '4.350%', 5: '6.960%' };
+    const arlRateStr = arlRiskRates[arlRiskLevel] || '0.522%';
+    let arlLabel = 'No asignada';
+    if (arlName) {
+      arlLabel = `${arlName} - Riesgo ${arlRiskLevel} (${arlRateStr})`;
+    } else if (emp.arl && !emp.arl.includes('Sura / Positiva')) {
+      arlLabel = `${emp.arl} - Riesgo ${arlRiskLevel} (${arlRateStr})`;
+    } else if (empRule?.tercero_arl_id) {
+      arlLabel = `ARL Asignada - Riesgo ${arlRiskLevel} (${arlRateStr})`;
+    } else {
+      arlLabel = `ARL - Riesgo ${arlRiskLevel} (${arlRateStr})`;
+    }
+
+    const cajaName = empRule?.tercero_caja_id ? resolvedThirdsMap.get(empRule.tercero_caja_id) : '';
+    const cajaLabel = cajaName || (emp.caja_compensacion && emp.caja_compensacion !== 'Caja de Compensación' ? emp.caja_compensacion : 'No asignada');
+
+    // Sueldo base real
+    const sueldoBaseVal = parsedConcepts.devengos.find(d => d.code === '001')?.value || empRule?.basic_salary || emp.salary_base || devengosVal;
 
     const bodyHtml = `
       <style>
@@ -6676,9 +6931,9 @@ function parseNominaXmlConcepts(xmlStr: string) {
           </tr>
           <tr>
             <td class="font-bold bg-gray-50">Sueldo Base:</td>
-            <td class="font-bold text-blue-900">${fmt(rec.total_devengos || 0)}</td>
+            <td class="font-bold text-blue-900">${fmt(sueldoBaseVal)}</td>
             <td class="font-bold bg-gray-50">Banco / Cuenta:</td>
-            <td>${esc(bancoNombre)} / ${esc(numeroCuenta)}</td>
+            <td>${esc(cuentaBancariaLabel)}</td>
           </tr>
           <tr>
             <td class="font-bold bg-gray-50">Fecha Ingreso:</td>

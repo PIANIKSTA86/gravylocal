@@ -405,20 +405,40 @@ interface CompanyAccess {
 }
 
 async function doLogin() {
-  const email = getInputVal('login-email');
+  const email = (getInputVal('login-email') || '').trim();
   const rawPass = $('#login-pass')?.value ?? '';
   const errEl = $('#login-error');
-  errEl.classList.add('hidden');
+  const errTxt = $('#login-error-text');
+  
+  const showError = (msg: string) => {
+    if (errTxt) errTxt.textContent = msg;
+    else if (errEl) errEl.textContent = msg;
+    errEl?.classList.remove('hidden');
+  };
+
+  errEl?.classList.add('hidden');
 
   if (!email || !rawPass) {
-    errEl.textContent = 'Ingresa correo y contraseña';
-    errEl.classList.remove('hidden');
+    showError('Por favor ingresa tu correo electrónico y contraseña.');
     return;
+  }
+
+  // Guardar o borrar correo recordado
+  const rememberCheckbox = document.getElementById('login-remember') as HTMLInputElement;
+  if (rememberCheckbox && rememberCheckbox.checked) {
+    localStorage.setItem('gravy_remembered_email', email);
+  } else {
+    localStorage.removeItem('gravy_remembered_email');
   }
 
   const btn = $('#btn-login');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Conectando al HUB...';
+  btn.innerHTML = `
+    <span class="flex items-center justify-center w-full gap-2">
+      <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+      <span>Conectando al HUB...</span>
+    </span>
+  `;
 
   try {
     // 1. Login contra el HUB
@@ -428,7 +448,13 @@ async function doLogin() {
       body: JSON.stringify({ identity: email, password: rawPass }),
     });
 
-    if (!res.ok) throw new Error('Credenciales de HUB incorrectas');
+    if (!res.ok) {
+      if (res.status === 400) {
+        throw new Error('Credenciales incorrectas. Verifica tu correo y contraseña.');
+      } else {
+        throw new Error(`Error de conexión con el HUB (${res.status}). Intenta nuevamente.`);
+      }
+    }
     const data = await res.json();
     const hubToken = data.token;
     localStorage.setItem('gravy_hub_token', hubToken);
@@ -438,26 +464,89 @@ async function doLogin() {
       headers: { 'Authorization': `Bearer ${hubToken}` }
     });
     
-    if (!resComp.ok) throw new Error('Error al obtener empresas');
+    if (!resComp.ok) throw new Error('Error al obtener la lista de empresas asignadas');
     const dataComp = await resComp.json();
     const companies: CompanyAccess[] = dataComp.companies || [];
 
     if (companies.length === 0) {
-      throw new Error('No tienes empresas asignadas');
+      throw new Error('Tu usuario no tiene empresas asignadas en este servidor.');
     }
 
     // 3. Mostrar selector
     renderCompanySelector(companies);
-  } catch (err) {
-    errEl.textContent = err.message;
-    errEl.classList.remove('hidden');
+  } catch (err: any) {
+    showError(err.message || 'Error inesperado durante la autenticación');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-arrow-right-to-bracket"></i> Ingresar';
+    btn.innerHTML = `
+      <span class="flex items-center justify-between w-full px-1">
+        <span class="flex items-center gap-2"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i> <span id="btn-login-label">Iniciar Sesión</span></span>
+        <kbd class="login-kbd-badge" aria-hidden="true">↵ Enter</kbd>
+      </span>
+    `;
   }
 }
 
+let _currentHubCompanies: CompanyAccess[] = [];
+
+function renderCompanyCards(companiesToRender: CompanyAccess[]): string {
+  if (companiesToRender.length === 0) {
+    return `
+      <div style="grid-column: 1 / -1; padding: 48px 20px; background: var(--bg-elev); border-radius: 16px; border: 1.5px dashed var(--border-soft); text-align: center;">
+        <i class="fas fa-building-circle-xmark text-3xl text-slate-300 mb-3 block"></i>
+        <h4 style="font-weight: 700; color: var(--text-strong); font-size: 15px; margin-bottom: 4px;">No se encontraron empresas</h4>
+        <p style="color: var(--text-muted); font-size: 13px;">No hay razones sociales que coincidan con el término de búsqueda.</p>
+      </div>
+    `;
+  }
+
+  return companiesToRender.map(co => {
+    const cardColor = co.company_color || "#2446B8";
+    const initials = (co.company_name || 'EM')
+      .split(' ')
+      .slice(0, 2)
+      .map(w => w[0])
+      .join('')
+      .toUpperCase();
+
+    return `
+      <div class="company-card" 
+           style="background:var(--bg-elev);border:1.5px solid var(--border-soft);border-radius:18px;overflow:hidden;cursor:pointer;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);display:flex;flex-direction:column;text-align:left;position:relative;box-shadow:0 4px 14px rgba(15,23,42,0.03)"
+           onmouseenter="this.style.transform='translateY(-4px)'; this.style.borderColor='${cardColor}'; this.style.boxShadow='0 12px 28px -4px ${cardColor}25';"
+           onmouseleave="this.style.transform='none'; this.style.borderColor='var(--border-soft)'; this.style.boxShadow='0 4px 14px rgba(15,23,42,0.03)';"
+           onclick="selectCompany(${JSON.stringify(co).replace(/"/g, '&quot;')})">
+        
+        <!-- Línea superior con color corporativo -->
+        <div style="height:5px;width:100%;background-color:${cardColor}"></div>
+        
+        <div style="padding:22px;display:flex;flex-direction:column;flex:1">
+          <!-- Cabecera de la tarjeta: Avatar de iniciales y Rol -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+            <div style="width:38px;height:38px;border-radius:10px;background:${cardColor}15;color:${cardColor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;border:1px solid ${cardColor}30">
+              ${initials}
+            </div>
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);background:var(--bg-panel);padding:3px 10px;border-radius:20px;border:1px solid var(--border-soft)">
+              <i class="fas fa-user-shield text-[9px] mr-1"></i>${co.role}
+            </span>
+          </div>
+
+          <!-- Razón social -->
+          <h3 style="font-size:16px;font-weight:800;color:var(--text-strong);margin:0 0 6px;line-height:1.35;letter-spacing:-0.2px">${co.company_name}</h3>
+          
+          <!-- Módulos autorizados -->
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:auto;padding-top:14px">
+            ${(co.modules || []).map(m => `
+              <span style="font-size:9px;font-weight:700;color:var(--accent-violet-strong);background:rgba(99,102,241,0.06);padding:2px 7px;border-radius:6px;border:1px solid rgba(99,102,241,0.1);text-transform:uppercase">${m}</span>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderCompanySelector(companies: CompanyAccess[]) {
+  _currentHubCompanies = companies;
   $$('.screen').forEach(s => { s.classList.remove('active'); s.style.display = 'none'; });
   
   let selectorScreen = $('#screen-company-select');
@@ -468,59 +557,41 @@ function renderCompanySelector(companies: CompanyAccess[]) {
     document.body.appendChild(selectorScreen);
   }
 
-  selectorScreen.style.background = 'radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.06), transparent 60%), linear-gradient(180deg, #F8FAFC 0%, #EEF2F6 100%)';
+  selectorScreen.style.background = 'radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.05), transparent 70%), linear-gradient(180deg, #F8FAFC 0%, #EEF2F6 100%)';
   selectorScreen.style.overflowY = 'auto';
 
   selectorScreen.innerHTML = `
-    <div style="max-width: 960px; width: 100%; padding: 40px 20px; text-align: center;">
+    <div style="max-width: 1040px; width: 100%; padding: 36px 20px; text-align: center;">
       
-      <!-- Header -->
-      <div style="margin-bottom: 48px; animation: fadeIn 0.5s ease">
-        <div style="width:64px;height:64px;border-radius:20px;background:var(--bg-elev);margin:0 auto 20px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(99,102,241,0.08);border:1px solid var(--border-soft)">
-          <img src="/assets/gravy-logo.png" style="width:38px;height:38px;object-fit:contain;" onerror="this.src='https://raw.githubusercontent.com/PIANIKSTA86/gravylocal/main/gravy-Icono.ico'">
+      <!-- Encabezado -->
+      <div style="margin-bottom: 32px; animation: fadeIn 0.4s ease">
+        <div style="width:58px;height:58px;border-radius:18px;background:var(--bg-elev);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(99,102,241,0.08);border:1px solid var(--border-soft)">
+          <img src="/assets/gravy-logo.png" style="width:34px;height:34px;object-fit:contain;" onerror="this.src='/gravy-Icono.ico'">
         </div>
-        <h1 style="font-size:32px;font-weight:800;color:var(--text-strong);letter-spacing:-1px;margin:0 0 8px">GRAVY <span style="background:linear-gradient(135deg,var(--accent-cyan-strong),var(--accent-violet-strong));-webkit-background-clip:text;-webkit-text-fill-color:transparent">HUB</span></h1>
-        <p style="font-size:14px;color:var(--text-muted);margin:0">Selecciona la empresa con la que trabajarás</p>
+        <h1 style="font-size:28px;font-weight:900;color:var(--text-strong);letter-spacing:-0.5px;margin:0 0 6px">
+          GRAVY <span style="background:linear-gradient(135deg,var(--accent-cyan-strong),var(--accent-violet-strong));-webkit-background-clip:text;-webkit-text-fill-color:transparent">HUB</span>
+        </h1>
+        <p style="font-size:13px;color:var(--text-muted);margin:0">Selecciona la razón social o empresa con la que trabajarás</p>
+      </div>
+
+      <!-- Buscador en tiempo real de empresas -->
+      <div class="hub-search-box">
+        <div class="relative">
+          <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm" aria-hidden="true"></i>
+          <input type="text" id="hub-company-search" class="hub-search-input"
+            placeholder="Buscar por nombre de empresa o rol..." autocomplete="off">
+        </div>
       </div>
 
       <!-- Grid de Empresas -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:24px;margin-bottom:40px;justify-content:center">
-        ${companies.map(co => {
-          // Extraemos color en formato hex limpio
-          const cardColor = co.company_color || "#2446B8";
-          return `
-            <div class="company-card" 
-                 style="background:var(--bg-elev);border:1px solid var(--border-soft);border-radius:20px;overflow:hidden;cursor:pointer;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);display:flex;flex-direction:column;text-align:left;position:relative;box-shadow:0 4px 12px rgba(15,23,42,0.03)"
-                 onmouseenter="this.style.transform='translateY(-6px)'; this.style.borderColor='${cardColor}'; this.style.boxShadow='0 12px 30px -4px ${cardColor}20';"
-                 onmouseleave="this.style.transform='none'; this.style.borderColor='var(--border-soft)'; this.style.boxShadow='0 4px 12px rgba(15,23,42,0.03)';"
-                 onclick="selectCompany(${JSON.stringify(co).replace(/"/g, '&quot;')})">
-              
-              <!-- Línea superior con color distintivo -->
-              <div style="height:6px;width:100%;background-color:${cardColor}"></div>
-              
-              <div style="padding:24px;display:flex;flex-direction:column;flex:1">
-                <!-- Nombre y Rol -->
-                <h3 style="font-size:17px;font-weight:800;color:var(--text-strong);margin:0 0 6px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${co.company_name}</h3>
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:20px">
-                  <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);background:var(--bg-panel);padding:2px 8px;border-radius:20px">${co.role}</span>
-                </div>
-                
-                <!-- Módulos como micro-badges -->
-                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:auto">
-                  ${co.modules.map(m => `
-                    <span style="font-size:9px;font-weight:700;color:var(--accent-violet-strong);background:rgba(99,102,241,0.06);padding:2px 6px;border-radius:6px;border:1px solid rgba(99,102,241,0.04);text-transform:uppercase">${m}</span>
-                  `).join('')}
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('')}
+      <div id="hub-companies-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:20px;margin-bottom:36px;justify-content:center">
+        ${renderCompanyCards(companies)}
       </div>
 
       <!-- Footer / Desconexión -->
-      <div style="animation:fadeIn 0.5s ease;margin-top:20px">
-        <button onclick="doHubLogout()" style="background:none;border:none;color:#EF4444;font-size:13px;font-weight:700;cursor:pointer;padding:8px 16px;border-radius:10px;transition:all 0.2s" onmouseenter="this.style.background='rgba(239,68,68,0.05)'" onmouseleave="this.style.background='none'">
-          <i class="fas fa-right-from-bracket mr-1"></i> Cerrar sesión global
+      <div style="animation:fadeIn 0.5s ease;margin-top:16px">
+        <button onclick="doHubLogout()" class="inline-flex items-center gap-2 text-rose-500 hover:text-rose-600 font-bold text-xs py-2 px-4 rounded-xl hover:bg-rose-50 transition-colors">
+          <i class="fas fa-right-from-bracket"></i> Cerrar sesión de usuario
         </button>
       </div>
     </div>
@@ -528,6 +599,20 @@ function renderCompanySelector(companies: CompanyAccess[]) {
   
   selectorScreen.style.display = 'flex';
   selectorScreen.classList.add('active');
+
+  // Enlazar búsqueda instantánea
+  const searchInp = document.getElementById('hub-company-search') as HTMLInputElement;
+  const gridEl = document.getElementById('hub-companies-grid');
+  if (searchInp && gridEl) {
+    searchInp.addEventListener('input', (e: any) => {
+      const q = (e.target.value || '').toLowerCase().trim();
+      const filtered = _currentHubCompanies.filter(c => 
+        (c.company_name || '').toLowerCase().includes(q) ||
+        (c.role || '').toLowerCase().includes(q)
+      );
+      gridEl.innerHTML = renderCompanyCards(filtered);
+    });
+  }
 }
 
 /* -- Control de Inactividad de Sesión ---------------------- */
@@ -766,11 +851,81 @@ function showLogin() {
   const ls = $('#screen-login');
   ls.style.display = 'flex';
   ls.classList.add('active');
-  setInputVal('login-email', '');
+
+  // Recuperar correo recordado
+  const savedEmail = localStorage.getItem('gravy_remembered_email') || '';
+  const remCheck = document.getElementById('login-remember') as HTMLInputElement;
+
+  // 1. Saludo dinámico contextual
+  const hour = new Date().getHours();
+  let timeGreeting = 'Buenos días';
+  if (hour >= 12 && hour < 19) timeGreeting = 'Buenas tardes';
+  else if (hour >= 19 || hour < 5) timeGreeting = 'Buenas noches';
+
+  const greetingTitle = document.getElementById('login-greeting-title');
+  const greetingSubtitle = document.getElementById('login-greeting-subtitle');
+
+  if (savedEmail) {
+    setInputVal('login-email', savedEmail);
+    if (remCheck) remCheck.checked = true;
+    if (greetingTitle) greetingTitle.textContent = '¡Hola de nuevo! 👋';
+    if (greetingSubtitle) greetingSubtitle.textContent = 'Ingresa tu contraseña para acceder a tus módulos contables';
+    setTimeout(() => $('#login-pass')?.focus(), 80);
+  } else {
+    setInputVal('login-email', '');
+    if (remCheck) remCheck.checked = false;
+    if (greetingTitle) greetingTitle.textContent = timeGreeting;
+    if (greetingSubtitle) greetingSubtitle.textContent = 'Ingresa tus credenciales para acceder a la plataforma contable';
+    setTimeout(() => $('#login-email')?.focus(), 80);
+  }
+
   setInputVal('login-pass', '');
   if ($('#login-pass')) $('#login-pass').value = '';
   $('#login-error')?.classList.add('hidden');
-  $('#login-server-url').textContent = window.location.host;
+
+  // 2. Detección y diagnóstico de conectividad (Red Local LAN vs. Nube)
+  const host = window.location.hostname || 'localhost';
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host);
+  const connIndicator = document.getElementById('login-conn-indicator');
+  const serverUrlEl = document.getElementById('login-server-url');
+
+  if (connIndicator) {
+    connIndicator.textContent = isLocal ? 'Red Local (Alta Velocidad)' : 'Conexión Remota (Túnel Cifrado)';
+    connIndicator.title = isLocal ? 'Operando directamente en la red local de la empresa' : 'Operando a través de túnel remoto';
+  }
+  if (serverUrlEl) {
+    serverUrlEl.textContent = window.location.host || '127.0.0.1';
+  }
+
+  // 3. Vincular detector de Bloq Mayús (Caps Lock)
+  const passInput = $('#login-pass') as HTMLInputElement;
+  const capsWarning = $('#caps-lock-warning');
+  if (passInput && capsWarning && !(passInput as any)._capsBound) {
+    (passInput as any)._capsBound = true;
+    const updateCaps = (e: KeyboardEvent) => {
+      if (e.getModifierState && e.getModifierState('CapsLock')) {
+        capsWarning.classList.add('active');
+      } else {
+        capsWarning.classList.remove('active');
+      }
+    };
+    passInput.addEventListener('keydown', updateCaps);
+    passInput.addEventListener('keyup', updateCaps);
+    passInput.addEventListener('blur', () => capsWarning.classList.remove('active'));
+  }
+
+  // 4. Vincular botón de ayuda o mesa de soporte
+  const helpBtn = document.getElementById('btn-login-help');
+  if (helpBtn && !(helpBtn as any)._helpBound) {
+    (helpBtn as any)._helpBound = true;
+    helpBtn.addEventListener('click', () => {
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast('Para restablecer tu contraseña o solicitar permisos, contacta al Administrador de GRAVY de tu empresa.', 'info');
+      } else {
+        alert('Para restablecer tu contraseña o solicitar permisos, contacta al Administrador de GRAVY de tu empresa.');
+      }
+    });
+  }
 }
 
 /* -- Inicializar selector global de sucursal ----------------- */

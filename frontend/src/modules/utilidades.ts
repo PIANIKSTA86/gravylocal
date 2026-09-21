@@ -3439,7 +3439,7 @@ function _downloadMassTpTemplate() {
     'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu',
     'gc', 'ar', 'ei', 'rf', 'prf',
     'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name',
-    'bank_account', 'notes'
+    'bank_account', 'bank_account_type', 'payment_method', 'notes'
   ];
 
   const rows = [
@@ -3452,7 +3452,8 @@ function _downloadMassTpTemplate() {
       city_code: '68001', tax_regime: 'COMUN', credit_limit: 5000000, max_invoices: 3,
       payment_days: 30, active: 'Si', ciiu: '4752', gc: 'No', ar: 'No',
       ei: 'No', rf: 'NO', prf: 0, pi: 0, piv: 0, responsabilidades: '05;13;15;48;52',
-      is_retention_agent: 'Si', bank_name: 'BANCO BOGOTA', bank_account: '123456789', notes: 'Cliente corporativo'
+      is_retention_agent: 'Si', bank_name: 'BANCO BOGOTA', bank_account: '123456789',
+      bank_account_type: 'Ahorros', payment_method: '30', notes: 'Cliente corporativo'
     },
     {
       doc_type: '13', doc_number: '1234567890', person_type: 'NATURAL', type: 'PROVEEDOR',
@@ -3463,7 +3464,8 @@ function _downloadMassTpTemplate() {
       city_code: '05001', tax_regime: 'NO_RESP', credit_limit: 0, max_invoices: 1,
       payment_days: 0, active: 'Si', ciiu: '4711', gc: 'No', ar: 'No',
       ei: 'No', rf: 'NO', prf: 0, pi: 0, piv: 0, responsabilidades: '49',
-      is_retention_agent: 'No', bank_name: '', bank_account: '', notes: 'Proveedor insumos locales'
+      is_retention_agent: 'No', bank_name: '', bank_account: '',
+      bank_account_type: 'Ahorros', payment_method: '10', notes: 'Proveedor insumos locales'
     }
   ];
 
@@ -3490,6 +3492,10 @@ function _downloadMassTpTemplate() {
     ['credit_limit', 'NO', 'Número Positivo', 'Cupo límite de crédito comercial en pesos COP.', '5000000'],
     ['payment_days', 'NO', 'Número de Días', 'Plazo de crédito comercial en días por defecto.', '30'],
     ['max_invoices', 'NO', 'Número Entero', 'Número máximo de facturas abiertas en mora/crédito permitidas.', '3'],
+    ['bank_name', 'NO', 'Texto', 'Nombre de la entidad bancaria del tercero o empleado (ej: Bancolombia).', 'Bancolombia'],
+    ['bank_account', 'NO', 'Texto / Numérico', 'Número de cuenta bancaria.', '123456789'],
+    ['bank_account_type', 'NO', 'Texto (Ahorros / Corriente)', 'Tipo de cuenta bancaria: Ahorros o Corriente.', 'Ahorros'],
+    ['payment_method', 'NO', 'Código DIAN (30, 47, 10, 42)', 'Método de pago: 30 (Transf. ACH), 47 (Transf. Mismo Banco), 10 (Efectivo), 42 (Consignación).', '30'],
     ['active', 'NO', 'Texto (Si / No)', 'Estado del tercero: Si o No (por defecto Si).', 'Si']
   ];
 
@@ -3520,7 +3526,7 @@ async function _openMassTpImportModal() {
         </div>
         <p class="text-xs font-semibold mb-1" style="color:#4B5563;text-transform:uppercase;letter-spacing:.05em">Columnas opcionales</p>
         <div class="flex flex-wrap gap-1.5 mb-2">
-          ${['razon_social', 'nombres', 'apellidos', 'commercial_name', 'email', 'email2', 'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor', 'address', 'country', 'dept_code', 'city_code', 'tax_regime', 'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu', 'gc', 'ar', 'ei', 'rf', 'prf', 'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name', 'bank_account', 'notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
+          ${['razon_social', 'nombres', 'apellidos', 'commercial_name', 'email', 'email2', 'phone', 'phone2', 'contact_name', 'contact_phone', 'advisor', 'address', 'country', 'dept_code', 'city_code', 'tax_regime', 'credit_limit', 'max_invoices', 'payment_days', 'active', 'ciiu', 'gc', 'ar', 'ei', 'rf', 'prf', 'pi', 'piv', 'responsabilidades', 'is_retention_agent', 'bank_name', 'bank_account', 'bank_account_type', 'payment_method', 'notes'].map(c => `<code class="text-[10px] px-1.5 py-0.5 rounded font-mono" style="background:#F3F4F6;color:#4B5563">${c}</code>`).join('')}
         </div>
         <p class="text-xs" style="color:#1E40AF">
           <strong>doc_type</strong>: Códigos DIAN (31=NIT, 13=CC, 22=CE, 12=TI, 11=RC, 21=TE, 41=Pasaporte, 42=Doc Ext, 47=PEP, 48=PPT, 50=NIT otro país, 91=NUIP) o siglas (NIT, CC, CE, TI, PEP, PPT).<br>
@@ -3743,6 +3749,10 @@ function _massTpBuildDraft(rawRows) {
     const isRetentionAgent = parseBool(get('is_retention_agent', 'agente_retencion_fuente'), false);
     const bankName = get('bank_name', 'banco').trim();
     const bankAccount = get('bank_account', 'cuenta_bancaria', 'cuenta').trim();
+    const rawBankType = get('bank_account_type', 'tipo_cuenta', 'tipo_cuenta_bancaria').trim();
+    const bankAccountType = rawBankType.toLowerCase().includes('corriente') ? 'Corriente' : 'Ahorros';
+    const rawPaymentMethod = get('payment_method', 'metodo_pago', 'forma_pago').trim();
+    const paymentMethod = rawPaymentMethod || (bankAccount ? '30' : '10');
     const notes = get('notes', 'notas', 'observaciones').trim();
 
     // Sincronizar gc y tax_regime con responsabilidades
@@ -3843,6 +3853,8 @@ function _massTpBuildDraft(rawRows) {
       is_retention_agent: isRetentionAgent,
       bank_name: bankName,
       bank_account: bankAccount,
+      bank_account_type: bankAccountType,
+      payment_method: paymentMethod,
       notes,
     };
 

@@ -212,7 +212,7 @@ function terceroFormHtml(row) {
   <!-- ── Pestañas Nav ─────────────────────────────────────────── -->
   <div id="tpf-tab-nav"
     style="display:flex;border-bottom:2px solid #E5E7EB;margin:-4px -4px 16px;overflow-x:auto">
-    ${['Datos Básicos','Ubicación y Contacto','Tributario y Retenciones','Condiciones de Crédito','Notas','Sedes y Sucursales'].map((label,i) => `
+    ${['Datos Básicos','Ubicación y Contacto','Tributario y Retenciones','Condiciones de Crédito','Datos Bancarios y Pago','Notas','Sedes y Sucursales'].map((label,i) => `
       <button type="button" id="tpf-tab-${i}" onclick="_tpfSwitchTab(${i})"
         style="padding:10px 14px;border:none;background:none;cursor:pointer;font-size:13px;
                white-space:nowrap;margin-bottom:-2px;
@@ -557,16 +557,78 @@ function terceroFormHtml(row) {
     </div>
   </div>
 
-  <!-- ══ TAB 4 — Notas ══════════════════════════════════════════ -->
+  <!-- ══ TAB 4 — Datos Bancarios y Pago ═════════════════════════ -->
   <div id="tpf-panel-4" style="display:none">
+    <div style="background:#F0FDF4;border:1px solid #DCFCE7;border-radius:10px;padding:12px 16px;margin-bottom:16px">
+      <p style="font-size:13px;color:#166534;margin:0">
+        <i class="fas fa-building-columns mr-1"></i>
+        Información bancaria para dispersión de pagos, transferencias y reporte oficial en <strong>Nómina Electrónica UBL 2.1 ante la DIAN</strong>.
+      </p>
+    </div>
+    <datalist id="tpf-colombian-banks">
+      <option value="Bancolombia">
+      <option value="Banco de Bogotá">
+      <option value="Davivienda">
+      <option value="BBVA Colombia">
+      <option value="Banco de Occidente">
+      <option value="Nequi">
+      <option value="Daviplata">
+      <option value="Scotiabank Colpatria">
+      <option value="Banco Popular">
+      <option value="Banco AV Villas">
+      <option value="Banco Caja Social">
+      <option value="Banco Agrario de Colombia">
+      <option value="Banco Falabella">
+      <option value="Banco Pichincha">
+      <option value="Banco Santander">
+      <option value="Banco Itaú">
+      <option value="Bancoomeva">
+      <option value="Lulo Bank">
+      <option value="Dale!">
+      <option value="Ualá">
+      <option value="Nubank">
+    </datalist>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="form-group">
+        <label class="form-label">Entidad Bancaria</label>
+        <input id="tpf-bank-name" list="tpf-colombian-banks" class="form-input"
+          placeholder="Selecciona o escribe el banco..." value="${esc(row?.bank_name || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de Cuenta</label>
+        <select id="tpf-bank-account-type" class="form-input">
+          <option value="Ahorros" ${(row?.bank_account_type || 'Ahorros') === 'Ahorros' ? 'selected' : ''}>Cuenta de Ahorros</option>
+          <option value="Corriente" ${row?.bank_account_type === 'Corriente' ? 'selected' : ''}>Cuenta Corriente</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número de Cuenta</label>
+        <input id="tpf-bank-account" type="text" class="form-input font-mono"
+          placeholder="Ej: 12345678901" value="${esc(row?.bank_account || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Método de Pago Predeterminado (DIAN)</label>
+        <select id="tpf-payment-method" class="form-input">
+          <option value="30" ${(row?.payment_method || (row?.bank_account ? '30' : '10')) === '30' ? 'selected' : ''}>30 - Transferencia Débito Interbancaria (ACH)</option>
+          <option value="47" ${row?.payment_method === '47' ? 'selected' : ''}>47 - Transferencia Débito Bancaria (Mismo Banco)</option>
+          <option value="10" ${(row?.payment_method || (row?.bank_account ? '30' : '10')) === '10' ? 'selected' : ''}>10 - Efectivo</option>
+          <option value="42" ${row?.payment_method === '42' ? 'selected' : ''}>42 - Consignación Bancaria</option>
+        </select>
+        <p class="text-xs text-gray-500 mt-1">Utilizado para generar el nodo &lt;Pago&gt; en el XML de Nómina Electrónica.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB 5 — Notas ══════════════════════════════════════════ -->
+  <div id="tpf-panel-5" style="display:none">
     <div class="form-group">
       <label class="form-label">Observaciones / Notas Internas</label>
       <textarea id="tpf-notes" class="form-input font-mono" rows="7" placeholder="Información adicional sobre el tercero...">${esc(row?.notes || '')}</textarea>
     </div>
   </div>
 
-  <!-- ══ TAB 5 — Sedes y Sucursales ═════════════════════════════ -->
-  <div id="tpf-panel-5" style="display:none">
+  <!-- ══ TAB 6 — Sedes y Sucursales ═════════════════════════════ -->
+  <div id="tpf-panel-6" style="display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
       <div>
         <h4 style="font-size:14px;font-weight:700;color:#0D2137;margin:0 0 2px;">Establecimientos y Sucursales</h4>
@@ -601,7 +663,7 @@ function terceroFormHtml(row) {
    HELPERS DEL FORMULARIO
    ═══════════════════════════════════════════════════════════ */
 function _tpfSwitchTab(idx) {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const panel = $(`#tpf-panel-${i}`);
     const btn   = $(`#tpf-tab-${i}`);
     if (!panel || !btn) continue;
@@ -612,7 +674,7 @@ function _tpfSwitchTab(idx) {
     btn.style.fontWeight = on ? '600' : '400';
   }
 
-  if (idx === 5 && _currentEditingRow?.id) {
+  if (idx === 6 && _currentEditingRow?.id) {
     renderThirdPartyBranches(_currentEditingRow.id);
   }
 }
@@ -984,6 +1046,10 @@ function terceroPayload() {
     pi:              parseFloat(getInputVal('tpf-pi')) || 0,
     piv:             parseFloat(getInputVal('tpf-piv')) || 0,
     resp:            respList,
+    bank_name:       getInputVal('tpf-bank-name').trim(),
+    bank_account:    getInputVal('tpf-bank-account').trim(),
+    bank_account_type: getSelectVal('tpf-bank-account-type') || 'Ahorros',
+    payment_method:  getSelectVal('tpf-payment-method') || '30',
     notes:           getInputVal('tpf-notes'),
   };
 }
@@ -1964,6 +2030,14 @@ async function viewTercero(id, event) {
             <div>
               <span class="text-[10px] text-gray-400 block font-semibold uppercase">Facturas Máximas con Saldo</span>
               <span class="font-medium">${r.max_invoices || 0} factura(s)</span>
+            </div>
+            
+            <div class="pt-2 border-t" style="border-color:#E5E7EB">
+              <span class="text-[10px] text-gray-400 block font-semibold uppercase">Datos Bancarios y Pago</span>
+              <span class="font-semibold text-xs text-gray-800 block">
+                ${r.bank_name || r.bank_account ? `<i class="fas fa-building-columns text-emerald-600 mr-1"></i>${esc(r.bank_name || 'Banco')} · ${esc(r.bank_account_type || 'Ahorros')}: ${esc(r.bank_account || 'Sin cuenta')}` : '<span class="text-gray-400">Sin cuenta bancaria registrada</span>'}
+              </span>
+              ${r.payment_method ? `<span class="text-[11px] text-gray-500 mt-0.5 block">Método: ${esc(r.payment_method === '10' ? '10 - Efectivo' : (r.payment_method === '47' ? '47 - Transferencia Mismo Banco' : (r.payment_method === '42' ? '42 - Consignación' : '30 - Transferencia ACH')))}</span>` : ''}
             </div>
           </div>
         </div>

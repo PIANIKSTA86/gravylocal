@@ -503,6 +503,9 @@ function renderDsRows(list: DocSoporteItem[]): string {
             ` : ''}
 
             ${(d.xml_content || d.status_dian === 'aceptada' || d.status_dian === 'enviada') ? `
+              <button class="btn btn-outline btn-sm p-1.5 border-rose-500 hover:bg-rose-50" title="Ver / Imprimir PDF Oficial" onclick="window.viewDianPdf('${esc(d.tx_id || d.id)}', '${esc(d.number)}')">
+                <i class="fas fa-file-pdf text-rose-600"></i>
+              </button>
               <button class="btn btn-outline btn-sm p-1.5 border-emerald-500 hover:bg-emerald-50" title="Descargar ZIP XML" onclick="window.downloadDianZip('${esc(d.tx_id || d.id)}', '${esc(d.number)}')">
                 <i class="fas fa-file-zipper text-emerald-600"></i>
               </button>
@@ -1788,6 +1791,9 @@ async function openNuevaNdsModal(resolutions: any[], dsList: DocSoporteItem[], p
             </button>
           ` : ''}
           ${(hasValidCuds || statusVal === 'aceptada' || (xmlContent && xmlContent.includes('cbc:'))) && txId ? `
+            <button class="btn btn-outline btn-sm border-rose-600 text-rose-600 hover:bg-rose-50" title="Ver / Imprimir PDF oficial" onclick="window.viewDianPdf('${esc(txId || id)}','${esc(docNum)}')">
+              <i class="fas fa-file-pdf mr-1.5 text-rose-600"></i>Ver PDF Oficial
+            </button>
             <button class="btn btn-outline btn-sm border-emerald-600 text-emerald-600 hover:bg-emerald-50" title="Descargar contenedor ZIP oficial" onclick="window.downloadDianZip('${esc(txId || id)}','${esc(docNum)}')">
               <i class="fas fa-file-zipper mr-1.5 text-emerald-600"></i>Descargar ZIP XML
             </button>

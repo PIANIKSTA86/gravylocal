@@ -16,9 +16,9 @@
   <link rel="stylesheet" href="/assets/fonts/fonts.css">
   <link rel="stylesheet" href="/assets/fa/all.min.css">
 
-  <script src="/assets/jspdf.min.js"></script>
-  <script src="/assets/autotable.min.js"></script>
-  <script src="/assets/xlsx.full.min.js"></script>
+  <script defer src="/assets/jspdf.min.js"></script>
+  <script defer src="/assets/autotable.min.js"></script>
+  <script defer src="/assets/xlsx.full.min.js"></script>
 
 
   <style>
@@ -869,36 +869,7 @@
       background: linear-gradient(135deg, var(--accent-violet), #2446B8);
     }
 
-    /* Login */
-    .login-left {
-      background: radial-gradient(circle at 26% 30%, rgba(127, 124, 255, .34), transparent 24%), radial-gradient(circle at 78% 42%, rgba(100, 225, 255, .32), transparent 26%), linear-gradient(135deg, #03060D 0%, #091327 54%, #0C1630 100%);
-      position: relative;
-      overflow: hidden;
-    }
 
-    .login-left::before {
-      content: '';
-      position: absolute;
-      width: 420px;
-      height: 420px;
-      border-radius: 50%;
-      background: rgba(100, 225, 255, .10);
-      top: -120px;
-      right: -100px;
-      filter: blur(8px);
-    }
-
-    .login-left::after {
-      content: '';
-      position: absolute;
-      width: 340px;
-      height: 340px;
-      border-radius: 50%;
-      background: rgba(127, 124, 255, .10);
-      bottom: -90px;
-      left: -80px;
-      filter: blur(8px);
-    }
 
     /* Plan de cuentas */
     .acct-tree-item {
@@ -1577,72 +1548,167 @@
 
   <!-- ─── Login ─────────────────────────────────── -->
   <div id="screen-login" class="screen" style="height:100vh">
-    <div class="login-left hidden md:flex flex-col justify-center px-16" style="width:45%">
+    <div class="login-left hidden md:flex flex-col justify-between px-16 py-12" style="width:48%">
       <div class="relative z-10">
-        <div class="flex items-center gap-3 mb-8">
-          <div class="brand-shell"><img src="/assets/gravy-logo.png" alt="GRAVY"></div>
-          <div>
-            <h1 class="text-2xl font-extrabold tracking-tight" style="color:var(--text-strong)">GRAVY</h1>
-            <p class="text-xs font-medium" style="color:var(--text-muted)">Accounting Intelligence Platform</p>
+        <!-- Logo y Badge de Versión con Acento Oro -->
+        <div class="flex items-center justify-between mb-10">
+          <div class="flex items-center gap-3">
+            <div class="brand-shell" style="background:rgba(255,255,255,0.08);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.18)">
+              <img src="/assets/gravy-logo.png" alt="GRAVY" onerror="this.src='/gravy-Icono.ico'">
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="text-2xl font-black tracking-tight" style="color:#FFFFFF">GRAVY</span>
+                <span class="login-gold-badge"><i class="fas fa-crown text-[9px]"></i> Core v2.0 Enterprise</span>
+              </div>
+              <p class="text-xs font-medium" style="color:rgba(255,255,255,0.7)">Accounting Intelligence Platform</p>
+            </div>
           </div>
         </div>
-        <h2 class="text-3xl font-extrabold leading-tight mb-4" style="color:var(--text-strong)">Convierte tu operación contable<br>en una
-          experiencia de alto impacto</h2>
-        <p style="color:var(--text-muted);font-size:14px;line-height:1.7">GRAVY unifica contabilidad, terceros,
-          cartera, reportes y control operativo en una interfaz limpia, moderna y enfocada en velocidad, precisión y
-          presencia visual.</p>
-        <div class="mt-10 flex flex-col gap-3">
-          <div class="flex items-center gap-3" style="color:var(--text-muted);font-size:13px"><i
-              class="fas fa-check-circle" style="color:var(--accent-violet-strong)"></i> Multiusuario para equipos contables
+
+        <!-- Titular y Descripción -->
+        <h2 class="text-3xl lg:text-4xl font-extrabold leading-tight mb-4" style="color:#FFFFFF;letter-spacing:-0.5px">
+          Gestión contable inteligente a la velocidad de tu negocio
+        </h2>
+        <p style="color:rgba(255,255,255,0.78);font-size:14px;line-height:1.75;max-width:540px" class="mb-8">
+          Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la nube.
+        </p>
+
+        <!-- Bloque de Características Destacadas -->
+        <div class="flex flex-col gap-3 max-w-lg">
+          <div class="login-feature-card">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(129,140,248,0.25);color:#C7D2FE">
+              <i class="fas fa-shield-halved text-sm"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-white">Privacidad y Respaldo Local</h4>
+              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Control total de la base de datos de tu empresa sin depender obligatoriamente de internet.</p>
+            </div>
           </div>
-          <div class="flex items-center gap-3" style="color:var(--text-muted);font-size:13px"><i
-              class="fas fa-check-circle" style="color:var(--accent-violet-strong)"></i> Control por roles y trazabilidad</div>
-          <div class="flex items-center gap-3" style="color:var(--text-muted);font-size:13px"><i
-              class="fas fa-check-circle" style="color:var(--accent-violet-strong)"></i> Reportes PDF y Excel listos para
-            operación</div>
-          <div class="flex items-center gap-3" style="color:var(--text-muted);font-size:13px"><i
-              class="fas fa-check-circle" style="color:var(--accent-violet-strong)"></i> Instalable como app de escritorio</div>
-          <div class="flex items-center gap-3" style="color:var(--text-muted);font-size:13px"><i
-              class="fas fa-check-circle" style="color:var(--accent-violet-strong)"></i> Operación local sin depender de internet
+
+          <div class="login-feature-card">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(192,132,252,0.25);color:#E9D5FF">
+              <i class="fas fa-bolt text-sm"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-white">Ultra-baja Latencia y Concurrencia</h4>
+              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Múltiples contadores, cajeros y auxiliares trabajando en simultáneo sin bloqueos.</p>
+            </div>
+          </div>
+
+          <div class="login-feature-card">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(165,180,252,0.22);color:#DDD6FE">
+              <i class="fas fa-file-invoice text-sm"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold text-white">Ecosistema DIAN Integrado</h4>
+              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Factura electrónica, documento soporte, nómina electrónica y generación de exógena.</p>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- Pie de Seguridad Izquierdo -->
+      <div class="relative z-10 pt-6 border-t" style="border-color:rgba(255,255,255,0.12);color:rgba(255,255,255,0.65);font-size:12px">
+        <div class="flex items-center justify-between">
+          <span><i class="fas fa-lock mr-1.5" style="color:#C7D2FE"></i> Cifrado de grado financiero</span>
+          <span>© GRAVY Core</span>
+        </div>
+      </div>
     </div>
-    <div class="flex-1 flex items-center justify-center p-8" style="background:#FAFBFC">
-      <div class="w-full max-w-sm anim-fade">
-        <div class="flex items-center gap-3 mb-8 md:hidden">
-          <div class="brand-shell sm"><img src="/assets/gravy-logo.png" alt="GRAVY"></div>
-          <span class="text-xl font-extrabold" style="color:var(--text-strong)">GRAVY</span>
-        </div>
-        <h3 class="text-2xl font-extrabold mb-1" style="color:var(--text-strong)">Iniciar sesión</h3>
-        <p class="text-sm mb-8" style="color:#6B7280">Ingresa tus credenciales para acceder al sistema</p>
-        <div id="login-error" class="hidden mb-4 p-3 rounded-lg text-sm font-medium"
-          style="background:#FEF2F2;color:#DC2626"></div>
-        <div class="form-group">
-          <label class="form-label">Correo electrónico</label>
-          <div class="relative">
-            <i class="fas fa-envelope absolute left-3 top-1/2 -translate-y-1/2"
-              style="color:#9CA3AF;font-size:13px"></i>
-            <input id="login-email" type="email" class="form-input" style="padding-left:36px"
-              placeholder="usuario@empresa.com" autocomplete="email">
+
+    <!-- Panel Derecho / Formulario con Glow Ambiental -->
+    <div class="flex-1 relative flex items-center justify-center p-6 md:p-12 overflow-hidden" style="background:radial-gradient(circle at 50% 50%, rgba(99,102,241,0.06), transparent 70%), #FAF5FF">
+      <!-- Halo ambiental de iluminación -->
+      <div class="login-ambient-glow" aria-hidden="true"></div>
+
+      <div class="login-card anim-slide-up">
+        <!-- Logo en dispositivos móviles -->
+        <div class="flex items-center gap-3 mb-6 md:hidden">
+          <div class="brand-shell sm"><img src="/assets/gravy-logo.png" alt="GRAVY" onerror="this.src='/gravy-Icono.ico'"></div>
+          <div>
+            <h1 class="text-xl font-extrabold" style="color:var(--text-strong)">GRAVY</h1>
+            <p class="text-[10px]" style="color:var(--text-muted)">Plataforma Contable</p>
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Contraseña</label>
-          <div class="relative">
-            <i class="fas fa-lock absolute left-3 top-1/2 -translate-y-1/2" style="color:#9CA3AF;font-size:13px"></i>
-            <input id="login-pass" type="password" class="form-input" style="padding-left:36px" placeholder="Contraseña"
-              autocomplete="current-password">
-            <button type="button" id="btn-toggle-pass" class="absolute right-3 top-1/2 -translate-y-1/2"
-              style="color:#9CA3AF;background:none;border:none;cursor:pointer"><i class="fas fa-eye"></i></button>
-          </div>
+
+        <!-- Saludo dinámico contextual -->
+        <div class="mb-6">
+          <h3 id="login-greeting-title" class="text-2xl font-black tracking-tight" style="color:var(--text-strong)">Acceso al Sistema</h3>
+          <p id="login-greeting-subtitle" class="text-xs mt-1" style="color:var(--text-muted)">Ingresa tus credenciales de usuario para continuar</p>
         </div>
-        <button id="btn-login" class="btn btn-primary w-full justify-center py-3 text-sm mt-2">
-          <i class="fas fa-arrow-right-to-bracket"></i> Ingresar
-        </button>
-        <p class="text-center text-xs mt-6" style="color:#9CA3AF">
-          <i class="fas fa-server mr-1"></i> Conectado a: <strong id="login-server-url"></strong>
-        </p>
+
+        <!-- Alerta de Error -->
+        <div id="login-error" role="alert" aria-live="assertive" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
+          style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5">
+          <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
+          <span id="login-error-text"></span>
+        </div>
+
+        <!-- Formulario -->
+        <form id="form-login" onsubmit="event.preventDefault();" novalidate>
+          <div class="form-group mb-4">
+            <label class="form-label" for="login-email">Correo Electrónico o Usuario</label>
+            <div class="relative">
+              <i class="fas fa-envelope absolute left-3.5 top-1/2 -translate-y-1/2"
+                style="color:#94A3B8;font-size:13px" aria-hidden="true"></i>
+              <input id="login-email" type="email" class="form-input" style="padding-left:38px;padding-right:12px;height:44px"
+                placeholder="nombre@empresa.com" autocomplete="username" spellcheck="false" required>
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="form-label mb-0" for="login-pass">Contraseña</label>
+            </div>
+            <div class="relative">
+              <i class="fas fa-key absolute left-3.5 top-1/2 -translate-y-1/2" style="color:#94A3B8;font-size:13px" aria-hidden="true"></i>
+              <input id="login-pass" type="password" class="form-input" style="padding-left:38px;padding-right:40px;height:44px"
+                placeholder="Tu contraseña de acceso" autocomplete="current-password" required>
+              <button type="button" id="btn-toggle-pass" aria-label="Mostrar u ocultar contraseña"
+                class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                style="background:none;border:none;cursor:pointer">
+                <i class="fas fa-eye" aria-hidden="true"></i>
+              </button>
+            </div>
+            <!-- Indicador dinámico de Bloq Mayús -->
+            <div id="caps-lock-warning" class="caps-lock-pill" role="status">
+              <i class="fas fa-arrow-up-long"></i> Bloq Mayús (Mayúsculas) activado
+            </div>
+          </div>
+
+          <!-- Recordar usuario -->
+          <div class="flex items-center justify-between my-4 text-xs">
+            <label class="flex items-center gap-2 cursor-pointer select-none text-slate-600 font-medium" for="login-remember">
+              <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" style="accent-color:var(--accent-violet-strong)">
+              <span>Recordar correo en este equipo</span>
+            </label>
+          </div>
+
+          <!-- Botón de Ingreso con atajo de teclado KBD -->
+          <button id="btn-login" type="submit" class="btn btn-primary w-full py-3 text-sm font-bold shadow-md hover:shadow-lg transition-all" style="height:46px;border-radius:12px">
+            <span class="flex items-center justify-between w-full px-1">
+              <span class="flex items-center gap-2"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i> <span id="btn-login-label">Iniciar Sesión</span></span>
+              <kbd class="login-kbd-badge" aria-hidden="true">↵ Enter</kbd>
+            </span>
+          </button>
+
+          <!-- Enlace de asistencia o soporte -->
+          <div class="text-center mt-3.5">
+            <button type="button" id="btn-login-help" class="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium hover:underline bg-transparent border-0 cursor-pointer p-0">
+              <i class="fas fa-circle-question mr-1"></i> ¿Problemas para acceder? Mesa de ayuda
+            </button>
+          </div>
+        </form>
+
+        <!-- Estado de Conexión del Servidor Enriquecido -->
+        <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div class="flex items-center gap-2">
+            <span class="status-pulse-dot" aria-hidden="true"></span>
+            <span class="text-[11px] font-medium" id="login-conn-indicator">Detectando conexión...</span>
+          </div>
+          <span class="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200" id="login-server-url"></span>
+        </div>
       </div>
     </div>
   </div>

@@ -1,8 +1,37 @@
-/// <reference path="../pb_data/types.d.ts" />
-/**
- * GRAVY v2.0 — licenses_api.pb.js
- * Endpoints locales para la gestión de licencias y módulos del Tenant.
- */
+onBootstrap((e) => {
+  e.next();
+  try {
+    const licensesCol = $app.findCollectionByNameOrId("licenses");
+    const modField = licensesCol.fields.getByName("module_key");
+    if (modField) {
+      const allNeeded = [
+        "core", "contabilidad", "comercial", "crm", "nomina",
+        "copropiedades", "inmobiliarias", "logistica", "inventarios",
+        "tesoreria", "tienda-virtual", "spa", "spa-belleza",
+        "conciliacion", "niif", "activos_fijos", "full"
+      ];
+      const currentVals = modField.values || [];
+      const valsArray = [];
+      for (let j = 0; j < currentVals.length; j++) {
+        valsArray.push(currentVals[j]);
+      }
+      let changed = false;
+      allNeeded.forEach(v => {
+        if (valsArray.indexOf(v) === -1) {
+          valsArray.push(v);
+          changed = true;
+        }
+      });
+      if (changed) {
+        modField.values = valsArray;
+        $app.save(licensesCol);
+        console.log("[GRAVY Tenant] Esquema de licenses actualizado con todos los módulos.");
+      }
+    }
+  } catch (err) {
+    console.log("[GRAVY Tenant] Aviso asegurando esquema de licencias: " + err);
+  }
+});
 
 routerAdd("GET", "/api/gravy/my-licenses", (e) => {
   const auth = e.requestInfo()?.auth;
@@ -44,6 +73,23 @@ routerAdd("POST", "/api/gravy/toggle-license", (e) => {
 
   try {
     const licensesCol = $app.findCollectionByNameOrId("licenses");
+
+    // Asegurar dinámicamente que el module_key exista en los valores permitidos
+    const modField = licensesCol.fields.getByName("module_key");
+    if (modField && modField.values) {
+      let found = false;
+      const vals = [];
+      for (let i = 0; i < modField.values.length; i++) {
+        vals.push(modField.values[i]);
+        if (modField.values[i] === moduleKey) found = true;
+      }
+      if (!found) {
+        vals.push(moduleKey);
+        modField.values = vals;
+        $app.save(licensesCol);
+      }
+    }
+
     let record = null;
     try {
       // Intentar buscar registro existente
@@ -70,3 +116,4 @@ routerAdd("POST", "/api/gravy/toggle-license", (e) => {
     return e.json(500, { message: "Error al guardar la licencia: " + err.message });
   }
 });
+

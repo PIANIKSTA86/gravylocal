@@ -410,57 +410,508 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     const stockDetailsData = arrayOf(new DynamicModel({ category: "", line: "", itemsCount: 0, totalQty: -0, totalVal: -0 }));
     stockDetailsQuery.all(stockDetailsData);
 
-    // 8. Cartera por Edades (Buckets) — Filtrado opcionalmente por vendedor
-    const invoiceSql = `
-      SELECT
-        l.third_party_id AS thirdPartyId,
-        l.cross_doc_ref  AS crossDocRef,
-        MIN(t.date)                        AS docDate,
-        MAX(COALESCE(t.payment_days, 0))   AS paymentDays,
-        SUM(l.debit - l.credit)            AS openBalance
-      FROM tx_lines l
-      INNER JOIN accounts a ON a.id = l.account_id
-      INNER JOIN transactions t ON t.id = l.tx_id
-      INNER JOIN third_parties tp ON tp.id = l.third_party_id
-      WHERE t.status = 'active'
-        AND a.maneja_cruce = 1
-        AND a.nature = 'debit'
-        AND TRIM(COALESCE(l.cross_doc_ref, '')) != ''`
-        + bBranch
-        + (advisorId ? " AND tp.advisor = {:advisorId} " : "") + `
-      GROUP BY l.third_party_id, l.cross_doc_ref
-      HAVING openBalance > 0.0001
-    `;
-    const invoiceQuery = $app.db().newQuery(invoiceSql);
-    const bindInvoice = {};
-    if (branchId) bindInvoice.branchId = branchId;
-    if (advisorId) bindInvoice.advisorId = advisorId;
-    if (branchId || advisorId) {
-      invoiceQuery.bind(bindInvoice);
-    }
-    const openInvoices = arrayOf(new DynamicModel({
-      thirdPartyId: "", crossDocRef: "", docDate: "", paymentDays: 0, openBalance: -0
-    }));
-    invoiceQuery.all(openInvoices);
-
+    // 8. Cartera de Clientes (CxC) — Alineado exactamente con el reporte oficial report-portfolio-aging
+    let carteraTotal = 0;
+    let carteraVencida = 0;
     let carteraPorVencer = 0, cartera0_30 = 0, cartera31_60 = 0, cartera61_90 = 0, carteraMayor90 = 0;
-    const asOfDate = new Date();
-    asOfDate.setHours(0, 0, 0, 0);
-    const asOfTime = asOfDate.getTime();
+    const asOfLimit = todayStr + " 23:59:59";
+    const asOfTime = new Date(todayStr + "T00:00:00").getTime();
 
-    for (const doc of openInvoices) {
-      const openBal     = Number(doc.openBalance) || 0;
-      const dateOnly    = String(doc.docDate).split(" ")[0];
-      const from        = new Date(dateOnly + "T00:00:00");
-      const paymentDays = Number(doc.paymentDays) || 0;
-      const due         = new Date(from.getTime() + (paymentDays * 86400000));
-      const expiredDays = Math.floor((asOfTime - due.getTime()) / 86400000);
+    try {
+      let cxcSql = `
+        SELECT
+          l.account_id,
+          l.third_party_id,
+          COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), 'SIN_DOC') AS crossDocRef,
+          a.nature AS accNature,
+          MIN(COALESCE(NULLIF(TRIM(l.due_date), ''), '')) AS lineDueDate,
+          MIN(COALESCE(NULLIF(TRIM(l.cross_doc_date), ''), t.date)) AS docDate,
+          MAX(COALESCE(t.payment_days, tp.payment_days, 0)) AS paymentDays,
+          SUM(l.debit) AS totDebit,
+          SUM(l.credit) AS totCredit
+        FROM tx_lines l
+        INNER JOIN accounts a ON a.id = l.account_id
+        INNER JOIN transactions t ON t.id = l.tx_id
+        LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
+        WHERE t.status = 'active'
+          AND t.date <= {:asOfLimit}
+          AND a.code LIKE '13%'
+          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')
+          AND UPPER(COALESCE(tp.type, '')) = 'CLIENTE'`
+          + bBranch
+          + (advisorId ? " AND tp.advisor = {:advisorId} " : "")
+          + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
+        GROUP BY l.account_id, l.third_party_id, crossDocRef
+      `;
+      const cxcQuery = $app.db().newQuery(cxcSql);
+      const cxcBinds = { asOfLimit };
+      if (branchId) cxcBinds.branchId = branchId;
+      if (advisorId) cxcBinds.advisorId = advisorId;
+      if (costCenterId) cxcBinds.costCenterId = costCenterId;
+      cxcQuery.bind(cxcBinds);
 
-      if      (expiredDays < 0)   carteraPorVencer += openBal;
-      else if (expiredDays <= 30) cartera0_30      += openBal;
-      else if (expiredDays <= 60) cartera31_60     += openBal;
-      else if (expiredDays <= 90) cartera61_90     += openBal;
-      else                        carteraMayor90   += openBal;
+      const cxcData = arrayOf(new DynamicModel({
+        account_id: "", third_party_id: "", crossDocRef: "", accNature: "",
+        lineDueDate: "", docDate: "", paymentDays: 0, totDebit: -0, totCredit: -0
+      }));
+      cxcQuery.all(cxcData);
+
+      for (let i = 0; i < cxcData.length; i++) {
+        const doc = cxcData[i];
+        const nature = String(doc.accNature || 'debit').toLowerCase();
+        const deb = Number(doc.totDebit) || 0;
+        const cred = Number(doc.totCredit) || 0;
+        const openBal = nature === 'debit' ? (deb - cred) : (cred - deb);
+
+        if (Math.abs(openBal) <= 0.0001) continue;
+
+        carteraTotal += openBal;
+
+        const lineDue = String(doc.lineDueDate || '').trim();
+        const dateOnly = String(doc.docDate || '').split(" ")[0] || todayStr;
+        const pDays = Number(doc.paymentDays) || 0;
+
+        let dueTime = 0;
+        if (lineDue) {
+          dueTime = new Date(lineDue.split(" ")[0] + "T00:00:00").getTime();
+        } else {
+          dueTime = new Date(dateOnly + "T00:00:00").getTime() + (pDays * 86400000);
+        }
+
+        const expiredDays = Math.floor((asOfTime - dueTime) / 86400000);
+
+        if (openBal < 0) {
+          // Saldo a favor (anticipo / nota crédito)
+        } else if (expiredDays < 0) {
+          carteraPorVencer += openBal;
+        } else {
+          carteraVencida += openBal;
+          if (expiredDays <= 30)      cartera0_30 += openBal;
+          else if (expiredDays <= 60) cartera31_60 += openBal;
+          else if (expiredDays <= 90) cartera61_90 += openBal;
+          else                        carteraMayor90 += openBal;
+        }
+      }
+    } catch (_) {}
+
+    // 8b. Cuentas por Pagar (CxP) Proveedores — Exactamente igual a /api/gravy/report-portfolio-aging
+    let cxpTotal = 0;
+    let cxpWeek = 0;
+    try {
+      let cxpSql = `
+        SELECT
+          l.account_id,
+          l.third_party_id,
+          COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), 'SIN_DOC') AS crossDocRef,
+          a.nature AS accNature,
+          MIN(COALESCE(NULLIF(TRIM(l.due_date), ''), '')) AS lineDueDate,
+          MIN(COALESCE(NULLIF(TRIM(l.cross_doc_date), ''), t.date)) AS docDate,
+          MAX(COALESCE(t.payment_days, tp.payment_days, 0)) AS paymentDays,
+          SUM(l.debit) AS totDebit,
+          SUM(l.credit) AS totCredit
+        FROM tx_lines l
+        INNER JOIN accounts a ON a.id = l.account_id
+        INNER JOIN transactions t ON t.id = l.tx_id
+        LEFT JOIN third_parties tp ON tp.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id)
+        WHERE t.status = 'active'
+          AND t.date <= {:asOfLimit}
+          AND (a.code LIKE '22%' OR a.code LIKE '23%' OR a.code LIKE '25%')
+          AND (a.maneja_cruce = 1 OR TRIM(COALESCE(l.cross_doc_ref, '')) != '')
+          AND UPPER(COALESCE(tp.type, '')) = 'PROVEEDOR'`
+          + bBranch
+          + (costCenterId ? " AND l.cost_center_id = {:costCenterId} " : "") + `
+        GROUP BY l.account_id, l.third_party_id, crossDocRef
+      `;
+      const cxpQuery = $app.db().newQuery(cxpSql);
+      const cxpBinds = { asOfLimit };
+      if (branchId) cxpBinds.branchId = branchId;
+      if (costCenterId) cxpBinds.costCenterId = costCenterId;
+      cxpQuery.bind(cxpBinds);
+
+      const cxpData = arrayOf(new DynamicModel({
+        account_id: "", third_party_id: "", crossDocRef: "", accNature: "",
+        lineDueDate: "", docDate: "", paymentDays: 0, totDebit: -0, totCredit: -0
+      }));
+      cxpQuery.all(cxpData);
+
+      const in7DaysTime = asOfTime + (7 * 86400000);
+      let saldoAFavorCxp = 0;
+      let cxpWeekBruto = 0;
+
+      for (let i = 0; i < cxpData.length; i++) {
+        const doc = cxpData[i];
+        const nature = String(doc.accNature || 'credit').toLowerCase();
+        const deb = Number(doc.totDebit) || 0;
+        const cred = Number(doc.totCredit) || 0;
+        const openBal = nature === 'credit' ? (cred - deb) : (deb - cred);
+
+        if (Math.abs(openBal) <= 0.0001) continue;
+
+        cxpTotal += openBal;
+
+        const lineDue = String(doc.lineDueDate || '').trim();
+        const dateOnly = String(doc.docDate || '').split(" ")[0] || todayStr;
+        const pDays = Number(doc.paymentDays) || 0;
+
+        let dueTime = 0;
+        if (lineDue) {
+          dueTime = new Date(lineDue.split(" ")[0] + "T00:00:00").getTime();
+        } else {
+          dueTime = new Date(dateOnly + "T00:00:00").getTime() + (pDays * 86400000);
+        }
+
+        if (openBal < 0) {
+          saldoAFavorCxp += openBal;
+        } else if (dueTime <= in7DaysTime) {
+          cxpWeekBruto += openBal;
+        }
+      }
+      // Compensar neto con saldo a favor de proveedores
+      cxpWeek = Math.min(cxpTotal, Math.max(0, cxpWeekBruto + saldoAFavorCxp));
+    } catch (_) {}
+
+    // 8c. Liquidez disponible en Caja y Bancos (Cuentas 11%)
+    let totalLiquidez = 0;
+    try {
+      const liqSql = `
+        SELECT COALESCE(SUM(l.debit - l.credit), 0) AS totalLiquidez
+        FROM tx_lines l
+        INNER JOIN accounts a ON a.id = l.account_id
+        INNER JOIN transactions t ON t.id = l.tx_id
+        WHERE t.status = 'active' AND a.code LIKE '11%'` + bBranch;
+      const liqQuery = $app.db().newQuery(liqSql);
+      if (branchId) liqQuery.bind({ branchId });
+      const liqRes = new DynamicModel({ totalLiquidez: -0 });
+      liqQuery.one(liqRes);
+      totalLiquidez = Number(liqRes.totalLiquidez) || 0;
+    } catch (_) {}
+
+    // 8d. Métricas Fiscales: Estimación de IVA (2408/2335) y Retenciones (2365/2367/2368)
+    let ivaGenerado = 0;
+    let ivaDescontable = 0;
+    let retencionesMes = 0;
+    try {
+      const impSql = `
+        SELECT
+          COALESCE(SUM(CASE WHEN (a.code LIKE '240801%' OR a.code LIKE '233501%') THEN (l.credit - l.debit)
+                            WHEN a.code LIKE '2408%' AND l.credit > l.debit THEN (l.credit - l.debit)
+                            ELSE 0 END), 0) AS ivaGen,
+          COALESCE(SUM(CASE WHEN (a.code LIKE '240802%' OR a.code LIKE '233502%') THEN (l.debit - l.credit)
+                            WHEN a.code LIKE '2408%' AND l.debit > l.credit THEN (l.debit - l.credit)
+                            ELSE 0 END), 0) AS ivaDesc,
+          COALESCE(SUM(CASE WHEN (a.code LIKE '2365%' OR a.code LIKE '2367%' OR a.code LIKE '2368%') THEN (l.credit - l.debit)
+                            ELSE 0 END), 0) AS retMes
+        FROM tx_lines l
+        INNER JOIN accounts a ON a.id = l.account_id
+        INNER JOIN transactions t ON t.id = l.tx_id
+        WHERE t.status = 'active' AND t.date >= {:start} AND t.date <= {:end}` + bBranch;
+      const impQuery = $app.db().newQuery(impSql);
+      const impBind = { start: currentMonthStart, end: currentMonthEnd };
+      if (branchId) impBind.branchId = branchId;
+      const impRes = new DynamicModel({ ivaGen: -0, ivaDesc: -0, retMes: -0 });
+      impQuery.bind(impBind).one(impRes);
+      ivaGenerado = Number(impRes.ivaGen) || 0;
+      ivaDescontable = Number(impRes.ivaDesc) || 0;
+      retencionesMes = Number(impRes.retMes) || 0;
+    } catch (_) {}
+
+    // 8e. Métricas de Inventario: Quiebres de stock, stock negativo y movimientos
+    let criticalStockCount = 0;
+    let negativeStockCount = 0;
+    let totalInvMovs = 0;
+    const topCriticalProds = [];
+    try {
+      const invMetSql = `
+        SELECT
+          (SELECT COUNT(DISTINCT s.product_id)
+           FROM inventory_stock s
+           INNER JOIN products p ON p.id = s.product_id
+           WHERE p.active = 1 AND p.stock_min > 0 AND s.qty_on_hand <= p.stock_min) AS critCount,
+          (SELECT COUNT(DISTINCT product_id)
+           FROM inventory_stock
+           WHERE qty_on_hand < 0) AS negCount,
+          (SELECT COUNT(*)
+           FROM inventory_movements
+           WHERE status != 'voided' AND date >= {:start} AND date <= {:end}` + (branchId ? " AND branch_id = {:branchId}" : "") + `) AS movCount
+      `;
+      const invMetQuery = $app.db().newQuery(invMetSql);
+      const invMetBind = { start: currentMonthStart, end: currentMonthEnd };
+      if (branchId) invMetBind.branchId = branchId;
+      const invMetRes = new DynamicModel({ critCount: 0, negCount: 0, movCount: 0 });
+      invMetQuery.bind(invMetBind).one(invMetRes);
+      criticalStockCount = Number(invMetRes.critCount) || 0;
+      negativeStockCount = Number(invMetRes.negCount) || 0;
+      totalInvMovs = Number(invMetRes.movCount) || 0;
+
+      // Top 5 productos más críticos
+      const topCritSql = `
+        SELECT p.code, p.name, COALESCE(p.stock_min, 0) AS stockMin, SUM(s.qty_on_hand) AS qtyOnHand
+        FROM inventory_stock s
+        INNER JOIN products p ON p.id = s.product_id
+        WHERE p.active = 1 AND p.stock_min > 0
+        GROUP BY p.id
+        HAVING qtyOnHand <= stockMin
+        ORDER BY (stockMin - qtyOnHand) DESC
+        LIMIT 5
+      `;
+      const topCritQuery = $app.db().newQuery(topCritSql);
+      const topCritData = arrayOf(new DynamicModel({ code: "", name: "", stockMin: -0, qtyOnHand: -0 }));
+      topCritQuery.all(topCritData);
+      for (const p of topCritData) {
+        topCriticalProds.push({
+          code: p.code,
+          name: p.name,
+          stockMin: Number(p.stockMin) || 0,
+          qtyOnHand: Number(p.qtyOnHand) || 0
+        });
+      }
+    } catch (_) {}
+
+    // 8f. Auditoría y Comprobantes en Borrador
+    let draftTxCount = 0;
+    try {
+      const draftSql = `SELECT COUNT(*) AS draftCount FROM transactions WHERE status = 'draft'` + (branchId ? " AND branch_id = {:branchId}" : "");
+      const draftQuery = $app.db().newQuery(draftSql);
+      if (branchId) draftQuery.bind({ branchId });
+      const draftRes = new DynamicModel({ draftCount: 0 });
+      draftQuery.one(draftRes);
+      draftTxCount = Number(draftRes.draftCount) || 0;
+    } catch (_) {}
+
+    // 8g. MÓDULO A: Nómina y Recursos Humanos
+    let activeEmployeesCount = 0;
+    let payrollCostMonth = 0;
+    let payrollPendingDian = 0;
+    let currentPayrollStatus = 'Sin Período';
+    try {
+      const empSql = `SELECT COUNT(*) AS cnt FROM third_parties WHERE type = 'EMPLEADO' AND active = 1`;
+      const empRes = new DynamicModel({ cnt: 0 });
+      $app.db().newQuery(empSql).one(empRes);
+      activeEmployeesCount = Number(empRes.cnt) || 0;
+
+      const payPerSql = `
+        SELECT id, name, status, start_date, end_date
+        FROM payroll_periods
+        WHERE (start_date <= {:end} AND end_date >= {:start}) OR (created >= {:start})
+        ORDER BY start_date DESC
+        LIMIT 1
+      `;
+      const payPerQuery = $app.db().newQuery(payPerSql);
+      payPerQuery.bind({ start: currentMonthStart, end: currentMonthEnd });
+      const payPerRes = new DynamicModel({ id: "", name: "", status: "", start_date: "", end_date: "" });
+      try {
+        payPerQuery.one(payPerRes);
+        currentPayrollStatus = payPerRes.status || 'Borrador';
+        if (payPerRes.id) {
+          const linesSql = `SELECT COALESCE(SUM(total_neto), 0) AS totalCost FROM payroll_lines WHERE period_id = {:pid}`;
+          const linesRes = new DynamicModel({ totalCost: -0 });
+          $app.db().newQuery(linesSql).bind({ pid: payPerRes.id }).one(linesRes);
+          payrollCostMonth = Number(linesRes.totalCost) || 0;
+        }
+      } catch (_) {}
+
+      const pendDianSql = `SELECT COUNT(*) AS cnt FROM payroll_periods WHERE status = 'approved' AND (tx_id = '' OR tx_id IS NULL)`;
+      const pendDianRes = new DynamicModel({ cnt: 0 });
+      $app.db().newQuery(pendDianSql).one(pendDianRes);
+      payrollPendingDian = Number(pendDianRes.cnt) || 0;
+    } catch (_) {}
+
+    // 8h. MÓDULO B: Facturación Electrónica y Resoluciones DIAN
+    let dianResolutionsExpiring = 0;
+    let dianDocsRejected = 0;
+    let dianDocSoporteMonth = 0;
+    let dianSuccessRate = 100;
+    try {
+      const thirtyDaysAhead = new Date(asOfTime + (30 * 86400000)).toISOString().slice(0, 10);
+      const resSql = `
+        SELECT COUNT(*) AS cnt
+        FROM dian_resolutions
+        WHERE active = 1
+          AND (valid_to <= {:limitDate} OR (to_number - current_number) <= 100)
+      `;
+      const resQuery = $app.db().newQuery(resSql);
+      resQuery.bind({ limitDate: thirtyDaysAhead });
+      const resModel = new DynamicModel({ cnt: 0 });
+      try {
+        resQuery.one(resModel);
+        dianResolutionsExpiring = Number(resModel.cnt) || 0;
+      } catch (_) {}
+
+      const rejSql = `SELECT COUNT(*) AS cnt FROM einvoice_docs WHERE status IN ('rechazada', 'error')`;
+      const rejRes = new DynamicModel({ cnt: 0 });
+      try {
+        $app.db().newQuery(rejSql).one(rejRes);
+        dianDocsRejected = Number(rejRes.cnt) || 0;
+      } catch (_) {}
+
+      const totalDocsSql = `
+        SELECT
+          COUNT(CASE WHEN status = 'aceptada' THEN 1 END) AS accepted,
+          COUNT(*) AS total
+        FROM einvoice_docs
+      `;
+      const totalDocsRes = new DynamicModel({ accepted: 0, total: 0 });
+      try {
+        $app.db().newQuery(totalDocsSql).one(totalDocsRes);
+        const totDian = Number(totalDocsRes.total) || 0;
+        const accDian = Number(totalDocsRes.accepted) || 0;
+        if (totDian > 0) {
+          dianSuccessRate = Math.round((accDian / totDian) * 100);
+        }
+      } catch (_) {}
+
+      const docSopSql = `
+        SELECT COALESCE(SUM(total), 0) AS totalVal
+        FROM support_documents
+        WHERE date >= {:start} AND date <= {:end}` + (branchId ? " AND branch_id = {:branchId}" : "");
+      const docSopQuery = $app.db().newQuery(docSopSql);
+      const docSopBind = { start: currentMonthStart, end: currentMonthEnd };
+      if (branchId) docSopBind.branchId = branchId;
+      const docSopRes = new DynamicModel({ totalVal: -0 });
+      try {
+        docSopQuery.bind(docSopBind).one(docSopRes);
+        dianDocSoporteMonth = Number(docSopRes.totalVal) || 0;
+      } catch (_) {}
+    } catch (_) {}
+
+    // 8i. MÓDULO C: Punto de Venta (POS)
+    let posSalesToday = 0;
+    let posTicketsCount = 0;
+    let posOpenShiftsCount = 0;
+    const posPaymentMethods = { 'Efectivo': 0, 'Tarjeta / Datáfono': 0, 'Transferencia': 0, 'Crédito': 0 };
+    try {
+      const shiftsSql = `SELECT COUNT(*) AS cnt FROM pos_shifts WHERE status = 'open'`;
+      const shiftsRes = new DynamicModel({ cnt: 0 });
+      try {
+        $app.db().newQuery(shiftsSql).one(shiftsRes);
+        posOpenShiftsCount = Number(shiftsRes.cnt) || 0;
+      } catch (_) {}
+
+      const posTodaySql = `
+        SELECT
+          COUNT(*) AS ticketsCount,
+          COALESCE(SUM(total), 0) AS totalSales,
+          COALESCE(SUM(CASE WHEN payment_method IN ('EFECTIVO', 'CASH', 'Efectivo') THEN total ELSE 0 END), 0) AS mCash,
+          COALESCE(SUM(CASE WHEN payment_method IN ('TARJETA', 'DATAFONO', 'CARD', 'Tarjeta') THEN total ELSE 0 END), 0) AS mCard,
+          COALESCE(SUM(CASE WHEN payment_method IN ('TRANSFERENCIA', 'NEQUI', 'DAVIPLATA', 'BANCO') THEN total ELSE 0 END), 0) AS mTransfer,
+          COALESCE(SUM(CASE WHEN payment_method IN ('CREDITO', 'CREDIT') THEN total ELSE 0 END), 0) AS mCredit
+        FROM invoices
+        WHERE (is_pos = 1 OR doc_type = 'POS' OR pos_register_id != '')
+          AND status != 'voided'
+          AND strftime('%Y-%m-%d', date) = {:todayStr}` + (branchId ? " AND branch_id = {:branchId}" : "");
+      const posTodayQuery = $app.db().newQuery(posTodaySql);
+      const posBind = { todayStr };
+      if (branchId) posBind.branchId = branchId;
+      const posRes = new DynamicModel({ ticketsCount: 0, totalSales: -0, mCash: -0, mCard: -0, mTransfer: -0, mCredit: -0 });
+      try {
+        posTodayQuery.bind(posBind).one(posRes);
+        posSalesToday = Number(posRes.totalSales) || 0;
+        posTicketsCount = Number(posRes.ticketsCount) || 0;
+        posPaymentMethods['Efectivo'] = Number(posRes.mCash) || 0;
+        posPaymentMethods['Tarjeta / Datáfono'] = Number(posRes.mCard) || 0;
+        posPaymentMethods['Transferencia'] = Number(posRes.mTransfer) || 0;
+        posPaymentMethods['Crédito'] = Number(posRes.mCredit) || 0;
+      } catch (_) {}
+    } catch (_) {}
+    const posAvgTicket = posTicketsCount > 0 ? (posSalesToday / posTicketsCount) : 0;
+
+    // 8j. MÓDULO D: Compras y Órdenes de Compra
+    let purchasesThisMonth = 0;
+    let purchasesPrevMonth = 0;
+    let pendingPurchaseOrders = 0;
+    const topSuppliers = [];
+    try {
+      const purPeriodSql = `
+        SELECT
+          COALESCE(SUM(CASE WHEN strftime('%Y-%m', date) = {:curMon} THEN total ELSE 0 END), 0) AS pThisMonth,
+          COALESCE(SUM(CASE WHEN strftime('%Y-%m', date) = {:prevMon} THEN total ELSE 0 END), 0) AS pPrevMonth
+        FROM purchase_invoices
+        WHERE status != 'voided'` + (branchId ? " AND branch_id = {:branchId}" : "");
+      const purPeriodQuery = $app.db().newQuery(purPeriodSql);
+      const purBind = { curMon: currentMonthStr, prevMon: previousMonthStr };
+      if (branchId) purBind.branchId = branchId;
+      const purRes = new DynamicModel({ pThisMonth: -0, pPrevMonth: -0 });
+      try {
+        purPeriodQuery.bind(purBind).one(purRes);
+        purchasesThisMonth = Number(purRes.pThisMonth) || 0;
+        purchasesPrevMonth = Number(purRes.pPrevMonth) || 0;
+      } catch (_) {}
+
+      const poSql = `SELECT COUNT(*) AS cnt FROM purchase_orders WHERE status IN ('approved', 'pending', 'abierta')` + (branchId ? " AND branch_id = {:branchId}" : "");
+      const poQuery = $app.db().newQuery(poSql);
+      if (branchId) poQuery.bind({ branchId });
+      const poRes = new DynamicModel({ cnt: 0 });
+      try {
+        poQuery.one(poRes);
+        pendingPurchaseOrders = Number(poRes.cnt) || 0;
+      } catch (_) {}
+
+      const topSuppSql = `
+        SELECT
+          COALESCE(NULLIF(TRIM(tp.name),''), 'Proveedor') AS suppName,
+          SUM(pi.total) AS totalBought
+        FROM purchase_invoices pi
+        LEFT JOIN third_parties tp ON tp.id = pi.third_party_id
+        WHERE pi.status != 'voided' AND pi.date >= {:startDate}` + (branchId ? " AND pi.branch_id = {:branchId}" : "") + `
+        GROUP BY pi.third_party_id
+        ORDER BY totalBought DESC
+        LIMIT 5
+      `;
+      const topSuppQuery = $app.db().newQuery(topSuppSql);
+      const topSuppBind = { startDate };
+      if (branchId) topSuppBind.branchId = branchId;
+      const topSuppData = arrayOf(new DynamicModel({ suppName: "", totalBought: -0 }));
+      try {
+        topSuppQuery.bind(topSuppBind).all(topSuppData);
+        for (const s of topSuppData) {
+          topSuppliers.push({
+            name: s.suppName,
+            total: Number(s.totalBought) || 0
+          });
+        }
+      } catch (_) {}
+    } catch (_) {}
+
+    // 8k. MÓDULO G: Comercio Exterior e Importaciones
+    let importsInTransitCount = 0;
+    let importsValueTransit = 0;
+    let importsPendingKardex = 0;
+    try {
+      const impTransitSql = `
+        SELECT
+          COUNT(*) AS cnt,
+          COALESCE(SUM(COALESCE(total_fob, total, 0)), 0) AS valFob
+        FROM imports
+        WHERE status IN ('en_transito', 'cotizacion', 'puerto', 'aduana')
+      `;
+      const impRes = new DynamicModel({ cnt: 0, valFob: -0 });
+      try {
+        $app.db().newQuery(impTransitSql).one(impRes);
+        importsInTransitCount = Number(impRes.cnt) || 0;
+        importsValueTransit = Number(impRes.valFob) || 0;
+      } catch (_) {}
+
+      const impKardexSql = `SELECT COUNT(*) AS cnt FROM imports WHERE status = 'nacionalizado'`;
+      const impKardexRes = new DynamicModel({ cnt: 0 });
+      try {
+        $app.db().newQuery(impKardexSql).one(impKardexRes);
+        importsPendingKardex = Number(impKardexRes.cnt) || 0;
+      } catch (_) {}
+    } catch (_) {}
+
+    // Razón corriente y Utilidad del mes
+    const currentRev = monthlyRevenues[5] || 0;
+    const currentExp = monthlyExpenses[5] || 0;
+    const utilidadMes = currentRev - currentExp;
+    const prevRev = monthlyRevenues[4] || 0;
+    const activosVal = Number(balanceResult.currentActivos) || 0;
+    const pasivosVal = Number(balanceResult.currentPasivos) || 0;
+    const razonCorriente = pasivosVal > 0 ? (activosVal / pasivosVal) : (activosVal > 0 ? 1 : 0);
+
+    // Suma de valor total de inventario
+    let totalStockVal = 0;
+    for (const catVal of Object.values(invByCategory)) {
+      totalStockVal += Number(catVal) || 0;
     }
 
     // 9. Retornar el JSON estructurado
@@ -474,13 +925,63 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
         txThisMonth:    Number(txPeriodResult.txThisMonth) || 0,
         txPrevMonth:    Number(txPeriodResult.txPrevMonth) || 0,
         newTpThisMonth: _newTpCount,
+        // Métricas extendidas para perfiles
+        totalLiquidez:       totalLiquidez,
+        cxpTotal:            cxpTotal,
+        cxpWeek:             cxpWeek,
+        carteraTotal:        carteraTotal,
+        carteraVencida:      carteraVencida,
+        ventasMes:           currentRev,
+        ventasMesPrev:       prevRev,
+        utilidadMes:         utilidadMes,
+        razonCorriente:      razonCorriente,
+        ivaGenerado:         ivaGenerado,
+        ivaDescontable:      ivaDescontable,
+        ivaEstimadoAPagar:   (ivaGenerado - ivaDescontable),
+        retencionesMes:      retencionesMes,
+        totalStockVal:       totalStockVal,
+        criticalStockCount:  criticalStockCount,
+        negativeStockCount:  negativeStockCount,
+        totalInvMovs:        totalInvMovs,
+        draftTxCount:        draftTxCount,
+
+        // Módulo A: Nómina
+        activeEmployeesCount: activeEmployeesCount,
+        payrollCostMonth:     payrollCostMonth,
+        payrollPendingDian:   payrollPendingDian,
+        currentPayrollStatus: currentPayrollStatus,
+
+        // Módulo B: DIAN
+        dianResolutionsExpiring: dianResolutionsExpiring,
+        dianDocsRejected:        dianDocsRejected,
+        dianDocSoporteMonth:     dianDocSoporteMonth,
+        dianSuccessRate:         dianSuccessRate,
+
+        // Módulo C: POS
+        posSalesToday:      posSalesToday,
+        posAvgTicket:       posAvgTicket,
+        posTicketsCount:    posTicketsCount,
+        posOpenShiftsCount: posOpenShiftsCount,
+
+        // Módulo D: Compras
+        purchasesThisMonth:    purchasesThisMonth,
+        purchasesPrevMonth:    purchasesPrevMonth,
+        pendingPurchaseOrders: pendingPurchaseOrders,
+
+        // Módulo G: Importaciones
+        importsInTransitCount: importsInTransitCount,
+        importsValueTransit:   importsValueTransit,
+        importsPendingKardex:  importsPendingKardex,
       },
+      posPaymentMethods:   posPaymentMethods,
+      topSuppliers:        topSuppliers,
       monthlyTxCounts: monthlyTxCounts,
       txByType:        txByTypeData.map(d => ({ typeName: d.typeName, txCount: Number(d.txCount) || 0 })),
       recentActivity:  recentData.map(d => ({
         id: d.id, date: d.date, consecutive: d.consecutive,
         typeName: d.typeName, thirdParty: d.thirdParty,
       })),
+      topCriticalProducts: topCriticalProds,
       monthsLabels: months,
       months12Labels: months12,
       monthlyRevenues12: monthlyRevenues12,
@@ -497,9 +998,9 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
       })),
 
       // ── CONTABILIDAD: financiero ─────────────────────────────────
-      currentMonthActivos:  Number(balanceResult.currentActivos) || 0,
+      currentMonthActivos:  activosVal,
       prevMonthActivos:     Number(balanceResult.prevActivos)    || 0,
-      currentMonthPasivos:  Number(balanceResult.currentPasivos) || 0,
+      currentMonthPasivos:  pasivosVal,
       prevMonthPasivos:     Number(balanceResult.prevPasivos)    || 0,
       monthlyRevenues:      monthlyRevenues,
       monthlyExpenses:      monthlyExpenses,

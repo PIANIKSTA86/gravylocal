@@ -110,9 +110,16 @@ export class SupplyChainOrchestrator {
   /**
    * 2. Capitaliza la importación, traslada a bodega física y libera las reservas en espera
    */
-  static async finalizeImportAndReleaseReservations(importId: string, warehouseId: string, txTypeId: string, txNumber: string) {
-    // A. Capitalización contable y movimiento físico de inventario (ENTRADA)
-    const result = await API.capitalizeImport(importId, warehouseId, txTypeId, txNumber);
+  static async finalizeImportAndReleaseReservations(
+    importId: string,
+    warehouseId: string,
+    txTypeId: string,
+    txNumber: string,
+    customInvoicePcts?: Record<string, number>,
+    lineInvoiceAssignments?: Record<string, string>
+  ) {
+    // A. Capitalización contable y movimiento físico de inventario (ENTRADA) con distribución estricta por proveedor
+    const result = await API.capitalizeImport(importId, warehouseId, txTypeId, txNumber, customInvoicePcts, lineInvoiceAssignments);
 
     // B. Buscar todas las líneas de reserva vinculadas a esta importación
     let releasedCount = 0;
@@ -147,6 +154,39 @@ export class SupplyChainOrchestrator {
       ...result,
       releasedReservationsCount: releasedCount,
     };
+  }
+
+  /**
+   * 2b. Pausa las reservas de clientes asociadas cuando se reabre una importación
+   */
+  static async pauseReservationsForReopenedImport(importId: string) {
+    let pausedCount = 0;
+    try {
+      const reservationLines = await this.pb.listAll('sales_reservation_lines', {
+        filter: `import_id="${this.pb.escapeFilterValue(importId)}" && status="ready_to_dispatch"`,
+        expand: 'reservation_id,product_id',
+      });
+
+      const affectedReservationIds = new Set<string>();
+
+      for (const rl of reservationLines) {
+        affectedReservationIds.add(rl.reservation_id);
+        await this.pb.update('sales_reservation_lines', rl.id, {
+          status: 'active',
+          notes: `${rl.notes || ''} | En pausa por reapertura y auditoría de importación`.trim(),
+        }).catch(() => {});
+      }
+
+      for (const resId of affectedReservationIds) {
+        await this.pb.update('sales_reservations', resId, {
+          notes: `Mercancía en pausa temporal por reapertura y reajuste de importación. Despacho suspendido temporalmente.`,
+        }).catch(() => {});
+        pausedCount++;
+      }
+    } catch (err: any) {
+      console.warn('[SupplyChainOrchestrator] Advertencia al pausar reservas por reapertura:', err?.message || err);
+    }
+    return pausedCount;
   }
 
   /**

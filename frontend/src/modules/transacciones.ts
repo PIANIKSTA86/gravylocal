@@ -479,9 +479,33 @@ function bindTxLineThirdSearches(mode = 'new') {
 
         if (id) {
           setTimeout(() => {
-            const debitInput = document.getElementById(isEdit ? `edit-tx-line-debit-${i}` : `tx-line-debit-${i}`);
-            debitInput?.focus();
+            const line = state.lines[i];
+            const acct = state.accountMap?.get(line?.account_id);
+            const needsCruce = !!acct?.maneja_cruce;
+            if (needsCruce) {
+              const cruceInput = document.getElementById(isEdit ? `edit-tx-line-cruce-${i}` : `tx-line-cruce-${i}`);
+              cruceInput?.focus();
+            } else {
+              const debitInput = document.getElementById(isEdit ? `edit-tx-line-debit-${i}` : `tx-line-debit-${i}`);
+              debitInput?.focus();
+            }
           }, 30);
+        }
+      }
+    });
+
+    input?.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        if (!results || results.style.display === 'none') {
+          e.preventDefault();
+          const line = state.lines[i];
+          const acct = state.accountMap?.get(line?.account_id);
+          const needsCruce = !!acct?.maneja_cruce;
+          if (needsCruce) {
+            document.getElementById(isEdit ? `edit-tx-line-cruce-${i}` : `tx-line-cruce-${i}`)?.focus();
+          } else {
+            document.getElementById(isEdit ? `edit-tx-line-debit-${i}` : `tx-line-debit-${i}`)?.focus();
+          }
         }
       }
     });
@@ -590,6 +614,15 @@ function bindTxLineAccountSearches(mode = 'new') {
         }
       }
     });
+
+    input?.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        if (!results || results.style.display === 'none') {
+          e.preventDefault();
+          document.getElementById(isEdit ? `edit-tx-line-third-${i}-search` : `tx-line-third-${i}-search`)?.focus();
+        }
+      }
+    });
   });
 }
 
@@ -681,7 +714,7 @@ async function openNuevaTxModal(initialOpts: any = null) {
       <div class="p-4">
         <div class="flex items-center justify-between mb-3">
           <h4 class="font-bold text-sm" style="color:#0D2137">L\u00edneas contables</h4>
-          <button class="btn btn-outline btn-sm" id="btn-add-line"><i class="fas fa-plus"></i> Agregar l\u00ednea</button>
+          <button class="btn btn-outline btn-sm" id="btn-add-line" onclick="addTxLine()"><i class="fas fa-plus"></i> Agregar l\u00ednea</button>
         </div>
         <div id="tx-lines"></div>
         <div id="tx-balance" class="balance-indicator balance-err mt-3"><i class="fas fa-triangle-exclamation"></i> Descuadrada</div>
@@ -714,6 +747,12 @@ function bindNewTxModalEvents() {
   const carteraBtn = $('#btn-cartera');
   const btnNewThird = $('#btn-new-third-from-tx');
   if (typeEl) typeEl.onchange = refreshConsecutive;
+  if (addLineBtn) {
+    addLineBtn.onclick = (e) => {
+      e.preventDefault();
+      addTxLine();
+    };
+  }
   if (btnNewThird) {
     btnNewThird.onclick = () => {
       // Guardar estado visual del modal
@@ -812,10 +851,19 @@ function bindNewTxModalEvents() {
   if (thirdEl && carteraBtn) carteraBtn.disabled = !thirdEl.value;
   if (carteraBtn) carteraBtn.onclick = () => showCarteraModal(getSelectVal('tx-third'), { returnToPrevious: true });
 
-  $('#tx-type')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-date')?.focus(); }});
-  $('#tx-date')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-third-search')?.focus(); }});
-  $('#tx-desc')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-due-date')?.focus(); }});
-  $('#tx-due-date')?.addEventListener('keydown', (e) => { if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); $('#tx-line-account-0-search')?.focus(); }});
+  $('#tx-type')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#tx-date')?.focus(); }});
+  $('#tx-date')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#tx-due-date')?.focus(); }});
+  $('#tx-due-date')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#tx-third-search')?.focus(); }});
+  $('#tx-third-search')?.addEventListener('keydown', (e) => {
+    if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+      const res = $('#tx-third-results');
+      if (!res || res.style.display === 'none') {
+        e.preventDefault();
+        $('#tx-desc')?.focus();
+      }
+    }
+  });
+  $('#tx-desc')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#tx-line-account-0-search')?.focus(); }});
 }
 
 function _closeTxModal() {
@@ -932,7 +980,7 @@ function _closeTxModal() {
       <div class="p-4">
         <div class="flex items-center justify-between mb-3">
           <h4 class="font-bold text-sm" style="color:#0D2137">Líneas contables</h4>
-          <button class="btn btn-outline btn-sm" id="btn-add-line"><i class="fas fa-plus"></i> Agregar línea</button>
+          <button class="btn btn-outline btn-sm" id="btn-add-line" onclick="addTxLine()"><i class="fas fa-plus"></i> Agregar línea</button>
         </div>
         <div id="tx-lines"></div>
         <div id="tx-balance" class="balance-indicator balance-err mt-3"><i class="fas fa-triangle-exclamation"></i> Descuadrada</div>
@@ -1029,7 +1077,7 @@ async function renderNuevaTx(c) {
       <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
         <div class="flex items-center justify-between mb-4">
           <h4 class="font-bold" style="color:#0D2137">Líneas contables</h4>
-          ${can('canWrite') ? '<button class="btn btn-outline btn-sm" id="btn-add-line"><i class="fas fa-plus"></i> Agregar línea</button>' : ''}
+          ${can('canWrite') ? '<button class="btn btn-outline btn-sm" id="btn-add-line" onclick="addTxLine()"><i class="fas fa-plus"></i> Agregar línea</button>' : ''}
         </div>
         <div id="tx-lines"></div>
         <div class="flex flex-wrap items-center justify-between mt-4 gap-3">
@@ -1093,7 +1141,10 @@ async function refreshConsecutive() {
 }
 
 function addTxLine(row: any = null) {
-  const defaultConcept = TX_STATE?.defaultConcept || (TX_STATE?.isImport ? 'fob' : '');
+  // Solo la primera línea hereda defaultConcept si se abrió intencionalmente desde una etapa de importación;
+  // las contrapartidas o líneas siguientes se crean con '-- Sin concepto --' ('')
+  const isFirstLine = (!TX_STATE?.lines || TX_STATE.lines.length === 0);
+  const initialConcept = (isFirstLine && TX_STATE?.defaultConcept) ? TX_STATE.defaultConcept : '';
   TX_STATE.lines.push(row || {
     account_id: '',
     third_party_id: '',
@@ -1104,7 +1155,7 @@ function addTxLine(row: any = null) {
     cross_doc_ref: '',
     ret_base: '',
     ret_rate: '',
-    import_concept: defaultConcept
+    import_concept: initialConcept
   });
   renderTxLines(true);
 }
@@ -1125,6 +1176,57 @@ function autoAppendTxLineFrom(i) {
   if (!line.account_id || !hasSingleSideAmount) return;
   addTxLine();
 }
+
+function handleTxLineDebitKeydown(e: KeyboardEvent, i: number, isEdit: boolean = false) {
+  if (e.shiftKey) return;
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    const state = isEdit ? TX_EDIT_STATE : TX_STATE;
+    const line = state?.lines?.[i];
+    const prefix = isEdit ? 'edit-tx-line' : 'tx-line';
+    const debitVal = Number(line?.debit || 0);
+
+    if (debitVal > 0) {
+      const nextAcc = document.getElementById(`${prefix}-account-${i + 1}-search`);
+      if (nextAcc) {
+        nextAcc.focus();
+      } else {
+        if (isEdit) addEditTxLine();
+        else addTxLine();
+        setTimeout(() => {
+          document.getElementById(`${prefix}-account-${i + 1}-search`)?.focus();
+        }, 50);
+      }
+    } else {
+      const creditInput = document.getElementById(`${prefix}-credit-${i}`) as HTMLInputElement;
+      if (creditInput && !creditInput.disabled) {
+        creditInput.focus();
+        creditInput.select?.();
+      }
+    }
+  }
+}
+
+function handleTxLineCreditKeydown(e: KeyboardEvent, i: number, isEdit: boolean = false) {
+  if (e.shiftKey) return;
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    const prefix = isEdit ? 'edit-tx-line' : 'tx-line';
+    const nextAcc = document.getElementById(`${prefix}-account-${i + 1}-search`);
+    if (nextAcc) {
+      nextAcc.focus();
+    } else {
+      if (isEdit) addEditTxLine();
+      else addTxLine();
+      setTimeout(() => {
+        document.getElementById(`${prefix}-account-${i + 1}-search`)?.focus();
+      }, 50);
+    }
+  }
+}
+
+(window as any).handleTxLineDebitKeydown = handleTxLineDebitKeydown;
+(window as any).handleTxLineCreditKeydown = handleTxLineCreditKeydown;
 
 function editTxLineComment(i) {
   openLineComment(i, 'new');
@@ -1292,7 +1394,7 @@ function renderTxLines(repaint = true) {
             ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input id="tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input id="tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)" onkeydown="if((event.key==='Enter' || event.key==='Tab') && !event.shiftKey){ event.preventDefault(); document.getElementById('tx-line-debit-${i}')?.focus(); }">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
@@ -1336,8 +1438,8 @@ function renderTxLines(repaint = true) {
           </select>
         </div>
 
-        <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onkeydown="if(event.key==='Enter' || event.key==='Tab'){event.preventDefault(); document.getElementById('tx-line-credit-${i}')?.focus();}" onblur="autoAppendTxLineFrom(${i})">
-        <input id="tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onkeydown="if(event.key==='Enter' || event.key==='Tab'){event.preventDefault(); document.getElementById('tx-line-account-${i+1}-search')?.focus();}" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateTxLine(${i}, 'debit', parseNum(this.value))" onkeydown="handleTxLineDebitKeydown(event, ${i}, false)" onblur="autoAppendTxLineFrom(${i})">
+        <input id="tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateTxLine(${i}, 'credit', parseNum(this.value))" onkeydown="handleTxLineCreditKeydown(event, ${i}, false)" onblur="autoAppendTxLineFrom(${i})">
 
         <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
         <button class="btn btn-danger btn-sm" onclick="removeTxLine(${i})"><i class="fas fa-xmark"></i></button>
@@ -1859,10 +1961,10 @@ async function saveTransaction(approve = false) {
       line_order: i + 1,
       cross_doc_ref: l.cross_doc_ref || '',
       branch_id: l.branch_id || txBranchId || null,
-      import_id: isImportMode ? impId : null,
-      import_concept: isImportMode ? (l.import_concept || '') : null,
-      import_invoice_ref: isImportMode ? invRef : '',
-      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
+      import_id: (isImportMode && l.import_concept) ? impId : null,
+      import_concept: (isImportMode && l.import_concept) ? l.import_concept : null,
+      import_invoice_ref: (isImportMode && l.import_concept) ? invRef : '',
+      import_trm: (isImportMode && l.import_concept && trmVal > 0) ? trmVal : null,
     })));
 
     if (approve && can('canApprove')) {
@@ -2797,6 +2899,19 @@ function bindEditCarteraEvents() {
   });
   btn.disabled = !third.value;
   btn.onclick = () => showCarteraModal(third.value, { returnToPrevious: true });
+
+  $('#edit-tx-date')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#edit-tx-due-date')?.focus(); }});
+  $('#edit-tx-due-date')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#edit-tx-third-search')?.focus(); }});
+  $('#edit-tx-third-search')?.addEventListener('keydown', (e) => {
+    if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+      const res = $('#edit-tx-third-results');
+      if (!res || res.style.display === 'none') {
+        e.preventDefault();
+        $('#edit-tx-desc')?.focus();
+      }
+    }
+  });
+  $('#edit-tx-desc')?.addEventListener('keydown', (e) => { if((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) { e.preventDefault(); $('#edit-tx-line-account-0-search')?.focus(); }});
 }
 
 function addEditTxLine(row = null) {
@@ -2984,7 +3099,7 @@ function renderEditTxLines(repaint = true) {
             ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
-            <input id="edit-tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)">
+            <input id="edit-tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)" onkeydown="if((event.key==='Enter' || event.key==='Tab') && !event.shiftKey){ event.preventDefault(); document.getElementById('edit-tx-line-debit-${i}')?.focus(); }">
             ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
@@ -3028,8 +3143,8 @@ function renderEditTxLines(repaint = true) {
           </select>
         </div>
 
-        <input id="edit-tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
-        <input id="edit-tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" onblur="autoAppendEditTxLineFrom(${i})">
+        <input id="edit-tx-line-debit-${i}" class="form-input text-right" ${creditVal > 0 ? 'disabled' : ''} value="${line.debit ? esc(line.debit) : ''}" placeholder="Débito" oninput="updateEditTxLine(${i}, 'debit', parseNum(this.value))" onkeydown="handleTxLineDebitKeydown(event, ${i}, true)" onblur="autoAppendEditTxLineFrom(${i})">
+        <input id="edit-tx-line-credit-${i}" class="form-input text-right" ${debitVal > 0 ? 'disabled' : ''} value="${line.credit ? esc(line.credit) : ''}" placeholder="Crédito" oninput="updateEditTxLine(${i}, 'credit', parseNum(this.value))" onkeydown="handleTxLineCreditKeydown(event, ${i}, true)" onblur="autoAppendEditTxLineFrom(${i})">
 
         <button class="btn btn-outline btn-sm" title="Comentario por registro" style="${hasComment ? 'border-color:#16A34A;color:#16A34A;background:#F0FDF4' : 'border-color:#64748B;color:#334155'}" onclick="editEditTxLineComment(${i})"><i class="fas fa-comment-dots"></i></button>
         <button class="btn btn-danger btn-sm" onclick="removeEditTxLine(${i})"><i class="fas fa-xmark"></i></button>
@@ -3158,10 +3273,10 @@ async function saveEditTx(txId) {
       line_order: idx + 1,
       cross_doc_ref: l.cross_doc_ref || '',
       branch_id: l.branch_id || txBranchId || null,
-      import_id: isImportMode ? impId : null,
-      import_concept: isImportMode ? (l.import_concept || '') : null,
-      import_invoice_ref: isImportMode ? invRef : '',
-      import_trm: isImportMode && trmVal > 0 ? trmVal : null,
+      import_id: (isImportMode && l.import_concept) ? impId : null,
+      import_concept: (isImportMode && l.import_concept) ? l.import_concept : null,
+      import_invoice_ref: (isImportMode && l.import_concept) ? invRef : '',
+      import_trm: (isImportMode && l.import_concept && trmVal > 0) ? trmVal : null,
     })));
     _closeTxModal();
     showToast('Transacción modificada exitosamente', 'success');

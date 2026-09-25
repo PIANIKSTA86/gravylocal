@@ -345,21 +345,26 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
           lineRec.set("cost_center_id", String(line.cost_center_id).trim());
         }
 
-        // Tracking contable de importación
+        // Tracking contable de importación: solo asociar si la línea tiene concepto explícito de importación
+        const concept = String(line.import_concept || "").trim();
         const targetImpId = (line.import_id && String(line.import_id).trim()) || (txData.import_id && String(txData.import_id).trim()) || "";
-        if (targetImpId) {
+        if (concept && targetImpId) {
           lineRec.set("import_id", targetImpId);
-        }
-        if (line.import_concept && String(line.import_concept).trim()) {
-          lineRec.set("import_concept", String(line.import_concept).trim());
-        }
-        const targetInvRef = (line.import_invoice_ref != null && String(line.import_invoice_ref).trim()) || (txData.import_invoice_ref != null && String(txData.import_invoice_ref).trim()) || "";
-        if (targetInvRef) {
-          lineRec.set("import_invoice_ref", targetInvRef);
-        }
-        const targetTrm = Number(line.import_trm || txData.import_trm || 0);
-        if (targetTrm > 0) {
-          lineRec.set("import_trm", targetTrm);
+          lineRec.set("import_concept", concept);
+          const targetInvRef = (line.import_invoice_ref != null && String(line.import_invoice_ref).trim()) || (txData.import_invoice_ref != null && String(txData.import_invoice_ref).trim()) || "";
+          if (targetInvRef) {
+            lineRec.set("import_invoice_ref", targetInvRef);
+          }
+          const targetTrm = Number(line.import_trm || txData.import_trm || 0);
+          if (targetTrm > 0) {
+            lineRec.set("import_trm", targetTrm);
+          }
+        } else {
+          // Si no tiene concepto, es una contrapartida financiera y no debe vincularse a la importación
+          lineRec.set("import_id", "");
+          lineRec.set("import_concept", "");
+          lineRec.set("import_invoice_ref", "");
+          lineRec.set("import_trm", 0);
         }
 
         txApp.save(lineRec);

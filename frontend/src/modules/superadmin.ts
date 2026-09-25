@@ -6,13 +6,24 @@
 'use strict';
 
 const getHubUrl = (): string => {
+  if ((window as any).__GRAVY_HUB_URL) {
+    return (window as any).__GRAVY_HUB_URL;
+  }
   const { protocol, hostname, port } = window.location;
   if (port) {
     return `${protocol}//${hostname}:8089`;
   }
   const parts = hostname.split('.');
   if (parts.length >= 3) {
-    return `${protocol}//hub.${parts.slice(1).join('.')}`;
+    const sub = parts[0].toLowerCase();
+    const rootDomain = parts.slice(1).join('.');
+    if (sub === 'domestiko' || sub === 'app' || sub === 'hub') {
+      return `${protocol}//hub.${rootDomain}`;
+    }
+    if (sub.startsWith('hub-')) {
+      return `${protocol}//${hostname}`;
+    }
+    return `${protocol}//hub-${sub}.${rootDomain}`;
   }
   return `${protocol}//hub.${hostname}`;
 };
@@ -498,7 +509,7 @@ async function _loadSALicenses() {
             ${isCore ? 
               `<span style="font-size:11px;font-weight:700;color:#10B981;background:#ECFDF5;padding:4px 8px;border-radius:6px">Obligatorio</span>` :
               `<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer">
-                 <input type="checkbox" style="opacity:0;width:0;height:0" onchange="saToggleLicense('${key}', this.checked)" ${enabled ? 'checked' : ''}>
+                 <input type="checkbox" id="sa-toggle-${key}" style="opacity:0;width:0;height:0" onchange="saToggleLicense('${key}', this.checked)" ${enabled ? 'checked' : ''}>
                  <span style="position:absolute;inset:0;border-radius:11px;background:${enabled ? meta.color : '#D1D5DB'};transition:.3s"></span>
                  <span style="position:absolute;top:3px;left:${enabled ? '21px' : '3px'};width:16px;height:16px;background:#fff;border-radius:50%;transition:.3s"></span>
                </label>`
@@ -548,30 +559,60 @@ async function _loadSADbStats() {
 }
 
 async function saToggleLicense(moduleKey: string, enabled: boolean) {
+  const toggle = document.getElementById(`sa-toggle-${moduleKey}`) as HTMLInputElement | null;
+  if (toggle) {
+    toggle.checked = !enabled; // Revertir visualmente mientras confirma el diálogo
+  }
+
   const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+  const compName = activeCompany.name || activeCompany.company_name || 'la empresa activa';
   const alertText = enabled
-    ? `¿Estás seguro de que deseas <strong>habilitar</strong> el módulo <strong>${moduleKey}</strong> para la empresa <strong>${esc(activeCompany.name || '')}</strong> en el HUB?`
-    : `¿Estás seguro de que deseas <strong>deshabilitar</strong> el módulo <strong>${moduleKey}</strong> para la empresa <strong>${esc(activeCompany.name || '')}</strong>?<br><br><span style="color:#EF4444;font-weight:700;"><i class="fas fa-triangle-exclamation"></i> ADVERTENCIA:</span> Esto retirará el acceso a este módulo y afectará a todos los usuarios del tenant.`;
+    ? `¿Estás seguro de que deseas <strong>habilitar</strong> el módulo <strong>${moduleKey}</strong> para <strong>${esc(compName)}</strong> en el HUB y en la base de datos local?`
+    : `¿Estás seguro de que deseas <strong>deshabilitar</strong> el módulo <strong>${moduleKey}</strong> para <strong>${esc(compName)}</strong>?<br><br><span style="color:#EF4444;font-weight:700;"><i class="fas fa-triangle-exclamation"></i> ADVERTENCIA:</span> Esto retirará el acceso a este módulo y afectará a todos los usuarios del tenant.`;
 
   (window as any).confirmDialog(
-    `Confirmar licencia HUB: ${moduleKey.toUpperCase()}`,
+    `Confirmar licencia: ${moduleKey.toUpperCase()}`,
     alertText,
     async () => {
+      if (toggle) {
+        toggle.checked = enabled;
+        toggle.disabled = true;
+      }
       try {
         const hubToken = localStorage.getItem('gravy_hub_token');
-        if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión en el HUB');
+        if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión activa en el HUB');
 
-        const res = await fetch(`${HUB_URL}/api/hub/toggle-license`, {
+        // 1. Guardar en el HUB central
+        const resHub = await fetch(`${HUB_URL}/api/hub/toggle-license`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hubToken}` },
           body: JSON.stringify({ company_id: activeCompany.company_id, module_key: moduleKey, enabled }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Error desconocido del HUB');
-        
-        showToast(data.message, 'success');
-        
-        // Update local set
+        const dataHub = await resHub.json();
+        if (!resHub.ok) throw new Error(dataHub.message || 'Error desconocido del HUB');
+
+        // 2. Sincronizar con la base de datos local del tenant
+        try {
+          const resTenant = await fetch(
+            `${(window as any).PB_URL || window.location.origin}/api/gravy/toggle-license`,
+            {
+              method:  'POST',
+              headers: {
+                'Content-Type':  'application/json',
+                'Authorization': `Bearer ${pb.authToken}`,
+              },
+              body: JSON.stringify({ module_key: moduleKey, enabled }),
+            }
+          );
+          if (!resTenant.ok) {
+            const errTenant = await resTenant.json();
+            console.warn('[saToggleLicense] Advertencia sincronizando tenant:', errTenant);
+          }
+        } catch (tErr) {
+          console.warn('[saToggleLicense] Error conectando con API local del tenant:', tErr);
+        }
+
+        // 3. Actualizar memoria y sesión local
         if (enabled) {
           if (typeof (window as any).enableModule === 'function') {
             (window as any).enableModule(moduleKey);
@@ -591,36 +632,26 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
           }
         }
         
-        // Save back to localStorage so it survives reload
+        // Guardar en localStorage para persistencia
         localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
-        
-        // Sincronizar también con la base de datos local del tenant
-        try {
-          await fetch(
-            `${(window as any).PB_URL || window.location.origin}/api/gravy/toggle-license`,
-            {
-              method:  'POST',
-              headers: {
-                'Content-Type':  'application/json',
-                'Authorization': `Bearer ${pb.authToken}`,
-              },
-              body: JSON.stringify({ module_key: moduleKey, enabled }),
-            }
-          );
-        } catch (_) {}
 
+        // Reaplicar visibilidad en la barra lateral
         if (typeof applyModuleVisibility === 'function') applyModuleVisibility();
-        _loadSALicenses();
+        showToast(`Módulo "${moduleKey}" ${enabled ? 'habilitado' : 'deshabilitado'} exitosamente.`, 'success');
+
+        // Refrescar el grid con los datos confirmados
+        await _loadSALicenses();
       } catch (err: any) {
-        showToast(err.message, 'error');
-        _loadSALicenses(); // revert toggle
+        showToast(err.message || 'Error al actualizar licencia', 'error');
+        if (toggle) {
+          toggle.checked = !enabled;
+          toggle.disabled = false;
+        }
+        await _loadSALicenses();
       }
     },
     !enabled
   );
-
-  // Revertir visualmente el toggle mientras se espera confirmación
-  _loadSALicenses();
 }
 
 // Global Exports

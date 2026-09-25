@@ -58,7 +58,7 @@ interface PreliqLine {
   qty_base: number;
   fob_unit: number;
   fob_total: number;
-  cost_distribution_pct: number; // Columna H (al tanteo) para flete/seguro
+  cost_distribution_pct: number; // Porcentaje automático prorrateado según FOB Total (Cant. x Costo FOB)
   freight_usd: number;
   insurance_usd: number;
   base_cif_usd: number;
@@ -144,10 +144,10 @@ export function getDefaultSamplePreliq(): PreliqData {
         qty_base: 4406.40,
         fob_unit: 3.60,
         fob_total: 15863.04,
-        cost_distribution_pct: 0.65, // 65%
-        freight_usd: 7800,
-        insurance_usd: 70.99,
-        base_cif_usd: 23734.03,
+        cost_distribution_pct: 0.6707, // 67.07% (Prorrateo FOB automático: 15863.04 / 23649.84)
+        freight_usd: 8048.96,
+        insurance_usd: 71.74,
+        base_cif_usd: 23983.74,
         arancel_rate: 0.25, // 25%
         iva_rate: 0.19, // 19%
         arancel_usd: 5933.51,
@@ -175,10 +175,10 @@ export function getDefaultSamplePreliq(): PreliqData {
         qty_base: 27000,
         fob_unit: 0.2884,
         fob_total: 7786.80,
-        cost_distribution_pct: 0.35, // 35%
-        freight_usd: 4200,
-        insurance_usd: 50.00,
-        base_cif_usd: 12036.80,
+        cost_distribution_pct: 0.3293, // 32.93% (Prorrateo FOB automático: 7786.80 / 23649.84)
+        freight_usd: 3951.04,
+        insurance_usd: 35.21,
+        base_cif_usd: 11773.05,
         arancel_rate: 0.00, // 0%
         iva_rate: 0.19, // 19%
         arancel_usd: 0,
@@ -259,7 +259,41 @@ export function recalculatePreliqModel(data: PreliqData): {
     l.fob_unit = Number(l.fob_unit) || 0;
     l.fob_total = Math.round(l.qty_base * l.fob_unit * 100) / 100;
     totalFobUsd += l.fob_total;
+  });
 
+  totalFobUsd = Math.round(totalFobUsd * 100) / 100;
+
+  // Prorrateo Automático de Costo (Flete y Seguro) basado en Cantidad x Costo FOB
+  // Garantiza matemáticamente que la suma de porcentajes de todas las líneas sea siempre el 100%
+  const numLines = data.lines.length;
+  if (numLines > 0) {
+    if (totalFobUsd > 0) {
+      let accumPct = 0;
+      data.lines.forEach((l, idx) => {
+        if (idx === numLines - 1) {
+          // Último ítem absorbe el residuo para cuadre exacto al 100% (evita desbalances de redondeo)
+          l.cost_distribution_pct = Math.max(0, Math.round((1.0 - accumPct) * 10000) / 10000);
+        } else {
+          const ratio = Math.round((l.fob_total / totalFobUsd) * 10000) / 10000;
+          l.cost_distribution_pct = ratio;
+          accumPct += ratio;
+        }
+      });
+    } else {
+      const eq = Math.round((1.0 / numLines) * 10000) / 10000;
+      let accumPct = 0;
+      data.lines.forEach((l, idx) => {
+        if (idx === numLines - 1) {
+          l.cost_distribution_pct = Math.max(0, Math.round((1.0 - accumPct) * 10000) / 10000);
+        } else {
+          l.cost_distribution_pct = eq;
+          accumPct += eq;
+        }
+      });
+    }
+  }
+
+  data.lines.forEach(l => {
     sumDistCostPct += Number(l.cost_distribution_pct) || 0;
     sumLandedAllocPct += Number(l.landed_allocation_pct) || 0;
   });
@@ -269,13 +303,27 @@ export function recalculatePreliqModel(data: PreliqData): {
   let totalArancelCop = 0;
   let totalIvaCop = 0;
   let totalCifUsd = 0;
+  let accumFreightUsd = 0;
+  let accumFixedInsUsd = 0;
 
-  data.lines.forEach(l => {
+  data.lines.forEach((l, idx) => {
     const distPct = Number(l.cost_distribution_pct) || 0;
-    l.freight_usd = Math.round(totalFreightUsd * distPct * 100) / 100;
+    
+    // Distribución de Flete con cuadre exacto al centavo en la última línea
+    if (idx === numLines - 1 && totalFreightUsd > 0) {
+      l.freight_usd = Math.max(0, Math.round((totalFreightUsd - accumFreightUsd) * 100) / 100);
+    } else {
+      l.freight_usd = Math.round(totalFreightUsd * distPct * 100) / 100;
+      accumFreightUsd += l.freight_usd;
+    }
 
     if (data.insurance_fixed_usd > 0) {
-      l.insurance_usd = Math.round(data.insurance_fixed_usd * distPct * 100) / 100;
+      if (idx === numLines - 1) {
+        l.insurance_usd = Math.max(0, Math.round((data.insurance_fixed_usd - accumFixedInsUsd) * 100) / 100);
+      } else {
+        l.insurance_usd = Math.round(data.insurance_fixed_usd * distPct * 100) / 100;
+        accumFixedInsUsd += l.insurance_usd;
+      }
     } else {
       const insRate = Number(data.insurance_rate) || 0.003;
       l.insurance_usd = Math.round((l.fob_total + l.freight_usd) * insRate * 100) / 100;
@@ -379,7 +427,11 @@ export function recalculatePreliqModel(data: PreliqData): {
  * Renderiza la sección de Preliquidaciones en el contenedor del módulo.
  */
 export async function renderPreliquidaciones(container: HTMLElement) {
-  container.innerHTML = `
+  const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+  const c = getContainer(container, 'preliquidaciones');
+  if (!c) return;
+
+  c.innerHTML = `
     <div class="p-8 text-center text-slate-400">
       <i class="fas fa-spinner fa-spin mr-2"></i> Cargando simulaciones de preliquidación...
     </div>
@@ -398,9 +450,9 @@ export async function renderPreliquidaciones(container: HTMLElement) {
       sims = [];
     }
 
-    _loadPreliquidacionesView(container, sims);
+    _loadPreliquidacionesView(c, sims);
   } catch (err: any) {
-    container.innerHTML = `
+    c.innerHTML = `
       <div class="p-8 text-center text-rose-500">
         <i class="fas fa-circle-exclamation mr-2"></i> ${err.message}
       </div>
@@ -778,8 +830,8 @@ export async function openPreliquidacionModal(
           <button type="button" class="btn btn-outline btn-xs bg-slate-800/80 text-emerald-300 border-slate-600 hover:bg-slate-700 flex items-center gap-1" id="btn-preliq-load-sample" title="Cargar los datos del Excel muestra_preliq.xlsx">
             <i class="fas fa-file-excel"></i> Muestra Excel
           </button>
-          <button type="button" class="btn btn-outline btn-xs bg-slate-800/80 text-sky-300 border-slate-600 hover:bg-slate-700 flex items-center gap-1" id="btn-preliq-suggest-fob" title="Distribuir flete proporcional al valor FOB">
-            <i class="fas fa-wand-magic-sparkles"></i> Sugerir % FOB
+          <button type="button" class="btn btn-outline btn-xs bg-slate-800/80 text-sky-300 border-slate-600 hover:bg-slate-700 flex items-center gap-1" id="btn-preliq-suggest-fob" title="Sincronizar el porcentaje de Asignación de Bolsa (% Asign. Total) con el prorrateo automático FOB">
+            <i class="fas fa-wand-magic-sparkles"></i> Sincronizar Bolsa con FOB
           </button>
           <button type="button" class="btn btn-outline btn-xs bg-slate-800/80 text-amber-300 border-slate-600 hover:bg-slate-700 flex items-center gap-1" id="btn-preliq-export-excel" title="Descargar como archivo Excel">
             <i class="fas fa-download"></i> Descargar Excel
@@ -944,9 +996,10 @@ export async function openPreliquidacionModal(
               </h4>
 
               <!-- Indicador de Balance de % Distribución -->
-              <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold" id="badge-dist-flete-wrap" style="background:#F8FAFC;border-color:#E2E8F0">
+              <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold" id="badge-dist-flete-wrap" style="background:#ECFDF5;border-color:#A7F3D0">
                 <span class="text-slate-500">Distribución Flete:</span>
-                <span class="font-mono" id="lbl-sum-dist-pct">0%</span>
+                <span class="font-mono text-emerald-700 font-bold" id="lbl-sum-dist-pct">100%</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold border border-emerald-300">Auto 100%</span>
               </div>
 
               <!-- Indicador de Balance de % Asignación de Costo Total -->
@@ -987,8 +1040,11 @@ export async function openPreliquidacionModal(
                   <th class="py-2.5 px-2 text-center" style="width:95px">Unidad</th>
                   <th class="py-2.5 px-2 text-right" style="width:125px">FOB Unit ($)</th>
                   <th class="py-2.5 px-2 text-right" style="width:135px">FOB Total ($)</th>
-                  <th class="py-2.5 px-2 text-right bg-blue-50/70 border-x border-blue-200" style="width:125px" title="Porcentaje de asignación manual de Flete y Seguro">
-                    % Dist. Costo <i class="fas fa-hand-pointer text-blue-600 text-[10px]"></i>
+                  <th class="py-2.5 px-2 text-right bg-blue-50/70 border-x border-blue-200" style="width:130px" title="Prorrateo Automático de Costo (Flete y Seguro) basado en Cantidad × Costo FOB. Suma siempre 100%">
+                    <div class="flex items-center justify-end gap-1">
+                      <span>% Dist. Costo</span>
+                      <span class="text-[9px] px-1 py-0.5 rounded font-extrabold bg-blue-200 text-blue-800 border border-blue-300" title="Prorrateo automático Cantidad × Costo FOB">AUTO</span>
+                    </div>
                   </th>
                   <th class="py-2.5 px-2 text-right" style="width:110px">Seguro ($)</th>
                   <th class="py-2.5 px-2 text-right" style="width:125px">Flete ($)</th>
@@ -1173,6 +1229,12 @@ export async function openPreliquidacionModal(
       };
 
       setCell('cell-fob-total', `$ ${(l.fob_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+      const distEl = tr.querySelector<HTMLInputElement>('.cell-cost-dist-pct');
+      if (distEl) {
+        const pctFormatted = `${(Number(l.cost_distribution_pct || 0) * 100).toFixed(2)}%`;
+        distEl.value = pctFormatted;
+        distEl.title = `Prorrateo FOB automático: $ ${(l.fob_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $ ${calc.totalFobUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} = ${pctFormatted} (Suma 100%)`;
+      }
       setCell('cell-insurance-usd', `$ ${(l.insurance_usd || 0).toFixed(2)}`);
       setCell('cell-freight-usd', `$ ${(l.freight_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
       setCell('cell-base-cif-usd', `$ ${(l.base_cif_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
@@ -1202,7 +1264,7 @@ export async function openPreliquidacionModal(
         <td class="py-2.5 px-2" style="width:95px"></td>
         <td class="py-2.5 px-2" style="width:125px"></td>
         <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalFobUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-        <td class="py-2.5 px-2 text-right font-mono bg-blue-50/70 border-x border-blue-200 whitespace-nowrap" style="width:125px">${Math.round(calc.sumDistCostPct * 100)}%</td>
+        <td class="py-2.5 px-2 text-right font-mono font-extrabold text-blue-950 bg-blue-100/80 border-x border-blue-200 whitespace-nowrap" style="width:130px">${Math.round(calc.sumDistCostPct * 100)}%</td>
         <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:110px">$ ${calc.totalInsuranceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:125px">$ ${calc.totalFreightUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td class="py-2.5 px-2 text-right font-mono whitespace-nowrap" style="width:135px">$ ${calc.totalCifUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -1263,9 +1325,9 @@ export async function openPreliquidacionModal(
           $ ${(l.fob_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </td>
 
-        <!-- % Distribución Costo Flete (AL TANTEO: 0 - 100) -->
-        <td class="py-2.5 px-2 text-right bg-blue-50/40 border-x border-blue-200" style="width:125px">
-          <input type="number" class="form-input text-xs text-right font-mono font-bold text-blue-900 py-1.5 px-2 w-full line-field rounded-lg border-blue-300 bg-blue-50/50 focus:ring-1 focus:ring-blue-500 shadow-sm" data-field="cost_distribution_pct" min="0" max="100" step="any" value="${pctToInput(l.cost_distribution_pct)}" placeholder="0">
+        <!-- % Distribución Costo Flete (AUTOMÁTICO: Cantidad x Costo FOB) -->
+        <td class="py-2.5 px-2 text-right bg-blue-50/40 border-x border-blue-200" style="width:130px">
+          <input type="text" readonly tabindex="-1" class="form-input text-xs text-right font-mono font-extrabold text-blue-900 py-1.5 px-2 w-full rounded-lg border-blue-300 bg-blue-100/60 cursor-default shadow-sm select-all cell-cost-dist-pct" data-field="cost_distribution_pct" value="${(Number(l.cost_distribution_pct || 0) * 100).toFixed(2)}%" title="Prorrateado automáticamente por FOB Total (Cantidades × Costo FOB). Suma siempre 100%">
         </td>
 
         <!-- Seguro USD -->
@@ -1442,7 +1504,7 @@ export async function openPreliquidacionModal(
       qty_base: 100,
       fob_unit: 1.0,
       fob_total: 100,
-      cost_distribution_pct: 0,
+      cost_distribution_pct: 0, // Se calcula automáticamente por prorrateo
       freight_usd: 0,
       insurance_usd: 0,
       base_cif_usd: 0,
@@ -1466,9 +1528,10 @@ export async function openPreliquidacionModal(
       total_profit_cop: 0
     });
     buildTableRows();
+    (window as any).showToast('Nuevo producto agregado. Costo distribuido automáticamente al 100%.', 'info');
   });
 
-  // Botón Sugerir Distribución Proporcional al FOB
+  // Botón Sincronizar Bolsa con FOB (aplica el prorrateo automático a la columna de asignación al tanteo)
   overlay.querySelector('#btn-preliq-suggest-fob')?.addEventListener('click', () => {
     let totFob = 0;
     data.lines.forEach(l => totFob += (l.qty_base * l.fob_unit));
@@ -1477,10 +1540,7 @@ export async function openPreliquidacionModal(
       return;
     }
     data.lines.forEach(l => {
-      const lineFob = l.qty_base * l.fob_unit;
-      const pct = Math.round((lineFob / totFob) * 1000) / 1000;
-      l.cost_distribution_pct = pct;
-      l.landed_allocation_pct = pct;
+      l.landed_allocation_pct = l.cost_distribution_pct;
     });
     // Actualizar valores en los inputs existentes sin perder estructura ni foco
     const tbody = overlay.querySelector('#preliq-lines-tbody');
@@ -1489,14 +1549,12 @@ export async function openPreliquidacionModal(
         const idx = Number(tr.dataset.lineIndex);
         const l = data.lines[idx];
         if (!l) return;
-        const distInp = tr.querySelector<HTMLInputElement>('input[data-field="cost_distribution_pct"]');
-        if (distInp) distInp.value = pctToInput(l.cost_distribution_pct);
         const allocInp = tr.querySelector<HTMLInputElement>('input[data-field="landed_allocation_pct"]');
         if (allocInp) allocInp.value = pctToInput(l.landed_allocation_pct);
       });
     }
     updateCalculationsUI();
-    (window as any).showToast('Distribución FOB sugerida aplicada. Puede ajustarla al tanteo.', 'info');
+    (window as any).showToast('Porcentajes de Asignación de Bolsa sincronizados con el prorrateo FOB (100%).', 'info');
   });
 
   // Botón Cargar Muestra Excel
@@ -1762,7 +1820,8 @@ export function exportPreliquidacionToExcel(data: PreliqData) {
 // Helpers expuestos en window para llamadas desde la tabla o eventos
 (window as any).openPreliqById = function(simId: string) {
   openPreliquidacionModal(simId, null, () => {
-    const tabPreliq = document.getElementById('imp-tab-content');
+    const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+    const tabPreliq = getContainer(null, 'preliquidaciones') || document.getElementById('imp-tab-content') || document.getElementById('page-content');
     if (tabPreliq) renderPreliquidaciones(tabPreliq);
   });
 };
@@ -1841,7 +1900,8 @@ export function exportPreliquidacionToExcel(data: PreliqData) {
   try {
     await pbClient.delete('import_simulations', simId);
     (window as any).showToast('Simulación eliminada.', 'info');
-    const tabPreliq = document.getElementById('imp-tab-content');
+    const getContainer = (window as any).getPageContainer || ((x: any, k: string) => x || document.getElementById('tab-pane-' + k));
+    const tabPreliq = getContainer(null, 'preliquidaciones') || document.getElementById('imp-tab-content') || document.getElementById('page-content');
     if (tabPreliq) renderPreliquidaciones(tabPreliq);
   } catch (err: any) {
     (window as any).showToast('Error al eliminar: ' + err.message, 'error');

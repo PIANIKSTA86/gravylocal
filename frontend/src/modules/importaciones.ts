@@ -32,6 +32,46 @@ const TRANSPORTS = [
   { value: 'courier', label: '📦 Courier' }
 ];
 
+// Catálogo oficial de Unidades de Medida DIAN / UBL 2.1 traducidas al español para visualización amigable
+const DIAN_UNITS_MAP: Record<string, string> = {
+  '94':  'Unidad',
+  'UND': 'Unidad',
+  'KGM': 'Kilogramo',
+  'GRM': 'Gramo',
+  'MTR': 'Metro',
+  'MTK': 'Metro cuadrado',
+  'MTQ': 'Metro cúbico',
+  'CMT': 'Centímetro',
+  'CMK': 'Centímetro cuadrado',
+  'CMQ': 'Centímetro cúbico',
+  'MMT': 'Milímetro',
+  'LTR': 'Litro',
+  'MLT': 'Mililitro',
+  'LBR': 'Libra',
+  'ONZ': 'Onza',
+  'TNE': 'Tonelada',
+  'WSD': 'Servicio',
+  'BX':  'Caja',
+  'PK':  'Paquete',
+  'SET': 'Juego / Set',
+  'DZN': 'Docena',
+  'FOT': 'Pie',
+  'FTK': 'Pie cuadrado',
+  'FTQ': 'Pie cúbico',
+  'INH': 'Pulgada',
+  'BO':  'Botella',
+  'JR':  'Tarro',
+  'Z3':  'Barril',
+  'GL':  'Galón',
+  'GN':  'Galón bruto'
+};
+
+function formatUnitOfMeasure(code: string): string {
+  if (!code) return 'Unidad';
+  const clean = String(code).trim().toUpperCase();
+  return DIAN_UNITS_MAP[clean] || (clean === 'UND' ? 'Unidad' : code);
+}
+
 const IMPORT_CONCEPTS_META: Record<string, { label: string; puc: string; name: string; icon: string; iconColor: string; iconBg: string }> = {
   fob: { label: '1. FOB Mercancía', puc: '220505', name: 'Proveedores del Exterior', icon: 'fas fa-ship', iconColor: 'text-indigo-600', iconBg: 'bg-indigo-50' },
   freight: { label: '2. Flete Internacional', puc: '233545', name: 'Costos y Gastos Fletes', icon: 'fas fa-plane-departure', iconColor: 'text-sky-600', iconBg: 'bg-sky-50' },
@@ -213,64 +253,14 @@ function renderStageAccountingViewer({
   `;
 }
 
-let currentImportSubtab: 'operaciones' | 'preliquidaciones' = 'operaciones';
-
 export async function renderImportaciones(container: HTMLElement) {
   const c = (window as any).getPageContainer ? (window as any).getPageContainer(container, 'importaciones') : container;
-  
-  c.innerHTML = `
-    <!-- Barra de Pestañas Principales del Módulo de Importaciones -->
-    <div class="flex items-center gap-2 border-b mb-4 pb-0" style="border-color:#E5E7EB">
-      <button type="button" id="tab-btn-imp-operaciones" class="pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all ${currentImportSubtab === 'operaciones' ? 'text-blue-700 border-blue-700 font-extrabold' : 'text-gray-500 border-transparent hover:text-gray-700'}" style="margin-bottom:-1px">
-        <i class="fas fa-ship"></i>
-        <span>Gestión de Importaciones</span>
-      </button>
-      <button type="button" id="tab-btn-imp-preliquidaciones" class="pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all ${currentImportSubtab === 'preliquidaciones' ? 'text-blue-700 border-blue-700 font-extrabold' : 'text-gray-500 border-transparent hover:text-gray-700'}" style="margin-bottom:-1px">
-        <i class="fas fa-calculator text-indigo-600"></i>
-        <span>Preliquidación & Viabilidad (Simulador)</span>
-      </button>
-    </div>
-    <div id="imp-subtab-container"></div>
-  `;
-
-  const subContainer = c.querySelector('#imp-subtab-container') as HTMLElement;
-  const btnOp = c.querySelector('#tab-btn-imp-operaciones') as HTMLButtonElement;
-  const btnPre = c.querySelector('#tab-btn-imp-preliquidaciones') as HTMLButtonElement;
-
-  const loadActiveSubtab = async () => {
-    if (currentImportSubtab === 'operaciones') {
-      subContainer.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
-      try {
-        await _loadImportacionesPage(subContainer);
-      } catch (err: any) {
-        subContainer.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
-      }
-    } else {
-      if (typeof (window as any).renderPreliquidaciones === 'function') {
-        await (window as any).renderPreliquidaciones(subContainer);
-      } else {
-        subContainer.innerHTML = `<div class="p-8 text-center text-slate-400">Cargando simulador...</div>`;
-      }
-    }
-  };
-
-  btnOp?.addEventListener('click', () => {
-    if (currentImportSubtab === 'operaciones') return;
-    currentImportSubtab = 'operaciones';
-    btnOp.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-blue-700 border-blue-700 font-extrabold';
-    btnPre.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-gray-500 border-transparent hover:text-gray-700';
-    loadActiveSubtab();
-  });
-
-  btnPre?.addEventListener('click', () => {
-    if (currentImportSubtab === 'preliquidaciones') return;
-    currentImportSubtab = 'preliquidaciones';
-    btnPre.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-blue-700 border-blue-700 font-extrabold';
-    btnOp.className = 'pb-2.5 px-3 border-b-2 font-bold text-xs md:text-sm flex items-center gap-2 cursor-pointer bg-transparent border-none transition-all text-gray-500 border-transparent hover:text-gray-700';
-    loadActiveSubtab();
-  });
-
-  await loadActiveSubtab();
+  c.innerHTML = `<div class="p-8 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando importaciones...</div>`;
+  try {
+    await _loadImportacionesPage(c);
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-8 text-center" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc ? (window as any).esc(err.message) : err.message}</div>`;
+  }
 }
 
 async function _loadImportacionesPage(c: HTMLElement) {
@@ -289,7 +279,8 @@ async function _loadImportacionesPage(c: HTMLElement) {
         <h3 class="text-lg font-bold" style="color:#0D2137">Gestión de Importaciones</h3>
         <p class="text-sm" style="color:#6B7280">Planifica compras internacionales, controla el tránsito, nacionaliza aduanas y liquida costos de importación.</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-outline text-xs" onclick="(window as any).navigate('preliquidaciones')" title="Abrir simulador de viabilidad y preliquidación"><i class="fas fa-calculator text-indigo-600"></i> Preliquidación & Viabilidad</button>
         ${(window as any).can('canWrite') ? `<button class="btn btn-outline" id="btn-import-pending-sale" title="Crear factura pendiente por entrega"><i class="fas fa-truck-ramp-box"></i> Facturar con Reserva</button>` : ''}
         ${(window as any).can('canWrite') ? `<button class="btn btn-outline" id="btn-import-config" title="Configuración de importaciones"><i class="fas fa-gear"></i></button><button class="btn btn-primary" id="btn-new-import"><i class="fas fa-plus"></i> Nueva Importación</button>` : ''}
       </div>
@@ -401,10 +392,20 @@ function renderImportRow(imp: any) {
       <td>${transport}</td>
       <td class="font-semibold" style="color:#4B5563">${(window as any).esc(imp.estimated_arrival || '—')}</td>
       <td class="text-right font-semibold">${(window as any).fmt(imp.total || 0)}</td>
-      <td><span class="badge ${meta.badge}">${meta.label}</span></td>
+      <td>
+        <span class="badge ${meta.badge}">${meta.label}</span>
+        ${imp.reopened_count > 0 ? `
+          <div class="mt-0.5">
+            <span class="badge badge-amber text-[9px] py-0 px-1 font-bold" title="${(window as any).esc(imp.reopened_reason || '')}">
+              <i class="fas fa-rotate-left mr-0.5"></i>Reabierta (${imp.reopened_count}x)
+            </span>
+          </div>
+        ` : ''}
+      </td>
       <td>
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewImportDetail('${(window as any).esc(imp.id)}')"><i class="fas fa-eye"></i></button>
+          <button class="btn btn-outline btn-sm text-indigo-700 hover:bg-indigo-50" style="border-color:#6366f1" title="Dossier Oficial DIAN / Gerencia" onclick="window.openImportExecutiveReport('${(window as any).esc(imp.id)}')"><i class="fas fa-file-contract"></i></button>
           
           ${imp.status !== 'recibido' && imp.status !== 'anulado' && (window as any).can('canWrite') ? `
             <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Editar" onclick="window.editImport('${(window as any).esc(imp.id)}')"><i class="fas fa-pen"></i></button>
@@ -414,6 +415,9 @@ function renderImportRow(imp: any) {
           
           ${imp.status === 'recibido' ? `
             <span class="badge badge-green" title="Importación finalizada y capitalizada"><i class="fas fa-boxes-packing mr-1"></i>Capitalizado</span>
+            ${(window as any).can('canWrite') ? `
+              <button class="btn btn-outline btn-sm text-amber-700 hover:bg-amber-50" style="border-color:#f59e0b" title="Reabrir importación para ajustes" onclick="window.openReopenImportModal('${(window as any).esc(imp.id)}')"><i class="fas fa-lock-open"></i></button>
+            ` : ''}
           ` : ''}
         </div>
       </td>
@@ -712,6 +716,26 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   const formHtml = `
     <div class="space-y-6 text-sm" style="color:#374151">
       
+      ${imp?.reopened_count > 0 ? `
+        <div class="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3 shadow-xs">
+          <div class="w-8 h-8 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0 mt-0.5 font-bold">
+            <i class="fas fa-rotate-left text-sm"></i>
+          </div>
+          <div class="flex-1 text-xs text-amber-950">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-sm">Importación Reabierta (Revisión #${imp.reopened_count})</span>
+              <span class="text-[11px] text-amber-800 font-mono">${(window as any).esc(imp.reopened_at || '')}</span>
+            </div>
+            <p class="mt-0.5 text-amber-900">
+              <strong>Motivo de reapertura:</strong> ${(window as any).esc(imp.reopened_reason || 'Reabierta para modificaciones.')}
+            </p>
+            <p class="mt-1 text-[11px] text-amber-800">
+              <i class="fas fa-circle-info mr-1"></i> El asiento contable anterior y el ingreso a bodega fueron revertidos de forma segura. Realiza las correcciones de costos, fletes o aranceles y luego utiliza <strong>"Recibir e Ingresar a Bodega"</strong> para recapitalizar el inventario.
+            </p>
+          </div>
+        </div>
+      ` : ''}
+
       <!-- 1. Datos Generales -->
       <div class="p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -988,25 +1012,27 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           </div>
         </div>
 
-        <div style="overflow-x:auto;max-height:360px;overflow-y:auto">
-          <table class="data-table" id="imp-lines-table" style="min-width:1160px">
-            <thead style="position:sticky;top:0;z-index:10">
-              <tr>
-                <th style="min-width:250px;background:#F4F8FF">Producto & Control Lote/Estibas</th>
-                <th class="col-consolidated-th ${imp?.is_consolidated ? '' : 'hidden'}" style="min-width:170px;background:#F4F8FF">Proveedor / Factura</th>
-                <th class="text-right" style="width:105px;background:#F4F8FF">Cant. Total</th>
-                <th class="text-right" style="width:130px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
-                <th class="text-right" style="width:85px;background:#F4F8FF">Arancel %</th>
-                <th class="text-right" style="width:80px;background:#F4F8FF">IVA %</th>
-                <th style="min-width:130px;background:#F4F8FF">Nro. Manifiesto</th>
-                <th style="width:125px;background:#F4F8FF">Archivo PDF</th>
-                <th class="text-right" style="width:115px;background:#F4F8FF">Costo Est. (COP)</th>
-                <th class="text-right" style="width:120px;background:#F4F8FF">Total (COP)</th>
-                <th style="width:45px;background:#F4F8FF">Acción</th>
-              </tr>
-            </thead>
-            <tbody id="imp-lines-body"></tbody>
-          </table>
+        <div class="border rounded-xl bg-white shadow-2xs overflow-hidden" style="border-color:#DCE6F8">
+          <div style="overflow-x:auto;max-height:480px;overflow-y:auto">
+            <table class="data-table" id="imp-lines-table" style="min-width:1420px">
+              <thead style="position:sticky;top:0;z-index:10">
+                <tr>
+                  <th style="min-width:320px;background:#F4F8FF">Producto & Control Lote/Estibas</th>
+                  <th class="col-consolidated-th ${imp?.is_consolidated ? '' : 'hidden'}" style="min-width:180px;background:#F4F8FF">Proveedor / Factura</th>
+                  <th class="text-right" style="width:140px;background:#F4F8FF">Cant. Total & Unidad</th>
+                  <th class="text-right" style="width:130px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
+                  <th class="text-right" style="width:90px;background:#F4F8FF">Arancel %</th>
+                  <th class="text-right" style="width:85px;background:#F4F8FF">IVA %</th>
+                  <th style="min-width:140px;background:#F4F8FF">Nro. Manifiesto</th>
+                  <th style="width:130px;background:#F4F8FF">Archivo PDF</th>
+                  <th class="text-right" style="width:125px;background:#F4F8FF">Costo Est. (COP)</th>
+                  <th class="text-right" style="width:130px;background:#F4F8FF">Total (COP)</th>
+                  <th style="width:45px;background:#F4F8FF">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="imp-lines-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -2349,9 +2375,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     tr.innerHTML = `
       <td>
         <div class="flex flex-col">
-          <div class="flex items-center gap-1 flex-wrap">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <span class="text-[10px] font-mono text-gray-400 flex-shrink-0">[${(window as any).esc(productCode || 'S/C')}]</span>
-            <span class="text-xs font-semibold text-gray-800 truncate" style="max-width:200px" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
+            <span class="text-xs font-bold text-gray-900 leading-tight block" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
             ${productObj?.visto_bueno_required ? `
               <span class="badge badge-red text-[9px] py-0.5 px-1.5 ml-1 animate-pulse" style="font-size:9px" title="Requiere Visto Bueno ante ${productObj.visto_bueno_entidad} - Registro: ${productObj.registro_sanitario || 'Sin Registro'}">⚠️ V.B. ${productObj.visto_bueno_entidad}</span>
             ` : ''}
@@ -2359,7 +2385,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
           <!-- Metadatos técnicos (Posición arancelaria, certificado, país) -->
           <div class="text-[10px] text-gray-500 mt-0.5 flex flex-wrap gap-x-2">
-            ${(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria) ? `<span>Pos: <span class="font-mono text-slate-700">${(window as any).esc(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria)}</span></span>` : ''}
+            ${(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria) ? `<span>Pos: <span class="font-mono text-slate-700 font-bold">${(window as any).esc(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria)}</span></span>` : ''}
             ${preloadedLine?.pais_origen ? `<span>Origen: ${(window as any).esc(preloadedLine.pais_origen)}</span>` : ''}
           </div>
 
@@ -2373,8 +2399,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               <i class="fas fa-weight-hanging mr-1 text-emerald-600"></i><span id="lbl-pesos-btn-${idx}">Pesos/Medidas</span>
             </button>
 
-            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-pallet-${idx}" onclick="window.impOpenPalletModal(${idx})" title="Configurar desglose por pallets/estibas para las ${initQty} ${prodUnit}">
-              <i class="fas fa-boxes-stacked text-blue-600 mr-1"></i><span id="lbl-pallet-${idx}">Estibas (${(window as any).esc(prodUnit)})</span>
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-pallet-${idx}" onclick="window.impOpenPalletModal(${idx})" title="Configurar desglose por pallets/estibas para las ${initQty} ${formatUnitOfMeasure(prodUnit)}">
+              <i class="fas fa-boxes-stacked text-blue-600 mr-1"></i><span id="lbl-pallet-${idx}">Estibas (${(window as any).esc(formatUnitOfMeasure(prodUnit))})</span>
             </button>
           </div>
 
@@ -2450,11 +2476,15 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         <input type="hidden" id="impl-supplier-${idx}" value="${preloadedLine?.supplier_id || ''}">
       </td>
 
-      <!-- Cantidad Total con Unidad de Medida Integrada -->
+      <!-- Cantidad Total con Unidad de Medida Humanizada -->
       <td>
-        <div class="relative flex items-center">
-          <input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:34px;padding:0 30px 0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals(); window.impUpdateLinePalletStatus(${idx});">
-          <span class="absolute right-2 text-[10px] font-bold text-slate-400 pointer-events-none uppercase" title="Unidad: ${(window as any).esc(prodUnit)}">${(window as any).esc(prodUnit)}</span>
+        <div class="flex flex-col gap-1">
+          <input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:32px;padding:0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals(); window.impUpdateLinePalletStatus(${idx});">
+          <div class="text-right">
+            <span class="badge badge-blue text-[10px] py-0.5 px-1.5 font-bold inline-block" title="Código DIAN: ${(window as any).esc(prodUnit)}">
+              ${(window as any).esc(formatUnitOfMeasure(prodUnit))}
+            </span>
+          </div>
         </div>
       </td>
       <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
@@ -4715,6 +4745,14 @@ async function viewImportDetail(importId: string) {
                     <span class="badge badge-orange"><i class="fas fa-clock mr-1"></i> Tránsito / Pendiente</span>
                   `}
                 </div>
+                ${imp.reopened_count > 0 ? `
+                  <div class="flex justify-between items-center text-[11px] text-amber-800 pt-1">
+                    <span>Reaperturas:</span>
+                    <span class="badge badge-amber text-[10px] font-bold" title="${(window as any).esc(imp.reopened_reason || '')}">
+                      <i class="fas fa-rotate-left mr-1"></i> ${imp.reopened_count} vez(ces)
+                    </span>
+                  </div>
+                ` : ''}
               </div>
               <div class="space-y-1 text-xs border-l pl-4 border-gray-100">
                 <div class="font-bold text-gray-500 uppercase text-[10px] tracking-wider mb-1">Causaciones por Etapa</div>
@@ -4796,7 +4834,10 @@ async function viewImportDetail(importId: string) {
                       ${imp.is_consolidated ? `
                         <td class="text-xs font-semibold text-slate-700">${supp ? (window as any).esc(supp.name) : '—'}</td>
                       ` : ''}
-                      <td class="text-right font-semibold">${(window as any).fmtN(l.qty)}</td>
+                      <td class="text-right font-semibold">
+                        <div>${(window as any).fmtN(l.qty)}</div>
+                        <div class="text-[10px] text-slate-500 font-normal">${(window as any).esc(formatUnitOfMeasure(prod?.unit || l.unit))}</div>
+                      </td>
                       <td class="text-right">${(window as any).fmt(l.fob_price).replace('COP', '')}</td>
                       <td class="text-right text-gray-500">${l.arancel_rate}%</td>
                       <td class="font-mono text-xs">${(window as any).esc(l.manifest_number || '—')}</td>
@@ -4856,9 +4897,17 @@ async function viewImportDetail(importId: string) {
       <button class="btn btn-secondary text-blue-700" style="border-color:#3b82f6" onclick="window.viewImportTraceability('${imp.id}')">
         <i class="fas fa-chart-line mr-1"></i> Trazabilidad
       </button>
+      <button class="btn btn-secondary border-blue-600 text-blue-800 hover:bg-blue-50 font-bold" onclick="window.openImportExecutiveReport('${imp.id}')">
+        <i class="fas fa-file-contract mr-1.5 text-blue-600"></i> Dossier Oficial DIAN / Gerencia
+      </button>
       ${imp.status !== 'recibido' && imp.status !== 'anulado' && (window as any).can('canWrite') ? `
         <button class="btn btn-secondary" onclick="closeModal(); window.editImport('${imp.id}')"><i class="fas fa-pen"></i> Editar</button>
         <button class="btn btn-primary" onclick="closeModal(); window.confirmFinalizarImportacion('${imp.id}')"><i class="fas fa-check-double"></i> Recibir e Ingresar a Bodega</button>
+      ` : ''}
+      ${imp.status === 'recibido' && (window as any).can('canWrite') ? `
+        <button class="btn btn-outline border-amber-400 text-amber-800 hover:bg-amber-50" onclick="closeModal(); window.openReopenImportModal('${imp.id}')">
+          <i class="fas fa-lock-open text-amber-600 mr-1.5"></i> Reabrir Importación
+        </button>
       ` : ''}
     `;
 
@@ -5040,56 +5089,107 @@ async function confirmFinalizarImportacion(importId: string) {
       (window as any).API.getTxTypes(),
     ]);
 
+    const defaultTxType = (txTypes || []).find((t: any) => t.prefix === 'IMP' || t.code === 'BL' || (t.name || '').toLowerCase().includes('importac'))
+      || (txTypes || []).find((t: any) => t.prefix === 'FC')
+      || (txTypes || [])[0];
+    const defaultTxTypeId = defaultTxType?.id || '';
+
+    let initialTxNumber = '';
+    if (defaultTxTypeId) {
+      try {
+        initialTxNumber = await (window as any).API.previewNextTxConsecutive(defaultTxTypeId);
+      } catch (e) {
+        console.warn('Error previewing consecutive:', e);
+      }
+    }
+    if (!initialTxNumber && defaultTxType) {
+      initialTxNumber = `${defaultTxType.prefix ? defaultTxType.prefix + '-' : ''}${String((defaultTxType.consecutive || 0) + 1).padStart(6, '0')}`;
+    }
+
+    const isConsolidatedEffective = Boolean(imp.is_consolidated) || ((importInvoices || []).length > 0);
     const invsWithPct = (importInvoices || []).filter((iv: any) => Number(iv.cost_distribution_pct) > 0);
-    const hasDistPct = imp.is_consolidated && invsWithPct.length > 0;
-    const totalDistPct = invsWithPct.reduce((s: number, iv: any) => s + Number(iv.cost_distribution_pct), 0);
+    const hasDistPct = isConsolidatedEffective && (importInvoices || []).length > 0;
+    const initialTotalDistPct = (importInvoices || []).reduce((s: number, iv: any) => s + (Number(iv.cost_distribution_pct) || 0), 0);
 
     const formHtml = `
       <div class="space-y-4 text-sm" style="color:#374151">
         <div class="p-4 rounded-xl" style="background:#FFFBEB;border:1px solid #FDE68A;color:#92400E">
           <p class="font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>¡Atención!</p>
-          <p class="text-xs">Estás por finalizar la importación <strong>${imp.number}</strong>. Esta acción creará automáticamente una Factura de Compra (FC) en estado borrador con los costos calculados en pesos (COP) e ingresará los productos a la bodega correspondiente.</p>
+          <p class="text-xs">Estás por finalizar y capitalizar la importación <strong>${imp.number}</strong>. Esta acción creará automáticamente el comprobante contable de compra con los costos finales en pesos (COP), trasladará el inventario a la bodega seleccionada y actualizará el costo promedio en el catálogo de productos.</p>
         </div>
 
         ${hasDistPct ? `
-          <div class="p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2">
+          <div class="p-3 bg-amber-50/90 border border-amber-300 rounded-xl space-y-2.5">
             <div class="flex items-center justify-between">
               <span class="font-bold text-xs text-amber-950 flex items-center gap-1.5">
-                <i class="fas fa-sliders text-amber-600"></i> Distribución de Costos por Proveedor (${totalDistPct}% Asignado):
+                <i class="fas fa-sliders text-amber-600"></i> Distribución Estricta de Costos por Proveedor:
               </span>
-              <span class="badge ${Math.abs(totalDistPct - 100) < 0.01 ? 'badge-emerald' : 'badge-amber'} text-[10px] font-bold">
-                ${Math.abs(totalDistPct - 100) < 0.01 ? 'Balance 100% ✓' : `Suma: ${totalDistPct}%`}
+              <span id="cap-pct-badge" class="badge ${Math.abs(initialTotalDistPct - 100) < 0.01 ? 'badge-emerald' : 'badge-amber'} text-[10px] font-bold">
+                ${Math.abs(initialTotalDistPct - 100) < 0.01 ? 'Balance 100% ✓' : `Suma: ${initialTotalDistPct}%`}
               </span>
             </div>
-            <p class="text-[11px] text-amber-800">En este cierre se aplicará el porcentaje manual configurado por cada proveedor para calcular el costo individual por producto con el que ingresará a bodega:</p>
-            <div class="overflow-x-auto bg-white rounded border border-amber-200">
+            <p class="text-[11px] text-amber-900 leading-snug">
+              El porcentaje asignado a cada proveedor determina de manera <strong>estricta</strong> el costo individual de entrada a bodega para sus productos, prevaleciendo sobre el prorrateo general preliminar:
+            </p>
+            <div class="overflow-x-auto bg-white rounded-lg border border-amber-200 shadow-sm">
               <table class="w-full text-[11px] text-left border-collapse">
                 <thead>
-                  <tr class="bg-amber-100/60 text-amber-950 font-semibold border-b border-amber-200">
-                    <th class="p-1.5">Proveedor</th>
-                    <th class="p-1.5">Factura Nro.</th>
-                    <th class="p-1.5 text-right">% Dist. Costo</th>
-                    <th class="p-1.5 text-right">Costo Asignado (COP)</th>
+                  <tr class="bg-amber-100/70 text-amber-950 font-bold border-b border-amber-200">
+                    <th class="p-2">Proveedor</th>
+                    <th class="p-2">Factura Nro.</th>
+                    <th class="p-2 text-right w-28">% Dist. Costo</th>
+                    <th class="p-2 text-right">Costo Asignado (COP)</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-amber-100">
-                  ${invsWithPct.map((iv: any) => {
+                <tbody class="divide-y divide-amber-100 font-mono">
+                  ${(importInvoices || []).map((iv: any) => {
                     const supp = iv.expand?.supplier_id || iv.expand?.third_party_id;
-                    const sName = supp ? supp.name : 'Proveedor';
-                    const ratio = totalDistPct === 100 ? (Number(iv.cost_distribution_pct) / 100) : (Number(iv.cost_distribution_pct) / totalDistPct);
+                    const sName = supp ? supp.name : 'Proveedor Exterior';
+                    const curPct = Number(iv.cost_distribution_pct) || 0;
+                    const ratio = initialTotalDistPct > 0 ? (curPct / (initialTotalDistPct === 100 ? 100 : initialTotalDistPct)) : 0;
                     const costAssigned = imp.total * ratio;
                     return `
                       <tr>
-                        <td class="p-1.5 font-medium text-slate-800">${(window as any).esc(sName)}</td>
-                        <td class="p-1.5 font-mono text-blue-900 font-semibold">${(window as any).esc(iv.invoice_number)}</td>
-                        <td class="p-1.5 text-right font-mono font-bold text-amber-900">${iv.cost_distribution_pct}%</td>
-                        <td class="p-1.5 text-right font-mono font-bold text-slate-900">${(window as any).fmt(costAssigned)}</td>
+                        <td class="p-2 font-sans font-medium text-slate-800">${(window as any).esc(sName)}</td>
+                        <td class="p-2 font-bold text-blue-900">${(window as any).esc(iv.invoice_number)}</td>
+                        <td class="p-2 text-right">
+                          <div class="flex items-center justify-end gap-1">
+                            <input type="number" step="0.01" min="0" max="100" class="cap-inv-dist-input form-input text-right font-mono font-bold text-amber-950 w-20 py-0.5 px-1.5 h-7 border-amber-300 bg-white" data-invid="${iv.id}" value="${curPct}">
+                            <span class="text-xs font-bold text-slate-500">%</span>
+                          </div>
+                        </td>
+                        <td class="p-2 text-right font-bold text-slate-900" id="cap-inv-cost-${iv.id}">${(window as any).fmt(costAssigned)}</td>
                       </tr>
                     `;
                   }).join('')}
                 </tbody>
               </table>
             </div>
+
+            <!-- Desplegable interactivo: Comparativa de costo real por producto vs. prorrateo original -->
+            <details class="bg-white/80 rounded-lg border border-amber-200/90 p-2 text-xs">
+              <summary class="cursor-pointer font-bold text-amber-950 select-none flex items-center justify-between">
+                <span><i class="fas fa-boxes-packing text-amber-600 mr-1.5"></i> Desglose de Costo Real por Producto (Costo Original vs. Costo Final con % Proveedor)</span>
+                <span class="text-[10px] text-amber-700 underline font-normal">Ver / Reasignar líneas</span>
+              </summary>
+              <div class="overflow-x-auto mt-2.5">
+                <table class="w-full text-[11px] text-left border-collapse">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[9px]">
+                      <th class="p-1.5">Producto</th>
+                      <th class="p-1.5">Factura / Proveedor</th>
+                      <th class="p-1.5 text-right">Cantidad</th>
+                      <th class="p-1.5 text-right">Costo Orig. COP</th>
+                      <th class="p-1.5 text-right text-blue-900 font-extrabold">Costo Real % COP</th>
+                      <th class="p-1.5 text-center">Variación</th>
+                    </tr>
+                  </thead>
+                  <tbody id="cap-lines-preview-tbody" class="divide-y divide-slate-100">
+                    <!-- Filas inyectadas dinámicamente por capRecalcPreview -->
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </div>
         ` : ''}
 
@@ -5105,13 +5205,14 @@ async function confirmFinalizarImportacion(importId: string) {
           <label class="form-label font-bold">Tipo Comprobante Contable <span style="color:#EF4444">*</span></label>
           <select id="cap-tx-type-id" class="form-input">
             <option value="">— Seleccionar —</option>
-            ${txTypes.map((t: any) => `<option value="${t.id}">${(window as any).esc(t.prefix)} — ${(window as any).esc(t.name)}</option>`).join('')}
+            ${txTypes.map((t: any) => `<option value="${t.id}" ${t.id === defaultTxTypeId ? 'selected' : ''}>${(window as any).esc(t.prefix || t.code)} — ${(window as any).esc(t.name)}</option>`).join('')}
           </select>
         </div>
 
         <div class="form-group">
           <label class="form-label font-bold">Número de Comprobante Factura <span style="color:#EF4444">*</span></label>
-          <input type="text" id="cap-tx-number" class="form-input" placeholder="Ej: FC-00289" value="FC-IMP-${imp.number.split('-').pop()}">
+          <input type="text" id="cap-tx-number" class="form-input font-mono font-bold text-blue-950" placeholder="Ej: IMP-00000142" value="${initialTxNumber || `FC-IMP-${imp.number.split('-').pop()}`}">
+          <p class="text-[11px] text-gray-500 mt-1">Generado automáticamente según el consecutivo configurado en la base de datos.</p>
         </div>
       </div>
     `;
@@ -5123,11 +5224,173 @@ async function confirmFinalizarImportacion(importId: string) {
 
     (window as any).openModal('Capitalización de Importación', formHtml, footer, false);
 
+    // Función reactiva para recalcular en vivo el desglose y comparativa de costos por producto
+    const capRecalcPreview = () => {
+      const invInputs = document.querySelectorAll('.cap-inv-dist-input');
+      const currentPcts: Record<string, number> = {};
+      let sumPct = 0;
+
+      invInputs.forEach((inp: any) => {
+        const invId = inp.getAttribute('data-invid');
+        const v = parseFloat(inp.value) || 0;
+        if (invId) currentPcts[invId] = v;
+        sumPct += v;
+      });
+
+      // Actualizar badge de suma %
+      const badge = document.getElementById('cap-pct-badge');
+      if (badge) {
+        if (Math.abs(sumPct - 100) < 0.01) {
+          badge.className = 'badge badge-emerald text-[10px] font-bold';
+          badge.textContent = 'Balance 100% ✓';
+        } else {
+          badge.className = 'badge badge-amber text-[10px] font-bold';
+          badge.textContent = `Suma: ${Math.round(sumPct * 100) / 100}% (Recomendado 100%)`;
+        }
+      }
+
+      // Actualizar columna Costo Asignado en la tabla de facturas
+      (importInvoices || []).forEach((iv: any) => {
+        const p = currentPcts[iv.id] || 0;
+        const normRatio = sumPct > 0 ? (p / sumPct) : 0;
+        const costVal = imp.total * normRatio;
+        const lbl = document.getElementById(`cap-inv-cost-${iv.id}`);
+        if (lbl) lbl.textContent = (window as any).fmt(costVal);
+      });
+
+      // Recalcular costo real por línea de producto y renderizar comparativa
+      const tbody = document.getElementById('cap-lines-preview-tbody');
+      if (!tbody) return;
+
+      const totalImportCOP = imp.total || 0;
+      const lineAssignments: Record<string, string> = {};
+      document.querySelectorAll('.cap-line-inv-select').forEach((sel: any) => {
+        const lid = sel.getAttribute('data-lineid');
+        if (lid) lineAssignments[lid] = sel.value;
+      });
+
+      // Distribuir costo de cada factura entre sus líneas correspondientes
+      const calculatedLineUnitCosts: Record<string, { unitCost: number; totalCost: number; origCost: number }> = {};
+
+      (importInvoices || []).forEach((iv: any) => {
+        const p = currentPcts[iv.id] || 0;
+        const normRatio = sumPct > 0 ? (p / sumPct) : 0;
+        const pool = totalImportCOP * normRatio;
+
+        const invLines = lines.filter((l: any) => {
+          const assignedInvId = lineAssignments[l.id] || l.import_invoice_id;
+          return assignedInvId === iv.id || (!assignedInvId && l.supplier_id && (l.supplier_id === iv.supplier_id || l.supplier_id === iv.third_party_id));
+        });
+
+        if (invLines.length > 0) {
+          let metricTotal = 0;
+          if (imp.proration_method === 'GROSS_WEIGHT') {
+            metricTotal = invLines.reduce((s: number, l: any) => s + (Number(l.peso_bruto_total) || 0), 0);
+          } else if (imp.proration_method === 'CUBIC_VOLUME') {
+            metricTotal = invLines.reduce((s: number, l: any) => s + (Number(l.cubic_meters_total) || 0), 0);
+          }
+          if (metricTotal <= 0) {
+            metricTotal = invLines.reduce((s: number, l: any) => s + ((Number(l.qty) || 0) * (Number(l.fob_price) || 0)), 0);
+          }
+
+          invLines.forEach((l: any) => {
+            let m = 0;
+            if (imp.proration_method === 'GROSS_WEIGHT') m = Number(l.peso_bruto_total) || 0;
+            else if (imp.proration_method === 'CUBIC_VOLUME') m = Number(l.cubic_meters_total) || 0;
+            if (m <= 0) m = (Number(l.qty) || 0) * (Number(l.fob_price) || 0);
+
+            const ratio = metricTotal > 0 ? (m / metricTotal) : (1 / invLines.length);
+            const lineTot = Math.round(pool * ratio);
+            const lineUnit = Number(l.qty) > 0 ? Math.round((lineTot / Number(l.qty)) * 100) / 100 : 0;
+
+            calculatedLineUnitCosts[l.id] = {
+              unitCost: lineUnit,
+              totalCost: lineTot,
+              origCost: Number(l.unit_cost_cop) || 0
+            };
+          });
+        }
+      });
+
+      tbody.innerHTML = lines.map((l: any) => {
+        const prod = l.expand?.product_id;
+        const assignedInvId = lineAssignments[l.id] || l.import_invoice_id || '';
+        const calc = calculatedLineUnitCosts[l.id] || {
+          unitCost: Number(l.unit_cost_cop) || 0,
+          totalCost: Number(l.total_cop) || 0,
+          origCost: Number(l.unit_cost_cop) || 0
+        };
+
+        const orig = calc.origCost;
+        const real = calc.unitCost;
+        const diffPct = orig > 0 ? (((real - orig) / orig) * 100) : 0;
+        const diffBadge = Math.abs(diffPct) < 0.01 
+          ? `<span class="badge text-[9px] py-0 px-1 bg-slate-100 text-slate-600">0%</span>`
+          : diffPct > 0 
+            ? `<span class="badge text-[9px] py-0 px-1 font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">+${diffPct.toFixed(1)}%</span>`
+            : `<span class="badge text-[9px] py-0 px-1 font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">${diffPct.toFixed(1)}%</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="p-1.5 font-medium text-slate-900">
+              ${prod ? `<strong>${(window as any).esc(prod.code)}</strong> - ${(window as any).esc(prod.name)}` : 'Producto'}
+            </td>
+            <td class="p-1.5">
+              <select class="cap-line-inv-select form-input text-[10px] py-0.5 px-1 h-6 bg-white border-slate-300" data-lineid="${l.id}">
+                ${(importInvoices || []).map((iv: any) => `
+                  <option value="${iv.id}" ${iv.id === assignedInvId ? 'selected' : ''}>
+                    ${(window as any).esc(iv.invoice_number)} (${(window as any).esc(iv.expand?.supplier_id?.name || 'Prov')})
+                  </option>
+                `).join('')}
+              </select>
+            </td>
+            <td class="p-1.5 text-right font-mono font-bold text-slate-800">${(window as any).fmtN(l.qty)}</td>
+            <td class="p-1.5 text-right font-mono text-slate-500">${(window as any).fmt(orig)}</td>
+            <td class="p-1.5 text-right font-mono font-extrabold text-blue-900">${(window as any).fmt(real)}</td>
+            <td class="p-1.5 text-center">${diffBadge}</td>
+          </tr>
+        `;
+      }).join('');
+
+      // Reconectar listener en los selects de reasignación
+      tbody.querySelectorAll('.cap-line-inv-select').forEach((sel: any) => {
+        sel.addEventListener('change', () => capRecalcPreview());
+      });
+    };
+
+    // Conectar eventos en los inputs de porcentaje
+    document.querySelectorAll('.cap-inv-dist-input').forEach((inp: any) => {
+      inp.addEventListener('input', () => capRecalcPreview());
+    });
+
+    // Renderizar preview inicial si hay facturas
+    if (hasDistPct) {
+      setTimeout(() => capRecalcPreview(), 50);
+    }
+
+    // Conectar actualización reactiva del consecutivo al cambiar el tipo de comprobante
+    const txTypeSelect = document.getElementById('cap-tx-type-id') as HTMLSelectElement;
+    const txNumInput = document.getElementById('cap-tx-number') as HTMLInputElement;
+    if (txTypeSelect && txNumInput) {
+      txTypeSelect.addEventListener('change', async () => {
+        const selId = txTypeSelect.value;
+        if (!selId) return;
+        try {
+          const nextConsecutive = await (window as any).API.previewNextTxConsecutive(selId);
+          if (nextConsecutive) {
+            txNumInput.value = nextConsecutive;
+          }
+        } catch (err) {
+          console.warn('Error al obtener siguiente consecutivo contable:', err);
+        }
+      });
+    }
+
     document.getElementById('btn-confirm-cap')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-confirm-cap') as HTMLButtonElement;
       if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Capitalizando...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Capitalizando con % Proveedor...';
       }
 
       try {
@@ -5139,11 +5402,33 @@ async function confirmFinalizarImportacion(importId: string) {
         if (!txTypeId) throw new Error('Por favor selecciona el tipo de comprobante contable.');
         if (!txNumber) throw new Error('Por favor ingresa la numeración del comprobante de compra.');
 
-        // 1. Ejecutar la capitalización contable directa y liberar reservas de clientes asociadas
-        const capResult = await SupplyChainOrchestrator.finalizeImportAndReleaseReservations(importId, whId, txTypeId, txNumber);
+        // 1. Recopilar porcentajes confirmados de cada proveedor
+        const customInvoicePcts: Record<string, number> = {};
+        document.querySelectorAll('.cap-inv-dist-input').forEach((inp: any) => {
+          const invId = inp.getAttribute('data-invid');
+          const val = parseFloat(inp.value) || 0;
+          if (invId) customInvoicePcts[invId] = val;
+        });
+
+        // 2. Recopilar asignación de líneas a facturas
+        const lineInvoiceAssignments: Record<string, string> = {};
+        document.querySelectorAll('.cap-line-inv-select').forEach((sel: any) => {
+          const lid = sel.getAttribute('data-lineid');
+          if (lid && sel.value) lineInvoiceAssignments[lid] = sel.value;
+        });
+
+        // 3. Ejecutar la capitalización aplicando estrictamente los porcentajes y liberando reservas
+        const capResult = await SupplyChainOrchestrator.finalizeImportAndReleaseReservations(
+          importId,
+          whId,
+          txTypeId,
+          txNumber,
+          customInvoicePcts,
+          lineInvoiceAssignments
+        );
 
         const resMsg = capResult.releasedReservationsCount > 0 ? ` Se liberaron ${capResult.releasedReservationsCount} reservas para despacho inmediato.` : '';
-        (window as any).showToast(`Importación finalizada. Traslado a bodega registrado.${resMsg}`, 'success');
+        (window as any).showToast(`Importación finalizada con éxito. Costos calculados y cargados a inventario según % del proveedor.${resMsg}`, 'success');
         closeModal();
         
         // Recargar página de importaciones
@@ -5188,6 +5473,202 @@ async function cancelImportDirect(importId: string, number: string) {
   );
 }
 
+// --- Acción: Reabrir y Descapitalizar Importación con Diagnóstico Pre-Flight ---
+async function openReopenImportModal(importId: string) {
+  try {
+    (window as any).openModal(
+      'Reapertura y Descapitalización de Importación',
+      `
+      <div class="p-8 text-center space-y-3">
+        <div class="inline-flex p-3 rounded-full bg-amber-50 text-amber-600 mb-1">
+          <i class="fas fa-spinner fa-spin text-2xl"></i>
+        </div>
+        <h5 class="font-bold text-sm text-slate-800">Analizando Diagnóstico Pre-Flight...</h5>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">
+          Verificando existencias físicas en bodega, comprobantes contables y reservas vinculadas antes de permitir la reapertura.
+        </p>
+      </div>
+      `,
+      '',
+      false
+    );
+
+    const preflight = await (window as any).API.checkImportReopenPreflight(importId);
+    const imp = preflight.importData;
+    const mov = preflight.movement;
+    const tx = preflight.transaction;
+    const canReopen = preflight.canReopen;
+
+    const modalBody = `
+      <div class="space-y-4 text-xs text-slate-700">
+        <!-- Encabezado de la Importación -->
+        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <div class="text-[10px] uppercase font-bold text-slate-500">Expediente</div>
+            <div class="font-extrabold text-sm text-blue-900 font-mono">${(window as any).esc(imp.number)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase font-bold text-slate-500">Valor Landed Capitalizado</div>
+            <div class="font-bold text-slate-800">${(window as any).fmt(imp.total || 0)}</div>
+          </div>
+          <div>
+            <div class="text-[10px] uppercase font-bold text-slate-500">Estado Actual</div>
+            <div><span class="badge badge-green"><i class="fas fa-check-circle mr-1"></i>Capitalizado</span></div>
+          </div>
+        </div>
+
+        <!-- 1. Diagnóstico de Stock Físico (Pre-Flight) -->
+        <div class="p-3.5 rounded-xl border ${canReopen ? 'bg-emerald-50/70 border-emerald-200' : 'bg-rose-50/80 border-rose-300'} space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-xs ${canReopen ? 'text-emerald-900' : 'text-rose-950'} flex items-center gap-1.5">
+              <i class="fas ${canReopen ? 'fa-circle-check text-emerald-600' : 'fa-circle-xmark text-rose-600'}"></i>
+              Diagnóstico de Inventario Físico en Bodega:
+            </span>
+            <span class="badge ${canReopen ? 'badge-emerald' : 'badge-red'} font-bold">
+              ${canReopen ? 'Stock Disponible ✓' : 'Faltante de Stock ✗'}
+            </span>
+          </div>
+
+          ${canReopen ? `
+            <p class="text-[11px] text-emerald-800">
+              Todas las unidades ingresadas (${preflight.stockChecks.reduce((s: number, c: any) => s + c.requiredQty, 0)} uds) están íntegras en bodega. Se pueden revertir físicamente sin generar saldos negativos.
+            </p>
+          ` : `
+            <div class="text-[11px] text-rose-800 space-y-1">
+              <p class="font-semibold">No es posible reabrir automáticamente porque parte de la mercancía ya fue vendida, despachada o trasladada:</p>
+              <ul class="list-disc pl-4 space-y-0.5">
+                ${preflight.issues.map((iss: string) => `<li>${(window as any).esc(iss)}</li>`).join('')}
+              </ul>
+            </div>
+          `}
+
+          <!-- Tabla Resumen de Productos a Revertir -->
+          <div class="overflow-x-auto max-h-40 bg-white rounded border border-slate-200 mt-2">
+            <table class="w-full text-[11px] text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 text-slate-700 border-b border-slate-200">
+                  <th class="p-1.5">Producto</th>
+                  <th class="p-1.5 text-right">Cant. Importada</th>
+                  <th class="p-1.5 text-right">Stock Actual Bodega</th>
+                  <th class="p-1.5 text-center">Estado</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${preflight.stockChecks.map((sc: any) => `
+                  <tr>
+                    <td class="p-1.5 font-medium text-slate-800">${(window as any).esc(sc.name)}</td>
+                    <td class="p-1.5 text-right font-mono font-bold text-blue-900">${(window as any).fmtN(sc.requiredQty)}</td>
+                    <td class="p-1.5 text-right font-mono font-bold ${sc.sufficient ? 'text-slate-700' : 'text-rose-700'}">${(window as any).fmtN(sc.currentStock)}</td>
+                    <td class="p-1.5 text-center">
+                      <span class="badge ${sc.sufficient ? 'badge-emerald' : 'badge-red'} text-[9px] py-0 px-1">
+                        ${sc.sufficient ? 'OK' : 'Faltante'}
+                      </span>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 2. Impacto Contable y en Cadena de Suministro -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+          <div class="p-2.5 bg-blue-50/60 border border-blue-200 rounded-xl space-y-1">
+            <div class="font-bold text-blue-950 flex items-center gap-1">
+              <i class="fas fa-book-bookmark text-blue-600"></i> Impacto Contable
+            </div>
+            <p class="text-blue-900">
+              Se anulará el asiento de capitalización <strong>${tx ? (window as any).esc(tx.number) : 'FC-IMP'}</strong>.
+              El débito a la cuenta <strong>143501 (Bodega)</strong> será retirado y la cuenta puente <strong>146505 (Tránsito)</strong> recuperará su saldo original.
+            </p>
+          </div>
+
+          <div class="p-2.5 bg-amber-50/60 border border-amber-200 rounded-xl space-y-1">
+            <div class="font-bold text-amber-950 flex items-center gap-1">
+              <i class="fas fa-handshake text-amber-600"></i> Reservas Comerciales
+            </div>
+            <p class="text-amber-900">
+              ${preflight.affectedReservationsCount > 0 
+                ? `<strong>${preflight.affectedReservationsCount}</strong> línea(s) de reserva volverán a estado en espera para evitar despachos mientras se corrigen los datos.`
+                : 'No hay reservas comerciales de clientes afectadas por esta importación.'}
+            </p>
+          </div>
+        </div>
+
+        <!-- 3. Formulario de Autorización y Motivo -->
+        <div class="space-y-2 pt-1 border-t border-slate-200">
+          <label class="form-label font-bold text-xs">
+            Motivo de la Reapertura <span class="text-rose-500">*</span>
+            <span class="text-[10px] text-slate-400 font-normal ml-1">(Requerido para el libro de auditoría)</span>
+          </label>
+          <textarea id="reopen-reason-txt" class="form-input text-xs w-full" rows="2" 
+                    placeholder="Describe detalladamente por qué se reabre esta importación (ej. Ajuste de flete internacional, corrección de TRM, redistribución de costos en facturas consolidadas...)" 
+                    ${!canReopen ? 'disabled' : ''}></textarea>
+
+          <label class="flex items-start gap-2 cursor-pointer mt-2 text-[11px] text-slate-700 select-none">
+            <input type="checkbox" id="reopen-confirm-chk" class="rounded w-4 h-4 text-amber-600 focus:ring-amber-500 mt-0.5" ${!canReopen ? 'disabled' : ''}>
+            <span>Confirmo que comprendo los efectos contables y de inventario de esta reapertura y deseo proceder.</span>
+          </label>
+        </div>
+      </div>
+    `;
+
+    const footer = `
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-submit-reopen" ${!canReopen ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>
+        <i class="fas fa-lock-open mr-1.5"></i> Proceder con la Reapertura
+      </button>
+    `;
+
+    (window as any).openModal(`Reapertura y Descapitalización — ${imp.number}`, modalBody, footer, true);
+
+    if (canReopen) {
+      document.getElementById('btn-submit-reopen')?.addEventListener('click', async () => {
+        const reasonInput = (document.getElementById('reopen-reason-txt') as HTMLTextAreaElement)?.value.trim();
+        const confirmCheck = (document.getElementById('reopen-confirm-chk') as HTMLInputElement)?.checked;
+
+        if (!reasonInput || reasonInput.length < 5) {
+          (window as any).showToast('Por favor escribe un motivo válido para la reapertura (mínimo 5 caracteres).', 'warning');
+          document.getElementById('reopen-reason-txt')?.focus();
+          return;
+        }
+
+        if (!confirmCheck) {
+          (window as any).showToast('Debes marcar la casilla de confirmación para continuar.', 'warning');
+          return;
+        }
+
+        const btn = document.getElementById('btn-submit-reopen') as HTMLButtonElement;
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Revirtiendo inventario y contabilidad...';
+        }
+
+        try {
+          const res = await (window as any).API.reopenCapitalizedImport(importId, reasonInput);
+          (window as any).showToast(`Importación ${res.importNumber} reabierta con éxito. Movimientos revertidos.`, 'success');
+          (window as any).closeModal();
+
+          // Abrir inmediatamente el formulario de edición de la importación
+          if (typeof (window as any).editImport === 'function') {
+            (window as any).editImport(importId);
+          } else if (typeof (window as any).reloadTab === 'function') {
+            (window as any).reloadTab('importaciones');
+          }
+        } catch (err: any) {
+          (window as any).showToast(err.message, 'error');
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-lock-open mr-1.5"></i> Proceder con la Reapertura';
+          }
+        }
+      });
+    }
+  } catch (err: any) {
+    (window as any).showToast('Error en diagnóstico de reapertura: ' + err.message, 'error');
+  }
+}
+
 // Exponer funciones globalmente para acceder desde onclick o eventos
 (window as any).renderImportaciones = renderImportaciones;
 (window as any).editImport = (id: string) => openImportForm(id, () => {
@@ -5201,6 +5682,7 @@ async function cancelImportDirect(importId: string, number: string) {
 (window as any).viewImportDetail = viewImportDetail;
 (window as any).confirmFinalizarImportacion = confirmFinalizarImportacion;
 (window as any).cancelImportDirect = cancelImportDirect;
+(window as any).openReopenImportModal = openReopenImportModal;
 (window as any).viewStageTx = (txId: string) => {
   (window as any).closeModal();
   setTimeout(() => {
@@ -5996,3 +6478,792 @@ async function buildTraceabilityPrintHTML(data: any) {
 
 (window as any).viewImportTraceability = viewImportTraceability;
 (window as any).openImportForm = openImportForm;
+
+// ============================================================================
+// DOSSIER OFICIAL DE IMPORTACIÓN / REPORTE EJECUTIVO ADUANERO Y CONTABLE (DIAN/GERENCIA)
+// ============================================================================
+
+async function openImportExecutiveReport(importId: string) {
+  try {
+    (window as any).showToast('Generando Dossier Oficial...', 'info');
+
+    const [imp, lines, importInvoices, palletConfigs, txs, settingsList, warehouses] = await Promise.all([
+      (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
+      (window as any).API.getImportLines(importId),
+      (window as any).API.getImportInvoices(importId).catch(() => []),
+      (window as any).API.getImportPalletConfigs(importId).catch(() => []),
+      (window as any).pb.listAll('transactions', { filter: `import_id = "${importId}" || notes ~ "${importId}" || number ~ "${importId}"`, expand: 'third_party_id' }).catch(() => []),
+      (window as any).pb.listAll('settings', {}).catch(() => []),
+      (window as any).API.getWarehouses(true).catch(() => [])
+    ]);
+
+    const m: any = Object.fromEntries(settingsList.map((s: any) => [s.key, s.value || '']));
+    const company = {
+      name: m.company_name || 'EMPRESA IMPORTADORA',
+      nit: m.company_nit || 'NIT NO REGISTRADO',
+      address: m.company_address || '',
+      phone: m.company_phone || '',
+      email: m.company_email || '',
+      city: m.company_city || 'Colombia'
+    };
+
+    // Cálculos de costos y totales
+    const exchangeRate = imp.exchange_rate || 1;
+    const fobCop = (imp.fob_total || 0) * exchangeRate;
+    const freightCop = (imp.freight_cost || 0) * (imp.freight_trm || imp.freight_exchange_rate || exchangeRate);
+    const insuranceCop = (imp.insurance_cost || 0) * (imp.insurance_trm || imp.insurance_exchange_rate || exchangeRate);
+    const cifCop = fobCop + freightCop + insuranceCop;
+
+    let arancelCop = 0;
+    let ivaCop = 0;
+    let totalGrossKg = 0;
+    let totalNetKg = 0;
+    let totalCbm = 0;
+    let totalUnits = 0;
+
+    const formattedLines = lines.map((l: any, idx: number) => {
+      const prod = l.expand?.product_id;
+      const supp = l.expand?.supplier_id;
+      const q = Number(l.qty) || 0;
+      const fobUnit = Number(l.fob_price) || 0;
+      const fobLineDivisa = q * fobUnit;
+      const fobLineCop = fobLineDivisa * exchangeRate;
+      const arRate = Number(l.arancel_rate) || 0;
+      const ivaRate = Number(l.iva_rate) || 0;
+      const arVal = fobLineCop * (arRate / 100);
+      const ivaVal = (fobLineCop + arVal) * (ivaRate / 100);
+      const prorated = Number(l.prorated_cost) || 0;
+      const unitCost = Number(l.unit_cost_cop) || (q > 0 ? (fobLineCop + prorated) / q : 0);
+      const totalCost = Number(l.total_cop) || (q * unitCost);
+
+      const netKg = Number(l.peso_neto_total) || (prod?.peso_neto ? prod.peso_neto * q : 0);
+      const grossKg = Number(l.peso_bruto_total) || (prod?.peso_bruto ? prod.peso_bruto * q : 0);
+      const cbm = Number(l.cubic_meters_total) || 0;
+
+      arancelCop += arVal;
+      ivaCop += ivaVal;
+      totalGrossKg += grossKg;
+      totalNetKg += netKg;
+      totalCbm += cbm;
+      totalUnits += q;
+
+      const unitFormatted = formatUnitOfMeasure(prod?.unit || l.unit);
+
+      return {
+        itemNo: idx + 1,
+        code: prod?.code || 'S/C',
+        name: prod?.name || l.description || 'Producto',
+        nandina: l.posicion_arancelaria || prod?.posicion_arancelaria || '—',
+        originCountry: l.pais_origen || prod?.pais_origen || '—',
+        certOrigin: l.certificado_origen_num || '—',
+        unit: unitFormatted,
+        rawUnit: prod?.unit || l.unit || '',
+        qty: q,
+        fobUnit,
+        fobLineDivisa,
+        fobLineCop,
+        arRate,
+        arVal,
+        ivaRate,
+        ivaVal,
+        prorated,
+        unitCost,
+        totalCost,
+        lotNumber: l.lot_number || '—',
+        expiryDate: l.expiry_date ? l.expiry_date.split(' ')[0] : '—',
+        manifest: l.manifest_number || '—',
+        grossKg,
+        netKg,
+        cbm,
+        supplierName: supp?.name || '—'
+      };
+    });
+
+    const otherCostsCop = (Number(imp.customs_cost) || 0) + (Number(imp.local_freight) || 0) + (Number(imp.other_expenses) || 0);
+    const grandTotalCop = Number(imp.total) || (cifCop + arancelCop + otherCostsCop);
+
+    // Identificar comprobante contable generado si ya está capitalizada
+    const capTx = txs.find((t: any) => t.type === 'purchase' || t.number?.startsWith('IMP-') || t.number?.startsWith('FC-'));
+    const destinationWarehouse = warehouses.find((w: any) => w.id === imp.warehouse_id)?.name || 'Bodega Principal';
+
+    const dossierData = {
+      company,
+      imp,
+      lines: formattedLines,
+      importInvoices,
+      palletConfigs,
+      txs,
+      warehouses,
+      destinationWarehouse,
+      capTx,
+      summary: {
+        totalUnits,
+        totalGrossKg,
+        totalNetKg,
+        totalCbm,
+        fobCop,
+        freightCop,
+        insuranceCop,
+        cifCop,
+        arancelCop,
+        ivaCop,
+        otherCostsCop,
+        grandTotalCop
+      }
+    };
+
+    // Modal view
+    const modalContent = `
+      <div class="space-y-6 text-slate-800">
+        <!-- Encabezado Corporativo y Legal -->
+        <div class="p-5 rounded-2xl bg-gradient-to-r from-blue-900 via-slate-900 to-indigo-950 text-white shadow-md">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-widest bg-blue-500/30 text-blue-200 border border-blue-400/40">
+                  DOCUMENTO OFICIAL AUDITORÍA
+                </span>
+                <span class="badge ${imp.status === 'recibido' ? 'badge-emerald' : 'badge-amber'} text-xs uppercase font-bold">
+                  ${imp.status === 'recibido' ? '✓ CAPITALIZADA / NACIONALIZADA' : imp.status.toUpperCase()}
+                </span>
+              </div>
+              <h2 class="text-2xl font-black tracking-tight mt-1">DOSSIER TÉCNICO DE IMPORTACIÓN Y COSTOS</h2>
+              <p class="text-xs text-blue-200 mt-0.5">Liquidación Aduanera, Estructura Landed Cost CIF y Certificación Contable</p>
+            </div>
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/20 text-right min-w-[200px]">
+              <div class="text-[10px] text-blue-200 uppercase font-bold tracking-wider">Operación Aduanera</div>
+              <div class="text-xl font-black font-mono tracking-wide text-white">${(window as any).esc(imp.number)}</div>
+              <div class="text-xs text-blue-200 font-semibold mt-0.5">TRM Oficial: <span class="font-bold text-white font-mono">$ ${(window as any).fmtN(imp.exchange_rate)}</span></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-white/15 text-xs">
+            <div>
+              <span class="text-[10px] text-blue-300 block uppercase font-bold">Empresa Importadora:</span>
+              <span class="font-bold">${(window as any).esc(company.name)}</span>
+              <span class="block text-[11px] text-blue-200 font-mono">NIT: ${(window as any).esc(company.nit)}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-blue-300 block uppercase font-bold">Incoterm & Modalidad:</span>
+              <span class="font-bold">${(window as any).esc(imp.incoterm || 'FOB')} — ${imp.is_consolidated ? 'Consolidada (Multi-Prov)' : 'Directa'}</span>
+              <span class="block text-[11px] text-blue-200">Moneda: ${(window as any).esc(imp.currency)}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-blue-300 block uppercase font-bold">Bodega de Destino:</span>
+              <span class="font-bold">${(window as any).esc(destinationWarehouse)}</span>
+              <span class="block text-[11px] text-blue-200">Fecha Reg: ${imp.date ? imp.date.split(' ')[0] : '—'}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-blue-300 block uppercase font-bold">Comprobante Contable:</span>
+              <span class="font-mono font-extrabold ${capTx ? 'text-emerald-300' : 'text-amber-300'}">${capTx ? (window as any).esc(capTx.number) : 'Pendiente de Cierre'}</span>
+              <span class="block text-[11px] text-blue-200">Estado: ${capTx ? 'Contabilizado' : 'Borrador/En Proceso'}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 Etapas del Landed Cost (Caja Resumen Ejecutiva) -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+            <h3 class="text-xs uppercase font-extrabold tracking-wider text-slate-600 flex items-center gap-2">
+              <i class="fas fa-layer-group text-blue-600"></i> Estructura de Liquidación y Formación de Costos (Landed Cost 6 Etapas)
+            </h3>
+            <span class="text-xs font-mono font-bold text-slate-500">Valores en COP</span>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mt-3">
+            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-[10px] text-slate-500 font-bold uppercase block">1. FOB Mercancía</span>
+              <div class="text-sm font-black font-mono text-slate-800 mt-1">${(window as any).fmt(fobCop)}</div>
+              <span class="text-[10px] text-slate-400 font-mono">${(window as any).fmtN(imp.fob_total)} ${imp.currency}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-[10px] text-slate-500 font-bold uppercase block">2. Fletes Int.</span>
+              <div class="text-sm font-black font-mono text-slate-800 mt-1">${(window as any).fmt(freightCop)}</div>
+              <span class="text-[10px] text-slate-400 font-mono">${(window as any).fmtN(imp.freight_cost || 0)} ${imp.currency}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+              <span class="text-[10px] text-slate-500 font-bold uppercase block">3. Seguros Int.</span>
+              <div class="text-sm font-black font-mono text-slate-800 mt-1">${(window as any).fmt(insuranceCop)}</div>
+              <span class="text-[10px] text-slate-400 font-mono">${(window as any).fmtN(imp.insurance_cost || 0)} ${imp.currency}</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200">
+              <span class="text-[10px] text-blue-800 font-bold uppercase block">Subtotal CIF</span>
+              <div class="text-sm font-black font-mono text-blue-900 mt-1">${(window as any).fmt(cifCop)}</div>
+              <span class="text-[10px] text-blue-600 font-semibold">Base Gravable</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200">
+              <span class="text-[10px] text-amber-800 font-bold uppercase block">4. Aranceles DIAN</span>
+              <div class="text-sm font-black font-mono text-amber-900 mt-1">${(window as any).fmt(arancelCop)}</div>
+              <span class="text-[10px] text-amber-700 font-semibold">Impuestos Import.</span>
+            </div>
+            <div class="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+              <span class="text-[10px] text-indigo-800 font-bold uppercase block">5. Gastos Log./Port.</span>
+              <div class="text-sm font-black font-mono text-indigo-900 mt-1">${(window as any).fmt(otherCostsCop)}</div>
+              <span class="text-[10px] text-indigo-700 font-semibold">Nacionalización</span>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between bg-gradient-to-r from-slate-50 to-blue-50/50 p-3 rounded-xl">
+            <div class="flex items-center gap-4 text-xs">
+              <div><span class="text-slate-500 font-semibold">Total Ítems:</span> <span class="font-bold text-slate-900 font-mono">${formattedLines.length}</span></div>
+              <div><span class="text-slate-500 font-semibold">Total Unidades:</span> <span class="font-bold text-slate-900 font-mono">${(window as any).fmtN(totalUnits)}</span></div>
+              <div><span class="text-slate-500 font-semibold">Peso Bruto:</span> <span class="font-bold text-slate-900 font-mono">${totalGrossKg.toFixed(2)} Kg</span></div>
+              <div><span class="text-slate-500 font-semibold">Volumen Total:</span> <span class="font-bold text-slate-900 font-mono">${totalCbm.toFixed(3)} m³</span></div>
+            </div>
+            <div class="text-right mt-2 md:mt-0">
+              <span class="text-xs uppercase font-extrabold text-blue-900 mr-2">Total Capitalizado en Bodega:</span>
+              <span class="text-xl font-black font-mono text-blue-950">${(window as any).fmt(grandTotalCop)}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matriz Completa de Mercancías -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div class="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <i class="fas fa-boxes-stacked text-blue-600"></i> Matriz de Mercancías Importadas y Desglose Aduanero
+              </h3>
+              <p class="text-[11px] text-slate-500 mt-0.5">Clasificación arancelaria, unidades humanizadas, soporte aduanero y prorrateo individual</p>
+            </div>
+            <span class="badge badge-blue font-mono font-bold text-xs">${formattedLines.length} líneas</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left border-collapse" style="min-width: 1100px">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px]">
+                  <th class="p-2.5">#</th>
+                  <th class="p-2.5">Producto & Posición NANDINA</th>
+                  <th class="p-2.5">Origen & Manifiesto</th>
+                  <th class="p-2.5 text-right">Cantidad & Unidad</th>
+                  <th class="p-2.5 text-right">FOB Unit (${imp.currency})</th>
+                  <th class="p-2.5 text-right">Total FOB (${imp.currency})</th>
+                  <th class="p-2.5 text-right">Arancel %</th>
+                  <th class="p-2.5 text-right">Gastos Prorrateados</th>
+                  <th class="p-2.5 text-right">Costo Unit COP</th>
+                  <th class="p-2.5 text-right">Costo Total COP</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 font-mono">
+                ${formattedLines.map(l => `
+                  <tr class="hover:bg-blue-50/30 transition-colors">
+                    <td class="p-2.5 font-bold text-slate-400">${l.itemNo}</td>
+                    <td class="p-2.5 font-sans">
+                      <div class="font-bold text-slate-900 text-xs">[${(window as any).esc(l.code)}] ${(window as any).esc(l.name)}</div>
+                      <div class="text-[10px] text-blue-700 font-mono mt-0.5 font-semibold">NANDINA: ${(window as any).esc(l.nandina)}</div>
+                    </td>
+                    <td class="p-2.5 font-sans">
+                      <div class="text-slate-800 text-xs font-semibold">${(window as any).esc(l.originCountry)}</div>
+                      <div class="text-[10px] text-slate-500 font-mono">Manif: ${(window as any).esc(l.manifest)}</div>
+                    </td>
+                    <td class="p-2.5 text-right">
+                      <div class="font-black text-slate-900">${(window as any).fmtN(l.qty)}</div>
+                      <div class="text-[10px] text-blue-800 font-sans font-bold">${(window as any).esc(l.unit)}</div>
+                    </td>
+                    <td class="p-2.5 text-right font-semibold">${(window as any).fmt(l.fobUnit).replace('COP', '')}</td>
+                    <td class="p-2.5 text-right font-bold text-slate-800">${(window as any).fmt(l.fobLineDivisa).replace('COP', '')}</td>
+                    <td class="p-2.5 text-right text-amber-900 font-bold">${l.arRate}%</td>
+                    <td class="p-2.5 text-right text-slate-600">${(window as any).fmt(l.prorated)}</td>
+                    <td class="p-2.5 text-right font-extrabold text-blue-900">${(window as any).fmt(l.unitCost)}</td>
+                    <td class="p-2.5 text-right font-black text-slate-900">${(window as any).fmt(l.totalCost)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        ${imp.is_consolidated && importInvoices.length > 0 ? `
+          <!-- Relación de Proveedores y Facturas Consolidadas -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+            <h3 class="text-xs uppercase font-extrabold tracking-wider text-slate-600 mb-3 flex items-center gap-2">
+              <i class="fas fa-file-invoice-dollar text-emerald-600"></i> Relación de Proveedores y Facturas Consolidadas
+            </h3>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 text-[10px] uppercase">
+                    <th class="p-2">Factura Nro.</th>
+                    <th class="p-2">Proveedor / Tercero</th>
+                    <th class="p-2 text-right">Monto Divisa</th>
+                    <th class="p-2 text-right">% Asignación Costos</th>
+                    <th class="p-2 text-right">Costo Liquidado (COP)</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 font-mono">
+                  ${importInvoices.map((iv: any) => {
+                    const supp = iv.expand?.supplier_id || iv.expand?.third_party_id;
+                    const pct = Number(iv.cost_distribution_pct) || 0;
+                    const allocatedCop = grandTotalCop * (pct / 100);
+                    return `
+                      <tr>
+                        <td class="p-2 font-bold text-blue-900">${(window as any).esc(iv.invoice_number)}</td>
+                        <td class="p-2 font-sans font-medium text-slate-800">${(window as any).esc(supp?.name || 'Proveedor')}</td>
+                        <td class="p-2 text-right">${(window as any).fmtN(iv.invoice_amount || 0)} ${(window as any).esc(iv.currency || imp.currency)}</td>
+                        <td class="p-2 text-right font-bold text-amber-900">${pct}%</td>
+                        <td class="p-2 text-right font-bold text-slate-900">${(window as any).fmt(allocatedCop)}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Bloque de Trazabilidad y Certificación de Firmas -->
+        <div class="bg-slate-50 rounded-2xl border border-slate-200 p-4">
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-slate-600 mb-2">
+            <i class="fas fa-signature text-blue-600 mr-1.5"></i> Control Interno y Firmas de Legalización
+          </h3>
+          <p class="text-[11px] text-slate-500 mb-6">
+            Certificamos que los datos y valores consignados en este informe han sido validados contra las Declaraciones de Importación, Facturas Comerciales del exterior y Comprobantes Contables oficiales.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+            <div class="border-t border-slate-400 text-center pt-2">
+              <div class="text-xs font-black text-slate-800 uppercase">Responsable Comercio Exterior</div>
+              <div class="text-[10px] text-slate-500">Elaboración y Prorrateo Logístico</div>
+            </div>
+            <div class="border-t border-slate-400 text-center pt-2">
+              <div class="text-xs font-black text-slate-800 uppercase">Contador Público / Revisor Fiscal</div>
+              <div class="text-[10px] text-slate-500">T.P. Nro: ___________________</div>
+            </div>
+            <div class="border-t border-slate-400 text-center pt-2">
+              <div class="text-xs font-black text-slate-800 uppercase">Representante Legal / Gerencia</div>
+              <div class="text-[10px] text-slate-500">Aprobación Final y Capitalización</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+      <button class="btn btn-secondary border-emerald-600 text-emerald-800 hover:bg-emerald-50 font-bold" id="btn-export-dossier-excel">
+        <i class="fas fa-file-excel mr-1.5 text-emerald-600"></i> Exportar a Excel (.xlsx)
+      </button>
+      <button class="btn btn-primary" id="btn-print-dossier-pdf">
+        <i class="fas fa-print mr-1.5"></i> Imprimir / Exportar PDF
+      </button>
+    `;
+
+    (window as any).openModal(`Dossier Oficial de Importación — ${imp.number}`, modalContent, modalFooter, true);
+
+    // Conectar botones de acción
+    setTimeout(() => {
+      document.getElementById('btn-export-dossier-excel')?.addEventListener('click', () => {
+        exportExecutiveReportToExcel(dossierData);
+      });
+
+      document.getElementById('btn-print-dossier-pdf')?.addEventListener('click', () => {
+        const printWindow = window.open('', '_blank', 'width=1000,height=850');
+        if (printWindow) {
+          printWindow.document.write(buildExecutiveReportPrintHTML(dossierData));
+          printWindow.document.close();
+        }
+      });
+    }, 150);
+
+  } catch (err: any) {
+    (window as any).showToast('Error al generar dossier oficial: ' + err.message, 'error');
+  }
+}
+
+function exportExecutiveReportToExcel(data: any) {
+  const XLSX = (window as any).XLSX;
+  if (!XLSX) {
+    (window as any).showToast('La librería XLSX no está disponible para exportación.', 'error');
+    return;
+  }
+
+  const { imp, company, lines, importInvoices, summary, destinationWarehouse, capTx } = data;
+
+  const wb = XLSX.utils.book_new();
+
+  // Hoja 1: Resumen_Aduanero
+  const resumenRows = [
+    ['DOSSIER OFICIAL DE IMPORTACIÓN Y LIQUIDACIÓN ADUANERA'],
+    ['EMPRESA:', company.name],
+    ['NIT:', company.nit],
+    ['DIRECCIÓN:', company.address],
+    ['TELÉFONO / EMAIL:', `${company.phone} / ${company.email}`],
+    [],
+    ['DATOS DE LA OPERACIÓN'],
+    ['Nro. Importación:', imp.number],
+    ['Estado:', imp.status],
+    ['Fecha Liquidación:', imp.date ? imp.date.split(' ')[0] : ''],
+    ['Incoterm:', imp.incoterm || 'FOB'],
+    ['Moneda Original:', imp.currency],
+    ['Tasa de Cambio (TRM Oficial):', imp.exchange_rate],
+    ['Modalidad:', imp.is_consolidated ? 'Consolidada (Multi-proveedor)' : 'Directa (Proveedor Único)'],
+    ['Bodega Destino:', destinationWarehouse],
+    ['Comprobante Contable Generado:', capTx ? capTx.number : 'Pendiente'],
+    [],
+    ['ESTRUCTURA DE COSTOS LANDED COST (COP)'],
+    ['1. FOB Mercancía (COP):', summary.fobCop],
+    ['2. Fletes Internacionales (COP):', summary.freightCop],
+    ['3. Seguros Internacionales (COP):', summary.insuranceCop],
+    ['SUBTOTAL CIF (Base Gravable COP):', summary.cifCop],
+    ['4. Aranceles DIAN (COP):', summary.arancelCop],
+    ['5. IVA Aduanero DIAN (COP):', summary.ivaCop],
+    ['6. Gastos Portuarios y Nacionales (COP):', summary.otherCostsCop],
+    ['TOTAL COSTO NACIONALIZADO CAPITALIZADO (COP):', summary.grandTotalCop],
+    [],
+    ['TOTALES FÍSICOS Y LOGÍSTICOS'],
+    ['Total Ítems:', lines.length],
+    ['Total Unidades Físicas:', summary.totalUnits],
+    ['Total Peso Neto (Kg):', summary.totalNetKg],
+    ['Total Peso Bruto (Kg):', summary.totalGrossKg],
+    ['Total Volumen CBM (m³):', summary.totalCbm]
+  ];
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(resumenRows);
+  XLSX.utils.book_append_sheet(wb, wsResumen, 'Resumen_Aduanero');
+
+  // Hoja 2: Detalle_Mercancias
+  const mercanciasHeaders = [
+    'Ítem',
+    'Código',
+    'Descripción Producto',
+    'Posición NANDINA (DIAN)',
+    'País Origen',
+    'Certificado Origen',
+    'Unidad de Medida (Humanizada)',
+    'Código DIAN Unidad',
+    'Cantidad',
+    `FOB Unitario (${imp.currency})`,
+    `Total FOB (${imp.currency})`,
+    'FOB Total (COP)',
+    'Arancel %',
+    'Valor Arancel (COP)',
+    'IVA %',
+    'Valor IVA (COP)',
+    'Gastos Prorrateados (COP)',
+    'Costo Unitario (COP)',
+    'Total Costo Nacionalizado (COP)',
+    'Lote',
+    'Vencimiento',
+    'Nro Manifiesto Aduanero',
+    'Peso Neto (Kg)',
+    'Peso Bruto (Kg)',
+    'CBM (m³)',
+    'Proveedor'
+  ];
+
+  const mercanciasDataRows = lines.map((l: any) => [
+    l.itemNo,
+    l.code,
+    l.name,
+    l.nandina,
+    l.originCountry,
+    l.certOrigin,
+    l.unit,
+    l.rawUnit,
+    l.qty,
+    l.fobUnit,
+    l.fobLineDivisa,
+    l.fobLineCop,
+    l.arRate,
+    l.arVal,
+    l.ivaRate,
+    l.ivaVal,
+    l.prorated,
+    l.unitCost,
+    l.totalCost,
+    l.lotNumber,
+    l.expiryDate,
+    l.manifest,
+    l.netKg,
+    l.grossKg,
+    l.cbm,
+    l.supplierName
+  ]);
+
+  const wsMercancias = XLSX.utils.aoa_to_sheet([mercanciasHeaders, ...mercanciasDataRows]);
+  XLSX.utils.book_append_sheet(wb, wsMercancias, 'Detalle_Mercancias');
+
+  // Hoja 3: Facturas_Consolidadas (si aplica)
+  if (imp.is_consolidated && importInvoices.length > 0) {
+    const invHeaders = [
+      'Factura Nro.',
+      'Proveedor / Tercero Exterior',
+      'Moneda Factura',
+      'Monto Factura Extranjera',
+      '% Distribución Costo',
+      'Costo Asignado (COP)'
+    ];
+    const invRows = importInvoices.map((iv: any) => {
+      const supp = iv.expand?.supplier_id || iv.expand?.third_party_id;
+      const pct = Number(iv.cost_distribution_pct) || 0;
+      const allocatedCop = summary.grandTotalCop * (pct / 100);
+      return [
+        iv.invoice_number,
+        supp?.name || 'Proveedor',
+        iv.currency || imp.currency,
+        Number(iv.invoice_amount) || 0,
+        pct,
+        allocatedCop
+      ];
+    });
+    const wsInvs = XLSX.utils.aoa_to_sheet([invHeaders, ...invRows]);
+    XLSX.utils.book_append_sheet(wb, wsInvs, 'Facturas_Consolidadas');
+  }
+
+  const fileName = `Dossier_Oficial_Importacion_${imp.number}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  (window as any).showToast(`Archivo Excel exportado exitosamente: ${fileName}`, 'success');
+}
+
+function buildExecutiveReportPrintHTML(data: any): string {
+  const { imp, company, lines, importInvoices, summary, destinationWarehouse, capTx } = data;
+
+  const productRows = lines.map((l: any) => `
+    <tr>
+      <td style="text-align:center;font-weight:bold">${l.itemNo}</td>
+      <td>
+        <div style="font-weight:bold;color:#0F172A">${(window as any).esc(l.code)} - ${(window as any).esc(l.name)}</div>
+        <div style="font-size:8.5px;color:#475569">NANDINA: <strong>${(window as any).esc(l.nandina)}</strong> | Origen: ${(window as any).esc(l.originCountry)}</div>
+      </td>
+      <td style="text-align:right">
+        <div style="font-weight:bold">${(window as any).fmtN(l.qty)}</div>
+        <div style="font-size:8.5px;color:#2563EB;font-weight:bold">${(window as any).esc(l.unit)}</div>
+      </td>
+      <td style="text-align:right;font-family:monospace">${(window as any).fmt(l.fobUnit).replace('COP', '')}</td>
+      <td style="text-align:right;font-family:monospace;font-weight:bold">${(window as any).fmt(l.fobLineDivisa).replace('COP', '')}</td>
+      <td style="text-align:right;font-family:monospace">${l.arRate}%</td>
+      <td style="text-align:right;font-family:monospace">${(window as any).fmt(l.prorated)}</td>
+      <td style="text-align:right;font-family:monospace;font-weight:bold;color:#1E3A8A">${(window as any).fmt(l.unitCost)}</td>
+      <td style="text-align:right;font-family:monospace;font-weight:bold">${(window as any).fmt(l.totalCost)}</td>
+    </tr>
+  `).join('');
+
+  const consolidatedSection = (imp.is_consolidated && importInvoices.length > 0) ? `
+    <div class="section-title">3. Relación de Proveedores y Facturas Consolidadas del Exterior</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Factura Nro.</th>
+          <th>Proveedor Internacional</th>
+          <th style="text-align:right">Monto Divisa</th>
+          <th style="text-align:right">% Distribución Costo</th>
+          <th style="text-align:right">Costo Asignado (COP)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${importInvoices.map((iv: any) => {
+          const supp = iv.expand?.supplier_id || iv.expand?.third_party_id;
+          const pct = Number(iv.cost_distribution_pct) || 0;
+          const allocatedCop = summary.grandTotalCop * (pct / 100);
+          return `
+            <tr>
+              <td style="font-family:monospace;font-weight:bold">${(window as any).esc(iv.invoice_number)}</td>
+              <td>${(window as any).esc(supp?.name || 'Proveedor')}</td>
+              <td style="text-align:right;font-family:monospace">${(window as any).fmtN(iv.invoice_amount || 0)} ${(window as any).esc(iv.currency || imp.currency)}</td>
+              <td style="text-align:right;font-family:monospace;font-weight:bold">${pct}%</td>
+              <td style="text-align:right;font-family:monospace;font-weight:bold">${(window as any).fmt(allocatedCop)}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  ` : '';
+
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Dossier Oficial de Importación - ${imp.number}</title>
+      <style>
+        @page { size: letter portrait; margin: 12mm 10mm; }
+        * { box-sizing: border-box; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          font-size: 10px;
+          line-height: 1.35;
+          color: #1E293B;
+          margin: 0;
+          padding: 10px;
+          background: #fff;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #0F172A;
+          padding-bottom: 8px;
+          margin-bottom: 10px;
+        }
+        .company-name { font-size: 14px; font-weight: 900; color: #0F172A; text-transform: uppercase; }
+        .doc-title { font-size: 13px; font-weight: 800; color: #1E3A8A; margin-top: 2px; }
+        .meta-box {
+          border: 1px solid #CBD5E1;
+          border-radius: 6px;
+          padding: 6px 10px;
+          background: #F8FAFC;
+          font-size: 9px;
+          margin-bottom: 10px;
+        }
+        .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .meta-label { font-weight: bold; color: #64748B; text-transform: uppercase; font-size: 8px; }
+        .meta-val { font-weight: bold; color: #0F172A; font-size: 9.5px; }
+        .section-title {
+          font-size: 10.5px;
+          font-weight: 800;
+          color: #0F172A;
+          text-transform: uppercase;
+          margin-top: 10px;
+          margin-bottom: 4px;
+          border-left: 3px solid #2563EB;
+          padding-left: 6px;
+        }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9px; }
+        th {
+          background: #F1F5F9;
+          color: #334155;
+          font-weight: bold;
+          text-align: left;
+          padding: 5px 6px;
+          border-top: 1px solid #CBD5E1;
+          border-bottom: 1px solid #CBD5E1;
+          text-transform: uppercase;
+          font-size: 8px;
+        }
+        td {
+          padding: 4.5px 6px;
+          border-bottom: 1px solid #E2E8F0;
+        }
+        .summary-box {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 6px;
+          background: #F8FAFC;
+          border: 1px solid #CBD5E1;
+          border-radius: 6px;
+          padding: 6px;
+          margin-bottom: 10px;
+        }
+        .summary-card { padding: 4px 6px; background: #fff; border: 1px solid #E2E8F0; border-radius: 4px; }
+        .summary-card .label { font-size: 7.5px; font-weight: bold; color: #64748B; text-transform: uppercase; }
+        .summary-card .val { font-size: 10px; font-weight: 900; font-family: monospace; color: #0F172A; margin-top: 2px; }
+        .signatures {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 20px;
+          margin-top: 25px;
+          page-break-inside: avoid;
+        }
+        .sig-block {
+          border-top: 1px solid #475569;
+          text-align: center;
+          padding-top: 4px;
+          font-size: 8.5px;
+        }
+        .no-print { text-align: center; margin-top: 15px; margin-bottom: 10px; }
+        .btn-print {
+          background: #1E3A8A;
+          color: #fff;
+          border: none;
+          padding: 8px 18px;
+          font-size: 12px;
+          font-weight: bold;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+        @media print {
+          .no-print { display: none !important; }
+          body { padding: 0; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div>
+          <div class="company-name">${(window as any).esc(company.name)}</div>
+          <div style="font-size:9px;color:#475569">NIT: ${(window as any).esc(company.nit)} | ${(window as any).esc(company.address)} ${company.phone ? '| Tel: ' + (window as any).esc(company.phone) : ''}</div>
+          <div class="doc-title">DOSSIER OFICIAL DE LIQUIDACIÓN DE IMPORTACIÓN Y COSTOS ADUANEROS</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:8px;color:#64748B;font-weight:bold;text-transform:uppercase">Importación Nro.</div>
+          <div style="font-size:16px;font-weight:900;font-family:monospace;color:#1E3A8A">${(window as any).esc(imp.number)}</div>
+          <div style="font-size:8.5px;color:#334155;font-weight:bold;margin-top:2px">Estado: ${imp.status.toUpperCase()}</div>
+        </div>
+      </div>
+
+      <div class="meta-box">
+        <div class="meta-grid">
+          <div><div class="meta-label">Fecha Liquidación:</div><div class="meta-val">${imp.date ? imp.date.split(' ')[0] : '—'}</div></div>
+          <div><div class="meta-label">Tasa TRM Oficial:</div><div class="meta-val font-mono">$ ${(window as any).fmtN(imp.exchange_rate)}</div></div>
+          <div><div class="meta-label">Incoterm / Moneda:</div><div class="meta-val">${(window as any).esc(imp.incoterm || 'FOB')} (${(window as any).esc(imp.currency)})</div></div>
+          <div><div class="meta-label">Modalidad:</div><div class="meta-val">${imp.is_consolidated ? 'Consolidada (Multi-Prov)' : 'Directa'}</div></div>
+          <div><div class="meta-label">Bodega Destino:</div><div class="meta-val">${(window as any).esc(destinationWarehouse)}</div></div>
+          <div><div class="meta-label">Comprobante Contable:</div><div class="meta-val font-mono">${capTx ? (window as any).esc(capTx.number) : 'Pendiente Cierre'}</div></div>
+          <div><div class="meta-label">Peso Bruto / Volumen:</div><div class="meta-val font-mono">${summary.totalGrossKg.toFixed(2)} Kg / ${summary.totalCbm.toFixed(3)} m³</div></div>
+          <div><div class="meta-label">Total Unidades:</div><div class="meta-val font-mono">${(window as any).fmtN(summary.totalUnits)}</div></div>
+        </div>
+      </div>
+
+      <div class="section-title">1. Estructura Landed Cost (6 Etapas de Liquidación en COP)</div>
+      <div class="summary-box">
+        <div class="summary-card"><div class="label">1. FOB (COP)</div><div class="val">${(window as any).fmt(summary.fobCop)}</div></div>
+        <div class="summary-card"><div class="label">2. Fletes Int.</div><div class="val">${(window as any).fmt(summary.freightCop)}</div></div>
+        <div class="summary-card"><div class="label">3. Seguros Int.</div><div class="val">${(window as any).fmt(summary.insuranceCop)}</div></div>
+        <div class="summary-card"><div class="label">Subtotal CIF</div><div class="val" style="color:#1D4ED8">${(window as any).fmt(summary.cifCop)}</div></div>
+        <div class="summary-card"><div class="label">4. Aranceles DIAN</div><div class="val" style="color:#B45309">${(window as any).fmt(summary.arancelCop)}</div></div>
+        <div class="summary-card"><div class="label">5. Gastos Log/Port</div><div class="val">${(window as any).fmt(summary.otherCostsCop)}</div></div>
+      </div>
+      <div style="background:#F1F5F9;padding:6px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-weight:bold;text-transform:uppercase;font-size:9.5px;color:#1E293B">Total Costo Nacionalizado Capitalizado en Bodega:</span>
+        <span style="font-size:13px;font-weight:900;font-family:monospace;color:#1E3A8A">${(window as any).fmt(summary.grandTotalCop)}</span>
+      </div>
+
+      <div class="section-title">2. Matriz Detallada de Mercancías Importadas y Prorrateo Landed Cost</div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:20px;text-align:center">#</th>
+            <th>Producto & Clasificación NANDINA</th>
+            <th style="text-align:right">Cant & Unidad</th>
+            <th style="text-align:right">FOB Unit (${imp.currency})</th>
+            <th style="text-align:right">Total FOB (${imp.currency})</th>
+            <th style="text-align:right">Arancel %</th>
+            <th style="text-align:right">Prorrateo COP</th>
+            <th style="text-align:right">Costo Unit COP</th>
+            <th style="text-align:right">Total Costo COP</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${productRows}
+        </tbody>
+      </table>
+
+      ${consolidatedSection}
+
+      <div class="section-title">4. Certificación Legal y Aprobaciones de Auditoría</div>
+      <div style="font-size:8.5px;color:#64748B;margin-bottom:12px">
+        El presente dossier consolida los soportes aduaneros, prorrateos logísticos y registros contables bajo el marco regulatorio tributario y aduanero aplicable.
+      </div>
+
+      <div class="signatures">
+        <div class="sig-block">
+          <div style="font-weight:bold;color:#0F172A">RESPONSABLE COMEX / COMPRAS</div>
+          <div style="color:#64748B">Elaboración Técnica y Logística</div>
+        </div>
+        <div class="sig-block">
+          <div style="font-weight:bold;color:#0F172A">CONTADOR PÚBLICO / REVISOR FISCAL</div>
+          <div style="color:#64748B">T.P. Nro: _________________________</div>
+        </div>
+        <div class="sig-block">
+          <div style="font-weight:bold;color:#0F172A">REPRESENTANTE LEGAL / GERENCIA</div>
+          <div style="color:#64748B">Aprobación Final de Capitalización</div>
+        </div>
+      </div>
+
+      <div class="no-print">
+        <button class="btn-print" onclick="window.print()">Imprimir / Guardar como PDF</button>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+(window as any).openImportExecutiveReport = openImportExecutiveReport;

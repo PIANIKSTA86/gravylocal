@@ -7,7 +7,7 @@ onBootstrap((e) => {
   e.next();
   try {
     const licensesCol = $app.findCollectionByNameOrId("licenses");
-    const moduleKeyField = licensesCol.fields.findByName("module_key");
+    const moduleKeyField = licensesCol.fields.getByName("module_key");
     if (moduleKeyField) {
       const values = moduleKeyField.values;
       if (!values.includes("niif")) {

@@ -27,7 +27,8 @@ let ENABLED_MODULES: Set<string> = new Set(['core']);
 async function loadLicenses(): Promise<void> {
   try {
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
-    let keys: string[] = activeCompany.modules || [];
+    const hubKeys: string[] = Array.isArray(activeCompany.modules) ? activeCompany.modules : [];
+    let localKeys: string[] = [];
 
     // Consultar licencias locales del Tenant para sincronizar el estado real
     try {
@@ -37,16 +38,23 @@ async function loadLicenses(): Promise<void> {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.modules)) {
-          const localKeys = data.modules.map((m: any) => m.module_key);
-          if (localKeys.length > 0) {
-            keys = localKeys;
-          }
+          localKeys = data.modules.map((m: any) => m.module_key);
         }
       }
     } catch (_) {}
 
-    ENABLED_MODULES = new Set(['core', ...keys]);
+    // Fusión inteligente: Si el HUB tiene módulos asignados, se unen con los locales
+    // para que un tenant desactualizado no revoque permisos del HUB, ni el HUB ignore altas locales.
+    const merged = new Set(['core', ...hubKeys, ...localKeys]);
+    ENABLED_MODULES = merged;
     (window as any).ENABLED_MODULES = ENABLED_MODULES;
+
+    // Actualizar activeCompany con la unión para mantener consistencia y evitar regresiones al recargar
+    if (activeCompany && activeCompany.company_id) {
+      activeCompany.modules = [...merged];
+      localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
+    }
+
     if (localStorage.getItem('gravy_debug') === '1') {
       console.log('[GRAVY HUB] Módulos activos (sincronizados):', [...ENABLED_MODULES].join(', '));
     }
@@ -360,13 +368,24 @@ function requireRole(...roles) {
 
 /* -- Flujo Multi-Empresa (HUB) ------------------------------- */
 const getHubUrl = (): string => {
+  if ((window as any).__GRAVY_HUB_URL) {
+    return (window as any).__GRAVY_HUB_URL;
+  }
   const { protocol, hostname, port } = window.location;
   if (port) {
     return `${protocol}//${hostname}:8089`;
   }
   const parts = hostname.split('.');
   if (parts.length >= 3) {
-    return `${protocol}//hub.${parts.slice(1).join('.')}`;
+    const sub = parts[0].toLowerCase();
+    const rootDomain = parts.slice(1).join('.');
+    if (sub === 'domestiko' || sub === 'app' || sub === 'hub') {
+      return `${protocol}//hub.${rootDomain}`;
+    }
+    if (sub.startsWith('hub-')) {
+      return `${protocol}//${hostname}`;
+    }
+    return `${protocol}//hub-${sub}.${rootDomain}`;
   }
   return `${protocol}//hub.${hostname}`;
 };
@@ -436,7 +455,7 @@ async function doLogin() {
   btn.innerHTML = `
     <span class="flex items-center justify-center w-full gap-2">
       <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
-      <span>Conectando al HUB...</span>
+      <span>Ingresando...</span>
     </span>
   `;
 
@@ -478,12 +497,7 @@ async function doLogin() {
     showError(err.message || 'Error inesperado durante la autenticación');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `
-      <span class="flex items-center justify-between w-full px-1">
-        <span class="flex items-center gap-2"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i> <span id="btn-login-label">Iniciar Sesión</span></span>
-        <kbd class="login-kbd-badge" aria-hidden="true">↵ Enter</kbd>
-      </span>
-    `;
+    btn.innerHTML = `<i class="fas fa-arrow-right-to-bracket text-xs"></i> <span id="btn-login-label">Iniciar Sesión</span>`;
   }
 }
 
@@ -501,7 +515,7 @@ function renderCompanyCards(companiesToRender: CompanyAccess[]): string {
   }
 
   return companiesToRender.map(co => {
-    const cardColor = co.company_color || "#2446B8";
+    const cardColor = co.company_color || "#9A3DE0";
     const initials = (co.company_name || 'EM')
       .split(' ')
       .slice(0, 2)
@@ -511,32 +525,32 @@ function renderCompanyCards(companiesToRender: CompanyAccess[]): string {
 
     return `
       <div class="company-card" 
-           style="background:var(--bg-elev);border:1.5px solid var(--border-soft);border-radius:18px;overflow:hidden;cursor:pointer;transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);display:flex;flex-direction:column;text-align:left;position:relative;box-shadow:0 4px 14px rgba(15,23,42,0.03)"
-           onmouseenter="this.style.transform='translateY(-4px)'; this.style.borderColor='${cardColor}'; this.style.boxShadow='0 12px 28px -4px ${cardColor}25';"
-           onmouseleave="this.style.transform='none'; this.style.borderColor='var(--border-soft)'; this.style.boxShadow='0 4px 14px rgba(15,23,42,0.03)';"
+           style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color 0.18s ease, box-shadow 0.18s ease, transform 0.15s ease;display:flex;flex-direction:column;text-align:left;position:relative;box-shadow:0 1px 3px rgba(0,0,0,0.04)"
+           onmouseenter="this.style.transform='translateY(-2px)'; this.style.borderColor='#9A3DE0'; this.style.boxShadow='0 8px 24px -4px rgba(154,61,224,0.18)';"
+           onmouseleave="this.style.transform='none'; this.style.borderColor='#E5E7EB'; this.style.boxShadow='0 1px 3px rgba(0,0,0,0.04)';"
            onclick="selectCompany(${JSON.stringify(co).replace(/"/g, '&quot;')})">
         
         <!-- Línea superior con color corporativo -->
-        <div style="height:5px;width:100%;background-color:${cardColor}"></div>
+        <div style="height:4px;width:100%;background-color:${cardColor}"></div>
         
         <div style="padding:22px;display:flex;flex-direction:column;flex:1">
           <!-- Cabecera de la tarjeta: Avatar de iniciales y Rol -->
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <div style="width:38px;height:38px;border-radius:10px;background:${cardColor}15;color:${cardColor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;border:1px solid ${cardColor}30">
+            <div style="width:36px;height:36px;border-radius:6px;background:${cardColor}15;color:${cardColor};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;border:1px solid ${cardColor}30">
               ${initials}
             </div>
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);background:var(--bg-panel);padding:3px 10px;border-radius:20px;border:1px solid var(--border-soft)">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;color:#5D5D5D;background:#F8F9FA;padding:3px 8px;border-radius:4px;border:1px solid #E5E7EB">
               <i class="fas fa-user-shield text-[9px] mr-1"></i>${co.role}
             </span>
           </div>
 
           <!-- Razón social -->
-          <h3 style="font-size:16px;font-weight:800;color:var(--text-strong);margin:0 0 6px;line-height:1.35;letter-spacing:-0.2px">${co.company_name}</h3>
+          <h3 style="font-size:15px;font-weight:800;color:#1E1E1E;margin:0 0 6px;line-height:1.35;letter-spacing:-0.2px">${co.company_name}</h3>
           
           <!-- Módulos autorizados -->
           <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:auto;padding-top:14px">
             ${(co.modules || []).map(m => `
-              <span style="font-size:9px;font-weight:700;color:var(--accent-violet-strong);background:rgba(99,102,241,0.06);padding:2px 7px;border-radius:6px;border:1px solid rgba(99,102,241,0.1);text-transform:uppercase">${m}</span>
+              <span style="font-size:9.5px;font-weight:700;color:#9A3DE0;background:#F4E9FE;padding:2px 7px;border-radius:4px;border:1px solid #EBD7FD;text-transform:uppercase">${m}</span>
             `).join('')}
           </div>
         </div>
@@ -557,40 +571,41 @@ function renderCompanySelector(companies: CompanyAccess[]) {
     document.body.appendChild(selectorScreen);
   }
 
-  selectorScreen.style.background = 'radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.05), transparent 70%), linear-gradient(180deg, #F8FAFC 0%, #EEF2F6 100%)';
+  selectorScreen.style.background = '#F8F9FA';
   selectorScreen.style.overflowY = 'auto';
 
   selectorScreen.innerHTML = `
-    <div style="max-width: 1040px; width: 100%; padding: 36px 20px; text-align: center;">
+    <div style="max-width: 1040px; width: 100%; padding: 40px 20px; text-align: center;">
       
-      <!-- Encabezado -->
-      <div style="margin-bottom: 32px; animation: fadeIn 0.4s ease">
-        <div style="width:58px;height:58px;border-radius:18px;background:var(--bg-elev);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(99,102,241,0.08);border:1px solid var(--border-soft)">
-          <img src="/assets/gravy-logo.png" style="width:34px;height:34px;object-fit:contain;" onerror="this.src='/gravy-Icono.ico'">
+      <!-- Encabezado Editorial -->
+      <div style="margin-bottom: 32px; animation: fadeIn 0.35s ease">
+        <div style="width:52px;height:52px;border-radius:10px;background:#FFFFFF;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.05);border:1px solid #EAEAEA">
+          <img src="/assets/gravy-logo.png" style="width:30px;height:30px;object-fit:contain;" onerror="this.src='/gravy-Icono.ico'">
         </div>
-        <h1 style="font-size:28px;font-weight:900;color:var(--text-strong);letter-spacing:-0.5px;margin:0 0 6px">
-          GRAVY <span style="background:linear-gradient(135deg,var(--accent-cyan-strong),var(--accent-violet-strong));-webkit-background-clip:text;-webkit-text-fill-color:transparent">HUB</span>
+        <h1 style="font-size:26px;font-weight:900;color:#1E1E1E;letter-spacing:-0.4px;margin:0 0 6px">
+          GRAVY <span style="color:#9A3DE0">HUB</span>
         </h1>
-        <p style="font-size:13px;color:var(--text-muted);margin:0">Selecciona la razón social o empresa con la que trabajarás</p>
+        <p style="font-size:13px;color:#5D5D5D;margin:0">Selecciona la razón social o empresa con la que trabajarás</p>
       </div>
 
       <!-- Buscador en tiempo real de empresas -->
-      <div class="hub-search-box">
+      <div class="hub-search-box" style="margin: 0 auto 28px;">
         <div class="relative">
-          <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm" aria-hidden="true"></i>
+          <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
           <input type="text" id="hub-company-search" class="hub-search-input"
+            style="width:100%;height:44px;padding-left:42px;padding-right:16px;border-radius:8px;border:1px solid #D5D7DA;background:#FFFFFF;color:#1E1E1E;font-size:13px;outline:none;"
             placeholder="Buscar por nombre de empresa o rol..." autocomplete="off">
         </div>
       </div>
 
       <!-- Grid de Empresas -->
-      <div id="hub-companies-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:20px;margin-bottom:36px;justify-content:center">
+      <div id="hub-companies-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(290px, 1fr));gap:18px;margin-bottom:36px;justify-content:center">
         ${renderCompanyCards(companies)}
       </div>
 
       <!-- Footer / Desconexión -->
       <div style="animation:fadeIn 0.5s ease;margin-top:16px">
-        <button onclick="doHubLogout()" class="inline-flex items-center gap-2 text-rose-500 hover:text-rose-600 font-bold text-xs py-2 px-4 rounded-xl hover:bg-rose-50 transition-colors">
+        <button onclick="doHubLogout()" class="inline-flex items-center gap-2 font-bold text-xs py-2 px-4 rounded-lg transition-colors border border-gray-200 hover:bg-gray-100" style="color:#5D5D5D;background:#FFFFFF">
           <i class="fas fa-right-from-bracket"></i> Cerrar sesión de usuario
         </button>
       </div>

@@ -929,17 +929,19 @@ async function renderPhCartera(c) {
           <div class="overflow-x-auto">
             <table class="data-table" id="ph-cartera-resumen-table">
               <colgroup id="ph-cartera-resumen-colgroup">
-                <col style="width:260px">
+                <col style="width:180px">
+                <col style="width:230px">
                 <col style="width:160px">
               </colgroup>
               <thead id="ph-cartera-resumen-thead">
                 <tr>
                   <th>Unidad</th>
+                  <th>Propietario / Tercero</th>
                   <th class="text-right">Total general</th>
                 </tr>
               </thead>
               <tbody id="ph-cartera-resumen-tbody">
-                <tr><td colspan="2" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+                <tr><td colspan="3" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
               </tbody>
               <tfoot id="ph-cartera-resumen-tfoot"></tfoot>
             </table>
@@ -963,11 +965,8 @@ async function renderPhCartera(c) {
               <thead>
                 <tr>
                   <th>Unidad</th>
+                  <th>Propietario / Tercero</th>
                   <th>Concepto</th>
-                  <th>Doc. Cruce</th>
-                  <th>Fecha Doc.</th>
-                  <th class="text-right">Plazo</th>
-                  <th>Vencimiento</th>
                   <th class="text-right">Por Vencer</th>
                   <th class="text-right">0-30 días</th>
                   <th class="text-right">31-60 días</th>
@@ -977,7 +976,7 @@ async function renderPhCartera(c) {
                 </tr>
               </thead>
               <tbody id="ph-cartera-detalle-tbody">
-                <tr><td colspan="12" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
+                <tr><td colspan="9" class="text-center py-4" style="color:#9CA3AF">Cargando...</td></tr>
               </tbody>
               <tfoot id="ph-cartera-detalle-tfoot"></tfoot>
             </table>
@@ -1038,17 +1037,24 @@ async function renderPhCartera(c) {
             })
           : { marginLeft: 24, marginRight: doc.internal.pageSize.getWidth() - 24, startY: 50 };
 
-        const head = [['Unidad', ...lastBalPdf.concepts.map(c => c.label), 'Total general']];
-        const body = lastBalPdf.rows.map((r) => [
-          r.unidad,
-          ...lastBalPdf.concepts.map((c) => {
-            const v = Number(r.byConcept[c.id] || 0);
-            return v ? (typeof fmtPdfNum === 'function' ? fmtPdfNum(v) : fmt(v)) : '';
-          }),
-          typeof fmtPdfNum === 'function' ? fmtPdfNum(r.totalGeneral || 0) : fmt(r.totalGeneral || 0),
-        ]);
+        const head = [['Unidad', 'Propietario / Tercero', ...lastBalPdf.concepts.map(c => c.label), 'Total general']];
+        const body = lastBalPdf.rows.map((r) => {
+          const ownerLabel = r.ownerName
+            ? (r.ownerDoc ? `${r.ownerName} (${r.ownerDoc})` : r.ownerName)
+            : '—';
+          return [
+            r.unidad,
+            ownerLabel,
+            ...lastBalPdf.concepts.map((c) => {
+              const v = Number(r.byConcept[c.id] || 0);
+              return v ? (typeof fmtPdfNum === 'function' ? fmtPdfNum(v) : fmt(v)) : '';
+            }),
+            typeof fmtPdfNum === 'function' ? fmtPdfNum(r.totalGeneral || 0) : fmt(r.totalGeneral || 0),
+          ];
+        });
         body.push([
           'TOTAL',
+          '',
           ...lastBalPdf.concepts.map((c) => {
             const v = Number(lastBalPdf.totalByConcept[c.id] || 0);
             return v ? (typeof fmtPdfNum === 'function' ? fmtPdfNum(v) : fmt(v)) : '';
@@ -1064,7 +1070,16 @@ async function renderPhCartera(c) {
           margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 24 },
           styles: { font: 'helvetica', fontSize: 7, textColor: [55, 55, 55], cellPadding: 2.2, lineWidth: 0 },
           headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.2, lineWidth: { bottom: 0.25 } },
+          columnStyles: {
+            0: { cellWidth: 105, halign: 'left' },
+            1: { cellWidth: 135, halign: 'left' },
+          },
           didParseCell: (data) => {
+            // Alineación contable: a partir de columna 2 (conceptos y total), siempre a la derecha
+            // Aplica a 'head', 'body' y 'foot' para que títulos numéricos coincidan con los valores
+            if (data.column.index >= 2) {
+              data.cell.styles.halign = 'right';
+            }
             if (data.section !== 'body') return;
             const isTotal = data.row.index === body.length - 1;
             if (isTotal) {
@@ -1074,7 +1089,6 @@ async function renderPhCartera(c) {
               data.cell.styles.lineWidth = { top: 0.2 };
               data.cell.styles.lineColor = [13, 33, 55];
             }
-            if (data.column.index > 0) data.cell.styles.halign = 'right';
           },
           didDrawPage: (data) => {
             if (typeof drawPdfFooter === 'function') drawPdfFooter(doc, data.pageNumber);
@@ -1131,10 +1145,13 @@ async function renderPhCartera(c) {
             currentUnidad = r.unidad;
             subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
           }
+          const ownerLabel = r.ownerName
+            ? (r.ownerDoc ? `${r.ownerName} (${r.ownerDoc})` : r.ownerName)
+            : '—';
           body.push([
             r.unidad,
+            ownerLabel,
             r.concepto,
-            '', '', '', '',
             typeof fmtPdfNum === 'function' ? fmtPdfNum(r.por_vencer || 0) : fmt(r.por_vencer || 0),
             typeof fmtPdfNum === 'function' ? fmtPdfNum(r.de_0_a_30 || 0) : fmt(r.de_0_a_30 || 0),
             typeof fmtPdfNum === 'function' ? fmtPdfNum(r.de_31_a_60 || 0) : fmt(r.de_31_a_60 || 0),
@@ -1152,7 +1169,7 @@ async function renderPhCartera(c) {
           const nextUnidad = rows[i + 1]?.unidad;
           if (nextUnidad !== currentUnidad) {
             body.push([
-              `Subtotal ${currentUnidad}`, '', '', '', '', '',
+              `Subtotal ${currentUnidad}`, '', '',
               typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.por_vencer) : fmt(subtotal.por_vencer),
               typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.de_0_a_30) : fmt(subtotal.de_0_a_30),
               typeof fmtPdfNum === 'function' ? fmtPdfNum(subtotal.de_31_a_60) : fmt(subtotal.de_31_a_60),
@@ -1164,7 +1181,7 @@ async function renderPhCartera(c) {
         }
         // Fila total general
         body.push([
-          'TOTAL', '', '', '', '', '',
+          'TOTAL', '', '',
           typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.por_vencer || 0) : fmt(lastAgingPdf.totals.por_vencer || 0),
           typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.de_0_a_30 || 0) : fmt(lastAgingPdf.totals.de_0_a_30 || 0),
           typeof fmtPdfNum === 'function' ? fmtPdfNum(lastAgingPdf.totals.de_31_a_60 || 0) : fmt(lastAgingPdf.totals.de_31_a_60 || 0),
@@ -1175,30 +1192,32 @@ async function renderPhCartera(c) {
 
         doc.autoTable({
           startY: header.startY,
-          head: [['Unidad', 'Concepto', '', '', '', '', 'Por Vencer', '0-30', '31-60', '61-90', 'Mas de 90', 'Total']],
+          head: [['Unidad', 'Propietario / Tercero', 'Concepto', 'Por Vencer', '0-30', '31-60', '61-90', 'Más de 90', 'Total']],
           body,
           theme: 'plain',
           margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 24 },
-          styles: { font: 'helvetica', fontSize: 6.8, textColor: [55, 55, 55], cellPadding: 2.1, lineWidth: 0 },
-          headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7, lineWidth: { bottom: 0.25 } },
+          styles: { font: 'helvetica', fontSize: 7, textColor: [55, 55, 55], cellPadding: 2.4, lineWidth: 0 },
+          headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 7.2, lineWidth: { bottom: 0.25 } },
           columnStyles: {
-            0: { cellWidth: 110 },
-            1: { cellWidth: 95 },
-            2: { cellWidth: 20 },
-            3: { cellWidth: 20 },
-            4: { cellWidth: 20 },
-            5: { cellWidth: 20 },
-            6: { cellWidth: 58, halign: 'right' },
-            7: { cellWidth: 47, halign: 'right' },
-            8: { cellWidth: 47, halign: 'right' },
-            9: { cellWidth: 47, halign: 'right' },
-            10: { cellWidth: 54, halign: 'right' },
-            11: { cellWidth: 55, halign: 'right' },
+            0: { cellWidth: 110, halign: 'left' },
+            1: { cellWidth: 144, halign: 'left' },
+            2: { cellWidth: 130, halign: 'left' },
+            3: { cellWidth: 60, halign: 'right' },
+            4: { cellWidth: 60, halign: 'right' },
+            5: { cellWidth: 60, halign: 'right' },
+            6: { cellWidth: 60, halign: 'right' },
+            7: { cellWidth: 60, halign: 'right' },
+            8: { cellWidth: 60, halign: 'right' },
           },
           didParseCell: (data) => {
+            // Alineación contable: a partir de columna 3 (tramos de mora y total) siempre a la derecha
+            // Aplica a 'head', 'body' y 'foot' para que títulos coincidan con las cifras
+            if (data.column.index >= 3) {
+              data.cell.styles.halign = 'right';
+            }
             if (data.section !== 'body') return;
             const isTotal = data.row.index === body.length - 1;
-            const isSubtotal = data.row.raw[0]?.startsWith('Subtotal ');
+            const isSubtotal = String(data.row.raw[0] || '').startsWith('Subtotal ');
             if (isTotal || isSubtotal) {
               data.cell.styles.fontStyle = 'bold';
               data.cell.styles.fillColor = [236, 236, 236];
@@ -1321,18 +1340,20 @@ async function renderPhCartera(c) {
         if (cartera.length === 0 || activeParties.length === 0) {
           if (colgroup) {
             colgroup.innerHTML = `
-              <col style="width:260px">
+              <col style="width:180px">
+              <col style="width:230px">
               <col style="width:160px">`;
           }
           if (thead) {
             thead.innerHTML = `
             <tr>
               <th>Unidad</th>
+              <th>Propietario / Tercero</th>
               <th class="text-right">Total general</th>
             </tr>`;
           }
           document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
-            <tr><td colspan="2" class="text-center py-4" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</td></tr>`;
+            <tr><td colspan="3" class="text-center py-4" style="color:#9CA3AF">No hay saldos abiertos para los filtros seleccionados.</td></tr>`;
           document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-bal-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de saldo abierto.`;
           lastBalPdf = null;
@@ -1356,11 +1377,21 @@ async function renderPhCartera(c) {
             if (!byUnit.has(unitKey)) {
               byUnit.set(unitKey, {
                 unidad: uLabel,
+                ownerName: p.ownerName || '',
+                ownerDoc: p.ownerDoc || '',
                 byConcept: {},
                 totalGeneral: 0,
+                saldoAnticipo: Number(p.saldoAnticipo || 0),
               });
             }
             const row = byUnit.get(unitKey);
+            if (!row.ownerName && p.ownerName) {
+              row.ownerName = p.ownerName;
+              row.ownerDoc = p.ownerDoc || '';
+            }
+            if (p.saldoAnticipo) {
+              row.saldoAnticipo = Math.max(row.saldoAnticipo || 0, Number(p.saldoAnticipo));
+            }
             const cKey = conceptKey(p.concepto || 'Concepto');
             row.byConcept[cKey] = (row.byConcept[cKey] || 0) + Number(p.amount || 0);
             row.totalGeneral += Number(p.amount || 0);
@@ -1370,8 +1401,10 @@ async function renderPhCartera(c) {
 
           const totalByConcept = {};
           let grandTotal = 0;
+          let grandAnticipos = 0;
           for (const r of rows) {
             grandTotal += Number(r.totalGeneral || 0);
+            grandAnticipos += Number(r.saldoAnticipo || 0);
             for (const c of concepts) {
               totalByConcept[c.id] = (totalByConcept[c.id] || 0) + Number(r.byConcept[c.id] || 0);
             }
@@ -1380,36 +1413,48 @@ async function renderPhCartera(c) {
           const uniqueDocs = new Set(activeParties.map(p => String(p.invoiceId || ''))).size;
 
           document.getElementById('ph-cartera-bal-meta').innerHTML =
-            `Unidades: <strong>${fmtN(rows.length)}</strong> · Conceptos: <strong>${fmtN(concepts.length)}</strong> · Documentos: <strong>${fmtN(uniqueDocs)}</strong> · Saldo abierto: <strong>${fmt(grandTotal)}</strong>`;
+            `Unidades: <strong>${fmtN(rows.length)}</strong> · Conceptos: <strong>${fmtN(concepts.length)}</strong> · Documentos: <strong>${fmtN(uniqueDocs)}</strong> · Saldo facturado: <strong>${fmt(grandTotal)}</strong>${grandAnticipos > 0 ? ` · Saldo a favor (Anticipos 28): <strong class="text-emerald-700">-${fmt(grandAnticipos)}</strong> · Saldo neto real: <strong class="text-blue-800">${fmt(Math.max(0, grandTotal - grandAnticipos))}</strong>` : ''}`;
 
           if (colgroup) {
             colgroup.innerHTML = `
-              <col style="width:260px">
-              ${concepts.map(() => '<col style="width:150px">').join('')}
-              <col style="width:170px">`;
+              <col style="width:200px">
+              <col style="width:230px">
+              ${concepts.map(() => '<col style="width:140px">').join('')}
+              <col style="width:160px">`;
           }
 
           if (thead) {
             thead.innerHTML = `
             <tr>
               <th>Unidad</th>
+              <th>Propietario / Tercero</th>
               ${concepts.map(c => `<th class="text-right">${esc(c.label)}</th>`).join('')}
               <th class="text-right">Total general</th>
             </tr>`;
           }
 
-          document.getElementById('ph-cartera-resumen-tbody').innerHTML = rows.map(r => `
+          document.getElementById('ph-cartera-resumen-tbody').innerHTML = rows.map(r => {
+            const netAmt = Math.max(0, r.totalGeneral - (r.saldoAnticipo || 0));
+            return `
             <tr>
-              <td>${esc(r.unidad)}</td>
+              <td class="font-semibold" style="color:#0D2137">${esc(r.unidad)}</td>
+              <td>
+                <span class="text-sm font-medium" style="color:#374151">${esc(r.ownerName || '—')}</span>
+                ${r.ownerDoc ? `<br><span class="text-xs" style="color:#9CA3AF">${esc(r.ownerDoc)}</span>` : ''}
+              </td>
               ${concepts.map(c => {
                 const v = Number(r.byConcept[c.id] || 0);
                 return `<td class="text-right">${v ? fmt(v) : ''}</td>`;
               }).join('')}
-              <td class="text-right font-semibold" style="color:#065F46">${fmt(r.totalGeneral)}</td>
-            </tr>`).join('');
+              <td class="text-right font-semibold" style="color:#065F46">
+                <div>${fmt(r.totalGeneral)}</div>
+                ${r.saldoAnticipo > 0 ? `<div class="text-[11px] font-medium text-emerald-700" title="Saldo a favor en cuenta 28">Anticipo: -${fmt(r.saldoAnticipo)}<br><span class="font-bold ${netAmt > 0 ? 'text-amber-800' : 'text-emerald-800'}">Neto: ${fmt(netAmt)}</span></div>` : ''}
+              </td>
+            </tr>`;
+          }).join('');
           document.getElementById('ph-cartera-resumen-tfoot').innerHTML = `
             <tr>
-              <td class="font-bold">Total general</td>
+              <td colspan="2" class="font-bold">Total general</td>
               ${concepts.map(c => `<td class="font-bold text-right">${totalByConcept[c.id] ? fmt(totalByConcept[c.id]) : ''}</td>`).join('')}
               <td class="font-bold text-right">${fmt(grandTotal)}</td>
             </tr>`;
@@ -1422,18 +1467,20 @@ async function renderPhCartera(c) {
         console.error(err);
         if (colgroup) {
           colgroup.innerHTML = `
-            <col style="width:260px">
+            <col style="width:180px">
+            <col style="width:230px">
             <col style="width:160px">`;
         }
         if (thead) {
           thead.innerHTML = `
           <tr>
             <th>Unidad</th>
+            <th>Propietario / Tercero</th>
             <th class="text-right">Total general</th>
           </tr>`;
         }
         document.getElementById('ph-cartera-resumen-tbody').innerHTML = `
-          <tr><td colspan="2" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+          <tr><td colspan="3" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
         document.getElementById('ph-cartera-resumen-tfoot').innerHTML = '';
         renderIntegrity(null);
         lastBalPdf = null;
@@ -1444,7 +1491,7 @@ async function renderPhCartera(c) {
       try {
         if (activeParties.length === 0) {
           document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
-            <tr><td colspan="12" class="text-center py-4" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</td></tr>`;
+            <tr><td colspan="9" class="text-center py-4" style="color:#9CA3AF">No hay cartera abierta para los filtros seleccionados.</td></tr>`;
           document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
           document.getElementById('ph-cartera-aging-meta').innerHTML = `<i class="fas fa-info-circle mr-1"></i>Sin datos de cartera por edades.`;
           lastAgingPdf = null;
@@ -1471,6 +1518,8 @@ async function renderPhCartera(c) {
             if (!grouped[uLabel][concept]) {
               grouped[uLabel][concept] = {
                 unidad: uLabel,
+                ownerName: p.ownerName || '',
+                ownerDoc: p.ownerDoc || '',
                 concepto: concept,
                 por_vencer: 0,
                 de_0_a_30: 0,
@@ -1481,6 +1530,10 @@ async function renderPhCartera(c) {
               };
             }
             const row = grouped[uLabel][concept];
+            if (!row.ownerName && p.ownerName) {
+              row.ownerName = p.ownerName;
+              row.ownerDoc = p.ownerDoc || '';
+            }
             if (bucket === 'por_vencer') row.por_vencer += amount;
             else if (bucket === 'b0_30') row.de_0_a_30 += amount;
             else if (bucket === 'b31_60') row.de_31_a_60 += amount;
@@ -1498,16 +1551,19 @@ async function renderPhCartera(c) {
             // Subtotal accumulator for this unit
             let subtotal = { por_vencer: 0, de_0_a_30: 0, de_31_a_60: 0, de_61_a_90: 0, mayor_a_90: 0, total: 0 };
             bodyRows.push(`<tr style="background:#F0F4F8">
-              <td colspan="12" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
+              <td colspan="9" style="font-weight:600;padding:5px 10px;font-size:12px;color:#0D2137;border-top:1px solid #D1D5DB">
                 <i class="fas fa-building mr-1" style="color:#E87D1E"></i>${esc(unidad)}
               </td>
             </tr>`);
             Object.keys(concepts).sort(conceptSort).forEach(concepto => {
               const r = concepts[concepto];
               bodyRows.push(`<tr>
-                <td>${esc(r.unidad)}</td>
+                <td class="font-semibold" style="color:#0D2137">${esc(r.unidad)}</td>
+                <td>
+                  <span class="text-sm font-medium" style="color:#374151">${esc(r.ownerName || '—')}</span>
+                  ${r.ownerDoc ? `<br><span class="text-xs" style="color:#9CA3AF">${esc(r.ownerDoc)}</span>` : ''}
+                </td>
                 <td>${esc(r.concepto)}</td>
-                <td colspan="4"></td>
                 <td class="text-right" style="color:#059669">${fmt(r.por_vencer)}</td>
                 <td class="text-right">${fmt(r.de_0_a_30)}</td>
                 <td class="text-right">${fmt(r.de_31_a_60)}</td>
@@ -1527,7 +1583,7 @@ async function renderPhCartera(c) {
             });
             // Subtotal row
             bodyRows.push(`<tr style="background:#FDF6E3">
-              <td colspan="6" class="font-bold">Subtotal ${esc(unidad)}</td>
+              <td colspan="3" class="font-bold">Subtotal ${esc(unidad)}</td>
               <td class="font-bold text-right" style="color:#059669">${fmt(subtotal.por_vencer)}</td>
               <td class="font-bold text-right">${fmt(subtotal.de_0_a_30)}</td>
               <td class="font-bold text-right">${fmt(subtotal.de_31_a_60)}</td>
@@ -1550,7 +1606,7 @@ async function renderPhCartera(c) {
           document.getElementById('ph-cartera-detalle-tbody').innerHTML = bodyRows.join('');
           document.getElementById('ph-cartera-detalle-tfoot').innerHTML = `
             <tr>
-              <td colspan="6" class="font-bold">Total general</td>
+              <td colspan="3" class="font-bold">Total general</td>
               <td class="font-bold text-right" style="color:#059669">${fmt(totals.por_vencer)}</td>
               <td class="font-bold text-right">${fmt(totals.de_0_a_30)}</td>
               <td class="font-bold text-right">${fmt(totals.de_31_a_60)}</td>
@@ -1566,7 +1622,7 @@ async function renderPhCartera(c) {
       } catch (err) {
         console.error(err);
         document.getElementById('ph-cartera-detalle-tbody').innerHTML = `
-          <tr><td colspan="12" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
+          <tr><td colspan="9" class="text-center py-4" style="color:#EF4444">${esc(err.message)}</td></tr>`;
         document.getElementById('ph-cartera-detalle-tfoot').innerHTML = '';
         lastAgingPdf = null;
         const pdfBtn = document.getElementById('ph-cartera-pdf-aging');
@@ -1622,6 +1678,7 @@ async function renderPhUnidades(c) {
                 <th>Apartamento</th>
                 <th>Coef. %</th>
                 <th>Cuota Admin.</th>
+                <th>F. Entrega</th>
                 <th>Propietario</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -1661,11 +1718,12 @@ async function renderPhUnidades(c) {
 
 function renderPhUnitRows(properties, canEditUnits = can('canWrite')) {
   if (!properties.length) {
-    return `<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF">No hay unidades registradas.</td></tr>`;
+    return `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF">No hay unidades registradas.</td></tr>`;
   }
   return properties.map(p => {
     const owner   = p.expand?.owner_id;
     const active  = p.active !== false;
+    const dDate   = p.delivery_date ? String(p.delivery_date).slice(0, 10) : '';
     return `<tr>
       <td class="font-mono text-xs font-bold">${esc(p.code)}</td>
       <td class="font-semibold" style="color:#0D2137">${esc(p.name)}</td>
@@ -1673,6 +1731,7 @@ function renderPhUnitRows(properties, canEditUnits = can('canWrite')) {
       <td class="text-sm font-semibold">${esc(p.apartment || '—')}</td>
       <td class="text-sm text-right">${p.coef_participacion ? fmtN(p.coef_participacion) + '%' : '—'}</td>
       <td class="text-sm text-right font-semibold" style="color:#E87D1E">${p.admin_fee ? fmt(p.admin_fee) : '—'}</td>
+      <td class="text-xs text-center">${dDate ? `<span class="badge badge-blue" title="Fecha de entrega material">${esc(dDate)}</span>` : '<span class="text-gray-400">—</span>'}</td>
       <td class="text-sm">${esc(owner?.name || '—')}</td>
       <td><span class="badge ${active ? 'badge-green' : 'badge-gray'}">${active ? 'Activa' : 'Inactiva'}</span></td>
       <td>
@@ -1769,7 +1828,13 @@ async function openPhUnitModal(unitId, container) {
           ${terceros.map(t => `<option value="${esc(t.id)}" ${unit?.owner_id === t.id ? 'selected' : ''}>${esc(t.name)} (${esc(t.doc_number || 'N/A')})</option>`).join('')}
         </select>
       </div>
-      <div class="form-group col-span-2">
+      <div class="form-group">
+        <label class="form-label">Fecha de Entrega</label>
+        <input id="pu-delivery-date" type="date" class="form-input"
+          value="${esc(unit?.delivery_date ? String(unit.delivery_date).slice(0, 10) : '')}">
+        <p class="text-xs mt-1" style="color:#6B7280">Si la entrega ocurrió en el mes de facturación, se causará la expensa proporcional a los días transcurridos.</p>
+      </div>
+      <div class="form-group">
         <label class="form-label">Notas</label>
         <textarea id="pu-notes" class="form-input" rows="2" placeholder="Observaciones...">${esc(unit?.notes || '')}</textarea>
       </div>
@@ -1796,6 +1861,7 @@ async function openPhUnitModal(unitId, container) {
       coef_participacion:  parseFloat((document.getElementById('pu-coef') as HTMLInputElement)?.value  || '0') || 0,
       admin_fee:           parseFloat((document.getElementById('pu-admin-fee') as HTMLInputElement)?.value || '0') || 0,
       area_m2:             parseFloat((document.getElementById('pu-area') as HTMLInputElement)?.value   || '0') || 0,
+      delivery_date:       ((document.getElementById('pu-delivery-date') as HTMLInputElement)?.value || '').trim() || null,
       owner_id:            rawOwner ? rawOwner : null,
       notes:               (document.getElementById('pu-notes') as HTMLTextAreaElement)?.value  || '',
       active:              (document.getElementById('pu-active') as HTMLSelectElement)?.value === 'true',
@@ -2313,7 +2379,7 @@ async function renderPhConfig(c) {
   c.id = c.id || 'ph-config-container';
   c.innerHTML = `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</div>`;
   try {
-    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes, rawFooterNote, rawMailSubject, rawMailBody, rawMailNotice] = await Promise.all([
+    const [concepts, areas, phCfgRaw, accounts, properties, indConceptsRes, rawFooterNote, rawMailSubject, rawMailBody, rawMailNotice, activeTxTypes] = await Promise.all([
       API.getPhBillingConcepts(false),
       API.getPhCommonAreas(false),
       API.getSetting('ph_config_v1'),
@@ -2324,6 +2390,7 @@ async function renderPhConfig(c) {
       API.getSetting('ph_email_template_invoice_subject').catch(() => ''),
       API.getSetting('ph_email_template_invoice_body').catch(() => ''),
       API.getSetting('ph_email_monthly_notice').catch(() => ''),
+      pb.listAll('transaction_types', { filter: 'active=true', sort: 'code,prefix' }).catch(() => []),
     ]);
     const indConcepts = (indConceptsRes?.items || []).slice().sort((a, b) => {
       const an = String(a?.name || a?.description || '').toLowerCase();
@@ -2346,6 +2413,7 @@ async function renderPhConfig(c) {
     const incomeCode = phCfg.income_code || '413505';
     const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
     const anticipoAccountCode = phCfg.anticipo_account_code || '';
+    const cruceTxTypeId = phCfg.cruce_anticipo_tx_type_id || '';
     const activeLeafAccounts = (accounts || [])
       .filter(a => a.active !== false && Number(a.level || 0) >= 3)
       .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
@@ -2360,6 +2428,12 @@ async function renderPhConfig(c) {
         ? `<option value="${esc(selected)}" selected>${esc(selected)} — (No encontrada en PUC activo)</option>`
         : '';
       return `${orphanOption}<option value="">— Seleccionar cuenta —</option>${rows.map(a => `<option value="${esc(a.code)}"${String(a.code || '') === selected ? ' selected' : ''}>${esc(a.code)} — ${esc(a.name || '')}</option>`).join('')}`;
+    };
+    const txTypeOptions = (types: any[], selectedId = '') => {
+      return `<option value="">— Automático (Sugerido: Nota Contable NC / CC / AJ) —</option>${(types || []).map(t => {
+        const sel = String(t.id) === String(selectedId || '') ? ' selected' : '';
+        return `<option value="${esc(t.id)}"${sel}>[${esc(t.prefix || t.code)}] ${esc(t.name)}</option>`;
+      }).join('')}`;
     };
 
     c.innerHTML = `
@@ -2468,6 +2542,11 @@ async function renderPhConfig(c) {
             <label class="form-label"><i class="fas fa-piggy-bank mr-1" style="color:#059669"></i>Cuenta de Anticipos de Propietarios (Pasivo)</label>
             <select id="ph-cfg-anticipo" class="form-input font-mono">${accountOptions(liabilityAccounts, anticipoAccountCode)}</select>
             <p class="text-xs mt-1" style="color:#9CA3AF">Cuenta clase 2 donde se registran los saldos a favor de propietarios (ej: 280505 Anticipos de Clientes).</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label"><i class="fas fa-file-invoice mr-1" style="color:#2563EB"></i>Tipo de Comprobante para Cruce de Anticipos</label>
+            <select id="ph-cfg-cruce-tx-type" class="form-input">${txTypeOptions(activeTxTypes, cruceTxTypeId)}</select>
+            <p class="text-xs mt-1" style="color:#9CA3AF">Tipo de comprobante utilizado para registrar los cruces contables de saldos a favor (ej: Nota de Contabilidad NC, Comprobante CC o Ajustes AJ).</p>
           </div>
           <button class="btn btn-primary" id="ph-cfg-save-btn">
             <i class="fas fa-save mr-1"></i>Guardar Cuentas Contables
@@ -2670,7 +2749,16 @@ async function renderPhConfig(c) {
             if (antiRes.length) anticipoAccountId = antiRes[0].id;
           } catch(_) {}
         }
-        const cfg = { ...phCfg, cxc_code: cxc, income_code: income, anticipo_account_code: anticipo || null, anticipo_account_id: anticipoAccountId, invoice_footer_note: noteVal };
+        const cruceTxTypeId = ((document.getElementById('ph-cfg-cruce-tx-type') as HTMLSelectElement)?.value || '').trim() || null;
+        const cfg = {
+          ...phCfg,
+          cxc_code: cxc,
+          income_code: income,
+          anticipo_account_code: anticipo || null,
+          anticipo_account_id: anticipoAccountId,
+          cruce_anticipo_tx_type_id: cruceTxTypeId,
+          invoice_footer_note: noteVal
+        };
         await Promise.all([
           API.setSetting('ph_config_v1', JSON.stringify(cfg)),
           API.setSetting('ph_invoice_footer_note', noteVal),

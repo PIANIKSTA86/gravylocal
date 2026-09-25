@@ -119,10 +119,28 @@ onBootstrap((e) => {
     addField("start_service_date", "text");
     addField("qr_code", "text");
     addField("photo_url", "text");
+    addField("is_depreciable", "bool");
+    addField("initial_depreciation_niif", "number");
+    addField("initial_depreciation_fiscal", "number");
+    addField("accumulated_depreciation_niif", "number");
+    addField("accumulated_depreciation_fiscal", "number");
+    addField("last_depreciation_period", "text");
+
+    // Asegurar que las vidas útiles no sean obligatorias para permitir activos no depreciables (vida útil 0)
+    const fLifeNiif = niifAssets.fields.getByName("useful_life_niif");
+    if (fLifeNiif && fLifeNiif.required) {
+      fLifeNiif.required = false;
+      needsSave = true;
+    }
+    const fLifeFiscal = niifAssets.fields.getByName("useful_life_fiscal");
+    if (fLifeFiscal && fLifeFiscal.required) {
+      fLifeFiscal.required = false;
+      needsSave = true;
+    }
 
     if (needsSave) {
       $app.save(niifAssets);
-      console.log("[GRAVY-ACTIVOS] Colección niif_assets extendida con campos adicionales.");
+      console.log("[GRAVY-ACTIVOS] Colección niif_assets extendida con campos adicionales y vidas útiles relajadas.");
     }
   } catch (err) {
     console.error("[GRAVY-ACTIVOS] Error extendiendo niif_assets:", err);

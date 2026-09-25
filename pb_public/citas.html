@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#8B5CF6">
+  <title>Reserva tu Cita — Spa de Belleza y Estética</title>
+  <meta name="description" content="Portal de agendamiento online para tratamientos faciales, corporales y sesiones de estética y relajación.">
+  
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='25' fill='%238B5CF6'/><text y='68' x='50' text-anchor='middle' font-size='50' fill='white'>✨</text></svg>">
+  <link rel="stylesheet" href="/assets/fa/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #8B5CF6;
+      --primary-dark: #6D28D9;
+      --primary-light: #EDE9FE;
+      --primary-glow: rgba(139, 92, 246, 0.25);
+      --accent: #EC4899;
+      --accent-light: #FCE7F3;
+      --bg: #F8F7FC;
+      --surface: #FFFFFF;
+      --surface-glass: rgba(255, 255, 255, 0.88);
+      --text: #1E1B4B;
+      --text-muted: #6B7280;
+      --border: #E5E7EB;
+      --border-focus: #C4B5FD;
+      --success: #10B981;
+      --radius: 16px;
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 12px -2px rgba(0, 0, 0, 0.02);
+      --shadow-hover: 0 20px 35px -5px rgba(139, 92, 246, 0.15), 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: radial-gradient(circle at top right, #F5F3FF, var(--bg) 60%), #F8F7FC;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Topbar */
+    header {
+      background: var(--surface-glass);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(229, 231, 235, 0.7);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 14px 20px;
+    }
+    .header-inner {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .brand-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+    .brand-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #1E1B4B;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* Hero / Stepper */
+    .hero-banner {
+      max-width: 900px;
+      margin: 28px auto 16px;
+      padding: 0 20px;
+      text-align: center;
+    }
+    .hero-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: #1E1B4B;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+    .hero-title span {
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      max-width: 580px;
+      margin: 0 auto 24px;
+      line-height: 1.5;
+    }
+
+    /* Stepper Bar */
+    .stepper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-width: 600px;
+      margin: 0 auto 28px;
+      padding: 0 20px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      transition: all .2s;
+    }
+    .step-item.active {
+      color: var(--primary-dark);
+    }
+    .step-item.completed {
+      color: var(--success);
+    }
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #E5E7EB;
+      color: #6B7280;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .step-item.active .step-num {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+    .step-item.completed .step-num {
+      background: var(--success);
+      color: #fff;
+    }
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: #E5E7EB;
+      margin: 0 10px;
+      max-width: 50px;
+    }
+    .step-line.active {
+      background: var(--primary);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto 40px;
+      padding: 0 20px;
+    }
+    .panel {
+      background: var(--surface);
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 32px 28px;
+      animation: fadeIn .28s ease-out;
+    }
+
+    /* Grid de Tratamientos */
+    .services-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .service-card {
+      background: #FAF8FF;
+      border: 2px solid transparent;
+      border-radius: 18px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all .22s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+    .service-card:hover {
+      background: #FFF;
+      border-color: var(--primary-light);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-hover);
+    }
+    .service-card.selected {
+      background: #FFF;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px var(--primary-light), var(--shadow-hover);
+    }
+    .service-badge {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 3px 8px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+    .service-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1E1B4B;
+      margin-bottom: 6px;
+    }
+    .service-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      margin-bottom: 16px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .service-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px dashed var(--border);
+      padding-top: 12px;
+    }
+    .service-price {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--primary-dark);
+    }
+    .service-time {
+      font-size: 11px;
+      color: #6B7280;
+      font-weight: 500;
+    }
+
+    /* Grid de Especialistas */
+    .specialists-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .specialist-card {
+      background: #FAF8FF;
+      border: 2px solid transparent;
+      border-radius: 16px;
+      padding: 18px 16px;
+      cursor: pointer;
+      text-align: center;
+      transition: all .2s;
+    }
+    .specialist-card:hover {
+      background: #FFF;
+      border-color: var(--primary-light);
+      transform: translateY(-2px);
+    }
+    .specialist-card.selected {
+      background: #FFF;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px var(--primary-light);
+    }
+    .spec-avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background: #EDE9FE;
+      color: var(--primary-dark);
+      margin: 0 auto 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .spec-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1E1B4B;
+    }
+    .spec-role {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Slots de Horas */
+    .slots-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .slot-pill {
+      background: #FAF8FF;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      cursor: pointer;
+      transition: all .16s;
+    }
+    .slot-pill:hover:not(.disabled) {
+      border-color: var(--primary);
+      background: #FFF;
+      color: var(--primary-dark);
+    }
+    .slot-pill.selected {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #FFF;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+    .slot-pill.disabled {
+      background: #F3F4F6;
+      border-color: #E5E7EB;
+      color: #9CA3AF;
+      cursor: not-allowed;
+      text-decoration: line-through;
+    }
+
+    /* Formulario de Datos */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .col-span-2 { grid-column: span 2; }
+    .form-group label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #4B5563;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 5px;
+    }
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--text);
+      background: #FAF8FF;
+      transition: all .18s;
+      outline: none;
+    }
+    .form-control:focus {
+      border-color: var(--primary);
+      background: #FFF;
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    /* Botones de Navegación */
+    .btn-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 22px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .2s;
+      text-decoration: none;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: #FFF;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+    .btn-outline {
+      background: #FFF;
+      border-color: var(--border);
+      color: #4B5563;
+    }
+    .btn-outline:hover {
+      background: #F9FAFB;
+      border-color: #9CA3AF;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Resumen Lateral / Flotante */
+    .summary-badge {
+      background: #FAF5FF;
+      border: 1px solid #E9D5FF;
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .summary-item .label {
+      font-size: 10.5px;
+      color: #7E22CE;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .summary-item .val {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #1E1B4B;
+    }
+
+    /* Pantalla de Éxito */
+    .success-view {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .success-icon {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: #DCFCE7;
+      color: #16A34A;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin: 0 auto 16px;
+      box-shadow: 0 0 25px rgba(22, 163, 74, 0.2);
+    }
+    .success-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .success-code {
+      display: inline-block;
+      background: #F3E8FF;
+      color: #6D28D9;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-weight: 800;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .wa-btn {
+      background: #25D366;
+      color: #FFF;
+      box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3);
+    }
+    .wa-btn:hover {
+      background: #20BA5A;
+      color: #FFF;
+    }
+
+    /* Animaciones */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero-title { font-size: 24px; }
+      .panel { padding: 22px 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+      .col-span-2 { grid-column: span 1; }
+      .stepper { font-size: 11px; }
+      .step-item span:not(.step-num) { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Topbar -->
+  <header>
+    <div class="header-inner">
+      <a href="#" class="brand">
+        <div class="brand-icon">
+          <i class="fas fa-spa"></i>
+        </div>
+        <div>
+          <h1 class="brand-title" id="topbar-name">Spa de Belleza & Estética</h1>
+          <p class="brand-sub" id="topbar-phone"><i class="fas fa-phone-alt mr-1"></i> Atención y Citas</p>
+        </div>
+      </a>
+      <div id="topbar-contact">
+        <a id="btn-header-wa" href="#" target="_blank" class="btn btn-outline" style="font-size:12px; padding:7px 14px; border-radius:20px">
+          <i class="fab fa-whatsapp text-green-600"></i> WhatsApp
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Header -->
+  <div class="hero-banner">
+    <h2 class="hero-title">Tu Momento de <span>Belleza & Bienestar</span></h2>
+    <p class="hero-desc" id="hero-welcome">Agenda tu sesión estética en minutos. Selecciona tu tratamiento, elige tu especialista preferida y asegura tu espacio.</p>
+    
+    <!-- Stepper -->
+    <div class="stepper">
+      <div class="step-item active" id="step-ind-1">
+        <span class="step-num">1</span>
+        <span>Tratamiento</span>
+      </div>
+      <div class="step-line" id="line-1"></div>
+      <div class="step-item" id="step-ind-2">
+        <span class="step-num">2</span>
+        <span>Especialista</span>
+      </div>
+      <div class="step-line" id="line-2"></div>
+      <div class="step-item" id="step-ind-3">
+        <span class="step-num">3</span>
+        <span>Fecha & Hora</span>
+      </div>
+      <div class="step-line" id="line-3"></div>
+      <div class="step-item" id="step-ind-4">
+        <span class="step-num">4</span>
+        <span>Tus Datos</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenido de Pasos -->
+  <main>
+    <div class="panel" id="main-panel">
+      <!-- Inyectado dinámicamente -->
+      <div style="text-align:center; padding: 50px 0; color: #9CA3AF">
+        <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+        <p>Cargando opciones de agendamiento...</p>
+      </div>
+    </div>
+  </main>
+
+  <footer style="text-align:center; padding: 20px; font-size:12px; color:#9CA3AF; border-top:1px solid #E5E7EB; background:#FFF">
+    <p>© <span id="footer-year"></span> <strong id="footer-name">Spa de Belleza</strong> — Sistema de Citas en Línea sincronizado con GRAVY v2.0</p>
+  </footer>
+
+  <script>
+    // Estado del Agendamiento
+    const state = {
+      step: 1,
+      config: null,
+      services: [],
+      specialists: [],
+      selectedService: null,
+      selectedSpecialist: null, // null = cualquier especialista
+      selectedDate: '',
+      selectedTime: '',
+      slots: [],
+      client: {
+        doc_type: 'CC',
+        doc_number: '',
+        name: '',
+        phone: '',
+        email: '',
+        skin_type: 'NORMAL',
+        medical_conditions: '',
+        allergies: '',
+        notes: ''
+      }
+    };
+
+    const fmt = (n) => '$ ' + (n || 0).toLocaleString('es-CO');
+
+    // Inicialización
+    async function init() {
+      document.getElementById('footer-year').textContent = new Date().getFullYear();
+      
+      try {
+        const [resCfg, resServ, resSpec] = await Promise.all([
+          fetch('/api/public/spa/config').then(r => r.json()).catch(() => ({})),
+          fetch('/api/public/spa/services').then(r => r.json()).catch(() => []),
+          fetch('/api/public/spa/specialists').then(r => r.json()).catch(() => [])
+        ]);
+
+        state.config = resCfg;
+        state.services = resServ;
+        state.specialists = resSpec;
+
+        if (resCfg.name) {
+          document.getElementById('topbar-name').textContent = resCfg.name;
+          document.getElementById('footer-name').textContent = resCfg.name;
+        }
+        if (resCfg.phone) {
+          document.getElementById('topbar-phone').innerHTML = `<i class="fas fa-phone-alt mr-1"></i> ${resCfg.phone} ${resCfg.address ? '— ' + resCfg.address : ''}`;
+        }
+        if (resCfg.whatsapp) {
+          document.getElementById('btn-header-wa').href = `https://api.whatsapp.com/send?phone=${resCfg.whatsapp}`;
+        }
+        if (resCfg.welcome_msg) {
+          document.getElementById('hero-welcome').textContent = resCfg.welcome_msg;
+        }
+
+        renderStep();
+      } catch (err) {
+        document.getElementById('main-panel').innerHTML = `
+          <div style="text-align:center; padding: 40px; color:#DC2626">
+            <i class="fas fa-exclamation-circle text-3xl mb-2"></i>
+            <p class="font-bold">No se pudo cargar el portal de agendamiento.</p>
+            <p class="text-xs text-gray-500 mt-1">${err.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    function updateStepper() {
+      for (let i = 1; i <= 4; i++) {
+        const ind = document.getElementById(`step-ind-${i}`);
+        const line = document.getElementById(`line-${i}`);
+        if (!ind) continue;
+
+        ind.classList.remove('active', 'completed');
+        if (i < state.step) ind.classList.add('completed');
+        else if (i === state.step) ind.classList.add('active');
+
+        if (line) {
+          line.classList.toggle('active', i < state.step);
+        }
+      }
+    }
+
+    function renderSummaryHeader() {
+      if (!state.selectedService) return '';
+      return `
+        <div class="summary-badge">
+          <div class="summary-item">
+            <span class="label">Tratamiento</span>
+            <span class="val">${state.selectedService.name}</span>
+          </div>
+          <div class="summary-item">
+            <span class="label">Especialista</span>
+            <span class="val">${state.selectedSpecialist ? state.selectedSpecialist.name : 'Cualquiera disponible'}</span>
+          </div>
+          ${state.selectedDate ? `
+            <div class="summary-item">
+              <span class="label">Fecha & Hora</span>
+              <span class="val">${state.selectedDate} ${state.selectedTime || ''}</span>
+            </div>
+          ` : ''}
+          <div class="summary-item">
+            <span class="label">Valor Estimado</span>
+            <span class="val" style="color:#7E22CE">${fmt(state.selectedService.total || state.selectedService.price)}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderStep() {
+      updateStepper();
+      const panel = document.getElementById('main-panel');
+
+      // PASO 1: SELECCIÓN DE SERVICIO
+      if (state.step === 1) {
+        panel.innerHTML = `
+          <h3 style="font-size:20px; font-weight:800; color:#1E1B4B; display:flex; align-items:center; gap:8px">
+            <i class="fas fa-sparkles text-purple-600"></i> Paso 1: Selecciona tu Tratamiento o Servicio
+          </h3>
+          <p style="font-size:13px; color:#6B7280; margin-top:4px">
+            Elige el procedimiento que deseas realizarte. Todos incluyen valoración inicial y asesoría estética personalizada.
+          </p>
+
+          <div class="services-grid">
+            ${state.services.length === 0 ? `
+              <div style="grid-column: 1 / -1; text-align: center; padding: 48px 20px; color: #9CA3AF;">
+                <i class="fas fa-spa" style="font-size: 40px; color: #D8B4FE; margin-bottom: 12px; display: block;"></i>
+                <p style="font-weight: 700; font-size: 15px; color: #4B5563;">Pronto tendremos nuevos servicios disponibles.</p>
+                <p style="font-size: 12px; margin-top: 4px;">Por favor comunícate directamente por WhatsApp para agendar tu cita.</p>
+              </div>
+            ` : state.services.map(s => `
+              <div class="service-card ${state.selectedService?.id === s.id ? 'selected' : ''}" onclick="selectService('${s.id}')">
+                <div>
+                  <span class="service-badge">${s.category || 'Estética'}</span>
+                  <h4 class="service-name">${s.name}</h4>
+                  <p class="service-desc">${s.description || 'Tratamiento estético profesional personalizado.'}</p>
+                </div>
+                <div class="service-footer">
+                  <div>
+                    <span class="service-price">${fmt(s.total || s.price)}</span>
+                    <span style="font-size:10px; color:#9CA3AF; display:block">IVA Incluido</span>
+                  </div>
+                  <span class="service-time"><i class="far fa-clock mr-1"></i> ~${s.duration || 60} min</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="btn-row" style="justify-content:flex-end">
+            <button class="btn btn-primary" id="btn-step1-next" ${!state.selectedService ? 'disabled' : ''} onclick="goToStep(2)">
+              Continuar a Especialista <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        `;
+      }
+
+      // PASO 2: SELECCIÓN DE ESPECIALISTA
+      else if (state.step === 2) {
+        panel.innerHTML = `
+          ${renderSummaryHeader()}
+          <h3 style="font-size:20px; font-weight:800; color:#1E1B4B; display:flex; align-items:center; gap:8px">
+            <i class="fas fa-user-doctor text-purple-600"></i> Paso 2: Selecciona tu Cosmetóloga o Especialista
+          </h3>
+          <p style="font-size:13px; color:#6B7280; margin-top:4px">
+            Puedes elegir a tu profesional de confianza o permitir que el sistema te asigne la especialista disponible.
+          </p>
+
+          <div class="specialists-grid">
+            <!-- Opción Cualquier Especialista -->
+            <div class="specialist-card ${state.selectedSpecialist === null ? 'selected' : ''}" onclick="selectSpecialist(null)">
+              <div class="spec-avatar" style="background:#F5F3FF; color:#7E22CE">
+                <i class="fas fa-sparkles"></i>
+              </div>
+              <h4 class="spec-name">Cualquiera Disponible</h4>
+              <p class="spec-role">Mayor disponibilidad de horarios</p>
+            </div>
+
+            ${state.specialists.map(sp => `
+              <div class="specialist-card ${state.selectedSpecialist?.id === sp.id ? 'selected' : ''}" onclick="selectSpecialist('${sp.id}')">
+                <div class="spec-avatar">
+                  <i class="fas fa-user"></i>
+                </div>
+                <h4 class="spec-name">${sp.name}</h4>
+                <p class="spec-role">${sp.role || 'Cosmetóloga'}</p>
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-outline" onclick="goToStep(1)">
+              <i class="fas fa-arrow-left"></i> Cambiar Tratamiento
+            </button>
+            <button class="btn btn-primary" onclick="goToStep(3)">
+              Continuar a Horarios <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        `;
+      }
+
+      // PASO 3: SELECCIÓN DE FECHA Y HORA
+      else if (state.step === 3) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate());
+        const minDateStr = tomorrow.toISOString().split('T')[0];
+        if (!state.selectedDate) state.selectedDate = minDateStr;
+
+        panel.innerHTML = `
+          ${renderSummaryHeader()}
+          <h3 style="font-size:20px; font-weight:800; color:#1E1B4B; display:flex; align-items:center; gap:8px">
+            <i class="fas fa-calendar-check text-purple-600"></i> Paso 3: Elige la Fecha y el Turno
+          </h3>
+          <p style="font-size:13px; color:#6B7280; margin-top:4px">
+            Consulta los espacios libres en tiempo real según la fecha y especialista seleccionada.
+          </p>
+
+          <div style="max-width:300px; margin: 18px 0 10px">
+            <label style="display:block; font-size:11.5px; font-weight:700; color:#4B5563; text-transform:uppercase; margin-bottom:5px">
+              Fecha de tu Cita
+            </label>
+            <input type="date" id="picker-date" class="form-control" min="${minDateStr}" value="${state.selectedDate}">
+          </div>
+
+          <div style="margin-top:20px">
+            <label style="display:block; font-size:11.5px; font-weight:700; color:#4B5563; text-transform:uppercase; margin-bottom:8px">
+              Horarios Disponibles para esta Fecha
+            </label>
+            <div id="slots-wrapper" class="slots-container">
+              <div style="grid-column: 1 / -1; padding:20px 0; color:#9CA3AF; text-align:center">
+                <i class="fas fa-spinner fa-spin mr-1"></i> Consultando disponibilidad...
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-outline" onclick="goToStep(2)">
+              <i class="fas fa-arrow-left"></i> Cambiar Especialista
+            </button>
+            <button class="btn btn-primary" id="btn-step3-next" ${!state.selectedTime ? 'disabled' : ''} onclick="goToStep(4)">
+              Continuar a Registro <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        `;
+
+        document.getElementById('picker-date').addEventListener('change', (e) => {
+          state.selectedDate = e.target.value;
+          state.selectedTime = '';
+          fetchSlots();
+        });
+
+        fetchSlots();
+      }
+
+      // PASO 4: FORMULARIO DEL CLIENTE & CONFIRMACIÓN
+      else if (state.step === 4) {
+        panel.innerHTML = `
+          ${renderSummaryHeader()}
+          <h3 style="font-size:20px; font-weight:800; color:#1E1B4B; display:flex; align-items:center; gap:8px">
+            <i class="fas fa-id-card text-purple-600"></i> Paso 4: Completa tus Datos de Contacto
+          </h3>
+          <p style="font-size:13px; color:#6B7280; margin-top:4px">
+            Registraremos tu expediente clínico estético para preparar los insumos antes de tu llegada.
+          </p>
+
+          <form id="booking-form" onsubmit="submitBooking(event)" class="form-grid">
+            <div class="form-group">
+              <label>Tipo de Documento</label>
+              <select id="c-doc-type" class="form-control">
+                <option value="CC" ${state.client.doc_type === 'CC' ? 'selected' : ''}>Cédula de Ciudadanía (CC)</option>
+                <option value="CE" ${state.client.doc_type === 'CE' ? 'selected' : ''}>Cédula de Extranjería (CE)</option>
+                <option value="NIT" ${state.client.doc_type === 'NIT' ? 'selected' : ''}>NIT</option>
+                <option value="PP" ${state.client.doc_type === 'PP' ? 'selected' : ''}>Pasaporte</option>
+                <option value="TI" ${state.client.doc_type === 'TI' ? 'selected' : ''}>Tarjeta de Identidad</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Número de Documento <span style="color:#EF4444">*</span></label>
+              <input id="c-doc-num" class="form-control" placeholder="Ej: 1020304050" required value="${state.client.doc_number}">
+            </div>
+
+            <div class="form-group col-span-2">
+              <label>Nombre y Apellidos Completos <span style="color:#EF4444">*</span></label>
+              <input id="c-name" class="form-control" placeholder="Ej: Marcela Castro Rojas" required value="${state.client.name}">
+            </div>
+
+            <div class="form-group">
+              <label>Teléfono Celular / WhatsApp <span style="color:#EF4444">*</span></label>
+              <input id="c-phone" class="form-control" placeholder="Ej: 3101234567" required value="${state.client.phone}">
+            </div>
+
+            <div class="form-group">
+              <label>Correo Electrónico</label>
+              <input id="c-email" type="email" class="form-control" placeholder="Ej: correo@ejemplo.com" value="${state.client.email}">
+            </div>
+
+            <div class="form-group">
+              <label>Tipo de Piel Aproximado</label>
+              <select id="c-skin" class="form-control">
+                <option value="NORMAL" ${state.client.skin_type === 'NORMAL' ? 'selected' : ''}>Normal / Equilibrada</option>
+                <option value="MIXTA" ${state.client.skin_type === 'MIXTA' ? 'selected' : ''}>Mixta (Zona T grasa)</option>
+                <option value="GRASA" ${state.client.skin_type === 'GRASA' ? 'selected' : ''}>Grasa / Tendencia a acné</option>
+                <option value="SECA" ${state.client.skin_type === 'SECA' ? 'selected' : ''}>Seca / Deshidratada</option>
+                <option value="SENSIBLE" ${state.client.skin_type === 'SENSIBLE' ? 'selected' : ''}>Sensible / Reactiva</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Condiciones Médicas (Opcional)</label>
+              <input id="c-med" class="form-control" placeholder="Ej: Embarazo, marcapasos, botox reciente" value="${state.client.medical_conditions}">
+            </div>
+
+            <div class="form-group col-span-2">
+              <label>Alergias Cosméticas o Preferencias</label>
+              <input id="c-allergies" class="form-control" placeholder="Ej: Alergia a ácidos exfoliantes, preferencia de fragancias" value="${state.client.allergies}">
+            </div>
+
+            <div class="col-span-2" style="margin-top:10px; background:#FAF5FF; padding:12px; border-radius:12px; border:1px solid #E9D5FF; font-size:11.5px; color:#5B21B6">
+              <i class="fas fa-lock mr-1"></i> Tus datos personales serán tratados de forma confidencial y segura con fines exclusivos de agendamiento y facturación.
+            </div>
+
+            <div class="col-span-2 btn-row">
+              <button type="button" class="btn btn-outline" onclick="goToStep(3)">
+                <i class="fas fa-arrow-left"></i> Cambiar Hora
+              </button>
+              <button type="submit" class="btn btn-primary" id="btn-submit-booking" style="background:#7E22CE">
+                <i class="fas fa-check-circle"></i> Confirmar Mi Cita Ahora
+              </button>
+            </div>
+          </form>
+        `;
+      }
+    }
+
+    function selectService(id) {
+      state.selectedService = state.services.find(s => s.id === id);
+      renderStep();
+    }
+
+    function selectSpecialist(id) {
+      if (!id) state.selectedSpecialist = null;
+      else state.selectedSpecialist = state.specialists.find(s => s.id === id);
+      renderStep();
+    }
+
+    function goToStep(n) {
+      state.step = n;
+      renderStep();
+      window.scrollTo({ top: 120, behavior: 'smooth' });
+    }
+
+    async function fetchSlots() {
+      const wrapper = document.getElementById('slots-wrapper');
+      if (!wrapper) return;
+
+      try {
+        const specParam = state.selectedSpecialist ? `&stylist_id=${state.selectedSpecialist.id}` : '';
+        const durParam = state.selectedService?.duration ? `&duration=${state.selectedService.duration}` : '';
+        const res = await fetch(`/api/public/spa/availability?date=${state.selectedDate}${specParam}${durParam}`).then(r => r.json());
+        
+        state.slots = res.slots || [];
+
+        if (state.slots.length === 0) {
+          wrapper.innerHTML = `
+            <div style="grid-column:1/-1; padding:24px; text-align:center; color:#9CA3AF">
+              <i class="fas fa-calendar-xmark text-2xl mb-1 text-purple-400 block"></i>
+              No hay horarios disponibles para la fecha seleccionada. Por favor prueba con otro día.
+            </div>
+          `;
+          return;
+        }
+
+        wrapper.innerHTML = state.slots.map(s => `
+          <button type="button" 
+                  class="slot-pill ${!s.available ? 'disabled' : ''} ${state.selectedTime === s.time ? 'selected' : ''}" 
+                  ${!s.available ? 'disabled' : ''} 
+                  onclick="selectSlot('${s.time}')">
+            ${s.time}
+          </button>
+        `).join('');
+
+      } catch (err) {
+        wrapper.innerHTML = `<div style="grid-column:1/-1; color:#DC2626">Error consultando horarios: ${err.message}</div>`;
+      }
+    }
+
+    function selectSlot(time) {
+      state.selectedTime = time;
+      const pills = document.querySelectorAll('.slot-pill');
+      pills.forEach(p => p.classList.remove('selected'));
+      const active = Array.from(pills).find(p => p.textContent.trim() === time);
+      if (active) active.classList.add('selected');
+
+      const nextBtn = document.getElementById('btn-step3-next');
+      if (nextBtn) nextBtn.disabled = false;
+    }
+
+    async function submitBooking(e) {
+      e.preventDefault();
+
+      const btn = document.getElementById('btn-submit-booking');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i> Agendando tu espacio...`;
+      }
+
+      const docType = document.getElementById('c-doc-type').value;
+      const docNum = document.getElementById('c-doc-num').value.trim();
+      const name = document.getElementById('c-name').value.trim();
+      const phone = document.getElementById('c-phone').value.trim();
+      const email = document.getElementById('c-email').value.trim();
+      const skinType = document.getElementById('c-skin').value;
+      const med = document.getElementById('c-med').value.trim();
+      const allergies = document.getElementById('c-allergies').value.trim();
+
+      const payload = {
+        doc_type: docType,
+        doc_number: docNum,
+        name: name,
+        phone: phone,
+        email: email,
+        service_id: state.selectedService.id,
+        stylist_id: state.selectedSpecialist?.id || '',
+        start_time: `${state.selectedDate} ${state.selectedTime}`,
+        duration: state.selectedService.duration || 60,
+        skin_type: skinType,
+        medical_conditions: med,
+        allergies: allergies,
+        notes: `Reserva online confirmada desde la web del Spa.`
+      };
+
+      try {
+        const res = await fetch('/api/public/spa/appointments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Error registrando cita.');
+
+        renderSuccess(data);
+
+      } catch (err) {
+        alert(err.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<i class="fas fa-check-circle"></i> Confirmar Mi Cita Ahora`;
+        }
+      }
+    }
+
+    function renderSuccess(data) {
+      const panel = document.getElementById('main-panel');
+      panel.innerHTML = `
+        <div class="success-view">
+          <div class="success-icon">
+            <i class="fas fa-check"></i>
+          </div>
+          <h3 class="success-title">¡Tu Cita ha sido Confirmada!</h3>
+          <span class="success-code">Orden N° ${data.order_number}</span>
+          <p style="color:#4B5563; font-size:14px; max-width:480px; margin:0 auto 20px; line-height:1.5">
+            Te esperamos el <strong>${data.start_time}</strong> para tu tratamiento de <strong>${data.service_name}</strong>.
+            ${data.stylist_name ? `Estarás en manos de <strong>${data.stylist_name}</strong>.` : ''}
+          </p>
+
+          <div style="background:#FAF5FF; border:1px solid #E9D5FF; border-radius:16px; padding:16px; max-width:440px; margin:0 auto 24px; text-align:left; font-size:12.5px">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px">
+              <span style="color:#6B7280">Tratamiento:</span>
+              <span style="font-weight:700">${data.service_name}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px">
+              <span style="color:#6B7280">Fecha y Hora:</span>
+              <span style="font-weight:700">${data.start_time}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between">
+              <span style="color:#6B7280">Valor Total Estimado:</span>
+              <span style="font-weight:800; color:#7E22CE">${fmt(data.total)}</span>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px; max-width:320px; margin:0 auto">
+            <a href="${data.whatsapp_url}" target="_blank" class="btn wa-btn" style="justify-content:center">
+              <i class="fab fa-whatsapp text-lg"></i> Notificar a WhatsApp del Spa
+            </a>
+            <button class="btn btn-outline" onclick="location.reload()" style="justify-content:center">
+              Agendar otra cita
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

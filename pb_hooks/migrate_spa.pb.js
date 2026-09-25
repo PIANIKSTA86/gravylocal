@@ -102,31 +102,60 @@ onBootstrap((e) => {
         apptsCol.fields.getByName("spa_client_id");
       } catch (_) {
         const spaColId = spaClientsCol ? spaClientsCol.id : "spa_clients";
-        apptsCol.fields.add(new Field({
-          name: "spa_client_id",
-          type: "relation",
-          collectionId: spaColId,
-          required: false,
-          maxSelect: 1
-        }));
+        let relField;
+        try {
+          relField = new RelationField({
+            name: "spa_client_id",
+            collectionId: spaColId,
+            required: false,
+            cascadeDelete: false,
+            maxSelect: 1
+          });
+        } catch (_) {
+          relField = new Field({
+            name: "spa_client_id",
+            type: "relation",
+            collectionId: spaColId,
+            required: false,
+            maxSelect: 1
+          });
+        }
+        apptsCol.fields.add(relField);
         changed = true;
       }
 
       try {
         apptsCol.fields.getByName("client_id");
       } catch (_) {
-        apptsCol.fields.add(new Field({
-          name: "client_id",
-          type: "relation",
-          collectionId: thirdPartiesColId,
-          required: false,
-          maxSelect: 1
-        }));
+        let relField;
+        try {
+          relField = new RelationField({
+            name: "client_id",
+            collectionId: thirdPartiesColId,
+            required: false,
+            cascadeDelete: false,
+            maxSelect: 1
+          });
+        } catch (_) {
+          relField = new Field({
+            name: "client_id",
+            type: "relation",
+            collectionId: thirdPartiesColId,
+            required: false,
+            maxSelect: 1
+          });
+        }
+        apptsCol.fields.add(relField);
         changed = true;
       }
 
-      if (changed) $app.save(apptsCol);
-    } catch (err) {}
+      if (changed) {
+        $app.save(apptsCol);
+        console.log("[GRAVY] Colección appointments actualizada con campos spa_client_id y client_id.");
+      }
+    } catch (err) {
+      console.error("[GRAVY] Error asegurando campos en appointments:", err);
+    }
 
     // 3. Extender licenses.module_key si existe la colección licenses
     try {
@@ -144,7 +173,9 @@ onBootstrap((e) => {
         }
       }
     } catch (_) {}
-  } catch (err) {}
+  } catch (err) {
+    console.error("[GRAVY] Error en migración de SPA:", err);
+  }
 });
 
 // Endpoint API para asegurar colecciones en caliente
@@ -225,19 +256,41 @@ routerAdd("GET", "/api/gravy/ensure-spa-clients", (c) => {
       const apptsCol = $app.findCollectionByNameOrId("appointments");
       let changed = false;
       try { const petField = apptsCol.fields.getByName("pet_id"); if (petField && petField.required) { petField.required = false; changed = true; } } catch (_) {}
-      try { apptsCol.fields.getByName("spa_client_id"); } catch (_) {
+      try { 
+        apptsCol.fields.getByName("spa_client_id"); 
+      } catch (_) {
         const spaColId = spaClientsCol ? spaClientsCol.id : "spa_clients";
-        apptsCol.fields.add(new Field({ name: "spa_client_id", type: "relation", collectionId: spaColId, required: false, maxSelect: 1 }));
+        let relField;
+        try {
+          relField = new RelationField({ name: "spa_client_id", collectionId: spaColId, required: false, cascadeDelete: false, maxSelect: 1 });
+        } catch (_) {
+          relField = new Field({ name: "spa_client_id", type: "relation", collectionId: spaColId, required: false, maxSelect: 1 });
+        }
+        apptsCol.fields.add(relField);
         changed = true;
       }
-      try { apptsCol.fields.getByName("client_id"); } catch (_) {
-        apptsCol.fields.add(new Field({ name: "client_id", type: "relation", collectionId: thirdPartiesColId, required: false, maxSelect: 1 }));
+      try { 
+        apptsCol.fields.getByName("client_id"); 
+      } catch (_) {
+        let relField;
+        try {
+          relField = new RelationField({ name: "client_id", collectionId: thirdPartiesColId, required: false, cascadeDelete: false, maxSelect: 1 });
+        } catch (_) {
+          relField = new Field({ name: "client_id", type: "relation", collectionId: thirdPartiesColId, required: false, maxSelect: 1 });
+        }
+        apptsCol.fields.add(relField);
         changed = true;
       }
-      if (changed) $app.save(apptsCol);
-    } catch (err) {}
+      if (changed) {
+        $app.save(apptsCol);
+        console.log("[GRAVY] Endpoint ensure-spa-clients: appointments actualizado.");
+      }
+    } catch (err) {
+      console.error("[GRAVY] Error en appointments en ensure-spa-clients:", err);
+      return c.json(500, { success: false, error: String(err) });
+    }
 
-    return c.json(200, { success: true, message: "Colecciones SPA aseguradas." });
+    return c.json(200, { success: true, message: "Colecciones SPA aseguradas con RelationField." });
   } catch (err) {
     return c.json(500, { success: false, error: String(err) });
   }

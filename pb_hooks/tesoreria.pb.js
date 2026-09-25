@@ -26,10 +26,21 @@ onRecordCreateRequest((e) => {
     }
   } catch(_) {}
 
-  if (txType !== 'RC' && txType !== 'CE') return e.next();
-  
   const modo = String(rec.get('teso_mode') || 'auto');
   let paramsStr = rec.get('teso_params');
+  let isCruceContable = false;
+  if (paramsStr) {
+    try {
+      const pTest = JSON.parse(String(paramsStr));
+      if (pTest.cruzar_anticipos || pTest.ph_property_id || pTest.is_cruce_anticipo) {
+        isCruceContable = true;
+      }
+    } catch(_) {}
+  }
+
+  if (txType !== 'RC' && txType !== 'CE' && !isCruceContable) return e.next();
+  if (isCruceContable && txType !== 'CE') txType = 'RC';
+
   if (!paramsStr) {
     throw new BadRequestError("Operación denegada: Faltan los parámetros de tesorería (teso_params) requeridos para generar el comprobante contable.");
   }
@@ -52,6 +63,26 @@ onRecordCreateRequest((e) => {
   const cruzarAnticipos = params.cruzar_anticipos !== false;
   const branch_id = rec.get("branch_id") || null;
   const cost_center_id = params.cost_center_id || null;
+
+  // ─── Cache y utilidades de cuentas contables ──────────────────────────────
+  const accountsCache = {};
+  function getAccountRecord(accId) {
+    if (!accId) return null;
+    if (accountsCache[accId]) return accountsCache[accId];
+    try {
+      const a = $app.findRecordById("accounts", accId);
+      accountsCache[accId] = a;
+      return a;
+    } catch(_) {
+      return null;
+    }
+  }
+
+  function accountManejaCruce(accId) {
+    const a = getAccountRecord(accId);
+    if (!a) return false;
+    return !!(a.getBool("maneja_cruce") || a.get("maneja_cruce") === true || a.get("maneja_cruce") === 1);
+  }
 
   // ─── Cuenta de anticipos (RC -> 28 / CE -> 1330) ──────────────────────────
   function getAnticipoAccountId(txType) {
@@ -94,11 +125,16 @@ onRecordCreateRequest((e) => {
     const antAccId = getAnticipoAccountId(type);
     const antRef = propId ? `ANT-${propId}` : `ANT-${thirdPartyId}`;
 
-    const lines = $app.findRecordsByFilter(
-      "tx_lines",
-      `third_party_id = '${thirdPartyId}'`,
-      "", 10000, 0
-    ) || [];
+    let lines = [];
+    try {
+      let filter = `third_party_id = '${thirdPartyId}'`;
+      if (propId) {
+        filter += ` || cross_doc_ref = '${antRef}'`;
+      }
+      lines = $app.findRecordsByFilter("tx_lines", filter, "", 10000, 0) || [];
+    } catch(_) {
+      lines = $app.findRecordsByFilter("tx_lines", `third_party_id = '${thirdPartyId}'`, "", 10000, 0) || [];
+    }
 
     let allowedRefs = null;
     let blockedRefs = null;
@@ -135,8 +171,7 @@ onRecordCreateRequest((e) => {
     for (const line of lines) {
       try {
         const lineAccountId = line.get("account_id");
-        const ref = String(line.get("cross_doc_ref") || "").trim();
-        if (!ref) continue;
+        let ref = String(line.get("cross_doc_ref") || "").trim();
 
         let code = '';
         try {
@@ -155,6 +190,12 @@ onRecordCreateRequest((e) => {
           esCuentaAnticipo = code.indexOf('1330') === 0 || ref === antRef || (antAccId && lineAccountId === antAccId);
         }
 
+        // Si es cuenta de anticipo (28 / 1330) y no trae referencia, asignar la canónica antRef
+        if (esCuentaAnticipo && !ref) {
+          ref = antRef;
+        }
+
+        if (!ref) continue;
         if (!cruzarAnt && esCuentaAnticipo) continue;
         if (!esCuentaCruce && !esCuentaAnticipo) continue;
 
@@ -170,10 +211,12 @@ onRecordCreateRequest((e) => {
           if (tx && tx.get("status") === "voided") continue;
         } catch(_) {}
 
-        const key = ref + "|" + lineAccountId;
+        // Agrupar anticipos bajo antRef para consolidar el saldo neto a favor disponible
+        const docRefKey = esCuentaAnticipo ? antRef : ref;
+        const key = docRefKey + "|" + lineAccountId;
         if (!docsMap[key]) {
           docsMap[key] = {
-            key, cross_doc_ref: ref, account_id: lineAccountId, account_code: code,
+            key, cross_doc_ref: docRefKey, account_id: lineAccountId, account_code: code,
             isAnticipo: esCuentaAnticipo,
             debit: 0, credit: 0
           };
@@ -210,6 +253,31 @@ onRecordCreateRequest((e) => {
   const openItems = getOpenItems(third_party_id, propertyId, txType, cruzarAnticipos);
   const amount = Number(params.amount || 0);
 
+  const retFuenteAmt = Number(params.ret_fuente_amount || 0);
+  const retFuenteAcc = params.ret_fuente_account_id;
+  const retIcaAmt = Number(params.ret_ica_amount || 0);
+  const retIcaAcc = params.ret_ica_account_id;
+  const descAmt = Number(params.descuento_amount || 0);
+  const descAcc = params.descuento_account_id;
+  const ajustePesoAmt = Number(params.ajuste_peso_amount || 0);
+  const ajustePesoAcc = params.ajuste_peso_account_id;
+  const ajustePesoType = params.ajuste_peso_type || 'faltante';
+
+  // El monto total de cartera que esta transacción cubre / cancela:
+  // En RC: Si faltante (gasto), el cliente pagó menos en banco, por ende cancela amount + retenciones + desc + faltante
+  //        Si sobrante (ingreso), el cliente pagó de más, cancela amount + retenciones + desc - sobrante
+  // En CE: Si sobrante (aprovechamiento/ingreso), pagamos menos en banco, por ende cancela amount + retenciones + desc + sobrante
+  //        Si faltante (gasto), pagamos de más en banco, cancela amount + retenciones + desc - faltante
+  let totalCarteraACancelar = amount + retFuenteAmt + retIcaAmt + descAmt;
+  if (ajustePesoAmt > 0.001) {
+    if (isRC) {
+      totalCarteraACancelar += (ajustePesoType === 'faltante' ? ajustePesoAmt : -ajustePesoAmt);
+    } else {
+      totalCarteraACancelar += (ajustePesoType === 'sobrante' ? ajustePesoAmt : -ajustePesoAmt);
+    }
+  }
+  totalCarteraACancelar = Math.round(totalCarteraACancelar * 100) / 100;
+
   let anticipoAbonos = [];
   let cashAbonos = [];
   let nuevoAnticipo = 0;
@@ -231,6 +299,26 @@ onRecordCreateRequest((e) => {
         });
       }
     }
+
+    // Si hay ajuste al peso en modo manual, asegurar que los abonos a cartera cuadren con el total a cancelar
+    if (ajustePesoAmt > 0.001 && cashAbonos.length > 0) {
+      const currentCashSum = cashAbonos.reduce((s, a) => s + a.monto, 0);
+      const diffToCover = Math.round((totalCarteraACancelar - currentCashSum) * 100) / 100;
+      
+      if (Math.abs(diffToCover) > 0.005) {
+        // Encontrar el abono que tiene la diferencia pendiente con respecto a su saldo en cartera
+        let targetAbono = null;
+        for (const ab of cashAbonos) {
+          const match = openItems.find(i => i.cross_doc_ref === ab.cross_doc_ref);
+          if (match && Math.abs((match.saldo - ab.monto) - diffToCover) < 0.05) {
+            targetAbono = ab;
+            break;
+          }
+        }
+        if (!targetAbono) targetAbono = cashAbonos[0];
+        targetAbono.monto = Math.round((targetAbono.monto + diffToCover) * 100) / 100;
+      }
+    }
   } else {
     // Modo automático:
     // Si el cliente envió una distribución calculada directamente desde UI
@@ -248,8 +336,8 @@ onRecordCreateRequest((e) => {
         });
       }
       const sumDist = cashAbonos.reduce((s, a) => s + a.monto, 0);
-      if (amount > sumDist + 0.01) {
-        nuevoAnticipo = amount - sumDist;
+      if (totalCarteraACancelar > sumDist + 0.01) {
+        nuevoAnticipo = totalCarteraACancelar - sumDist;
       }
     } else {
       // Separar anticipos disponibles de cartera
@@ -291,7 +379,7 @@ onRecordCreateRequest((e) => {
         }
       }
 
-      let saldoCash = amount;
+      let saldoCash = totalCarteraACancelar;
       for (const cxc of saldosCxC) {
         if (saldoCash <= 0.01) break;
         if (cxc.saldoRestante <= 0.01) continue;
@@ -337,7 +425,7 @@ onRecordCreateRequest((e) => {
     }
   }
 
-  // 2. Abonos con Cash / Medios de Pago a Cartera
+  // 2. Abonos con Cash / Medios de Pago a Cartera (CxC / CxP)
   for (const ab of cashAbonos) {
     if (!ab.account_id || ab.monto <= 0) continue;
     plannedLines.push({
@@ -365,7 +453,7 @@ onRecordCreateRequest((e) => {
     });
   }
 
-  // 4. Medios de pago / Contrapartida caja-bancos
+  // 4. Medios de pago / Contrapartida caja-bancos (Valor neto transado real)
   if (params.medios_pago && Array.isArray(params.medios_pago) && params.medios_pago.length > 0) {
     for (const mp of params.medios_pago) {
       const mpAmount = Number(mp.monto || 0);
@@ -393,14 +481,19 @@ onRecordCreateRequest((e) => {
     });
   }
 
+  // Determinar documento principal de cruce para retenciones, descuentos y ajuste al peso
+  const primaryDocRef = (cashAbonos.length > 0 && cashAbonos[0].cross_doc_ref) 
+    ? cashAbonos[0].cross_doc_ref 
+    : ((params.distribucion && params.distribucion.length > 0 && params.distribucion[0].cross_doc_ref) 
+        ? params.distribucion[0].cross_doc_ref 
+        : anticipoRef);
+
   // 5. Retención en la Fuente
-  const retFuenteAmt = Number(params.ret_fuente_amount || 0);
-  const retFuenteAcc = params.ret_fuente_account_id;
   if (retFuenteAmt > 0.01 && retFuenteAcc) {
     plannedLines.push({
       account_id: retFuenteAcc,
       third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
+      cross_doc_ref: accountManejaCruce(retFuenteAcc) ? primaryDocRef : null,
       debit: isRC ? retFuenteAmt : 0,
       credit: isRC ? 0 : retFuenteAmt,
       description: "Retención en la Fuente"
@@ -408,13 +501,11 @@ onRecordCreateRequest((e) => {
   }
 
   // 6. Retención ICA
-  const retIcaAmt = Number(params.ret_ica_amount || 0);
-  const retIcaAcc = params.ret_ica_account_id;
   if (retIcaAmt > 0.01 && retIcaAcc) {
     plannedLines.push({
       account_id: retIcaAcc,
       third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
+      cross_doc_ref: accountManejaCruce(retIcaAcc) ? primaryDocRef : null,
       debit: isRC ? retIcaAmt : 0,
       credit: isRC ? 0 : retIcaAmt,
       description: "Retención ICA"
@@ -422,33 +513,54 @@ onRecordCreateRequest((e) => {
   }
 
   // 7. Descuento
-  const descAmt = Number(params.descuento_amount || 0);
-  const descAcc = params.descuento_account_id;
   if (descAmt > 0.01 && descAcc) {
     plannedLines.push({
       account_id: descAcc,
       third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
+      cross_doc_ref: accountManejaCruce(descAcc) ? primaryDocRef : null,
       debit: isRC ? descAmt : 0,
       credit: isRC ? 0 : descAmt,
       description: "Descuento comercial condicionado"
     });
   }
 
-  // 8. Ajuste al Peso
-  const ajustePesoAmt = Number(params.ajuste_peso_amount || 0);
-  const ajustePesoAcc = params.ajuste_peso_account_id;
-  const ajustePesoType = params.ajuste_peso_type || 'faltante';
-  if (ajustePesoAmt > 0.001 && ajustePesoAcc) {
-    const isSobrante = ajustePesoType === 'sobrante';
-    plannedLines.push({
-      account_id: ajustePesoAcc,
-      third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
-      debit: isSobrante ? 0 : ajustePesoAmt,
-      credit: isSobrante ? ajustePesoAmt : 0,
-      description: `Ajuste al peso (${isSobrante ? 'Sobrante' : 'Faltante'})`
-    });
+  // 8. Ajuste al Peso (Afecta la CxC/CxP mediante su contrapartida de Ingreso/Gasto)
+  let resolvedAjustePesoAcc = ajustePesoAcc;
+  if (ajustePesoAmt > 0.001) {
+    if (!resolvedAjustePesoAcc) {
+      try {
+        const tesoRulesRec = $app.findFirstRecordByFilter('settings', 'key="treasury_rules"');
+        if (tesoRulesRec) {
+          const cfg = JSON.parse(tesoRulesRec.get('value') || '{}');
+          resolvedAjustePesoAcc = (ajustePesoType === 'sobrante') 
+            ? cfg.ajuste_peso_sobrante_account_id 
+            : cfg.ajuste_peso_faltante_account_id;
+        }
+      } catch(_) {}
+    }
+    if (!resolvedAjustePesoAcc) {
+      try {
+        const isSob = ajustePesoType === 'sobrante';
+        const filterStr = isSob 
+          ? 'code ~ "429581%" || code ~ "4210%" || name ~ "AJUSTE AL PESO%"' 
+          : 'code ~ "530595%" || code ~ "5305%" || name ~ "AJUSTE AL PESO%"';
+        const fallbackAcc = $app.findFirstRecordByFilter('accounts', filterStr);
+        if (fallbackAcc) resolvedAjustePesoAcc = fallbackAcc.id;
+      } catch(_) {}
+    }
+
+    if (resolvedAjustePesoAcc) {
+      const isSobrante = ajustePesoType === 'sobrante';
+      plannedLines.push({
+        account_id: resolvedAjustePesoAcc,
+        third_party_id: third_party_id,
+        // Cuentas de resultado (Ingreso 42 / Gasto 53) no manejan documento de cruce
+        cross_doc_ref: accountManejaCruce(resolvedAjustePesoAcc) ? primaryDocRef : null,
+        debit: isSobrante ? 0 : ajustePesoAmt,
+        credit: isSobrante ? ajustePesoAmt : 0,
+        description: `Ajuste al peso (${isSobrante ? 'Sobrante' : 'Faltante'})`
+      });
+    }
   }
 
   // ─── VALIDACIÓN ESTRICTA DE PARTIDA DOBLE EN MEMORIA ──────────────────────
@@ -493,7 +605,12 @@ onRecordCreateRequest((e) => {
       lineRec.set("tx_id", rec.id);
       lineRec.set("account_id", pl.account_id);
       lineRec.set("third_party_id", pl.third_party_id);
-      if (pl.cross_doc_ref) lineRec.set("cross_doc_ref", pl.cross_doc_ref);
+      // Respetar estrictamente la configuración 'maneja_cruce' de la cuenta contable
+      if (pl.cross_doc_ref && accountManejaCruce(pl.account_id)) {
+        lineRec.set("cross_doc_ref", pl.cross_doc_ref);
+      } else {
+        lineRec.set("cross_doc_ref", "");
+      }
       lineRec.set("debit", pl.debit);
       lineRec.set("credit", pl.credit);
       lineRec.set("description", pl.description);
@@ -547,9 +664,35 @@ onRecordCreateRequest((e) => {
             }
           }
         }
+
+        // Sincronización de facturas comerciales (invoices)
+        try {
+          const commInvs = $app.findRecordsByFilter('invoices', "number = '" + refNum + "' && status != 'voided' && status != 'paid'", "", 10, 0);
+          if (commInvs && commInvs.length > 0) {
+            for (const cInv of commInvs) {
+              const cInvNum = cInv.getString("number");
+              const cInvTot = cInv.getFloat("total");
+              const qComm = $app.db().newQuery(
+                "SELECT COALESCE(SUM(l.credit), 0) AS total_paid FROM tx_lines l " +
+                "INNER JOIN transactions t ON t.id = l.tx_id " +
+                "INNER JOIN accounts a ON a.id = l.account_id " +
+                "WHERE t.status = 'active' AND a.code LIKE '13%' " +
+                "AND (l.cross_doc_ref = {:num} OR l.cross_doc_ref LIKE {:numLike})"
+              );
+              qComm.bind({ num: cInvNum, numLike: cInvNum + '-%' });
+              const resC = new DynamicModel({ total_paid: 0 });
+              qComm.one(resC);
+              if (Number(resC.total_paid || 0) >= cInvTot - 0.01) {
+                cInv.set("status", "paid");
+                $app.save(cInv);
+                console.log('[GRAVY TESORERIA] Factura comercial ' + cInvNum + ' marcada automáticamente como paid.');
+              }
+            }
+          }
+        } catch (_) {}
       }
     } catch (errSync) {
-      console.warn('[GRAVY TESORERIA] Aviso sincronizando facturas PH tras recaudo:', errSync);
+      console.warn('[GRAVY TESORERIA] Aviso sincronizando facturas tras recaudo:', errSync);
     }
   } catch (saveErr) {
     // Si falla el guardado de alguna línea, ROLLBACK: eliminar líneas creadas y la cabecera

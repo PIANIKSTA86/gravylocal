@@ -556,6 +556,37 @@ const API = {
     return String(next).padStart(8, '0');
   },
 
+  /** Obtiene la vista previa del siguiente consecutivo formateado según el tipo de transacción y su configuración */
+  async previewNextTxConsecutive(txTypeId: string, docDate?: string) {
+    if (!txTypeId) return { formattedNumber: '', prefix: '', nextNum: 0 };
+    const tt = await pb.get('transaction_types', txTypeId);
+    const prefix = String(tt.prefix || tt.code || 'TX').trim().toUpperCase() || 'TX';
+    const dateVal = docDate || new Date().toISOString().slice(0, 10);
+
+    if ((tt.numbering_mode || 'continuous') === 'period') {
+      const periodTag = dateVal.slice(0, 7).replace('-', '');
+      let counters: any = {};
+      try {
+        counters = typeof tt.period_counters === 'string' ? JSON.parse(tt.period_counters || '{}') : (tt.period_counters || {});
+      } catch (_) {}
+      const next = (Number(counters[periodTag]) || 0) + 1;
+      return {
+        formattedNumber: `${prefix}-${periodTag}-${String(next).padStart(6, '0')}`,
+        prefix,
+        nextNum: next,
+        numberingMode: 'period'
+      };
+    } else {
+      const next = (Number(tt.consecutive) || 0) + 1;
+      return {
+        formattedNumber: `${prefix}-${String(next).padStart(8, '0')}`,
+        prefix,
+        nextNum: next,
+        numberingMode: 'continuous'
+      };
+    }
+  },
+
   // -- Transacciones -----------------------------------------
   async createTransaction(txData, lines) {
     // txData: { tx_type_id, number, date, description, third_party_id?, cross_*, user_id, status, branch_id? }
@@ -3962,6 +3993,30 @@ const API = {
     let created = 0;
 
     for (const prop of toCreate) {
+      // 1. Validación de Fecha de Entrega Material (delivery_date)
+      const rawDelivery = String(prop.delivery_date || '').trim().slice(0, 10);
+      let isDeliveryMonth = false;
+      let billableDays = 0;
+      let totalDaysInMonth = 30;
+      let deliveryProportion = 1;
+
+      if (rawDelivery && /^\d{4}-\d{2}-\d{2}$/.test(rawDelivery)) {
+        const deliveryPeriod = rawDelivery.slice(0, 7);
+        // Si el período a liquidar es anterior a la fecha de entrega, no se le factura al propietario
+        if (period < deliveryPeriod) {
+          continue;
+        }
+        // Si el período coincide exactamente con el mes de entrega, se causa proporcionalmente una sola vez
+        if (period === deliveryPeriod) {
+          isDeliveryMonth = true;
+          const [dYear, dMonth, dDay] = rawDelivery.split('-').map(Number);
+          totalDaysInMonth = new Date(dYear, dMonth, 0).getDate();
+          // Días a cobrar desde la entrega: si dDay <= 1 mes completo, si dDay > 1 días restantes hasta fin de mes
+          billableDays = dDay <= 1 ? totalDaysInMonth : Math.max(1, totalDaysInMonth - dDay);
+          deliveryProportion = Math.min(1, Math.max(0.01, billableDays / totalDaysInMonth));
+        }
+      }
+
       // Fecha de corte de mora: inicio del período que se está liquidando.
       // Así la mora no depende del día real de ejecución del proceso.
       const asOfStr = `${period}-01`;
@@ -3973,15 +4028,30 @@ const API = {
       let order = 1;
       for (const c of concepts) {
         let amount = Number(c.amount || 0);
-        if (c.applies_coef && prop.coef_participacion > 0) {
+        const isAdmConcept = String(c.code || '').trim().toUpperCase() === 'ADM' ||
+                             String(c.name || '').trim().toUpperCase().includes('ADMINISTRA');
+
+        // Si la unidad tiene cuota fija personalizada configurada en admin_fee
+        if (isAdmConcept && Number(prop.admin_fee || 0) > 0) {
+          amount = Number(prop.admin_fee);
+        } else if (c.applies_coef && prop.coef_participacion > 0) {
           amount = amount * (prop.coef_participacion / 100);
         }
+
+        // Si es el mes de entrega, se cobra proporcionalmente la expensa de administración
+        let desc = c.name;
+        if (isDeliveryMonth && (isAdmConcept || (!c.is_variable && String(c.code || '').toUpperCase() !== 'MORA'))) {
+          amount = amount * deliveryProportion;
+          desc = `${c.name} (Proporcional ${billableDays}/${totalDaysInMonth} días - Entrega: ${rawDelivery})`;
+        }
+
         if (amount <= 0) continue;
-        total += amount;
+        const roundedAmount = Math.round(amount);
+        total += roundedAmount;
         lines.push({
           concept_id: c.id,
-          description: c.name,
-          amount: Math.round(amount),
+          description: desc,
+          amount: roundedAmount,
           line_order: order++,
         });
       }
@@ -4036,6 +4106,14 @@ const API = {
         }
 
         let lateAmount = 0;
+        // Consultar saldo a favor en cuenta 28 para la propiedad previo a la fecha de corte
+        let unitAnticipoDisponible = 0;
+        try {
+          const antFilter = `account_id.code ~ "28%" && tx_id.status = "active" && tx_id.date < "${asOfStr}" && (cross_doc_ref = "ANT-${prop.id}" || third_party_id = "${prop.owner_id || ''}")`;
+          const antLines = await pb.listAll('tx_lines', { filter: antFilter }).catch(() => []);
+          unitAnticipoDisponible = Math.max(0, (antLines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0) - (Number(l.debit) || 0), 0));
+        } catch (_) {}
+
         for (const oldInv of overdueInvoices) {
           if (!oldInv?.due_date) continue;
           const due = new Date(`${oldInv.due_date}T00:00:00`);
@@ -4053,6 +4131,13 @@ const API = {
 
           const invTotal = Number(oldInv.total || 0);
           const pendingBalance = balInfo ? Number(balInfo.pendingAmount || 0) : invTotal;
+
+          // Si el copropietario contaba con saldo a favor en anticipos (cuenta 28) suficiente para cubrir la factura, omitir mora
+          if (unitAnticipoDisponible >= pendingBalance - 0.01) {
+            unitAnticipoDisponible -= pendingBalance;
+            continue;
+          }
+
           // Factor de proporción si hubo pagos parciales: la mora se liquida ÚNICAMENTE sobre el capital insoluto
           const proportionFactor = (invTotal > 0.01 && pendingBalance < invTotal) ? (pendingBalance / invTotal) : 1;
 
@@ -4253,6 +4338,25 @@ const API = {
       }
     }
 
+    // Buscar y revertir transacciones de cruce de anticipos vinculadas a esta factura
+    try {
+      if (inv.number) {
+        const cruceLines = await pb.listAll('tx_lines', {
+          filter: `cross_doc_ref="${pb.escapeFilterValue(inv.number)}" && tx_id != "${txIdToDelete || 'none'}"`
+        }).catch(() => []);
+        const cruceTxIds = Array.from(new Set(cruceLines.map((l: any) => l.tx_id).filter(Boolean)));
+        for (const ctxId of cruceTxIds) {
+          try {
+            await pb.delete('transactions', ctxId as string);
+          } catch (_) {
+            try { await pb.update('transactions', ctxId as string, { status: 'voided' }); } catch (_2) {}
+          }
+        }
+      }
+    } catch (errCruceDel) {
+      console.warn(`[unpostPhInvoice] Aviso limpiando cruces de anticipos de factura ${inv.number}:`, errCruceDel);
+    }
+
     await pb.update('ph_invoices', invoiceId, { status: 'draft', tx_id: null });
     await this.logAudit('UNPOST', 'PhInvoice', invoiceId, `Descontabilizada ${inv.number || invoiceId} | TX eliminada: ${txDeleted}`);
     return { invoiceId, txDeleted };
@@ -4401,7 +4505,53 @@ const API = {
   },
 
   /**
-   * Contabiliza una factura PH (draft â†’ posted).
+   * Obtiene el tipo de comprobante configurado para Cruce de Anticipos en PH.
+   * Prioridad:
+   * 1. ph_config_v1.cruce_anticipo_tx_type_id
+   * 2. Transaction type con código NC (Nota de Contabilidad)
+   * 3. Transaction type con código CC (Comprobante Contable)
+   * 4. Transaction type con código AJ o CA
+   * 5. Primer tipo de transacción activo
+   */
+  async getPhCruceTxTypeId(): Promise<string> {
+    try {
+      const rawCfg = await this.getSetting('ph_config_v1').catch(() => '');
+      if (rawCfg) {
+        const cfg = JSON.parse(rawCfg);
+        if (cfg.cruce_anticipo_tx_type_id) {
+          const exists = await pb.get('transaction_types', cfg.cruce_anticipo_tx_type_id).catch(() => null);
+          if (exists && exists.active) return exists.id;
+        }
+      }
+    } catch (_) {}
+
+    // Fallbacks inteligentes en orden de idoneidad contable
+    const candidates = ['NC', 'CC', 'AJ', 'CA'];
+    for (const code of candidates) {
+      try {
+        const found = await pb.list('transaction_types', {
+          filter: `code="${code}" && active=true`,
+          perPage: 1
+        });
+        if (found.items.length > 0) return found.items[0].id;
+      } catch (_) {}
+    }
+
+    try {
+      const byName = await pb.list('transaction_types', {
+        filter: 'active=true && (name~"Nota" || name~"Comprobante" || name~"Ajuste")',
+        perPage: 1
+      });
+      if (byName.items.length > 0) return byName.items[0].id;
+      const anyActive = await pb.list('transaction_types', { filter: 'active=true', perPage: 1 });
+      if (anyActive.items.length > 0) return anyActive.items[0].id;
+    } catch (_) {}
+
+    return '';
+  },
+
+  /**
+   * Contabiliza una factura PH (draft → posted).
    * Genera un asiento: DÃ©bito CxC propietario / CrÃ©dito ingresos por concepto.
    */
   async postPhInvoice(invoiceId) {
@@ -4607,6 +4757,53 @@ const API = {
     // Actualizar factura
     await pb.update('ph_invoices', invoiceId, { status: 'posted', tx_id: tx.id });
     await this.logAudit('POST', 'PhInvoice', invoiceId, `Contabilizada ${inv.number} -> TX ${tx.number}`);
+
+    // Auto-cruce de saldo a favor de anticipos si existe saldo acumulado previo para esta unidad
+    try {
+      if (ownerId && inv.property_id) {
+        const safeOwner = pb.escapeFilterValue(ownerId);
+        const safeProp = pb.escapeFilterValue(inv.property_id);
+        const antLines = await pb.listAll('tx_lines', {
+          filter: `(cross_doc_ref="ANT-${safeProp}" || third_party_id="${safeOwner}") && (account_id.code ~ "2805%" || account_id.code ~ "28%")`,
+          expand: 'tx_id,account_id'
+        }).catch(() => []);
+
+        let saldoAnticipo = 0;
+        for (const al of antLines) {
+          if (al.expand?.tx_id?.status === 'voided') continue;
+          saldoAnticipo += (Number(al.credit) || 0) - (Number(al.debit) || 0);
+        }
+
+        if (saldoAnticipo > 0.01) {
+          const cruceTxTypeId = await this.getPhCruceTxTypeId();
+          if (cruceTxTypeId) {
+            const contraAccId = cxcAccount?.id || (txLines[0]?.account_id || '');
+            const cruceTx = await pb.create('transactions', {
+              tx_type_id: cruceTxTypeId,
+              number: 'AUTO',
+              date: inv.date || new Date().toISOString().slice(0, 10),
+              third_party_id: ownerId,
+              description: `${property?.name || inv.property_id} - Cruce anticipo factura PH ${inv.number} (Saldo a favor)`,
+              status: 'active',
+              teso_mode: 'auto',
+              teso_params: JSON.stringify({
+                third_party_id: ownerId,
+                ph_property_id: inv.property_id,
+                amount: 0,
+                contrapartida_account_id: contraAccId,
+                cruzar_anticipos: true,
+                is_cruce_anticipo: true,
+                reglas: { primeroVencido: true, primeroMora: true }
+              })
+            });
+            await this.logAudit('CRUCE_ANTICIPO', 'PhInvoice', invoiceId, `Auto-cruce anticipo factura ${inv.number} -> TX ${cruceTx.number || cruceTx.id} (Saldo a favor aplicado)`);
+          }
+        }
+      }
+    } catch (errCruce) {
+      console.warn(`[Auto-Cruce Anticipo] Aviso en factura ${inv.number}:`, errCruce);
+    }
+
     return pb.get('ph_invoices', invoiceId, { expand: 'property_id' });
   },
 
@@ -4946,12 +5143,33 @@ const API = {
       }
     }
 
+    // Obtener saldos a favor (anticipos acumulados en cuentas 28%)
+    const antMap = new Map<string, number>();
+    try {
+      const antLines = await pb.listAll('tx_lines', {
+        filter: `account_id.code ~ "28%" && tx_id.date <= "${refDate}" && (tx_id.status = "posted" || tx_id.status = "active")`,
+        expand: 'account_id'
+      }).catch(() => []);
+      for (const al of (antLines || [])) {
+        const rawRef = String(al.cross_doc_ref || '').trim();
+        const pId = rawRef.startsWith('ANT-') ? rawRef.substring(4) : '';
+        const net = (Number(al.credit) || 0) - (Number(al.debit) || 0);
+        if (pId) {
+          antMap.set(pId, (antMap.get(pId) || 0) + net);
+        }
+        if (al.third_party_id) {
+          antMap.set(al.third_party_id, (antMap.get(al.third_party_id) || 0) + net);
+        }
+      }
+    } catch (_) {}
+
     const properties = await this.getPhProperties(false).catch(() => []);
     const propById = new Map(properties.map(p => [String(p.id), p]));
 
     const rows = [];
     for (const inv of invoices) {
       const prop = propById.get(String(inv.property_id));
+      const owner = prop?.expand?.owner_id;
       const invLines = allInvLines.filter(l => l.invoice_id === inv.id);
 
       const invNumber = String(inv.number || '').trim().toUpperCase();
@@ -4959,8 +5177,11 @@ const API = {
       const venc = String(inv.due_date || '').slice(0, 10);
       const diasMoraRaw = this.calculateDaysOverdue(inv.due_date, cutoffDate);
 
-      // Control de abono general para distribuir entre lÃ­neas
+      // Control de abono general para distribuir entre líneas
       let generalAbono = abonosMap.get(invNumber) || 0;
+
+      // Saldo a favor en anticipos para esta propiedad / propietario
+      const saldoAnticipoTotal = Math.max(0, antMap.get(String(inv.property_id)) || (owner?.id ? antMap.get(owner.id) || 0 : 0));
 
       for (const line of invLines) {
         const originalAmount = Number(line.amount || 0);
@@ -4973,7 +5194,7 @@ const API = {
         const specificRef = `${invNumber}-${conceptCode}`;
         let abonoAplicado = abonosMap.get(specificRef) || 0;
 
-        // 2. Si hay abono general remanente, aplicarlo a esta lÃ­nea
+        // 2. Si hay abono general remanente, aplicarlo a esta línea
         if (generalAbono > 0) {
           const porAplicar = Math.min(generalAbono, Math.max(0, originalAmount - abonoAplicado));
           abonoAplicado += porAplicar;
@@ -5003,6 +5224,7 @@ const API = {
           amount: currentBalance, // Saldo para el reporte
           originalAmount: originalAmount, // Valor original para integridad
           abono: abonoAplicado,
+          saldoAnticipo: saldoAnticipoTotal,
           diasMora: Math.max(0, diasMoraRaw),
           diasMoraRaw,
           fechaDoc,
@@ -5011,6 +5233,9 @@ const API = {
           propertyId: String(inv.property_id || ''),
           propertyCode: String(prop?.code || ''),
           propertyName: String(prop?.name || ''),
+          ownerId: String(prop?.owner_id || owner?.id || ''),
+          ownerName: String(owner?.name || '').trim(),
+          ownerDoc: String(owner?.doc_number || '').trim(),
           conceptoId: normalizedConceptId,
           concepto: normalizedConcepto,
         });
@@ -5070,6 +5295,9 @@ const API = {
         propertyId: r.propertyId,
         propertyCode: r.propertyCode,
         propertyName: r.propertyName,
+        ownerId: r.ownerId,
+        ownerName: r.ownerName,
+        ownerDoc: r.ownerDoc,
         concepto: r.concepto,
         conceptoId: r.conceptoId,
         amount: r.amount,
@@ -6444,7 +6672,7 @@ const API = {
   async getImportTxLines(importId: string) {
     if (!importId) return [];
     try {
-      const filterStr = `import_id="${pb.escapeFilterValue(importId)}"`;
+      const filterStr = `import_id="${pb.escapeFilterValue(importId)}" && import_concept != "" && import_concept != null`;
 
       const lines = await pb.listAll('tx_lines', {
         filter: filterStr,
@@ -6452,13 +6680,8 @@ const API = {
         sort: 'line_order'
       });
 
-      for (const l of lines) {
-        if (!l.import_concept) {
-          l.import_concept = 'fob';
-        }
-      }
-
-      return lines;
+      // Solo retornar líneas que posean un concepto explícito de importación (FOB, Flete, Seguro, Aduana, Transporte, Otros)
+      return lines.filter((l: any) => l.import_concept && String(l.import_concept).trim() !== '');
     } catch (err) {
       console.warn('[getImportTxLines] Error al listar líneas:', err);
       return [];
@@ -6931,20 +7154,27 @@ const API = {
     return tx;
   },
 
-  /** Finaliza la importaciÃ³n, traslada costo de TrÃ¡nsito a Inventario y registra stock */
-  async capitalizeImport(importId: string, warehouseId: string, txTypeId: string, txNumber: string) {
-    if (!importId) throw new Error('Se requiere el ID de la importaciÃ³n.');
+  /** Finaliza la importación, traslada costo de Tránsito a Inventario y registra stock respetando estrictamente el % por proveedor */
+  async capitalizeImport(
+    importId: string,
+    warehouseId: string,
+    txTypeId: string,
+    txNumber: string,
+    customInvoicePcts?: Record<string, number>,
+    lineInvoiceAssignments?: Record<string, string>
+  ) {
+    if (!importId) throw new Error('Se requiere el ID de la importación.');
     if (!warehouseId) throw new Error('Se requiere la bodega de destino.');
-    if (!txTypeId) throw new Error('Se requiere el tipo de transacciÃ³n contable.');
-    if (!txNumber) throw new Error('Se requiere el nÃºmero del comprobante contable.');
+    if (!txTypeId) throw new Error('Se requiere el tipo de transacción contable.');
+    if (!txNumber) throw new Error('Se requiere el número del comprobante contable.');
 
     const imp = await pb.get('imports', importId);
     if (imp.status === 'recibido') {
-      throw new Error('Esta importaciÃ³n ya ha sido finalizada y capitalizada.');
+      throw new Error('Esta importación ya ha sido finalizada y capitalizada.');
     }
     const lines = await this.getImportLines(importId);
     if (!lines.length) {
-      throw new Error('La importaciÃ³n no contiene productos para capitalizar.');
+      throw new Error('La importación no contiene productos para capitalizar.');
     }
 
     const cfg = await this.getImportConfig();
@@ -6955,7 +7185,7 @@ const API = {
 
     const totalAmount = imp.total || 0;
     if (totalAmount <= 0) {
-      throw new Error('El valor total acumulado de la importaciÃ³n debe ser mayor a cero para capitalizar.');
+      throw new Error('El valor total acumulado de la importación debe ser mayor a cero para capitalizar.');
     }
 
     const thirdPartyCapitalize = imp.supplier_id || imp.forwarder_supplier_id || (lines.length ? lines[0].supplier_id : '') || pb.currentUser?.id || '';
@@ -6990,6 +7220,21 @@ const API = {
 
     const tx = await this.createTransaction(txData, txLines);
 
+    // Sincronizar y persistir el consecutivo en transaction_types para respetar la serie contable
+    try {
+      const tt = await pb.get('transaction_types', txTypeId);
+      const effectiveNum = tx.number || txNumber;
+      const numMatch = String(effectiveNum).match(/(\d+)$/);
+      if (numMatch) {
+        const numVal = parseInt(numMatch[1], 10);
+        if (numVal > Number(tt.consecutive || 0)) {
+          await pb.update('transaction_types', txTypeId, { consecutive: numVal });
+        }
+      }
+    } catch (ttErr) {
+      console.warn('[capitalizeImport] Aviso al sincronizar consecutivo en transaction_types:', ttErr);
+    }
+
     const movToday = new Date().toISOString().slice(0, 10);
     const movNumber = await this.getNextInventoryMovementNumber(movToday, 'ENTRADA');
     const movData = {
@@ -7005,13 +7250,41 @@ const API = {
 
     const mov = await pb.create('inventory_movements', movData);
 
-    // CÁLCULO DE COSTO INDIVIDUAL POR PRODUCTO AL CIERRE:
-    // Si la importación es consolidada y se definieron porcentajes manuales de distribución de costos
-    // por proveedor/factura comercial (cost_distribution_pct), estos se aplican EXCLUSIVAMENTE AQUÍ
-    // en el momento del cierre definitivo de la importación para determinar el costo unitario de ingreso.
-    if (imp.is_consolidated) {
+    // =========================================================================
+    // CÁLCULO ESTRICTO DE COSTO INDIVIDUAL POR PRODUCTO AL CIERRE (CONSOLIDADO):
+    // El porcentaje asignado por cada proveedor/factura comercial (cost_distribution_pct)
+    // define el pool real de costo que le corresponde a sus productos.
+    // Esto prevalece estrictamente sobre el prorrateo previo original.
+    // =========================================================================
+    const importInvoices = await this.getImportInvoices(importId).catch(() => []);
+    const isConsolidatedEffective = Boolean(imp.is_consolidated) || (importInvoices && importInvoices.length > 0);
+
+    // 1. Aplicar reasignaciones de factura por línea si se indicaron en el diálogo
+    if (lineInvoiceAssignments && Object.keys(lineInvoiceAssignments).length > 0) {
+      for (const l of lines) {
+        if (lineInvoiceAssignments[l.id]) {
+          l.import_invoice_id = lineInvoiceAssignments[l.id];
+          const matchedInv = importInvoices.find((i: any) => i.id === l.import_invoice_id);
+          if (matchedInv) {
+            l.supplier_id = matchedInv.supplier_id || matchedInv.third_party_id || l.supplier_id;
+          }
+        }
+      }
+    }
+
+    // 2. Persistir porcentajes personalizados de distribución si se recibieron desde el cierre
+    if (customInvoicePcts && Object.keys(customInvoicePcts).length > 0) {
+      for (const inv of importInvoices) {
+        if (customInvoicePcts[inv.id] !== undefined) {
+          const newPct = Number(customInvoicePcts[inv.id]) || 0;
+          inv.cost_distribution_pct = newPct;
+          await pb.update('import_invoices', inv.id, { cost_distribution_pct: newPct }).catch(() => {});
+        }
+      }
+    }
+
+    if (isConsolidatedEffective && importInvoices.length > 0) {
       try {
-        const importInvoices = await this.getImportInvoices(importId);
         const invoicesWithPct = importInvoices.filter((iv: any) => Number(iv.cost_distribution_pct) > 0);
 
         if (invoicesWithPct.length > 0) {
@@ -7042,7 +7315,7 @@ const API = {
                   totalMetric = invLines.reduce((s: number, l: any) => s + (Number(l.qty || 0) * Number(l.fob_price || 0)), 0);
                 }
 
-                invLines.forEach((l: any) => {
+                for (const l of invLines) {
                   let lineMetric = 0;
                   if (imp.proration_method === 'GROSS_WEIGHT') {
                     lineMetric = Number(l.peso_bruto_total) || 0;
@@ -7060,19 +7333,35 @@ const API = {
                   l.unit_cost_cop = assignedUnitCostCOP;
                   l.total_cop = assignedLineTotalCOP;
 
-                  // Actualizar en import_lines para auditoría permanente
-                  pb.update('import_lines', l.id, {
+                  // Actualizar en import_lines en SQLite/PB de forma segura (sin campos inexistentes)
+                  await pb.update('import_lines', l.id, {
                     unit_cost_cop: assignedUnitCostCOP,
                     total_cop: assignedLineTotalCOP,
-                    notes: `${l.notes || ''} [Cierre Consolidado: ${invPct}% Proveedor]`.trim()
-                  }).catch(() => {});
-                });
+                    import_invoice_id: inv.id,
+                    supplier_id: inv.supplier_id || inv.third_party_id || l.supplier_id || ''
+                  }).catch((updErr: any) => {
+                    console.warn(`[CapitalizeImport] Aviso al actualizar import_line ${l.id}:`, updErr);
+                  });
+                }
               }
+            }
+
+            // Ajuste de centavos de cuadre exacto con el total de la importación
+            const currentSumLines = lines.reduce((s: number, l: any) => s + (Number(l.total_cop) || 0), 0);
+            const diffCents = totalImportCOP - currentSumLines;
+            if (Math.abs(diffCents) > 0 && Math.abs(diffCents) < 100 && lines.length > 0) {
+              lines[0].total_cop = (Number(lines[0].total_cop) || 0) + diffCents;
+              lines[0].unit_cost_cop = Number(lines[0].qty || 0) > 0 ? Math.round((lines[0].total_cop / Number(lines[0].qty)) * 100) / 100 : lines[0].unit_cost_cop;
+              await pb.update('import_lines', lines[0].id, {
+                total_cop: lines[0].total_cop,
+                unit_cost_cop: lines[0].unit_cost_cop
+              }).catch(() => {});
             }
           }
         }
       } catch (distErr) {
-        console.warn('[CapitalizeImport] Error aplicando distribución manual de costos por proveedor:', distErr);
+        console.error('[CapitalizeImport] Error aplicando distribución manual de costos por proveedor:', distErr);
+        throw new Error('Error al calcular el prorrateo real según porcentaje del proveedor: ' + (distErr as any)?.message);
       }
     }
 
@@ -7176,12 +7465,227 @@ const API = {
     await this.applyInventoryMovement(mov.id);
 
     await pb.update('imports', importId, {
-      status: 'recibido'
+      status: 'recibido',
+      capitalization_tx_id: tx.id,
+      capitalization_mov_id: mov.id
     });
 
     await this.logAudit('CAPITALIZE', 'imports', importId, `Importación capitalizada y trasladada a bodega. Transacción: ${tx.number}. Movimiento: ${mov.number}`);
 
     return { tx, mov };
+  },
+
+  /** Pre-flight check para evaluar si una importación capitalizada puede ser reabierta de forma segura */
+  async checkImportReopenPreflight(importId: string) {
+    const imp = await pb.get('imports', importId, { expand: 'supplier_id' });
+    if (imp.status !== 'recibido') {
+      throw new Error(`La importación ${imp.number} no está en estado "recibido". Estado actual: ${imp.status}`);
+    }
+
+    // 1. Identificar Movimiento de Inventario
+    let mov: any = null;
+    if (imp.capitalization_mov_id) {
+      mov = await pb.get('inventory_movements', imp.capitalization_mov_id).catch(() => null);
+    }
+    if (!mov) {
+      const candidateMovs = await pb.listAll('inventory_movements', {
+        filter: `notes ~ "Importación ${imp.number}" && status="applied"`,
+        sort: '-created'
+      }).catch(() => []);
+      if (candidateMovs.length) mov = candidateMovs[0];
+    }
+
+    // 2. Identificar Transacción Contable
+    let tx: any = null;
+    const targetTxId = imp.capitalization_tx_id || mov?.tx_id || null;
+    if (targetTxId) {
+      tx = await pb.get('transactions', targetTxId).catch(() => null);
+    }
+    if (!tx) {
+      const candidateTxs = await pb.listAll('transactions', {
+        filter: `description ~ "Capitalización Importación ${imp.number}" && status!="voided"`,
+        sort: '-created'
+      }).catch(() => []);
+      if (candidateTxs.length) tx = candidateTxs[0];
+    }
+
+    const issues: string[] = [];
+    const warnings: string[] = [];
+    const stockChecks: Array<{
+      productId: string;
+      code: string;
+      name: string;
+      requiredQty: number;
+      currentStock: number;
+      sufficient: boolean;
+    }> = [];
+
+    // 3. Evaluar existencias de inventario
+    if (mov) {
+      const movLines = await this.getInventoryMovementLines(mov.id);
+      const allowNegative = await this.isNegativeStockAllowed();
+
+      for (const line of movLines) {
+        const prod = line.expand?.product_id || (line.product_id ? await pb.get('products', line.product_id).catch(() => null) : null);
+        const prodName = prod ? `${prod.code || ''} - ${prod.name || ''}`.trim() : line.product_id;
+        const stockArr = await this.getInventoryStock({ warehouseId: mov.warehouse_id, productId: line.product_id }).catch(() => []);
+        const currentQty = Number(stockArr[0]?.qty_on_hand || 0);
+        const requiredQty = Number(line.qty || 0);
+        const sufficient = allowNegative || (currentQty - requiredQty >= 0);
+
+        stockChecks.push({
+          productId: line.product_id,
+          code: prod?.code || '',
+          name: prod?.name || line.product_id,
+          requiredQty,
+          currentStock: currentQty,
+          sufficient
+        });
+
+        if (!sufficient) {
+          issues.push(`• ${prodName}: Stock actual de ${currentQty} en bodega, se requieren ${requiredQty} para revertir sin generar saldo negativo.`);
+        }
+      }
+    } else {
+      warnings.push('No se localizó un movimiento de inventario activo asociado. Se revertirá la contabilidad y estado del expediente.');
+    }
+
+    // 4. Evaluar Reservas Comerciales Asociadas
+    const resLines = await pb.listAll('sales_reservation_lines', {
+      filter: `import_id="${pb.escapeFilterValue(importId)}" && status="ready_to_dispatch"`,
+      expand: 'reservation_id'
+    }).catch(() => []);
+
+    if (resLines.length > 0) {
+      warnings.push(`Hay ${resLines.length} línea(s) de reserva de clientes en estado "Lista para Despacho" que serán pausadas temporalmente.`);
+    }
+
+    // 5. Evaluar Lotes y Estibas WMS
+    const lots = await pb.listAll('inventory_lots', {
+      filter: `import_id="${pb.escapeFilterValue(importId)}"`
+    }).catch(() => []);
+
+    const pallets = await pb.listAll('inventory_pallets', {
+      filter: `import_id="${pb.escapeFilterValue(importId)}"`
+    }).catch(() => []);
+
+    return {
+      canReopen: issues.length === 0,
+      issues,
+      warnings,
+      movement: mov,
+      transaction: tx,
+      stockChecks,
+      affectedReservationsCount: resLines.length,
+      lotsCount: lots.length,
+      palletsCount: pallets.length,
+      importData: imp
+    };
+  },
+
+  /** Ejecuta la reapertura y descapitalización controlada de la importación */
+  async reopenCapitalizedImport(importId: string, reason: string) {
+    if (!reason || reason.trim().length < 5) {
+      throw new Error('Debes indicar un motivo de reapertura claro para la auditoría (mínimo 5 caracteres).');
+    }
+
+    const preflight = await this.checkImportReopenPreflight(importId);
+    if (!preflight.canReopen) {
+      throw new Error(`No es posible reabrir la importación debido a los siguientes conflictos de inventario:\n${preflight.issues.join('\n')}`);
+    }
+
+    const imp = preflight.importData;
+    const mov = preflight.movement;
+    const tx = preflight.transaction;
+
+    // A. Revertir movimiento físico de bodega
+    if (mov && mov.status === 'applied') {
+      await this.unapplyMovementForEdit(mov.id);
+      await pb.update('inventory_movements', mov.id, {
+        status: 'voided',
+        notes: `${mov.notes || ''} | [ANULADO POR REAPERTURA: ${reason.trim()}]`.trim()
+      }).catch(() => {});
+    }
+
+    // B. Revertir Lotes asociados
+    try {
+      const lots = await pb.listAll('inventory_lots', {
+        filter: `import_id="${pb.escapeFilterValue(importId)}"`
+      });
+      for (const lot of lots) {
+        await pb.update('inventory_lots', lot.id, {
+          status: 'cancelled',
+          qty_on_hand: 0,
+          notes: `${lot.notes || ''} | Cancelado por reapertura de importación ${imp.number}`.trim()
+        }).catch(() => {});
+      }
+    } catch (lotErr) {
+      console.warn('[reopenCapitalizedImport] Advertencia al ajustar lotes:', lotErr);
+    }
+
+    // C. Revertir Estibas / Pallets WMS
+    try {
+      const pallets = await pb.listAll('inventory_pallets', {
+        filter: `import_id="${pb.escapeFilterValue(importId)}"`
+      });
+      for (const plt of pallets) {
+        await pb.delete('inventory_pallets', plt.id).catch(() => {});
+      }
+    } catch (pltErr) {
+      console.warn('[reopenCapitalizedImport] Advertencia al limpiar estibas:', pltErr);
+    }
+
+    // D. Revertir Contabilidad: Anular transacción 1435 vs 1465
+    if (tx && tx.status !== 'voided') {
+      await this.voidTransaction(tx.id, `Anulación por reapertura de importación ${imp.number}. Motivo: ${reason.trim()}`);
+    }
+
+    // E. Pausar Reservas Comerciales Asociadas
+    try {
+      const reservationLines = await pb.listAll('sales_reservation_lines', {
+        filter: `import_id="${pb.escapeFilterValue(importId)}" && status="ready_to_dispatch"`,
+      });
+      const affectedResIds = new Set<string>();
+      for (const rl of reservationLines) {
+        affectedResIds.add(rl.reservation_id);
+        await pb.update('sales_reservation_lines', rl.id, {
+          status: 'active',
+          notes: `${rl.notes || ''} | Pausado por reapertura de importación ${imp.number}`.trim(),
+        }).catch(() => {});
+      }
+      for (const resId of affectedResIds) {
+        await pb.update('sales_reservations', resId, {
+          notes: `Mercancía en pausa temporal por reapertura y reajuste de importación ${imp.number}.`,
+        }).catch(() => {});
+      }
+    } catch (resErr) {
+      console.warn('[reopenCapitalizedImport] Advertencia al pausar reservas:', resErr);
+    }
+
+    // F. Actualizar cabecera de la Importación a estado nacionalización
+    const newCount = (Number(imp.reopened_count) || 0) + 1;
+    const dateStr = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const noteEntry = `[REAPERTURA #${newCount} - ${dateStr}]: ${reason.trim()}`;
+
+    await pb.update('imports', importId, {
+      status: 'nacionalizacion',
+      capitalization_tx_id: '',
+      capitalization_mov_id: '',
+      reopened_count: newCount,
+      reopened_reason: reason.trim(),
+      reopened_at: dateStr,
+      notes: imp.notes ? `${imp.notes}\n${noteEntry}` : noteEntry
+    });
+
+    await this.logAudit('REOPEN', 'imports', importId, `Importación reabierta: ${imp.number} (Intento #${newCount}) | Motivo: ${reason.trim()}`);
+
+    return {
+      success: true,
+      importNumber: imp.number,
+      reopenedCount: newCount,
+      voidedTxNumber: tx?.number || null,
+      unappliedMovNumber: mov?.number || null
+    };
   },
 
   // â”€â”€ Inmobiliarias (F9) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

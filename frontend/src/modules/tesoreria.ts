@@ -1055,8 +1055,11 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
        phInvoices.forEach((inv: any) => blockedRefs.add(inv.number));
     }
     
+    const filterLines = propertyId
+      ? `third_party_id="${thirdPartyId}" || cross_doc_ref="${anticipoRef}"`
+      : `third_party_id="${thirdPartyId}"`;
     const allLines = await pb.listAll('tx_lines', {
-      filter: `third_party_id="${thirdPartyId}"`,
+      filter: filterLines,
       expand: 'tx_id,account_id'
     });
 
@@ -1064,8 +1067,7 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     
     for (const l of allLines) {
       if (l.expand?.tx_id?.status === 'voided') continue;
-      const ref = (l.cross_doc_ref || '').trim();
-      if (!ref) continue;
+      let ref = (l.cross_doc_ref || '').trim();
 
       const code = (l.expand?.account_id?.code || '').trim();
       let esCuentaCruce = false;
@@ -1081,6 +1083,11 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
         esCuentaAnticipo = code.startsWith('1330') || ref === anticipoRef || (anticipoAccountId && l.account_id === anticipoAccountId);
       }
 
+      if (esCuentaAnticipo && !ref) {
+        ref = anticipoRef;
+      }
+
+      if (!ref) continue;
       if (!esCuentaCruce && !esCuentaAnticipo && !l.expand?.account_id?.maneja_cruce) continue;
       
       const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
@@ -1093,11 +1100,12 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
           if (isBlocked && !esCuentaAnticipo) continue;
       }
       
-      const key = `${ref}|${l.account_id}`;
+      const docRefKey = esCuentaAnticipo ? anticipoRef : ref;
+      const key = `${docRefKey}|${l.account_id}`;
       if (!docs.has(key)) {
         docs.set(key, {
           key,
-          ref,
+          ref: docRefKey,
           accountId: l.account_id,
           accountName: l.expand?.account_id?.name || '',
           accountCode: code,
@@ -1318,7 +1326,6 @@ function _updateMontoIndicator() {
   if (!montoEl || !indicatorEl) return;
 
   const monto = parseFormattedNumber(montoEl.value || '0');
-
   const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
 
   if (monto <= 0 || totalCartera <= 0) {
@@ -1326,18 +1333,48 @@ function _updateMontoIndicator() {
     return;
   }
 
-  const diff = monto - totalCartera;
+  const hasAjustePeso = (document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement)?.checked || false;
+  const ajusteAmt = hasAjustePeso ? parseFormattedNumber((document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement)?.value || '0') : 0;
+  const isRecaudo = !!document.getElementById('modal-rc-wrap') || document.getElementById('teso-modal-doc-number')?.classList.contains('text-blue-700');
+  const ajusteTipo = (document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement)?.value || 'faltante';
+
+  let valorCarteraCubierta = monto;
+  if (hasAjustePeso && ajusteAmt > 0) {
+    if (isRecaudo) {
+      valorCarteraCubierta = ajusteTipo === 'faltante' ? (monto + ajusteAmt) : (monto - ajusteAmt);
+    } else {
+      valorCarteraCubierta = ajusteTipo === 'sobrante' ? (monto + ajusteAmt) : (monto - ajusteAmt);
+    }
+  }
+
+  const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
+  let targetCartera = totalCartera;
+  let activeDocsCount = 0;
+  if (isManual) {
+    const activeInputs = Array.from(document.querySelectorAll('.teso-abono-input')).filter(el => parseFormattedNumber((el as HTMLInputElement).value || '0') > 0) as HTMLInputElement[];
+    activeDocsCount = activeInputs.length;
+    if (activeInputs.length > 0 && activeInputs.length < _tesoCurrentOpenItems.length) {
+      targetCartera = activeInputs.reduce((sum, inp) => {
+        const item = _tesoCurrentOpenItems.find(i => i.key === inp.dataset.key || i.ref === inp.dataset.ref);
+        return sum + (item ? item.saldo : parseFormattedNumber(inp.value || '0'));
+      }, 0);
+    }
+  }
+
+  const diff = valorCarteraCubierta - targetCartera;
   const absDiff = Math.abs(diff);
 
-  if (Math.abs(diff) < 1) {
+  if (absDiff < 0.01) {
+    const isSubset = isManual && activeDocsCount > 0 && activeDocsCount < _tesoCurrentOpenItems.length;
     indicatorEl.innerHTML = `
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-        <i class="fas fa-check-circle"></i> Cubre exactamente la cartera
-      </span>`;
+        <i class="fas fa-check-circle"></i> ${isSubset ? 'Cubre exactamente factura(s) seleccionada(s)' : 'Cubre exactamente la cartera'} ${hasAjustePeso && ajusteAmt > 0 ? '(con ajuste al peso)' : ''}
+      </span>
+      ${isSubset ? `<span class="text-[11px] text-gray-500 ml-1">(Otras facturas pendientes: ${_fmt(totalCartera - targetCartera)})</span>` : ''}`;
   } else if (diff < 0) {
     indicatorEl.innerHTML = `
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-        <i class="fas fa-exclamation-triangle"></i> Pago parcial &mdash; queda ${_fmt(absDiff)} por cobrar
+        <i class="fas fa-exclamation-triangle"></i> ${isRecaudo ? 'Pago parcial &mdash; queda' : 'Abono parcial &mdash; queda'} ${_fmt(absDiff)} pendiente
       </span>`;
   } else {
     indicatorEl.innerHTML = `
@@ -1501,10 +1538,17 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     if (hasAjustePeso) {
       ajustePesoAmt = parseFormattedNumber((document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement)?.value || '0');
       ajustePesoType = (document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement)?.value || 'faltante';
-      ajustePesoAccId = (document.getElementById('teso-modal-ajuste-cuenta') as HTMLSelectElement)?.value || '';
+      ajustePesoAccId = (document.getElementById('teso-modal-ajuste-cuenta') as HTMLInputElement)?.value || '';
 
       if (ajustePesoAmt > 0 && !ajustePesoAccId) {
-        _showToast('Debes seleccionar la cuenta contable para el Ajuste al Peso', 'warning');
+        _resolveDefaultAjustePesoAccounts();
+        ajustePesoAccId = ajustePesoType === 'sobrante' 
+          ? _tesoAjustePesoAccountsMap.sobrante 
+          : _tesoAjustePesoAccountsMap.faltante;
+      }
+
+      if (ajustePesoAmt > 0 && !ajustePesoAccId) {
+        _showToast('Debes configurar las cuentas de Ajuste al Peso en Configuración de Tesorería', 'warning');
         if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
         return;
       }
@@ -1517,26 +1561,27 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       return;
     }
 
-    let netoTransado = totalAbono - retFuenteAmt - retIcaAmt - descuentoAmt;
+    // El neto transado en bancos/caja es estrictamente el importe físico o bancario real
+    const netoTransado = Math.max(0, totalAbono - retFuenteAmt - retIcaAmt - descuentoAmt);
+
+    // Calcular el valor que debe cubrir y liquidar la cartera abierta (CxC o CxP):
+    // El ajuste al peso afecta la liquidación de la factura/cartera, no el dinero de banco.
+    let valorAplicadoACartera = totalAbono;
     if (hasAjustePeso && ajustePesoAmt > 0) {
       if (isRecaudo) {
-        netoTransado = ajustePesoType === 'faltante' ? (netoTransado - ajustePesoAmt) : (netoTransado + ajustePesoAmt);
+        valorAplicadoACartera = ajustePesoType === 'faltante' ? (totalAbono + ajustePesoAmt) : (totalAbono - ajustePesoAmt);
       } else {
-        netoTransado = ajustePesoType === 'sobrante' ? (netoTransado - ajustePesoAmt) : (netoTransado + ajustePesoAmt);
+        valorAplicadoACartera = ajustePesoType === 'sobrante' ? (totalAbono + ajustePesoAmt) : (totalAbono - ajustePesoAmt);
       }
     }
-
-    if (netoTransado < 0) {
-      _showToast('Las retenciones, descuentos y ajustes no pueden superar el monto total', 'warning');
-      if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
-      return;
-    }
+    valorAplicadoACartera = Math.round(valorAplicadoACartera * 100) / 100;
 
     const cruzarAnticipos = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked ?? false;
 
     const params: any = {
       third_party_id: _tesoCurrentThirdParty.id,
       amount: netoTransado,
+      monto_bruto: totalAbono,
       contrapartida_account_id: cuentaId,
       cost_center_id: costCenterId || null,
       cruzar_anticipos: cruzarAnticipos,
@@ -1603,10 +1648,29 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
       params.ph_property_id = _tesoCurrentPropertyId;
     }
     if (modo === 'manual') {
+      if (hasAjustePeso && ajustePesoAmt > 0 && distribucion.length > 0) {
+        // Encontrar la factura que tiene la diferencia pendiente con respecto a su saldo
+        let target = null;
+        for (const d of distribucion) {
+          const item = _tesoCurrentOpenItems.find(i => i.key === d.key || i.ref === d.cross_doc_ref);
+          if (item && Math.abs((item.saldo - d.monto) - ajustePesoAmt) < 0.05) {
+            target = d;
+            break;
+          }
+        }
+        if (!target) target = distribucion[0];
+        
+        if (isRecaudo) {
+          target.monto = ajustePesoType === 'faltante' ? (target.monto + ajustePesoAmt) : Math.max(0, target.monto - ajustePesoAmt);
+        } else {
+          target.monto = ajustePesoType === 'sobrante' ? (target.monto + ajustePesoAmt) : Math.max(0, target.monto - ajustePesoAmt);
+        }
+        target.monto = Math.round(target.monto * 100) / 100;
+      }
       params.distribucion = distribucion;
     } else {
       if (_tesoCurrentOpenItems.length > 0) {
-        let saldoRestante = totalAbono;
+        let saldoRestante = valorAplicadoACartera;
         const autoDist: any[] = [];
         for (const item of _tesoCurrentOpenItems) {
           if (saldoRestante <= 0) break;
@@ -2216,6 +2280,22 @@ function _applyDefaultRetenciones() {
 let _tesoAjustePesoAccountsMap: { sobrante: string; faltante: string } = { sobrante: '', faltante: '' };
 let _tesoAllAccountsForAjuste: any[] = [];
 
+function _resolveDefaultAjustePesoAccounts() {
+  if (!_tesoAjustePesoAccountsMap.sobrante && _tesoAllAccountsForAjuste.length > 0) {
+    const acc = _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('429581') || (a.name || '').toUpperCase().includes('AJUSTE AL PESO'))
+             || _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('421010'))
+             || _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('4210'));
+    if (acc) _tesoAjustePesoAccountsMap.sobrante = acc.id;
+  }
+  if (!_tesoAjustePesoAccountsMap.faltante && _tesoAllAccountsForAjuste.length > 0) {
+    const acc = _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('530595') || (a.name || '').toUpperCase().includes('AJUSTE AL PESO'))
+             || _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('530510'))
+             || _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('5305'))
+             || _tesoAllAccountsForAjuste.find(a => (a.code || '').startsWith('5395'));
+    if (acc) _tesoAjustePesoAccountsMap.faltante = acc.id;
+  }
+}
+
 (window as any)._toggleTesoAjustePeso = () => {
   const chk = document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement | null;
   const container = document.getElementById('teso-ajuste-peso-container');
@@ -2229,30 +2309,46 @@ let _tesoAllAccountsForAjuste: any[] = [];
     if (montoInput) montoInput.value = '';
   }
   _recalculateTesoNeto();
+  _updateMontoIndicator();
 };
 
 (window as any)._updateAjustePesoAccountOptions = () => {
   const tipoSelect = document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement | null;
-  const cuentaSelect = document.getElementById('teso-modal-ajuste-cuenta') as HTMLSelectElement | null;
-  if (!tipoSelect || !cuentaSelect) return;
+  const cuentaHidden = document.getElementById('teso-modal-ajuste-cuenta') as HTMLInputElement | HTMLSelectElement | null;
+  const cuentaDisplay = document.getElementById('teso-modal-ajuste-cuenta-display');
+  if (!tipoSelect) return;
+
+  _resolveDefaultAjustePesoAccounts();
 
   const tipo = tipoSelect.value;
   const defaultAccId = tipo === 'sobrante' 
     ? _tesoAjustePesoAccountsMap.sobrante 
     : _tesoAjustePesoAccountsMap.faltante;
 
-  if (cuentaSelect.options.length <= 1 && _tesoAllAccountsForAjuste.length > 0) {
-    cuentaSelect.innerHTML = '<option value="">— Seleccionar Cuenta PUC —</option>' +
-      _tesoAllAccountsForAjuste.map(a => `<option value="${a.id}">${a.code} - ${a.name}</option>`).join('');
+  if (cuentaHidden) {
+    cuentaHidden.value = defaultAccId || '';
   }
-  if (defaultAccId) {
-    cuentaSelect.value = defaultAccId;
+
+  const matchedAcc = defaultAccId && _tesoAllAccountsForAjuste.length > 0
+    ? _tesoAllAccountsForAjuste.find(a => a.id === defaultAccId)
+    : null;
+
+  if (cuentaDisplay) {
+    if (matchedAcc) {
+      cuentaDisplay.textContent = `${matchedAcc.code} - ${matchedAcc.name}`;
+      cuentaDisplay.title = `Cuenta PUC: ${matchedAcc.code} - ${matchedAcc.name} (Parametrizada en Sistema)`;
+    } else if (defaultAccId) {
+      cuentaDisplay.textContent = `Cuenta Parametrizada (${defaultAccId.slice(0, 8)})`;
+    } else {
+      cuentaDisplay.textContent = 'Sin parametrizar (Clic en Configurar)';
+    }
   }
 };
 
 (window as any)._handleAjustePesoInput = (input: HTMLInputElement) => {
   formatInputWithSeparators(input);
   _recalculateTesoNeto();
+  _updateMontoIndicator();
 };
 
 (window as any)._autoAjustarPeso = () => {
@@ -2264,24 +2360,67 @@ let _tesoAllAccountsForAjuste: any[] = [];
 
   const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
   const montoBruto = parseFormattedNumber(montoInput.value || '0');
+  const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
 
-  if (totalCartera <= 0 || montoBruto <= 0) {
-    _showToast('Debes ingresar el valor bruto y contar con saldos pendientes para calcular el ajuste al peso.', 'info');
-    return;
+  let diff = 0;
+
+  if (isManual) {
+    const activeInputs = Array.from(document.querySelectorAll('.teso-abono-input')).filter(el => parseFormattedNumber((el as HTMLInputElement).value || '0') > 0) as HTMLInputElement[];
+    if (activeInputs.length === 0) {
+      _showToast('Debes ingresar al menos un abono en la grilla para calcular la diferencia de ajuste al peso.', 'info');
+      return;
+    }
+
+    let sumAbonos = 0;
+    let sumSaldosDocs = 0;
+    for (const inp of activeInputs) {
+      const v = parseFormattedNumber(inp.value || '0');
+      const item = _tesoCurrentOpenItems.find(i => i.key === inp.dataset.key || i.ref === inp.dataset.ref);
+      sumAbonos += v;
+      sumSaldosDocs += item ? item.saldo : v;
+    }
+    diff = sumAbonos - sumSaldosDocs;
+  } else {
+    if (totalCartera <= 0 || montoBruto <= 0) {
+      _showToast('Debes ingresar el valor bruto y contar con saldos pendientes para calcular el ajuste al peso.', 'info');
+      return;
+    }
+
+    // Modo automático: calcular diferencia respecto a la factura que no se cubre completamente
+    let rem = montoBruto;
+    let foundPartial = false;
+    for (const item of _tesoCurrentOpenItems) {
+      if (rem <= 0) break;
+      if (rem < item.saldo) {
+        diff = rem - item.saldo;
+        foundPartial = true;
+        break;
+      } else {
+        rem -= item.saldo;
+      }
+    }
+    if (!foundPartial) {
+      diff = rem > 0 ? rem : 0;
+    }
   }
 
-  const diff = montoBruto - totalCartera;
   const absDiff = Math.abs(diff);
 
   if (absDiff < 0.001) {
-    _showToast('El monto ingresado coincide exactamente con el valor de la cartera.', 'info');
+    _showToast('El monto ingresado coincide exactamente con el valor de la cartera seleccionada.', 'info');
     return;
   }
 
-  if (diff < 0) {
-    ajusteTipoSelect.value = 'faltante';
+  const isRecaudo = !!document.getElementById('modal-rc-wrap') || document.getElementById('teso-modal-doc-number')?.classList.contains('text-blue-700');
+
+  if (isRecaudo) {
+    // RC: si diff < 0, se cobra menos -> Faltante (Gasto 53)
+    //     si diff > 0, se cobra más -> Sobrante (Ingreso 42)
+    ajusteTipoSelect.value = diff < 0 ? 'faltante' : 'sobrante';
   } else {
-    ajusteTipoSelect.value = 'sobrante';
+    // CE: si diff < 0, se paga menos de la obligación -> Sobrante (Aprovechamiento/Ingreso 42)
+    //     si diff > 0, se paga más de la obligación -> Faltante (Gasto 53)
+    ajusteTipoSelect.value = diff < 0 ? 'sobrante' : 'faltante';
   }
 
   const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
@@ -2289,7 +2428,12 @@ let _tesoAllAccountsForAjuste: any[] = [];
   
   (window as any)._updateAjustePesoAccountOptions();
   _recalculateTesoNeto();
-  _showToast(`Ajuste al peso calculado: ${ajusteTipoSelect.value === 'sobrante' ? 'Sobrante' : 'Faltante'} de ${_fmt(absDiff)}`, 'success');
+  _updateMontoIndicator();
+
+  const tipoLabel = ajusteTipoSelect.value === 'sobrante' 
+    ? (isRecaudo ? 'Sobrante (Ingreso)' : 'Sobrante (Aprovechamiento a favor)') 
+    : (isRecaudo ? 'Faltante (Gasto asumido)' : 'Faltante (Mayor valor pagado/Gasto)');
+  _showToast(`Ajuste al peso calculado: ${tipoLabel} de ${_fmt(absDiff)}`, 'success');
 };
 
 function _recalculateTesoNeto() {
@@ -2297,10 +2441,6 @@ function _recalculateTesoNeto() {
   const rfInput = document.getElementById('teso-modal-ret-fuente') as HTMLInputElement;
   const icaInput = document.getElementById('teso-modal-ret-ica') as HTMLInputElement;
   const descInput = document.getElementById('teso-modal-descuento') as HTMLInputElement;
-  
-  const hasAjustePeso = (document.getElementById('teso-modal-has-ajuste-peso') as HTMLInputElement)?.checked || false;
-  const ajusteTipoSelect = document.getElementById('teso-modal-ajuste-tipo') as HTMLSelectElement;
-  const ajusteMontoInput = document.getElementById('teso-modal-ajuste-monto') as HTMLInputElement;
 
   const netEl = document.getElementById('teso-modal-neto-valor');
 
@@ -2309,28 +2449,12 @@ function _recalculateTesoNeto() {
   const ica = parseFormattedNumber(icaInput?.value || '0');
   const desc = parseFormattedNumber(descInput?.value || '0');
 
-  let ajusteAmt = 0;
-  let ajusteTipo = 'faltante';
-  if (hasAjustePeso && ajusteMontoInput) {
-    ajusteAmt = parseFormattedNumber(ajusteMontoInput.value || '0');
-    ajusteTipo = ajusteTipoSelect?.value || 'faltante';
-  }
-
-  const docNumEl = document.getElementById('teso-modal-doc-number');
-  const isRecaudo = docNumEl?.classList.contains('text-blue-700') || (document.getElementById('modal-rc-wrap') !== null);
-
-  let net = monto - rf - ica - desc;
-
-  if (hasAjustePeso && ajusteAmt > 0) {
-    if (isRecaudo) {
-      net = ajusteTipo === 'faltante' ? (net - ajusteAmt) : (net + ajusteAmt);
-    } else {
-      net = ajusteTipo === 'sobrante' ? (net - ajusteAmt) : (net + ajusteAmt);
-    }
-  }
+  // El Neto en Banco/Caja es estrictamente el importe físico o bancario real: Bruto - Retenciones - Descuentos
+  // El ajuste al peso NO altera el valor de bancos, sino que completa la cancelación de la CxC o CxP
+  const net = Math.max(0, monto - rf - ica - desc);
 
   if (netEl) {
-    netEl.textContent = _fmt(net >= 0 ? net : 0);
+    netEl.textContent = _fmt(net);
   }
   if (_tesoIsPagoMixto) {
     _updateMixedPaymentsBalance();
@@ -2376,6 +2500,7 @@ async function openRecaudoModal() {
       };
     } catch (_) {}
   }
+  _resolveDefaultAjustePesoAccounts();
 
   _tesoCurrentTxTypes = txTypes;
 
@@ -2520,23 +2645,32 @@ async function openRecaudoModal() {
               <i class="fas fa-calculator mr-1"></i>Auto-Ajustar Peso (Diferencia Cartera)
             </button>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
-              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Tipo de Ajuste</label>
-              <select id="teso-modal-ajuste-tipo" class="form-input py-1 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Concepto de Ajuste</label>
+              <select id="teso-modal-ajuste-tipo" class="form-input py-1.5 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
                 <option value="faltante">Faltante (Gasto por ajuste al peso)</option>
                 <option value="sobrante">Sobrante (Ingreso por aprovechamiento)</option>
               </select>
             </div>
             <div>
               <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Valor del Ajuste ($)</label>
-              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
+              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1.5 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
             </div>
             <div>
-              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Cuenta Contable (PUC)</label>
-              <select id="teso-modal-ajuste-cuenta" class="form-input py-1 text-xs bg-white border-amber-300">
-                <option value="">— Seleccionar Cuenta —</option>
-              </select>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[10px] font-bold text-amber-800 uppercase">Cuenta PUC (Parametrizada)</label>
+                <button type="button" class="text-[10px] text-amber-700 hover:text-amber-900 hover:underline font-semibold flex items-center gap-1" onclick="window.openTesoreriaConfigModal()" title="Parametrizar cuentas contables de tesorería">
+                  <i class="fas fa-cog"></i>Configurar
+                </button>
+              </div>
+              <div class="h-[34px] px-2.5 bg-amber-100/70 border border-amber-300 rounded-lg flex items-center justify-between text-xs text-amber-950 font-bold overflow-hidden shadow-2xs" title="Cuenta contable parametrizada en el sistema para este concepto">
+                <div class="flex items-center gap-1.5 truncate">
+                  <i class="fas fa-check-circle text-amber-600 text-xs flex-shrink-0"></i>
+                  <span id="teso-modal-ajuste-cuenta-display" class="truncate font-mono text-[11px]">Cargando cuenta...</span>
+                </div>
+                <input type="hidden" id="teso-modal-ajuste-cuenta" value="">
+              </div>
             </div>
           </div>
         </div>
@@ -2706,6 +2840,7 @@ async function openPagoModal() {
       };
     } catch (_) {}
   }
+  _resolveDefaultAjustePesoAccounts();
 
   _tesoCurrentTxTypes = txTypes;
 
@@ -2850,23 +2985,32 @@ async function openPagoModal() {
               <i class="fas fa-calculator mr-1"></i>Auto-Ajustar Peso (Diferencia Obligaciones)
             </button>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
             <div>
-              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Tipo de Ajuste</label>
-              <select id="teso-modal-ajuste-tipo" class="form-input py-1 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
+              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Concepto de Ajuste</label>
+              <select id="teso-modal-ajuste-tipo" class="form-input py-1.5 text-xs bg-white font-semibold text-amber-900 border-amber-300" onchange="window._updateAjustePesoAccountOptions(); window._recalculateTesoNeto();">
                 <option value="sobrante">Sobrante (Ingreso por aprovechamiento)</option>
                 <option value="faltante">Faltante (Gasto por ajuste al peso)</option>
               </select>
             </div>
             <div>
               <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Valor del Ajuste ($)</label>
-              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
+              <input id="teso-modal-ajuste-monto" type="text" class="form-input py-1.5 text-xs text-amber-900 font-bold bg-white border-amber-300" placeholder="0" oninput="window._handleAjustePesoInput(this)">
             </div>
             <div>
-              <label class="block text-[10px] font-bold text-amber-800 uppercase mb-1">Cuenta Contable (PUC)</label>
-              <select id="teso-modal-ajuste-cuenta" class="form-input py-1 text-xs bg-white border-amber-300">
-                <option value="">— Seleccionar Cuenta —</option>
-              </select>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-[10px] font-bold text-amber-800 uppercase">Cuenta PUC (Parametrizada)</label>
+                <button type="button" class="text-[10px] text-amber-700 hover:text-amber-900 hover:underline font-semibold flex items-center gap-1" onclick="window.openTesoreriaConfigModal()" title="Parametrizar cuentas contables de tesorería">
+                  <i class="fas fa-cog"></i>Configurar
+                </button>
+              </div>
+              <div class="h-[34px] px-2.5 bg-amber-100/70 border border-amber-300 rounded-lg flex items-center justify-between text-xs text-amber-950 font-bold overflow-hidden shadow-2xs" title="Cuenta contable parametrizada en el sistema para este concepto">
+                <div class="flex items-center gap-1.5 truncate">
+                  <i class="fas fa-check-circle text-amber-600 text-xs flex-shrink-0"></i>
+                  <span id="teso-modal-ajuste-cuenta-display" class="truncate font-mono text-[11px]">Cargando cuenta...</span>
+                </div>
+                <input type="hidden" id="teso-modal-ajuste-cuenta" value="">
+              </div>
             </div>
           </div>
         </div>
@@ -3307,6 +3451,11 @@ async function openTesoreriaConfigModal() {
         } else {
           await pb.create('settings', payload);
         }
+        _tesoAjustePesoAccountsMap = {
+          sobrante: ajuste_peso_sobrante_account_id,
+          faltante: ajuste_peso_faltante_account_id
+        };
+        _updateAjustePesoAccountOptions();
         _showToast('Reglas guardadas correctamente', 'success');
         _closeModal();
       } catch (e: any) {
@@ -3889,7 +4038,8 @@ async function _openMassRCModal() {
       const props = await pb.listAll('ph_properties', { filter:'active=true', expand:'owner_id', sort:'code' });
       const propByCode = new Map(props.map((p:any) => [String(p.code||'').trim().toUpperCase(), p]));
       
-      _massRows = rows.map((r:any, i:number) => {
+      let defaultBatchDate = '';
+      const excelRows = rows.map((r:any, i:number) => {
         const codigo = String(r.codigo_unidad||r.codigo||r.unidad||'').toUpperCase().trim();
         const raw_f  = r.fecha||r.date||'';
         const raw_v  = r.valor||r.value||r.monto||0;
@@ -3898,6 +4048,7 @@ async function _openMassRCModal() {
         let fecha = '';
         if (raw_f instanceof Date) { fecha = (window as any).getColombiaDateStr(raw_f); }
         else { const s=String(raw_f).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)){fecha=s;} else if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){const[d,m,y]=s.split('/');fecha=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;} else {const d=new Date(s);if(!isNaN(d.getTime()))fecha=(window as any).getColombiaDateStr(d);} }
+        if (!defaultBatchDate && fecha) defaultBatchDate = fecha;
         const valor = Number(String(raw_v).replace(/[^0-9.]/g,''))||0;
         const prop  = propByCode.get(codigo);
         const owner = prop?.expand?.owner_id || null;
@@ -3934,28 +4085,100 @@ async function _openMassRCModal() {
           cuentaAccId,
           owner,
           description: generatedDescription,
+          isAnticipoCruce: false,
+          anticipoDisponible: 0,
           ok: errs.length===0,
           errors: errs
         };
       });
 
+      if (!defaultBatchDate) {
+        defaultBatchDate = (window as any).getColombiaDateStr ? (window as any).getColombiaDateStr(new Date()) : new Date().toISOString().slice(0, 10);
+      }
+
+      // Detección automática de unidades con saldo a favor en cuenta 28 y facturas pendientes que no vinieron en el extracto bancario
+      const processedCodes = new Set(excelRows.map(r => r.codigo));
+      const autoAnticipoRows: any[] = [];
+      try {
+        const [unpaidInvs, antLines] = await Promise.all([
+          pb.listAll('ph_invoices', { filter: 'status != "paid" && status != "voided"', expand: 'property_id' }).catch(() => []),
+          pb.listAll('tx_lines', { filter: 'account_id.code ~ "28%" && tx_id.status = "active"', expand: 'account_id,tx_id' }).catch(() => [])
+        ]);
+
+        const antMap = new Map<string, number>();
+        for (const l of (antLines || [])) {
+          const rawRef = String(l.cross_doc_ref || '').trim();
+          const pId = rawRef.startsWith('ANT-') ? rawRef.substring(4) : '';
+          const net = (Number(l.credit) || 0) - (Number(l.debit) || 0);
+          if (pId) {
+            antMap.set(pId, (antMap.get(pId) || 0) + net);
+          }
+          if (l.third_party_id) {
+            antMap.set(l.third_party_id, (antMap.get(l.third_party_id) || 0) + net);
+          }
+        }
+
+        const unpaidPropIds = new Set((unpaidInvs || []).map((inv: any) => String(inv.property_id || inv.expand?.property_id?.id || '')).filter(Boolean));
+
+        let cruceTxTypeId = selectedTxTypeId;
+        try {
+          cruceTxTypeId = (await (window as any).API?.getPhCruceTxTypeId?.()) || selectedTxTypeId;
+        } catch (_) {}
+
+        for (const prop of props) {
+          const cCode = String(prop.code || '').trim().toUpperCase();
+          if (processedCodes.has(cCode)) continue;
+          if (!unpaidPropIds.has(prop.id)) continue;
+
+          const owner = prop.expand?.owner_id || null;
+          const saldoAnt = Math.max(0, antMap.get(prop.id) || (owner?.id ? antMap.get(owner.id) || 0 : 0));
+          if (saldoAnt > 0.01 && owner) {
+            autoAnticipoRows.push({
+              rowNo: excelRows.length + autoAnticipoRows.length + 2,
+              codigo: cCode,
+              fecha: defaultBatchDate,
+              valor: 0,
+              ref: `ANT-${prop.id}`,
+              obs: 'Cruce automático de saldo a favor en anticipos de períodos anteriores',
+              prop,
+              txTypeId: cruceTxTypeId,
+              bankAccountId,
+              cuentaAccId,
+              owner,
+              description: `${cCode} - ${owner.name || 'Propietario'} - Cruce anticipo cuota de administración (Saldo a favor: ${_fmt(saldoAnt)})`,
+              isAnticipoCruce: true,
+              anticipoDisponible: saldoAnt,
+              ok: true,
+              errors: []
+            });
+          }
+        }
+      } catch (errAnt) {
+        console.warn('[Carga Masiva] Error detectando anticipos previos:', errAnt);
+      }
+
+      _massRows = [...excelRows, ...autoAnticipoRows];
+
       document.getElementById('mass-rc-step1')?.classList.add('hidden');
       document.getElementById('mass-rc-step2')?.classList.remove('hidden');
       const ok=_massRows.filter(r=>r.ok).length; const bad=_massRows.length-ok;
+      const antCount = autoAnticipoRows.length;
       const badge=document.getElementById('mass-rc-badge');
-      if(badge) badge.innerHTML=`<span style="color:${bad>0?'#B91C1C':'#166534'}">${_massRows.length} filas · ${ok} válidas${bad>0?' · '+bad+' con error':''}</span>`;
+      if(badge) badge.innerHTML=`<span style="color:${bad>0?'#B91C1C':'#166534'}">${_massRows.length} partidas (${excelRows.length} banco · ${antCount} cruces de anticipo) · ${ok} válidas${bad>0?' · '+bad+' con error':''}</span>`;
       const tbody=document.getElementById('mass-rc-tbody');
-      if(tbody) tbody.innerHTML=_massRows.map(r=>`<tr style="background:${r.ok?'':'#FFF7F7'}">
+      if(tbody) tbody.innerHTML=_massRows.map(r=>`<tr style="background:${r.isAnticipoCruce ? '#F0FDF4' : (r.ok?'':'#FFF7F7')}">
         <td class="p-2 text-center text-gray-400">${r.rowNo}</td>
-        <td class="p-2 font-mono font-bold text-blue-800">${_esc(r.codigo)}</td>
+        <td class="p-2 font-mono font-bold ${r.isAnticipoCruce ? 'text-emerald-800' : 'text-blue-800'}">${_esc(r.codigo)}</td>
         <td class="p-2">${_esc(r.owner?.name||'—')}</td>
         <td class="p-2">${_esc(r.fecha||'—')}</td>
-        <td class="p-2 text-right font-bold">${_fmt(r.valor)}</td>
+        <td class="p-2 text-right font-bold ${r.isAnticipoCruce ? 'text-emerald-700' : ''}">
+          ${r.isAnticipoCruce ? `<span title="Aplica saldo a favor existente">Cruce Anticipo (${_fmt(r.anticipoDisponible)})</span>` : _fmt(r.valor)}
+        </td>
         <td class="p-2 text-xs font-medium text-gray-700" title="${_esc(r.description)}"><div class="truncate" style="max-width:280px">${_esc(r.description)}</div></td>
-        <td class="p-2 text-center">${r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>'}</td>
-        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.ok?'Listo':r.errors.join(' · ')}</td>
+        <td class="p-2 text-center">${r.isAnticipoCruce ? '<span class="badge badge-blue">Saldo a Favor</span>' : (r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>')}</td>
+        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.isAnticipoCruce ? 'Cruce automático sin banco' : (r.ok?'Listo':r.errors.join(' · '))}</td>
       </tr>`).join('');
-      if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s)`;}
+      if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s) / cruce(s)`;}
     }
 
     async function execute() {
@@ -3970,7 +4193,7 @@ async function _openMassRCModal() {
         const r=valids[i];
         if(bar) bar.style.width=`${Math.round((i/valids.length)*100)}%`;
         if(status) status.textContent=`Procesando ${i+1} de ${valids.length}...`;
-        if(detail) detail.textContent=`Unidad ${r.codigo} — ${_fmt(r.valor)}`;
+        if(detail) detail.textContent=`Unidad ${r.codigo} — ${r.isAnticipoCruce ? 'Cruce de anticipo' : _fmt(r.valor)}`;
         try {
           // number: 'AUTO' delega al hook de backend para aplicar el parámetro de la serie (lineal o mensual) y actualizar consecutivo
           await pb.create('transactions',{
@@ -3986,6 +4209,8 @@ async function _openMassRCModal() {
               ph_property_id: r.prop.id,
               amount: r.valor,
               contrapartida_account_id: r.cuentaAccId,
+              cruzar_anticipos: true,
+              is_cruce_anticipo: r.isAnticipoCruce === true,
               reglas: { primeroVencido: true, primeroMora: true }
             })
           });

@@ -4,13 +4,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#050814">
+  <meta name="theme-color" content="#FAF8FD">
   <title>GRAVY — Plataforma Contable Inteligente</title>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/assets/gravy-logo.png" type="image/png">
   <link rel="apple-touch-icon" href="/assets/icon-192.png">
+
+  <!-- Tipografía Editorial y Funcional: Fraunces (Serif con personalidad) + Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <!-- Activos locales — sin CDN externo -->
   <link rel="stylesheet" href="/assets/fonts/fonts.css">
@@ -26,20 +31,58 @@
       --sidebar-w: 270px;
       --sidebar-w-collapsed: 68px;
       --topbar-h: 64px;
-      --bg-deep: #F8FAFC;
+      --bg-deep: #F8F9FA;
       --bg-elev: #FFFFFF;
-      --bg-panel: #F1F5F9;
-      --bg-soft: #F8FAFC;
-      --bg-soft-2: #F0FDF4;
-      --text-strong: #0F172A;
-      --text-muted: #475569;
-      --border-soft: #E2E8F0;
-      --accent-cyan: #38BDF8;
-      --accent-cyan-strong: #0284C7;
-      --accent-violet: #6366F1;
-      --accent-violet-strong: #4F46E5;
-      --accent-soft: #F0F9FF;
-      --accent-glow: rgba(56, 189, 248, 0.15);
+      --bg-panel: #F8F9FA;
+      --bg-soft: #F4E9FE;
+      --bg-soft-2: #EAF6F0;
+      --text-strong: #1E1E1E;
+      --text-muted: #5D5D5D;
+      --text-tertiary: #888888;
+      --border-soft: #EAEAEA;
+      --border-strong: #D5D7DA;
+
+      /* Identidad Editorial Inspirada en Aleluya */
+      --color-purple-600: #9A3DE0;
+      --color-purple-500: #B972F0;
+      --color-purple-200: #EBD7FD;
+      --color-purple-100: #F4E9FE;
+      --color-purple-soft: #FAF5FE;
+
+      /* Acentos sutiles de autor (Aleluya) */
+      --color-accent-coral: #F46532;
+      --color-accent-yellow: #FBE149;
+
+      --accent-lavender: #9A3DE0;
+      --accent-lavender-hover: #8325CA;
+      --accent-lavender-subtle: #F4E9FE;
+      --accent-lavender-soft: #FAF5FE;
+
+      --accent-sky: #3A70E2;
+      --accent-sky-hover: #2B5DC2;
+      --accent-sky-subtle: #E9F4FF;
+      --accent-sky-soft: #F1F8FF;
+
+      /* Semánticos relajados (estilo Aleluya) */
+      --color-success: #0C9D61;
+      --color-success-bg: #EAF6F0;
+      --color-warning: #EC8314;
+      --color-warning-bg: #FEF9EC;
+      --color-danger: #EC2D30;
+      --color-danger-bg: #FDEAEA;
+
+      /* Aliases para máxima compatibilidad con código existente */
+      --accent-cyan: #1CE5C2;
+      --accent-cyan-strong: #0C9D61;
+      --accent-violet: #9A3DE0;
+      --accent-violet-strong: #8325CA;
+      --accent-soft: #F4E9FE;
+      --accent-glow: rgba(154, 61, 224, 0.08);
+    }
+
+    .font-serif-editorial {
+      font-family: 'Fraunces', Georgia, Cambria, 'Times New Roman', serif;
+      font-feature-settings: 'cv01' on, 'cv02' on;
     }
 
     *,
@@ -49,12 +92,12 @@
       padding: 0;
       box-sizing: border-box;
       scrollbar-width: thin;
-      scrollbar-color: var(--accent-cyan-strong) var(--bg-deep);
+      scrollbar-color: #EBD7FD var(--bg-deep);
     }
 
     ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+      width: 5px;
+      height: 5px;
     }
 
     ::-webkit-scrollbar-track {
@@ -62,16 +105,21 @@
     }
 
     ::-webkit-scrollbar-thumb {
-      background: linear-gradient(180deg, var(--accent-cyan), var(--accent-violet));
-      border-radius: 3px;
+      background: #D5D7DA;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #B972F0;
     }
 
     body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: radial-gradient(circle at top right, rgba(100, 225, 255, .10), transparent 30%), linear-gradient(180deg, #F7FBFF 0%, #EEF4FF 100%);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: #F8F9FA;
       color: var(--text-strong);
       overflow: hidden;
       height: 100vh;
+      -webkit-font-smoothing: antialiased;
     }
 
     /* Pantallas */
@@ -84,17 +132,17 @@
       display: flex;
     }
 
-    /* Loading */
+    /* Loading Editorial */
     #screen-loading {
       position: fixed;
       inset: 0;
       z-index: 9999;
-      background: radial-gradient(circle at 25% 25%, rgba(127, 124, 255, .25), transparent 22%), radial-gradient(circle at 72% 38%, rgba(100, 225, 255, .35), transparent 24%), linear-gradient(135deg, #04070F 0%, #091327 48%, #050814 100%);
+      background: #FFFFFF;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      transition: opacity .5s;
+      transition: opacity .4s ease;
     }
 
     #screen-loading.fade-out {
@@ -103,14 +151,12 @@
     }
 
     .loader-ring {
-      width: 60px;
-      height: 60px;
-      border: 4px solid rgba(100, 225, 255, .18);
-      border-top-color: var(--accent-cyan);
-      border-right-color: var(--accent-violet);
+      width: 36px;
+      height: 36px;
+      border: 3px solid #F4E9FE;
+      border-top-color: #9A3DE0;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      box-shadow: 0 0 24px rgba(100, 225, 255, .22);
+      animation: spin 0.8s linear infinite;
     }
 
     @keyframes spin {
@@ -170,12 +216,12 @@
     .sidebar {
       width: var(--sidebar-w);
       min-width: var(--sidebar-w);
-      background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+      background: #FFFFFF;
       border-right: 1px solid var(--border-soft);
       display: flex;
       flex-direction: column;
       height: 100vh;
-      transition: width .32s cubic-bezier(.4, 0, .2, 1), min-width .32s cubic-bezier(.4, 0, .2, 1), transform .3s;
+      transition: width .3s cubic-bezier(0.16, 1, 0.3, 1), min-width .3s cubic-bezier(0.16, 1, 0.3, 1), transform .3s;
       z-index: 50;
       overflow: visible;
     }
@@ -184,34 +230,43 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 11px 20px;
+      padding: 10px 18px;
       color: var(--text-muted);
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 500;
       cursor: pointer;
       border-left: 3px solid transparent;
-      transition: all .2s;
+      transition: all .18s;
       position: relative;
       white-space: nowrap;
+      border-radius: 8px;
+      margin: 1px 8px;
     }
 
     .nav-item:hover {
       color: var(--text-strong);
-      background: rgba(15, 23, 42, 0.04);
+      background: var(--accent-lavender-soft, #FAF9FF);
+      transform: translateX(2px);
     }
 
     .nav-item.active {
-      color: var(--accent-violet-strong);
-      background: rgba(99, 102, 241, 0.08);
-      border-left-color: var(--accent-violet-strong);
-      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.04);
+      color: #543DC2;
+      background: var(--accent-lavender-subtle, #F1EFFE);
+      border-left-color: var(--accent-lavender, #7C66F0);
+      font-weight: 600;
+      box-shadow: 0 1px 3px rgba(124, 102, 240, 0.08);
     }
 
     .nav-item i {
       width: 20px;
       text-align: center;
-      font-size: 15px;
+      font-size: 14px;
       flex-shrink: 0;
+      color: #8A97A8;
+    }
+
+    .nav-item.active i {
+      color: var(--accent-lavender, #7C66F0);
     }
 
     .nav-item .nav-label {
@@ -439,7 +494,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 28px;
+      padding: 0 14px;
       position: sticky;
       top: 0;
       z-index: 40;
@@ -453,21 +508,22 @@
       height: calc(100vh - var(--topbar-h));
     }
 
-    /* Cards */
+    /* Cards KPI */
     .stat-card {
-      background: rgba(255, 255, 255, .92);
-      border-radius: 16px;
-      padding: 22px 24px;
+      background: #FFFFFF;
+      border-radius: 14px;
+      padding: 20px 22px;
       position: relative;
       overflow: hidden;
-      transition: transform .2s, box-shadow .2s;
+      transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .2s;
       border: 1px solid var(--border-soft);
-      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(25, 33, 61, 0.04);
     }
 
     .stat-card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 16px 36px rgba(12, 21, 48, .08);
+      box-shadow: 0 10px 24px rgba(25, 33, 61, 0.07);
+      border-color: var(--border-strong);
     }
 
     .stat-card::before {
@@ -475,25 +531,25 @@
       position: absolute;
       top: 0;
       left: 0;
-      width: 4px;
+      width: 3.5px;
       height: 100%;
       border-radius: 4px 0 0 4px;
     }
 
     .stat-card.blue::before {
-      background: linear-gradient(180deg, var(--accent-violet), var(--accent-violet-strong));
+      background: var(--accent-lavender);
     }
 
     .stat-card.orange::before {
-      background: linear-gradient(180deg, var(--accent-cyan), var(--accent-cyan-strong));
+      background: var(--accent-sky);
     }
 
     .stat-card.green::before {
-      background: linear-gradient(180deg, #10B981, #059669);
+      background: var(--color-success);
     }
 
     .stat-card.red::before {
-      background: linear-gradient(180deg, #EF4444, #DC2626);
+      background: var(--color-danger);
     }
 
     /* Botones */
@@ -501,111 +557,108 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 9px 18px;
+      padding: 8px 16px;
       border-radius: 10px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      border: none;
-      transition: all .2s;
+      border: 1px solid transparent;
+      transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
       font-family: inherit;
     }
 
+    .btn:active {
+      transform: scale(0.98);
+    }
+
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
-      color: #04101F;
-      box-shadow: 0 6px 18px rgba(100, 225, 255, .26);
+      background: var(--accent-lavender, #7C66F0);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(124, 102, 240, .22);
     }
 
     .btn-primary:hover {
-      box-shadow: 0 12px 24px rgba(100, 225, 255, .30);
+      background: var(--accent-lavender-hover, #6850E2);
+      box-shadow: 0 6px 20px rgba(124, 102, 240, .32);
       transform: translateY(-1px);
     }
 
     .btn-secondary {
       background: #FFFFFF;
-      color: #1E293B;
-      border: 1.5px solid #CBD5E1;
-      box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+      color: var(--text-strong);
+      border: 1px solid var(--border-strong);
+      box-shadow: 0 1px 3px rgba(25, 33, 61, .04);
     }
 
     .btn-secondary:hover {
-      background: #F8FAFC;
-      border-color: #94A3B8;
-      color: #0F172A;
-      box-shadow: 0 4px 12px rgba(15, 23, 42, .08);
+      background: var(--bg-soft);
+      border-color: #CBD5E1;
+      color: var(--text-strong);
       transform: translateY(-1px);
     }
 
     .btn-orange, .btn-amber {
-      background: linear-gradient(135deg, #F97316, #EA580C);
-      color: #FFFFFF !important;
-      border: none;
-      box-shadow: 0 4px 14px rgba(249, 115, 22, .25);
+      background: #FEF6E9;
+      color: var(--color-warning) !important;
+      border: 1px solid #FCE1B6;
     }
 
     .btn-orange:hover, .btn-amber:hover {
-      box-shadow: 0 8px 20px rgba(249, 115, 22, .35);
+      background: #FDF0D5;
+      border-color: #F8D194;
       transform: translateY(-1px);
-      color: #FFFFFF !important;
     }
 
     .btn-orange-subtle {
-      background: #FFF7ED;
-      color: #C2410C !important;
-      border: 1.5px solid #FED7AA;
+      background: #FEF6E9;
+      color: var(--color-warning) !important;
+      border: 1px solid #FCE1B6;
     }
 
     .btn-orange-subtle:hover {
-      background: #FFEDD5;
-      border-color: #FDBA74;
-      color: #9A3412 !important;
+      background: #FDF0D5;
     }
 
     .btn-green, .btn-emerald, .btn-success {
-      background: linear-gradient(135deg, #10B981, #059669);
-      color: #FFFFFF !important;
-      border: none;
-      box-shadow: 0 4px 14px rgba(16, 185, 129, .25);
+      background: #E8F8F0;
+      color: var(--color-success) !important;
+      border: 1px solid #C1ECD4;
     }
 
     .btn-green:hover, .btn-emerald:hover, .btn-success:hover {
-      box-shadow: 0 8px 20px rgba(16, 185, 129, .35);
+      background: #D3F3E2;
       transform: translateY(-1px);
-      color: #FFFFFF !important;
     }
 
     .btn-green-subtle, .btn-emerald-subtle {
-      background: #ECFDF5;
-      color: #047857 !important;
-      border: 1.5px solid #A7F3D0;
+      background: #E8F8F0;
+      color: var(--color-success) !important;
+      border: 1px solid #C1ECD4;
     }
 
     .btn-green-subtle:hover, .btn-emerald-subtle:hover {
-      background: #D1FAE5;
-      border-color: #6EE7B7;
-      color: #065F46 !important;
+      background: #D3F3E2;
     }
 
     .btn-outline {
       background: transparent;
-      border: 1.5px solid #D1D5DB;
-      color: #374151;
+      border: 1px solid var(--border-strong);
+      color: var(--text-muted);
     }
 
     .btn-outline:hover {
-      border-color: var(--accent-cyan);
-      color: #0C728F;
-      background: var(--accent-soft);
+      border-color: var(--accent-lavender);
+      color: var(--accent-lavender);
+      background: var(--accent-lavender-subtle);
     }
 
     .btn-danger {
-      background: #EF4444;
+      background: var(--color-danger);
       color: #fff;
     }
 
     .btn-danger:hover {
-      background: #DC2626;
+      background: #B92D2D;
     }
 
     .btn-sm {
@@ -620,7 +673,7 @@
       transform: none !important;
     }
 
-    /* Tabla */
+    /* Tabla Contable Minimalista */
     .data-table {
       width: 100%;
       border-collapse: separate;
@@ -628,15 +681,15 @@
     }
 
     .data-table thead th {
-      background: #F4F8FF;
-      padding: 12px 16px;
-      font-size: 12px;
+      background: #FAFBFD;
+      padding: 11px 16px;
+      font-size: 11.5px;
       font-weight: 700;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: .5px;
       text-align: left;
-      border-bottom: 2px solid var(--border-soft);
+      border-bottom: 1.5px solid var(--border-soft);
       position: sticky;
       top: 0;
       z-index: 5;
@@ -645,8 +698,9 @@
     .data-table tbody td {
       padding: 12px 16px;
       font-size: 13px;
-      border-bottom: 1px solid #EEF3FB;
+      border-bottom: 1px solid #F0F4FA;
       vertical-align: middle;
+      font-variant-numeric: tabular-nums;
     }
 
     .data-table tbody tr {
@@ -654,42 +708,67 @@
     }
 
     .data-table tbody tr:hover {
-      background: #F0FBFF;
+      background: var(--accent-lavender-soft, #FAF9FF);
     }
 
-    /* Badges */
+    /* Badges Calmos */
     .badge {
       display: inline-flex;
       align-items: center;
+      gap: 5px;
       padding: 3px 10px;
       border-radius: 20px;
-      font-size: 11px;
+      font-size: 11.5px;
       font-weight: 600;
+      border: 1px solid transparent;
     }
 
     .badge-orange {
-      background: #E8FDFF;
-      color: #0C728F;
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
+      border-color: #FCE1B6;
     }
 
     .badge-blue {
-      background: #EEF4FF;
-      color: #2446B8;
+      background: var(--accent-sky-subtle);
+      color: var(--accent-sky-hover);
+      border-color: #CDE6FB;
     }
 
     .badge-green {
-      background: #ECFDF5;
-      color: #059669;
+      background: var(--color-success-bg);
+      color: var(--color-success);
+      border-color: #C1ECD4;
     }
 
     .badge-red {
-      background: #FEF2F2;
-      color: #DC2626;
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
+      border-color: #FACACA;
     }
 
     .badge-gray {
-      background: #F3F4F6;
-      color: #6B7280;
+      background: var(--bg-panel);
+      color: var(--text-muted);
+      border-color: var(--border-soft);
+    }
+
+    .badge-purple {
+      background: var(--accent-lavender-subtle);
+      color: var(--accent-lavender-hover);
+      border-color: #E2DEFD;
+    }
+
+    .badge-teal {
+      background: #EBF8FF;
+      color: #0C728F;
+      border-color: #BAE6FD;
+    }
+
+    .badge-pink {
+      background: #FDF2F8;
+      color: #BE185D;
+      border-color: #FBCFE8;
     }
 
     /* Formularios */
@@ -827,6 +906,41 @@
       display: flex;
       justify-content: flex-end;
       gap: 10px;
+    }
+
+    /* Slide-Over Drawer Global (Estilo Alegra) */
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(25, 33, 61, 0.32);
+      backdrop-filter: blur(6px);
+      z-index: 120;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    .drawer-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .drawer-container {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 580px;
+      max-width: 95vw;
+      background: #FFFFFF;
+      z-index: 121;
+      box-shadow: -10px 0 40px rgba(25, 33, 61, 0.15);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .32s cubic-bezier(0.16, 1, 0.3, 1);
+      border-left: 1px solid var(--border-soft);
+    }
+    .drawer-backdrop.open .drawer-container {
+      transform: translateX(0);
     }
 
     /* Toasts */
@@ -991,9 +1105,9 @@
     }
 
     .page-btn.active {
-      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
+      background: var(--accent-lavender, #7C66F0);
       border-color: transparent;
-      color: #04101F;
+      color: #FFFFFF;
     }
 
     .page-btn:disabled {
@@ -1001,19 +1115,19 @@
       cursor: not-allowed;
     }
 
-    /* ── GRAVY Multi-Tab Navigation Bar ────────────────────────── */
+    /* ── GRAVY Multi-Tab Navigation Bar (Alegra Style) ──────────── */
     .gravy-tabs-header {
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(12px);
+      background: #F4F7FB;
       border-bottom: 1px solid var(--border-soft);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 6px 16px;
+      padding: 4px 16px;
       gap: 12px;
       z-index: 35;
       user-select: none;
       flex-shrink: 0;
+      height: 42px;
     }
 
     .gravy-tabs-scroll-container {
@@ -1023,7 +1137,7 @@
       overflow-x: auto;
       scrollbar-width: none;
       flex: 1;
-      padding-bottom: 2px;
+      padding-bottom: 0px;
     }
     .gravy-tabs-scroll-container::-webkit-scrollbar {
       display: none;
@@ -1034,39 +1148,41 @@
       align-items: center;
       gap: 8px;
       padding: 6px 14px;
-      border-radius: 10px;
-      font-size: 12px;
-      font-weight: 600;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-weight: 500;
       color: var(--text-muted);
-      background: #F1F5F9;
+      background: transparent;
       border: 1px solid transparent;
       cursor: pointer;
       white-space: nowrap;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
       position: relative;
     }
 
     .gravy-tab-pill:hover {
-      background: #E2E8F0;
+      background: rgba(255, 255, 255, 0.7);
       color: var(--text-strong);
     }
 
     .gravy-tab-pill.active {
       background: #FFFFFF;
-      color: var(--accent-violet-strong);
-      border-color: rgba(99, 102, 241, 0.25);
-      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.12);
+      color: var(--accent-lavender, #7C66F0);
+      font-weight: 700;
+      border-color: #E2DEFD;
+      box-shadow: 0 1px 3px rgba(25, 33, 61, 0.04);
     }
 
     .gravy-tab-pill.active::after {
       content: '';
       position: absolute;
-      bottom: -7px;
+      bottom: -5px;
       left: 12px;
       right: 12px;
-      height: 3px;
+      height: 2.5px;
       border-radius: 3px 3px 0 0;
-      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-violet-strong));
+      background: var(--accent-lavender, #7C66F0);
     }
 
     .gravy-tab-close {
@@ -1076,14 +1192,14 @@
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      color: #94A3B8;
-      font-size: 10px;
+      color: var(--text-tertiary, #9AA6B8);
+      font-size: 9px;
       transition: all 0.15s;
     }
 
     .gravy-tab-close:hover {
-      background: #EF4444;
-      color: #FFFFFF;
+      background: var(--color-danger-bg, #FDF0F0);
+      color: var(--color-danger, #D33D3D);
     }
 
     .gravy-tabs-counter {
@@ -1333,6 +1449,7 @@
     /* User Menu & Dropdown */
     .user-menu-container {
       position: relative;
+      flex-shrink: 0;
     }
 
     .user-menu-btn {
@@ -1347,6 +1464,7 @@
       transition: all 0.2s ease;
       outline: none;
       font-family: inherit;
+      white-space: nowrap;
     }
 
     .user-menu-btn:hover {
@@ -1388,6 +1506,7 @@
       top: 100%;
       margin-top: 8px;
       width: 230px;
+      max-width: min(240px, calc(100vw - 20px));
       background: #fff;
       border-radius: 14px;
       border: 1px solid var(--border-soft);
@@ -1540,174 +1659,165 @@
 
   <!-- ─── Pantalla de carga ─────────────────────── -->
   <div id="screen-loading">
-    <div class="brand-shell mb-5"><img src="/assets/gravy-logo.png" alt="GRAVY"></div>
-    <div class="loader-ring mb-4"></div>
-    <p style="color:rgba(255,255,255,.7);font-size:14px;font-weight:500" id="loading-msg">Conectando con el servidor...
-    </p>
+    <div class="login-brand-capsule mb-4">
+      <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-8 h-8 object-contain" onerror="this.src='/gravy-Icono.ico'">
+    </div>
+    <div class="loader-ring mb-3"></div>
+    <p style="color:#5D5D5D;font-size:13px;font-weight:600;letter-spacing:-0.1px" id="loading-msg">Conectando con el servidor...</p>
   </div>
 
-  <!-- ─── Login ─────────────────────────────────── -->
-  <div id="screen-login" class="screen" style="height:100vh">
-    <div class="login-left hidden md:flex flex-col justify-between px-16 py-12" style="width:48%">
-      <div class="relative z-10">
-        <!-- Logo y Badge de Versión con Acento Oro -->
-        <div class="flex items-center justify-between mb-10">
-          <div class="flex items-center gap-3">
-            <div class="brand-shell" style="background:rgba(255,255,255,0.08);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.18)">
-              <img src="/assets/gravy-logo.png" alt="GRAVY" onerror="this.src='/gravy-Icono.ico'">
-            </div>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="text-2xl font-black tracking-tight" style="color:#FFFFFF">GRAVY</span>
-                <span class="login-gold-badge"><i class="fas fa-crown text-[9px]"></i> Core v2.0 Enterprise</span>
+  <!-- ─── Login Vivo Estilo Aleluya (Aqua + Púrpura) ────────────────── -->
+  <div id="screen-login" class="screen" style="height:100vh;background-color:#FFFFFF">
+    <div class="login-screen-wrap">
+      <!-- Columna Izquierda: Tarjeta Flotante Aqua Vibrante (#2EE6B9) con textos originales -->
+      <div class="login-hero-container hidden md:flex">
+        <div class="login-aqua-card">
+          <!-- Cabecera de Marca Original -->
+          <div class="w-full flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <div class="w-9 h-9 rounded-xl bg-white/90 p-1.5 flex items-center justify-center shadow-sm">
+                <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-6 h-6 object-contain" onerror="this.src='/gravy-Icono.ico'">
               </div>
-              <p class="text-xs font-medium" style="color:rgba(255,255,255,0.7)">Accounting Intelligence Platform</p>
+              <span class="text-xl font-black tracking-tight text-gray-950">GRAVY</span>
             </div>
-          </div>
-        </div>
-
-        <!-- Titular y Descripción -->
-        <h2 class="text-3xl lg:text-4xl font-extrabold leading-tight mb-4" style="color:#FFFFFF;letter-spacing:-0.5px">
-          Gestión contable inteligente a la velocidad de tu negocio
-        </h2>
-        <p style="color:rgba(255,255,255,0.78);font-size:14px;line-height:1.75;max-width:540px" class="mb-8">
-          Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la nube.
-        </p>
-
-        <!-- Bloque de Características Destacadas -->
-        <div class="flex flex-col gap-3 max-w-lg">
-          <div class="login-feature-card">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(129,140,248,0.25);color:#C7D2FE">
-              <i class="fas fa-shield-halved text-sm"></i>
-            </div>
-            <div>
-              <h4 class="text-xs font-bold text-white">Privacidad y Respaldo Local</h4>
-              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Control total de la base de datos de tu empresa sin depender obligatoriamente de internet.</p>
-            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-gray-900 text-xs font-bold tracking-wide" style="background:rgba(0,0,0,0.08)">
+              <span class="w-2 h-2 rounded-full bg-emerald-800"></span>
+              Core v2.0 Enterprise
+            </span>
           </div>
 
-          <div class="login-feature-card">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(192,132,252,0.25);color:#E9D5FF">
-              <i class="fas fa-bolt text-sm"></i>
+          <!-- Titular Original y Descripción Central -->
+          <div class="my-auto py-4">
+            <h2 class="login-aqua-title mb-4">
+              Gestión contable inteligente a la velocidad de tu negocio
+            </h2>
+            <p class="text-sm font-medium leading-relaxed text-gray-800 max-w-lg mx-auto" style="line-height:1.65">
+              Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la nube.
+            </p>
+          </div>
+
+          <!-- Tres Características Originales con Iconos Vivos -->
+          <div class="login-stats-grid">
+            <div class="login-stat-item">
+              <div class="login-stat-icon">🛡️</div>
+              <h4 class="login-stat-title">Privacidad Local</h4>
+              <p class="login-stat-desc">Control total de tu base sin depender de internet</p>
             </div>
-            <div>
-              <h4 class="text-xs font-bold text-white">Ultra-baja Latencia y Concurrencia</h4>
-              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Múltiples contadores, cajeros y auxiliares trabajando en simultáneo sin bloqueos.</p>
+
+            <div class="login-stat-item">
+              <div class="login-stat-icon">⚡</div>
+              <h4 class="login-stat-title">Ultra-baja Latencia</h4>
+              <p class="login-stat-desc">Contadores y auxiliares en simultáneo sin bloqueos</p>
+            </div>
+
+            <div class="login-stat-item">
+              <div class="login-stat-icon">📑</div>
+              <h4 class="login-stat-title">Ecosistema DIAN</h4>
+              <p class="login-stat-desc">Facturación, nómina, doc. soporte y exógena</p>
             </div>
           </div>
 
-          <div class="login-feature-card">
-            <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(165,180,252,0.22);color:#DDD6FE">
-              <i class="fas fa-file-invoice text-sm"></i>
-            </div>
-            <div>
-              <h4 class="text-xs font-bold text-white">Ecosistema DIAN Integrado</h4>
-              <p class="text-[11px]" style="color:rgba(255,255,255,0.68)">Factura electrónica, documento soporte, nómina electrónica y generación de exógena.</p>
-            </div>
+          <!-- Pie de Seguridad Izquierdo Original -->
+          <div class="w-full pt-4 mt-4 border-t flex items-center justify-between text-xs font-semibold text-gray-800" style="border-color:rgba(0,0,0,0.08)">
+            <span class="inline-flex items-center gap-1.5">
+              <i class="fas fa-lock text-[11px]"></i> Cifrado de grado financiero
+            </span>
+            <span>© GRAVY Core</span>
           </div>
         </div>
       </div>
 
-      <!-- Pie de Seguridad Izquierdo -->
-      <div class="relative z-10 pt-6 border-t" style="border-color:rgba(255,255,255,0.12);color:rgba(255,255,255,0.65);font-size:12px">
-        <div class="flex items-center justify-between">
-          <span><i class="fas fa-lock mr-1.5" style="color:#C7D2FE"></i> Cifrado de grado financiero</span>
-          <span>© GRAVY Core</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Panel Derecho / Formulario con Glow Ambiental -->
-    <div class="flex-1 relative flex items-center justify-center p-6 md:p-12 overflow-hidden" style="background:radial-gradient(circle at 50% 50%, rgba(99,102,241,0.06), transparent 70%), #FAF5FF">
-      <!-- Halo ambiental de iluminación -->
-      <div class="login-ambient-glow" aria-hidden="true"></div>
-
-      <div class="login-card anim-slide-up">
-        <!-- Logo en dispositivos móviles -->
-        <div class="flex items-center gap-3 mb-6 md:hidden">
-          <div class="brand-shell sm"><img src="/assets/gravy-logo.png" alt="GRAVY" onerror="this.src='/gravy-Icono.ico'"></div>
-          <div>
-            <h1 class="text-xl font-extrabold" style="color:var(--text-strong)">GRAVY</h1>
-            <p class="text-[10px]" style="color:var(--text-muted)">Plataforma Contable</p>
+      <!-- Columna Derecha: Formulario Limpio Centrado con Textos Originales -->
+      <div class="login-form-container">
+        <div class="login-form-box">
+          <!-- Logo de GRAVY centrado -->
+          <div class="flex flex-col items-center mb-3">
+            <div class="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 p-2 flex items-center justify-center mb-1 shadow-sm">
+              <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-10 h-10 object-contain" onerror="this.src='/gravy-Icono.ico'">
+            </div>
+            <h1 class="text-3xl font-black tracking-tight text-gray-900 lowercase" style="letter-spacing:-1px">gravy</h1>
+            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">Accounting Intelligence Platform</p>
           </div>
-        </div>
 
-        <!-- Saludo dinámico contextual -->
-        <div class="mb-6">
-          <h3 id="login-greeting-title" class="text-2xl font-black tracking-tight" style="color:var(--text-strong)">Acceso al Sistema</h3>
-          <p id="login-greeting-subtitle" class="text-xs mt-1" style="color:var(--text-muted)">Ingresa tus credenciales de usuario para continuar</p>
-        </div>
+          <!-- Mensaje de bienvenida original -->
+          <div class="text-center mb-5">
+            <h3 id="login-greeting-title" class="text-lg font-extrabold text-gray-900">Acceso al Sistema</h3>
+            <p id="login-greeting-subtitle" class="text-xs text-gray-500 mt-1">Ingresa tus credenciales de usuario para continuar</p>
+          </div>
 
-        <!-- Alerta de Error -->
-        <div id="login-error" role="alert" aria-live="assertive" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
-          style="background:#FEF2F2;color:#DC2626;border:1px solid #FCA5A5">
-          <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
-          <span id="login-error-text"></span>
-        </div>
+          <!-- Separador fino con circulito central (como en la imagen de Aleluya) -->
+          <div class="flex items-center gap-3 mb-6">
+            <div class="flex-1 h-px bg-gray-200"></div>
+            <span class="w-2.5 h-2.5 rounded-full border-2 border-gray-300"></span>
+            <div class="flex-1 h-px bg-gray-200"></div>
+          </div>
 
-        <!-- Formulario -->
-        <form id="form-login" onsubmit="event.preventDefault();" novalidate>
-          <div class="form-group mb-4">
-            <label class="form-label" for="login-email">Correo Electrónico o Usuario</label>
-            <div class="relative">
-              <i class="fas fa-envelope absolute left-3.5 top-1/2 -translate-y-1/2"
-                style="color:#94A3B8;font-size:13px" aria-hidden="true"></i>
-              <input id="login-email" type="email" class="form-input" style="padding-left:38px;padding-right:12px;height:44px"
+          <!-- Alerta de Error -->
+          <div id="login-error" role="alert" aria-live="assertive" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
+            style="background:#FDEAEA;color:#EC2D30;border:1px solid #F6BECB">
+            <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
+            <span id="login-error-text"></span>
+          </div>
+
+          <!-- Formulario con Textos Originales -->
+          <form id="form-login" onsubmit="event.preventDefault();" novalidate>
+            <div class="form-group mb-4">
+              <label class="block text-xs font-bold text-gray-800 mb-1.5" for="login-email">
+                Correo Electrónico o Usuario <span class="text-red-500">*</span>
+              </label>
+              <input id="login-email" type="email" class="login-modern-input"
                 placeholder="nombre@empresa.com" autocomplete="username" spellcheck="false" required>
             </div>
-          </div>
 
-          <div class="form-group mb-3">
-            <div class="flex items-center justify-between mb-1.5">
-              <label class="form-label mb-0" for="login-pass">Contraseña</label>
+            <div class="form-group mb-3">
+              <label class="block text-xs font-bold text-gray-800 mb-1.5" for="login-pass">
+                Contraseña <span class="text-red-500">*</span>
+              </label>
+              <div class="relative">
+                <input id="login-pass" type="password" class="login-modern-input" style="padding-right:42px"
+                  placeholder="Tu contraseña de acceso" autocomplete="current-password" required>
+                <button type="button" id="btn-toggle-pass" aria-label="Mostrar u ocultar contraseña"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700 transition-colors"
+                  style="background:none;border:none;cursor:pointer">
+                  <i class="fas fa-eye text-sm" aria-hidden="true"></i>
+                </button>
+              </div>
+              <!-- Indicador dinámico de Bloq Mayús -->
+              <div id="caps-lock-warning" class="caps-lock-pill" role="status">
+                <i class="fas fa-arrow-up-long"></i> Bloq Mayús (Mayúsculas) activado
+              </div>
             </div>
-            <div class="relative">
-              <i class="fas fa-key absolute left-3.5 top-1/2 -translate-y-1/2" style="color:#94A3B8;font-size:13px" aria-hidden="true"></i>
-              <input id="login-pass" type="password" class="form-input" style="padding-left:38px;padding-right:40px;height:44px"
-                placeholder="Tu contraseña de acceso" autocomplete="current-password" required>
-              <button type="button" id="btn-toggle-pass" aria-label="Mostrar u ocultar contraseña"
-                class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                style="background:none;border:none;cursor:pointer">
-                <i class="fas fa-eye" aria-hidden="true"></i>
+
+            <!-- Recordar usuario original -->
+            <div class="flex items-center justify-between my-4 text-xs">
+              <label class="flex items-center gap-2 cursor-pointer select-none font-medium text-gray-600" for="login-remember">
+                <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-gray-300" style="accent-color:#9333EA">
+                <span>Recordar correo en este equipo</span>
+              </label>
+            </div>
+
+            <!-- Botón Píldora Púrpura Vivo Aleluya con Texto Original -->
+            <button id="btn-login" type="submit" class="login-pill-btn w-full flex items-center justify-center gap-2">
+              <i class="fas fa-arrow-right-to-bracket text-xs"></i>
+              <span id="btn-login-label">Iniciar Sesión</span>
+            </button>
+
+            <!-- Enlace de asistencia o soporte original -->
+            <div class="text-center mt-4">
+              <button type="button" id="btn-login-help" class="text-xs font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0" style="color:#9333EA">
+                <i class="fas fa-circle-question mr-1"></i> ¿Problemas para acceder? Mesa de ayuda
               </button>
             </div>
-            <!-- Indicador dinámico de Bloq Mayús -->
-            <div id="caps-lock-warning" class="caps-lock-pill" role="status">
-              <i class="fas fa-arrow-up-long"></i> Bloq Mayús (Mayúsculas) activado
+          </form>
+
+          <!-- Estado de Conexión del Servidor Enriquecido -->
+          <div class="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+            <div class="flex items-center gap-2">
+              <span class="status-pulse-dot" aria-hidden="true"></span>
+              <span class="text-[11px] font-medium" id="login-conn-indicator">Detectando conexión...</span>
             </div>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded border border-gray-200 bg-gray-50" id="login-server-url"></span>
           </div>
-
-          <!-- Recordar usuario -->
-          <div class="flex items-center justify-between my-4 text-xs">
-            <label class="flex items-center gap-2 cursor-pointer select-none text-slate-600 font-medium" for="login-remember">
-              <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" style="accent-color:var(--accent-violet-strong)">
-              <span>Recordar correo en este equipo</span>
-            </label>
-          </div>
-
-          <!-- Botón de Ingreso con atajo de teclado KBD -->
-          <button id="btn-login" type="submit" class="btn btn-primary w-full py-3 text-sm font-bold shadow-md hover:shadow-lg transition-all" style="height:46px;border-radius:12px">
-            <span class="flex items-center justify-between w-full px-1">
-              <span class="flex items-center gap-2"><i class="fas fa-arrow-right-to-bracket" aria-hidden="true"></i> <span id="btn-login-label">Iniciar Sesión</span></span>
-              <kbd class="login-kbd-badge" aria-hidden="true">↵ Enter</kbd>
-            </span>
-          </button>
-
-          <!-- Enlace de asistencia o soporte -->
-          <div class="text-center mt-3.5">
-            <button type="button" id="btn-login-help" class="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium hover:underline bg-transparent border-0 cursor-pointer p-0">
-              <i class="fas fa-circle-question mr-1"></i> ¿Problemas para acceder? Mesa de ayuda
-            </button>
-          </div>
-        </form>
-
-        <!-- Estado de Conexión del Servidor Enriquecido -->
-        <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <div class="flex items-center gap-2">
-            <span class="status-pulse-dot" aria-hidden="true"></span>
-            <span class="text-[11px] font-medium" id="login-conn-indicator">Detectando conexión...</span>
-          </div>
-          <span class="text-[11px] font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200" id="login-server-url"></span>
         </div>
       </div>
     </div>
@@ -1894,6 +2004,9 @@
         <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="logistica">
           <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
         </div>
+        <div class="nav-item" data-page="preliquidaciones" data-label="Preliquidación & Viabilidad" data-module="logistica">
+          <i class="fas fa-calculator"></i><span class="nav-label">Preliquidación & Viabilidad</span>
+        </div>
         <div class="nav-item" data-page="reservas-logistica" data-label="Reservas Importación" data-module="logistica">
           <i class="fas fa-clipboard-check"></i><span class="nav-label">Reservas Importación</span>
         </div>
@@ -2005,23 +2118,34 @@
             <strong>GRAVY</strong>
           </div>
           <h2 class="text-lg font-bold" style="color:var(--text-strong)" id="page-title">Dashboard</h2>
+
+          <!-- Buscador omnidireccional: Solo icono de Lupa (Ctrl + K) -->
+          <button id="btn-omni-search" class="flex items-center justify-center cursor-pointer ml-1 sm:ml-2 rounded-lg transition-all flex-shrink-0 hover:bg-indigo-50" style="width:34px; height:34px; background:var(--bg-panel, #F5F7FA); border:1px solid var(--border-soft)" title="Búsqueda rápida en GRAVY (Ctrl + K)" aria-label="Búsqueda rápida (Ctrl + K)">
+            <i class="fas fa-magnifying-glass" style="font-size:13px; color:var(--accent-lavender, #7C66F0)"></i>
+          </button>
         </div>
-        <div class="flex items-center gap-4">
-          <select id="global-branch-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all" style="display: none;">
+        <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          <select id="global-branch-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[125px] sm:max-w-[145px] truncate" style="display: none; height:32px">
             <option value="TODAS">TODAS LAS SUCURSALES</option>
           </select>
-          <select id="global-cost-center-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all" style="display: none;">
+          <select id="global-cost-center-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[130px] sm:max-w-[155px] truncate" style="display: none; height:32px">
             <option value="TODOS">TODOS LOS CENTROS DE COSTO</option>
           </select>
-          <span class="text-xs font-medium hidden sm:block" style="color:#6B7280" id="topbar-company"></span>
-          <span class="text-xs hidden sm:block" style="color:#9CA3AF" id="topbar-date"></span>
+          <!-- Indicador de Empresa Activa (Estilo Alegra) -->
+          <div class="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold max-w-[140px] sm:max-w-[160px] flex-shrink-0" style="background:var(--accent-lavender-subtle, #F1EFFE); border:1px solid #DCD6FA; color:var(--accent-lavender, #7C66F0); height:30px" title="Empresa Activa">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
+            <span id="topbar-company" class="truncate"></span>
+          </div>
+
+          <span class="text-xs hidden 2xl:block truncate max-w-[150px]" style="color:#9CA3AF" id="topbar-date"></span>
+
           <!-- Campana de Notificaciones -->
-          <div style="position:relative" id="notif-container">
-            <button id="btn-notifications" style="background:none; border:1px solid var(--border-soft); color:var(--text-muted); cursor:pointer; font-size:14px; position:relative; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; transition:all 0.2s" aria-label="Notificaciones">
+          <div style="position:relative; flex-shrink:0" id="notif-container">
+            <button id="btn-notifications" style="background:none; border:1px solid var(--border-soft); color:var(--text-muted); cursor:pointer; font-size:14px; position:relative; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; transition:all 0.2s" aria-label="Notificaciones">
               <i class="fas fa-bell"></i>
               <span id="notif-badge" style="display:none; position:absolute; top:4px; right:4px; width:7px; height:7px; border-radius:50%; background:#EF4444"></span>
             </button>
-            <div id="notif-dropdown" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; width:300px; background:#fff; border-radius:14px; border:1px solid var(--border-soft); box-shadow:0 10px 30px rgba(12,21,48,0.12); z-index:100; padding:12px; animation:fadeIn 0.2s ease">
+            <div id="notif-dropdown" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; width:290px; background:#fff; border-radius:14px; border:1px solid var(--border-soft); box-shadow:0 10px 30px rgba(12,21,48,0.12); z-index:100; padding:12px; animation:fadeIn 0.2s ease">
               <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-soft); padding-bottom:8px; margin-bottom:8px">
                 <strong style="font-size:12px; color:var(--text-strong)">Vencimientos Próximos</strong>
                 <span style="font-size:10px; color:#EF4444; font-weight:700" id="notif-critical-count">0 Alertas</span>
@@ -2033,13 +2157,13 @@
           </div>
 
           <!-- Indicador de conexión -->
-          <div class="flex items-center gap-2 text-xs font-medium" id="conn-indicator">
+          <div class="hidden xl:flex items-center gap-1.5 text-xs font-medium flex-shrink-0" id="conn-indicator">
             <div class="w-2 h-2 rounded-full bg-green-400"></div>
             <span style="color:#6B7280">En línea</span>
           </div>
 
           <!-- Menú de Usuario Dropdown -->
-          <div class="user-menu-container" id="user-menu-container">
+          <div class="user-menu-container flex-shrink-0" id="user-menu-container">
             <button id="btn-user-menu" class="user-menu-btn" aria-label="Menú de usuario">
               <div class="user-menu-avatar" id="navbar-avatar">U</div>
               <span class="user-menu-name hidden md:inline" id="navbar-username">Usuario</span>
@@ -2138,6 +2262,42 @@
       <div style="display:flex;justify-content:flex-end;gap:10px;padding:12px 20px;border-top:1px solid #F0F0F0">
         <button class="btn btn-outline" onclick="closeLineComment()">Cancelar</button>
         <button class="btn btn-primary" onclick="saveLineComment()"><i class="fas fa-check mr-1"></i>Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Paleta de Comandos Global (Ctrl + K) ────────────────────────── -->
+  <div id="omni-command-palette" style="display:none;position:fixed;inset:0;background:rgba(25,33,61,0.4);backdrop-filter:blur(6px);z-index:290;align-items:flex-start;justify-content:center;padding-top:10vh">
+    <div style="width:580px;max-width:92vw;background:#fff;border-radius:16px;box-shadow:0 20px 40px -8px rgba(25,33,61,0.2);overflow:hidden;border:1px solid var(--border-soft);animation:fadeIn .2s ease">
+      <div style="display:flex;align-items:center;padding:14px 18px;gap:12px;border-bottom:1px solid var(--border-soft)">
+        <i class="fas fa-magnifying-glass" style="color:var(--accent-lavender, #7C66F0);font-size:15px"></i>
+        <input type="text" id="omni-command-input" placeholder="Buscar módulos, terceros, facturas o cuentas (ej: ventas, compras, nomina)..." style="flex:1;border:none;outline:none;font-size:14px;color:var(--text-strong);font-family:inherit" />
+        <span style="font-size:10px;font-family:monospace;background:#EAEFF5;padding:2px 6px;border-radius:4px;color:#5E6D82">ESC</span>
+      </div>
+      <div id="omni-command-results" style="padding:8px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Slide-Over Drawer Global (Estilo Alegra) ────────────────── -->
+  <div id="global-drawer-backdrop" class="drawer-backdrop">
+    <div class="drawer-container">
+      <div style="padding:18px 24px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;background:#FFFFFF">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:32px;height:32px;border-radius:8px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender, #7C66F0);display:flex;align-items:center;justify-content:center;font-size:14px">
+            <i id="drawer-icon" class="fas fa-bolt"></i>
+          </div>
+          <h3 id="drawer-title" style="margin:0;font-size:16px;font-weight:700;color:var(--text-strong)">Acción Rápida</h3>
+        </div>
+        <button id="btn-close-drawer" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background 0.15s">
+          <i class="fas fa-xmark"></i>
+        </button>
+      </div>
+      <div id="drawer-body" style="flex:1;overflow-y:auto;padding:24px;background:#F8FAFD">
+        <!-- Contenido dinámico -->
+      </div>
+      <div id="drawer-footer" style="padding:14px 24px;border-top:1px solid var(--border-soft);background:#FFFFFF;display:flex;justify-content:flex-end;gap:10px">
+        <button id="btn-drawer-cancel" class="btn btn-secondary" style="font-size:13px">Cerrar</button>
       </div>
     </div>
   </div>

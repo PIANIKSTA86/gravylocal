@@ -9854,15 +9854,16 @@ function _diffDays(fromStr: string, toStr: string): number {
   return Math.max(0, Math.round((b.getTime() - a.getTime()) / msDay));
 }
 
-/** Convierte días calendario a días de 30 (comerciales) */
+/** Convierte días calendario a días de 30 (comerciales) con extremos inclusivos (+1 según CST Colombia) */
 function _toDays30(fromStr: string, toStr: string): number {
   if (!fromStr || !toStr) return 0;
+  if (fromStr > toStr) return 0;
   const [ay, am, ad] = fromStr.split('-').map(Number);
   const [by, bm, bd] = toStr.split('-').map(Number);
-  // Fórmula comercial 30/360 estándar colombiana
+  // Fórmula comercial 30/360 estándar colombiana: incluye tanto el día inicial como el final
   const d1 = Math.min(ad, 30);
   const d2 = bd === 31 ? 30 : bd;
-  return Math.max(0, (by - ay) * 360 + (bm - am) * 30 + (d2 - d1));
+  return Math.max(0, (by - ay) * 360 + (bm - am) * 30 + (d2 - d1) + 1);
 }
 
 function _yyyymmdd(d: Date): string {
@@ -9901,15 +9902,17 @@ function calcularLiquidacionDefinitiva(params: {
   extra_deductions: number;
   include_indemnity: boolean;
   vacation_days_pending: number;
+  transport_allowance?: number;
 }) {
   const {
     hire_date, settlement_date, basic_salary, apply_transport, smmlv,
     contract_type, pending_salary_days, extra_deductions,
-    include_indemnity, vacation_days_pending
+    include_indemnity, vacation_days_pending,
+    transport_allowance = AUX_TRANSPORTE_2026,
   } = params;
 
   const r2 = round2;
-  const transport = (apply_transport && basic_salary <= smmlv * 2) ? AUX_TRANSPORTE_2026 : 0;
+  const transport = (apply_transport && basic_salary <= smmlv * 2) ? transport_allowance : 0;
   const basePrest = r2(basic_salary + transport);                            // Base prestaciones Art. 7 Ley 1/1963
   const semStart = _semesterStart(settlement_date);
   const yearStart = settlement_date.slice(0, 4) + '-01-01';
@@ -9925,7 +9928,8 @@ function calcularLiquidacionDefinitiva(params: {
   const cesantias = r2((basePrest * daysCesantias) / 360);
   const interesesCes = r2((cesantias * daysCesantias * 0.12) / 360);
   const prima = r2((basePrest * daysPrima) / 360);
-  const vacaciones = r2((basic_salary * daysVacaciones) / 720);             // Art. 186 CST
+  // Compensación de vacaciones en dinero: Salario diario ordinario × días de vacaciones pendientes (Art. 186/192 CST, sin aux. transporte)
+  const vacaciones = r2((basic_salary / 30) * daysVacaciones);
 
   // ─── Salario días pendientes del mes ─────────────────────────────────
   const pendingSalary = r2((basic_salary / 30) * pending_salary_days);
@@ -10293,7 +10297,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       `<option value="${esc(t.id)}" ${defaultTxType?.id === t.id ? 'selected' : ''}>${esc(t.code)} — ${esc(t.name)}</option>`
     ).join('');
 
-    const smmlv = config.company_rules?.smmlv || SMMLV_2026;
+    const smmlv = Number(config.company_rules?.smmlv || SMMLV_2026);
+    const transportAllowance = Number(config.company_rules?.transport_allowance ?? AUX_TRANSPORTE_2026);
     const preselectedId = (window as any)._pendingSettlementEmployeeId || '';
     (window as any)._pendingSettlementEmployeeId = null;
 
@@ -10361,17 +10366,39 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               </select>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Días de salario pendientes</label>
-                <input type="number" id="sld-pending-days" class="w-full form-input text-sm" value="0" min="0" max="30" />
-                <span class="text-xs text-gray-400">Días laborados del mes no pagados</span>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Días de salario pendientes del mes</label>
+              <input type="number" id="sld-pending-days" class="w-full form-input text-sm" value="0" min="0" max="30" />
+              <span class="text-xs text-gray-400">Días laborados del mes en curso no liquidados previamente</span>
+            </div>
+
+            <!-- Bloque interactivo de Vacaciones (Art. 186 CST) -->
+            <div class="p-3.5 rounded-xl border border-sky-200 bg-sky-50/60 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-sky-950 flex items-center gap-1.5">
+                  <i class="fas fa-umbrella-beach text-sky-600"></i>Cálculo Semiautomático de Vacaciones (Art. 186 CST)
+                </span>
+                <span id="sld-vac-earned-badge" class="badge" style="background:#E0F2FE;color:#0369A1;font-size:10px;font-weight:700">
+                  0 días causados
+                </span>
               </div>
-              <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1">Días vac. pendientes a compensar</label>
-                <input type="number" id="sld-vac-days" class="w-full form-input text-sm" value="0" min="0" />
-                <span class="text-xs text-gray-400">0 = cálculo proporcional automático</span>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">Días ya disfrutados / pagados</label>
+                  <input type="number" id="sld-vac-taken" class="w-full form-input text-sm bg-white" value="0" min="0" step="0.5" />
+                  <span class="text-xs text-gray-400">Gozados en el contrato</span>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-blue-900 mb-1">Días pendientes a liquidar *</label>
+                  <input type="number" id="sld-vac-days" class="w-full form-input text-sm font-bold text-blue-900 bg-white" value="0" min="0" step="0.01" />
+                  <span class="text-xs text-gray-400">Días netos a compensar</span>
+                </div>
               </div>
+
+              <p id="sld-vac-hint" class="text-xs text-sky-900 leading-tight">
+                Selecciona un empleado para calcular los días causados según el tiempo laborado.
+              </p>
             </div>
 
             <div>
@@ -10430,7 +10457,41 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
     const reasonSelect = document.getElementById('sld-reason') as HTMLSelectElement;
     const indemnityCheck = document.getElementById('sld-include-indemnity') as HTMLInputElement;
 
-    const loadEmployeeData = () => {
+    const updateVacationCalculations = async (resetTakenFromDb = false) => {
+      const empId = empSelect.value;
+      const hireDate = hireDateInput.value;
+      const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement)?.value;
+      const vacTakenInput = document.getElementById('sld-vac-taken') as HTMLInputElement;
+      const vacDaysInput = document.getElementById('sld-vac-days') as HTMLInputElement;
+      const badgeEl = document.getElementById('sld-vac-earned-badge');
+      const hintEl = document.getElementById('sld-vac-hint');
+      if (!empId || !hireDate || !settlementDate) return;
+
+      const totalDaysWorked = _toDays30(hireDate, settlementDate);
+      const earnedDays = Math.max(0, Math.round(((totalDaysWorked * 15) / 360) * 100) / 100);
+
+      let takenDays = Number(vacTakenInput?.value || 0);
+
+      if (resetTakenFromDb) {
+        try {
+          const novelties = await pb.listAll('payroll_novelties', {
+            filter: `employee_id="${pb.escapeFilterValue(empId)}" && (type="VACACIONES" || type="VACACIONES_RETIRO")`,
+          });
+          const dbTaken = novelties.reduce((sum: number, n: any) => sum + (Number(n.qty) || 0), 0);
+          takenDays = dbTaken;
+          if (vacTakenInput) vacTakenInput.value = String(takenDays);
+        } catch (_) {}
+      }
+
+      const pendingDays = Math.max(0, Math.round((earnedDays - takenDays) * 100) / 100);
+      if (vacDaysInput) vacDaysInput.value = String(pendingDays);
+      if (badgeEl) badgeEl.textContent = `${earnedDays} días causados`;
+      if (hintEl) {
+        hintEl.innerHTML = `Tiempo laborado: <strong>${totalDaysWorked} días</strong> | Causados por ley: <strong>${earnedDays} d</strong> − Ya disfrutados: <strong>${takenDays} d</strong> = <strong>${pendingDays} d</strong> a liquidar.`;
+      }
+    };
+
+    const loadEmployeeData = async () => {
       const empId = empSelect.value;
       if (!empId) return;
       const emp = employees.find((e: any) => e.id === empId);
@@ -10442,10 +10503,28 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
       if (emp?.hire_date) hireDateInput.value = emp.hire_date;
       const rule = getEmployeePayrollRule(config, empId);
       if (rule.contract_type) reasonSelect.value = rule.contract_type === 'TERMINADO_FIJO' ? 'VENCIMIENTO_CONTRATO' : 'RENUNCIA_VOLUNTARIA';
+      await updateVacationCalculations(true);
     };
 
     if (preselectedId) loadEmployeeData();
     empSelect.addEventListener('change', loadEmployeeData);
+    hireDateInput.addEventListener('change', () => updateVacationCalculations(false));
+    document.getElementById('sld-settlement-date')?.addEventListener('change', () => updateVacationCalculations(false));
+    document.getElementById('sld-vac-taken')?.addEventListener('input', () => {
+      const hireDate = hireDateInput.value;
+      const settlementDate = (document.getElementById('sld-settlement-date') as HTMLInputElement)?.value;
+      const vacTakenInput = document.getElementById('sld-vac-taken') as HTMLInputElement;
+      const vacDaysInput = document.getElementById('sld-vac-days') as HTMLInputElement;
+      const hintEl = document.getElementById('sld-vac-hint');
+      const totalDaysWorked = _toDays30(hireDate, settlementDate);
+      const earnedDays = Math.max(0, Math.round(((totalDaysWorked * 15) / 360) * 100) / 100);
+      const takenDays = Number(vacTakenInput?.value || 0);
+      const pendingDays = Math.max(0, Math.round((earnedDays - takenDays) * 100) / 100);
+      if (vacDaysInput) vacDaysInput.value = String(pendingDays);
+      if (hintEl) {
+        hintEl.innerHTML = `Tiempo laborado: <strong>${totalDaysWorked} días</strong> | Causados por ley: <strong>${earnedDays} d</strong> − Ya disfrutados: <strong>${takenDays} d</strong> = <strong>${pendingDays} d</strong> a liquidar.`;
+      }
+    });
 
     // Mostrar/ocultar indemnización
     reasonSelect.addEventListener('change', () => {
@@ -10495,6 +10574,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
           smmlv, contract_type: rule.contract_type || 'INDEFINIDO',
           pending_salary_days: pendingDays, extra_deductions: extraDed,
           include_indemnity: includeInd, vacation_days_pending: vacDays,
+          transport_allowance: transportAllowance,
         });
 
         const fiscal = settlementDate.slice(0, 4);
@@ -10804,7 +10884,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               total_deductions: calc.totalDeductions,
               net_pay: calc.netPay,
               provisions_applied: prov,
-              notes: `Motivo: ${reason}. Días vacaciones: ${vacDays}. Doc cruce: LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`,
+              notes: `Motivo: ${reason}. Días vac liquidados: ${vacDays} (disfrutados prev: ${Number((document.getElementById('sld-vac-taken') as HTMLInputElement)?.value || 0)}). Doc cruce: LIQ-${settlementDate.replace(/-/g, '')}-EMP-${empDoc}`,
               status: 'approved',
               tx_id: tx.id,
             });

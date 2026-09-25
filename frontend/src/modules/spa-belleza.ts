@@ -34,14 +34,18 @@ function getServicePriceDisplay(service: any): number {
 
 function calculateAge(birthdateStr: string): string {
   if (!birthdateStr) return '—';
-  const birthDate = new Date(birthdateStr);
-  if (isNaN(birthDate.getTime())) return birthdateStr;
+  const parts = String(birthdateStr).split('-');
+  if (parts.length !== 3) return birthdateStr;
+  const bYear = parseInt(parts[0], 10);
+  const bMonth = parseInt(parts[1], 10) - 1;
+  const bDay = parseInt(parts[2], 10);
+  if (isNaN(bYear) || isNaN(bMonth) || isNaN(bDay)) return birthdateStr;
+
   const today = new Date();
-  
-  let years = today.getFullYear() - birthDate.getFullYear();
-  let months = today.getMonth() - birthDate.getMonth();
-  let days = today.getDate() - birthDate.getDate();
-  
+  let years = today.getFullYear() - bYear;
+  let months = today.getMonth() - bMonth;
+  let days = today.getDate() - bDay;
+
   if (days < 0) {
     months--;
     const prevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
@@ -51,12 +55,100 @@ function calculateAge(birthdateStr: string): string {
     years--;
     months += 12;
   }
-  
-  const parts = [];
-  if (years > 0) parts.push(`${years} ${years === 1 ? 'año' : 'años'}`);
-  if (months > 0) parts.push(`${months} ${months === 1 ? 'mes' : 'meses'}`);
-  if (years === 0 && months === 0 && days >= 0) parts.push(`${days} ${days === 1 ? 'día' : 'días'}`);
-  return parts.join(', ') || '0 días';
+
+  const out = [];
+  if (years > 0) out.push(`${years} ${years === 1 ? 'año' : 'años'}`);
+  if (months > 0) out.push(`${months} ${months === 1 ? 'mes' : 'meses'}`);
+  if (years === 0 && months === 0 && days >= 0) out.push(`${days} ${days === 1 ? 'día' : 'días'}`);
+  return out.join(', ') || '0 días';
+}
+
+/** Modal ágil para crear un cliente (tercero) sin salir del módulo SPA */
+function openQuickClientModal(onSaved: (client: any) => void) {
+  const formHtml = `
+    <div class="space-y-3 text-xs" style="color:#374151">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group">
+          <label class="form-label font-bold">Tipo Documento</label>
+          <select id="quickc-doc-type" class="form-input text-xs">
+            <option value="CC" selected>Cédula de Ciudadanía (CC)</option>
+            <option value="CE">Cédula de Extranjería (CE)</option>
+            <option value="NIT">NIT</option>
+            <option value="PP">Pasaporte</option>
+            <option value="TI">Tarjeta de Identidad</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold">Número de Documento <span style="color:#EF4444">*</span></label>
+          <input id="quickc-doc-num" class="form-input text-xs" placeholder="Ej: 1020304050" required>
+        </div>
+        <div class="form-group md:col-span-2">
+          <label class="form-label font-bold">Nombre Completo <span style="color:#EF4444">*</span></label>
+          <input id="quickc-name" class="form-input text-xs" placeholder="Ej: Laura Sofía Gómez" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold">Teléfono Celular / WhatsApp</label>
+          <input id="quickc-phone" class="form-input text-xs" placeholder="Ej: 3101234567">
+        </div>
+        <div class="form-group">
+          <label class="form-label font-bold">Correo Electrónico</label>
+          <input id="quickc-email" type="email" class="form-input text-xs" placeholder="Ej: cliente@correo.com">
+        </div>
+        <div class="form-group md:col-span-2">
+          <label class="form-label font-bold">Dirección</label>
+          <input id="quickc-address" class="form-input text-xs" placeholder="Ej: Calle 10 # 40-20">
+        </div>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary btn-sm" id="btn-save-quick-client" style="background:#8B5CF6; border-color:#8B5CF6">
+      <i class="fas fa-user-plus mr-1"></i> Guardar y Seleccionar
+    </button>
+  `;
+
+  (window as any).openModal('Registrar Nuevo Cliente', formHtml, footer, false);
+
+  document.getElementById('btn-save-quick-client')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-quick-client') as HTMLButtonElement;
+    const docType = (document.getElementById('quickc-doc-type') as HTMLSelectElement).value;
+    const docNum = (document.getElementById('quickc-doc-num') as HTMLInputElement).value.trim();
+    const name = (document.getElementById('quickc-name') as HTMLInputElement).value.trim();
+    const phone = (document.getElementById('quickc-phone') as HTMLInputElement).value.trim();
+    const email = (document.getElementById('quickc-email') as HTMLInputElement).value.trim().toLowerCase();
+    const address = (document.getElementById('quickc-address') as HTMLInputElement).value.trim();
+
+    if (!docNum || !name) {
+      (window as any).showToast('Documento y Nombre son campos requeridos.', 'warning');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...`; }
+
+    try {
+      const payload: any = {
+        type: 'CLIENTE',
+        doc_type: docType,
+        doc_number: docNum,
+        name: name,
+        phone: phone,
+        email: email,
+        address: address,
+        active: true
+      };
+
+      const newRecord = await (window as any).pb.create('third_parties', payload);
+      (window as any).showToast('Cliente creado exitosamente.', 'success');
+      (window as any).closeModal();
+      onSaved(newRecord);
+    } catch (err: any) {
+      (window as any).showToast('Error creando cliente: ' + (err.message || err), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-user-plus mr-1"></i> Guardar y Seleccionar`; }
+    }
+  });
 }
 
 // ── HELPER AUTOCOMPLETE DINÁMICO (TECLADO + MOUSE) ───────────────────────────
@@ -215,6 +307,9 @@ export async function renderSpaBelleza(container: HTMLElement) {
       </div>
 
       <div class="flex items-center gap-2">
+        <a href="/citas.html" target="_blank" class="btn btn-outline btn-sm text-purple-700 font-bold border-purple-300 hover:bg-purple-50" title="Abrir página web pública de agendamiento de citas">
+          <i class="fas fa-globe text-purple-600"></i> Portal Citas Online <i class="fas fa-up-right-from-square text-[10px] ml-0.5"></i>
+        </a>
         <button id="btn-new-beauty-client-main" class="btn btn-outline btn-sm">
           <i class="fas fa-user-plus text-purple-600"></i> Nueva Ficha Estética
         </button>
@@ -236,6 +331,9 @@ export async function renderSpaBelleza(container: HTMLElement) {
         <button id="tab-btn-beauty-reports" class="pb-3 border-b-2 text-gray-500 border-transparent hover:text-gray-700 flex items-center gap-2 cursor-pointer bg-transparent border-none">
           <i class="fas fa-chart-line"></i> Reportes y Métricas
         </button>
+        <button id="tab-btn-beauty-config" class="pb-3 border-b-2 text-gray-500 border-transparent hover:text-gray-700 flex items-center gap-2 cursor-pointer bg-transparent border-none">
+          <i class="fas fa-sliders text-purple-500"></i> Portal Citas & Servicios Online
+        </button>
       </nav>
     </div>
 
@@ -243,22 +341,29 @@ export async function renderSpaBelleza(container: HTMLElement) {
     <div id="beauty-sec-agenda" class="spa-tab-sec block"></div>
     <div id="beauty-sec-clients" class="spa-tab-sec hidden"></div>
     <div id="beauty-sec-reports" class="spa-tab-sec hidden"></div>
+    <div id="beauty-sec-config" class="spa-tab-sec hidden"></div>
   `;
 
   const tabAgenda = document.getElementById('tab-btn-beauty-agenda') as HTMLButtonElement;
   const tabClients = document.getElementById('tab-btn-beauty-clients') as HTMLButtonElement;
   const tabReports = document.getElementById('tab-btn-beauty-reports') as HTMLButtonElement;
+  const tabConfig = document.getElementById('tab-btn-beauty-config') as HTMLButtonElement;
 
   const secAgenda = document.getElementById('beauty-sec-agenda') as HTMLElement;
   const secClients = document.getElementById('beauty-sec-clients') as HTMLElement;
   const secReports = document.getElementById('beauty-sec-reports') as HTMLElement;
+  const secConfig = document.getElementById('beauty-sec-config') as HTMLElement;
 
   const switchTab = (activeTab: HTMLButtonElement, activeSec: HTMLElement) => {
-    [tabAgenda, tabClients, tabReports].forEach(t => {
+    [tabAgenda, tabClients, tabReports, tabConfig].forEach(t => {
+      if (!t) return;
       t.classList.remove('text-purple-600', 'border-purple-600');
       t.classList.add('text-gray-500', 'border-transparent');
     });
-    [secAgenda, secClients, secReports].forEach(s => s.classList.add('hidden'));
+    [secAgenda, secClients, secReports, secConfig].forEach(s => {
+      if (!s) return;
+      s.classList.add('hidden');
+    });
 
     activeTab.classList.remove('text-gray-500', 'border-transparent');
     activeTab.classList.add('text-purple-600', 'border-purple-600');
@@ -268,6 +373,7 @@ export async function renderSpaBelleza(container: HTMLElement) {
   tabAgenda.addEventListener('click', () => { switchTab(tabAgenda, secAgenda); renderBeautyAgenda(secAgenda); });
   tabClients.addEventListener('click', () => { switchTab(tabClients, secClients); renderBeautyClients(secClients); });
   tabReports.addEventListener('click', () => { switchTab(tabReports, secReports); renderBeautyReports(secReports); });
+  tabConfig.addEventListener('click', () => { switchTab(tabConfig, secConfig); renderBeautyConfig(secConfig); });
 
   document.getElementById('btn-new-beauty-client-main')?.addEventListener('click', () => {
     openBeautyClientForm(null, () => {
@@ -394,11 +500,12 @@ async function renderBeautyAgenda(container: HTMLElement) {
                 </div>
                 <div>
                   <h4 class="font-extrabold text-sm text-gray-900 flex items-center gap-1.5 cursor-pointer hover:text-purple-600" 
-                      onclick="${spaClient?.id ? `window.viewBeautyClientDetail('${spaClient.id}')` : ''}">
+                      onclick="${spaClient?.id ? `window.viewBeautyClientDetail('${spaClient.id}')` : (clientObj?.id ? `window.createOrOpenSpaClientFromThirdParty('${clientObj.id}')` : '')}"
+                      title="Ver o crear expediente estético">
                     ${(window as any).esc(clientName)}
                   </h4>
                   <p class="text-[11px] text-gray-500">
-                    CC/NIT: <strong>${(window as any).esc(clientDoc)}</strong> ${spaClient?.skin_type ? `— Piel: <strong>${spaClient.skin_type}</strong>` : ''}
+                    CC/NIT: <strong>${(window as any).esc(clientDoc)}</strong> ${spaClient?.skin_type ? `— Piel: <strong class="text-purple-700">${spaClient.skin_type}</strong>` : ''}
                   </p>
                 </div>
               </div>
@@ -413,7 +520,7 @@ async function renderBeautyAgenda(container: HTMLElement) {
               <div class="space-y-1.5 text-xs text-gray-600 border-t pt-2.5 mb-3" style="border-color:#F3F4F6">
                 <div class="flex justify-between"><span class="text-gray-400">Tratamiento:</span><span class="font-bold text-gray-800">${(window as any).esc(service?.name || '—')}</span></div>
                 <div class="flex justify-between"><span class="text-gray-400">Especialista:</span><span class="font-semibold">${(window as any).esc(stylist?.name || '—')}</span></div>
-                <div class="flex justify-between"><span class="text-gray-400">Valor:</span><span class="font-bold text-purple-700">${(window as any).fmt(priceVal)}</span></div>
+                <div class="flex justify-between"><span class="text-gray-400">Valor Estimado:</span><span class="font-bold text-purple-700">${(window as any).fmt(priceVal)}</span></div>
               </div>
             </div>
 
@@ -424,20 +531,34 @@ async function renderBeautyAgenda(container: HTMLElement) {
                 </button>
               ` : ''}
               ${appt.status === 'in_progress' ? `
-                <button class="btn btn-success btn-sm flex-1 text-xs" onclick="window.updateBeautyApptStatus('${appt.id}', 'completed')">
+                <button class="btn btn-success btn-sm flex-1 text-xs" style="background:#059669; border-color:#059669" onclick="window.updateBeautyApptStatus('${appt.id}', 'completed')">
                   <i class="fas fa-check mr-1"></i> Finalizar
+                </button>
+              ` : ''}
+              ${(appt.status === 'in_progress' || appt.status === 'completed') && salesOrder?.status === 'pending' ? `
+                <button class="btn btn-sm text-xs font-bold" style="background:#059669; color:#fff; border:none" onclick="window.payBeautyApptInPos('${appt.id}')" title="Cobrar cita inmediatamente en Punto de Venta POS">
+                  <i class="fas fa-cash-register mr-1"></i> Cobrar en POS
                 </button>
               ` : ''}
               <button class="btn btn-outline btn-sm" onclick="window.editBeautyApptRecord('${appt.id}')" title="Editar cita">
                 <i class="fas fa-pen"></i>
               </button>
+              ${spaClient?.id ? `
+                <button class="btn btn-outline btn-sm text-purple-700" onclick="window.viewBeautyClientDetail('${spaClient.id}')" title="Ver Expediente Estético">
+                  <i class="fas fa-id-card"></i>
+                </button>
+              ` : (clientObj?.id ? `
+                <button class="btn btn-outline btn-sm text-purple-700" onclick="window.createOrOpenSpaClientFromThirdParty('${clientObj.id}')" title="Crear Ficha Estética">
+                  <i class="fas fa-plus-circle"></i> Ficha
+                </button>
+              ` : '')}
               ${salesOrder?.status === 'pending' ? `
                 <button class="btn btn-outline btn-sm text-purple-700" onclick="window.location.hash='#pedidos'" title="Ver pedido contable">
-                  <i class="fas fa-receipt mr-1"></i> Pedido
+                  <i class="fas fa-receipt"></i>
                 </button>
               ` : ''}
               ${appt.status !== 'cancelled' ? `
-                <button class="btn btn-outline btn-sm text-red-600" onclick="window.updateBeautyApptStatus('${appt.id}', 'cancelled')" title="Cancelar cita">
+                <button class="btn btn-outline btn-sm text-red-600" onclick="window.updateBeautyApptStatus('${appt.id}', 'cancelled')" title="Cancelar cita y anular orden de venta">
                   <i class="fas fa-xmark"></i>
                 </button>
               ` : ''}
@@ -680,7 +801,7 @@ async function renderBeautyClients(container: HTMLElement) {
 };
 
 // ── FORMULARIO: REGISTRAR / EDITAR FICHA ESTÉTICA ─────────────────────────────
-async function openBeautyClientForm(recordId: string | null = null, onDone: any = null) {
+async function openBeautyClientForm(recordId: string | null = null, onDone: any = null, preselectedClientId: string | null = null) {
   let record: any = null;
   const customers = await (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }).catch(() => []);
 
@@ -694,9 +815,14 @@ async function openBeautyClientForm(recordId: string | null = null, onDone: any 
         
         <!-- Cliente Tercero -->
         <div class="form-group relative md:col-span-2">
-          <label class="form-label font-bold">Cliente / Paciente <span style="color:#EF4444">*</span></label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="form-label font-bold mb-0">Cliente / Paciente <span style="color:#EF4444">*</span></label>
+            <button type="button" id="btn-quick-client-in-f" class="text-xs text-purple-600 font-bold hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1">
+              <i class="fas fa-plus-circle"></i> Nuevo Cliente
+            </button>
+          </div>
           <input id="beautyf-client-search" class="form-input" autocomplete="off" placeholder="Buscar por cédula o nombre...">
-          <input id="beautyf-client-id" type="hidden" value="${record?.client_id || ''}">
+          <input id="beautyf-client-id" type="hidden" value="${record?.client_id || preselectedClientId || ''}">
           <div id="beautyf-client-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
         </div>
 
@@ -751,10 +877,19 @@ async function openBeautyClientForm(recordId: string | null = null, onDone: any 
   const clientIdHidden = document.getElementById('beautyf-client-id') as HTMLInputElement;
   const results = document.getElementById('beautyf-client-results') as HTMLElement;
 
-  if (record && record.client_id) {
-    const match = customers.find((c: any) => c.id === record.client_id);
+  const initialCId = record?.client_id || preselectedClientId;
+  if (initialCId) {
+    const match = customers.find((c: any) => c.id === initialCId);
     if (match) search.value = `${match.doc_number || match.nit || ''} - ${match.name}`;
   }
+
+  document.getElementById('btn-quick-client-in-f')?.addEventListener('click', () => {
+    openQuickClientModal((newClient) => {
+      customers.unshift(newClient);
+      clientIdHidden.value = newClient.id;
+      search.value = `${newClient.doc_number || newClient.nit || ''} - ${newClient.name}`;
+    });
+  });
 
   bindAutocomplete({
     searchInput: search,
@@ -869,7 +1004,12 @@ async function openBeautyAppointmentForm(apptId: string | null = null, onDone: a
         
         <!-- Autocomplete Cliente Persona -->
         <div class="form-group relative">
-          <label class="form-label font-bold">Cliente / Paciente <span style="color:#EF4444">*</span></label>
+          <div class="flex items-center justify-between mb-1">
+            <label class="form-label font-bold mb-0">Cliente / Paciente <span style="color:#EF4444">*</span></label>
+            <button type="button" id="btn-quick-client-in-appt" class="text-xs text-purple-600 font-bold hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1">
+              <i class="fas fa-plus-circle"></i> Nuevo Cliente
+            </button>
+          </div>
           <input id="apptf-subj-search" class="form-input" autocomplete="off" placeholder="Escribe para buscar cliente..." value="${(window as any).esc(defaultSubjectText)}">
           <input id="apptf-subj-id" type="hidden" value="${defaultSubjectId}">
           <div id="apptf-subj-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:200px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
@@ -936,6 +1076,14 @@ async function openBeautyAppointmentForm(apptId: string | null = null, onDone: a
   const subjSearch = document.getElementById('apptf-subj-search') as HTMLInputElement;
   const subjIdHidden = document.getElementById('apptf-subj-id') as HTMLInputElement;
   const subjResults = document.getElementById('apptf-subj-results') as HTMLElement;
+
+  document.getElementById('btn-quick-client-in-appt')?.addEventListener('click', () => {
+    openQuickClientModal((newClient) => {
+      thirdParties.unshift(newClient);
+      subjIdHidden.value = newClient.id;
+      subjSearch.value = `${newClient.name} (${newClient.doc_number || newClient.nit || 'CC/NIT'})`;
+    });
+  });
 
   bindAutocomplete({
     searchInput: subjSearch,
@@ -1137,9 +1285,76 @@ async function openBeautyAppointmentForm(apptId: string | null = null, onDone: a
   });
 };
 
+/** Cobrar cita directamente en el Terminal POS */
+(window as any).payBeautyApptInPos = async function(apptId: string) {
+  try {
+    const appt = await (window as any).pb.get('appointments', apptId, { expand: 'sales_order_id' }).catch(() => null);
+    if (!appt) throw new Error('Cita no encontrada.');
+
+    const orderId = appt.sales_order_id;
+    if (!orderId) {
+      (window as any).showToast('Esta cita no tiene un pedido de venta contable asociado.', 'warning');
+      return;
+    }
+
+    (window as any).showToast('Cargando pedido en Terminal POS...', 'info');
+    if (typeof (window as any).navigate === 'function') {
+      (window as any).navigate('pos');
+    } else {
+      window.location.hash = '#pos';
+    }
+
+    // Dar tiempo para renderizar el POS si no estaba en pantalla
+    setTimeout(() => {
+      if (typeof (window as any).posApplyOrderToCart === 'function') {
+        (window as any).posApplyOrderToCart(orderId);
+      } else {
+        (window as any).showToast('Abre el menú de pedidos en POS para cargar la orden.', 'info');
+      }
+    }, 320);
+  } catch (err: any) {
+    (window as any).showToast('Error cargando al POS: ' + (err.message || err), 'error');
+  }
+};
+
+/** Permite abrir o crear la ficha estética a partir del tercero */
+(window as any).createOrOpenSpaClientFromThirdParty = async function(thirdPartyId: string) {
+  try {
+    const records = await (window as any).pb.listAll('spa_clients', {
+      filter: `client_id = "${thirdPartyId}"`
+    }).catch(() => []);
+
+    if (records.length > 0) {
+      (window as any).viewBeautyClientDetail(records[0].id);
+    } else {
+      openBeautyClientForm(null, () => {
+        const secClients = document.getElementById('beauty-sec-clients');
+        if (secClients && !secClients.classList.contains('hidden')) renderBeautyClients(secClients);
+        const secAgenda = document.getElementById('beauty-sec-agenda');
+        if (secAgenda && !secAgenda.classList.contains('hidden')) renderBeautyAgenda(secAgenda);
+      }, thirdPartyId);
+    }
+  } catch (err: any) {
+    (window as any).showToast('Error accediendo al expediente: ' + err.message, 'error');
+  }
+};
+
 (window as any).updateBeautyApptStatus = async function(id: string, newStatus: string) {
   try {
+    const appt = await (window as any).pb.get('appointments', id).catch(() => null);
     await (window as any).pb.update('appointments', id, { status: newStatus });
+
+    // Sincronización contable: si se cancela la cita, cancelar el pedido pendiente para evitar órdenes huérfanas
+    if (newStatus === 'cancelled' && appt?.sales_order_id) {
+      try {
+        const so = await (window as any).pb.get('sales_orders', appt.sales_order_id).catch(() => null);
+        if (so && so.status === 'pending') {
+          await (window as any).pb.update('sales_orders', appt.sales_order_id, { status: 'cancelled' });
+          (window as any).showToast('Pedido de venta asociado marcado como cancelado.', 'info');
+        }
+      } catch (_) {}
+    }
+
     (window as any).showToast(`Estado de cita actualizado a: ${APPT_STATUS[newStatus]?.label || newStatus}`, 'success');
     const secAgenda = document.getElementById('beauty-sec-agenda');
     if (secAgenda && !secAgenda.classList.contains('hidden')) renderBeautyAgenda(secAgenda);
@@ -1265,4 +1480,924 @@ async function renderBeautyReports(container: HTMLElement) {
   runReport();
 }
 
+// ── VISTA 4: CONFIGURACIÓN PORTAL CITAS Y SERVICIOS ONLINE ─────────────────────
+
+/** Selector modal de productos existentes en el inventario para el portal del Spa */
+async function openInventoryPickerModal(currentServices: any[], onAdd: (selected: any[]) => void) {
+  const currentIds = new Set(currentServices.map(s => s.id));
+
+  const modalHtml = `
+    <div class="space-y-4 text-xs" style="color:#374151">
+      <div class="p-3.5 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-200 text-purple-950 flex items-start gap-3">
+        <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+          <i class="fas fa-boxes-stacked text-sm"></i>
+        </div>
+        <div>
+          <span class="font-bold text-sm block text-purple-900">Seleccionar del Inventario Existente</span>
+          <span class="text-xs text-gray-600">
+            No tienes que volver a crear productos. Selecciona los ítems que ya tienes en tu inventario para ofrecerlos en el portal web de citas online.
+          </span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="relative flex-1 min-w-[240px]">
+          <i class="fas fa-search absolute left-3 top-2.5 text-gray-400"></i>
+          <input id="inv-picker-search" type="text" class="form-input text-xs pl-8 pr-3 py-1.5 w-full" placeholder="Buscar por código, nombre o categoría en inventario...">
+        </div>
+        <div class="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl" id="inv-filter-type-group">
+          <button type="button" class="inv-type-pill px-2.5 py-1 rounded-lg text-xs font-bold transition bg-white text-purple-700 shadow-sm" data-type="ALL">Todos</button>
+          <button type="button" class="inv-type-pill px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 transition" data-type="SERVICIO">Servicios</button>
+          <button type="button" class="inv-type-pill px-2.5 py-1 rounded-lg text-xs font-medium text-gray-600 hover:text-gray-900 transition" data-type="PRODUCTO">Productos</button>
+        </div>
+        <div class="text-xs text-purple-800 font-bold px-3 py-1.5 rounded-lg bg-purple-100" id="inv-picker-count">
+          0 seleccionados
+        </div>
+      </div>
+
+      <div class="border rounded-xl max-h-[360px] overflow-y-auto" style="border-color:#E5E7EB">
+        <table class="data-table w-full text-xs">
+          <thead class="sticky top-0 bg-gray-50 z-10">
+            <tr>
+              <th class="w-10 text-center">
+                <input type="checkbox" id="inv-picker-check-all" class="w-4 h-4 text-purple-600 rounded cursor-pointer" title="Marcar todos los visibles">
+              </th>
+              <th class="w-24">Código</th>
+              <th>Producto / Tratamiento</th>
+              <th class="w-24">Tipo</th>
+              <th class="w-28 text-right">Precio Base</th>
+              <th class="w-28 text-right">Total IVA</th>
+            </tr>
+          </thead>
+          <tbody id="inv-picker-tbody">
+            <tr>
+              <td colspan="6" class="text-center py-8 text-gray-400">
+                <i class="fas fa-spinner fa-spin mr-1"></i> Consultando catálogo de inventario...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary btn-sm" id="btn-confirm-inv-picker" style="background:#8B5CF6; border-color:#8B5CF6" disabled>
+      <i class="fas fa-plus mr-1"></i> Incorporar Seleccionados al Catálogo
+    </button>
+  `;
+
+  (window as any).openModal('Seleccionar Productos del Inventario', modalHtml, footer, true);
+
+  const tbody = document.getElementById('inv-picker-tbody') as HTMLElement;
+  const countLabel = document.getElementById('inv-picker-count') as HTMLElement;
+  const confirmBtn = document.getElementById('btn-confirm-inv-picker') as HTMLButtonElement;
+  const searchIn = document.getElementById('inv-picker-search') as HTMLInputElement;
+  const checkAll = document.getElementById('inv-picker-check-all') as HTMLInputElement;
+
+  let allInventoryProds: any[] = [];
+  const selectedMap = new Map<string, any>();
+  let currentTypeFilter = 'ALL';
+
+  const updateModalState = () => {
+    const totalSelected = selectedMap.size;
+    if (countLabel) countLabel.textContent = `${totalSelected} seleccionado${totalSelected === 1 ? '' : 's'}`;
+    if (confirmBtn) {
+      confirmBtn.disabled = totalSelected === 0;
+      confirmBtn.innerHTML = totalSelected > 0
+        ? `<i class="fas fa-plus mr-1"></i> Incorporar ${totalSelected} Seleccionado${totalSelected === 1 ? '' : 's'} al Catálogo`
+        : `<i class="fas fa-plus mr-1"></i> Incorporar Seleccionados al Catálogo`;
+    }
+  };
+
+  const getFilteredItems = () => {
+    const q = searchIn ? searchIn.value.trim().toLowerCase() : '';
+    return allInventoryProds.filter(p => {
+      const type = (p.type || 'PRODUCTO').toUpperCase();
+      if (currentTypeFilter === 'SERVICIO' && type !== 'SERVICIO') return false;
+      if (currentTypeFilter === 'PRODUCTO' && (type === 'SERVICIO')) return false;
+
+      if (!q) return true;
+      const name = (p.name || '').toLowerCase();
+      const code = (p.code || '').toLowerCase();
+      const cat = (p.category || '').toLowerCase();
+      return name.includes(q) || code.includes(q) || cat.includes(q);
+    });
+  };
+
+  const renderTableRows = () => {
+    if (!tbody) return;
+    const items = getFilteredItems();
+    if (items.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-gray-400">No se encontraron productos coincidentes en el inventario.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = items.map(p => {
+      const alreadyIn = currentIds.has(p.id);
+      const isChecked = selectedMap.has(p.id);
+      return `
+        <tr class="inv-picker-row ${alreadyIn ? 'opacity-60 bg-gray-50' : 'hover:bg-purple-50/40 cursor-pointer'} ${isChecked ? 'bg-purple-50/50' : ''}" data-pid="${p.id}">
+          <td class="text-center" onclick="event.stopPropagation()">
+            ${alreadyIn ? `
+              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700" title="Ya está en el catálogo del Spa">
+                <i class="fas fa-check"></i> En catálogo
+              </span>
+            ` : `
+              <input type="checkbox" class="inv-chk w-4 h-4 text-purple-600 rounded cursor-pointer" data-pid="${p.id}" ${isChecked ? 'checked' : ''}>
+            `}
+          </td>
+          <td class="font-mono font-bold text-gray-700">${(window as any).esc(p.code || '—')}</td>
+          <td>
+            <div class="font-bold text-gray-900">${(window as any).esc(p.name)}</div>
+            <div class="text-[10px] text-gray-400">${(window as any).esc(p.category || 'General')}</div>
+          </td>
+          <td>
+            <span class="badge text-[10px] ${p.type === 'SERVICIO' ? 'badge-blue' : 'badge-gray'}">${(window as any).esc(p.type || 'PRODUCTO')}</span>
+          </td>
+          <td class="text-right text-gray-600">${(window as any).fmt(p.base_price)}</td>
+          <td class="text-right font-bold text-purple-700">${(window as any).fmt(p.total)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbody.querySelectorAll('.inv-chk').forEach(el => {
+      el.addEventListener('change', (e) => {
+        const pid = (e.target as HTMLInputElement).dataset.pid!;
+        const prod = allInventoryProds.find(x => x.id === pid);
+        if ((e.target as HTMLInputElement).checked) {
+          if (prod) selectedMap.set(pid, prod);
+        } else {
+          selectedMap.delete(pid);
+        }
+        updateModalState();
+      });
+    });
+
+    tbody.querySelectorAll('.inv-picker-row').forEach(rowEl => {
+      rowEl.addEventListener('click', () => {
+        const pid = (rowEl as HTMLElement).dataset.pid;
+        if (!pid || currentIds.has(pid)) return;
+        const chk = rowEl.querySelector('.inv-chk') as HTMLInputElement;
+        if (chk) {
+          chk.checked = !chk.checked;
+          const prod = allInventoryProds.find(x => x.id === pid);
+          if (chk.checked) {
+            if (prod) selectedMap.set(pid, prod);
+            rowEl.classList.add('bg-purple-50/50');
+          } else {
+            selectedMap.delete(pid);
+            rowEl.classList.remove('bg-purple-50/50');
+          }
+          updateModalState();
+        }
+      });
+    });
+  };
+
+  // Carga con fallback PocketBase SDK directo
+  try {
+    let list: any[] = [];
+    try {
+      list = await (window as any).pb.send('/api/gravy/spa-beauty/inventory-products', { method: 'GET' });
+    } catch (_) {
+      // Fallback directo a la colección products
+      const prods = await (window as any).pb.listAll('products', { filter: 'active = true', sort: 'name' });
+      list = (prods || []).map((p: any) => {
+        const bp = p.base_price || 0;
+        const ir = p.iva_rate !== undefined ? p.iva_rate : 19;
+        return {
+          id: p.id,
+          code: p.code || '',
+          name: p.name || '',
+          description: p.description || '',
+          type: p.type || 'PRODUCTO',
+          category: p.categoria || p.category || 'General',
+          base_price: bp,
+          iva_rate: ir,
+          total: Math.round(bp * (1 + ir / 100))
+        };
+      });
+    }
+    allInventoryProds = list;
+    renderTableRows();
+  } catch (err: any) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-red-500">Error cargando inventario: ${(window as any).esc(err.message || err)}</td></tr>`;
+  }
+
+  // Buscador reactivo
+  if (searchIn) {
+    searchIn.addEventListener('input', () => {
+      renderTableRows();
+    });
+  }
+
+  // Filtro por tipo (Pills)
+  const typePills = document.querySelectorAll('.inv-type-pill') as NodeListOf<HTMLButtonElement>;
+  typePills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      typePills.forEach(p => {
+        p.classList.remove('bg-white', 'text-purple-700', 'shadow-sm', 'font-bold');
+        p.classList.add('text-gray-600', 'font-medium');
+      });
+      pill.classList.add('bg-white', 'text-purple-700', 'shadow-sm', 'font-bold');
+      pill.classList.remove('text-gray-600', 'font-medium');
+      currentTypeFilter = pill.dataset.type || 'ALL';
+      renderTableRows();
+    });
+  });
+
+  // Marcar todos los visibles
+  if (checkAll) {
+    checkAll.addEventListener('change', () => {
+      const isAll = checkAll.checked;
+      const visibleItems = getFilteredItems();
+      visibleItems.forEach(p => {
+        if (!currentIds.has(p.id)) {
+          if (isAll) selectedMap.set(p.id, p);
+          else selectedMap.delete(p.id);
+        }
+      });
+      const visibleChks = tbody.querySelectorAll('.inv-chk') as NodeListOf<HTMLInputElement>;
+      visibleChks.forEach(chk => {
+        chk.checked = isAll;
+        const row = chk.closest('tr');
+        if (row) row.classList.toggle('bg-purple-50/50', isAll);
+      });
+      updateModalState();
+    });
+  }
+
+  // Confirmar selección
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => {
+      const selected = Array.from(selectedMap.values());
+      (window as any).closeModal();
+      onAdd(selected);
+    });
+  }
+}
+
+/** Modal ágil opcional para crear un servicio desde cero si no existe en inventario */
+function openNewBeautyServiceModal(onSaved: () => void) {
+  const formHtml = `
+    <div class="space-y-4 text-xs" style="color:#374151">
+      <div class="p-3 bg-purple-50 rounded-xl border border-purple-200 text-purple-900 flex items-start gap-2">
+        <i class="fas fa-magic text-purple-600 mt-0.5"></i>
+        <div>
+          <span class="font-bold">Creación Directa de Servicio Estético:</span>
+          Se creará en el catálogo contable de productos como SERVICIO y quedará configurado inmediatamente para reservas online.
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group md:col-span-2">
+          <label class="form-label font-bold">Nombre del Tratamiento / Servicio <span style="color:#EF4444">*</span></label>
+          <input id="qsvc-name" class="form-input text-xs" placeholder="Ej: Limpieza Facial Profunda con Hidratación" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Código (Opcional)</label>
+          <input id="qsvc-code" class="form-input text-xs" placeholder="Ej: SPA-FACIAL-01 (Dejar vacío para autogenerar)">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Categoría / Etiqueta Web</label>
+          <select id="qsvc-category" class="form-input text-xs">
+            <option value="Facial" selected>Facial</option>
+            <option value="Corporal">Corporal</option>
+            <option value="Masajes">Masajes & Relajación</option>
+            <option value="Pestañas & Cejas">Pestañas & Cejas</option>
+            <option value="Manicura & Pedicura">Manicura & Pedicura</option>
+            <option value="Depilación">Depilación</option>
+            <option value="Estética">Estética General</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Precio Base COP ($) <span style="color:#EF4444">*</span></label>
+          <input id="qsvc-price" type="number" min="0" step="1000" class="form-input text-xs" placeholder="Ej: 80000" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Tarifa IVA (%)</label>
+          <select id="qsvc-iva" class="form-input text-xs">
+            <option value="0">0% (Exento / Excluido)</option>
+            <option value="5">5%</option>
+            <option value="19" selected>19% (Tarifa General)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label font-bold">Duración Estimada Cita</label>
+          <select id="qsvc-duration" class="form-input text-xs">
+            <option value="15">15 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="45">45 minutos</option>
+            <option value="60" selected>60 minutos (1 hora)</option>
+            <option value="75">75 minutos</option>
+            <option value="90">90 minutos (1.5 horas)</option>
+            <option value="120">120 minutos (2 horas)</option>
+          </select>
+        </div>
+
+        <div class="form-group flex items-center pt-5">
+          <label class="flex items-center gap-2 cursor-pointer font-bold select-none text-purple-900">
+            <input id="qsvc-publish" type="checkbox" class="w-4 h-4 text-purple-600 rounded" checked>
+            <span>Publicar en Portal Online</span>
+          </label>
+        </div>
+
+        <div class="form-group md:col-span-2">
+          <label class="form-label font-bold">Descripción Comercial para el Portal</label>
+          <textarea id="qsvc-desc" rows="2" class="form-input text-xs" placeholder="Ej: Tratamiento exfoliante para eliminar impurezas, puntos negros y recuperar la luminosidad cutánea."></textarea>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const footer = `
+    <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancelar</button>
+    <button class="btn btn-primary btn-sm" id="btn-save-quick-svc" style="background:#8B5CF6; border-color:#8B5CF6">
+      <i class="fas fa-check mr-1"></i> Crear y Guardar Servicio
+    </button>
+  `;
+
+  (window as any).openModal('Nuevo Servicio de Estética', formHtml, footer, false);
+
+  document.getElementById('btn-save-quick-svc')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-save-quick-svc') as HTMLButtonElement;
+    const name = (document.getElementById('qsvc-name') as HTMLInputElement).value.trim();
+    const code = (document.getElementById('qsvc-code') as HTMLInputElement).value.trim();
+    const category = (document.getElementById('qsvc-category') as HTMLSelectElement).value;
+    const basePrice = parseFloat((document.getElementById('qsvc-price') as HTMLInputElement).value) || 0;
+    const ivaRate = parseFloat((document.getElementById('qsvc-iva') as HTMLSelectElement).value) || 0;
+    const duration = parseInt((document.getElementById('qsvc-duration') as HTMLSelectElement).value, 10) || 60;
+    const published = (document.getElementById('qsvc-publish') as HTMLInputElement).checked;
+    const description = (document.getElementById('qsvc-desc') as HTMLTextAreaElement).value.trim();
+
+    if (!name) {
+      (window as any).showToast('El nombre del servicio es obligatorio.', 'warning');
+      return;
+    }
+    if (basePrice <= 0) {
+      (window as any).showToast('Por favor ingresa un precio base válido.', 'warning');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Guardando...`; }
+
+    try {
+      await (window as any).pb.send('/api/gravy/spa-beauty/quick-service', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          code,
+          category,
+          base_price: basePrice,
+          iva_rate: ivaRate,
+          duration,
+          published,
+          description
+        })
+      });
+
+      (window as any).showToast(`Servicio "${name}" creado exitosamente.`, 'success');
+      (window as any).closeModal();
+      onSaved();
+    } catch (err: any) {
+      (window as any).showToast('Error al crear servicio: ' + (err.message || err), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-check mr-1"></i> Crear y Guardar Servicio`; }
+    }
+  });
+}
+
+/** Render principal de la pestaña de configuración del Spa y catálogo online */
+async function renderBeautyConfig(container: HTMLElement) {
+  container.innerHTML = `
+    <div class="py-16 text-center text-gray-500">
+      <i class="fas fa-spinner fa-spin text-3xl text-purple-600 mb-3 block"></i>
+      <p class="font-medium text-sm">Cargando configuración del portal y catálogo de servicios...</p>
+    </div>
+  `;
+
+  try {
+    let cfg: any = {};
+    let currentServicesList: any[] = [];
+    try {
+      const res: any = await (window as any).pb.send('/api/gravy/spa-beauty/settings', { method: 'GET' });
+      cfg = res.config || {};
+      currentServicesList = res.all_services || [];
+    } catch (_) {
+      // Fallback directo a PocketBase Collections si el endpoint Goja no ha sido reiniciado
+      try {
+        const sets = await (window as any).pb.listAll('settings', { filter: 'key = "spa_beauty_config_v1"' });
+        if (sets && sets.length > 0 && sets[0].value) {
+          cfg = typeof sets[0].value === 'string' ? JSON.parse(sets[0].value) : sets[0].value;
+        }
+      } catch (e) {
+        cfg = {};
+      }
+      if (!cfg) cfg = {};
+      const svcMap = cfg.services || {};
+      const svcIds = Object.keys(svcMap);
+      const loadedMap = new Map();
+
+      if (svcIds.length > 0) {
+        try {
+          const filterStr = svcIds.map((id: string) => `id = "${id}"`).join(' || ');
+          const prods = await (window as any).pb.listAll('products', { filter: filterStr });
+          (prods || []).forEach((p: any) => {
+            const bp = p.base_price || 0;
+            const ir = p.iva_rate !== undefined ? p.iva_rate : 19;
+            loadedMap.set(p.id, {
+              id: p.id,
+              code: p.code || '',
+              name: p.name || '',
+              description: p.description || '',
+              type: p.type || 'PRODUCTO',
+              category: p.categoria || p.category || 'General',
+              base_price: bp,
+              iva_rate: ir,
+              total: Math.round(bp * (1 + ir / 100))
+            });
+          });
+        } catch (_) {}
+      }
+
+      // Si aún no hay configurados, precargar servicios o SPA por defecto
+      if (loadedMap.size === 0) {
+        try {
+          const defaultProds = await (window as any).pb.listAll('products', { filter: 'active = true && (type = "SERVICIO" || code ~ "SPA")', sort: 'name' });
+          (defaultProds || []).forEach((p: any) => {
+            const bp = p.base_price || 0;
+            const ir = p.iva_rate !== undefined ? p.iva_rate : 19;
+            loadedMap.set(p.id, {
+              id: p.id,
+              code: p.code || '',
+              name: p.name || '',
+              description: p.description || '',
+              type: p.type || 'SERVICIO',
+              category: p.categoria || p.category || 'General',
+              base_price: bp,
+              iva_rate: ir,
+              total: Math.round(bp * (1 + ir / 100))
+            });
+          });
+        } catch (_) {}
+      }
+
+      currentServicesList = Array.from(loadedMap.values());
+    }
+
+    const svcSettings: Record<string, any> = cfg.services || {};
+
+    const spaName = cfg.spa_name || '';
+    const whatsapp = cfg.whatsapp || '';
+    const welcomeMsg = cfg.welcome_msg || '';
+    const startHour = cfg.start_hour !== undefined ? parseInt(cfg.start_hour, 10) : 8;
+    const endHour = cfg.end_hour !== undefined ? parseInt(cfg.end_hour, 10) : 19;
+    const slotInterval = cfg.slot_interval !== undefined ? parseInt(cfg.slot_interval, 10) : 60;
+
+    const renderMainLayout = () => {
+      const countPublished = currentServicesList.filter(s => {
+        if (svcSettings[s.id]) return svcSettings[s.id].published === true;
+        const code = (s.code || '').toUpperCase();
+        const cat = (s.category || '').toLowerCase();
+        const name = (s.name || '').toLowerCase();
+        return code.startsWith('SPA') || cat.includes('spa') || cat.includes('facial') || cat.includes('estetica') || name.includes('facial') || name.includes('masaje');
+      }).length;
+
+      container.innerHTML = `
+        <!-- Cabecera Superior con Enlaces de Acción -->
+        <div class="p-5 rounded-2xl bg-gradient-to-r from-purple-900 to-indigo-800 text-white shadow-lg mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2 text-purple-200 text-xs font-semibold uppercase tracking-wider mb-1">
+              <i class="fas fa-globe"></i> Página Web Pública & Agendamiento Online
+            </div>
+            <h4 class="text-xl font-black text-white">Configuración del Portal y Catálogo de Servicios</h4>
+            <p class="text-xs text-purple-100 mt-1 max-w-xl">
+              Selecciona directamente del inventario los productos que deseas ofrecer, configura duraciones, horarios y WhatsApp de atención.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <a href="/citas.html" target="_blank" class="px-4 py-2 rounded-xl bg-white text-purple-900 font-bold text-xs hover:bg-purple-50 transition shadow flex items-center gap-2">
+              <i class="fas fa-external-link-alt text-purple-600"></i> Abrir Portal en Vivo
+            </a>
+            <button id="btn-open-inv-picker" class="px-4 py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-bold text-xs transition shadow flex items-center gap-2">
+              <i class="fas fa-boxes-stacked"></i> Seleccionar del Inventario
+            </button>
+            <button id="btn-quick-new-svc" class="px-3 py-2 rounded-xl bg-purple-800/60 hover:bg-purple-800 text-purple-200 text-xs transition border border-purple-400/30 flex items-center gap-1.5" title="Crear un servicio nuevo si no existe en inventario">
+              <i class="fas fa-plus"></i> Crear Nuevo
+            </button>
+            <button id="btn-save-beauty-cfg-top" class="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-black text-xs transition shadow flex items-center gap-2">
+              <i class="fas fa-floppy-disk"></i> Guardar Todo
+            </button>
+          </div>
+        </div>
+
+        <!-- Formulario 1: Parámetros Generales de la Página -->
+        <div class="bg-white rounded-2xl border p-5 mb-6 shadow-sm" style="border-color:#E5E7EB">
+          <h5 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <i class="fas fa-store text-purple-600"></i> Parámetros de la Página Web y Horarios
+          </h5>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div>
+              <label class="font-bold text-gray-700 block mb-1">Nombre Comercial del Spa / Centro Estético</label>
+              <input id="cfg-spa-name" class="form-input text-xs w-full" placeholder="Ej: Bella Piel Spa & Belleza" value="${(window as any).esc(spaName)}">
+              <span class="text-[11px] text-gray-400 mt-0.5 block">Se mostrará en el encabezado del portal público.</span>
+            </div>
+
+            <div>
+              <label class="font-bold text-gray-700 block mb-1">WhatsApp de Confirmaciones (con cód. país)</label>
+              <input id="cfg-spa-wa" class="form-input text-xs w-full" placeholder="Ej: 573101234567" value="${(window as any).esc(whatsapp)}">
+              <span class="text-[11px] text-gray-400 mt-0.5 block">Número donde los clientes recibirán o enviarán su confirmación.</span>
+            </div>
+
+            <div>
+              <label class="font-bold text-gray-700 block mb-1">Intervalo Base de Turnos</label>
+              <select id="cfg-spa-interval" class="form-input text-xs w-full">
+                <option value="30" ${slotInterval === 30 ? 'selected' : ''}>Cada 30 minutos</option>
+                <option value="45" ${slotInterval === 45 ? 'selected' : ''}>Cada 45 minutos</option>
+                <option value="60" ${slotInterval === 60 ? 'selected' : ''}>Cada 60 minutos (Recomendado)</option>
+                <option value="90" ${slotInterval === 90 ? 'selected' : ''}>Cada 90 minutos</option>
+              </select>
+              <span class="text-[11px] text-gray-400 mt-0.5 block">Granularidad de los bloques de horario.</span>
+            </div>
+
+            <div>
+              <label class="font-bold text-gray-700 block mb-1">Hora de Apertura</label>
+              <select id="cfg-spa-start" class="form-input text-xs w-full">
+                ${[6,7,8,9,10,11,12].map(h => `<option value="${h}" ${startHour === h ? 'selected' : ''}>${String(h).padStart(2,'0')}:00 ${h < 12 ? 'AM' : 'PM'}</option>`).join('')}
+              </select>
+            </div>
+
+            <div>
+              <label class="font-bold text-gray-700 block mb-1">Hora de Cierre</label>
+              <select id="cfg-spa-end" class="form-input text-xs w-full">
+                ${[16,17,18,19,20,21,22].map(h => `<option value="${h}" ${endHour === h ? 'selected' : ''}>${String(h).padStart(2,'0')}:00 PM</option>`).join('')}
+              </select>
+            </div>
+
+            <div class="md:col-span-3">
+              <label class="font-bold text-gray-700 block mb-1">Mensaje de Bienvenida / Eslogan para Clientes</label>
+              <input id="cfg-spa-welcome" class="form-input text-xs w-full" placeholder="Ej: Reserva tu sesión de belleza, relajación o cuidado facial en línea de forma fácil y segura." value="${(window as any).esc(welcomeMsg)}">
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 2: Servicios y Publicación Online -->
+        <div class="bg-white rounded-2xl border p-5 shadow-sm" style="border-color:#E5E7EB">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+              <h5 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                <i class="fas fa-list-check text-purple-600"></i> Catálogo de Servicios y Publicación en Línea
+              </h5>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Servicios seleccionados del inventario. Puedes ajustar su visibilidad web, duración por turno y etiqueta pública.
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="relative">
+                <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+                <input id="beauty-cfg-search" type="text" class="form-input text-xs pl-8 pr-3 py-1.5 w-56" placeholder="Filtrar por código o nombre...">
+              </div>
+              <button id="btn-add-from-inv-table" class="btn btn-primary btn-sm text-xs" style="background:#8B5CF6; border-color:#8B5CF6">
+                <i class="fas fa-boxes-stacked mr-1"></i> + Seleccionar del Inventario
+              </button>
+              <button id="btn-toggle-all-svc" class="btn btn-outline btn-sm text-xs">
+                <i class="fas fa-check-double mr-1"></i> Marcar Todos
+              </button>
+              <span class="text-xs font-bold px-3 py-1.5 rounded-lg bg-purple-100 text-purple-800" id="badge-svc-count">
+                ${countPublished} de ${currentServicesList.length} publicados
+              </span>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto border rounded-xl" style="border-color:#E5E7EB">
+            <table class="data-table w-full text-xs" id="table-beauty-cfg-services">
+              <thead>
+                <tr style="background:#F9FAFB">
+                  <th class="w-16 text-center">¿Publicar?</th>
+                  <th class="w-24">Código</th>
+                  <th>Producto / Servicio</th>
+                  <th class="w-36">Etiqueta Web</th>
+                  <th class="w-36">Duración</th>
+                  <th class="w-24 text-right">Precio Base</th>
+                  <th class="w-24 text-right">Total IVA</th>
+                  <th class="min-w-[180px]">Descripción para el Portal</th>
+                  <th class="w-12 text-center">Quitar</th>
+                </tr>
+              </thead>
+              <tbody id="beauty-cfg-services-tbody">
+                ${renderTableRowsHtml()}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Barra Inferior de Guardado -->
+          <div class="mt-6 flex flex-wrap items-center justify-between gap-4 pt-4 border-t" style="border-color:#E5E7EB">
+            <div class="text-xs text-gray-500">
+              <i class="fas fa-info-circle text-purple-500 mr-1"></i>
+              Los cambios guardados se reflejarán instantáneamente en la página de agendamiento <span class="font-mono text-purple-700">/citas.html</span>.
+            </div>
+            <button id="btn-save-beauty-cfg-bottom" class="btn btn-primary px-6 py-2.5 font-bold shadow-lg" style="background:#8B5CF6; border-color:#8B5CF6">
+              <i class="fas fa-floppy-disk mr-2"></i> Guardar Configuración y Servicios
+            </button>
+          </div>
+        </div>
+      `;
+
+      attachViewEvents();
+    };
+
+    const renderTableRowsHtml = () => {
+      if (currentServicesList.length === 0) {
+        return `
+          <tr>
+            <td colspan="9" class="text-center py-10 text-gray-400">
+              <i class="fas fa-boxes-stacked text-3xl text-purple-300 mb-2 block"></i>
+              <p class="font-bold text-gray-700 text-sm">No has seleccionado productos del inventario para la página web.</p>
+              <p class="text-xs text-gray-400 mt-1">Haz clic en el botón de abajo para elegir los tratamientos o productos existentes de tu inventario.</p>
+              <button class="btn btn-primary btn-sm mt-4" id="btn-empty-select-inv" style="background:#8B5CF6; border-color:#8B5CF6">
+                <i class="fas fa-boxes-stacked mr-1.5"></i> Seleccionar Productos del Inventario
+              </button>
+            </td>
+          </tr>
+        `;
+      }
+
+      return currentServicesList.map(s => {
+        const itemCfg = svcSettings[s.id] || {};
+        let isPub = false;
+        if (svcSettings[s.id]) {
+          isPub = itemCfg.published === true;
+        } else {
+          const code = (s.code || '').toUpperCase();
+          const cat = (s.category || '').toLowerCase();
+          const name = (s.name || '').toLowerCase();
+          isPub = code.startsWith('SPA') || cat.includes('spa') || cat.includes('facial') || cat.includes('estetica') || name.includes('facial') || name.includes('masaje');
+        }
+
+        const badge = itemCfg.badge || s.category || 'Estética';
+        const dur = itemCfg.duration || 60;
+        const desc = itemCfg.description_override || s.description || '';
+
+        return `
+          <tr class="service-cfg-row ${isPub ? 'bg-purple-50/30' : ''}" data-sid="${s.id}" data-name="${(window as any).esc(s.name.toLowerCase())}" data-code="${(window as any).esc(s.code.toLowerCase())}">
+            <td class="text-center">
+              <input type="checkbox" class="cfg-svc-pub-chk w-4 h-4 text-purple-600 rounded cursor-pointer" data-sid="${s.id}" ${isPub ? 'checked' : ''}>
+            </td>
+            <td class="font-mono font-bold text-gray-700">${(window as any).esc(s.code || '—')}</td>
+            <td>
+              <div class="font-bold text-gray-900">${(window as any).esc(s.name)}</div>
+              <div class="flex items-center gap-1.5 mt-0.5">
+                <span class="badge text-[10px] ${s.type === 'SERVICIO' ? 'badge-blue' : 'badge-gray'}">${(window as any).esc(s.type || 'PRODUCTO')}</span>
+                <span class="text-[10px] text-gray-400">${(window as any).esc(s.category || 'General')}</span>
+              </div>
+            </td>
+            <td>
+              <input type="text" class="cfg-svc-badge form-input text-xs py-1 px-2 w-full" data-sid="${s.id}" value="${(window as any).esc(badge)}" placeholder="Ej: Facial">
+            </td>
+            <td>
+              <select class="cfg-svc-dur form-input text-xs py-1 px-2 w-full" data-sid="${s.id}">
+                <option value="15" ${dur === 15 ? 'selected' : ''}>15 min</option>
+                <option value="30" ${dur === 30 ? 'selected' : ''}>30 min</option>
+                <option value="45" ${dur === 45 ? 'selected' : ''}>45 min</option>
+                <option value="60" ${dur === 60 ? 'selected' : ''}>60 min (1 h)</option>
+                <option value="75" ${dur === 75 ? 'selected' : ''}>75 min</option>
+                <option value="90" ${dur === 90 ? 'selected' : ''}>90 min (1.5 h)</option>
+                <option value="120" ${dur === 120 ? 'selected' : ''}>120 min (2 h)</option>
+              </select>
+            </td>
+            <td class="text-right font-medium text-gray-600">${(window as any).fmt(s.base_price)}</td>
+            <td class="text-right font-black text-purple-700">${(window as any).fmt(s.total)}</td>
+            <td>
+              <input type="text" class="cfg-svc-desc form-input text-xs py-1 px-2 w-full" data-sid="${s.id}" value="${(window as any).esc(desc)}" placeholder="Descripción breve para la web...">
+            </td>
+            <td class="text-center">
+              <button type="button" class="btn-remove-cfg-row text-red-500 hover:text-red-700 p-1.5 rounded hover:bg-red-50 transition" data-sid="${s.id}" title="Quitar este servicio del portal web">
+                <i class="fas fa-trash-can text-xs"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    const attachViewEvents = () => {
+      // 1. Selector de productos del inventario
+      const openInvPicker = () => {
+        openInventoryPickerModal(currentServicesList, (selectedItems) => {
+          if (!selectedItems || selectedItems.length === 0) return;
+          selectedItems.forEach(p => {
+            if (!currentServicesList.find(x => x.id === p.id)) {
+              currentServicesList.push(p);
+              svcSettings[p.id] = {
+                published: true,
+                duration: 60,
+                badge: p.category || 'Estética',
+                description_override: p.description || ''
+              };
+            }
+          });
+          const tbody = document.getElementById('beauty-cfg-services-tbody');
+          if (tbody) {
+            tbody.innerHTML = renderTableRowsHtml();
+            attachTableEvents();
+            updateCountBadge();
+          }
+          (window as any).showToast(`${selectedItems.length} producto(s) incorporado(s) desde el inventario.`, 'success');
+        });
+      };
+
+      document.getElementById('btn-open-inv-picker')?.addEventListener('click', openInvPicker);
+      document.getElementById('btn-add-from-inv-table')?.addEventListener('click', openInvPicker);
+      document.getElementById('btn-empty-select-inv')?.addEventListener('click', openInvPicker);
+
+      // 2. Modal manual (opcional)
+      document.getElementById('btn-quick-new-svc')?.addEventListener('click', () => {
+        openNewBeautyServiceModal(() => renderBeautyConfig(container));
+      });
+
+      // 3. Buscador en tiempo real
+      const searchInput = document.getElementById('beauty-cfg-search') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          const q = searchInput.value.trim().toLowerCase();
+          const rows = container.querySelectorAll('.service-cfg-row') as NodeListOf<HTMLTableRowElement>;
+          rows.forEach(r => {
+            const name = r.dataset.name || '';
+            const code = r.dataset.code || '';
+            if (!q || name.includes(q) || code.includes(q)) {
+              r.style.display = '';
+            } else {
+              r.style.display = 'none';
+            }
+          });
+        });
+      }
+
+      // 4. Botón seleccionar todos
+      let allCheckedState = false;
+      document.getElementById('btn-toggle-all-svc')?.addEventListener('click', () => {
+        allCheckedState = !allCheckedState;
+        const chks = container.querySelectorAll('.cfg-svc-pub-chk') as NodeListOf<HTMLInputElement>;
+        chks.forEach(chk => {
+          chk.checked = allCheckedState;
+          const row = chk.closest('tr');
+          if (row) {
+            row.classList.toggle('bg-purple-50/30', allCheckedState);
+          }
+        });
+        updateCountBadge();
+      });
+
+      attachTableEvents();
+
+      // 5. Guardado general
+      const handleSave = async () => {
+        const btnTop = document.getElementById('btn-save-beauty-cfg-top') as HTMLButtonElement;
+        const btnBottom = document.getElementById('btn-save-beauty-cfg-bottom') as HTMLButtonElement;
+
+        const setBusy = (b: boolean) => {
+          if (btnTop) { btnTop.disabled = b; btnTop.innerHTML = b ? `<i class="fas fa-spinner fa-spin"></i> Guardando...` : `<i class="fas fa-floppy-disk"></i> Guardar Todo`; }
+          if (btnBottom) { btnBottom.disabled = b; btnBottom.innerHTML = b ? `<i class="fas fa-spinner fa-spin mr-2"></i>Guardando...` : `<i class="fas fa-floppy-disk mr-2"></i> Guardar Configuración y Servicios`; }
+        };
+
+        setBusy(true);
+
+        try {
+          const newSpaName = (document.getElementById('cfg-spa-name') as HTMLInputElement).value.trim();
+          const newWa = (document.getElementById('cfg-spa-wa') as HTMLInputElement).value.trim();
+          const newInterval = parseInt((document.getElementById('cfg-spa-interval') as HTMLSelectElement).value, 10) || 60;
+          const newStart = parseInt((document.getElementById('cfg-spa-start') as HTMLSelectElement).value, 10) || 8;
+          const newEnd = parseInt((document.getElementById('cfg-spa-end') as HTMLSelectElement).value, 10) || 19;
+          const newWelcome = (document.getElementById('cfg-spa-welcome') as HTMLInputElement).value.trim();
+
+          // Mapear cada servicio activo en la tabla
+          const servicesMap: Record<string, any> = {};
+          currentServicesList.forEach(s => {
+            const chk = container.querySelector(`.cfg-svc-pub-chk[data-sid="${s.id}"]`) as HTMLInputElement;
+            const badgeIn = container.querySelector(`.cfg-svc-badge[data-sid="${s.id}"]`) as HTMLInputElement;
+            const durIn = container.querySelector(`.cfg-svc-dur[data-sid="${s.id}"]`) as HTMLSelectElement;
+            const descIn = container.querySelector(`.cfg-svc-desc[data-sid="${s.id}"]`) as HTMLInputElement;
+
+            servicesMap[s.id] = {
+              published: chk ? chk.checked : false,
+              badge: badgeIn ? badgeIn.value.trim() : (s.category || 'Estética'),
+              duration: durIn ? (parseInt(durIn.value, 10) || 60) : 60,
+              description_override: descIn ? descIn.value.trim() : ''
+            };
+          });
+
+          const updatedConfig = {
+            spa_name: newSpaName,
+            whatsapp: newWa,
+            slot_interval: newInterval,
+            start_hour: newStart,
+            end_hour: newEnd,
+            welcome_msg: newWelcome,
+            services: servicesMap
+          };
+
+          try {
+            await (window as any).pb.send('/api/gravy/spa-beauty/settings', {
+              method: 'POST',
+              body: JSON.stringify({ config: updatedConfig })
+            });
+          } catch (_) {
+            // Fallback directo a la colección settings
+            const sets = await (window as any).pb.listAll('settings', { filter: 'key = "spa_beauty_config_v1"' });
+            if (sets && sets.length > 0) {
+              await (window as any).pb.update('settings', sets[0].id, {
+                value: JSON.stringify(updatedConfig)
+              });
+            } else {
+              await (window as any).pb.create('settings', {
+                key: 'spa_beauty_config_v1',
+                value: JSON.stringify(updatedConfig)
+              });
+            }
+          }
+
+          (window as any).showToast('Configuración y catálogo de citas online guardados exitosamente.', 'success');
+          renderBeautyConfig(container);
+        } catch (err: any) {
+          (window as any).showToast('Error al guardar configuración: ' + (err.message || err), 'error');
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      document.getElementById('btn-save-beauty-cfg-top')?.addEventListener('click', handleSave);
+      document.getElementById('btn-save-beauty-cfg-bottom')?.addEventListener('click', handleSave);
+    };
+
+    const attachTableEvents = () => {
+      // Checkbox individual change
+      const chks = container.querySelectorAll('.cfg-svc-pub-chk') as NodeListOf<HTMLInputElement>;
+      chks.forEach(chk => {
+        chk.addEventListener('change', () => {
+          const row = chk.closest('tr');
+          if (row) {
+            row.classList.toggle('bg-purple-50/30', chk.checked);
+          }
+          updateCountBadge();
+        });
+      });
+
+      // Botón quitar servicio
+      const removeBtns = container.querySelectorAll('.btn-remove-cfg-row') as NodeListOf<HTMLButtonElement>;
+      removeBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const sid = btn.dataset.sid;
+          if (!sid) return;
+          currentServicesList = currentServicesList.filter(x => x.id !== sid);
+          delete svcSettings[sid];
+          const tbody = document.getElementById('beauty-cfg-services-tbody');
+          if (tbody) {
+            tbody.innerHTML = renderTableRowsHtml();
+            attachTableEvents();
+            updateCountBadge();
+          }
+          (window as any).showToast('Servicio retirado de la lista del portal web.', 'info');
+        });
+      });
+
+      // Botón empty si aplica
+      document.getElementById('btn-empty-select-inv')?.addEventListener('click', () => {
+        document.getElementById('btn-open-inv-picker')?.click();
+      });
+    };
+
+    const updateCountBadge = () => {
+      const activeChks = container.querySelectorAll('.cfg-svc-pub-chk:checked').length;
+      const badge = document.getElementById('badge-svc-count');
+      if (badge) {
+        badge.textContent = `${activeChks} de ${currentServicesList.length} publicados`;
+      }
+    };
+
+    renderMainLayout();
+
+  } catch (err: any) {
+    container.innerHTML = `
+      <div class="p-8 text-center text-red-500 bg-white rounded-2xl border" style="border-color:#FCA5A5">
+        <i class="fas fa-circle-exclamation text-3xl mb-2 block"></i>
+        <p class="font-bold text-sm">Error cargando configuración del portal</p>
+        <p class="text-xs text-gray-500 mt-1">${(window as any).esc(err.message || err)}</p>
+        <button class="btn btn-outline btn-sm mt-4" id="btn-retry-beauty-cfg">Reintentar</button>
+      </div>
+    `;
+    document.getElementById('btn-retry-beauty-cfg')?.addEventListener('click', () => renderBeautyConfig(container));
+  }
+}
+
+(window as any).renderBeautyConfig = renderBeautyConfig;
 (window as any).renderSpaBelleza = renderSpaBelleza;

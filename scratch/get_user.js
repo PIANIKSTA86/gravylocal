@@ -1,8 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const db = new sqlite3.Database(path.resolve('pb_data', 'data.db'), sqlite3.OPEN_READONLY);
+const db = new sqlite3.Database('pb_data/data.db');
 
-db.all("SELECT * FROM users LIMIT 1", [], (err, rows) => {
-  console.log('USER ROW:', err || rows);
-  db.close();
+db.all("SELECT id, email, role FROM users LIMIT 5", (err, rows) => {
+  if (err) return console.error(err);
+  console.log("Users:", rows);
 });

@@ -5599,26 +5599,32 @@ async function generateAuxiliaryRows() {
     const res: any = await pb.send(`/api/gravy/report-auxiliary?fromDate=${dateFrom}&toDate=${dateTo}&accountIds=${accIdsParam}&thirdId=${thirdId || ''}${propParam}${getScopeQueryParams()}`, { method: 'GET' });
     const { openingBalances, periodLines } = res;
 
-    // ── Saldos anteriores (movimientos ANTES de dateFrom) ──
-    const openingByKey = new Map();
-    for (const b of openingBalances) {
-      if (mode === 'cuenta-sin-tercero') {
-        const openingKey = `acc|${b.accountId}`;
-        openingByKey.set(openingKey, (openingByKey.get(openingKey) || 0) + Number(b.balance || 0));
-      } else {
-        const accountManejaCruce = b.docCruce !== 'NO_CRUCE';
-        const openingKey = accountManejaCruce
-          ? `doc|${b.accountId}|${b.thirdId}|${b.docCruce}`
-          : `acc|${b.accountId}|${b.thirdId}`;
-        openingByKey.set(openingKey, Number(b.balance || 0));
-      }
-    }
-
     const isPhActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full'));
 
+    const accountsById = new Map<string, any>(accounts.map(a => [a.id, a]));
+    const thirdPartiesById = new Map<string, any>(thirdParties.map(t => [t.id, t]));
+
+    // ── Índices de saldos anteriores (movimientos ANTES de dateFrom) ──
+    const openingByAccount = new Map<string, number>();
+    const openingByThirdAccount = new Map<string, number>();
+    const openingByDoc = new Map<string, number>();
+
+    for (const b of (openingBalances || [])) {
+      const bal = Number(b.balance || 0);
+      const accId = String(b.accountId || '');
+      const thirdId = String(b.thirdId || 'NO_TERCERO');
+      const docCruce = String(b.docCruce || 'NO_CRUCE');
+
+      openingByAccount.set(accId, (openingByAccount.get(accId) || 0) + bal);
+      const tk = `${accId}|${thirdId}`;
+      openingByThirdAccount.set(tk, (openingByThirdAccount.get(tk) || 0) + bal);
+      const dk = `${accId}|${thirdId}|${docCruce}`;
+      openingByDoc.set(dk, (openingByDoc.get(dk) || 0) + bal);
+    }
+
     // ── Filas del período ──
-    const rows = periodLines.map(l => {
-      const isCruce = l.accountManejaCruce === 1 || l.accountManejaCruce === true;
+    const rows: any[] = (periodLines || []).map((l: any) => {
+      const isCruce = l.accountManejaCruce === 1 || l.accountManejaCruce === true || l.accountManejaCruce === '1';
       const thirdName = l.thirdName || 'Sin tercero';
       const thirdDoc = l.thirdDoc || '';
       const propTag = (isPhActive && (l.propertyCode || l.propertyName))
@@ -5636,7 +5642,7 @@ async function generateAuxiliaryRows() {
         tercero:       thirdDisplay,
         thirdName:     thirdName,
         thirdDoc:      thirdDoc,
-        doc_cruce:     l.doc_cruce,
+        doc_cruce:     l.doc_cruce || '',
         descripcion:   l.descripcion || '',
         debito:        Number(l.debito || 0),
         credito:       Number(l.credito || 0),
@@ -5646,35 +5652,142 @@ async function generateAuxiliaryRows() {
         accountNature: l.accountNature || 'debit',
         accountManejaCruce: isCruce,
         thirdId:        l.thirdId || 'NO_TERCERO',
+        isOpeningRow:   false,
       };
     });
 
-    // ── Pre-calcular saldos por fila ─────────────────────────────────────────
-    // saldo_anterior: saldo inicial del rango
-    // saldo_actual: saldo inicial + movimientos acumulados en el rango
-    const sortedForBalance = [...rows].sort((a, b) => {
+    // ── Incorporar filas para documentos/terceros/cuentas con saldo anterior sin movimientos en el período ──
+    const activeDocKeys = new Set<string>();
+    const activeThirdKeys = new Set<string>();
+    const activeAccountKeys = new Set<string>();
+
+    for (const r of rows) {
+      const cruceKey = r.doc_cruce ? r.doc_cruce : (r.accountManejaCruce ? 'SIN_DOC' : 'NO_CRUCE');
+      activeDocKeys.add(`${r.accountId}|${r.thirdId}|${cruceKey}`);
+      activeThirdKeys.add(`${r.accountId}|${r.thirdId}`);
+      activeAccountKeys.add(r.accountId);
+    }
+
+    for (const b of (openingBalances || [])) {
+      const bal = Number(b.balance || 0);
+      if (Math.abs(bal) < 0.0001) continue;
+
+      const accId = String(b.accountId || '');
+      const thirdId = String(b.thirdId || 'NO_TERCERO');
+      const docCruce = String(b.docCruce || 'NO_CRUCE');
+      const acc = accountsById.get(accId) || { code: '', name: 'Cuenta desconocida', nature: 'debit', maneja_cruce: false };
+      const isCruce = acc.maneja_cruce === 1 || acc.maneja_cruce === true || acc.maneja_cruce === '1';
+
+      let needRow = false;
       if (mode === 'cuenta-sin-tercero') {
+        if (!activeAccountKeys.has(accId)) {
+          needRow = true;
+          activeAccountKeys.add(accId);
+        }
+      } else {
+        if (isCruce) {
+          const dk = `${accId}|${thirdId}|${docCruce}`;
+          if (!activeDocKeys.has(dk)) {
+            needRow = true;
+            activeDocKeys.add(dk);
+          }
+        } else {
+          const tk = `${accId}|${thirdId}`;
+          if (!activeThirdKeys.has(tk)) {
+            needRow = true;
+            activeThirdKeys.add(tk);
+          }
+        }
+      }
+
+      if (needRow) {
+        const tp = thirdPartiesById.get(thirdId);
+        const tName = tp?.name || (thirdId === 'NO_TERCERO' ? 'Sin tercero' : 'Tercero');
+        const tDoc = tp?.doc_number || '';
+        const tDisplay = `${tDoc ? `${tDoc} - ${tName}` : tName}`;
+        const cleanCruce = (docCruce === 'NO_CRUCE' || docCruce === 'SIN_DOC') ? '' : docCruce;
+
+        rows.push({
+          fecha:         dateFrom,
+          comprobante:   'SALDO INICIAL',
+          txId:          '',
+          cuenta:        `${acc.code} - ${acc.name}`.trim(),
+          accountCode:   acc.code,
+          accountName:   acc.name,
+          tercero:       tDisplay,
+          thirdName:     tName,
+          thirdDoc:      tDoc,
+          doc_cruce:     cleanCruce,
+          descripcion:   'SALDO ANTERIOR PENDIENTE',
+          debito:        0,
+          credito:       0,
+          keyCuenta:     `${acc.code} - ${acc.name}`.trim(),
+          keyTercero:    tDisplay,
+          accountId:     accId,
+          accountNature: acc.nature || 'debit',
+          accountManejaCruce: isCruce,
+          thirdId:        thirdId,
+          isOpeningRow:   true,
+        });
+      }
+    }
+
+    if (!rows.length && !(openingBalances || []).some((b: any) => Math.abs(Number(b.balance || 0)) > 0.0001)) {
+      results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay movimientos ni saldos para los filtros seleccionados.</div>';
+      return;
+    }
+
+    // ── Pre-calcular saldos por fila ─────────────────────────────────────────
+    if (mode === 'cuenta-sin-tercero') {
+      const sortedForBalance = [...rows].sort((a, b) => {
+        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
         return `${a.accountId}|${a.fecha}|${a.comprobante}|${a.txId}`.localeCompare(
                `${b.accountId}|${b.fecha}|${b.comprobante}|${b.txId}`);
-      }
-      return `${a.accountId}|${a.thirdId}|${a.fecha}|${a.doc_cruce || 'SIN_DOC'}|${a.comprobante}`.localeCompare(
-             `${b.accountId}|${b.thirdId}|${b.fecha}|${b.doc_cruce || 'SIN_DOC'}|${b.comprobante}`);
-    });
+      });
 
-    const periodDeltaByKey = new Map();
-    for (const row of sortedForBalance) {
-      const balanceKey = (mode === 'cuenta-sin-tercero')
-        ? `acc|${row.accountId}`
-        : (row.accountManejaCruce
-            ? `doc|${row.accountId}|${row.thirdId}|${row.doc_cruce || 'SIN_DOC'}`
-            : `acc|${row.accountId}|${row.thirdId}`);
-      row.balanceKey = balanceKey;
-      const opening = openingByKey.get(balanceKey) || 0;
-      const moved = periodDeltaByKey.get(balanceKey) || 0;
-      const delta = row.debito - row.credito;
-      row.saldo_anterior = opening + moved;
-      row.saldo_actual = opening + moved + delta;
-      periodDeltaByKey.set(balanceKey, moved + delta);
+      const accRunningBalance = new Map<string, number>();
+      for (const row of sortedForBalance) {
+        row.balanceKey = `acc|${row.accountId}`;
+        const prevBal = accRunningBalance.has(row.accountId)
+          ? accRunningBalance.get(row.accountId)!
+          : (openingByAccount.get(row.accountId) || 0);
+        const delta = row.debito - row.credito;
+        row.saldo_anterior = prevBal;
+        row.saldo_actual = prevBal + delta;
+        accRunningBalance.set(row.accountId, row.saldo_actual);
+      }
+    } else {
+      const sortedForBalance = [...rows].sort((a, b) => {
+        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
+        const cruceA = a.doc_cruce || 'SIN_DOC';
+        const cruceB = b.doc_cruce || 'SIN_DOC';
+        return `${a.accountId}|${a.thirdId}|${cruceA}|${a.fecha}|${a.comprobante}`.localeCompare(
+               `${b.accountId}|${b.thirdId}|${cruceB}|${b.fecha}|${b.comprobante}`);
+      });
+
+      const streamRunningBalance = new Map<string, number>();
+      for (const row of sortedForBalance) {
+        const cruceKey = row.doc_cruce ? row.doc_cruce : (row.accountManejaCruce ? 'SIN_DOC' : 'NO_CRUCE');
+        const balanceKey = row.accountManejaCruce
+          ? `doc|${row.accountId}|${row.thirdId}|${cruceKey}`
+          : `acc|${row.accountId}|${row.thirdId}`;
+        row.balanceKey = balanceKey;
+
+        let prevBal = 0;
+        if (streamRunningBalance.has(balanceKey)) {
+          prevBal = streamRunningBalance.get(balanceKey)!;
+        } else {
+          if (row.accountManejaCruce) {
+            prevBal = openingByDoc.get(`${row.accountId}|${row.thirdId}|${cruceKey}`) || 0;
+          } else {
+            prevBal = openingByThirdAccount.get(`${row.accountId}|${row.thirdId}`) || 0;
+          }
+        }
+        const delta = row.debito - row.credito;
+        row.saldo_anterior = prevBal;
+        row.saldo_actual = prevBal + delta;
+        streamRunningBalance.set(balanceKey, row.saldo_actual);
+      }
     }
 
     const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
@@ -5684,68 +5797,43 @@ async function generateAuxiliaryRows() {
 
     if (mode === 'cuenta-sin-tercero') {
       rows.sort((a, b) => {
+        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
         const aKey = `${a.accountCode}|${a.fecha}|${a.comprobante}|${a.txId}`;
         const bKey = `${b.accountCode}|${b.fecha}|${b.comprobante}|${b.txId}`;
         return aKey.localeCompare(bKey);
       });
     } else {
       rows.sort((a, b) => {
-        const aKey = `${a[primaryField]}|${a[secondaryField]}|${a.fecha}|${a.doc_cruce || 'SIN_DOC'}|${a.comprobante}`;
-        const bKey = `${b[primaryField]}|${b[secondaryField]}|${b.fecha}|${b.doc_cruce || 'SIN_DOC'}|${b.comprobante}`;
+        const cruceA = a.doc_cruce || 'SIN_DOC';
+        const cruceB = b.doc_cruce || 'SIN_DOC';
+        const aKey = `${a[primaryField]}|${a[secondaryField]}|${cruceA}|${a.isOpeningRow ? '0' : '1'}|${a.fecha}|${a.comprobante}`;
+        const bKey = `${b[primaryField]}|${b[secondaryField]}|${cruceB}|${b.isOpeningRow ? '0' : '1'}|${b.fecha}|${b.comprobante}`;
         return aKey.localeCompare(bKey);
       });
     }
 
-    if (!rows.length) {
-      results.innerHTML = '<div class="p-8 text-center" style="color:#9CA3AF">No hay movimientos para los filtros seleccionados.</div>';
-      return;
-    }
-
-    const calcOpeningTotal = (items) => {
-      const seen = new Set();
-      let total = 0;
-      for (const r of items) {
-        const k = r.balanceKey || '';
-        if (!k || seen.has(k)) continue;
-        seen.add(k);
-        total += Number(r.saldo_anterior || 0);
-      }
-      return total;
-    };
-
-    const calcClosingTotal = (items) => {
-      const lastByKey = new Map();
-      for (const r of items) {
-        const k = r.balanceKey || '';
-        if (!k) continue;
-        lastByKey.set(k, Number(r.saldo_actual || 0));
-      }
-      let total = 0;
-      lastByKey.forEach(v => { total += v; });
-      return total;
-    };
-
-    const totalPrev   = calcOpeningTotal(rows);
+    // ── Totales Generales (Derivados del Gran Total del Libro Mayor) ──
+    const totalPrev   = (openingBalances || []).reduce((sum: number, b: any) => sum + Number(b.balance || 0), 0);
     const totalDebit  = rows.reduce((s, r) => s + r.debito,  0);
     const totalCredit = rows.reduce((s, r) => s + r.credito, 0);
-    const totalCurr   = calcClosingTotal(rows);
+    const totalCurr   = totalPrev + totalDebit - totalCredit;
 
-    const layoutRows = [];
+    const layoutRows: any[] = [];
 
     if (mode === 'cuenta-sin-tercero') {
-      const groupedAcc = new Map();
+      const groupedAcc = new Map<string, any[]>();
       for (const row of rows) {
         const accKey = row.keyCuenta || '—';
         if (!groupedAcc.has(accKey)) groupedAcc.set(accKey, []);
-        groupedAcc.get(accKey).push(row);
+        groupedAcc.get(accKey)!.push(row);
       }
 
       groupedAcc.forEach((items, accKey) => {
         const firstAcc = items[0] || {};
         const accDebit = items.reduce((s, r) => s + r.debito, 0);
         const accCredit = items.reduce((s, r) => s + r.credito, 0);
-        const accPrev = calcOpeningTotal(items);
-        const accCurr = calcClosingTotal(items);
+        const accPrev = openingByAccount.get(firstAcc.accountId) || 0;
+        const accCurr = accPrev + accDebit - accCredit;
 
         layoutRows.push({
           kind: 'primary',
@@ -5780,14 +5868,14 @@ async function generateAuxiliaryRows() {
         });
       });
     } else {
-      const grouped = new Map();
+      const grouped = new Map<string, Map<string, any[]>>();
       for (const row of rows) {
         const pk = row[primaryField] || '—';
         const sk = row[secondaryField] || '—';
         if (!grouped.has(pk)) grouped.set(pk, new Map());
-        const secondaryMap = grouped.get(pk);
+        const secondaryMap = grouped.get(pk)!;
         if (!secondaryMap.has(sk)) secondaryMap.set(sk, []);
-        secondaryMap.get(sk).push(row);
+        secondaryMap.get(sk)!.push(row);
       }
 
       grouped.forEach((secondaryMap, primaryValue) => {
@@ -5795,8 +5883,18 @@ async function generateAuxiliaryRows() {
         const firstPrimary = primaryRows[0] || {};
         const primaryDebit = primaryRows.reduce((s, r) => s + r.debito, 0);
         const primaryCredit = primaryRows.reduce((s, r) => s + r.credito, 0);
-        const primaryPrev = calcOpeningTotal(primaryRows);
-        const primaryCurr = calcClosingTotal(primaryRows);
+
+        let primaryPrev = 0;
+        if (mode === 'cuenta-tercero') {
+          primaryPrev = openingByAccount.get(firstPrimary.accountId) || 0;
+        } else {
+          // tercero-cuenta: suma de todos los saldos iniciales del tercero
+          const tId = firstPrimary.thirdId;
+          for (const b of (openingBalances || [])) {
+            if (b.thirdId === tId) primaryPrev += Number(b.balance || 0);
+          }
+        }
+        const primaryCurr = primaryPrev + primaryDebit - primaryCredit;
 
         if (mode === 'cuenta-tercero') {
           layoutRows.push({
@@ -5814,10 +5912,11 @@ async function generateAuxiliaryRows() {
 
         secondaryMap.forEach((items, secondaryValue) => {
           const firstSecondary = items[0] || {};
-          const secPrev = calcOpeningTotal(items);
           const secDebit = items.reduce((s, r) => s + r.debito, 0);
           const secCredit = items.reduce((s, r) => s + r.credito, 0);
-          const secCurr = calcClosingTotal(items);
+          const tk = `${firstSecondary.accountId}|${firstSecondary.thirdId}`;
+          const secPrev = openingByThirdAccount.get(tk) || 0;
+          const secCurr = secPrev + secDebit - secCredit;
 
           if (mode === 'cuenta-tercero') {
             layoutRows.push({

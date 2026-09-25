@@ -44,6 +44,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Botón logout ───────────────────────────────────────────
   $('#btn-logout')?.addEventListener('click', doLogout);
 
+  // ── Paleta de Comandos Global (Ctrl + K) & Slide-Over Drawer ──
+  initOmniSearch();
+  initGlobalDrawer();
+
   // ── Dropdown del Menú de Usuario ───────────────────────────
   const btnUserMenu = $('#btn-user-menu');
   const userDropdown = $('#user-dropdown');
@@ -485,4 +489,157 @@ async function checkUpcomingVencimientos() {
 }
 
 (window as any).checkUpcomingVencimientos = checkUpcomingVencimientos;
+
+/* ── Paleta de Comandos Global (Ctrl + K) ────────────────────────── */
+function initOmniSearch() {
+  const overlay = document.getElementById('omni-command-palette');
+  const input = document.getElementById('omni-command-input') as HTMLInputElement;
+  const results = document.getElementById('omni-command-results');
+  const trigger = document.getElementById('btn-omni-search');
+
+  if (!overlay || !input || !results) return;
+
+  const quickLinks = [
+    { page: 'dashboard', title: 'Dashboard General', category: 'General', icon: 'fa-gauge-high' },
+    { page: 'ventas', title: 'Facturación / Ventas', category: 'Comercial', icon: 'fa-receipt' },
+    { page: 'facturacion-dian', title: 'Validación DIAN', category: 'Contabilidad', icon: 'fa-file-invoice' },
+    { page: 'terceros', title: 'Terceros (Clientes y Proveedores)', category: 'Maestros', icon: 'fa-users' },
+    { page: 'plan-cuentas', title: 'Plan de Cuentas (PUC)', category: 'Maestros', icon: 'fa-sitemap' },
+    { page: 'compras', title: 'Compras y Gastos', category: 'Comercial', icon: 'fa-cart-flatbed' },
+    { page: 'productos', title: 'Productos y Servicios', category: 'Inventarios', icon: 'fa-box-open' },
+    { page: 'inventario-stock', title: 'Stock Actual', category: 'Inventarios', icon: 'fa-boxes-stacked' },
+    { page: 'conciliacion', title: 'Conciliación Bancaria', category: 'Tesorería', icon: 'fa-scale-balanced' },
+    { page: 'recaudos', title: 'Recaudos (Recibos de Caja)', category: 'Tesorería', icon: 'fa-hand-holding-dollar' },
+    { page: 'egresos', title: 'Egresos (Comprobantes)', category: 'Tesorería', icon: 'fa-money-bill-transfer' },
+    { page: 'nomina-empleados', title: 'Nómina - Empleados', category: 'Nómina', icon: 'fa-users-gear' },
+    { page: 'importaciones', title: 'Gestión de Importaciones', category: 'Logística', icon: 'fa-ship' },
+    { page: 'preliquidaciones', title: 'Preliquidación & Viabilidad (Simulador)', category: 'Logística', icon: 'fa-calculator' },
+    { page: 'reportes', title: 'Reportes y Estados Financieros', category: 'Reportes', icon: 'fa-chart-pie' },
+    { page: 'configuracion', title: 'Configuración de Empresa', category: 'Ajustes', icon: 'fa-sliders' },
+  ];
+
+  function openOmni() {
+    overlay.style.display = 'flex';
+    input.value = '';
+    renderResults('');
+    setTimeout(() => input.focus(), 60);
+  }
+
+  function closeOmni() {
+    overlay.style.display = 'none';
+  }
+
+  function renderResults(query: string) {
+    const q = query.toLowerCase().trim();
+    const filtered = quickLinks.filter(l => 
+      l.title.toLowerCase().includes(q) || 
+      l.category.toLowerCase().includes(q) ||
+      l.page.toLowerCase().includes(q)
+    );
+
+    if (filtered.length === 0) {
+      const escapedQ = typeof esc === 'function' ? esc(query) : query;
+      results.innerHTML = `<div style="padding:16px;text-align:center;font-size:12.5px;color:var(--text-muted)">No se encontraron módulos con "${escapedQ}"</div>`;
+      return;
+    }
+
+    results.innerHTML = filtered.map((item) => `
+      <div class="omni-item" data-page="${item.page}" style="display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:10px;cursor:pointer;transition:background 0.15s">
+        <div style="width:30px;height:30px;border-radius:8px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender, #7C66F0);display:flex;align-items:center;justify-content:center;font-size:13px"><i class="fas ${item.icon}"></i></div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px;color:var(--text-strong)">${item.title}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${item.category}</div>
+        </div>
+        <i class="fas fa-arrow-turn-down text-[10px]" style="color:#94A3B8"></i>
+      </div>
+    `).join('');
+
+    results.querySelectorAll('.omni-item').forEach(el => {
+      el.addEventListener('mouseenter', () => { (el as HTMLElement).style.background = 'var(--accent-lavender-soft, #FAF9FF)'; });
+      el.addEventListener('mouseleave', () => { (el as HTMLElement).style.background = ''; });
+      el.addEventListener('click', () => {
+        const page = (el as HTMLElement).dataset.page;
+        if (page) {
+          (window as any).navigate?.(page);
+          closeOmni();
+        }
+      });
+    });
+  }
+
+  trigger?.addEventListener('click', openOmni);
+
+  input?.addEventListener('input', (e) => {
+    renderResults((e.target as HTMLInputElement).value);
+  });
+
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeOmni();
+    if (e.key === 'Enter') {
+      const first = results.querySelector('.omni-item') as HTMLElement;
+      if (first && first.dataset.page) {
+        (window as any).navigate?.(first.dataset.page);
+        closeOmni();
+      }
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (overlay.style.display === 'flex') closeOmni();
+      else openOmni();
+    }
+    if (e.key === 'Escape' && overlay.style.display === 'flex') {
+      closeOmni();
+    }
+  });
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeOmni();
+  });
+}
+
+/* ── Slide-Over Drawer Global (Reutilizable para Módulos) ────────── */
+function initGlobalDrawer() {
+  const backdrop = document.getElementById('global-drawer-backdrop');
+  const closeBtn = document.getElementById('btn-close-drawer');
+  const cancelBtn = document.getElementById('btn-drawer-cancel');
+  const titleEl = document.getElementById('drawer-title');
+  const iconEl = document.getElementById('drawer-icon');
+  const bodyEl = document.getElementById('drawer-body');
+
+  function openDrawer(options?: { title?: string; icon?: string; contentHtml?: string; onMount?: () => void }) {
+    if (!backdrop) return;
+    if (options?.title && titleEl) titleEl.textContent = options.title;
+    if (options?.icon && iconEl) iconEl.className = `fas ${options.icon}`;
+    if (options?.contentHtml && bodyEl) {
+      bodyEl.innerHTML = options.contentHtml;
+      options.onMount?.();
+    }
+    backdrop.classList.add('open');
+  }
+
+  function closeDrawer() {
+    if (!backdrop) return;
+    backdrop.classList.remove('open');
+  }
+
+  closeBtn?.addEventListener('click', closeDrawer);
+  cancelBtn?.addEventListener('click', closeDrawer);
+  backdrop?.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeDrawer();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && backdrop?.classList.contains('open')) {
+      closeDrawer();
+    }
+  });
+
+  (window as any).openDrawer = openDrawer;
+  (window as any).closeDrawer = closeDrawer;
+}
+
+
 

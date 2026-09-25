@@ -286,6 +286,36 @@ function isLastPeriodOfCalendarMonth(period: any, allPeriodsInMonth: any[]): boo
   return true;
 }
 
+function inferPeriodBaseDays(periodRec: any, fallbackPeriodType: string = 'MENSUAL'): number {
+  if (periodRec) {
+    const name = String(periodRec.name || '').toUpperCase();
+    if (name.includes('Q1') || name.includes('Q2') || name.includes('QUINCEN') || name.includes('1Q') || name.includes('2Q')) {
+      return 15;
+    }
+    if (name.includes('SEM') || name.includes('W1') || name.includes('W2') || name.includes('W3') || name.includes('W4')) {
+      return 7;
+    }
+    if (name.includes('CATORCEN')) {
+      return 14;
+    }
+    if (periodRec.date_from && periodRec.date_to) {
+      const d1 = new Date(periodRec.date_from + 'T00:00:00');
+      const d2 = new Date(periodRec.date_to + 'T00:00:00');
+      const diffDays = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      if (diffDays >= 13 && diffDays <= 16) return 15;
+      if (diffDays >= 6 && diffDays <= 8) return 7;
+      if (diffDays >= 12 && diffDays <= 14) return 14;
+      if (diffDays >= 27 && diffDays <= 31) return 30;
+    }
+  }
+  const type = String(fallbackPeriodType || 'MENSUAL').toUpperCase();
+  if (type === 'QUINCENAL') return 15;
+  if (type === 'CATORCENA') return 14;
+  if (type === 'SEMANAL') return 7;
+  if (type === 'JORNAL') return 1;
+  return 30;
+}
+
 async function getMonthlyAccumulatedPayrollData(employeeId: string, currentPeriodId: string, ymPrefix: string) {
   let previousIbc = 0;
   let previousFsp = 0;
@@ -2049,12 +2079,7 @@ async function liquidarPeriodoMasivo(periodId) {
     const UVT_VIGENTE = config.company_rules.uvt_value || 52374;
     const AUX_TRANSPORTE_VIGENTE = config.company_rules.transport_allowance || ((SMLV_VIGENTE <= 1423500) ? 162000 : 180000);
 
-    const periodType = config.company_rules.period_type || 'MENSUAL';
-    let diasPeriodoBase = 30;
-    if (periodType === 'QUINCENAL') diasPeriodoBase = 15;
-    else if (periodType === 'CATORCENA') diasPeriodoBase = 14;
-    else if (periodType === 'SEMANAL') diasPeriodoBase = 7;
-    else if (periodType === 'JORNAL') diasPeriodoBase = 1;
+    const diasPeriodoBase = inferPeriodBaseDays(period, config.company_rules?.period_type || 'MENSUAL');
 
     let creadas = 0;
     let actualizadas = 0;
@@ -2087,10 +2112,9 @@ async function liquidarPeriodoMasivo(periodId) {
       let compensatorios = 0;
       let alimentacion = 0;
       let libranzas = 0;
+      let diasLicenciaNoRem = 0;
       let retencionPorcentajeNovedad = 0; // % fijo de retención desde novedad (0 = no aplica)
-
       const otHours = { hed: 0, hen: 0, rno: 0, heddf: 0, hendf: 0, rdfd: 0 };
-
       empNovelties.forEach(n => {
         const type = n.type || '';
         const qty = Number(n.qty || 0);
@@ -2105,6 +2129,7 @@ async function liquidarPeriodoMasivo(periodId) {
           type === 'PERMISO_NO_REMUNERADO' ||
           type === 'SUSPENSION'
         ) {
+          diasLicenciaNoRem += qty;
           diasAusentismo += qty;
         } else if (type === 'VACACIONES' || type === 'VACACIONES_RETIRO') {
           diasVacaciones += qty;
@@ -2169,6 +2194,7 @@ async function liquidarPeriodoMasivo(periodId) {
         }
       });
 
+      // Días efectivamente laborados y remunerados salarialmente:
       const daysWorked = Math.max(0, diasPeriodoBase - diasAusentismo);
       const salary = empRule.basic_salary || 0;
       const salaryProportional = round2((salary / 30) * daysWorked);
@@ -2185,9 +2211,14 @@ async function liquidarPeriodoMasivo(periodId) {
         overtimeBreakdown[t.key] = { hours, amount };
       });
 
+      const isIntegralSalary = empRule.is_integral_salary || String(empRule.salary_type || '').toUpperCase() === 'INTEGRAL';
+      const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
+
+      // Auxilio de Transporte (Ley 15 de 1959): aplica a trabajadores con salario <= 2 SMMLV
+      const qualifiesForTransport = (salary <= (SMLV_VIGENTE * 2)) && !isIntegralSalary && !isAprendiz && (empRule.apply_transport_allowance !== false);
       let transportAllowance = 0;
       const transportDays = Math.max(0, daysWorked);
-      if (empRule.apply_transport_allowance !== false && salary <= (SMLV_VIGENTE * 2)) {
+      if (qualifiesForTransport) {
         transportAllowance = round2((AUX_TRANSPORTE_VIGENTE / 30) * transportDays);
       }
 
@@ -2204,21 +2235,34 @@ async function liquidarPeriodoMasivo(periodId) {
 
       // Si las vacaciones corresponden a liquidación por retiro o cancelación de contrato, NO forman parte del IBC de EPS/Pensión
       const ibcVacaciones = isVacacionesRetiro ? 0 : vacacionesAmount;
-      const isIntegralSalary = empRule.is_integral_salary || String(empRule.salary_type || '').toUpperCase() === 'INTEGRAL';
 
+      // IBC general (liquidado sobre devengos reales trabajados):
       const rawIbc = Math.min(
         salaryProportional + otAmount + ibcVacaciones + licenciasAmount + incapacidadesAmount + comisiones + ajusteSalarial,
         SMLV_VIGENTE * 25
       );
       const ibc = round2(isIntegralSalary ? totalEarnings * 0.70 : rawIbc);
 
-      const deductionHealth = empRule.subtipoTrabajador === 'APRENDIZ' ? 0 : round2(ibc * 0.04);
-      const deductionPension = (empRule.subtipoTrabajador === 'APRENDIZ' || empRule.is_pensioner) ? 0 : round2(ibc * 0.04);
+      // Base e IBC para Salud y Pensión (Seguridad Social Integral):
+      // Conforme a la regla de negocio y normativa colombiana (Decreto 1406/1999 Art. 40 y continuidad contractual),
+      // durante los permisos o licencias no remuneradas el vínculo no cambia: el salario devengado disminuye,
+      // pero la liquidación y descuento de EPS y Pensión (tanto trabajador 4% como empleador) se calculan sobre los días básicos laborables
+      // del período (ej. 15 días en quincena, 30 en mes) para evitar semanas sin cotizar y mantener la cobertura completa.
+      const salaryBasePeriodoSS = round2((salary / 30) * Math.max(0, diasPeriodoBase - (diasAusentismo - diasLicenciaNoRem)));
+      const rawIbcSS = Math.min(
+        salaryBasePeriodoSS + otAmount + ibcVacaciones + licenciasAmount + incapacidadesAmount + comisiones + ajusteSalarial,
+        SMLV_VIGENTE * 25
+      );
+      const ibcSS = round2(isIntegralSalary ? (totalEarnings + round2((salary / 30) * diasLicenciaNoRem)) * 0.70 : rawIbcSS);
+
+      // Descuento Salud (4%) y Pensión (4%) del trabajador calculados sobre la base completa del período:
+      const deductionHealth = isAprendiz ? 0 : round2(ibcSS * 0.04);
+      const deductionPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.04);
 
       let solidarityFund = 0;
       if (empRule.apply_solidarity_fund !== false && isLastPeriodMonth) {
         const accum = empMonthAccumulatedMap.get(emp.id) || { previousIbc: 0, previousFsp: 0 };
-        const monthlyTotalIbc = round2(accum.previousIbc + ibc);
+        const monthlyTotalIbc = round2(accum.previousIbc + ibcSS);
         const monthlyTotalFsp = calculateSolidarityFund(monthlyTotalIbc, SMLV_VIGENTE);
         solidarityFund = Math.max(0, round2(monthlyTotalFsp - accum.previousFsp));
       }
@@ -2238,35 +2282,56 @@ async function liquidarPeriodoMasivo(periodId) {
       const netPay = round2(totalEarnings - totalDeducciones);
 
       const smmlvVal = config.company_rules?.smmlv || 1750905;
-      const isArt114Exempt = !!config.company_rules?.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+      const isArt114Exempt = !!config.company_rules?.exempt_sena_icbf && (ibcSS < (smmlvVal * 10));
 
-      const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
-
-      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.085);
-      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
+      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibcSS * 0.085);
+      // Aporte pensión empleador: 12% sobre ibcSS (cubre la SLN para no recortar semanas cotizadas)
+      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.12);
+      // Seguridad Social (ARL, Salud y Pensión): Se mantienen estrictamente sobre la base ordinaria trabajada (sin vacaciones de retiro)
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = isAprendiz ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
-      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.02);
-      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.03);
-      const cajaComp = isAprendiz ? 0 : round2(ibc * 0.04);
+      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(rawIbc * arlRate);
 
-      // Base para prestaciones sociales (Cesantías y Prima de Servicios):
-      // Art. 7 Ley 1 de 1963: El auxilio de transporte se incorpora a la base para la liquidación de cesantías y prima de servicios.
-      // Empleados con Salario Integral no reciben provisión separada de cesantías ni prima (cubierto por el 30% factor prestacional).
-      // Aprendices SENA reciben apoyo de sostenimiento y no causan prestaciones sociales.
-      const basePrestaciones = (isIntegralSalary || isAprendiz)
+      // Aportes Parafiscales (Caja de Compensación Familiar, SENA e ICBF):
+      // Art. 17 Ley 21 de 1982: Los pagos por vacaciones compensadas en dinero NO forman parte de la base,
+      // EXCEPTO en el caso de liquidación o terminación del contrato de trabajo (retiro / finiquito),
+      // donde SÍ forman parte de la base para aportes a Cajas de Compensación Familiar (4%) y Parafiscales.
+      const vacacionesRetiroAmount = isVacacionesRetiro ? vacacionesAmount : 0;
+      const baseParafiscales = isAprendiz ? 0 : round2(rawIbc + vacacionesRetiroAmount);
+
+      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.02);
+      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.03);
+      const cajaComp = isAprendiz ? 0 : round2(baseParafiscales * 0.04);
+
+      // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses y Prima de Servicios) ───
+      // Art. 7 Ley 1 de 1963: Todo empleado que devengue hasta 2 SMMLV tiene derecho por mandato legal a que el auxilio de transporte
+      // se incorpore a la base de liquidación de cesantías y prima de servicios.
+      // Las provisiones periódicas (quincenales o mensuales) se causan proporcionalmente a los días del período liquidado.
+
+      // 1. Prima de servicios: no descuenta días por suspensión o licencia no remunerada (Art. 53 CST y jurisprudencia CSJ Rad. 8011)
+      const salaryPrimaPeriodo = round2((salary / 30) * diasPeriodoBase);
+      const transportPrimaPeriodo = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? round2((AUX_TRANSPORTE_VIGENTE / 30) * diasPeriodoBase) : 0;
+      const basePrimaPeriodo = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(rawIbc + transportAllowance);
+        : round2(salaryPrimaPeriodo + transportPrimaPeriodo + otAmount + comisiones + ajusteSalarial);
+      const prima = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrimaPeriodo * 0.0833) + n_primaServicios);
 
+      // 2. Cesantías e Intereses de Cesantías: según Art. 53 CST las licencias no remuneradas descuentan días para cesantías
+      const diasCesantiasPeriodo = Math.max(0, daysWorked);
+      const salaryCesantiasPeriodo = round2((salary / 30) * diasCesantiasPeriodo);
+      const transportCesantiasPeriodo = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? round2((AUX_TRANSPORTE_VIGENTE / 30) * diasCesantiasPeriodo) : 0;
+      const baseCesantiasPeriodo = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(salaryCesantiasPeriodo + transportCesantiasPeriodo + otAmount + comisiones + ajusteSalarial);
       const cesantias = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestaciones * 0.0833) + n_cesantias);
+        : round2(round2(baseCesantiasPeriodo * 0.0833) + n_cesantias);
       const interesesCes = (isIntegralSalary || isAprendiz)
         ? 0
         : round2(round2(cesantias * 0.12) + n_interesesCesantias);
-      const prima = (isIntegralSalary || isAprendiz)
-        ? 0
-        : round2(round2(basePrestaciones * 0.0833) + n_primaServicios);
+
+      // 3. Vacaciones causadas: se descuenta LNR según Art. 53 CST, sin auxilio de transporte
       const vacacionesCausadas = isAprendiz
         ? 0
         : round2((isIntegralSalary ? (totalEarnings * 0.70) : ibc) * 0.0417);
@@ -2293,9 +2358,14 @@ async function liquidarPeriodoMasivo(periodId) {
 
       const notesObj = {
         payroll_meta: {
-          ibc: round2(ibc),
+          ibc: round2(rawIbc),
+          ibc_ss: round2(ibcSS),
+          ibc_pension: round2(ibcSS),
+          ibc_cajas: round2(baseParafiscales),
           dias_vacaciones: diasVacaciones,
-          vacaciones_disfrutadas: vacacionesAmount,
+          dias_licencia_no_rem: diasLicenciaNoRem,
+          vacaciones_disfrutadas: isVacacionesRetiro ? 0 : vacacionesAmount,
+          vacaciones_compensadas_retiro: round2(vacacionesRetiroAmount),
           arl_risk_level: empRule.arl_risk_level,
           arl_rate: arlRate,
           is_pensioner: !!empRule.is_pensioner,
@@ -3657,6 +3727,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
           ibcSalud: 0,
           aporteSalud: 0,
           adminCajas: cajaFundName,
+          vacacionesRetiro: 0,
           ibcCajas: 0,
           aporteCajas: 0,
           tarifaRiesgos: arlTarifaStr,
@@ -3677,9 +3748,17 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
 
       // Collect novelties from payroll_novelties for PILA badge display
       const empNovs = empNoveltiesMap.get(empId) || [];
+      let hasSlnNovelty = false;
+      let slnDays = 0;
       empNovs.forEach((nov: any) => {
         const abbr = mapNoveltyToPilaAbbr(nov.type);
-        if (abbr) acc.noveltySet.add(abbr);
+        if (abbr) {
+          acc.noveltySet.add(abbr);
+          if (abbr === 'SLN') {
+            hasSlnNovelty = true;
+            slnDays += Number(nov.qty || 0);
+          }
+        }
       });
 
       // Overtime & concept amounts for this line
@@ -3711,6 +3790,18 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       if (lineVac > 0) acc.noveltySet.add('VAC');
       if (lineBonif > 0 || lineAjuste > 0) acc.noveltySet.add('VST');
 
+      // Fondo de solidaridad y meta de nómina: campo directo o desde notes
+      const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch(_) { return {}; } })();
+      if (Number(pilaNotesObj.dias_licencia_no_rem || 0) > 0) {
+        hasSlnNovelty = true;
+        slnDays = Math.max(slnDays, Number(pilaNotesObj.dias_licencia_no_rem));
+        acc.noveltySet.add('SLN');
+      } else if (pilaNotesObj.dias_periodo_base && Number(pilaNotesObj.dias_periodo_base) > days && pilaNotesObj.ibc_ss) {
+        hasSlnNovelty = true;
+        slnDays = Math.max(slnDays, Number(pilaNotesObj.dias_periodo_base) - days);
+        acc.noveltySet.add('SLN');
+      }
+
       // Collect ING / RET from contract dates
       const startDate = effectiveRule.start_date || empObj.hire_date || '';
       const endDate = effectiveRule.end_date || empObj.termination_date || '';
@@ -3725,12 +3816,20 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       // Real IBC for PILA = Base Salario + Horas Extras + Comisiones + Incapacidades + Licencias + Vacaciones + Ajustes Salariales
       const lineIbc = round2(proportionalSalary + lineOtAmount + lineComisiones + lineIncap + lineLic + lineVac + lineAjuste + lineBonif);
 
+      // Para Pensión y Salud: si hubo novedad SLN (Licencia No Remunerada o Permiso No Remunerado),
+      // los días cotizados a Pensión y Salud NO se recortan para evitar semanas sin cotizar ante la AFP/EPS
+      // ni afectar la vinculación contractual, y la base de cotización (IBC) conserva el período completo.
+      const daysAfp = effectiveRule.is_pensioner ? 0 : (hasSlnNovelty ? Math.min(30, days + slnDays) : days);
+      const daysEps = hasSlnNovelty ? Math.min(30, days + slnDays) : days;
+      const lineIbcSS = hasSlnNovelty
+        ? (pilaNotesObj.ibc_ss || pilaNotesObj.ibc_pension ? round2(pilaNotesObj.ibc_ss || pilaNotesObj.ibc_pension) : round2(Number(line.salary_base || 0) + lineOtAmount + lineComisiones + lineAjuste + lineBonif))
+        : lineIbc;
+      const lineIbcPension = effectiveRule.is_pensioner ? 0 : lineIbcSS;
+
       const saludTrab = line.deduction_health || 0;
       const saludEmp = line.employer_health || 0;
       const penTrab = line.deduction_pension || 0;
       const penEmp = line.employer_pension || 0;
-      // Fondo de solidaridad: campo directo (nuevas liquidaciones) o desde notes (legacy)
-      const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch(_) { return {}; } })();
       const fsp = round2((line.solidarity_fund || 0) + (!(line.solidarity_fund) ? (pilaNotesObj.solidarity_fund || 0) : 0));
       const arlVal = line.employer_arl || 0;
       const caja = line.caja_comp || 0;
@@ -3742,9 +3841,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       acc.comisionesMonto += lineComisiones;
 
       acc.diasLaborados += days;
-      acc.diasCotizados += days;
-      acc.diasAfp += effectiveRule.is_pensioner ? 0 : days;
-      acc.diasEps += days;
+      acc.diasCotizados += hasSlnNovelty ? Math.min(30, days + slnDays) : days;
+      acc.diasAfp += daysAfp;
+      acc.diasEps += daysEps;
       acc.diasArp += days;
       acc.diasCcf += days;
 
@@ -3753,14 +3852,24 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const effectiveIcbf = isExempt ? 0 : icbf;
       const effectiveSalud = round2(saludTrab + (isExempt ? 0 : saludEmp));
 
-      acc.ibcPension += lineIbc;
+      acc.ibcPension += lineIbcPension;
       acc.aportePension += round2(penTrab + penEmp + fsp);
 
-      acc.ibcSalud += lineIbc;
+      acc.ibcSalud += lineIbcSS;
       acc.aporteSalud += effectiveSalud;
 
-      acc.ibcCajas += lineIbc;
-      acc.aporteCajas += caja;
+      // Base para Caja de Compensación Familiar (Art. 17 Ley 21/1982):
+      // Incluye salario proporcional + extras + comisiones + licencias + incapacidades + vacaciones compensadas por retiro.
+      // Seguridad Social (ARL, Salud y Pensión) se mantiene calculada sin vacaciones de retiro.
+      const lineVacRetiro = round2(Number(pilaNotesObj.vacaciones_compensadas_retiro || pilaNotesObj.vacaciones_retiro || conceptAmounts.vacaciones_compensadas_retiro || 0));
+      const lineIbcCajas = round2((pilaNotesObj.ibc_cajas ? Number(pilaNotesObj.ibc_cajas) : (lineIbc + lineVacRetiro)));
+      const effectiveCaja = (caja > 0) ? caja : round2(lineIbcCajas * 0.04);
+
+      acc.vacacionesRetiro = round2((acc.vacacionesRetiro || 0) + lineVacRetiro);
+      if (lineVacRetiro > 0) acc.noveltySet.add('RET');
+
+      acc.ibcCajas += lineIbcCajas;
+      acc.aporteCajas += effectiveCaja;
 
       acc.ibcRiesgos += lineIbc;
       acc.aporteRiesgos += arlVal;
@@ -3946,8 +4055,11 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
                   <td class="text-right font-mono">${fmt(r.ibcSalud)}</td>
                   <td class="text-right font-semibold text-emerald-900">${fmt(r.aporteSalud)}</td>
                   <td>${esc(r.adminCajas)}</td>
-                  <td class="text-right font-mono">${fmt(r.ibcCajas)}</td>
-                  <td class="text-right font-mono">${fmt(r.aporteCajas)}</td>
+                  <td class="text-right font-mono">
+                    <div>${fmt(r.ibcCajas)}</div>
+                    ${r.vacacionesRetiro > 0 ? `<div class="text-3xs text-emerald-700 font-bold" title="Incluye vacaciones compensadas en retiro según Art. 17 Ley 21/1982">+${fmt(r.vacacionesRetiro)} Vac. Retiro</div>` : ''}
+                  </td>
+                  <td class="text-right font-mono font-semibold text-emerald-900">${fmt(r.aporteCajas)}</td>
                   <td class="text-center font-mono text-xs">${esc(r.tarifaRiesgos)}</td>
                   <td class="text-right font-mono">${fmt(r.ibcRiesgos)}</td>
                   <td class="text-right font-semibold text-amber-900">${fmt(r.aporteRiesgos)}</td>
@@ -4049,6 +4161,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         ibc_salud: r.ibcSalud,
         aporte_salud: r.aporteSalud,
         admin_cajas: r.adminCajas,
+        vacaciones_compensadas_retiro: r.vacacionesRetiro || 0,
         ibc_cajas: r.ibcCajas,
         aporte_cajas: r.aporteCajas,
         tarifa_arl: r.tarifaRiesgos,
@@ -4085,6 +4198,7 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         ibc_salud: totIbcSalud,
         aporte_salud: totAporteSalud,
         admin_cajas: '',
+        vacaciones_compensadas_retiro: rowItems.reduce((s: number, r: any) => s + (r.vacacionesRetiro || 0), 0),
         ibc_cajas: totIbcCajas,
         aporte_cajas: totAporteCajas,
         tarifa_arl: '',
@@ -4121,8 +4235,9 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
         { key: 'ibc_salud', label: 'IBC Salud ($)' },
         { key: 'aporte_salud', label: 'Aporte Salud ($)' },
         { key: 'admin_cajas', label: 'Administrador Cajas' },
-        { key: 'ibc_cajas', label: 'IBC Cajas ($)' },
-        { key: 'aporte_cajas', label: 'Aporte Cajas ($)' },
+        { key: 'vacaciones_compensadas_retiro', label: 'Vacaciones Compensadas Retiro ($ - Art. 17 Ley 21/1982)' },
+        { key: 'ibc_cajas', label: 'IBC Cajas ($ - Incluye Vac. Retiro)' },
+        { key: 'aporte_cajas', label: 'Aporte Cajas (4% - $)' },
         { key: 'tarifa_arl', label: 'Tarifa Riesgos ARL' },
         { key: 'ibc_riesgos', label: 'IBC Riesgos ($)' },
         { key: 'aporte_riesgos', label: 'Aporte Riesgos ($)' },
@@ -4377,8 +4492,11 @@ function exportPlanillaPilaPdf(monthLabel: string, year: number, rowItems: any[]
           <td class="text-right font-mono">${fmt(r.ibcSalud)}</td>
           <td class="text-right font-mono font-bold" style="color:#065f46;">${fmt(r.aporteSalud)}</td>
           <td class="text-left">${esc(r.adminCajas)}</td>
-          <td class="text-right font-mono">${fmt(r.ibcCajas)}</td>
-          <td class="text-right font-mono">${fmt(r.aporteCajas)}</td>
+          <td class="text-right font-mono">
+            <div>${fmt(r.ibcCajas)}</div>
+            ${r.vacacionesRetiro > 0 ? `<div style="font-size:5.5pt; color:#166534; font-weight:bold;">(+${fmt(r.vacacionesRetiro)} Vac.Ret)</div>` : ''}
+          </td>
+          <td class="text-right font-mono font-bold" style="color:#065f46;">${fmt(r.aporteCajas)}</td>
           <td class="text-center font-mono">${esc(r.tarifaRiesgos)}</td>
           <td class="text-right font-mono font-bold" style="color:#92400e;">${fmt(r.aporteRiesgos)}</td>
           <td class="text-right font-mono">${fmt(r.aporteSena)}</td>
@@ -5548,8 +5666,17 @@ function buildSingleWorkerUblXml(
   if ((emp.incapacidadesMonto || 0) > 0) {
     devengadosAdicionalesXml += `  <Incapacidades><Incapacidad Tipo="1" Cantidad="${emp.incapacidadesDias || 1}" Pago="${round2(emp.incapacidadesMonto).toFixed(2)}" /></Incapacidades>\n`;
   }
-  if ((emp.licenciasMonto || 0) > 0) {
-    devengadosAdicionalesXml += `  <Licencias><LicenciaR Cantidad="${emp.licenciasDias || 1}" Pago="${round2(emp.licenciasMonto).toFixed(2)}" /></Licencias>\n`;
+  if ((emp.licenciasMonto || 0) > 0 || (emp.licenciasNRDias || 0) > 0) {
+    let licContent = '';
+    if ((emp.licenciasMonto || 0) > 0) {
+      licContent += `<LicenciaR Cantidad="${emp.licenciasDias || 1}" Pago="${round2(emp.licenciasMonto).toFixed(2)}" />`;
+    }
+    if ((emp.licenciasNRDias || 0) > 0) {
+      const fIni = emp.licenciasNRInicio || `${ymPrefix}-01`;
+      const fFin = emp.licenciasNRFin || fIni;
+      licContent += `<LicenciaNR Cantidad="${emp.licenciasNRDias}" FechaInicio="${fIni}" FechaFin="${fFin}" />`;
+    }
+    devengadosAdicionalesXml += `  <Licencias>${licContent}</Licencias>\n`;
   }
   if ((emp.bonificacionesMonto || 0) > 0) {
     devengadosAdicionalesXml += `  <Bonificaciones><Bonificacion BonificacionS="${round2(emp.bonificacionesMonto).toFixed(2)}" BonificacionNS="0.00" /></Bonificaciones>\n`;
@@ -5740,10 +5867,25 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
 
     const acumuladosPorEmpleado = new Map();
 
+    const periodNovs = await pb.listAll('payroll_novelties', { filter: filterExpr }).catch(() => []);
+    const novsByEmp = new Map<string, any[]>();
+    periodNovs.forEach((nv: any) => {
+      if (nv.employee_id) {
+        if (!novsByEmp.has(nv.employee_id)) novsByEmp.set(nv.employee_id, []);
+        novsByEmp.get(nv.employee_id)!.push(nv);
+      }
+    });
+
     lines.forEach(l => {
       const emp = l.expand?.employee_id;
       if (!emp) return;
       const empId = emp.id;
+
+      const empNovs = novsByEmp.get(empId) || [];
+      const nrLics = empNovs.filter((n: any) => n.type === 'LICENCIA_NO_REMUNERADA' || n.type === 'PERMISO_NO_REMUNERADO' || n.type === 'SUSPENSION');
+      const licNRQty = nrLics.reduce((sum: number, n: any) => sum + (n.qty || 0), 0);
+      const licNRIni = nrLics[0]?.date_from || '';
+      const licNRFin = nrLics[0]?.date_to || licNRIni;
 
       const days = (l.days_worked !== undefined && l.days_worked !== null && !isNaN(Number(l.days_worked))) ? Number(l.days_worked) : 30;
       const proportionalSalary = round2(((l.salary_base || 0) / 30) * days);
@@ -5824,6 +5966,9 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
         existing.embargoDeduccion += embargo;
         existing.deudaDeduccion += deuda;
         existing.otrasDeducciones += otrasDeducciones;
+        existing.licenciasNRDias = (existing.licenciasNRDias || 0) + licNRQty;
+        if (!existing.licenciasNRInicio && licNRIni) existing.licenciasNRInicio = licNRIni;
+        if (licNRFin) existing.licenciasNRFin = licNRFin;
 
         if (otMeta.breakdown && Array.isArray(otMeta.breakdown)) {
           otMeta.breakdown.forEach((b: any) => {
@@ -5943,7 +6088,10 @@ async function generateNominaElectronica(year: number, month: number, btn?: HTML
           anticipoDeduccion: anticipo,
           embargoDeduccion: embargo,
           deudaDeduccion: deuda,
-          otrasDeducciones: otrasDeducciones
+          otrasDeducciones: otrasDeducciones,
+          licenciasNRDias: licNRQty,
+          licenciasNRInicio: licNRIni,
+          licenciasNRFin: licNRFin
         });
       }
     });
@@ -8325,12 +8473,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     return showToast(`Debes configurar salario básico en todos los empleados activos antes de liquidar. Pendientes: ${names}`, 'warning');
   }
 
-  const periodType = config.company_rules.period_type || 'MENSUAL';
-  let diasPeriodoBase = 30;
-  if (periodType === 'QUINCENAL') diasPeriodoBase = 15;
-  else if (periodType === 'CATORCENA') diasPeriodoBase = 14;
-  else if (periodType === 'SEMANAL') diasPeriodoBase = 7;
-  else if (periodType === 'JORNAL') diasPeriodoBase = 1;
+  const initialPeriodId = lineToEdit?.period_id || (window as any)._currentNominaPeriodId || (openPeriods[0]?.id) || (periods[0]?.id);
+  const initialPeriod = periods.find((p: any) => p.id === initialPeriodId);
+  let diasPeriodoBase = inferPeriodBaseDays(initialPeriod, config.company_rules?.period_type || 'MENSUAL');
 
   const overtimeInputs = NOMINA_OVERTIME_TYPES.map((t) => `
     <div class="form-group">
@@ -8458,8 +8603,17 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     );
     const ibc = round2(isIntegralSalary ? devengado * 0.70 : rawIbc);
 
-    const dedSalud = round2(ibc * 0.04);
-    const dedPension = empRule.is_pensioner ? 0 : round2(ibc * 0.04);
+    // Base e IBC para Salud y Pensión: se calculan sobre los días básicos laborables completos del período (diasPeriodoBase)
+    // para que los permisos no remunerados no afecten la liquidación y descuento de EPS y Pensión:
+    const salPropSS = (salary / 30) * diasPeriodoBase;
+    const rawIbcSS = Math.min(
+      salPropSS + ot + (conceptAmounts.incapacidades || 0) + (conceptAmounts.licencias || 0) + (conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0) + ibcVacaciones,
+      (companyRules.smmlv || 1423500) * 25
+    );
+    const ibcSS = round2(isIntegralSalary ? (devengado + ((salary / 30) * Math.max(0, diasPeriodoBase - salaryDays))) * 0.70 : rawIbcSS);
+
+    const dedSalud = isAprendiz ? 0 : round2(ibcSS * 0.04);
+    const dedPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.04);
 
     const SMLV_VIGENTE = companyRules.smmlv || 1423500;
     const UVT_VIGENTE = companyRules.uvt_value || 52374;
@@ -8505,24 +8659,29 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const icbfRate = (isAprendiz || isArt114Exempt) ? 0 : 0.03;
     const pensionRate = (isAprendiz || empRule.is_pensioner) ? 0 : 0.12;
     const cajaRate = isAprendiz ? 0 : 0.04;
-    const para = round2(ibc * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate + cajaRate));
+    const isRetiro = !!conceptAmounts.es_retiro;
+    const vacRetiroAmount = isRetiro ? (conceptAmounts.vacaciones || 0) : 0;
+    const baseCaja = isAprendiz ? 0 : round2(ibc + vacRetiroAmount);
+    const cajaVal = round2(baseCaja * cajaRate);
+    const para = round2((ibc * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate)) + cajaVal);
 
-    // Base prestaciones sociales: IBC + Auxilio de transporte (Art. 7 Ley 1 de 1963)
-    const basePrestaciones = (isIntegralSalary || isAprendiz)
-      ? 0
-      : round2(rawIbc + aux);
-    const cesantiasProv = (isIntegralSalary || isAprendiz)
-      ? 0
-      : round2(basePrestaciones * 0.0833);
-    const intCesProv = (isIntegralSalary || isAprendiz)
-      ? 0
-      : round2(cesantiasProv * 0.12);
-    const primaProv = (isIntegralSalary || isAprendiz)
-      ? 0
-      : round2(basePrestaciones * 0.0833);
-    const vacProv = isAprendiz
-      ? 0
-      : round2((isIntegralSalary ? devengado * 0.70 : ibc) * 0.0417);
+    // Base prestaciones sociales del período (Cesantías, Intereses y Prima de Servicios):
+    const monthlyAuxTransport = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
+    
+    // Prima sobre días básicos del período (diasPeriodoBase)
+    const salPrima = round2((salary / 30) * diasPeriodoBase);
+    const auxPrima = round2((monthlyAuxTransport / 30) * diasPeriodoBase);
+    const basePrima = (isIntegralSalary || isAprendiz) ? 0 : round2(salPrima + auxPrima + ot + extraEarnings);
+    const primaProv = (isIntegralSalary || isAprendiz) ? 0 : round2(basePrima * 0.0833);
+
+    // Cesantías e Intereses sobre días trabajados en el período (salaryDays)
+    const salCes = round2((salary / 30) * salaryDays);
+    const auxCes = round2((monthlyAuxTransport / 30) * salaryDays);
+    const baseCes = (isIntegralSalary || isAprendiz) ? 0 : round2(salCes + auxCes + ot + extraEarnings);
+    const cesantiasProv = (isIntegralSalary || isAprendiz) ? 0 : round2(baseCes * 0.0833);
+    const intCesProv = (isIntegralSalary || isAprendiz) ? 0 : round2(cesantiasProv * 0.12);
+
+    const vacProv = isAprendiz ? 0 : round2((isIntegralSalary ? devengado * 0.70 : ibc) * 0.0417);
     const prov = round2(cesantiasProv + intCesProv + primaProv + vacProv);
 
     const preview = $('#nomina-preview');
@@ -8669,6 +8828,10 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
   const applyEmployeeDefaults = async () => {
     const employeeId = getSelectVal('pl-emp');
     const periodId = getSelectVal('pl-period');
+    const pRec = periods.find((p: any) => p.id === periodId);
+    if (pRec) {
+      diasPeriodoBase = inferPeriodBaseDays(pRec, config.company_rules?.period_type || 'MENSUAL');
+    }
     const empRule = getEmployeePayrollRule(config, employeeId);
     if ((empRule.basic_salary || 0) > 0) {
       setInputVal('pl-salary', String(round2(empRule.basic_salary)));
@@ -8683,6 +8846,8 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
           setInputVal('pl-aux', String(config.company_rules?.transport_allowance || 162000));
         }
       }
+      setInputVal('pl-days-salary', String(diasPeriodoBase));
+      setInputVal('pl-days-transport', String(diasPeriodoBase));
       await loadEmployeeNovelties(periodId, employeeId);
     }
   };
@@ -8753,16 +8918,18 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const dedOther = parseNum(getInputVal('pl-ded-other'));
       const employeeId = getSelectVal('pl-emp');
 
-      if (salary <= 0) return showToast('El salario base debe ser mayor a cero', 'warning');
-      if (salaryDays < 0 || salaryDays > diasPeriodoBase) return showToast('Días salario debe estar entre 0 y ' + diasPeriodoBase, 'warning');
-      if (transportDays < 0 || transportDays > diasPeriodoBase) return showToast('Días auxilio transporte debe estar entre 0 y ' + diasPeriodoBase, 'warning');
-
       const periodId = getSelectVal('pl-period');
       if (!periodId) return showToast('Selecciona un Periodo', 'warning');
       const period = await pb.get('payroll_periods', periodId);
       if ((period.status || 'draft') !== 'draft' && !lineToEdit) {
         return showToast('El Periodo seleccionado no esta en borrador. No se pueden registrar nuevas liquidaciones.', 'error');
       }
+
+      diasPeriodoBase = inferPeriodBaseDays(period, config.company_rules?.period_type || 'MENSUAL');
+
+      if (salary <= 0) return showToast('El salario base debe ser mayor a cero', 'warning');
+      if (salaryDays < 0 || salaryDays > diasPeriodoBase) return showToast('Días salario debe estar entre 0 y ' + diasPeriodoBase, 'warning');
+      if (transportDays < 0 || transportDays > diasPeriodoBase) return showToast('Días auxilio transporte debe estar entre 0 y ' + diasPeriodoBase, 'warning');
 
       if (!lineToEdit) {
         const existingLines = await pb.listAll('payroll_lines', {
@@ -8783,8 +8950,15 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const cesantiasVal = parseNum(getInputVal('pl-cesantias')) || 0;
       const interesesCesVal = parseNum(getInputVal('pl-intereses-ces')) || 0;
 
+      // Base salarial proporcional para devengo (se descuentan permisos no remunerados)
       const salaryProportional = (salary / 30) * salaryDays;
       const baseSalarial = salaryProportional + ot;
+
+      // Base salarial para Seguridad Social (Salud y Pensión):
+      // Los permisos o licencias no remuneradas descuentan el devengo salarial, pero NO afectan
+      // la base de cotización ni el descuento de EPS y Pensión, liquidándose sobre los días básicos del período.
+      const salPropSS = (salary / 30) * diasPeriodoBase;
+      const baseSalarialSS = salPropSS + ot;
 
       const empRule = getEmployeePayrollRule(config, employeeId);
       if (!isEmployeePayrollRuleComplete(empRule)) {
@@ -8802,8 +8976,14 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       );
       const ibc = round2(isIntegralSalary ? devengado * 0.70 : rawIbc);
 
-      const deductionHealth = round2(ibc * 0.04);
-      const deductionPension = empRule.is_pensioner ? 0 : round2(ibc * 0.04);
+      const rawIbcSS = Math.min(
+        baseSalarialSS + (conceptAmounts.incapacidades || 0) + (conceptAmounts.licencias || 0) + (conceptAmounts.comisiones || 0) + (conceptAmounts.ajuste_salarial || 0) + ibcVacaciones,
+        (companyRules.smmlv || 1423500) * 25
+      );
+      const ibcSS = round2(isIntegralSalary ? devengado * 0.70 : rawIbcSS);
+
+      const deductionHealth = round2(ibcSS * 0.04);
+      const deductionPension = empRule.is_pensioner ? 0 : round2(ibcSS * 0.04);
       const SMLV_VIGENTE = companyRules.smmlv || 1423500;
       const UVT_VIGENTE = companyRules.uvt_value || 52374;
 
@@ -8816,7 +8996,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       let solidarityFund = 0;
       if (empRule.apply_solidarity_fund !== false && isLastPeriodMonth) {
         const { previousIbc, previousFsp } = await getMonthlyAccumulatedPayrollData(employeeId, periodId, ymPrefix);
-        const monthlyTotalIbc = round2(previousIbc + ibc);
+        const monthlyTotalIbc = round2(previousIbc + ibcSS);
         const monthlyTotalFsp = calculateSolidarityFund(monthlyTotalIbc, SMLV_VIGENTE);
         solidarityFund = Math.max(0, round2(monthlyTotalFsp - previousFsp));
       }
@@ -8831,30 +9011,50 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const deductionOther = dedOther;
 
       const smmlvVal = companyRules.smmlv || 1750905;
-      const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+      const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibcSS < (smmlvVal * 10));
 
       const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
-      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.085);
-      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibc * 0.12);
+      const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibcSS * 0.085);
+      const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.12);
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = isAprendiz ? round2(salary * ARL_RISK_RATES[1]) : round2(ibc * arlRate);
-      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.02);
-      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(ibc * 0.03);
-      const cajaComp = isAprendiz ? 0 : round2(ibc * 0.04);
+      const isRetiro = !!conceptAmounts.es_retiro;
+      const vacRetiroAmount = isRetiro ? (conceptAmounts.vacaciones || 0) : 0;
+      const baseParafiscales = isAprendiz ? 0 : round2(rawIbc + vacRetiroAmount);
 
-      // Base para prestaciones sociales (Cesantías y Prima): IBC + Auxilio de Transporte (Art. 7 Ley 1 de 1963)
-      const basePrestaciones = (isIntegralSalary || isAprendiz)
+      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(rawIbc * arlRate);
+      const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.02);
+      const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.03);
+      const cajaComp = isAprendiz ? 0 : round2(baseParafiscales * 0.04);
+
+      // ─── Base para Prestaciones Sociales del Período (Cesantías, Intereses y Prima de Servicios) ───
+      // Art. 7 Ley 1 de 1963: Todo empleado que devengue hasta 2 SMMLV tiene derecho por mandato legal a que el auxilio de transporte
+      // se incorpore a la base de liquidación de cesantías y prima de servicios.
+      // Las provisiones periódicas se causan proporcionalmente a los días del período liquidado.
+      const monthlyAuxPrest = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
+      
+      // Prima sobre días básicos del período
+      const salPrimaPeriodo = round2((salary / 30) * diasPeriodoBase);
+      const auxPrimaPeriodo = round2((monthlyAuxPrest / 30) * diasPeriodoBase);
+      const basePrimaPeriodo = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(rawIbc + aux);
+        : round2(salPrimaPeriodo + auxPrimaPeriodo + ot + extraEarnings);
+      const prima = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(round2(basePrimaPeriodo * 0.0833) + primaVal);
+
+      // Cesantías e Intereses de Cesantías sobre días trabajados en el período
+      const salCesantiasPeriodo = round2((salary / 30) * salaryDays);
+      const auxCesantiasPeriodo = round2((monthlyAuxPrest / 30) * salaryDays);
+      const baseCesantiasPeriodo = (isIntegralSalary || isAprendiz)
+        ? 0
+        : round2(salCesantiasPeriodo + auxCesantiasPeriodo + ot + extraEarnings);
       const cesantias = (isIntegralSalary || isAprendiz)
         ? 0
-        : round2(round2(basePrestaciones * 0.0833) + cesantiasVal);
+        : round2(round2(baseCesantiasPeriodo * 0.0833) + cesantiasVal);
       const interesesCes = (isIntegralSalary || isAprendiz)
         ? 0
         : round2(round2(cesantias * 0.12) + interesesCesVal);
-      const prima = (isIntegralSalary || isAprendiz)
-        ? 0
-        : round2(round2(basePrestaciones * 0.0833) + primaVal);
+
       const vacaciones = isAprendiz
         ? 0
         : round2((isIntegralSalary ? devengado * 0.70 : ibc) * 0.0417);
@@ -8871,6 +9071,11 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const notesObj = {
         payroll_meta: {
           ibc: round2(ibc),
+          ibc_ss: round2(ibcSS),
+          ibc_pension: round2(ibcSS),
+          ibc_cajas: round2(baseParafiscales),
+          vacaciones_compensadas_retiro: round2(vacRetiroAmount),
+          dias_periodo_base: diasPeriodoBase,
           arl_risk_level: empRule.arl_risk_level,
           arl_rate: arlRate,
           is_pensioner: !!empRule.is_pensioner,
@@ -9912,7 +10117,13 @@ function calcularLiquidacionDefinitiva(params: {
   } = params;
 
   const r2 = round2;
-  const transport = (apply_transport && basic_salary <= smmlv * 2) ? transport_allowance : 0;
+  const isIntegral = contract_type === 'INTEGRAL' || contract_type === 'SALARIO_INTEGRAL';
+  // Art. 7 Ley 1 de 1963: Todo trabajador con salario <= 2 SMMLV tiene derecho irrenunciable por mandato legal
+  // a que el auxilio de transporte se incorpore a la base de cesantías, intereses y prima de servicios.
+  const qualifiesForTransportPrestaciones = (basic_salary <= (smmlv * 2)) && !isIntegral;
+  const transport = (apply_transport || qualifiesForTransportPrestaciones) && qualifiesForTransportPrestaciones
+    ? (transport_allowance || AUX_TRANSPORTE_2026)
+    : 0;
   const basePrest = r2(basic_salary + transport);                            // Base prestaciones Art. 7 Ley 1/1963
   const semStart = _semesterStart(settlement_date);
   const yearStart = settlement_date.slice(0, 4) + '-01-01';
@@ -9966,12 +10177,19 @@ function calcularLiquidacionDefinitiva(params: {
   const totalDeductions = r2(healthDed + pensionDed + extra_deductions);
   const netPay = r2(totalEarnings - totalDeductions);
 
+  // ─── Aportes Parafiscales al Retiro (Art. 17 Ley 21/1982) ───────────
+  // Las vacaciones compensadas en dinero por retiro SÍ forman parte de la base para Caja de Compensación (4%).
+  // Seguridad Social (ARL, Salud y Pensión) se mantiene calculada exclusivamente sobre días pendientes trabajados.
+  const baseCajaComp = r2(pendingSalary + vacaciones);
+  const cajaComp = r2(baseCajaComp * 0.04);
+
   return {
     daysCesantias, daysPrima, daysVacaciones,
     pending_salary_days, pendingSalary, pendingTransport,
     cesantias, interesesCes, prima, vacaciones, indemnity,
     transport, basePrest,
     healthDed, pensionDed,
+    baseCajaComp, cajaComp,
     totalEarnings, totalDeductions, netPay,
   };
 }
@@ -10636,6 +10854,14 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               <span class="badge" style="background:#FEF3C7;color:#B45309">${esc(reasonLabel[reason] || reason)}</span>
             </div>
 
+            <div class="p-2.5 rounded-lg border border-indigo-100 bg-indigo-50/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span class="text-indigo-950 font-medium">
+                <i class="fas fa-balance-scale mr-1.5 text-indigo-600"></i>Base Prestaciones (Cesantías, Intereses, Prima): <strong class="text-indigo-900">${fmt(calc.basePrest)}</strong>
+                ${calc.transport > 0 ? `<span class="text-indigo-700 ml-1 font-semibold">(Salario: ${fmt(salary)} + Aux. Transporte: ${fmt(calc.transport)})</span>` : `<span class="text-gray-500 ml-1">(Sin auxilio de transporte por superar 2 SMMLV o Salario Integral)</span>`}
+              </span>
+              <span class="badge" style="background:#E0E7FF;color:#3730A3;font-weight:700">Art. 7 Ley 1/1963</span>
+            </div>
+
             <table class="w-full text-sm border-collapse">
               <thead>
                 <tr style="background:#F8FAFC">
@@ -10719,9 +10945,17 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               </tbody>
             </table>
 
-            <div class="p-3 rounded-lg text-xs" style="background:#FEF9ED;border:1px solid #FDE68A">
-              <strong>Base prestaciones:</strong> ${fmt(calc.basePrest)} (salario + ${calc.transport > 0 ? 'aux. transporte' : 'sin aux. transporte'}) |
-              <strong>Año fiscal:</strong> ${fiscal} | <strong>Días cálculo cesantías/intereses:</strong> ${calc.daysCesantias} | <strong>Días prima semestre:</strong> ${calc.daysPrima}
+            <div class="p-3 rounded-lg text-xs space-y-1.5" style="background:#FEF9ED;border:1px solid #FDE68A">
+              <div><strong>Base prestaciones:</strong> ${fmt(calc.basePrest)} (salario + ${calc.transport > 0 ? 'aux. transporte' : 'sin aux. transporte'}) | <strong>Año fiscal:</strong> ${fiscal} | <strong>Días cálculo cesantías/intereses:</strong> ${calc.daysCesantias} | <strong>Días prima semestre:</strong> ${calc.daysPrima}</div>
+              <div class="text-emerald-950 border-t border-amber-200 pt-1.5 flex flex-wrap items-center justify-between gap-1">
+                <span>
+                  <i class="fas fa-landmark mr-1 text-emerald-700"></i><strong>Parafiscales Retiro (Art. 17 Ley 21/1982):</strong>
+                  Base Caja de Compensación: <strong class="text-emerald-900">${fmt(calc.baseCajaComp)}</strong>
+                  <span class="text-gray-600">(Salario días pendientes: ${fmt(calc.pendingSalary)} + Vacaciones compensadas: ${fmt(calc.vacaciones)})</span>
+                  → Aporte CCF (4%): <strong class="text-emerald-900">${fmt(calc.cajaComp)}</strong>
+                </span>
+                <span class="badge" style="background:#DCFCE7;color:#166534;font-size:10px;font-weight:700">ARL / SS No Aplica</span>
+              </div>
             </div>
 
             <!-- Previsualización Contabilización y Asignación Contable -->

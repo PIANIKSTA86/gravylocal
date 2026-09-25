@@ -3454,24 +3454,93 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     overlay.id = 'imp-pallet-modal-overlay';
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
 
-    const renderModalContent = () => {
+    const parseNum = (val: any): number => {
+      if (val === null || val === undefined) return 0;
+      const s = String(val).replace(',', '.').trim();
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    };
+
+    const formatQty = (n: number): string => {
+      const rounded = Math.round(n * 1000) / 1000;
+      if (Math.abs(rounded - Math.round(rounded)) < 0.0001) {
+        return Math.round(rounded).toLocaleString('es-CO');
+      }
+      return rounded.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+    };
+
+    const renderRowHtml = (c: any, cIdx: number) => {
+      const pQty = c.pallet_qty !== undefined ? c.pallet_qty : 1;
+      const bPerP = c.boxes_per_pallet !== undefined ? c.boxes_per_pallet : 1;
+      const uPerB = c.units_per_box !== undefined ? c.units_per_box : 1;
+      const height = c.height_cm !== undefined ? c.height_cm : 120;
+      const weight = c.gross_weight_kg !== undefined ? c.gross_weight_kg : 0;
+      const isEuro = c.pallet_type === 'EUROPALLET_120x80';
+
+      const pQtyNum = parseNum(pQty);
+      const bPerPNum = parseNum(bPerP);
+      const uPerBNum = parseNum(uPerB);
+      const subBoxes = Math.round((pQtyNum * bPerPNum) * 1000) / 1000;
+      const subUnits = Math.round((subBoxes * uPerBNum) * 1000) / 1000;
+      const cbmPerPallet = (1.2 * (isEuro ? 0.8 : 1.0) * (parseNum(height) / 100));
+      const subCbm = cbmPerPallet * pQtyNum;
+
+      return `
+        <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors" data-cidx="${cIdx}">
+          <td class="p-2">
+            <input type="number" class="form-input text-right font-bold w-20 p-1 text-xs plt-field" data-field="pallet_qty" min="1" step="any" value="${pQty}">
+          </td>
+          <td class="p-2">
+            <input type="number" class="form-input text-right font-semibold w-20 p-1 text-xs plt-field" data-field="boxes_per_pallet" min="0.001" step="any" value="${bPerP}">
+          </td>
+          <td class="p-2">
+            <div class="relative flex items-center">
+              <input type="number" class="form-input text-right font-semibold w-24 p-1 pr-6 text-xs plt-field" data-field="units_per_box" min="0.0001" step="any" value="${uPerB}">
+              <span class="absolute right-1.5 text-[9px] font-bold text-slate-400 pointer-events-none uppercase">${(window as any).esc(unit)}</span>
+            </div>
+          </td>
+          <td class="p-2 text-right font-mono font-bold text-slate-700 plt-sub-boxes">${formatQty(subBoxes)}</td>
+          <td class="p-2 text-right font-mono font-bold text-blue-700 plt-sub-units">${formatQty(subUnits)} ${(window as any).esc(unit)}</td>
+          <td class="p-2">
+            <select class="form-input text-xs p-1 plt-field" data-field="pallet_type">
+              <option value="ESTANDAR_120x100" ${c.pallet_type === 'ESTANDAR_120x100' ? 'selected' : ''}>Estándar (120x100)</option>
+              <option value="EUROPALLET_120x80" ${c.pallet_type === 'EUROPALLET_120x80' ? 'selected' : ''}>Europallet (120x80)</option>
+            </select>
+          </td>
+          <td class="p-2">
+            <input type="number" class="form-input text-right w-16 p-1 text-xs plt-field" data-field="height_cm" min="10" step="any" value="${height}">
+          </td>
+          <td class="p-2 text-right font-mono text-xs text-slate-600 plt-sub-cbm">${subCbm.toFixed(3)} m³</td>
+          <td class="p-2">
+            <input type="number" class="form-input text-right w-20 p-1 text-xs plt-field" data-field="gross_weight_kg" min="0" step="any" value="${weight}">
+          </td>
+          <td class="p-2 text-center">
+            <button type="button" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50 border-red-200 plt-btn-del" data-delidx="${cIdx}" title="Eliminar fila">
+              <i class="fas fa-trash-can"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    };
+
+    const recalcMetrics = () => {
       let totalPallets = 0;
       let totalBoxes = 0;
       let totalUnits = 0;
       let totalCbm = 0;
       let totalWeight = 0;
 
-      const rowsHtml = configs.map((c: any, cIdx: number) => {
-        const pQty = Number(c.pallet_qty) || 0;
-        const bPerP = Number(c.boxes_per_pallet) || 0;
-        const uPerB = Number(c.units_per_box) || 0;
-        const subBoxes = pQty * bPerP;
-        const subUnits = subBoxes * uPerB;
-        const height = Number(c.height_cm) || 0;
+      configs.forEach((c: any, cIdx: number) => {
+        const pQty = parseNum(c.pallet_qty);
+        const bPerP = parseNum(c.boxes_per_pallet);
+        const uPerB = parseNum(c.units_per_box);
+        const subBoxes = Math.round((pQty * bPerP) * 1000) / 1000;
+        const subUnits = Math.round((subBoxes * uPerB) * 1000) / 1000;
+        const height = parseNum(c.height_cm);
         const isEuropallet = c.pallet_type === 'EUROPALLET_120x80';
         const cbmPerPallet = (1.2 * (isEuropallet ? 0.8 : 1.0) * (height / 100));
         const subCbm = cbmPerPallet * pQty;
-        const subWeight = (Number(c.gross_weight_kg) || 0) * pQty;
+        const subWeight = parseNum(c.gross_weight_kg) * pQty;
 
         totalPallets += pQty;
         totalBoxes += subBoxes;
@@ -3479,202 +3548,228 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         totalCbm += subCbm;
         totalWeight += subWeight;
 
-        return `
-          <tr class="border-b border-gray-100 hover:bg-slate-50" data-cidx="${cIdx}">
-            <td class="p-2">
-              <input type="number" class="form-input text-right font-bold w-20 p-1 text-xs plt-field" data-field="pallet_qty" min="1" step="1" value="${pQty}">
-            </td>
-            <td class="p-2">
-              <input type="number" class="form-input text-right font-semibold w-20 p-1 text-xs plt-field" data-field="boxes_per_pallet" min="1" step="1" value="${bPerP}">
-            </td>
-            <td class="p-2">
-              <div class="relative flex items-center">
-                <input type="number" class="form-input text-right font-semibold w-24 p-1 pr-6 text-xs plt-field" data-field="units_per_box" min="0.001" step="1" value="${uPerB}">
-                <span class="absolute right-1.5 text-[9px] font-bold text-slate-400 pointer-events-none uppercase">${(window as any).esc(unit)}</span>
-              </div>
-            </td>
-            <td class="p-2 text-right font-mono font-bold text-slate-700">${subBoxes}</td>
-            <td class="p-2 text-right font-mono font-bold text-blue-700">${subUnits.toLocaleString()} ${(window as any).esc(unit)}</td>
-            <td class="p-2">
-              <select class="form-input text-xs p-1 plt-field" data-field="pallet_type">
-                <option value="ESTANDAR_120x100" ${c.pallet_type === 'ESTANDAR_120x100' ? 'selected' : ''}>Estándar (120x100)</option>
-                <option value="EUROPALLET_120x80" ${c.pallet_type === 'EUROPALLET_120x80' ? 'selected' : ''}>Europallet (120x80)</option>
-              </select>
-            </td>
-            <td class="p-2">
-              <input type="number" class="form-input text-right w-16 p-1 text-xs plt-field" data-field="height_cm" min="10" step="1" value="${height}">
-            </td>
-            <td class="p-2 text-right font-mono text-xs text-slate-600">${subCbm.toFixed(3)} m³</td>
-            <td class="p-2">
-              <input type="number" class="form-input text-right w-20 p-1 text-xs plt-field" data-field="gross_weight_kg" min="0" step="0.1" value="${c.gross_weight_kg || 0}">
-            </td>
-            <td class="p-2 text-center">
-              <button type="button" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50 border-red-200 plt-btn-del" data-delidx="${cIdx}" title="Eliminar fila">
-                <i class="fas fa-trash-can"></i>
-              </button>
-            </td>
-          </tr>
-        `;
-      }).join('');
+        const row = overlay.querySelector(`tr[data-cidx="${cIdx}"]`);
+        if (row) {
+          const boxEl = row.querySelector('.plt-sub-boxes');
+          if (boxEl) boxEl.textContent = formatQty(subBoxes);
+          const unitEl = row.querySelector('.plt-sub-units');
+          if (unitEl) unitEl.textContent = `${formatQty(subUnits)} ${(window as any).esc(unit)}`;
+          const cbmEl = row.querySelector('.plt-sub-cbm');
+          if (cbmEl) cbmEl.textContent = `${subCbm.toFixed(3)} m³`;
+        }
+      });
 
-      // Comparación y reconciliación exacta con la cantidad del ítem
-      const diff = totalUnits - lineQty;
-      let reconciliationHtml = '';
-      if (Math.abs(diff) < 0.001) {
-        reconciliationHtml = `
-          <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
-            <div class="flex items-center gap-2">
-              <i class="fas fa-circle-check text-emerald-600 text-base"></i>
-              <span>Total estibado: <strong>${totalUnits} ${(window as any).esc(unit)}</strong> — Coincide 100% con la cantidad del ítem (${lineQty} ${(window as any).esc(unit)})</span>
+      totalUnits = Math.round(totalUnits * 1000) / 1000;
+      const diff = Math.round((totalUnits - lineQty) * 1000) / 1000;
+
+      // Banner de reconciliación
+      const reconContainer = overlay.querySelector('#plt-reconciliation-container');
+      if (reconContainer) {
+        if (Math.abs(diff) < 0.001) {
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-circle-check text-emerald-600 text-base"></i>
+                <span>Total estibado: <strong>${formatQty(totalUnits)} ${(window as any).esc(unit)}</strong> — Coincide 100% con la cantidad del ítem (${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <span class="badge badge-emerald font-mono font-bold">✓ Cuadrado</span>
             </div>
-            <span class="badge badge-emerald font-mono font-bold">✓ Cuadrado</span>
-          </div>
-        `;
-      } else if (diff < 0) {
-        const missing = Math.abs(diff);
-        reconciliationHtml = `
-          <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900 font-semibold flex-wrap gap-2">
-            <div class="flex items-center gap-2">
-              <i class="fas fa-triangle-exclamation text-amber-600 text-base"></i>
-              <span>Faltan <strong>${missing} ${(window as any).esc(unit)}</strong> por asignar a estibas (${totalUnits} de ${lineQty} ${(window as any).esc(unit)})</span>
+          `;
+        } else if (diff < 0) {
+          const missing = Math.round(Math.abs(diff) * 1000) / 1000;
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900 font-semibold flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-triangle-exclamation text-amber-600 text-base"></i>
+                <span>Faltan <strong>${formatQty(missing)} ${(window as any).esc(unit)}</strong> por asignar a estibas (${formatQty(totalUnits)} de ${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <button type="button" class="btn btn-warning btn-xs" id="plt-modal-add-missing">
+                <i class="fas fa-plus mr-1"></i> Completar ${formatQty(missing)} ${(window as any).esc(unit)} en nueva estiba
+              </button>
             </div>
-            <button type="button" class="btn btn-warning btn-xs" id="plt-modal-add-missing">
-              <i class="fas fa-plus mr-1"></i> Completar ${missing} ${(window as any).esc(unit)} en nueva estiba
-            </button>
-          </div>
-        `;
-      } else {
-        const excess = diff;
-        reconciliationHtml = `
-          <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-center justify-between text-xs text-rose-900 font-semibold flex-wrap gap-2">
-            <div class="flex items-center gap-2">
-              <i class="fas fa-circle-exclamation text-rose-600 text-base"></i>
-              <span>El total estibado (${totalUnits} ${(window as any).esc(unit)}) supera en <strong>${excess} ${(window as any).esc(unit)}</strong> la cantidad cargada (${lineQty} ${(window as any).esc(unit)})</span>
+          `;
+        } else {
+          const excess = diff;
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-center justify-between text-xs text-rose-900 font-semibold flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-circle-exclamation text-rose-600 text-base"></i>
+                <span>El total estibado (${formatQty(totalUnits)} ${(window as any).esc(unit)}) supera en <strong>${formatQty(excess)} ${(window as any).esc(unit)}</strong> la cantidad cargada (${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-xs bg-white text-rose-700 border-rose-300 hover:bg-rose-100" id="plt-modal-sync-qty">
+                <i class="fas fa-arrows-rotate mr-1"></i> Ajustar Cantidad del Ítem a ${formatQty(totalUnits)} ${(window as any).esc(unit)}
+              </button>
             </div>
-            <button type="button" class="btn btn-outline btn-xs bg-white text-rose-700 border-rose-300 hover:bg-rose-100" id="plt-modal-sync-qty">
-              <i class="fas fa-arrows-rotate mr-1"></i> Ajustar Cantidad del Ítem a ${totalUnits} ${(window as any).esc(unit)}
-            </button>
-          </div>
-        `;
+          `;
+        }
       }
 
-      overlay.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-w-4xl w-full max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
-          <div class="p-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <div class="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-200">
-                <i class="fas fa-boxes-stacked text-base"></i>
-              </div>
-              <div>
-                <h3 class="font-bold text-sm text-white">Desglose Heterogéneo de Pallets / Estibas (WMS)</h3>
-                <p class="text-xs text-blue-200/80">${(window as any).esc(prodCode)} — ${(window as any).esc(prodName)}</p>
-                <div class="mt-1.5 flex items-center gap-2 flex-wrap text-xs">
-                  <span class="bg-blue-800/80 px-2 py-0.5 rounded border border-blue-400/30 text-blue-100">
-                    Unidad de Medida: <strong class="font-mono uppercase text-white">${(window as any).esc(unit)}</strong>
-                  </span>
-                  <span class="bg-blue-800/80 px-2 py-0.5 rounded border border-blue-400/30 text-blue-100">
-                    Cantidad Cargada en Ítem: <strong class="font-mono text-white" id="plt-modal-line-qty-text">${lineQty} ${(window as any).esc(unit)}</strong>
-                  </span>
-                </div>
-              </div>
+      // Actualizar tarjetas resumen
+      const elPallets = overlay.querySelector('#plt-metric-pallets');
+      if (elPallets) elPallets.textContent = formatQty(totalPallets);
+
+      const elBoxes = overlay.querySelector('#plt-metric-boxes');
+      if (elBoxes) elBoxes.textContent = formatQty(totalBoxes);
+
+      const elUnits = overlay.querySelector('#plt-metric-units');
+      if (elUnits) {
+        elUnits.className = `text-base font-extrabold ${Math.abs(diff) < 0.001 ? 'text-emerald-700' : 'text-blue-700'} font-mono`;
+        elUnits.textContent = `${formatQty(totalUnits)} / ${formatQty(lineQty)} ${(window as any).esc(unit)}`;
+      }
+
+      const elCbm = overlay.querySelector('#plt-metric-cbm');
+      if (elCbm) elCbm.textContent = `${totalCbm.toFixed(3)} m³`;
+
+      const elWeight = overlay.querySelector('#plt-metric-weight');
+      if (elWeight) elWeight.textContent = `${totalWeight.toFixed(1)} Kg`;
+    };
+
+    const renderTableBody = () => {
+      const tbody = overlay.querySelector('#plt-modal-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = configs.map((c: any, idx: number) => renderRowHtml(c, idx)).join('');
+      recalcMetrics();
+    };
+
+    // Montaje del cascarón estático del modal (una sola vez)
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-w-4xl w-full max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+        <div class="p-4 bg-gradient-to-r from-blue-900 to-indigo-950 text-white flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-200">
+              <i class="fas fa-boxes-stacked text-base"></i>
             </div>
-            <button type="button" class="text-slate-300 hover:text-white text-lg p-1" id="plt-modal-close"><i class="fas fa-xmark"></i></button>
-          </div>
-
-          <div class="p-4 overflow-y-auto flex-1 space-y-4">
-            <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
-              <i class="fas fa-circle-info text-blue-600 mt-0.5 flex-shrink-0"></i>
-              <span>
-                Configura cómo viene embalado el producto en el contenedor. Si el proveedor envió pallets no uniformes (ej: <strong>10 pallets de 16 cajas</strong> y <strong>2 pallets de 24 cajas</strong>), agrégalos como filas independientes. El cálculo de cajas y unidades está vinculado directamente a la unidad de medida <strong>${(window as any).esc(unit)}</strong>.
-              </span>
-            </div>
-
-            <!-- Banner de Reconciliación en Tiempo Real -->
-            ${reconciliationHtml}
-
-            <div class="border rounded-xl overflow-hidden">
-              <table class="w-full text-xs text-left border-collapse">
-                <thead class="bg-slate-100 text-slate-700 font-semibold border-b">
-                  <tr>
-                    <th class="p-2">Estibas (Cant.)</th>
-                    <th class="p-2">Cajas / Estiba</th>
-                    <th class="p-2">Unid. / Caja (${(window as any).esc(unit)})</th>
-                    <th class="p-2 text-right">Total Cajas</th>
-                    <th class="p-2 text-right">Total ${(window as any).esc(unit)}</th>
-                    <th class="p-2">Tipo Estiba</th>
-                    <th class="p-2 text-right">Alto (cm)</th>
-                    <th class="p-2 text-right">CBM (m³)</th>
-                    <th class="p-2 text-right">Peso/Estiba (Kg)</th>
-                    <th class="p-2 text-center" style="width:40px"></th>
-                  </tr>
-                </thead>
-                <tbody id="plt-modal-tbody">
-                  ${rowsHtml}
-                </tbody>
-              </table>
-            </div>
-
-            <button type="button" class="btn btn-outline btn-xs flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50" id="plt-modal-add-row">
-              <i class="fas fa-plus"></i> Agregar Otra Configuración de Pallet
-            </button>
-
-            <!-- Métricas Resumen -->
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
-              <div>
-                <span class="text-slate-500 font-bold uppercase text-[10px]">Total Estibas</span>
-                <p class="text-base font-extrabold text-slate-800 font-mono">${totalPallets}</p>
-              </div>
-              <div>
-                <span class="text-slate-500 font-bold uppercase text-[10px]">Total Cajas</span>
-                <p class="text-base font-extrabold text-slate-800 font-mono">${totalBoxes}</p>
-              </div>
-              <div>
-                <span class="text-slate-500 font-bold uppercase text-[10px]">Total ${(window as any).esc(unit)}</span>
-                <p class="text-base font-extrabold ${Math.abs(diff) < 0.001 ? 'text-emerald-700' : 'text-blue-700'} font-mono">${totalUnits.toLocaleString()} / ${lineQty} ${(window as any).esc(unit)}</p>
-              </div>
-              <div>
-                <span class="text-slate-500 font-bold uppercase text-[10px]">Cubicaje Total</span>
-                <p class="text-base font-extrabold text-emerald-700 font-mono">${totalCbm.toFixed(3)} m³</p>
-              </div>
-              <div>
-                <span class="text-slate-500 font-bold uppercase text-[10px]">Peso Bruto</span>
-                <p class="text-base font-extrabold text-indigo-700 font-mono">${totalWeight.toFixed(1)} Kg</p>
+            <div>
+              <h3 class="font-bold text-sm text-white">Desglose Heterogéneo de Pallets / Estibas (WMS)</h3>
+              <p class="text-xs text-blue-200/80">${(window as any).esc(prodCode)} — ${(window as any).esc(prodName)}</p>
+              <div class="mt-1.5 flex items-center gap-2 flex-wrap text-xs">
+                <span class="bg-blue-800/80 px-2 py-0.5 rounded border border-blue-400/30 text-blue-100">
+                  Unidad de Medida: <strong class="font-mono uppercase text-white">${(window as any).esc(unit)}</strong>
+                </span>
+                <span class="bg-blue-800/80 px-2 py-0.5 rounded border border-blue-400/30 text-blue-100">
+                  Cantidad Cargada en Ítem: <strong class="font-mono text-white" id="plt-modal-line-qty-text">${formatQty(lineQty)} ${(window as any).esc(unit)}</strong>
+                </span>
               </div>
             </div>
           </div>
+          <button type="button" class="text-slate-300 hover:text-white text-lg p-1" id="plt-modal-close"><i class="fas fa-xmark"></i></button>
+        </div>
 
-          <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
-            <button type="button" class="btn btn-outline" id="plt-modal-cancel">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="plt-modal-save">
-              <i class="fas fa-check mr-1"></i> Aplicar a Línea de Importación
-            </button>
+        <div class="p-4 overflow-y-auto flex-1 space-y-4">
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+            <i class="fas fa-circle-info text-blue-600 mt-0.5 flex-shrink-0"></i>
+            <span>
+              Configura cómo viene embalado el producto en el contenedor. Si el proveedor envió pallets no uniformes (ej: <strong>10 pallets de 16 cajas</strong> y <strong>2 pallets de 24 cajas</strong>), agrégalos como filas independientes. El cálculo de cajas y unidades está vinculado directamente a la unidad de medida <strong>${(window as any).esc(unit)}</strong>.
+            </span>
+          </div>
+
+          <!-- Banner de Reconciliación Dinámico -->
+          <div id="plt-reconciliation-container"></div>
+
+          <div class="border rounded-xl overflow-hidden">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b">
+                <tr>
+                  <th class="p-2">Estibas (Cant.)</th>
+                  <th class="p-2">Cajas / Estiba</th>
+                  <th class="p-2">Unid. / Caja (${(window as any).esc(unit)})</th>
+                  <th class="p-2 text-right">Total Cajas</th>
+                  <th class="p-2 text-right">Total ${(window as any).esc(unit)}</th>
+                  <th class="p-2">Tipo Estiba</th>
+                  <th class="p-2 text-right">Alto (cm)</th>
+                  <th class="p-2 text-right">CBM (m³)</th>
+                  <th class="p-2 text-right">Peso/Estiba (Kg)</th>
+                  <th class="p-2 text-center" style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="plt-modal-tbody">
+              </tbody>
+            </table>
+          </div>
+
+          <button type="button" class="btn btn-outline btn-xs flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50" id="plt-modal-add-row">
+            <i class="fas fa-plus"></i> Agregar Otra Configuración de Pallet
+          </button>
+
+          <!-- Métricas Resumen -->
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+            <div>
+              <span class="text-slate-500 font-bold uppercase text-[10px]">Total Estibas</span>
+              <p class="text-base font-extrabold text-slate-800 font-mono" id="plt-metric-pallets">0</p>
+            </div>
+            <div>
+              <span class="text-slate-500 font-bold uppercase text-[10px]">Total Cajas</span>
+              <p class="text-base font-extrabold text-slate-800 font-mono" id="plt-metric-boxes">0</p>
+            </div>
+            <div>
+              <span class="text-slate-500 font-bold uppercase text-[10px]">Total ${(window as any).esc(unit)}</span>
+              <p class="text-base font-extrabold text-blue-700 font-mono" id="plt-metric-units">0</p>
+            </div>
+            <div>
+              <span class="text-slate-500 font-bold uppercase text-[10px]">Cubicaje Total</span>
+              <p class="text-base font-extrabold text-emerald-700 font-mono" id="plt-metric-cbm">0.000 m³</p>
+            </div>
+            <div>
+              <span class="text-slate-500 font-bold uppercase text-[10px]">Peso Bruto</span>
+              <p class="text-base font-extrabold text-indigo-700 font-mono" id="plt-metric-weight">0.0 Kg</p>
+            </div>
           </div>
         </div>
-      `;
 
-      // Bindings
-      overlay.querySelectorAll('.plt-field').forEach((input: any) => {
-        input.addEventListener('input', (e: any) => {
-          const row = e.target.closest('tr');
-          const cIdx = parseInt(row.getAttribute('data-cidx'), 10);
-          const field = e.target.getAttribute('data-field');
-          configs[cIdx][field] = field === 'pallet_type' ? e.target.value : parseFloat(e.target.value) || 0;
-          renderModalContent();
-        });
-      });
+        <div class="p-4 bg-slate-100 border-t border-slate-200 flex justify-end gap-2">
+          <button type="button" class="btn btn-outline" id="plt-modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="plt-modal-save">
+            <i class="fas fa-check mr-1"></i> Aplicar a Línea de Importación
+          </button>
+        </div>
+      </div>
+    `;
 
-      overlay.querySelectorAll('.plt-btn-del').forEach((btn: any) => {
-        btn.addEventListener('click', () => {
-          const delIdx = parseInt(btn.getAttribute('data-delidx'), 10);
-          configs.splice(delIdx, 1);
-          if (!configs.length) {
-            configs.push({ pallet_qty: 1, boxes_per_pallet: 1, units_per_box: 1, pallet_type: 'ESTANDAR_120x100', height_cm: 120, gross_weight_kg: 50 });
-          }
-          renderModalContent();
-        });
-      });
+    // Event Delegation: Inputs en tiempo real (NO toca el foco ni destruye el input)
+    overlay.addEventListener('input', (e: any) => {
+      const target = e.target as HTMLElement;
+      if (!target || !target.classList.contains('plt-field')) return;
+      const row = target.closest('tr');
+      if (!row) return;
+      const cIdx = parseInt(row.getAttribute('data-cidx') || '0', 10);
+      const field = target.getAttribute('data-field');
+      if (field && configs[cIdx]) {
+        configs[cIdx][field] = field === 'pallet_type' ? (target as HTMLSelectElement).value : (target as HTMLInputElement).value;
+        recalcMetrics();
+      }
+    });
 
-      overlay.querySelector('#plt-modal-add-row')?.addEventListener('click', () => {
+    // Event Delegation: Selects / cambios
+    overlay.addEventListener('change', (e: any) => {
+      const target = e.target as HTMLElement;
+      if (!target || !target.classList.contains('plt-field')) return;
+      const row = target.closest('tr');
+      if (!row) return;
+      const cIdx = parseInt(row.getAttribute('data-cidx') || '0', 10);
+      const field = target.getAttribute('data-field');
+      if (field && configs[cIdx]) {
+        configs[cIdx][field] = field === 'pallet_type' ? (target as HTMLSelectElement).value : (target as HTMLInputElement).value;
+        recalcMetrics();
+      }
+    });
+
+    // Event Delegation: Clics de acciones del modal
+    overlay.addEventListener('click', (e: any) => {
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      const delBtn = target.closest('.plt-btn-del');
+      if (delBtn) {
+        const delIdx = parseInt(delBtn.getAttribute('data-delidx') || '0', 10);
+        configs.splice(delIdx, 1);
+        if (!configs.length) {
+          configs.push({ pallet_qty: 1, boxes_per_pallet: 1, units_per_box: 1, pallet_type: 'ESTANDAR_120x100', height_cm: 120, gross_weight_kg: 50 });
+        }
+        renderTableBody();
+        return;
+      }
+
+      if (target.closest('#plt-modal-add-row')) {
         configs.push({
           pallet_qty: 1,
           boxes_per_pallet: 20,
@@ -3684,13 +3779,19 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           gross_weight_kg: 200,
           lot_number: currentLot
         });
-        renderModalContent();
-      });
+        renderTableBody();
+        return;
+      }
 
-      overlay.querySelector('#plt-modal-add-missing')?.addEventListener('click', () => {
-        const missing = Math.abs(totalUnits - lineQty);
+      if (target.closest('#plt-modal-add-missing')) {
+        let currentTotalUnits = 0;
+        configs.forEach((c: any) => {
+          const subB = parseNum(c.pallet_qty) * parseNum(c.boxes_per_pallet);
+          currentTotalUnits += subB * parseNum(c.units_per_box);
+        });
+        const missing = Math.round(Math.abs(lineQty - currentTotalUnits) * 1000) / 1000;
         if (missing > 0) {
-          const uPerB = configs[0]?.units_per_box || undEmpaque || 1;
+          const uPerB = parseNum(configs[0]?.units_per_box) || undEmpaque || 1;
           const boxes = Math.ceil(missing / uPerB);
           configs.push({
             pallet_qty: 1,
@@ -3701,43 +3802,64 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             gross_weight_kg: 100,
             lot_number: currentLot
           });
-          renderModalContent();
+          renderTableBody();
         }
-      });
+        return;
+      }
 
-      overlay.querySelector('#plt-modal-sync-qty')?.addEventListener('click', () => {
-        lineQty = totalUnits;
+      if (target.closest('#plt-modal-sync-qty')) {
+        let currentTotalUnits = 0;
+        configs.forEach((c: any) => {
+          const subB = parseNum(c.pallet_qty) * parseNum(c.boxes_per_pallet);
+          currentTotalUnits += subB * parseNum(c.units_per_box);
+        });
+        currentTotalUnits = Math.round(currentTotalUnits * 1000) / 1000;
+        lineQty = currentTotalUnits;
         if (qtyInput) {
-          qtyInput.value = String(totalUnits);
+          qtyInput.value = String(currentTotalUnits);
         }
-        renderModalContent();
-        (window as any).showToast(`Cantidad del ítem actualizada a ${totalUnits} ${unit}.`, 'info');
-      });
+        const textQtyEl = overlay.querySelector('#plt-modal-line-qty-text');
+        if (textQtyEl) {
+          textQtyEl.textContent = `${formatQty(lineQty)} ${(window as any).esc(unit)}`;
+        }
+        recalcMetrics();
+        (window as any).showToast(`Cantidad del ítem actualizada a ${formatQty(currentTotalUnits)} ${unit}.`, 'info');
+        return;
+      }
 
-      overlay.querySelector('#plt-modal-close')?.addEventListener('click', () => overlay.remove());
-      overlay.querySelector('#plt-modal-cancel')?.addEventListener('click', () => overlay.remove());
+      if (target.closest('#plt-modal-close') || target.closest('#plt-modal-cancel')) {
+        overlay.remove();
+        return;
+      }
 
-      overlay.querySelector('#plt-modal-save')?.addEventListener('click', () => {
-        // Guardar configs en estado local
-        localPalletConfigs[lineIdx] = configs;
+      if (target.closest('#plt-modal-save')) {
+        // Guardar configs en estado local sanitizando números
+        const sanitizedConfigs = configs.map((c: any) => ({
+          ...c,
+          pallet_qty: parseNum(c.pallet_qty),
+          boxes_per_pallet: parseNum(c.boxes_per_pallet),
+          units_per_box: parseNum(c.units_per_box),
+          height_cm: parseNum(c.height_cm),
+          gross_weight_kg: parseNum(c.gross_weight_kg)
+        }));
+        localPalletConfigs[lineIdx] = sanitizedConfigs;
 
-        // Calcular totales finales
         let sumUnits = 0;
         let sumBoxes = 0;
         let sumPallets = 0;
         let sumCbm = 0;
         let sumWeight = 0;
 
-        configs.forEach((c: any) => {
-          const pQty = Number(c.pallet_qty) || 0;
-          const bPerP = Number(c.boxes_per_pallet) || 0;
-          const uPerB = Number(c.units_per_box) || 0;
+        sanitizedConfigs.forEach((c: any) => {
+          const pQty = c.pallet_qty;
+          const bPerP = c.boxes_per_pallet;
+          const uPerB = c.units_per_box;
           const totalB = pQty * bPerP;
           const totalU = totalB * uPerB;
-          const height = Number(c.height_cm) || 0;
+          const height = c.height_cm;
           const isEuro = c.pallet_type === 'EUROPALLET_120x80';
           const cbm = (1.2 * (isEuro ? 0.8 : 1.0) * (height / 100)) * pQty;
-          const wt = (Number(c.gross_weight_kg) || 0) * pQty;
+          const wt = c.gross_weight_kg * pQty;
 
           sumPallets += pQty;
           sumBoxes += totalB;
@@ -3760,13 +3882,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         (window as any).impUpdateLinePalletStatus(lineIdx);
 
         (window as any).impRecalcTotals();
-        (window as any).showToast(`Palletizado aplicado: ${sumPallets} estibas, ${sumBoxes} cajas, ${sumUnits} ${unit}.`, 'success');
+        (window as any).showToast(`Palletizado aplicado: ${formatQty(sumPallets)} estibas, ${formatQty(sumBoxes)} cajas, ${formatQty(sumUnits)} ${unit}.`, 'success');
         overlay.remove();
-      });
-    };
+        return;
+      }
+    });
 
     document.body.appendChild(overlay);
-    renderModalContent();
+    renderTableBody();
   };
 
   // --- Causación Individual por Factura Comercial Consolidada ---

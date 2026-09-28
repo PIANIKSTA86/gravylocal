@@ -4496,31 +4496,126 @@ async function _openMassAccImportModal() {
    CARGA MASIVA DE UNIDADES HABITACIONALES (COPROPIEDADES)
 ══════════════════════════════════════════════════════════ */
 
+function _massPhNormalizeDate(val: any): string | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    return val.toISOString().slice(0, 10);
+  }
+  const s = String(val).trim();
+  if (!s) return null;
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY o DD-MM-YYYY
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = dmy[2].padStart(2, '0');
+    const year = dmy[3];
+    return `${year}-${month}-${day}`;
+  }
+  // YYYY/MM/DD
+  const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (ymd) {
+    const year = ymd[1];
+    const month = ymd[2].padStart(2, '0');
+    const day = ymd[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  // Número serial Excel (1900 date system)
+  const num = Number(s);
+  if (!isNaN(num) && num > 20000 && num < 90000) {
+    const utcDays = Math.floor(num - 25569);
+    const utcValue = utcDays * 86400;
+    const dateInfo = new Date(utcValue * 1000);
+    return dateInfo.toISOString().split('T')[0];
+  }
+  return null;
+}
+
 function _downloadMassPhUnitsTemplate() {
   const headers = [
-    'codigo', 'nombre', 'tipo', 'torre', 'apartamento',
-    'coef_participacion', 'cuota_admin', 'area_m2',
-    'doc_propietario', 'tipo_doc_propietario', 'activo', 'notas'
+    'codigo', 'nombre', 'tipo', 'torre', 'piso', 'apartamento',
+    'coef_participacion', 'cuota_admin', 'area_m2', 'fecha_entrega',
+    'doc_propietario', 'tipo_doc_propietario',
+    'doc_arrendatario', 'tipo_doc_arrendatario',
+    'activo', 'notas'
   ];
 
   const rows = [
-    { codigo: '101', nombre: 'Apartamento 101', tipo: 'APARTAMENTO', torre: 'Torre 1', apartamento: '101', coef_participacion: 2.1500, cuota_admin: 350000, area_m2: 68.50, doc_propietario: '900123456', tipo_doc_propietario: 'NIT', activo: 'Si', notas: 'Unidad residencial principal' },
-    { codigo: 'P-12', nombre: 'Parqueadero 12', tipo: 'PARQUEADERO', torre: 'Torre 1', apartamento: 'P-12', coef_participacion: 0.3200, cuota_admin: 50000, area_m2: 12.00, doc_propietario: '900123456', tipo_doc_propietario: 'NIT', activo: 'Si', notas: 'Parqueadero cubierto' },
-    { codigo: 'D-03', nombre: 'Deposito 03', tipo: 'DEPOSITO', torre: 'Torre 1', apartamento: 'D-03', coef_participacion: 0.1500, cuota_admin: 20000, area_m2: 5.20, doc_propietario: '900123456', tipo_doc_propietario: 'NIT', activo: 'Si', notas: 'Depósito subterráneo' }
+    {
+      codigo: '101',
+      nombre: 'Apartamento 101',
+      tipo: 'APARTAMENTO',
+      torre: 'Torre 1',
+      piso: '1',
+      apartamento: '101',
+      coef_participacion: 2.1500,
+      cuota_admin: 0,
+      area_m2: 68.50,
+      fecha_entrega: '2025-02-15',
+      doc_propietario: '900123456',
+      tipo_doc_propietario: 'NIT',
+      doc_arrendatario: '1098765432',
+      tipo_doc_arrendatario: 'CC',
+      activo: 'Si',
+      notas: 'Unidad residencial principal'
+    },
+    {
+      codigo: 'P-12',
+      nombre: 'Parqueadero Privado 12',
+      tipo: 'PARQUEADERO',
+      torre: 'Sótano 1',
+      piso: 'S1',
+      apartamento: 'P-12',
+      coef_participacion: 0.3200,
+      cuota_admin: 50000,
+      area_m2: 12.00,
+      fecha_entrega: '2025-01-01',
+      doc_propietario: '900123456',
+      tipo_doc_propietario: 'NIT',
+      doc_arrendatario: '',
+      tipo_doc_arrendatario: '',
+      activo: 'Si',
+      notas: 'Parqueadero cubierto'
+    },
+    {
+      codigo: 'D-03',
+      nombre: 'Deposito 03',
+      tipo: 'DEPOSITO',
+      torre: 'Sótano 1',
+      piso: 'S1',
+      apartamento: 'D-03',
+      coef_participacion: 0.1500,
+      cuota_admin: 20000,
+      area_m2: 5.20,
+      fecha_entrega: '',
+      doc_propietario: '900123456',
+      tipo_doc_propietario: 'NIT',
+      doc_arrendatario: '',
+      tipo_doc_arrendatario: '',
+      activo: 'Si',
+      notas: 'Depósito subterráneo'
+    }
   ];
 
   const indications: Array<[string, string, string, string, string]> = [
     ['codigo', 'SÍ', 'Texto Alfanumérico', 'Código único de identificación de la unidad habitacional o inmueble dentro de la copropiedad.', '101'],
     ['nombre', 'SÍ', 'Texto Libre', 'Nombre o descripción de la unidad habitacional.', 'Apartamento 101'],
-    ['tipo', 'NO', 'Texto (Tipo Unidad)', 'Tipo de inmueble PH. Valores permitidos: APARTAMENTO, LOCAL, OFICINA, PARQUEADERO, DEPOSITO, BODEGA, LOTE.', 'APARTAMENTO'],
+    ['tipo', 'NO', 'Texto (Tipo Unidad)', 'Tipo de inmueble PH. Valores permitidos: APARTAMENTO, CASA, LOCAL, OFICINA, PARQUEADERO, DEPOSITO, OTRO.', 'APARTAMENTO'],
     ['torre', 'NO', 'Texto Libre', 'Identificador de Torre, Bloque o Edificio.', 'Torre 1'],
-    ['apartamento', 'NO', 'Texto Libre', 'Número interno de apartamento, local o espacio.', '101'],
-    ['coef_participacion', 'NO', 'Número Decimal', 'Coeficiente de copropiedad de la unidad (porcentaje de participación en expensas comunes).', '2.1500'],
-    ['cuota_admin', 'NO', 'Número Positivo', 'Valor mensual COP de la cuota ordinaria de administración.', '350000'],
+    ['piso', 'NO', 'Texto Libre', 'Piso, nivel o planta del inmueble (Ej: 1, 2, PB, S1).', '1'],
+    ['apartamento', 'NO', 'Texto Libre', 'Número interno de apartamento, local o espacio sin torre.', '101'],
+    ['coef_participacion', 'NO', 'Número Decimal (0-100)', 'Coeficiente de copropiedad de la unidad (%) para expensas comunes. Si se omite, toma 0.', '2.1500'],
+    ['cuota_admin', 'NO', 'Número Positivo', 'Valor fijo mensual COP de administración. Si es > 0, se factura este valor fijo en vez del coeficiente.', '0'],
     ['area_m2', 'NO', 'Número Decimal', 'Área privada construida del inmueble en metros cuadrados.', '68.50'],
+    ['fecha_entrega', 'NO', 'Fecha (YYYY-MM-DD o DD/MM/AAAA)', 'Fecha de entrega material del inmueble. Si se indica, las expensas del mes de entrega se liquidarán proporcionalmente y meses anteriores no se causarán.', '2025-02-15'],
     ['doc_propietario', 'NO', 'NIT / Documento', 'Documento de identidad del tercero propietario (debe existir previamente en Terceros o registrarse con su tipo de doc).', '900123456'],
     ['tipo_doc_propietario', 'NO', 'Tipo Documento', 'Tipo de documento del propietario. Valores: CC, NIT, CE, PAS, TI.', 'NIT'],
-    ['activo', 'NO', 'Texto (Si / No)', 'Estado de la unidad habitacional. Valores: Si o No (Si omitido, asume Si).', 'Si']
+    ['doc_arrendatario', 'NO', 'NIT / Documento', 'Documento de identidad del arrendatario, residente u ocupante (debe existir previamente en Terceros).', '1098765432'],
+    ['tipo_doc_arrendatario', 'NO', 'Tipo Documento', 'Tipo de documento del arrendatario. Valores: CC, NIT, CE, PAS, TI.', 'CC'],
+    ['activo', 'NO', 'Texto (Si / No)', 'Estado de la unidad habitacional. Valores: Si o No (Si omitido, asume Si).', 'Si'],
+    ['notas', 'NO', 'Texto Libre', 'Observaciones o notas adicionales de la unidad habitacional.', 'Unidad residencial principal']
   ];
 
   _generateTemplateXlsx({
@@ -4536,30 +4631,57 @@ function _massPhUnitsNormalizeRow(raw, ownersByDoc, ownersByDocTypeDoc) {
   const code = _massTxPick(raw, ['codigo', 'code', 'unidad', 'unit_code']);
   const name = _massTxPick(raw, ['nombre', 'name', 'descripcion']);
   const unitTypeRaw = _massTxPick(raw, ['tipo', 'unit_type', 'tipo_unidad']) || 'APARTAMENTO';
-  const tower = _massTxPick(raw, ['torre', 'tower']);
-  const apartment = _massTxPick(raw, ['apartamento', 'apto', 'apartment']);
-  const coef = _massTxNum(_massTxPick(raw, ['coef_participacion', 'coef', 'coeficiente']));
-  const adminFee = _massTxNum(_massTxPick(raw, ['cuota_admin', 'admin_fee', 'cuota_administracion']));
-  const area = _massTxNum(_massTxPick(raw, ['area_m2', 'area']));
-  const ownerDoc = _massTxPick(raw, ['doc_propietario', 'owner_doc', 'documento_propietario']);
+  const tower = _massTxPick(raw, ['torre', 'tower', 'bloque']);
+  const floor = _massTxPick(raw, ['piso', 'floor', 'nivel', 'planta']);
+  const apartment = _massTxPick(raw, ['apartamento', 'apto', 'apartment', 'num_apto']);
+  const coef = _massTxNum(_massTxPick(raw, ['coef_participacion', 'coef', 'coeficiente', 'porcentaje']));
+  const adminFee = _massTxNum(_massTxPick(raw, ['cuota_admin', 'admin_fee', 'cuota_administracion', 'cuota_fija']));
+  const area = _massTxNum(_massTxPick(raw, ['area_m2', 'area', 'metros_cuadrados']));
+
+  // Fecha de entrega material
+  const rawDelivery = _massTxPick(raw, ['fecha_entrega', 'delivery_date', 'fecha_de_entrega', 'f_entrega', 'entrega']);
+  const deliveryDate = _massPhNormalizeDate(rawDelivery);
+
+  const ownerDoc = _massTxPick(raw, ['doc_propietario', 'owner_doc', 'documento_propietario', 'propietario_doc']);
   const ownerDocType = _massTxPick(raw, ['tipo_doc_propietario', 'owner_doc_type', 'doc_type_propietario']).toUpperCase();
+
+  const occupantDoc = _massTxPick(raw, ['doc_arrendatario', 'arrendatario', 'doc_ocupante', 'occupant_doc', 'documento_arrendatario', 'residente_doc']);
+  const occupantDocType = _massTxPick(raw, ['tipo_doc_arrendatario', 'occupant_doc_type', 'tipo_doc_ocupante']).toUpperCase();
+
   const activeRaw = _massTxPick(raw, ['activo', 'active', 'estado']);
-  const notes = _massTxPick(raw, ['notas', 'nota', 'notes']);
+  const notes = _massTxPick(raw, ['notas', 'nota', 'notes', 'observaciones']);
 
   if (!code) return { ok: false, error: 'Falta el código de la unidad' };
   if (!name) return { ok: false, error: `Falta el nombre para la unidad ${code}` };
 
-  const validTypes = new Set(['APARTAMENTO', 'PARQUEADERO', 'DEPOSITO', 'LOCAL', 'CASA', 'OFICINA', 'OTRO']);
-  const unitType = String(unitTypeRaw || '').toUpperCase();
-  if (!validTypes.has(unitType)) {
-    return { ok: false, error: `Tipo inválido en ${code}: ${unitTypeRaw}` };
-  }
+  // Mapeo flexible de tipos con fallback seguro a OTRO
+  const typeMap: Record<string, string> = {
+    'APARTAMENTO': 'APARTAMENTO',
+    'APTO': 'APARTAMENTO',
+    'CASA': 'CASA',
+    'LOCAL': 'LOCAL',
+    'OFICINA': 'OFICINA',
+    'PARQUEADERO': 'PARQUEADERO',
+    'PARQ': 'PARQUEADERO',
+    'GARAJE': 'PARQUEADERO',
+    'DEPOSITO': 'DEPOSITO',
+    'CUARTO_UTIL': 'DEPOSITO',
+    'BODEGA': 'OTRO',
+    'LOTE': 'OTRO',
+    'OTRO': 'OTRO',
+  };
+  const cleanType = String(unitTypeRaw || '').toUpperCase().trim();
+  const unitType = typeMap[cleanType] || (cleanType ? 'OTRO' : 'APARTAMENTO');
 
   if (coef < 0 || coef > 100) {
-    return { ok: false, error: `Coeficiente fuera de rango (0-100) en ${code}` };
+    return { ok: false, error: `Coeficiente fuera de rango (0-100) en ${code}: ${coef}` };
   }
   if (adminFee < 0) return { ok: false, error: `Cuota administración negativa en ${code}` };
   if (area < 0) return { ok: false, error: `Área negativa en ${code}` };
+
+  if (rawDelivery && !deliveryDate) {
+    return { ok: false, error: `Formato de fecha de entrega inválido en ${code}: "${rawDelivery}". Usa YYYY-MM-DD o DD/MM/AAAA.` };
+  }
 
   let ownerId = null;
   if (ownerDoc) {
@@ -4571,6 +4693,16 @@ function _massPhUnitsNormalizeRow(raw, ownersByDoc, ownersByDocTypeDoc) {
     if (!ownerId) return { ok: false, error: `No existe tercero propietario con documento ${ownerDoc}` };
   }
 
+  let occupantId = null;
+  if (occupantDoc) {
+    const occDocKey = _massTxDocKey(occupantDoc);
+    if (occupantDocType) {
+      occupantId = ownersByDocTypeDoc.get(`${occupantDocType}|${occDocKey}`)?.id || null;
+    }
+    if (!occupantId) occupantId = ownersByDoc.get(occDocKey)?.id || null;
+    if (!occupantId) return { ok: false, error: `No existe tercero arrendatario/residente con documento ${occupantDoc}` };
+  }
+
   const active = !/^(no|0|false|inactiva|inactivo)$/i.test(activeRaw);
 
   return {
@@ -4580,11 +4712,14 @@ function _massPhUnitsNormalizeRow(raw, ownersByDoc, ownersByDocTypeDoc) {
       name,
       unit_type: unitType,
       tower,
+      floor,
       apartment,
       coef_participacion: coef,
       admin_fee: adminFee,
       area_m2: area,
+      delivery_date: deliveryDate,
       owner_id: ownerId,
+      occupant_id: occupantId,
       notes,
       active,
     },
@@ -4604,13 +4739,13 @@ async function _openMassPhUnitsImportModal() {
         Si el código ya existe se <strong>actualiza</strong>; si no existe se <strong>crea</strong>.
       </p>
       <div class="rounded-xl p-3 mb-3" style="background:#F0FDFA;border:1px solid #99F6E4">
-        <p class="text-xs font-semibold mb-1" style="color:#0F766E;text-transform:uppercase;letter-spacing:.05em">Columnas</p>
+        <p class="text-xs font-semibold mb-1" style="color:#0F766E;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas y opcionales</p>
         <div class="flex flex-wrap gap-2">
           ${['codigo', 'nombre', 'tipo'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#CCFBF1;color:#0F766E">${c}</code>`).join('')}
-          ${['torre', 'apartamento', 'coef_participacion', 'cuota_admin', 'area_m2', 'doc_propietario', 'tipo_doc_propietario', 'activo', 'notas'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
+          ${['torre', 'piso', 'apartamento', 'coef_participacion', 'cuota_admin', 'area_m2', 'fecha_entrega', 'doc_propietario', 'tipo_doc_propietario', 'doc_arrendatario', 'tipo_doc_arrendatario', 'activo', 'notas'].map(c => `<code class="text-xs px-2 py-0.5 rounded" style="background:#F3F4F6;color:#6B7280">${c} <span style="font-size:.65rem">(opcional)</span></code>`).join('')}
         </div>
       </div>
-      <button class="btn btn-outline btn-sm mb-4" id="btn-mass-ph-units-dl-tmpl"><i class="fas fa-download mr-1"></i>Descargar plantilla CSV</button>
+      <button class="btn btn-outline btn-sm mb-4" id="btn-mass-ph-units-dl-tmpl"><i class="fas fa-download mr-1"></i>Descargar plantilla Excel</button>
       <div id="mass-ph-units-drop" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
         <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
         <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#0E7490;text-decoration:underline">haz clic para seleccionar</span></p>
@@ -4625,7 +4760,20 @@ async function _openMassPhUnitsImportModal() {
         </div>
         <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:300px;overflow-y:auto">
           <table class="data-table text-xs">
-            <thead><tr><th>#</th><th>Código</th><th>Nombre</th><th>Tipo</th><th>Apto</th><th>Propietario</th><th>Operación</th><th>Estado</th></tr></thead>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th>Torre / Piso</th>
+                <th>Apto</th>
+                <th>F. Entrega</th>
+                <th>Propietario / Residente</th>
+                <th>Operación</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
             <tbody id="mass-ph-units-preview-body"></tbody>
           </table>
         </div>
@@ -4713,12 +4861,15 @@ async function _openMassPhUnitsImportModal() {
       if (!norm.ok) return { idx: i + 1, ...norm };
       const codeKey = String(norm.payload.code || '').trim().toUpperCase();
       const existing = unitByCode.get(codeKey);
+      const ownerObj = norm.payload.owner_id ? terceros.find(t => t.id === norm.payload.owner_id) : null;
+      const occObj = norm.payload.occupant_id ? terceros.find(t => t.id === norm.payload.occupant_id) : null;
       return {
         idx: i + 1,
         ok: true,
         mode: existing ? 'update' : 'create',
         existingId: existing?.id || null,
-        ownerName: norm.payload.owner_id ? (terceros.find(t => t.id === norm.payload.owner_id)?.name || '—') : '—',
+        ownerName: ownerObj?.name || '—',
+        occupantName: occObj?.name || '—',
         payload: norm.payload,
       };
     });
@@ -4741,7 +4892,7 @@ async function _openMassPhUnitsImportModal() {
       if (!r.ok) {
         return `<tr style="background:#FFF7F7">
           <td>${r.idx}</td>
-          <td colspan="6" class="text-xs" style="color:#EF4444">${esc(r.error || 'Fila inválida')}</td>
+          <td colspan="8" class="text-xs" style="color:#EF4444">${esc(r.error || 'Fila inválida')}</td>
           <td><span class="badge badge-red">Error</span></td>
         </tr>`;
       }
@@ -4749,13 +4900,28 @@ async function _openMassPhUnitsImportModal() {
       const opBadge = r.mode === 'update'
         ? '<span class="badge badge-orange">Actualizar</span>'
         : '<span class="badge badge-blue">Crear</span>';
+
+      const dDateBadge = p.delivery_date
+        ? `<span class="badge badge-blue text-xs" title="Fecha de entrega material"><i class="fas fa-calendar-day mr-1"></i>${esc(p.delivery_date)}</span>`
+        : '<span class="text-xs" style="color:#9CA3AF">—</span>';
+
+      const locParts = [p.tower, p.floor ? `Piso ${p.floor}` : ''].filter(Boolean);
+      const locStr = locParts.length ? esc(locParts.join(' · ')) : '—';
+
+      const personasHtml = `<div class="text-xs leading-tight">
+        <div><span class="font-semibold text-gray-500">P:</span> ${esc(r.ownerName || '—')}</div>
+        ${r.occupantName && r.occupantName !== '—' ? `<div class="text-gray-500 mt-0.5"><span class="font-semibold text-purple-600">A:</span> ${esc(r.occupantName)}</div>` : ''}
+      </div>`;
+
       return `<tr>
         <td>${r.idx}</td>
         <td><span class="font-semibold" style="color:#0E7490">${esc(p.code)}</span></td>
         <td>${esc(p.name)}</td>
-        <td>${esc(p.unit_type || '—')}</td>
+        <td><span class="badge badge-gray">${esc(p.unit_type || '—')}</span></td>
+        <td>${locStr}</td>
         <td>${esc(p.apartment || '—')}</td>
-        <td>${esc(r.ownerName || '—')}</td>
+        <td>${dDateBadge}</td>
+        <td>${personasHtml}</td>
         <td>${opBadge}</td>
         <td><span class="badge badge-green">OK</span></td>
       </tr>`;
@@ -4901,7 +5067,7 @@ function _downloadMassPhBalancesTemplate() {
     ['fecha_vencimiento', 'NO', 'Formato YYYY-MM-DD', 'Fecha original de vencimiento del cobro. Si se omite, se asigna el día 10 del período.', '2025-11-10'],
     ['concepto_codigo', 'SÍ', 'Código Alfanumérico', 'Código corto del concepto. Ejemplos: ADMIN (Administración), EXTRA (Extraordinaria), PARQ (Parqueadero), MORA (Interés de mora), SANCION (Multa/Sanción).', 'ADMIN'],
     ['concepto_nombre', 'NO', 'Texto Libre', 'Descripción legible del concepto para el estado de cuenta.', 'Cuota Ordinaria Administración'],
-    ['valor_pendiente', 'SÍ', 'Número Positivo', 'Valor pendiente de cobro en pesos (COP).', '350000'],
+    ['valor_pendiente', 'SÍ', 'Número (Positivo o Negativo)', 'Valor pendiente en pesos (COP). Admite valores positivos (cartera pendiente de cobro) o negativos (saldos a favor o anticipos históricos del copropietario).', '350000'],
     ['doc_propietario', 'NO', 'NIT / Documento', 'Documento de identidad del propietario para validación y verificación de cruce.', '900123456'],
     ['cuenta_cxc', 'NO', 'Código PUC Auxiliar', 'Cuenta contable deudora de cartera (por defecto toma la 130505 configurada en Copropiedades).', '130505'],
     ['cuenta_contrapartida', 'NO', 'Código PUC Auxiliar', 'Cuenta crédito de apertura / patrimonio (por defecto toma 380505 / 311505 o la indicada en el modal).', '380505']
@@ -5162,9 +5328,16 @@ async function _openMassPhBalancesImportModal() {
           </tr>`;
         }
 
-        const conceptsBadges = g.lines.map((l: any) =>
-          `<span class="inline-block px-1.5 py-0.5 rounded text-[10.5px] mr-1 mb-1 font-mono" style="background:#F3F4F6;color:#374151">${esc(l.concept_code)}: ${fmt(l.amount)}</span>`
-        ).join('');
+        const conceptsBadges = g.lines.map((l: any) => {
+          const isNeg = (l.amount || 0) < 0;
+          return `<span class="inline-block px-1.5 py-0.5 rounded text-[10.5px] mr-1 mb-1 font-mono" style="background:${isNeg ? '#EFF6FF' : '#F3F4F6'};color:${isNeg ? '#1D4ED8' : '#374151'}">${esc(l.concept_code)}: ${fmt(l.amount)}</span>`;
+        }).join('');
+
+        const isNegTotal = (g.totalAmount || 0) < 0;
+        const totalStyle = isNegTotal ? 'color:#1D4ED8' : 'color:#065F46';
+        const badgeHtml = isNegTotal
+          ? '<span class="badge badge-blue" title="Saldo a favor / Anticipo">A favor</span>'
+          : '<span class="badge badge-green">Válida</span>';
 
         return `<tr>
           <td>${idx + 1}</td>
@@ -5173,8 +5346,8 @@ async function _openMassPhBalancesImportModal() {
           <td><span class="badge badge-blue">${esc(g.period)}</span></td>
           <td class="text-xs">${esc(g.dueDate)}</td>
           <td><div class="max-w-[280px] overflow-hidden">${conceptsBadges}</div></td>
-          <td class="text-right font-bold" style="color:#065F46">${fmt(g.totalAmount)}</td>
-          <td><span class="badge badge-green">Válida</span></td>
+          <td class="text-right font-bold" style="${totalStyle}">${fmt(g.totalAmount)}</td>
+          <td>${badgeHtml}</td>
         </tr>`;
       }).join('');
     }
@@ -5238,7 +5411,17 @@ async function _openMassPhBalancesImportModal() {
       });
 
       closeModal();
-      showToast(`Carga de saldos iniciales PH completada con éxito. ${validGroups.length} facturas causadas.`, 'success', 6000);
+      const posCount = validGroups.filter(g => (g.totalAmount || 0) > 0).length;
+      const negCount = validGroups.filter(g => (g.totalAmount || 0) < 0).length;
+      let successMsg = 'Carga de saldos iniciales PH completada con éxito.';
+      if (posCount && negCount) {
+        successMsg += ` ${posCount} facturas de cartera causadas y ${negCount} saldos a favor (anticipos) registrados.`;
+      } else if (posCount) {
+        successMsg += ` ${posCount} facturas de cartera causadas.`;
+      } else {
+        successMsg += ` ${negCount} saldos a favor (anticipos) registrados.`;
+      }
+      showToast(successMsg, 'success', 6000);
       _loadSysInfo();
     } catch (err: any) {
       showToast(`Error al procesar saldos iniciales: ${err.message}`, 'error', 7000);
@@ -5321,8 +5504,8 @@ function _massPhBalancesBuildDraft(
 
     const g = groupsMap.get(groupKey);
 
-    if (amount <= 0) {
-      g.errors.push(`Fila ${rowNo}: Monto inválido (${amount}) para el concepto ${conceptCode || '—'}`);
+    if (amount === 0) {
+      g.errors.push(`Fila ${rowNo}: El monto no puede ser cero ($0) para el concepto ${conceptCode || '—'}`);
     }
     if (!conceptCode && !conceptName) {
       g.errors.push(`Fila ${rowNo}: Falta código o nombre de concepto`);
@@ -5376,6 +5559,52 @@ async function _executeMassPhBalancesImport({
   let seqCounter = 1;
 
   for (const g of groups) {
+    const isNegativeGroup = (g.totalAmount || 0) < 0;
+
+    if (isNegativeGroup) {
+      onProgress(done, total, `Registrando saldo a favor para ${g.propertyName} (${g.period})`);
+
+      // Un saldo a favor en apertura no es una factura por cobrar (ph_invoices requiere total > 0).
+      // Se registra en contabilidad como crédito a la cuenta 1305/2805 con referencia canónica ANT-<propId>,
+      // lo que permite a Copropiedades y Tesorería detectarlo y auto-cruzarlo en facturas siguientes.
+      if (cxcAcc && resolvedOffsetAccId) {
+        for (const ln of g.lines) {
+          const absAmt = Math.abs(Math.round(ln.amount));
+          if (absAmt <= 0) continue;
+
+          const targetAccId = (ln.account_code && accountByCode.get(ln.account_code))
+            ? accountByCode.get(ln.account_code).id
+            : cxcAcc.id;
+
+          allTxLines.push({
+            account_id: targetAccId,
+            debit: 0,
+            credit: absAmt,
+            third_party_id: g.ownerId || null,
+            description: `Apertura Saldo a Favor PH — ${g.propertyName} (${g.period}) ${ln.description}`,
+            cross_doc_ref: `ANT-${g.propertyId || ''}`,
+            cross_doc_date: `${g.period}-01`,
+            due_date: g.dueDate || `${g.period}-10`,
+            invoice_id: null,
+          });
+
+          allTxLines.push({
+            account_id: resolvedOffsetAccId,
+            debit: absAmt,
+            credit: 0,
+            third_party_id: g.ownerId || null,
+            description: `Contrapartida Saldo a Favor ${g.propertyName} (${g.period}) ${ln.description}`,
+            cross_doc_ref: '',
+            invoice_id: null,
+          });
+        }
+      }
+
+      done++;
+      continue;
+    }
+
+    // Facturación normal para unidades con saldo positivo adeudado
     onProgress(done, total, `Creando factura PH para ${g.propertyName} (${g.period})`);
 
     const periodClean = String(g.period || '').replace('-', '');
@@ -5388,16 +5617,15 @@ async function _executeMassPhBalancesImport({
     }
     existingNumbers.add(invoiceNumber);
 
-    // 1. Crear registro ph_invoices
-    const safeTotal = Math.max(0, Math.round(g.totalAmount) || 0);
+    const invTotal = Math.max(1, Math.round(g.totalAmount));
     const invRec = await pb.create('ph_invoices', {
       number: invoiceNumber,
       period: g.period,
       property_id: g.propertyId,
       date: `${g.period}-01`,
       due_date: g.dueDate || `${g.period}-10`,
-      subtotal: safeTotal,
-      total: safeTotal,
+      subtotal: invTotal,
+      total: invTotal,
       status: 'posted',
       notes: 'Saldo inicial de cartera cargado masivamente',
     });
@@ -5407,23 +5635,25 @@ async function _executeMassPhBalancesImport({
     // 2. Crear registros ph_invoice_lines
     let order = 1;
     for (const ln of g.lines) {
-      await pb.create('ph_invoice_lines', {
-        invoice_id: invRec.id,
-        concept_id: ln.concept_id,
-        description: ln.description,
-        amount: Math.round(ln.amount),
-        line_order: order++,
-        account_code: ln.account_code || defaultCxcCode,
-      });
+      const lineAmt = Math.max(0, Math.round(ln.amount));
+      if (lineAmt > 0) {
+        await pb.create('ph_invoice_lines', {
+          invoice_id: invRec.id,
+          concept_id: ln.concept_id,
+          description: ln.description,
+          amount: lineAmt,
+          line_order: order++,
+          account_code: ln.account_code || defaultCxcCode,
+        });
+      }
 
       // 3. Preparar líneas contables si se sincroniza con contabilidad
       if (doSyncAcc && cxcAcc && resolvedOffsetAccId) {
         const lineCrossDocRef = `${invoiceNumber}-${ln.concept_code}`;
 
-        // Línea Débito CxC Propietario
         allTxLines.push({
           account_id: cxcAcc.id,
-          debit: Math.round(ln.amount),
+          debit: lineAmt,
           credit: 0,
           third_party_id: g.ownerId || null,
           description: `Apertura Cartera PH ${invoiceNumber} ${ln.description}`,
@@ -5433,11 +5663,10 @@ async function _executeMassPhBalancesImport({
           invoice_id: invRec.id,
         });
 
-        // Línea Crédito Contrapartida (Patrimonio / Apertura)
         allTxLines.push({
           account_id: resolvedOffsetAccId,
           debit: 0,
-          credit: Math.round(ln.amount),
+          credit: lineAmt,
           third_party_id: g.ownerId || null,
           description: `Contrapartida Apertura Cartera ${invoiceNumber} ${ln.description}`,
           cross_doc_ref: '',
@@ -5449,8 +5678,8 @@ async function _executeMassPhBalancesImport({
     done++;
   }
 
-  // 4. Si se solicitó sincronización contable, registrar la transacción masiva atómica
-  if (doSyncAcc && allTxLines.length >= 2) {
+  // 4. Si se solicitó sincronización contable o hay saldos a favor, registrar la transacción masiva atómica
+  if ((doSyncAcc || allTxLines.length >= 2) && allTxLines.length >= 2) {
     onProgress(total, total, 'Generando comprobante contable de apertura en balance...');
 
     const totalDebit = allTxLines.reduce((s, l) => s + (l.debit || 0), 0);
@@ -5465,7 +5694,7 @@ async function _executeMassPhBalancesImport({
         tx_type_id: selectedTxTypeId,
         number: 'AUTO',
         date: txDateVal,
-        description: `Saldos Iniciales PH — Cartera por conceptos (${groups.length} facturas de apertura)`,
+        description: `Saldos Iniciales PH — Cartera y saldos a favor (${groups.length} unidades)`,
         user_id: pb.currentUser?.id || undefined,
         cross_enabled: true,
         status: 'active',

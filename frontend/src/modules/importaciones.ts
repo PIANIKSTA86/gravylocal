@@ -72,6 +72,20 @@ function formatUnitOfMeasure(code: string): string {
   return DIAN_UNITS_MAP[clean] || (clean === 'UND' ? 'Unidad' : code);
 }
 
+let lastComputedGrandTotalCOP: number = 0;
+
+function parseCOPText(text: string | null | undefined): number {
+  if (!text) return 0;
+  const clean = text.replace(/[^0-9,\.-]/g, '').trim();
+  if (clean.includes(',') && clean.includes('.')) {
+    return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+  if (clean.includes(',')) {
+    return parseFloat(clean.replace(',', '.')) || 0;
+  }
+  return parseFloat(clean) || 0;
+}
+
 const IMPORT_CONCEPTS_META: Record<string, { label: string; puc: string; name: string; icon: string; iconColor: string; iconBg: string }> = {
   fob: { label: '1. FOB Mercancía', puc: '220505', name: 'Proveedores del Exterior', icon: 'fas fa-ship', iconColor: 'text-indigo-600', iconBg: 'bg-indigo-50' },
   freight: { label: '2. Flete Internacional', puc: '233545', name: 'Costos y Gastos Fletes', icon: 'fas fa-plane-departure', iconColor: 'text-sky-600', iconBg: 'bg-sky-50' },
@@ -79,6 +93,7 @@ const IMPORT_CONCEPTS_META: Record<string, { label: string; puc: string; name: s
   customs: { label: '4. Aduana / DIAN / SIA', puc: '233595', name: 'Agenciamiento Aduanero y Aranceles', icon: 'fas fa-building-columns', iconColor: 'text-purple-600', iconBg: 'bg-purple-50' },
   local_carrier: { label: '5. Transporte Local', puc: '233545', name: 'Acarreos y Fletes Terrestres Locales', icon: 'fas fa-truck', iconColor: 'text-emerald-600', iconBg: 'bg-emerald-50' },
   local_other: { label: '6. Otros Gastos Portuarios', puc: '233595', name: 'Gastos Portuarios y Bodegaje', icon: 'fas fa-box', iconColor: 'text-orange-600', iconBg: 'bg-orange-50' },
+  bank_fees: { label: '7. Gastos Bancarios / Comisiones', puc: '530515', name: 'Comisiones y Gastos Bancarios Int.', icon: 'fas fa-landmark', iconColor: 'text-rose-600', iconBg: 'bg-rose-50' },
 };
 
 function renderStageAccountingViewer({
@@ -451,6 +466,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   let existingLines: any[] = [];
   let localInvoices: any[] = [];
   let localPalletConfigs: Record<string, any[]> = {};
+  let localLotConfigs: Record<string, any[]> = {};
 
   const [suppliers, products, cfg, linkedTxLinesRes] = await Promise.all([
     (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }),
@@ -619,11 +635,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   let localStageExpenses: Record<string, any[]> = {};
 
   if (importId) {
-    const [impRes, linesRes, invsRes, palletsRes] = await Promise.all([
+    const [impRes, linesRes, invsRes, palletsRes, lotsRes] = await Promise.all([
       (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
       (window as any).API.getImportLines(importId),
       (window as any).API.getImportInvoices(importId).catch(() => []),
       (window as any).API.getImportPalletConfigs(importId).catch(() => []),
+      (window as any).API.getImportLotConfigs(importId).catch(() => []),
     ]);
     imp = impRes;
     existingLines = linesRes || [];
@@ -633,6 +650,13 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const key = pc.import_line_id || pc.product_id;
         if (!localPalletConfigs[key]) localPalletConfigs[key] = [];
         localPalletConfigs[key].push(pc);
+      });
+    }
+    if (lotsRes && lotsRes.length) {
+      lotsRes.forEach((lc: any) => {
+        const key = lc.import_line_id || lc.product_id;
+        if (!localLotConfigs[key]) localLotConfigs[key] = [];
+        localLotConfigs[key].push(lc);
       });
     }
   }
@@ -656,7 +680,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     }
   }
 
-  const defaultStages = ['freight', 'insurance', 'customs', 'local_carrier', 'local_other'];
+  const defaultStages = ['freight', 'insurance', 'customs', 'local_carrier', 'local_other', 'bank_fees'];
   defaultStages.forEach(stg => {
     if (!localStageExpenses[stg] || !localStageExpenses[stg].length) {
       let legacySupp = '';
@@ -695,6 +719,12 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         legacyCost = imp?.otros_gastos || 0;
         legacyTrm = imp?.local_other_trm || 1;
         legacyTx = imp?.tx_local_other_id || null;
+      } else if (stg === 'bank_fees') {
+        legacySupp = imp?.bank_fees_supplier_id || '';
+        legacyInv = imp?.bank_fees_invoice_num || '';
+        legacyCost = imp?.bank_fees_cost || 0;
+        legacyTrm = imp?.bank_fees_trm || 1;
+        legacyTx = imp?.tx_bank_fees_id || null;
       }
 
       localStageExpenses[stg] = [{
@@ -1038,10 +1068,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
       <!-- 4. Causaciones por Etapas y Gastos de Nacionalización (Sistema de Pestañas con Pipeline) -->
       ${(() => {
-        const stagesList = [imp?.tx_fob_id, imp?.tx_freight_id, imp?.tx_insurance_id, imp?.tx_customs_id, imp?.tx_local_carrier_id, imp?.tx_local_other_id];
-        const stagesWithLines = ['fob', 'freight', 'insurance', 'customs', 'local_carrier', 'local_other'].filter(c => (linkedTxLines || []).some((l: any) => l.import_concept === c));
+        const stagesList = [imp?.tx_fob_id, imp?.tx_freight_id, imp?.tx_insurance_id, imp?.tx_customs_id, imp?.tx_local_carrier_id, imp?.tx_local_other_id, imp?.tx_bank_fees_id];
+        const stagesWithLines = ['fob', 'freight', 'insurance', 'customs', 'local_carrier', 'local_other', 'bank_fees'].filter(c => (linkedTxLines || []).some((l: any) => l.import_concept === c));
         const causedCount = isInverseMode ? stagesWithLines.length : stagesList.filter(Boolean).length;
-        const progressPct = Math.round((causedCount / 6) * 100);
+        const progressPct = Math.round((causedCount / 7) * 100);
 
         const getStageDot = (stageKey: string) => {
           if (isInverseMode) {
@@ -1082,7 +1112,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <div class="flex items-center gap-3 bg-slate-800/90 px-3.5 py-2 rounded-lg border border-slate-700">
               <div class="text-right">
                 <div class="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">${isInverseMode ? 'Etapas con Asientos' : 'Avance Contable'}</div>
-                <div class="text-xs font-bold text-white" id="imp-stage-progress-text">${causedCount} de 6 Etapas ${isInverseMode ? 'Vinculadas' : 'Causadas'}</div>
+                <div class="text-xs font-bold text-white" id="imp-stage-progress-text">${causedCount} de 7 Etapas ${isInverseMode ? 'Vinculadas' : 'Causadas'}</div>
               </div>
               <div class="w-16 bg-slate-700 h-2.5 rounded-full overflow-hidden">
                 <div class="bg-emerald-400 h-full transition-all duration-300" id="imp-stage-progress-bar" style="width: ${progressPct}%"></div>
@@ -1132,6 +1162,18 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               <i class="fas fa-box text-orange-500"></i>
               <span>6. Otros Gastos</span>
               ${getStageDot('local_other')}
+            </button>
+
+            <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="bank_fees" onclick="window.switchImpStageTab('bank_fees')">
+              <i class="fas fa-landmark text-rose-500"></i>
+              <span>7. Gastos Bancarios</span>
+              ${getStageDot('bank_fees')}
+            </button>
+
+            <button type="button" class="imp-stage-tab-btn px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border-0 text-slate-600 hover:bg-slate-200/60" data-tab="payments" onclick="window.switchImpStageTab('payments')">
+              <i class="fas fa-money-bill-transfer text-emerald-600"></i>
+              <span>Control de Pagos</span>
+              <span class="badge badge-green text-[10px] font-bold" id="badge-tab-payments-count">0</span>
             </button>
           </div>
 
@@ -1683,6 +1725,80 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               `}
             </div>
 
+            <!-- Panel 7: Gastos Bancarios y Comisiones -->
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-bank_fees">
+              ${isInverseMode ? renderStageAccountingViewer({
+                stageKey: 'bank_fees',
+                stageTitle: 'Etapa 7: Gastos Bancarios y Comisiones',
+                pucCode: '530515',
+                pucName: 'Comisiones y Gastos Bancarios de Importación',
+                icon: 'fas fa-landmark',
+                iconColor: 'text-rose-600',
+                iconBg: 'bg-rose-50',
+                lines: (linkedTxLines || []).filter((l: any) => l.import_concept === 'bank_fees'),
+                importId,
+              }) : `
+              <div class="p-4 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex items-center justify-between border-b pb-3 border-slate-100 flex-wrap gap-2">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-base">
+                      <i class="fas fa-landmark"></i>
+                    </div>
+                    <div>
+                      <h5 class="font-bold text-sm text-slate-800">Etapa 7: Gastos Bancarios y Comisiones</h5>
+                      <p class="text-xs text-slate-400">Contrapartida: <strong>PUC 530515 / 233595 (Comisiones y Giros al Exterior)</strong></p>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="window.impAddStageExpenseLine('bank_fees')">
+                      <i class="fas fa-plus mr-1"></i> Agregar Comisión / Gasto Bancario
+                    </button>
+                    <button type="button" class="btn btn-primary btn-xs" onclick="window.switchImpStageTab('resumen')">
+                      <i class="fas fa-arrow-left mr-1"></i> Volver a la Hoja de Costos
+                    </button>
+                  </div>
+                </div>
+
+                <div class="border rounded-xl overflow-hidden bg-white">
+                  <table class="w-full text-xs text-left border-collapse" id="imp-stage-bank_fees-table">
+                    <thead>
+                      <tr class="border-b text-slate-600 font-semibold bg-slate-50">
+                        <th class="py-2.5 px-3" style="min-width:210px">Entidad Bancaria / Tercero</th>
+                        <th class="py-2.5 px-3" style="width:130px">Ref. Transferencia / Swift</th>
+                        <th class="py-2.5 px-3" style="min-width:160px">Concepto / Comisión</th>
+                        <th class="py-2.5 px-3 text-right" style="width:110px">Monto (COP)</th>
+                        <th class="py-2.5 px-3 text-right bg-amber-50/50" style="width:105px">TRM ($)</th>
+                        <th class="py-2.5 px-3 text-right" style="width:125px">Total (COP)</th>
+                        <th class="py-2.5 px-3 text-center" style="width:115px">Acción Contable</th>
+                        <th class="py-2.5 px-2 text-center" style="width:36px"></th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100" id="imp-stage-bank_fees-lines-body"></tbody>
+                  </table>
+                </div>
+
+                <div class="flex justify-between items-center p-3 bg-rose-50/60 rounded-xl border border-rose-100 text-xs">
+                  <div class="text-rose-900 font-medium">
+                    <i class="fas fa-circle-info mr-1 text-rose-600"></i> Comisiones de giro internacional, mensajes Swift y gastos de intermediación cambiaria.
+                  </div>
+                  <div class="text-right">
+                    <span class="text-slate-500 mr-2">Total Gastos Bancarios COP:</span>
+                    <span class="font-mono font-bold text-rose-950 text-sm" id="summary-subtotal-bank_fees">$ 0</span>
+                  </div>
+                </div>
+              </div>
+              `}
+            </div>
+
+            <!-- Panel 8: Control de Pagos y Abonos de la Importación -->
+            <div class="imp-stage-panel hidden space-y-4" id="imp-stage-panel-payments">
+              <div id="imp-payments-container">
+                <div class="p-8 text-center text-slate-400">
+                  <i class="fas fa-spinner fa-spin mr-2"></i> Cargando control de pagos de la importación...
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
         `;
@@ -1720,7 +1836,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const lines = localStageExpenses[stageKey] || [];
     if (!lines.length) {
       const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
-      const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other') ? 1 : exchangeRate;
+      const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other' || stageKey === 'bank_fees') ? 1 : exchangeRate;
       localStageExpenses[stageKey] = [{
         id: `stage-${stageKey}-${Date.now()}`,
         supplier_id: '',
@@ -1820,7 +1936,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   (window as any).impAddStageExpenseLine = function(stageKey: string) {
     if (!localStageExpenses[stageKey]) localStageExpenses[stageKey] = [];
     const exchangeRate = parseFloat((document.getElementById('imp-exchange-rate') as HTMLInputElement)?.value || '4000');
-    const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other') ? 1 : exchangeRate;
+    const defaultTrm = (stageKey === 'local_carrier' || stageKey === 'local_other' || stageKey === 'bank_fees') ? 1 : exchangeRate;
 
     localStageExpenses[stageKey].push({
       id: `stage-${stageKey}-${Date.now()}`,
@@ -1925,8 +2041,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     }
   };
 
-  // Renderizar tablas de las etapas 2 a 6
-  ['freight', 'insurance', 'customs', 'local_carrier', 'local_other'].forEach(stg => {
+  // Renderizar tablas de las etapas 2 a 7
+  ['freight', 'insurance', 'customs', 'local_carrier', 'local_other', 'bank_fees'].forEach(stg => {
     (window as any).impRenderStageTable(stg);
   });
 
@@ -2138,6 +2254,20 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             (window as any).addImpLine(match, lineData);
             const currentLineIdx = lineCounter;
 
+            // Si vino información de lote en Excel, inicializar localLotConfigs
+            if (lotNumber) {
+              localLotConfigs[currentLineIdx] = [{
+                lot_number: lotNumber,
+                qty: computedQty > 0 ? computedQty : 1,
+                manufacturing_date: mfgDate || '',
+                expiry_date: expDate || '',
+                notes: ''
+              }];
+              if (typeof (window as any).impUpdateLineLotStatus === 'function') {
+                (window as any).impUpdateLineLotStatus(currentLineIdx);
+              }
+            }
+
             // If pallet info was in Excel, save config
             if (palletsCant > 0 && cajasPorPallet > 0) {
               localPalletConfigs[currentLineIdx] = [{
@@ -2216,33 +2346,64 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   };
 
   // Helpers para control de Lotes en línea
-  (window as any).impToggleLotFields = function(idx: number) {
-    const wrap = document.getElementById(`wrap-lot-fields-${idx}`);
-    if (wrap) {
-      wrap.classList.toggle('hidden');
-      if (!wrap.classList.contains('hidden')) {
-        const lotInput = document.getElementById(`impl-lot-${idx}`) as HTMLInputElement;
-        lotInput?.focus();
+  (window as any).impUpdateLineLotStatus = function(idx: number) {
+    const tr = document.getElementById(`imp-row-${idx}`);
+    if (!tr) return;
+    const qtyInput = document.getElementById(`impl-qty-${idx}`) as HTMLInputElement;
+    const currentQty = parseFloat(qtyInput?.value || '0');
+    const unit = tr.getAttribute('data-prod-unit') || 'UND';
+    const btn = document.getElementById(`btn-toggle-lot-${idx}`);
+    const lbl = document.getElementById(`lbl-lot-btn-${idx}`);
+    const legacyInput = document.getElementById(`impl-lot-${idx}`) as HTMLInputElement;
+    if (!btn || !lbl) return;
+
+    const lts = localLotConfigs[idx];
+    if (lts && lts.length > 0) {
+      const sumUnits = Math.round(lts.reduce((s: number, l: any) => s + (Number(l.qty) || 0), 0) * 1000) / 1000;
+      const isSingle = lts.length === 1;
+
+      // Sincronizar campo legacy si hay lotes
+      if (legacyInput) {
+        legacyInput.value = isSingle ? (lts[0].lot_number || '') : lts.map((l: any) => l.lot_number).filter(Boolean).join(', ');
+      }
+
+      if (Math.abs(sumUnits - currentQty) < 0.001) {
+        if (isSingle) {
+          lbl.textContent = `Lote: ${lts[0].lot_number || 'S/L'} (${sumUnits} ${unit}) ✓`;
+          btn.className = 'btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md bg-indigo-50 text-indigo-800 border-indigo-300 font-bold';
+          btn.title = `Lote asignado: ${lts[0].lot_number} (${sumUnits} ${unit})`;
+        } else {
+          lbl.textContent = `${lts.length} Lotes (${sumUnits} ${unit}) ✓`;
+          btn.className = 'btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md bg-purple-50 text-purple-800 border-purple-300 font-bold';
+          btn.title = `${lts.length} lotes asignados y cuadrados con las ${currentQty} ${unit}`;
+        }
+      } else {
+        lbl.textContent = `${lts.length} Lotes (${sumUnits}/${currentQty} ${unit}) ⚠️`;
+        btn.className = 'btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md bg-amber-50 text-amber-900 border-amber-300 font-bold animate-pulse';
+        btn.title = `Descuadre en lotes: ${sumUnits} ${unit} en lotes vs ${currentQty} ${unit} en el ítem`;
+      }
+    } else {
+      const legacyVal = legacyInput?.value?.trim();
+      if (legacyVal) {
+        lbl.textContent = `Lote: ${legacyVal}`;
+        btn.className = 'btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md bg-indigo-50 text-indigo-700 border-indigo-300 font-bold';
+        btn.title = `Lote: ${legacyVal}`;
+      } else {
+        lbl.textContent = '+ Lotes';
+        btn.className = 'btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-indigo-700';
+        btn.title = `Configurar lotes de fabricación y fechas para las ${currentQty} ${unit}`;
       }
     }
   };
 
-  (window as any).impUpdateLotLabel = function(idx: number) {
-    const lotInput = document.getElementById(`impl-lot-${idx}`) as HTMLInputElement;
-    const btn = document.getElementById(`btn-toggle-lot-${idx}`);
-    const lbl = document.getElementById(`lbl-lot-btn-${idx}`);
-    if (lotInput && btn && lbl) {
-      const val = lotInput.value.trim();
-      if (val) {
-        lbl.textContent = `Lote: ${val}`;
-        btn.classList.add('bg-indigo-50', 'text-indigo-700', 'border-indigo-300', 'font-bold');
-        btn.classList.remove('text-gray-600');
-      } else {
-        lbl.textContent = '+ Lote';
-        btn.classList.remove('bg-indigo-50', 'text-indigo-700', 'border-indigo-300', 'font-bold');
-        btn.classList.add('text-gray-600');
-      }
+  (window as any).impToggleLotFields = function(idx: number) {
+    if (typeof (window as any).impOpenLotModal === 'function') {
+      (window as any).impOpenLotModal(idx);
     }
+  };
+
+  (window as any).impUpdateLotLabel = function(idx: number) {
+    (window as any).impUpdateLineLotStatus(idx);
   };
 
   // Helper para control de Pesos y Medidas en línea
@@ -2360,6 +2521,20 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       localPalletConfigs[idx] = JSON.parse(JSON.stringify(existingPcs));
     }
 
+    // Preload lot configs if exists
+    const existingLots = (lineId && localLotConfigs[lineId]) || (productId && localLotConfigs[productId]) || [];
+    if (existingLots.length && !localLotConfigs[idx]) {
+      localLotConfigs[idx] = JSON.parse(JSON.stringify(existingLots));
+    } else if (!localLotConfigs[idx] && preloadedLine?.lot_number) {
+      localLotConfigs[idx] = [{
+        lot_number: preloadedLine.lot_number,
+        qty: Number(preloadedLine.qty || initQty || 1),
+        manufacturing_date: preloadedLine.manufacturing_date ? preloadedLine.manufacturing_date.split(' ')[0] : '',
+        expiry_date: preloadedLine.expiry_date ? preloadedLine.expiry_date.split(' ')[0] : '',
+        notes: ''
+      }];
+    }
+
     const tr = document.createElement('tr');
     tr.id = `imp-row-${idx}`;
     tr.setAttribute('data-lineid', lineId);
@@ -2391,8 +2566,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 
           <!-- Barra de controles compactos para Lotes, Pesos y Estibas -->
           <div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
-            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md ${preloadedLine?.lot_number ? 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' : 'text-gray-600 hover:text-blue-700'}" id="btn-toggle-lot-${idx}" onclick="window.impToggleLotFields(${idx})" title="Gestionar lote de fabricación y fecha de vencimiento">
-              <i class="fas fa-barcode mr-1 text-indigo-500"></i><span id="lbl-lot-btn-${idx}">${preloadedLine?.lot_number ? `Lote: ${(window as any).esc(preloadedLine.lot_number)}` : '+ Lote'}</span>
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md ${preloadedLine?.lot_number || (localLotConfigs[idx] && localLotConfigs[idx].length) ? 'bg-indigo-50 text-indigo-700 border-indigo-300 font-bold' : 'text-gray-600 hover:text-indigo-700'}" id="btn-toggle-lot-${idx}" onclick="window.impOpenLotModal(${idx})" title="Gestionar desglose por lotes de fabricación y fechas de vencimiento">
+              <i class="fas fa-barcode mr-1 text-indigo-500"></i><span id="lbl-lot-btn-${idx}">${preloadedLine?.lot_number ? `Lote: ${(window as any).esc(preloadedLine.lot_number)}` : '+ Lotes'}</span>
             </button>
 
             <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-toggle-pesos-${idx}" onclick="window.impTogglePesosFields(${idx})" title="Modificar pesos (neto/bruto) y dimensiones de la mercancía">
@@ -2404,23 +2579,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             </button>
           </div>
 
-          <!-- Micro-formulario expandible de lote -->
-          <div id="wrap-lot-fields-${idx}" class="${preloadedLine?.lot_number ? '' : 'hidden'} mt-1.5 p-2 bg-indigo-50/70 border border-indigo-100 rounded-lg space-y-1">
-            <div class="flex items-center gap-1">
-              <span class="text-[9px] text-indigo-900 font-bold uppercase w-9 flex-shrink-0">Lote:</span>
-              <input type="text" id="impl-lot-${idx}" class="form-input font-mono text-[10px] py-0.5 px-1.5 h-6 flex-1 bg-white" placeholder="Nro Lote..." value="${(window as any).esc(preloadedLine?.lot_number || '')}" oninput="window.impUpdateLotLabel(${idx})">
-            </div>
-            <div class="grid grid-cols-2 gap-1 text-[9px]">
-              <div>
-                <span class="text-[8px] text-gray-500 uppercase block">Fabr.</span>
-                <input type="date" id="impl-mfg-${idx}" class="form-input text-[9px] p-0.5 h-6 bg-white" value="${preloadedLine?.manufacturing_date ? preloadedLine.manufacturing_date.split(' ')[0] : ''}">
-              </div>
-              <div>
-                <span class="text-[8px] text-gray-500 uppercase block">Venc.</span>
-                <input type="date" id="impl-exp-${idx}" class="form-input text-[9px] p-0.5 h-6 bg-white" value="${preloadedLine?.expiry_date ? preloadedLine.expiry_date.split(' ')[0] : ''}">
-              </div>
-            </div>
-          </div>
+          <!-- Inputs ocultos para sincronización y persistencia de lote -->
+          <input type="hidden" id="impl-lot-${idx}" value="${(window as any).esc(preloadedLine?.lot_number || '')}">
+          <input type="hidden" id="impl-mfg-${idx}" value="${preloadedLine?.manufacturing_date ? preloadedLine.manufacturing_date.split(' ')[0] : ''}">
+          <input type="hidden" id="impl-exp-${idx}" value="${preloadedLine?.expiry_date ? preloadedLine.expiry_date.split(' ')[0] : ''}">
 
           <!-- Micro-formulario expandible de pesos y dimensiones -->
           <div id="wrap-pesos-fields-${idx}" class="hidden mt-1.5 p-2 bg-emerald-50/70 border border-emerald-200 rounded-lg space-y-1.5">
@@ -2479,7 +2641,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       <!-- Cantidad Total con Unidad de Medida Humanizada -->
       <td>
         <div class="flex flex-col gap-1">
-          <input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:32px;padding:0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals(); window.impUpdateLinePalletStatus(${idx});">
+          <input type="number" id="impl-qty-${idx}" class="form-input text-right w-full font-bold font-mono" style="font-size:13px;height:32px;padding:0 8px" min="0.001" step="0.001" value="${initQty}" oninput="window.impRecalcTotals(); window.impUpdateLinePalletStatus(${idx}); window.impUpdateLineLotStatus(${idx});">
           <div class="text-right">
             <span class="badge badge-blue text-[10px] py-0.5 px-1.5 font-bold inline-block" title="Código DIAN: ${(window as any).esc(prodUnit)}">
               ${(window as any).esc(formatUnitOfMeasure(prodUnit))}
@@ -2515,6 +2677,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     // Initial label and reconciliation check for pallets and weights
     (window as any).impUpdateLinePalletStatus(idx);
     (window as any).impUpdateLinePesosStatus(idx);
+    (window as any).impUpdateLineLotStatus(idx);
 
     (window as any).impRecalcTotals();
   };
@@ -2536,12 +2699,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const customsLines = localStageExpenses['customs'] || [];
     const localCarrierLines = localStageExpenses['local_carrier'] || [];
     const localOtherLines = localStageExpenses['local_other'] || [];
+    const bankFeesLines = localStageExpenses['bank_fees'] || [];
 
     const freightCost = isInverseMode ? 0 : freightLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
     const insuranceCost = isInverseMode ? 0 : insuranceLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
     const gastosNacionalizacion = isInverseMode ? 0 : customsLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
     const transporteNacional = isInverseMode ? 0 : localCarrierLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
     const otrosGastos = isInverseMode ? 0 : localOtherLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
+    const gastosBancarios = isInverseMode ? 0 : bankFeesLines.reduce((s: number, l: any) => s + (l.amount || 0), 0);
 
     const freightCostCOP = isInverseMode ? getNetConceptCOP('freight') : freightLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const insuranceCostCOP = isInverseMode ? getNetConceptCOP('insurance') : insuranceLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
@@ -2550,7 +2715,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const gastosNacCOP = isInverseMode ? getNetConceptCOP('customs') : customsLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const transporteCOP = isInverseMode ? getNetConceptCOP('local_carrier') : localCarrierLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
     const otrosGastosCOP = isInverseMode ? getNetConceptCOP('local_other') : localOtherLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
-    const totalLocalExpensesCOP = gastosNacCOP + transporteCOP + otrosGastosCOP;
+    const gastosBancariosCOP = isInverseMode ? getNetConceptCOP('bank_fees') : bankFeesLines.reduce((s: number, l: any) => s + ((l.amount || 0) * (l.trm || 1)), 0);
+    const totalLocalExpensesCOP = gastosNacCOP + transporteCOP + otrosGastosCOP + gastosBancariosCOP;
 
     const totalExpensesToProrateCOP = totalCIFExpensesCOP + totalLocalExpensesCOP;
 
@@ -2720,6 +2886,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       : totalFOB;
 
     const grandTotalCOP = totalFOBCop + totalExpensesToProrateCOP + arancelTotalCOP;
+    lastComputedGrandTotalCOP = grandTotalCOP;
 
     // Update global inputs/labels
     const fobTotalInput = document.getElementById('imp-fob-total') as HTMLInputElement;
@@ -2739,7 +2906,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (lblResFob) lblResFob.textContent = (window as any).fmt(totalFOBCop);
     if (lblResCif) lblResCif.textContent = (window as any).fmt(totalCIFExpensesCOP);
     if (lblResArancel) lblResArancel.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
-    if (lblResLocales) lblResLocales.textContent = (window as any).fmt(transporteCOP + otrosGastosCOP);
+    if (lblResLocales) lblResLocales.textContent = (window as any).fmt(transporteCOP + otrosGastosCOP + gastosBancariosCOP);
     if (lblResTotalUsd) lblResTotalUsd.textContent = `Equiv. $ ${(window as any).fmtN(grandTotalCOP / (effectiveTrm || exchangeRate))} USD`;
     if (lblResTotal) lblResTotal.textContent = (window as any).fmt(grandTotalCOP);
     if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
@@ -2750,12 +2917,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const subCustoms = document.getElementById('summary-subtotal-customs');
     const subCarrier = document.getElementById('summary-subtotal-local_carrier');
     const subOther = document.getElementById('summary-subtotal-local_other');
+    const subBank = document.getElementById('summary-subtotal-bank_fees');
 
     if (subFreight) subFreight.textContent = (window as any).fmt(freightCostCOP);
     if (subInsurance) subInsurance.textContent = (window as any).fmt(insuranceCostCOP);
     if (subCustoms) subCustoms.textContent = (window as any).fmt(arancelTotalCOP + gastosNacCOP);
     if (subCarrier) subCarrier.textContent = (window as any).fmt(transporteCOP);
     if (subOther) subOther.textContent = (window as any).fmt(otrosGastosCOP);
+    if (subBank) subBank.textContent = (window as any).fmt(gastosBancariosCOP);
 
     // Matriz de Hoja de Costos Analítica en Vista General
     const summaryTbody = document.getElementById('imp-summary-tbody');
@@ -2885,6 +3054,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           badge: isInverseMode ? getInverseBadge('local_other') : getStageBadge(localOtherLines),
           btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('local_other').length})` : `Gestionar (${localOtherLines.length})`
         },
+        {
+          rubro: '7. Gastos Bancarios / Comisiones',
+          tab: 'bank_fees',
+          puc: '530515 - Comisiones Bancarias',
+          terceros: isInverseMode ? getInverseTerceros('bank_fees') : getTercerosSummary(bankFeesLines),
+          divisa: '—',
+          cop: gastosBancariosCOP,
+          badge: isInverseMode ? getInverseBadge('bank_fees') : getStageBadge(bankFeesLines),
+          btnLabel: isInverseMode ? `Gestionar (${getConceptTxLines('bank_fees').length})` : `Gestionar (${bankFeesLines.length})`
+        },
       ];
 
       summaryTbody.innerHTML = rowsData.map(r => {
@@ -2917,10 +3096,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           <td class="py-3 px-3 text-right font-mono text-blue-950 text-sm">${(window as any).fmt(grandTotalCOP)}</td>
           <td class="py-3 px-3 text-right font-mono text-blue-700">100.0%</td>
           <td class="py-3 px-3 text-center" colspan="2">
-            <span class="text-xs text-slate-500 font-semibold">${rowsData.filter(r => r.badge.includes('Causado')).length} de 6 causados</span>
+            <span class="text-xs text-slate-500 font-semibold">${rowsData.filter(r => r.badge.includes('Causado')).length} de 7 causados</span>
           </td>
         </tr>
       `;
+    }
+
+    if (typeof (window as any).renderImportPaymentsView === 'function') {
+      (window as any).renderImportPaymentsView(importId, grandTotalCOP);
     }
 
     // Update invoices table labels if present
@@ -3377,6 +3560,357 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     );
   };
 
+  // --- Modal de Desglose de Multi-Lotes y Vencimientos (FEFO / Trazabilidad) ---
+  (window as any).impOpenLotModal = function(lineIdx: number) {
+    const tr = document.getElementById(`imp-row-${lineIdx}`);
+    if (!tr) return;
+    const prodName = tr.querySelector('.truncate')?.textContent || tr.querySelector('.leading-tight')?.textContent || 'Producto';
+    const prodCode = tr.querySelector('.font-mono')?.textContent || '';
+    const qtyInput = document.getElementById(`impl-qty-${lineIdx}`) as HTMLInputElement;
+    let lineQty = parseFloat(qtyInput?.value || '0');
+    const unit = tr.getAttribute('data-prod-unit') || 'UND';
+
+    const legacyLotInput = document.getElementById(`impl-lot-${lineIdx}`) as HTMLInputElement;
+    const legacyMfgInput = document.getElementById(`impl-mfg-${lineIdx}`) as HTMLInputElement;
+    const legacyExpInput = document.getElementById(`impl-exp-${lineIdx}`) as HTMLInputElement;
+
+    let configs = localLotConfigs[lineIdx] ? JSON.parse(JSON.stringify(localLotConfigs[lineIdx])) : [];
+    if (!configs.length) {
+      const curLot = legacyLotInput?.value?.trim() || '';
+      const curMfg = legacyMfgInput?.value?.trim() || '';
+      const curExp = legacyExpInput?.value?.trim() || '';
+      if (curLot || lineQty > 0) {
+        configs.push({
+          lot_number: curLot || 'LOT-01',
+          qty: lineQty > 0 ? lineQty : 1,
+          manufacturing_date: curMfg,
+          expiry_date: curExp,
+          notes: ''
+        });
+      }
+    }
+
+    const existingOverlay = document.getElementById('imp-lot-modal-overlay');
+    if (existingOverlay) existingOverlay.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'imp-lot-modal-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const parseNum = (val: any): number => {
+      if (val === null || val === undefined) return 0;
+      const s = String(val).replace(',', '.').trim();
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    };
+
+    const formatQty = (n: number): string => {
+      const rounded = Math.round(n * 1000) / 1000;
+      if (Math.abs(rounded - Math.round(rounded)) < 0.0001) {
+        return Math.round(rounded).toLocaleString('es-CO');
+      }
+      return rounded.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 3 });
+    };
+
+    const renderRowHtml = (c: any, cIdx: number) => {
+      const lotNum = c.lot_number !== undefined ? c.lot_number : '';
+      const qty = c.qty !== undefined ? c.qty : 0;
+      const mfg = c.manufacturing_date ? c.manufacturing_date.split(' ')[0] : '';
+      const exp = c.expiry_date ? c.expiry_date.split(' ')[0] : '';
+      const notes = c.notes || '';
+      const qtyNum = parseNum(qty);
+      const pct = lineQty > 0 ? ((qtyNum / lineQty) * 100).toFixed(1) : '0.0';
+
+      return `
+        <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors" data-cidx="${cIdx}">
+          <td class="p-2">
+            <input type="text" class="form-input font-mono font-bold w-full p-1.5 text-xs lot-field bg-white" data-field="lot_number" placeholder="Ej: LOT-2026A" value="${(window as any).esc(lotNum)}">
+          </td>
+          <td class="p-2">
+            <div class="relative flex items-center">
+              <input type="number" class="form-input text-right font-bold w-28 p-1.5 pr-8 text-xs lot-field bg-white" data-field="qty" min="0.001" step="any" value="${qty}">
+              <span class="absolute right-1.5 text-[9px] font-bold text-slate-400 pointer-events-none uppercase">${(window as any).esc(unit)}</span>
+            </div>
+          </td>
+          <td class="p-2 text-right font-mono text-xs font-semibold text-slate-600 lot-sub-pct">${pct}%</td>
+          <td class="p-2">
+            <input type="date" class="form-input text-xs p-1 lot-field bg-white" data-field="manufacturing_date" value="${mfg}">
+          </td>
+          <td class="p-2">
+            <input type="date" class="form-input text-xs p-1 lot-field bg-white font-semibold text-rose-900" data-field="expiry_date" value="${exp}">
+          </td>
+          <td class="p-2">
+            <input type="text" class="form-input text-xs p-1.5 w-full lot-field bg-white" data-field="notes" placeholder="Registro sanitario, análisis..." value="${(window as any).esc(notes)}">
+          </td>
+          <td class="p-2 text-center">
+            <button type="button" class="btn btn-outline btn-xs text-red-600 hover:bg-red-50 border-red-200 lot-btn-del" data-delidx="${cIdx}" title="Eliminar fila">
+              <i class="fas fa-trash-can"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    };
+
+    const recalcMetrics = () => {
+      let totalUnits = 0;
+      configs.forEach((c: any, cIdx: number) => {
+        const q = parseNum(c.qty);
+        totalUnits += q;
+        const row = overlay.querySelector(`tr[data-cidx="${cIdx}"]`);
+        if (row) {
+          const pct = lineQty > 0 ? ((q / lineQty) * 100).toFixed(1) : '0.0';
+          const pctEl = row.querySelector('.lot-sub-pct');
+          if (pctEl) pctEl.textContent = `${pct}%`;
+        }
+      });
+
+      totalUnits = Math.round(totalUnits * 1000) / 1000;
+      const diff = Math.round((totalUnits - lineQty) * 1000) / 1000;
+
+      // Banner de reconciliación
+      const reconContainer = overlay.querySelector('#lot-reconciliation-container');
+      if (reconContainer) {
+        if (Math.abs(diff) < 0.001) {
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-semibold">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-circle-check text-emerald-600 text-base"></i>
+                <span>Total asignado a lotes: <strong>${formatQty(totalUnits)} ${(window as any).esc(unit)}</strong> — Coincide 100% con la cantidad del ítem (${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <span class="badge badge-emerald font-mono font-bold">✓ Cuadrado</span>
+            </div>
+          `;
+        } else if (diff < 0) {
+          const missing = Math.round(Math.abs(diff) * 1000) / 1000;
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between text-xs text-amber-900 font-semibold flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-triangle-exclamation text-amber-600 text-base"></i>
+                <span>Faltan <strong>${formatQty(missing)} ${(window as any).esc(unit)}</strong> por asignar a lotes (${formatQty(totalUnits)} de ${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <button type="button" class="btn btn-warning btn-xs" id="lot-modal-add-missing">
+                <i class="fas fa-plus mr-1"></i> Completar ${formatQty(missing)} ${(window as any).esc(unit)} en nuevo lote
+              </button>
+            </div>
+          `;
+        } else {
+          const excess = diff;
+          reconContainer.innerHTML = `
+            <div class="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-center justify-between text-xs text-rose-900 font-semibold flex-wrap gap-2">
+              <div class="flex items-center gap-2">
+                <i class="fas fa-circle-exclamation text-rose-600 text-base"></i>
+                <span>El total en lotes (${formatQty(totalUnits)} ${(window as any).esc(unit)}) supera en <strong>${formatQty(excess)} ${(window as any).esc(unit)}</strong> la cantidad cargada (${formatQty(lineQty)} ${(window as any).esc(unit)})</span>
+              </div>
+              <button type="button" class="btn btn-outline btn-xs bg-white text-rose-700 border-rose-300 hover:bg-rose-100" id="lot-modal-sync-qty">
+                <i class="fas fa-arrows-rotate mr-1"></i> Ajustar Cantidad del Ítem a ${formatQty(totalUnits)} ${(window as any).esc(unit)}
+              </button>
+            </div>
+          `;
+        }
+      }
+
+      const elLotsCount = overlay.querySelector('#lot-metric-count');
+      if (elLotsCount) elLotsCount.textContent = String(configs.length);
+
+      const elUnits = overlay.querySelector('#lot-metric-units');
+      if (elUnits) {
+        elUnits.className = `text-base font-extrabold ${Math.abs(diff) < 0.001 ? 'text-emerald-700' : 'text-blue-700'} font-mono`;
+        elUnits.textContent = `${formatQty(totalUnits)} / ${formatQty(lineQty)} ${(window as any).esc(unit)}`;
+      }
+    };
+
+    const renderTableBody = () => {
+      const tbody = overlay.querySelector('#lot-modal-tbody');
+      if (!tbody) return;
+      tbody.innerHTML = configs.map((c: any, idx: number) => renderRowHtml(c, idx)).join('');
+      recalcMetrics();
+    };
+
+    // Montaje del cascarón
+    overlay.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden max-w-4xl w-full max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+        <div class="p-4 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-200">
+              <i class="fas fa-barcode text-base"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-sm text-white">Gestión de Multi-Lotes y Vencimientos (FEFO)</h3>
+              <p class="text-xs text-indigo-200/80">${(window as any).esc(prodCode)} — ${(window as any).esc(prodName)}</p>
+              <div class="mt-1.5 flex items-center gap-2 flex-wrap text-xs">
+                <span class="bg-indigo-800/80 px-2 py-0.5 rounded border border-indigo-400/30 text-indigo-100">
+                  Unidad: <strong class="font-mono uppercase text-white">${(window as any).esc(unit)}</strong>
+                </span>
+                <span class="bg-indigo-800/80 px-2 py-0.5 rounded border border-indigo-400/30 text-indigo-100">
+                  Cantidad del Ítem: <strong class="font-mono text-white" id="lot-modal-line-qty-text">${formatQty(lineQty)} ${(window as any).esc(unit)}</strong>
+                </span>
+              </div>
+            </div>
+          </div>
+          <button type="button" class="text-slate-300 hover:text-white text-lg p-1" id="lot-modal-close"><i class="fas fa-xmark"></i></button>
+        </div>
+
+        <div class="p-4 overflow-y-auto flex-1 space-y-4">
+          <div class="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start gap-2">
+            <i class="fas fa-circle-info text-indigo-600 mt-0.5 flex-shrink-0"></i>
+            <span>
+              Un solo producto en la importación puede provenir de múltiples lotes de fabricación con fechas de vencimiento diferentes. Define cada sub-lote con su cantidad física. La suma total de los lotes debe coincidir con la cantidad comprada.
+            </span>
+          </div>
+
+          <!-- Banner de Reconciliación -->
+          <div id="lot-reconciliation-container"></div>
+
+          <div class="border rounded-xl overflow-hidden">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead class="bg-slate-100 text-slate-700 font-semibold border-b">
+                <tr>
+                  <th class="p-2" style="min-width:140px">N° de Lote</th>
+                  <th class="p-2 text-right" style="min-width:120px">Cantidad</th>
+                  <th class="p-2 text-right" style="width:70px">% Total</th>
+                  <th class="p-2" style="width:130px">Fecha Fabricación</th>
+                  <th class="p-2" style="width:130px">Fecha Vencimiento</th>
+                  <th class="p-2">Notas / Registro</th>
+                  <th class="p-2 text-center" style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="lot-modal-tbody"></tbody>
+            </table>
+          </div>
+
+          <button type="button" class="btn btn-outline btn-xs flex items-center gap-1.5 text-indigo-700 border-indigo-300 hover:bg-indigo-50" id="lot-modal-add-row">
+            <i class="fas fa-plus"></i> Agregar Otro Lote
+          </button>
+
+          <!-- Resumen de Métricas -->
+          <div class="grid grid-cols-2 gap-3 pt-2 border-t">
+            <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+              <span class="text-[10px] text-slate-500 font-semibold block uppercase">Total Lotes Registrados</span>
+              <span class="text-base font-extrabold text-slate-800 font-mono" id="lot-metric-count">0</span>
+            </div>
+            <div class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-center">
+              <span class="text-[10px] text-slate-500 font-semibold block uppercase">Total Unidades Asignadas</span>
+              <span class="text-base font-extrabold text-blue-700 font-mono" id="lot-metric-units">0 / 0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-3 bg-slate-100 border-t flex items-center justify-between">
+          <button type="button" class="btn btn-outline text-xs" id="lot-modal-cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary text-xs" id="lot-modal-save">
+            <i class="fas fa-check mr-1.5"></i> Guardar Lotes
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    renderTableBody();
+
+    overlay.addEventListener('input', (e: any) => {
+      const field = e.target.closest('.lot-field');
+      if (!field) return;
+      const row = field.closest('tr');
+      const cIdx = parseInt(row?.getAttribute('data-cidx') || '-1', 10);
+      if (cIdx < 0 || !configs[cIdx]) return;
+
+      const fName = field.getAttribute('data-field');
+      configs[cIdx][fName] = field.value;
+      recalcMetrics();
+    });
+
+    overlay.addEventListener('click', (e: any) => {
+      const target = e.target as HTMLElement;
+
+      const delBtn = target.closest('.lot-btn-del');
+      if (delBtn) {
+        const dIdx = parseInt(delBtn.getAttribute('data-delidx') || '-1', 10);
+        if (dIdx >= 0) {
+          configs.splice(dIdx, 1);
+          renderTableBody();
+        }
+        return;
+      }
+
+      if (target.closest('#lot-modal-add-row')) {
+        let currentTotal = configs.reduce((s: number, c: any) => s + parseNum(c.qty), 0);
+        const rem = Math.max(0, Math.round((lineQty - currentTotal) * 1000) / 1000);
+        configs.push({
+          lot_number: `LOT-0${configs.length + 1}`,
+          qty: rem > 0 ? rem : 1,
+          manufacturing_date: configs[0]?.manufacturing_date || '',
+          expiry_date: configs[0]?.expiry_date || '',
+          notes: ''
+        });
+        renderTableBody();
+        return;
+      }
+
+      if (target.closest('#lot-modal-add-missing')) {
+        let currentTotal = configs.reduce((s: number, c: any) => s + parseNum(c.qty), 0);
+        const missing = Math.round(Math.abs(lineQty - currentTotal) * 1000) / 1000;
+        if (missing > 0) {
+          configs.push({
+            lot_number: `LOT-0${configs.length + 1}`,
+            qty: missing,
+            manufacturing_date: configs[0]?.manufacturing_date || '',
+            expiry_date: configs[0]?.expiry_date || '',
+            notes: ''
+          });
+          renderTableBody();
+        }
+        return;
+      }
+
+      if (target.closest('#lot-modal-sync-qty')) {
+        let currentTotal = configs.reduce((s: number, c: any) => s + parseNum(c.qty), 0);
+        currentTotal = Math.round(currentTotal * 1000) / 1000;
+        lineQty = currentTotal;
+        if (qtyInput) {
+          qtyInput.value = String(currentTotal);
+        }
+        const textQtyEl = overlay.querySelector('#lot-modal-line-qty-text');
+        if (textQtyEl) {
+          textQtyEl.textContent = `${formatQty(lineQty)} ${(window as any).esc(unit)}`;
+        }
+        recalcMetrics();
+        (window as any).showToast(`Cantidad del ítem actualizada a ${formatQty(currentTotal)} ${unit}.`, 'info');
+        return;
+      }
+
+      if (target.closest('#lot-modal-close') || target.closest('#lot-modal-cancel')) {
+        overlay.remove();
+        return;
+      }
+
+      if (target.closest('#lot-modal-save')) {
+        const sanitizedConfigs = configs.map((c: any) => ({
+          ...c,
+          lot_number: String(c.lot_number || '').trim(),
+          qty: parseNum(c.qty)
+        })).filter((c: any) => c.lot_number && c.qty > 0);
+
+        localLotConfigs[lineIdx] = sanitizedConfigs;
+
+        // Sincronizar inputs en la fila para retrocompatibilidad
+        if (legacyLotInput) {
+          legacyLotInput.value = sanitizedConfigs.length === 1 ? sanitizedConfigs[0].lot_number : sanitizedConfigs.map((c: any) => c.lot_number).join(', ');
+        }
+        if (legacyMfgInput && sanitizedConfigs[0]?.manufacturing_date) {
+          legacyMfgInput.value = sanitizedConfigs[0].manufacturing_date;
+        }
+        if (legacyExpInput && sanitizedConfigs[0]?.expiry_date) {
+          legacyExpInput.value = sanitizedConfigs[0].expiry_date;
+        }
+
+        (window as any).impUpdateLineLotStatus(lineIdx);
+        (window as any).impRecalcTotals();
+        overlay.remove();
+        (window as any).showToast(`Desglose de ${sanitizedConfigs.length} lote(s) guardado para el producto.`, 'success');
+      }
+    });
+  };
+
   // --- Modal de Desglose de Pallets Heterogéneos (WMS) ---
   (window as any).impOpenPalletModal = function(lineIdx: number) {
     const tr = document.getElementById(`imp-row-${lineIdx}`);
@@ -3390,6 +3924,22 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const unit = tr.getAttribute('data-prod-unit') || 'UND';
     const cajasPallet = parseFloat(tr.getAttribute('data-prod-cajas-pallet') || '0') || 0;
     const undEmpaque = parseFloat(tr.getAttribute('data-prod-und-empaque') || '1') || 1;
+
+    // Lotes configurados disponibles para asignar a cada pallet
+    const availableLots: string[] = [];
+    if (localLotConfigs[lineIdx] && localLotConfigs[lineIdx].length) {
+      localLotConfigs[lineIdx].forEach((lc: any) => {
+        const ln = String(lc.lot_number || '').trim();
+        if (ln && !availableLots.includes(ln)) availableLots.push(ln);
+      });
+    }
+    if (!availableLots.length && currentLot) {
+      currentLot.split(',').forEach((s: string) => {
+        const clean = s.trim();
+        if (clean && !availableLots.includes(clean)) availableLots.push(clean);
+      });
+    }
+    const defaultLot = availableLots[0] || currentLot || '';
 
     let configs = localPalletConfigs[lineIdx] ? JSON.parse(JSON.stringify(localPalletConfigs[lineIdx])) : [];
     if (!configs.length) {
@@ -3406,7 +3956,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             pallet_type: 'ESTANDAR_120x100',
             height_cm: 150,
             gross_weight_kg: 250,
-            lot_number: currentLot
+            lot_number: defaultLot
           });
         } else {
           const fullPallets = Math.floor(totalBoxesNeeded / bPerP);
@@ -3419,7 +3969,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               pallet_type: 'ESTANDAR_120x100',
               height_cm: 150,
               gross_weight_kg: 250,
-              lot_number: currentLot
+              lot_number: defaultLot
             });
           }
           if (remBoxes > 0) {
@@ -3430,7 +3980,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               pallet_type: 'ESTANDAR_120x100',
               height_cm: 120,
               gross_weight_kg: 150,
-              lot_number: currentLot
+              lot_number: defaultLot
             });
           }
         }
@@ -3442,7 +3992,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           pallet_type: 'ESTANDAR_120x100',
           height_cm: 120,
           gross_weight_kg: 50,
-          lot_number: currentLot
+          lot_number: defaultLot
         });
       }
     }
@@ -3501,6 +4051,17 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           </td>
           <td class="p-2 text-right font-mono font-bold text-slate-700 plt-sub-boxes">${formatQty(subBoxes)}</td>
           <td class="p-2 text-right font-mono font-bold text-blue-700 plt-sub-units">${formatQty(subUnits)} ${(window as any).esc(unit)}</td>
+          <td class="p-2">
+            ${availableLots.length > 0 ? `
+              <select class="form-input text-xs p-1 plt-field font-mono font-semibold" data-field="lot_number" style="min-width:110px">
+                <option value="">— Sin Lote —</option>
+                ${availableLots.map(l => `<option value="${(window as any).esc(l)}" ${c.lot_number === l ? 'selected' : ''}>${(window as any).esc(l)}</option>`).join('')}
+                ${c.lot_number && !availableLots.includes(c.lot_number) ? `<option value="${(window as any).esc(c.lot_number)}" selected>${(window as any).esc(c.lot_number)}</option>` : ''}
+              </select>
+            ` : `
+              <input type="text" class="form-input text-xs p-1 plt-field font-mono font-semibold uppercase" data-field="lot_number" placeholder="Lote..." value="${(window as any).esc(c.lot_number || defaultLot || '')}" style="min-width:90px">
+            `}
+          </td>
           <td class="p-2">
             <select class="form-input text-xs p-1 plt-field" data-field="pallet_type">
               <option value="ESTANDAR_120x100" ${c.pallet_type === 'ESTANDAR_120x100' ? 'selected' : ''}>Estándar (120x100)</option>
@@ -3675,6 +4236,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
                   <th class="p-2">Unid. / Caja (${(window as any).esc(unit)})</th>
                   <th class="p-2 text-right">Total Cajas</th>
                   <th class="p-2 text-right">Total ${(window as any).esc(unit)}</th>
+                  <th class="p-2">Lote Asignado</th>
                   <th class="p-2">Tipo Estiba</th>
                   <th class="p-2 text-right">Alto (cm)</th>
                   <th class="p-2 text-right">CBM (m³)</th>
@@ -3734,7 +4296,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const cIdx = parseInt(row.getAttribute('data-cidx') || '0', 10);
       const field = target.getAttribute('data-field');
       if (field && configs[cIdx]) {
-        configs[cIdx][field] = field === 'pallet_type' ? (target as HTMLSelectElement).value : (target as HTMLInputElement).value;
+        configs[cIdx][field] = (field === 'pallet_type' || field === 'lot_number') ? (target as HTMLSelectElement | HTMLInputElement).value : (target as HTMLInputElement).value;
         recalcMetrics();
       }
     });
@@ -3748,7 +4310,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const cIdx = parseInt(row.getAttribute('data-cidx') || '0', 10);
       const field = target.getAttribute('data-field');
       if (field && configs[cIdx]) {
-        configs[cIdx][field] = field === 'pallet_type' ? (target as HTMLSelectElement).value : (target as HTMLInputElement).value;
+        configs[cIdx][field] = (field === 'pallet_type' || field === 'lot_number') ? (target as HTMLSelectElement | HTMLInputElement).value : (target as HTMLInputElement).value;
         recalcMetrics();
       }
     });
@@ -3763,7 +4325,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const delIdx = parseInt(delBtn.getAttribute('data-delidx') || '0', 10);
         configs.splice(delIdx, 1);
         if (!configs.length) {
-          configs.push({ pallet_qty: 1, boxes_per_pallet: 1, units_per_box: 1, pallet_type: 'ESTANDAR_120x100', height_cm: 120, gross_weight_kg: 50 });
+          configs.push({ pallet_qty: 1, boxes_per_pallet: 1, units_per_box: 1, pallet_type: 'ESTANDAR_120x100', height_cm: 120, gross_weight_kg: 50, lot_number: defaultLot });
         }
         renderTableBody();
         return;
@@ -3777,7 +4339,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           pallet_type: 'ESTANDAR_120x100',
           height_cm: 150,
           gross_weight_kg: 200,
-          lot_number: currentLot
+          lot_number: defaultLot
         });
         renderTableBody();
         return;
@@ -3800,7 +4362,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             pallet_type: 'ESTANDAR_120x100',
             height_cm: 120,
             gross_weight_kg: 100,
-            lot_number: currentLot
+            lot_number: defaultLot
           });
           renderTableBody();
         }
@@ -3836,6 +4398,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         // Guardar configs en estado local sanitizando números
         const sanitizedConfigs = configs.map((c: any) => ({
           ...c,
+          lot_number: String(c.lot_number || '').trim(),
           pallet_qty: parseNum(c.pallet_qty),
           boxes_per_pallet: parseNum(c.boxes_per_pallet),
           units_per_box: parseNum(c.units_per_box),
@@ -4089,6 +4652,13 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         panel.classList.add('hidden');
       }
     });
+
+    if (tabId === 'payments' && typeof (window as any).renderImportPaymentsView === 'function') {
+      const elText = document.getElementById('lbl-res-total-cop')?.textContent || '';
+      const parsedCOP = parseCOPText(elText);
+      const grandTotalCOP = lastComputedGrandTotalCOP > 0 ? lastComputedGrandTotalCOP : (parsedCOP > 0 ? parsedCOP : 0);
+      (window as any).renderImportPaymentsView(importId, grandTotalCOP);
+    }
   };
 
   (window as any).viewStageTx = function(txId: string) {
@@ -4657,9 +5227,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const savedLines = await (window as any).API.getImportLines(finalImportId);
       const allPalletConfigsToSave: any[] = [];
 
-      lines.forEach((l) => {
-        const rowIdx = l._row_idx;
-        const matchingSavedLine = savedLines.find((sl: any) => sl.product_id === l.product_id);
+      lines.forEach((l, lIdx) => {
+        const rowIdx = l._row_idx !== undefined ? l._row_idx : lIdx;
+        const matchingSavedLine = savedLines.find((sl: any) => sl.line_order === (rowIdx + 1)) || savedLines.find((sl: any) => sl.id === l.id) || savedLines.find((sl: any) => sl.product_id === l.product_id);
         const lineIdToLink = matchingSavedLine?.id || l.id || null;
         const pcs = localPalletConfigs[rowIdx] || (l.id ? localPalletConfigs[l.id] : null) || (lineIdToLink ? localPalletConfigs[lineIdToLink] : null) || (l.product_id ? localPalletConfigs[l.product_id] : null) || [];
 
@@ -4686,7 +5256,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             height_cm: height,
             cubic_meters: cbm,
             gross_weight_kg: Number(pc.gross_weight_kg) || 0,
-            lot_number: l.lot_number || pc.lot_number || null,
+            lot_number: pc.lot_number || l.lot_number || null,
           });
         });
       });
@@ -4694,6 +5264,51 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       if (allPalletConfigsToSave.length) {
         await (window as any).API.saveImportPalletConfigs(finalImportId, allPalletConfigsToSave);
       }
+
+      // 3. Guardar configuraciones de lotes múltiples (Multi-Lote)
+      const allLotConfigsToSave: any[] = [];
+      lines.forEach((l, lIdx) => {
+        const rowIdx = l._row_idx !== undefined ? l._row_idx : lIdx;
+        const matchingSavedLine = savedLines.find((sl: any) => sl.line_order === (rowIdx + 1)) || savedLines.find((sl: any) => sl.id === l.id) || savedLines.find((sl: any) => sl.product_id === l.product_id);
+        const lineIdToLink = matchingSavedLine?.id || l.id || null;
+        const lotConfigs = localLotConfigs[rowIdx] || (l.id ? localLotConfigs[l.id] : null) || (lineIdToLink ? localLotConfigs[lineIdToLink] : null) || (l.product_id ? localLotConfigs[l.product_id] : null) || [];
+
+        if (lotConfigs.length) {
+          lotConfigs.forEach((lc: any) => {
+            const lotNum = String(lc.lot_number || '').trim();
+            const lotQty = Number(lc.qty) || 0;
+            if (lotNum && lotQty > 0) {
+              allLotConfigsToSave.push({
+                import_id: finalImportId,
+                product_id: l.product_id,
+                import_line_id: lineIdToLink,
+                lot_number: lotNum,
+                qty: lotQty,
+                manufacturing_date: lc.manufacturing_date || '',
+                expiry_date: lc.expiry_date || '',
+                notes: lc.notes || ''
+              });
+            }
+          });
+        } else if (l.lot_number) {
+          const lotNum = String(l.lot_number || '').trim();
+          const lotQty = Number(l.qty) || 0;
+          if (lotNum && lotQty > 0) {
+            allLotConfigsToSave.push({
+              import_id: finalImportId,
+              product_id: l.product_id,
+              import_line_id: lineIdToLink,
+              lot_number: lotNum,
+              qty: lotQty,
+              manufacturing_date: l.manufacturing_date || '',
+              expiry_date: l.expiry_date || '',
+              notes: ''
+            });
+          }
+        }
+      });
+
+      await (window as any).API.saveImportLotConfigs(finalImportId, allLotConfigsToSave);
 
       (window as any).showToast(importId ? 'Importación actualizada correctamente.' : 'Importación guardada correctamente.', 'success');
       closeModal();
@@ -4712,7 +5327,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
 // --- Detalle e Historial de Importación ---
 async function viewImportDetail(importId: string) {
   try {
-    const [imp, lines, invoices, palletConfigs, inventoryPallets] = await Promise.all([
+    const [imp, lines, invoices, palletConfigs, inventoryPallets, lotConfigs] = await Promise.all([
       (window as any).pb.get('imports', importId, {
         expand: 'supplier_id,user_id,purchase_invoice_id,tx_fob_id,tx_freight_id,tx_insurance_id,tx_customs_id,tx_local_carrier_id,tx_local_other_id'
       }),
@@ -4720,6 +5335,7 @@ async function viewImportDetail(importId: string) {
       (window as any).API.getImportInvoices(importId).catch(() => []),
       (window as any).API.getImportPalletConfigs(importId).catch(() => []),
       (window as any).API.getInventoryPallets(importId).catch(() => []),
+      (window as any).API.getImportLotConfigs(importId).catch(() => []),
     ]);
 
     const meta = IMPORT_STATUS[imp.status] || { label: imp.status, badge: 'badge-gray' };
@@ -4927,6 +5543,9 @@ async function viewImportDetail(importId: string) {
                   const totalPlts = linePallets.reduce((s: number, p: any) => s + (p.pallet_qty || 0), 0);
                   const totalBxs = linePallets.reduce((s: number, p: any) => s + (p.total_boxes || (p.pallet_qty * p.boxes_per_pallet) || 0), 0);
 
+                  // Lots for this line
+                  const lineLots = (lotConfigs || []).filter((lc: any) => lc.import_line_id === l.id || (!lc.import_line_id && lc.product_id === l.product_id));
+
                   return `
                     <tr>
                       <td class="font-medium">
@@ -4938,16 +5557,21 @@ async function viewImportDetail(importId: string) {
                           <span>P.Bruto: ${(l.peso_bruto_total || 0).toFixed(2)} Kg</span>
                           ${l.cubic_meters_total ? `<span>CBM: ${(l.cubic_meters_total).toFixed(3)} m³</span>` : ''}
                         </div>
-                        ${(l.lot_number || totalPlts > 0) ? `
-                          <div class="mt-1 flex items-center gap-1.5 flex-wrap">
-                            ${l.lot_number ? `
-                              <span class="badge badge-blue text-[10px] font-mono py-0 px-1.5 font-bold">
+                        ${(lineLots.length > 0 || l.lot_number || totalPlts > 0) ? `
+                          <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                            ${lineLots.length > 0 ? lineLots.map((lc: any) => `
+                              <span class="badge badge-blue text-[10px] font-mono py-0.5 px-1.5 font-bold" title="${lc.manufacturing_date ? `Fab: ${lc.manufacturing_date.split(' ')[0]}` : ''}">
+                                <i class="fas fa-barcode mr-1"></i>${(window as any).esc(lc.lot_number)}: <strong>${(window as any).fmtN(lc.qty)}</strong>
+                                ${lc.expiry_date ? `<span class="text-rose-700 font-semibold ml-1">(Vence: ${(window as any).esc(lc.expiry_date.split(' ')[0])})</span>` : ''}
+                              </span>
+                            `).join('') : (l.lot_number ? `
+                              <span class="badge badge-blue text-[10px] font-mono py-0.5 px-1.5 font-bold">
                                 <i class="fas fa-barcode mr-1"></i>Lote: ${(window as any).esc(l.lot_number)}
                               </span>
-                              ${l.expiry_date ? `<span class="text-[10px] text-rose-700 font-semibold">Vence: ${(window as any).esc(l.expiry_date.split(' ')[0])}</span>` : ''}
-                            ` : ''}
+                              ${l.expiry_date ? `<span class="text-[10px] text-rose-700 font-semibold ml-1">Vence: ${(window as any).esc(l.expiry_date.split(' ')[0])}</span>` : ''}
+                            ` : '')}
                             ${totalPlts > 0 ? `
-                              <span class="badge badge-purple text-[10px] font-mono py-0 px-1.5 font-bold" style="background:#F5F3FF;color:#6D28D9;border:1px solid #DDD6FE">
+                              <span class="badge badge-purple text-[10px] font-mono py-0.5 px-1.5 font-bold" style="background:#F5F3FF;color:#6D28D9;border:1px solid #DDD6FE">
                                 <i class="fas fa-boxes-stacked mr-1"></i>${totalPlts} plts (${totalBxs} cjs)
                               </span>
                             ` : ''}
@@ -5220,7 +5844,10 @@ async function confirmFinalizarImportacion(importId: string) {
     let initialTxNumber = '';
     if (defaultTxTypeId) {
       try {
-        initialTxNumber = await (window as any).API.previewNextTxConsecutive(defaultTxTypeId);
+        const previewRes = await (window as any).API.previewNextTxConsecutive(defaultTxTypeId);
+        initialTxNumber = (typeof previewRes === 'object' && previewRes?.formattedNumber)
+          ? previewRes.formattedNumber
+          : (typeof previewRes === 'string' ? previewRes : '');
       } catch (e) {
         console.warn('Error previewing consecutive:', e);
       }
@@ -5501,7 +6128,9 @@ async function confirmFinalizarImportacion(importId: string) {
         try {
           const nextConsecutive = await (window as any).API.previewNextTxConsecutive(selId);
           if (nextConsecutive) {
-            txNumInput.value = nextConsecutive;
+            txNumInput.value = (typeof nextConsecutive === 'object' && nextConsecutive?.formattedNumber)
+              ? nextConsecutive.formattedNumber
+              : (typeof nextConsecutive === 'string' ? nextConsecutive : '');
           }
         } catch (err) {
           console.warn('Error al obtener siguiente consecutivo contable:', err);
@@ -6013,6 +6642,396 @@ function closeLinkTxModalAndReopen(importId: string) {
 (window as any).unlinkStageTxLine = unlinkStageTxLine;
 (window as any).openRegisterTxForImport = openRegisterTxForImport;
 (window as any).closeLinkTxModalAndReopen = closeLinkTxModalAndReopen;
+
+// ============================================================================
+// CONTROL DE PAGOS Y ABONOS DE LA IMPORTACIÓN (TESORERÍA Y CARTERA)
+// ============================================================================
+
+async function renderImportPaymentsView(importId: string | null, grandTotalCOP: number = 0) {
+  const container = document.getElementById('imp-payments-container');
+  if (!container) return;
+
+  if (!importId) {
+    container.innerHTML = `
+      <div class="p-8 text-center bg-white rounded-xl border border-slate-200">
+        <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3 text-xl">
+          <i class="fas fa-circle-info"></i>
+        </div>
+        <h5 class="font-bold text-slate-800 text-sm">Importación en Borrador</h5>
+        <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+          Guarda la importación como borrador primero para comenzar a registrar, vincular y controlar los pagos y abonos realizados en tesorería.
+        </p>
+      </div>
+    `;
+    const countBadge = document.getElementById('badge-tab-payments-count');
+    if (countBadge) countBadge.textContent = '0';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="p-8 text-center text-slate-400">
+      <i class="fas fa-spinner fa-spin mr-2"></i> Consultando pagos y desembolsos de la importación...
+    </div>
+  `;
+
+  try {
+    const payments = await (window as any).API.getImportPayments(importId);
+    
+    // Resolver total de obligaciones (Costo capitalizable)
+    let effGrandTotalCOP = grandTotalCOP > 0 ? grandTotalCOP : (lastComputedGrandTotalCOP > 0 ? lastComputedGrandTotalCOP : 0);
+    if (effGrandTotalCOP <= 0) {
+      const elText = document.getElementById('lbl-res-total-cop')?.textContent || '';
+      effGrandTotalCOP = parseCOPText(elText);
+    }
+
+    // Totalizar pagos y desembolsos
+    const totalPaidCOP = payments.reduce((sum: number, p: any) => sum + (Number(p.paidAmount || p._amount) || 0), 0);
+    const balanceDueCOP = Math.max(0, effGrandTotalCOP - totalPaidCOP);
+    const pctPaid = effGrandTotalCOP > 0 ? Math.min(100, Math.round((totalPaidCOP / effGrandTotalCOP) * 100)) : (totalPaidCOP > 0 ? 100 : 0);
+
+    const countBadge = document.getElementById('badge-tab-payments-count');
+    if (countBadge) countBadge.textContent = String(payments.length);
+
+    const renderPaymentRows = () => {
+      if (!payments.length) {
+        return `
+          <tr>
+            <td colspan="7" class="py-10 text-center text-slate-400">
+              <div class="flex flex-col items-center justify-center gap-1.5">
+                <i class="fas fa-money-bill-transfer text-2xl text-slate-300"></i>
+                <span class="font-medium text-xs">No se han registrado pagos o abonos para esta importación.</span>
+                <span class="text-[11px] text-slate-400">Usa los botones superiores para registrar un Comprobante de Egreso o vincular un movimiento existente.</span>
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+
+      return payments.map((p: any) => {
+        const third = p.expand?.third_party_id || {};
+        const txType = p.expand?.tx_type_id || {};
+        const pDate = p.date ? p.date.slice(0, 10) : (p.created ? p.created.slice(0, 10) : '—');
+        const pNum = p.number || 'Egreso';
+        const typeBadge = txType.code ? `<span class="badge badge-gray text-[9px] font-mono mr-1">${(window as any).esc(txType.code)}</span>` : '';
+
+        return `
+          <tr class="hover:bg-slate-50 transition-colors border-b">
+            <td class="py-2.5 px-3 font-mono text-slate-600">${(window as any).esc(pDate)}</td>
+            <td class="py-2.5 px-3">
+              <div class="flex items-center gap-1">
+                ${typeBadge}
+                <span class="font-mono font-bold text-blue-700">${(window as any).esc(pNum)}</span>
+              </div>
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="font-bold text-slate-800">${(window as any).esc(third.name || 'Sin Tercero')}</div>
+              ${third.doc_number ? `<div class="text-[10px] text-slate-400 font-mono">Doc: ${(window as any).esc(third.doc_number)}</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3 text-slate-600 text-xs">
+              <div>${(window as any).esc(p.description || 'Pago de Importación')}</div>
+              ${p.notes ? `<div class="text-[10px] text-slate-400 italic">${(window as any).esc(p.notes)}</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3 font-mono text-[11px] text-slate-600">
+              <i class="fas fa-building-columns mr-1 text-slate-400"></i>
+              ${(window as any).esc(p.bankAccountsText || 'Caja / Bancos')}
+            </td>
+            <td class="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-700 text-sm">
+              ${(window as any).fmt(p.paidAmount || p._amount || 0)}
+            </td>
+            <td class="py-2.5 px-3 text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <button type="button" class="btn btn-outline btn-xs py-0.5 px-1.5 text-blue-600 hover:bg-blue-50" title="Ver detalle del comprobante" onclick="window.viewStageTx('${p.id}')">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button type="button" class="btn btn-outline btn-xs py-0.5 px-1.5 text-rose-500 hover:bg-rose-50 border-rose-200" title="Desvincular pago de la importación" onclick="window.doUnlinkPaymentFromImport('${p.id}', '${importId}')">
+                  <i class="fas fa-link-slash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    container.innerHTML = `
+      <div class="space-y-4">
+        <!-- 4 KPIs Superiores de Control de Pagos -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Obligaciones</span>
+              <div class="text-base font-extrabold text-slate-900 font-mono mt-0.5">${(window as any).fmt(effGrandTotalCOP)}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Costo total de la importación</div>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
+              <i class="fas fa-file-invoice-dollar"></i>
+            </div>
+          </div>
+
+          <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Pagado / Abonado</span>
+              <div class="text-base font-extrabold text-emerald-700 font-mono mt-0.5">${(window as any).fmt(totalPaidCOP)}</div>
+              <div class="text-[10px] text-emerald-600 font-semibold mt-0.5">${pctPaid}% del costo cubierto</div>
+            </div>
+            <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">
+              <i class="fas fa-circle-check"></i>
+            </div>
+          </div>
+
+          <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Saldo Pendiente</span>
+              <div class="text-base font-black font-mono mt-0.5 ${balanceDueCOP > 0 ? 'text-amber-600' : 'text-emerald-700'}">${(window as any).fmt(balanceDueCOP)}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">${balanceDueCOP > 0 ? 'Pendiente por desembolsar' : '¡Importación 100% Pagada!'}</div>
+            </div>
+            <div class="w-9 h-9 rounded-xl ${balanceDueCOP > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'} flex items-center justify-center text-sm">
+              <i class="${balanceDueCOP > 0 ? 'fas fa-hourglass-half' : 'fas fa-shield-check'}"></i>
+            </div>
+          </div>
+
+          <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Avance de Pago</span>
+              <span class="font-mono text-xs font-bold text-indigo-700">${pctPaid}%</span>
+            </div>
+            <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden my-1">
+              <div class="bg-gradient-to-r from-blue-500 to-emerald-500 h-full rounded-full transition-all duration-300" style="width:${pctPaid}%"></div>
+            </div>
+            <div class="text-[10px] text-slate-400 text-right">${payments.length} comprobante(s) de pago</div>
+          </div>
+        </div>
+
+        <!-- Barra de Acciones de Pagos -->
+        <div class="p-3.5 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <i class="fas fa-money-bill-transfer"></i>
+            </div>
+            <div>
+              <h5 class="font-bold text-xs text-slate-800">Comprobantes de Pago y Desembolsos de Tesorería</h5>
+              <p class="text-[11px] text-slate-500">Egresos, giros al exterior y anticipos cruzados vinculados a esta importación.</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn btn-outline btn-xs" onclick="window.openLinkPaymentModal('${importId}')">
+              <i class="fas fa-link mr-1 text-blue-600"></i> Vincular Pago Existente
+            </button>
+            <button type="button" class="btn btn-primary btn-xs" onclick="window.openRegisterPaymentForImport('${importId}')">
+              <i class="fas fa-plus mr-1"></i> Registrar Pago en Tesorería
+            </button>
+          </div>
+        </div>
+
+        <!-- Tabla de Pagos Registrados -->
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-left border-collapse" id="imp-payments-table">
+              <thead class="bg-slate-50 text-slate-600 font-semibold border-b">
+                <tr>
+                  <th class="py-2.5 px-3">Fecha</th>
+                  <th class="py-2.5 px-3">Comprobante Nro</th>
+                  <th class="py-2.5 px-3">Tercero / Beneficiario</th>
+                  <th class="py-2.5 px-3">Concepto / Notas</th>
+                  <th class="py-2.5 px-3">Medio de Pago / Banco</th>
+                  <th class="py-2.5 px-3 text-right">Monto Pagado (COP)</th>
+                  <th class="py-2.5 px-3 text-center" style="width:90px">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${renderPaymentRows()}
+              </tbody>
+              ${payments.length > 0 ? `
+                <tfoot class="bg-slate-50 font-bold border-t border-slate-200">
+                  <tr>
+                    <td colspan="5" class="py-2.5 px-3 text-slate-700">TOTAL PAGADO / ABONADO</td>
+                    <td class="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800 text-sm">${(window as any).fmt(totalPaidCOP)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              ` : ''}
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+  } catch (err: any) {
+    container.innerHTML = `
+      <div class="p-6 text-center text-rose-500 bg-white rounded-xl border border-rose-200">
+        <i class="fas fa-triangle-exclamation mr-1"></i> Error al cargar pagos: ${err.message}
+      </div>
+    `;
+  }
+}
+
+async function openLinkPaymentModal(importId: string) {
+  if (!importId) {
+    (window as any).showToast('Guarda la importación primero.', 'warning');
+    return;
+  }
+
+  (window as any).openModal(
+    'Vincular Comprobante de Pago a la Importación',
+    `<div class="p-8 text-center text-slate-400"><i class="fas fa-spinner fa-spin mr-2"></i>Buscando comprobantes de egreso disponibles...</div>`,
+    '',
+    true
+  );
+
+  try {
+    const candidates = await (window as any).API.searchCandidatePaymentsForImport({ limit: 80, importId });
+
+    const renderRows = (items: any[]) => {
+      if (!items.length) {
+        return `<tr><td colspan="6" class="text-center py-8 text-slate-400"><i class="fas fa-circle-info mr-1"></i>No hay comprobantes de pago pendientes de vincular.</td></tr>`;
+      }
+      return items.map((t: any) => {
+        const third = t.expand?.third_party_id || {};
+        const txType = t.expand?.tx_type_id || {};
+        const tDate = t.date ? t.date.slice(0, 10) : (t.created ? t.created.slice(0, 10) : '—');
+        const tAmt = t._amount || t.total || 0;
+
+        return `
+          <tr class="hover:bg-slate-50 transition-colors border-b">
+            <td class="py-2.5 px-3 font-mono text-slate-600">${(window as any).esc(tDate)}</td>
+            <td class="py-2.5 px-3">
+              <span class="badge badge-gray text-[9px] font-mono mr-1">${(window as any).esc(txType.code || 'TX')}</span>
+              <strong class="font-mono text-blue-700">${(window as any).esc(t.number || 'S/N')}</strong>
+            </td>
+            <td class="py-2.5 px-3">
+              <div class="font-bold text-slate-800">${(window as any).esc(third.name || 'Sin Tercero')}</div>
+              ${third.doc_number ? `<div class="text-[10px] text-slate-400 font-mono">Doc: ${(window as any).esc(third.doc_number)}</div>` : ''}
+            </td>
+            <td class="py-2.5 px-3 text-slate-600 text-xs">${(window as any).esc(t.description || '')}</td>
+            <td class="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">${(window as any).fmt(tAmt)}</td>
+            <td class="py-2.5 px-3 text-center">
+              <button type="button" class="btn btn-primary btn-xs py-1" onclick="window.doLinkCandidatePayment('${t.id}', '${importId}')">
+                <i class="fas fa-link mr-1"></i> Vincular
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    };
+
+    const modalBody = `
+      <div class="space-y-4">
+        <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+          <i class="fas fa-info-circle text-blue-600 mt-0.5"></i>
+          <div>
+            <span class="font-bold">Vincular Comprobante de Pago Existente:</span>
+            <p class="text-blue-800 mt-0.5">Selecciona el comprobante de egreso o movimiento bancario que corresponda a esta importación para asociarlo al control de pagos y amortización.</p>
+          </div>
+        </div>
+
+        <div class="relative">
+          <input type="text" id="cand-payment-filter" class="form-input text-xs w-full pl-8" placeholder="Filtrar por comprobante, tercero, descripción o monto...">
+          <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+        </div>
+
+        <div class="border rounded-xl overflow-hidden bg-white max-h-[360px] overflow-y-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead class="bg-slate-50 text-slate-600 font-semibold sticky top-0 border-b z-10">
+              <tr>
+                <th class="py-2.5 px-3">Fecha</th>
+                <th class="py-2.5 px-3">Comprobante</th>
+                <th class="py-2.5 px-3">Tercero</th>
+                <th class="py-2.5 px-3">Descripción</th>
+                <th class="py-2.5 px-3 text-right">Monto</th>
+                <th class="py-2.5 px-3 text-center" style="width:90px">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="cand-payment-tbody" class="divide-y divide-slate-100">
+              ${renderRows(candidates)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const modalFooter = `
+      <button type="button" class="btn btn-outline" onclick="window.closeLinkTxModalAndReopen('${importId}')">Cancelar</button>
+    `;
+
+    (window as any).openModal('Vincular Comprobante de Pago a la Importación', modalBody, modalFooter, true);
+
+    const fInput = document.getElementById('cand-payment-filter') as HTMLInputElement;
+    fInput?.addEventListener('input', () => {
+      const q = fInput.value.toLowerCase().trim();
+      const filtered = !q ? candidates : candidates.filter((t: any) => {
+        const num = (t.number || '').toLowerCase();
+        const third = (t.expand?.third_party_id?.name || '').toLowerCase();
+        const desc = (t.description || '').toLowerCase();
+        const amt = String(t._amount || t.total || '');
+        return num.includes(q) || third.includes(q) || desc.includes(q) || amt.includes(q);
+      });
+      const tbody = document.getElementById('cand-payment-tbody');
+      if (tbody) tbody.innerHTML = renderRows(filtered);
+    });
+
+  } catch (err: any) {
+    (window as any).showToast('Error al buscar comprobantes: ' + err.message, 'error');
+  }
+}
+
+async function doLinkCandidatePayment(txId: string, importId: string) {
+  try {
+    await (window as any).API.linkPaymentToImport(txId, importId);
+    (window as any).showToast('Comprobante de pago vinculado exitosamente a la importación.', 'success');
+    closeLinkTxModalAndReopen(importId);
+    setTimeout(() => {
+      if (typeof (window as any).switchImpStageTab === 'function') {
+        (window as any).switchImpStageTab('payments');
+      }
+    }, 400);
+  } catch (err: any) {
+    (window as any).showToast('Error al vincular pago: ' + err.message, 'error');
+  }
+}
+
+async function doUnlinkPaymentFromImport(txId: string, importId: string) {
+  if (!confirm('¿Deseas desvincular este comprobante de pago de la importación?')) return;
+  try {
+    await (window as any).API.unlinkPaymentFromImport(txId);
+    (window as any).showToast('Comprobante desvinculado de la importación.', 'info');
+    if (typeof (window as any).renderImportPaymentsView === 'function') {
+      const elText = document.getElementById('lbl-res-total-cop')?.textContent || '';
+      const parsedCOP = parseCOPText(elText);
+      const grandTotalCOP = lastComputedGrandTotalCOP > 0 ? lastComputedGrandTotalCOP : (parsedCOP > 0 ? parsedCOP : 0);
+      (window as any).renderImportPaymentsView(importId, grandTotalCOP);
+    }
+  } catch (err: any) {
+    (window as any).showToast('Error al desvincular pago: ' + err.message, 'error');
+  }
+}
+
+function openRegisterPaymentForImport(importId: string) {
+  (window as any).closeModal();
+  setTimeout(() => {
+    if (typeof (window as any).openNuevaTxModal === 'function') {
+      (window as any).openNuevaTxModal({
+        is_import: true,
+        import_id: importId,
+        onSaved: () => {
+          openImportForm(importId);
+          setTimeout(() => {
+            if (typeof (window as any).switchImpStageTab === 'function') {
+              (window as any).switchImpStageTab('payments');
+            }
+          }, 300);
+        }
+      });
+    } else {
+      (window as any).showToast('Módulo de transacciones no disponible.', 'error');
+    }
+  }, 200);
+}
+
+(window as any).renderImportPaymentsView = renderImportPaymentsView;
+(window as any).openLinkPaymentModal = openLinkPaymentModal;
+(window as any).doLinkCandidatePayment = doLinkCandidatePayment;
+(window as any).doUnlinkPaymentFromImport = doUnlinkPaymentFromImport;
+(window as any).openRegisterPaymentForImport = openRegisterPaymentForImport;
 
 async function openImportSettingsModal(onSaved = null) {
   try {
@@ -6610,14 +7629,15 @@ async function openImportExecutiveReport(importId: string) {
   try {
     (window as any).showToast('Generando Dossier Oficial...', 'info');
 
-    const [imp, lines, importInvoices, palletConfigs, txs, settingsList, warehouses] = await Promise.all([
+    const [imp, lines, importInvoices, palletConfigs, txs, settingsList, warehouses, lotConfigs] = await Promise.all([
       (window as any).pb.get('imports', importId, { expand: 'supplier_id' }),
       (window as any).API.getImportLines(importId),
       (window as any).API.getImportInvoices(importId).catch(() => []),
       (window as any).API.getImportPalletConfigs(importId).catch(() => []),
       (window as any).pb.listAll('transactions', { filter: `import_id = "${importId}" || notes ~ "${importId}" || number ~ "${importId}"`, expand: 'third_party_id' }).catch(() => []),
       (window as any).pb.listAll('settings', {}).catch(() => []),
-      (window as any).API.getWarehouses(true).catch(() => [])
+      (window as any).API.getWarehouses(true).catch(() => []),
+      (window as any).API.getImportLotConfigs(importId).catch(() => []),
     ]);
 
     const m: any = Object.fromEntries(settingsList.map((s: any) => [s.key, s.value || '']));
@@ -6692,8 +7712,14 @@ async function openImportExecutiveReport(importId: string) {
         prorated,
         unitCost,
         totalCost,
-        lotNumber: l.lot_number || '—',
-        expiryDate: l.expiry_date ? l.expiry_date.split(' ')[0] : '—',
+        lotNumber: (() => {
+          const lineLots = (lotConfigs || []).filter((lc: any) => lc.import_line_id === l.id || (!lc.import_line_id && lc.product_id === l.product_id));
+          return lineLots.length > 0 ? lineLots.map((lc: any) => `${lc.lot_number} (${formatQty(lc.qty)})`).join(', ') : (l.lot_number || '—');
+        })(),
+        expiryDate: (() => {
+          const lineLots = (lotConfigs || []).filter((lc: any) => lc.import_line_id === l.id || (!lc.import_line_id && lc.product_id === l.product_id));
+          return lineLots.length > 0 ? lineLots.map((lc: any) => lc.expiry_date ? lc.expiry_date.split(' ')[0] : 'S/F').join(', ') : (l.expiry_date ? l.expiry_date.split(' ')[0] : '—');
+        })(),
         manifest: l.manifest_number || '—',
         grossKg,
         netKg,

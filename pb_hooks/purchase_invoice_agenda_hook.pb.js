@@ -16,9 +16,16 @@ onRecordUpdateRequest((e) => {
 function handler(invoice) {
   if (!invoice) return;
 
-  // Solo programamos en la agenda si la factura está en estado 'posted' (asentada)
+  // Solo programamos en la agenda si la factura está en estado 'posted' (asentada) y es a CRÉDITO
   const status = invoice.get("status");
   if (status !== "posted") return;
+
+  const paymentForm = String(invoice.get("payment_form") || (invoice.get("payment_method") === "CREDITO" ? "2" : "1")).trim();
+  const isCredit = (paymentForm === "2") || (String(invoice.get("payment_method") || "").toUpperCase() === "CREDITO");
+  if (!isCredit) {
+    // Las compras de contado no generan obligación pendiente en agenda CXP
+    return;
+  }
 
   const invoiceId = invoice.id;
   const number = invoice.get("number");

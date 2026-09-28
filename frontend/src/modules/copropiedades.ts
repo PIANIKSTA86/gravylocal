@@ -44,6 +44,8 @@ const PH_UNIT_TYPES = [
 ];
 
 // ── Helpers locales ─────────────────────────────────────────────────────────
+const _fmt = (v: any) => typeof (window as any).fmt === 'function' ? (window as any).fmt(v) : (typeof fmt === 'function' ? fmt(v) : `$${Number(v || 0).toLocaleString('es-CO')}`);
+
 function phKpi(label, value, iconClass, color, bg) {
   return `<div class="rounded-2xl p-4" style="background:${bg}">
     <div class="flex items-center gap-2 mb-1">
@@ -1663,6 +1665,9 @@ async function renderPhUnidades(c) {
           <div class="flex gap-2">
             <input id="ph-unit-search" class="form-input text-sm" placeholder="Buscar..." style="max-width:200px">
             ${canEditUnits ? `
+            <button class="btn btn-outline btn-sm" id="ph-unit-import-btn" title="Cargar unidades masivamente desde Excel o CSV">
+              <i class="fas fa-file-excel mr-1 text-emerald-600"></i>Carga Masiva
+            </button>
             <button class="btn btn-primary btn-sm" id="ph-unit-add-btn">
               <i class="fas fa-plus mr-1"></i>Nueva Unidad
             </button>` : ''}
@@ -1697,6 +1702,12 @@ async function renderPhUnidades(c) {
         row.style.display = q && !row.textContent.toLowerCase().includes(q) ? 'none' : '';
       });
     }, 150));
+
+    document.getElementById('ph-unit-import-btn')?.addEventListener('click', () => {
+      if (typeof (window as any)._openMassPhUnitsImportModal === 'function') {
+        (window as any)._openMassPhUnitsImportModal();
+      }
+    });
 
     document.getElementById('ph-unit-add-btn')?.addEventListener('click', () => openPhUnitModal(null, c));
 
@@ -1795,6 +1806,10 @@ async function openPhUnitModal(unitId, container) {
         <input id="pu-tower" class="form-input" value="${esc(unit?.tower || '')}" placeholder="Ej: Torre 1, A, Norte">
       </div>
       <div class="form-group">
+        <label class="form-label">Piso / Nivel</label>
+        <input id="pu-floor" class="form-input" value="${esc(unit?.floor || '')}" placeholder="Ej: 1, 2, PB, S1">
+      </div>
+      <div class="form-group">
         <label class="form-label">Apartamento (número sin torre)</label>
         <input id="pu-apartment" class="form-input" value="${esc(unit?.apartment || '')}" placeholder="Ej: 101, 305, PB-01">
       </div>
@@ -1821,11 +1836,18 @@ async function openPhUnitModal(unitId, container) {
           <option value="false" ${unit?.active === false  ? 'selected' : ''}>Inactiva</option>
         </select>
       </div>
-      <div class="form-group col-span-2">
+      <div class="form-group">
         <label class="form-label">Propietario</label>
         <select id="pu-owner" class="form-input">
           <option value="">— Sin asignar —</option>
           ${terceros.map(t => `<option value="${esc(t.id)}" ${unit?.owner_id === t.id ? 'selected' : ''}>${esc(t.name)} (${esc(t.doc_number || 'N/A')})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Arrendatario / Residente</label>
+        <select id="pu-occupant" class="form-input">
+          <option value="">— Sin asignar —</option>
+          ${terceros.map(t => `<option value="${esc(t.id)}" ${unit?.occupant_id === t.id ? 'selected' : ''}>${esc(t.name)} (${esc(t.doc_number || 'N/A')})</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
@@ -1851,18 +1873,21 @@ async function openPhUnitModal(unitId, container) {
     if (!code || !name) { showToast('Código y nombre son obligatorios.', 'warning'); return; }
 
     const rawOwner = (document.getElementById('pu-owner') as HTMLSelectElement)?.value || '';
+    const rawOccupant = (document.getElementById('pu-occupant') as HTMLSelectElement)?.value || '';
 
     const data = {
       code,
       name,
       unit_type:           utype,
       tower:               ((document.getElementById('pu-tower') as HTMLInputElement)?.value     || '').trim(),
+      floor:               ((document.getElementById('pu-floor') as HTMLInputElement)?.value     || '').trim(),
       apartment:           ((document.getElementById('pu-apartment') as HTMLInputElement)?.value || '').trim(),
       coef_participacion:  parseFloat((document.getElementById('pu-coef') as HTMLInputElement)?.value  || '0') || 0,
       admin_fee:           parseFloat((document.getElementById('pu-admin-fee') as HTMLInputElement)?.value || '0') || 0,
       area_m2:             parseFloat((document.getElementById('pu-area') as HTMLInputElement)?.value   || '0') || 0,
       delivery_date:       ((document.getElementById('pu-delivery-date') as HTMLInputElement)?.value || '').trim() || null,
       owner_id:            rawOwner ? rawOwner : null,
+      occupant_id:         rawOccupant ? rawOccupant : null,
       notes:               (document.getElementById('pu-notes') as HTMLTextAreaElement)?.value  || '',
       active:              (document.getElementById('pu-active') as HTMLSelectElement)?.value === 'true',
     };
@@ -2414,6 +2439,7 @@ async function renderPhConfig(c) {
     const lateFeeIncomeCode = phCfg.late_fee_income_code || incomeCode;
     const anticipoAccountCode = phCfg.anticipo_account_code || '';
     const cruceTxTypeId = phCfg.cruce_anticipo_tx_type_id || '';
+    const metodoSaldosFavor = phCfg.metodo_saldos_favor || 'CARTERA_DIRECTA';
     const activeLeafAccounts = (accounts || [])
       .filter(a => a.active !== false && Number(a.level || 0) >= 3)
       .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));
@@ -2543,10 +2569,34 @@ async function renderPhConfig(c) {
             <select id="ph-cfg-anticipo" class="form-input font-mono">${accountOptions(liabilityAccounts, anticipoAccountCode)}</select>
             <p class="text-xs mt-1" style="color:#9CA3AF">Cuenta clase 2 donde se registran los saldos a favor de propietarios (ej: 280505 Anticipos de Clientes).</p>
           </div>
+          <div class="form-group mb-4 p-3 bg-blue-50/50 rounded-xl border border-blue-200">
+            <label class="form-label font-bold text-sm text-blue-900 mb-1">
+              <i class="fas fa-layer-group mr-1.5 text-blue-600"></i>Método para Manejo de Saldos a Favor de Copropietarios
+            </label>
+            <p class="text-xs text-blue-800/80 mb-2">
+              Define dónde y cómo se gestionan los recaudos anticipados o excedentes de pago de las unidades habitacionales.
+            </p>
+            <div class="space-y-2">
+              <label class="flex items-start gap-2.5 p-2 bg-white rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer">
+                <input type="radio" name="ph-cfg-metodo-saldos" value="CARTERA_DIRECTA" class="mt-1" ${metodoSaldosFavor === 'CARTERA_DIRECTA' ? 'checked' : ''}>
+                <div class="text-xs">
+                  <span class="font-bold text-gray-900">Cartera Directa (Cuentas 13 — Recomendado PH)</span>
+                  <p class="text-gray-500 mt-0.5">El excedente se abona directamente como saldo crédito en la cuenta de cartera (134595) de la unidad, descomponiéndose por cuotas mensuales futuras (FIFO) y amortizándose automáticamente en las próximas facturaciones sin comprobantes artificiales de cruce.</p>
+                </div>
+              </label>
+              <label class="flex items-start gap-2.5 p-2 bg-white rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer">
+                <input type="radio" name="ph-cfg-metodo-saldos" value="ANTICIPOS_PASIVO_2805" class="mt-1" ${metodoSaldosFavor === 'ANTICIPOS_PASIVO_2805' ? 'checked' : ''}>
+                <div class="text-xs">
+                  <span class="font-bold text-gray-900">Pasivo Separado (Cuenta 2805 — Estándar NIIF Estricto)</span>
+                  <p class="text-gray-500 mt-0.5">Los anticipos se contabilizan en la cuenta 280505 de pasivos y requieren la emisión de un comprobante contable de cruce para aplicarse contra las facturas mensuales.</p>
+                </div>
+              </label>
+            </div>
+          </div>
           <div class="form-group">
             <label class="form-label"><i class="fas fa-file-invoice mr-1" style="color:#2563EB"></i>Tipo de Comprobante para Cruce de Anticipos</label>
             <select id="ph-cfg-cruce-tx-type" class="form-input">${txTypeOptions(activeTxTypes, cruceTxTypeId)}</select>
-            <p class="text-xs mt-1" style="color:#9CA3AF">Tipo de comprobante utilizado para registrar los cruces contables de saldos a favor (ej: Nota de Contabilidad NC, Comprobante CC o Ajustes AJ).</p>
+            <p class="text-xs mt-1" style="color:#9CA3AF">Tipo de comprobante utilizado para registrar los cruces contables de saldos a favor cuando se use el modo de Pasivo 2805 (ej: Nota de Contabilidad NC, Comprobante CC o Ajustes AJ).</p>
           </div>
           <button class="btn btn-primary" id="ph-cfg-save-btn">
             <i class="fas fa-save mr-1"></i>Guardar Cuentas Contables
@@ -2750,6 +2800,7 @@ async function renderPhConfig(c) {
           } catch(_) {}
         }
         const cruceTxTypeId = ((document.getElementById('ph-cfg-cruce-tx-type') as HTMLSelectElement)?.value || '').trim() || null;
+        const metodoSaldos = ((document.querySelector('input[name="ph-cfg-metodo-saldos"]:checked') as HTMLInputElement)?.value || 'CARTERA_DIRECTA');
         const cfg = {
           ...phCfg,
           cxc_code: cxc,
@@ -2757,6 +2808,7 @@ async function renderPhConfig(c) {
           anticipo_account_code: anticipo || null,
           anticipo_account_id: anticipoAccountId,
           cruce_anticipo_tx_type_id: cruceTxTypeId,
+          metodo_saldos_favor: metodoSaldos,
           invoice_footer_note: noteVal
         };
         await Promise.all([
@@ -3043,9 +3095,9 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
         <input id="pc-name" class="form-input" value="${esc(concept?.name || '')}" placeholder="Ej: Cuota de administración">
       </div>
       <div class="form-group">
-        <label class="form-label">Valor Base <span class="text-red-500">*</span></label>
+        <label class="form-label">Valor Base <span class="text-xs text-gray-400 font-normal">(0 si es variable o mora)</span></label>
         <input id="pc-amount" type="number" min="0" step="1" class="form-input"
-          value="${esc(concept?.amount ?? '')}" placeholder="0">
+          value="${esc(concept?.amount ?? 0)}" placeholder="0">
       </div>
       <div class="form-group">
         <label class="form-label">¿Aplicar coeficiente de participación?</label>
@@ -3076,20 +3128,28 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
 
   setTimeout(() => {
     document.getElementById('pc-save-btn')?.addEventListener('click', async () => {
-      const code   = (document.getElementById('pc-code')?.value   || '').trim().toUpperCase();
-      const name   = (document.getElementById('pc-name')?.value   || '').trim();
-      const amount = parseFloat(document.getElementById('pc-amount')?.value || 0) || 0;
-      if (!code || !name || !amount) { showToast('Código, nombre y valor son obligatorios.', 'warning'); return; }
+      const code      = (document.getElementById('pc-code')?.value   || '').trim().toUpperCase();
+      const name      = (document.getElementById('pc-name')?.value   || '').trim();
+      const amountVal = (document.getElementById('pc-amount')?.value || '').trim();
+      const amount    = amountVal === '' ? 0 : (parseFloat(amountVal) || 0);
+      if (!code || !name) { showToast('Código y nombre son obligatorios.', 'warning'); return; }
+      if (isNaN(amount) || amount < 0) { showToast('El valor base no puede ser negativo.', 'warning'); return; }
       const btn = document.getElementById('pc-save-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
-        const data = {
+        const accountVal = (document.getElementById('pc-account')?.value || '').trim();
+        const data: any = {
           code, name, amount,
           applies_coef: document.getElementById('pc-coef')?.value === 'true',
-          account_id:   document.getElementById('pc-account')?.value || null,
-          description:  document.getElementById('pc-desc')?.value    || '',
+          is_variable:  amount === 0 || code === 'MORA',
+          description:  (document.getElementById('pc-desc')?.value || '').trim(),
           active:       true,
         };
+        if (accountVal) {
+          data.account_id = accountVal;
+        } else {
+          data.account_id = '';
+        }
         if (concept) {
           await pb.update('ph_billing_concepts', concept.id, data);
           showToast('Concepto actualizado.', 'success');
@@ -3099,7 +3159,7 @@ async function openPhConceptModal(conceptId, container, accountsPreloaded) {
         }
         closeModal();
         renderPhConfig(container);
-      } catch (err) {
+      } catch (err: any) {
         showToast(err.message || 'Error.', 'error');
         if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
       }
@@ -3731,7 +3791,14 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
         filter: `property_id="${safePropId}" && id!="${invoiceId}" && status!="paid" && status!="voided" && period < "${inv.period}"`,
         sort: 'period'
       });
-      outstandingInvoices = res || [];
+      // Deduplicar por período: si existen múltiples registros de un mismo período previo, tomar solo el más reciente
+      const byPeriod: Record<string, any> = {};
+      (res || []).forEach((r: any) => {
+        if (!byPeriod[r.period] || r.number > byPeriod[r.period].number) {
+          byPeriod[r.period] = r;
+        }
+      });
+      outstandingInvoices = Object.values(byPeriod);
     } catch (err) {
       console.warn('Error al cargar cartera pendiente:', err);
     }
@@ -3912,8 +3979,32 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
     }
   }
 
+  // 1. Verificar si la unidad tenía paz y salvo o saldo a favor en contabilidad previo al período
+  let netAccountingDebt = 999999;
+  let totalAdvanceAvailable = 0;
+  const asOfDateStr = `${inv.period}-01`;
+  try {
+    const safePropId = (window as any).pb.escapeFilterValue(inv.property_id);
+    const ownerIdSafe = owner?.id ? (window as any).pb.escapeFilterValue(owner.id) : '';
+    const [c13Lines, c28Lines] = await Promise.all([
+      (window as any).pb.listAll('tx_lines', {
+        filter: `account_id.code ~ "13%" && tx_id.status = "active" && tx_id.date < "${asOfDateStr}" && (cross_doc_ref ~ "${safePropId}" || third_party_id = "${ownerIdSafe}")`
+      }).catch(() => []),
+      (window as any).pb.listAll('tx_lines', {
+        filter: `account_id.code ~ "28%" && tx_id.status = "active" && tx_id.date < "${asOfDateStr}" && (cross_doc_ref ~ "${safePropId}" || third_party_id = "${ownerIdSafe}")`
+      }).catch(() => [])
+    ]);
+    const deb13 = (c13Lines || []).reduce((s: number, l: any) => s + (Number(l.debit) || 0) - (Number(l.credit) || 0), 0);
+    const cred28 = (c28Lines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0) - (Number(l.debit) || 0), 0);
+    netAccountingDebt = Math.max(0, deb13 - cred28);
+    totalAdvanceAvailable = Math.max(0, -deb13) + Math.max(0, cred28);
+  } catch (_) {}
+
+  // Si la deuda contable neta antes de este período es 0, no hay saldos anteriores
+  const effectiveOutstandingInvoices = (netAccountingDebt < 0.01) ? [] : outstandingInvoices;
+
   // Cargar saldos anteriores descontando pagos contables reales
-  for (const oldInv of outstandingInvoices) {
+  for (const oldInv of effectiveOutstandingInvoices) {
     try {
       const balInfo = unitBalMap[oldInv.id];
       // Si la factura está completamente saldada en contabilidad, NO se arrastra al saldo anterior
@@ -3946,10 +4037,102 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
     } catch (_) {}
   }
 
+  // ── Sincronización Contable Estricta: Calibrar saldos anteriores con el Libro Auxiliar (netAccountingDebt) ──
+  if (netAccountingDebt > 0.01) {
+    const rawPriorSum = Object.values(conceptsMap).reduce((s, c) => s + (c.saldoAnterior || 0), 0);
+    if (rawPriorSum > 0.01 && Math.abs(rawPriorSum - netAccountingDebt) > 0.01) {
+      // Ajustar proporcionalmente cada concepto al saldo real contable para cuadre exacto con el libro auxiliar
+      const ratio = netAccountingDebt / rawPriorSum;
+      let adjustedSum = 0;
+      const priorEntries = Object.keys(conceptsMap).filter(k => conceptsMap[k].saldoAnterior > 0);
+      priorEntries.forEach((k, idx) => {
+        if (idx === priorEntries.length - 1) {
+          const diff = Math.round((netAccountingDebt - adjustedSum) * 100) / 100;
+          conceptsMap[k].saldoAnterior = diff;
+        } else {
+          const adj = Math.round(conceptsMap[k].saldoAnterior * ratio * 100) / 100;
+          conceptsMap[k].saldoAnterior = adj;
+          adjustedSum += adj;
+        }
+        conceptsMap[k].saldoActual = Math.round((conceptsMap[k].cobrosMes + conceptsMap[k].saldoAnterior) * 100) / 100;
+      });
+    } else if (rawPriorSum <= 0.01) {
+      // Si la contabilidad refleja deuda anterior pero no se encontraron líneas históricas, asignar al concepto principal
+      const adminKey = Object.keys(conceptsMap).find(k => k.includes('ADMIN') || conceptsMap[k].description.includes('ADMIN')) || Object.keys(conceptsMap)[0];
+      if (adminKey && conceptsMap[adminKey]) {
+        conceptsMap[adminKey].saldoAnterior = netAccountingDebt;
+        conceptsMap[adminKey].saldoActual = Math.round((conceptsMap[adminKey].cobrosMes + netAccountingDebt) * 100) / 100;
+      }
+    }
+  } else {
+    // Si la deuda contable neta es 0, no puede existir saldo anterior positivo en ningún concepto
+    Object.keys(conceptsMap).forEach(k => {
+      if (conceptsMap[k].saldoAnterior > 0) {
+        conceptsMap[k].saldoActual -= conceptsMap[k].saldoAnterior;
+        conceptsMap[k].saldoAnterior = 0;
+      }
+    });
+  }
+
+  // Deducir anticipo aplicado para el período actual si existe saldo a favor acumulado
+  const currentMonthCharges = Object.values(conceptsMap).reduce((s, c) => s + c.cobrosMes, 0);
+  let advanceAppliedToThisMonth = 0;
+  if (totalAdvanceAvailable > 0.01 && currentMonthCharges > 0) {
+    advanceAppliedToThisMonth = Math.min(totalAdvanceAvailable, currentMonthCharges);
+    const futureRem = Math.max(0, Math.round((totalAdvanceAvailable - advanceAppliedToThisMonth) * 100) / 100);
+    const desc = (futureRem > 0.01)
+      ? `SALDO A FAVOR APLICADO (ANTICIPO PREVIO - REMANENTE: ${_fmt(futureRem)})`
+      : `SALDO A FAVOR APLICADO (ANTICIPO PREVIO)`;
+
+    conceptsMap['__ANTICIPO_APLICADO__'] = {
+      conceptId: '',
+      description: desc,
+      saldoAnterior: -advanceAppliedToThisMonth,
+      cobrosMes: 0,
+      saldoActual: -advanceAppliedToThisMonth
+    };
+  }
+
+  // Calcular coberturas de anticipos para períodos futuros
+  const futureAdvanceRemaining = Math.max(0, Math.round((totalAdvanceAvailable - advanceAppliedToThisMonth) * 100) / 100);
+  const futureAdvances: any[] = [];
+  if (futureAdvanceRemaining > 0.01) {
+    let curP = getPreviousPeriod(inv.period); // next period logic
+    const partsP = inv.period.split('-').map(Number);
+    let nextY = partsP[0];
+    let nextM = partsP[1] + 1;
+    if (nextM > 12) { nextM = 1; nextY++; }
+    curP = `${nextY}-${String(nextM).padStart(2, '0')}`;
+    let rem = futureAdvanceRemaining;
+    const targetQ = currentMonthCharges > 0 ? currentMonthCharges : rem;
+    while (rem > 0.01) {
+      const qAmt = Math.round(Math.min(rem, targetQ) * 100) / 100;
+      const isP = qAmt < targetQ;
+      futureAdvances.push({
+        period: curP,
+        monthName: getMonthNameUpper(curP),
+        amount: qAmt,
+        isPartial: isP,
+        status: isP ? `Abono parcial (${_fmt(qAmt)} de ${_fmt(targetQ)})` : 'Cubierto por anticipado (100%)'
+      });
+      rem = Math.round((rem - qAmt) * 100) / 100;
+      let [pY, pM] = curP.split('-').map(Number);
+      pM++;
+      if (pM > 12) { pM = 1; pY++; }
+      curP = `${pY}-${String(pM).padStart(2, '0')}`;
+      if (qAmt >= rem && rem <= 0.01) break;
+    }
+  }
+
   const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
   conceptsList.sort((a, b) => {
     const nameA = a.description.toUpperCase();
     const nameB = b.description.toUpperCase();
+    const isAntA = nameA.includes('ANTICIPO') || nameA.includes('SALDO A FAVOR');
+    const isAntB = nameB.includes('ANTICIPO') || nameB.includes('SALDO A FAVOR');
+    if (isAntA && !isAntB) return 1;
+    if (!isAntA && isAntB) return -1;
+
     if (nameA.includes('ADMIN') && !nameB.includes('ADMIN')) return -1;
     if (!nameA.includes('ADMIN') && nameB.includes('ADMIN')) return 1;
     if (nameA.includes('MORA') && !nameB.includes('MORA')) return 1;
@@ -4026,20 +4209,17 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
         console.warn('Error al consultar transacciones de recaudo de unidad:', eTx);
       }
 
-      // Fallback a unitBalMap o ph_invoices pagadas si no se encontró en transacciones
+      // 2. Fallback a créditos contables en cuenta 13 del mes anterior (pagos reales en contabilidad)
       if (prevMonthUnitRecaudo <= 0) {
-        const prevInv = Object.values(unitBalMap).find((b: any) => b.period === prevPeriod);
-        if (prevInv) {
-          prevMonthUnitRecaudo = Number(prevInv.paidAmount || 0);
-        }
-      }
-      if (prevMonthUnitRecaudo <= 0) {
-        const unitPrevPaid = await (window as any).pb.listAll('ph_invoices', {
-          filter: `property_id="${safePropId}" && period="${prevPeriod}" && status="paid"`
-        }).catch(() => []);
-        if (unitPrevPaid && unitPrevPaid.length > 0) {
-          prevMonthUnitRecaudo = unitPrevPaid.reduce((sum: number, x: any) => sum + (Number(x.total) || 0), 0);
-        }
+        try {
+          const payLines = await (window as any).pb.listAll('tx_lines', {
+            filter: `account_id.code ~ "13%" && tx_id.status = "active" && tx_id.date >= "${prevStart}" && tx_id.date <= "${prevEnd}" && credit > 0 && (cross_doc_ref ~ "${safePropId}" || third_party_id = "${safeOwnerId}")`
+          }).catch(() => []);
+          const payAmt = (payLines || []).reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0);
+          if (payAmt > 0) {
+            prevMonthUnitRecaudo = payAmt;
+          }
+        } catch (_) {}
       }
 
       // 2. Recaudo total de la copropiedad en el mes anterior
@@ -4112,9 +4292,14 @@ async function buildPhStatementData(invoiceId: string, type: 'invoice' | 'statem
       conceptsList,
       totalActual,
       notes,
+      previousBalance: totalAdvanceAvailable > 0.01 ? -totalAdvanceAvailable : (netAccountingDebt > 0.01 && netAccountingDebt < 900000000 ? netAccountingDebt : 0),
+      totalAdvanceAvailable,
+      advanceAppliedToThisMonth,
       prevMonthUnitRecaudo,
       prevMonthTotalRecaudo,
-      prevMonthName
+      prevMonthName,
+      futureAdvances,
+      futureAdvanceRemaining
     }
   };
 }

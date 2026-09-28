@@ -3923,15 +3923,29 @@ function _downloadPlantillaRC() {
 
 async function _openMassRCModal() {
   const pb = _pb();
-  const [metodosPago, txTypes] = await Promise.all([
+  const [metodosPago, txTypes, phCfgList, rawAccounts] = await Promise.all([
     pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' }),
-    pb.listAll('transaction_types', { filter: 'active=true && (code="RC" || code ~ "RC%" || prefix ~ "RC%")', sort: 'code,prefix' })
+    pb.listAll('transaction_types', { filter: 'active=true && (code="RC" || code ~ "RC%" || prefix ~ "RC%")', sort: 'code,prefix' }),
+    pb.listAll('settings', { filter: 'key="ph_config_v1"' }).catch(() => []),
+    pb.listAll('accounts', { filter: 'active=true && (code ~ "1345%" || code ~ "1305%" || code ~ "13%")', sort: 'code' }).catch(() => [])
   ]);
   if (!metodosPago.length) { _showToast('No hay cuentas bancarias activas', 'warning'); return; }
   let rcTypes = txTypes || [];
   if (!rcTypes.length) {
     rcTypes = await pb.listAll('transaction_types', { filter: 'code="RC"', sort: 'code' });
   }
+
+  let phConfig: any = {};
+  if (phCfgList && phCfgList.length > 0 && phCfgList[0].value) {
+    try { phConfig = JSON.parse(phCfgList[0].value); } catch (_) {}
+  }
+  const defaultCxcCode = String(phConfig.cxc_code || '13459501').trim();
+
+  const cxcAccounts = (rawAccounts || []).filter((a: any) => Number(a.level || 0) >= 3 || (a.code && a.code.length >= 6));
+  const optsCxc = cxcAccounts.map((a: any) => {
+    const isSelected = String(a.code || '').trim() === defaultCxcCode;
+    return `<option value="${_esc(a.id)}" data-code="${_esc(a.code)}"${isSelected ? ' selected' : ''}>${_esc(a.code)} — ${_esc(a.name)}</option>`;
+  }).join('');
 
   let _massRows: any[] = [];
   const optsPago = metodosPago.map((c:any) => `<option value="${_esc(c.id)}" data-account="${_esc(c.account_id)}">${_esc(c.name)} (${_esc(c.bank)})</option>`).join('');
@@ -3941,7 +3955,7 @@ async function _openMassRCModal() {
     <div id="mass-rc-step1">
       <p class="text-sm text-gray-600 mb-3">Descarga la plantilla, completa los datos y súbela para registrar múltiples recaudos automáticamente.</p>
       
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
         <div class="form-group">
           <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-receipt mr-1"></i>Tipo de Comprobante / Serie</label>
           <select id="mass-rc-tx-type" class="form-input">${optsTxType || '<option value="">-- No hay series RC activas --</option>'}</select>
@@ -3949,6 +3963,10 @@ async function _openMassRCModal() {
         <div class="form-group">
           <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-university mr-1"></i>Método de Pago (aplica a todos)</label>
           <select id="mass-rc-cuenta" class="form-input"><option value="">-- Seleccionar --</option>${optsPago}</select>
+        </div>
+        <div class="form-group">
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1"><i class="fas fa-folder-tree mr-1 text-emerald-600"></i>Cartera Principal PH (CxC)</label>
+          <select id="mass-rc-cxc" class="form-input font-mono text-xs"><option value="">-- Por defecto (${defaultCxcCode}) --</option>${optsCxc}</select>
         </div>
       </div>
 
@@ -4019,6 +4037,7 @@ async function _openMassRCModal() {
       if (!XLSX) { _showToast('Librería XLSX no cargada','error'); return; }
       const txTypeSel = document.getElementById('mass-rc-tx-type') as HTMLSelectElement;
       const cuentaSel = document.getElementById('mass-rc-cuenta') as HTMLSelectElement;
+      const cxcSel = document.getElementById('mass-rc-cxc') as HTMLSelectElement;
       const conceptoInp = document.getElementById('mass-rc-concepto') as HTMLInputElement;
 
       if (!txTypeSel?.value) { _showToast('Selecciona una serie de comprobante primero','warning'); return; }
@@ -4027,6 +4046,8 @@ async function _openMassRCModal() {
       const selectedTxTypeId = txTypeSel.value;
       const bankAccountId = cuentaSel.value;
       const cuentaAccId = cuentaSel.options[cuentaSel.selectedIndex]?.dataset?.account||'';
+      const selectedCxcAccountId = cxcSel?.value || '';
+      const selectedCxcCode = cxcSel?.options[cxcSel?.selectedIndex]?.dataset?.code || defaultCxcCode;
       const conceptoGeneral = (conceptoInp?.value || '').trim();
 
       const wb = XLSX.read(await file.arrayBuffer(), { type:'array', cellDates:true });
@@ -4037,6 +4058,38 @@ async function _openMassRCModal() {
       if (!rows.length) { _showToast('No se encontraron filas con datos','warning'); return; }
       const props = await pb.listAll('ph_properties', { filter:'active=true', expand:'owner_id', sort:'code' });
       const propByCode = new Map(props.map((p:any) => [String(p.code||'').trim().toUpperCase(), p]));
+      
+      const [unpaidInvs, concepts] = await Promise.all([
+        pb.listAll('ph_invoices', { filter: 'status != "paid" && status != "voided"', expand: 'property_id' }).catch(() => []),
+        pb.listAll('ph_billing_concepts', { filter: 'active=true' }).catch(() => [])
+      ]);
+
+      function getPropFee(p: any): number {
+        if (!p) return 0;
+        let fee = Number(p.admin_fee || 0);
+        if (fee > 0) return fee;
+        const coef = Number(p.coef_participacion || 0);
+        let sum = 0;
+        for (const c of (concepts || [])) {
+          const cAmt = Number(c.amount || 0);
+          const cCode = String(c.code || '').toUpperCase();
+          if (cCode === 'MORA') continue;
+          if (c.applies_coef && coef > 0) {
+            sum += cAmt * (coef / 100);
+          } else if (!c.is_variable || cCode === 'ADM' || String(c.name || '').toUpperCase().includes('ADMIN')) {
+            sum += cAmt;
+          }
+        }
+        return sum > 0 ? Math.round(sum) : 0;
+      }
+
+      const debtByPropId = new Map<string, number>();
+      for (const inv of (unpaidInvs || [])) {
+        const pid = String(inv.property_id || inv.expand?.property_id?.id || '');
+        if (pid) {
+          debtByPropId.set(pid, (debtByPropId.get(pid) || 0) + Number(inv.total || 0));
+        }
+      }
       
       let defaultBatchDate = '';
       const excelRows = rows.map((r:any, i:number) => {
@@ -4056,6 +4109,33 @@ async function _openMassRCModal() {
         if(!codigo) errs.push('Falta código'); else if(!prop) errs.push(`Unidad "${codigo}" no encontrada`); else if(!owner) errs.push('Sin propietario');
         if(!fecha) errs.push('Fecha inválida');
         if(valor<=0) errs.push('Valor debe ser > 0');
+
+        // Cálculo de proyección de cuotas futuras si hay excedente sobre deuda pendiente
+        const propDebt = prop ? (debtByPropId.get(prop.id) || 0) : 0;
+        const propFee = prop ? getPropFee(prop) : 0;
+        const excess = Math.max(0, valor - propDebt);
+        const futurePeriods: Array<{ period: string, amount: number, isPartial: boolean, pct: number }> = [];
+
+        if (excess > 0.01 && propFee > 0) {
+          let rem = excess;
+          let pDate = fecha ? new Date(fecha + 'T00:00:00') : new Date();
+          let y = pDate.getFullYear();
+          let m = pDate.getMonth() + 1;
+          if (propDebt > 0) {
+            m++;
+            if (m > 12) { m = 1; y++; }
+          }
+          while (rem > 0.01 && futurePeriods.length < 24) {
+            const pStr = `${y}-${String(m).padStart(2, '0')}`;
+            const qAmt = Math.min(rem, propFee);
+            const isPart = qAmt < propFee;
+            const pct = Math.round((qAmt / propFee) * 100);
+            futurePeriods.push({ period: pStr, amount: qAmt, isPartial: isPart, pct });
+            rem = Math.round((rem - qAmt) * 100) / 100;
+            m++;
+            if (m > 12) { m = 1; y++; }
+          }
+        }
 
         // Construir glosa contable: OBLIGATORIAMENTE el primer dato es el apartamento / código de unidad
         const parts: string[] = [];
@@ -4083,10 +4163,14 @@ async function _openMassRCModal() {
           txTypeId: selectedTxTypeId,
           bankAccountId,
           cuentaAccId,
+          cxcAccountId: selectedCxcAccountId,
+          cxcCode: selectedCxcCode,
           owner,
           description: generatedDescription,
           isAnticipoCruce: false,
           anticipoDisponible: 0,
+          excess,
+          futurePeriods,
           ok: errs.length===0,
           errors: errs
         };
@@ -4096,89 +4180,43 @@ async function _openMassRCModal() {
         defaultBatchDate = (window as any).getColombiaDateStr ? (window as any).getColombiaDateStr(new Date()) : new Date().toISOString().slice(0, 10);
       }
 
-      // Detección automática de unidades con saldo a favor en cuenta 28 y facturas pendientes que no vinieron en el extracto bancario
-      const processedCodes = new Set(excelRows.map(r => r.codigo));
-      const autoAnticipoRows: any[] = [];
-      try {
-        const [unpaidInvs, antLines] = await Promise.all([
-          pb.listAll('ph_invoices', { filter: 'status != "paid" && status != "voided"', expand: 'property_id' }).catch(() => []),
-          pb.listAll('tx_lines', { filter: 'account_id.code ~ "28%" && tx_id.status = "active"', expand: 'account_id,tx_id' }).catch(() => [])
-        ]);
-
-        const antMap = new Map<string, number>();
-        for (const l of (antLines || [])) {
-          const rawRef = String(l.cross_doc_ref || '').trim();
-          const pId = rawRef.startsWith('ANT-') ? rawRef.substring(4) : '';
-          const net = (Number(l.credit) || 0) - (Number(l.debit) || 0);
-          if (pId) {
-            antMap.set(pId, (antMap.get(pId) || 0) + net);
-          }
-          if (l.third_party_id) {
-            antMap.set(l.third_party_id, (antMap.get(l.third_party_id) || 0) + net);
-          }
-        }
-
-        const unpaidPropIds = new Set((unpaidInvs || []).map((inv: any) => String(inv.property_id || inv.expand?.property_id?.id || '')).filter(Boolean));
-
-        let cruceTxTypeId = selectedTxTypeId;
-        try {
-          cruceTxTypeId = (await (window as any).API?.getPhCruceTxTypeId?.()) || selectedTxTypeId;
-        } catch (_) {}
-
-        for (const prop of props) {
-          const cCode = String(prop.code || '').trim().toUpperCase();
-          if (processedCodes.has(cCode)) continue;
-          if (!unpaidPropIds.has(prop.id)) continue;
-
-          const owner = prop.expand?.owner_id || null;
-          const saldoAnt = Math.max(0, antMap.get(prop.id) || (owner?.id ? antMap.get(owner.id) || 0 : 0));
-          if (saldoAnt > 0.01 && owner) {
-            autoAnticipoRows.push({
-              rowNo: excelRows.length + autoAnticipoRows.length + 2,
-              codigo: cCode,
-              fecha: defaultBatchDate,
-              valor: 0,
-              ref: `ANT-${prop.id}`,
-              obs: 'Cruce automático de saldo a favor en anticipos de períodos anteriores',
-              prop,
-              txTypeId: cruceTxTypeId,
-              bankAccountId,
-              cuentaAccId,
-              owner,
-              description: `${cCode} - ${owner.name || 'Propietario'} - Cruce anticipo cuota de administración (Saldo a favor: ${_fmt(saldoAnt)})`,
-              isAnticipoCruce: true,
-              anticipoDisponible: saldoAnt,
-              ok: true,
-              errors: []
-            });
-          }
-        }
-      } catch (errAnt) {
-        console.warn('[Carga Masiva] Error detectando anticipos previos:', errAnt);
-      }
-
-      _massRows = [...excelRows, ...autoAnticipoRows];
+      _massRows = excelRows;
 
       document.getElementById('mass-rc-step1')?.classList.add('hidden');
       document.getElementById('mass-rc-step2')?.classList.remove('hidden');
       const ok=_massRows.filter(r=>r.ok).length; const bad=_massRows.length-ok;
-      const antCount = autoAnticipoRows.length;
       const badge=document.getElementById('mass-rc-badge');
-      if(badge) badge.innerHTML=`<span style="color:${bad>0?'#B91C1C':'#166534'}">${_massRows.length} partidas (${excelRows.length} banco · ${antCount} cruces de anticipo) · ${ok} válidas${bad>0?' · '+bad+' con error':''}</span>`;
+      if(badge) badge.innerHTML=`<span style="color:${bad>0?'#B91C1C':'#166534'}">${_massRows.length} partidas del archivo · ${ok} válidas${bad>0?' · '+bad+' con error':''}</span>`;
       const tbody=document.getElementById('mass-rc-tbody');
-      if(tbody) tbody.innerHTML=_massRows.map(r=>`<tr style="background:${r.isAnticipoCruce ? '#F0FDF4' : (r.ok?'':'#FFF7F7')}">
+      if(tbody) tbody.innerHTML=_massRows.map(r=>`<tr style="${r.ok?'':'background:#FFF7F7'}">
         <td class="p-2 text-center text-gray-400">${r.rowNo}</td>
-        <td class="p-2 font-mono font-bold ${r.isAnticipoCruce ? 'text-emerald-800' : 'text-blue-800'}">${_esc(r.codigo)}</td>
+        <td class="p-2 font-mono font-bold text-blue-800">${_esc(r.codigo)}</td>
         <td class="p-2">${_esc(r.owner?.name||'—')}</td>
         <td class="p-2">${_esc(r.fecha||'—')}</td>
-        <td class="p-2 text-right font-bold ${r.isAnticipoCruce ? 'text-emerald-700' : ''}">
-          ${r.isAnticipoCruce ? `<span title="Aplica saldo a favor existente">Cruce Anticipo (${_fmt(r.anticipoDisponible)})</span>` : _fmt(r.valor)}
+        <td class="p-2 text-right font-bold">
+          ${_fmt(r.valor)}
+          ${r.futurePeriods && r.futurePeriods.length > 0 ? `
+            <div class="text-[11px] font-semibold text-emerald-700 mt-0.5" title="${r.futurePeriods.map((fp: any) => `${fp.period}: ${_fmt(fp.amount)} (${fp.pct}%)`).join(', ')}">
+              <i class="fas fa-layer-group mr-1"></i>+${r.futurePeriods.length} mes(es) anticipo
+            </div>
+          ` : ''}
         </td>
-        <td class="p-2 text-xs font-medium text-gray-700" title="${_esc(r.description)}"><div class="truncate" style="max-width:280px">${_esc(r.description)}</div></td>
-        <td class="p-2 text-center">${r.isAnticipoCruce ? '<span class="badge badge-blue">Saldo a Favor</span>' : (r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>')}</td>
-        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">${r.isAnticipoCruce ? 'Cruce automático sin banco' : (r.ok?'Listo':r.errors.join(' · '))}</td>
+        <td class="p-2 text-xs font-medium text-gray-700" title="${_esc(r.description)}">
+          <div class="truncate" style="max-width:280px">${_esc(r.description)}</div>
+          ${r.futurePeriods && r.futurePeriods.length > 0 ? `
+            <div class="text-[10px] text-emerald-800 font-mono mt-0.5">
+              ${r.futurePeriods.map((fp: any) => `${fp.period}: ${_fmt(fp.amount)}${fp.isPartial ? ' (abono)' : ''}`).join(' · ')}
+            </div>
+          ` : ''}
+        </td>
+        <td class="p-2 text-center">
+          ${r.futurePeriods && r.futurePeriods.length > 0 ? '<span class="badge badge-green" title="Recaudo con saldo a favor proyectado">OK + Anticipo</span>' : (r.ok?'<span class="badge badge-green">OK</span>':'<span class="badge badge-red">Error</span>')}
+        </td>
+        <td class="p-2 text-xs" style="color:${r.ok?'#6B7280':'#B91C1C'}">
+          ${r.ok?(r.futurePeriods?.length ? `Excedente ${_fmt(r.excess)} pre-asignado a cuotas futuras` : 'Listo'):r.errors.join(' · ')}
+        </td>
       </tr>`).join('');
-      if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s) / cruce(s)`;}
+      if(ok>0){btnNext.classList.remove('hidden');btnNext.innerHTML=`<i class="fas fa-bolt mr-1"></i>Procesar ${ok} recaudo(s)`;}
     }
 
     async function execute() {
@@ -4209,6 +4247,8 @@ async function _openMassRCModal() {
               ph_property_id: r.prop.id,
               amount: r.valor,
               contrapartida_account_id: r.cuentaAccId,
+              cxc_account_id: r.cxcAccountId || undefined,
+              cxc_code: r.cxcCode || undefined,
               cruzar_anticipos: true,
               is_cruce_anticipo: r.isAnticipoCruce === true,
               reglas: { primeroVencido: true, primeroMora: true }

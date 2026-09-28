@@ -1097,7 +1097,10 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
       INNER JOIN transactions t ON t.id = l.tx_id
       WHERE t.status = 'active'
         AND t.date <= {:cutoffAbono}
-        AND UPPER(TRIM(l.cross_doc_ref)) IN (${numPlaceholders})
+        AND (
+          UPPER(TRIM(l.cross_doc_ref)) IN (${numPlaceholders})
+          OR l.cross_doc_ref LIKE 'ANTICIPO-%'
+        )
       GROUP BY l.cross_doc_ref
     `;
     const qAbonos = $app.db().newQuery(sqlAbonos);
@@ -1108,8 +1111,26 @@ routerAdd("GET", "/api/gravy/report-ph-cartera", (c) => {
     // Mapa de abonos acumulados por número de factura
     const abonosMap = {};
     for (const a of abonosRaw) {
-      const key = String(a.cross_ref || '').toUpperCase().trim();
-      abonosMap[key] = (abonosMap[key] || 0) + Number(a.abono || 0);
+      const ref = String(a.cross_ref || '').toUpperCase().trim();
+      const val = Number(a.abono || 0);
+      if (ref.startsWith('ANTICIPO-')) {
+        // Soporte Cartera Directa: ANTICIPO-YYYYMM-{propertyId}
+        const parts = ref.split('-');
+        if (parts.length >= 3) {
+          const pCode = parts[1];
+          const pId = parts.slice(2).join('-');
+          const matchInv = invoices.find(inv => {
+            const invPCode = String(inv.period || '').replace('-', '').toUpperCase();
+            return invPCode === pCode && String(inv.property_id || '').toUpperCase() === pId.toUpperCase();
+          });
+          if (matchInv && matchInv.invoice_number) {
+            const mKey = String(matchInv.invoice_number).toUpperCase().trim();
+            abonosMap[mKey] = (abonosMap[mKey] || 0) + val;
+          }
+        }
+      } else {
+        abonosMap[ref] = (abonosMap[ref] || 0) + val;
+      }
     }
 
     // ── 4. Ensamblar filas de respuesta ─────────────────────────────────────

@@ -116,6 +116,15 @@ onRecordCreateRequest((e) => {
     return null;
   }
 
+  let phConfig = {};
+  try {
+    const cfgRec = $app.findFirstRecordByFilter('settings', 'key="ph_config_v1"');
+    if (cfgRec) {
+      phConfig = JSON.parse(cfgRec.get('value') || '{}');
+    }
+  } catch(_) {}
+  const metodoSaldosFavor = phConfig.metodo_saldos_favor || 'CARTERA_DIRECTA';
+
   const anticipoAccountId = getAnticipoAccountId(txType);
   const anticipoRef = propertyId ? `ANT-${propertyId}` : `ANT-${third_party_id}`;
 
@@ -129,7 +138,7 @@ onRecordCreateRequest((e) => {
     try {
       let filter = `third_party_id = '${thirdPartyId}'`;
       if (propId) {
-        filter += ` || cross_doc_ref = '${antRef}'`;
+        filter += ` || cross_doc_ref = '${antRef}' || cross_doc_ref ~ 'ANTICIPO-%-${propId}' || cross_doc_ref ~ 'ANT-${propId}'`;
       }
       lines = $app.findRecordsByFilter("tx_lines", filter, "", 10000, 0) || [];
     } catch(_) {
@@ -184,7 +193,7 @@ onRecordCreateRequest((e) => {
 
         if (isRec) {
           esCuentaCruce = code.indexOf('13') === 0 && code.indexOf('1330') !== 0;
-          esCuentaAnticipo = code.indexOf('28') === 0 || ref === antRef || (antAccId && lineAccountId === antAccId);
+          esCuentaAnticipo = code.indexOf('28') === 0 || ref === antRef || ref.indexOf('ANT-') === 0 || ref.indexOf('ANTICIPO-') === 0 || (antAccId && lineAccountId === antAccId);
         } else {
           esCuentaCruce = code.indexOf('21') === 0 || code.indexOf('22') === 0 || code.indexOf('23') === 0 || code.indexOf('25') === 0;
           esCuentaAnticipo = code.indexOf('1330') === 0 || ref === antRef || (antAccId && lineAccountId === antAccId);
@@ -202,8 +211,9 @@ onRecordCreateRequest((e) => {
         const possibleBase = ref.lastIndexOf('-') > 0 ? ref.substring(0, ref.lastIndexOf('-')) : ref;
         const inAllowed = allowedRefs && (allowedRefs[ref] || allowedRefs[possibleBase]);
         const inBlocked = blockedRefs && (blockedRefs[ref] || blockedRefs[possibleBase]);
+        const isAntRefForProp = ref === antRef || (propId && (ref.indexOf(propId) !== -1 || ref.indexOf('ANT-') === 0 || ref.indexOf('ANTICIPO-') === 0));
 
-        if (propId && !inAllowed && !esCuentaAnticipo) continue;
+        if (propId && !inAllowed && !esCuentaAnticipo && !isAntRefForProp) continue;
         if (!propId && inBlocked && !esCuentaAnticipo) continue;
 
         try {
@@ -239,9 +249,15 @@ onRecordCreateRequest((e) => {
         }
       } else {
         netOpen = isRec ? (d.debit - d.credit) : (d.credit - d.debit);
-        if (Math.abs(netOpen) > 0.01) {
+        if (netOpen < -0.01) {
+          // Saldo a favor (Crédito > Débito) en cuenta de cartera 13
           d.saldo = Math.abs(netOpen);
-          d.isReceivable = netOpen > 0;
+          d.isReceivable = false;
+          d.isAnticipo = true;
+          if (cruzarAnt) validItems.push(d);
+        } else if (netOpen > 0.01) {
+          d.saldo = netOpen;
+          d.isReceivable = true;
           validItems.push(d);
         }
       }
@@ -399,29 +415,79 @@ onRecordCreateRequest((e) => {
     }
   }
 
+  // ─── Resolver cuenta de Cartera PH para copropiedades (Cuentas 13) ─────────
+  let cxcAccId = null;
+  if (isRC && propertyId) {
+    // 1. Prioridad: Parámetro explícito de cartera enviado en el recaudo masivo o individual
+    if (params.cxc_account_id) {
+      cxcAccId = params.cxc_account_id;
+    } else if (params.cxc_code) {
+      try {
+        const cxcAcc = $app.findFirstRecordByFilter('accounts', `code = '${params.cxc_code}'`);
+        if (cxcAcc) cxcAccId = cxcAcc.id;
+      } catch(_) {}
+    }
+    // 2. Parámetro configurado de cartera PH (ph_config_v1.cxc_code) con sintaxis válida PocketBase
+    if (!cxcAccId && phConfig.cxc_code) {
+      try {
+        const cxcAcc = $app.findFirstRecordByFilter('accounts', `code = '${phConfig.cxc_code}'`);
+        if (cxcAcc) cxcAccId = cxcAcc.id;
+      } catch(_) {}
+      if (!cxcAccId) {
+        try {
+          const cxcAcc = $app.findFirstRecordByFilter('accounts', `code ~ '${phConfig.cxc_code}%'`);
+          if (cxcAcc) cxcAccId = cxcAcc.id;
+        } catch(_) {}
+      }
+    }
+    // 3. Heredar de facturas de cartera abiertas del inmueble
+    if (!cxcAccId) {
+      const matchCxc = openItems.find(i => i.account_code && i.account_code.indexOf('13') === 0 && i.account_code.indexOf('1330') !== 0);
+      if (matchCxc) cxcAccId = matchCxc.account_id;
+    }
+    // 4. Fallback específico para copropiedades: buscar cuentas auxiliares PH (134595 / 1345) con maneja_cruce
+    if (!cxcAccId) {
+      try {
+        const cxcAcc = $app.findFirstRecordByFilter('accounts', 'code ~ "134595%" && maneja_cruce = true') ||
+                       $app.findFirstRecordByFilter('accounts', 'code ~ "1345%" && maneja_cruce = true') ||
+                       $app.findFirstRecordByFilter('accounts', 'code ~ "130505%" && maneja_cruce = true');
+        if (cxcAcc) cxcAccId = cxcAcc.id;
+      } catch(_) {}
+    }
+  }
+
   // ─── Construir y validar lista de líneas en memoria ───────────────────────
   const plannedLines = [];
 
   // 1. Anticipo existente consumido
-  if (anticipoAbonos.length > 0 && anticipoAccountId && anticipoConsumido > 0.01) {
-    plannedLines.push({
-      account_id: anticipoAccountId,
-      third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
-      debit: isRC ? anticipoConsumido : 0,
-      credit: isRC ? 0 : anticipoConsumido,
-      description: "Aplicación anticipo " + anticipoRef
-    });
-    for (const ab of anticipoAbonos) {
-      if (!ab.account_id || ab.monto <= 0) continue;
+  if (anticipoAbonos.length > 0 && anticipoConsumido > 0.01) {
+    // En CARTERA_DIRECTA, el anticipo reside en la cuenta de cartera (1345), NUNCA en la cuenta 28
+    const cuentaAnticipoConsumo = (isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA')
+      ? (cxcAccId || anticipoAccountId)
+      : anticipoAccountId;
+
+    if (cuentaAnticipoConsumo) {
       plannedLines.push({
-        account_id: ab.account_id,
+        account_id: cuentaAnticipoConsumo,
         third_party_id: third_party_id,
-        cross_doc_ref: ab.cross_doc_ref,
-        debit: isRC ? 0 : ab.monto,
-        credit: isRC ? ab.monto : 0,
-        description: "Abono desde anticipo a " + ab.cross_doc_ref
+        cross_doc_ref: anticipoRef,
+        debit: isRC ? anticipoConsumido : 0,
+        credit: isRC ? 0 : anticipoConsumido,
+        description: (isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA')
+          ? "Aplicación saldo a favor cartera " + anticipoRef
+          : "Aplicación anticipo " + anticipoRef
       });
+      for (const ab of anticipoAbonos) {
+        if (!ab.account_id || ab.monto <= 0) continue;
+        plannedLines.push({
+          account_id: ab.account_id,
+          third_party_id: third_party_id,
+          cross_doc_ref: ab.cross_doc_ref,
+          debit: isRC ? 0 : ab.monto,
+          credit: isRC ? ab.monto : 0,
+          description: "Abono desde anticipo a " + ab.cross_doc_ref
+        });
+      }
     }
   }
 
@@ -440,17 +506,97 @@ onRecordCreateRequest((e) => {
 
   // 3. Nuevo Anticipo (Excedente)
   if (nuevoAnticipo > 0.01) {
-    if (!anticipoAccountId) {
-      throw new BadRequestError("No se encontró la cuenta contable de anticipos (2805 / 1330) configurada para registrar el excedente.");
+    if (isRC && propertyId && metodoSaldosFavor === 'CARTERA_DIRECTA') {
+      // ─── Modalidad CARTERA DIRECTA (Cuentas 13) ──────────────────────────
+      if (!cxcAccId) cxcAccId = anticipoAccountId;
+
+      // Obtener cuota de administración recurrente de la unidad
+      let propRecord = null;
+      try { propRecord = $app.findRecordById("ph_properties", propertyId); } catch(_) {}
+      let adminFee = 0;
+      if (propRecord) {
+        adminFee = Number(propRecord.get("admin_fee") || 0);
+        if (adminFee <= 0) {
+          try {
+            const coef = Number(propRecord.get("coef_participacion") || 0);
+            const concepts = $app.findRecordsByFilter("ph_billing_concepts", "active=true", "", 200, 0) || [];
+            let feeSum = 0;
+            for (const c of concepts) {
+              const cAmt = Number(c.get("amount") || 0);
+              const cCode = String(c.get("code") || "").toUpperCase();
+              const isAdm = cCode === 'ADM' || String(c.get("name") || "").toUpperCase().indexOf('ADMIN') !== -1;
+              if (cCode === 'MORA') continue;
+              if (c.get("applies_coef") && coef > 0) {
+                feeSum += cAmt * (coef / 100);
+              } else if (!c.get("is_variable") || isAdm) {
+                feeSum += cAmt;
+              }
+            }
+            if (feeSum > 0) adminFee = Math.round(feeSum);
+          } catch(_) {}
+        }
+      }
+
+      // Período de inicio para la proyección de cuotas futuras
+      let startPeriod = '';
+      let hasPriorInvs = false;
+      try {
+        const latestInvs = $app.findRecordsByFilter("ph_invoices", `property_id = '${propertyId}' && status != 'voided'`, "-period", 1, 0);
+        if (latestInvs && latestInvs.length > 0) {
+          startPeriod = latestInvs[0].get("period");
+          hasPriorInvs = true;
+        }
+      } catch(_) {}
+      if (!startPeriod) {
+        startPeriod = String(rec.get("date") || "").slice(0, 7) || new Date().toISOString().slice(0, 7);
+      }
+
+      function getNextPeriodStr(p) {
+        let parts = p.split('-').map(Number);
+        let y = parts[0];
+        let m = parts[1];
+        m++;
+        if (m > 12) { m = 1; y++; }
+        return y + '-' + (m < 10 ? '0' + m : m);
+      }
+
+      // Descomposición en cascada continua (FIFO)
+      let curPeriod = hasPriorInvs ? getNextPeriodStr(startPeriod) : startPeriod;
+      let remainingAnt = Math.round(nuevoAnticipo * 100) / 100;
+      const targetQuota = adminFee > 0 ? adminFee : remainingAnt;
+      const propCodeName = propRecord ? (propRecord.get("code") || propRecord.get("name") || propertyId) : propertyId;
+
+      while (remainingAnt > 0.01) {
+        const quotaAmt = Math.round(Math.min(remainingAnt, targetQuota) * 100) / 100;
+        const pCode = curPeriod.replace('-', '');
+        const isPartial = quotaAmt < targetQuota && adminFee > 0;
+        const partialLabel = isPartial ? ` (Abono parcial: $${quotaAmt} de $${targetQuota})` : '';
+        plannedLines.push({
+          account_id: cxcAccId,
+          third_party_id: third_party_id,
+          cross_doc_ref: `ANTICIPO-${pCode}-${propertyId}`,
+          debit: 0,
+          credit: quotaAmt,
+          description: `Abono anticipado cuota ${curPeriod}${partialLabel} - ${propCodeName}`
+        });
+        remainingAnt = Math.round((remainingAnt - quotaAmt) * 100) / 100;
+        curPeriod = getNextPeriodStr(curPeriod);
+        if (quotaAmt >= remainingAnt && remainingAnt <= 0.01) break;
+      }
+    } else {
+      // ─── Modalidad Estándar (Pasivo 2805 / 1330) ──────────────────────────
+      if (!anticipoAccountId) {
+        throw new BadRequestError("No se encontró la cuenta contable de anticipos (2805 / 1330) configurada para registrar el excedente.");
+      }
+      plannedLines.push({
+        account_id: anticipoAccountId,
+        third_party_id: third_party_id,
+        cross_doc_ref: anticipoRef,
+        debit: isRC ? 0 : nuevoAnticipo,
+        credit: isRC ? nuevoAnticipo : 0,
+        description: "Anticipo / Saldo a favor " + anticipoRef
+      });
     }
-    plannedLines.push({
-      account_id: anticipoAccountId,
-      third_party_id: third_party_id,
-      cross_doc_ref: anticipoRef,
-      debit: isRC ? 0 : nuevoAnticipo,
-      credit: isRC ? nuevoAnticipo : 0,
-      description: "Anticipo / Saldo a favor " + anticipoRef
-    });
   }
 
   // 4. Medios de pago / Contrapartida caja-bancos (Valor neto transado real)
@@ -605,8 +751,9 @@ onRecordCreateRequest((e) => {
       lineRec.set("tx_id", rec.id);
       lineRec.set("account_id", pl.account_id);
       lineRec.set("third_party_id", pl.third_party_id);
-      // Respetar estrictamente la configuración 'maneja_cruce' de la cuenta contable
-      if (pl.cross_doc_ref && accountManejaCruce(pl.account_id)) {
+      // Respetar estrictamente la configuración 'maneja_cruce' de la cuenta contable o referencias canónicas de anticipo PH
+      const isPhAntRef = pl.cross_doc_ref && (String(pl.cross_doc_ref).indexOf('ANTICIPO-') === 0 || String(pl.cross_doc_ref).indexOf('ANT-') === 0);
+      if (pl.cross_doc_ref && (accountManejaCruce(pl.account_id) || isPhAntRef)) {
         lineRec.set("cross_doc_ref", pl.cross_doc_ref);
       } else {
         lineRec.set("cross_doc_ref", "");

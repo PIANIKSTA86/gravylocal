@@ -365,13 +365,100 @@ function getPreviousMonthRecaudos(propertyId, ownerId, prevPeriod) {
   return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
 }
 
+// Helper: Obtiene la descomposición y saldo de anticipos / cuotas futuras de una unidad
+function getPropertyFutureAdvances(propertyId, ownerId, cutoffPeriod, monthlyFee) {
+  var advances = [];
+  var totalAdvance = 0;
+  if (!propertyId) return { advances: advances, totalRemaining: 0 };
+  try {
+    var sql = "SELECT l.cross_doc_ref, l.credit, l.debit, l.description, a.code as acc_code FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND (l.cross_doc_ref LIKE {:pIdPattern} OR t.teso_params LIKE {:pIdJson}) AND (l.cross_doc_ref LIKE 'ANTICIPO-%' OR l.cross_doc_ref LIKE 'ANT-%' OR a.code LIKE '28%')";
+    var binds = { pIdPattern: '%' + propertyId + '%', pIdJson: '%"ph_property_id":"' + propertyId + '"%' };
+    var q = $app.db().newQuery(sql); q.bind(binds);
+    var rows = arrayOf(new DynamicModel({ cross_doc_ref: "", credit: 0, debit: 0, description: "", acc_code: "" }));
+    q.all(rows);
+
+    var advanceByPeriod = {};
+    var unallocatedAdvance = 0;
+
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var net = Number(r.credit || 0) - Number(r.debit || 0);
+      if (net <= 0.01) continue;
+      var ref = String(r.cross_doc_ref || '').trim();
+      var match = ref.match(/ANTICIPO-(\d{4})(\d{2})-/);
+      if (match) {
+        var pStr = match[1] + '-' + match[2];
+        advanceByPeriod[pStr] = (advanceByPeriod[pStr] || 0) + net;
+      } else {
+        unallocatedAdvance += net;
+      }
+    }
+
+    var periods = Object.keys(advanceByPeriod).sort();
+    for (var j = 0; j < periods.length; j++) {
+      var p = periods[j];
+      if (!cutoffPeriod || p > cutoffPeriod) {
+        var amt = advanceByPeriod[p];
+        var isP = (monthlyFee > 0 && amt < monthlyFee);
+        advances.push({
+          period: p,
+          monthName: getMonthNameUpper(p),
+          amount: amt,
+          isPartial: isP,
+          status: isP ? 'Abono parcial ($' + cleanFmt(amt) + ' de $' + cleanFmt(monthlyFee) + ')' : 'Cubierto por anticipado (100%)'
+        });
+        totalAdvance += amt;
+      }
+    }
+
+    if (unallocatedAdvance > 0.01 && monthlyFee > 0) {
+      var curP = cutoffPeriod ? getNextPeriod(cutoffPeriod) : new Date().toISOString().slice(0, 7);
+      var rem = unallocatedAdvance;
+      while (rem > 0.01) {
+        if (!advanceByPeriod[curP]) {
+          var qAmt = Math.min(rem, monthlyFee);
+          var isP2 = qAmt < monthlyFee;
+          advances.push({
+            period: curP,
+            monthName: getMonthNameUpper(curP),
+            amount: qAmt,
+            isPartial: isP2,
+            status: isP2 ? 'Abono parcial ($' + cleanFmt(qAmt) + ' de $' + cleanFmt(monthlyFee) + ')' : 'Cubierto por anticipado (100%)'
+          });
+          totalAdvance += qAmt;
+          rem -= qAmt;
+        }
+        curP = getNextPeriod(curP);
+        if (qAmt >= rem && rem <= 0.01) break;
+      }
+    }
+  } catch (errAdv) {
+    console.warn('[GRAVY PH] Error calculando coberturas futuras:', errAdv);
+  }
+  return { advances: advances, totalRemaining: totalAdvance };
+}
 
 // Constructor y clasificador unificado de conceptos (saldos anteriores vs cobros del mes)
-function buildGroupedConceptsList(lines, outstandingInvoices, cache) {
+function buildGroupedConceptsList(lines, outstandingInvoices, cache, propertyId, invoicePeriod) {
   if (!cache) {
     cache = getPhConceptsCache();
   }
   var conceptsMap = {};
+
+  // Validación de deuda neta previa: si la unidad estaba a paz y salvo en cartera contable antes de este período, omitir saldo anterior
+  if (propertyId && invoicePeriod && outstandingInvoices && outstandingInvoices.length > 0) {
+    try {
+      var asOfDate = invoicePeriod + '-01';
+      var sqlDebt = "SELECT COALESCE(SUM(l.debit - l.credit), 0) AS net_cartera FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND t.date < {:asOfDate} AND (l.cross_doc_ref LIKE {:pIdPattern} OR t.teso_params LIKE {:pIdJson})";
+      var qDebt = $app.db().newQuery(sqlDebt);
+      qDebt.bind({ asOfDate: asOfDate, pIdPattern: '%' + propertyId + '%', pIdJson: '%"ph_property_id":"' + propertyId + '"%' });
+      var resDebt = new DynamicModel({ net_cartera: 0 });
+      qDebt.one(resDebt);
+      if (Number(resDebt.net_cartera || 0) < 0.01) {
+        outstandingInvoices = [];
+      }
+    } catch (_) {}
+  }
 
   if (lines) {
     for (var i = 0; i < lines.length; i++) {
@@ -479,18 +566,23 @@ try {
 
 // Helper de números a letras en español
 function numeroALetras(num) {
-  var tempNum = parseFloat(String(num)).toFixed(2).split('.');
+  var rawFloat = parseFloat(String(num));
+  if (isNaN(rawFloat) || Math.abs(rawFloat) < 0.01) return ('Son: Cero PESOS 00/100').toUpperCase();
+  var isNegative = rawFloat < 0;
+  var absVal = Math.abs(rawFloat);
+  var tempNum = absVal.toFixed(2).split('.');
   var entero = parseInt(tempNum[0], 10);
-  var centavos = tempNum[1];
+  var centavos = tempNum[1] || '00';
   
   if (entero === 0) return ('Son: Cero PESOS ' + centavos + '/100').toUpperCase();
   
   function letras(n) {
+    if (n <= 0) return '';
     if (n < 10) {
-      return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
+      return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n] || '';
     }
     if (n < 20) {
-      return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+      return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10] || '';
     }
     if (n < 30) {
       if (n === 20) return 'Veinte';
@@ -500,7 +592,7 @@ function numeroALetras(num) {
       var u = n % 10;
       var d = Math.floor(n / 10);
       var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
-      return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+      return (decenas[d] || '') + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
     }
     if (n < 1000) {
       var d_u = n % 100;
@@ -508,7 +600,7 @@ function numeroALetras(num) {
       var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
       if (n === 100) return 'Cien';
       if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
-      return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+      return (centenas[c] || '') + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
     }
     if (n < 1000000) {
       var mil = Math.floor(n / 1000);
@@ -526,20 +618,23 @@ function numeroALetras(num) {
       else t = letras(millon) + ' millones';
       return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
     }
-    return '';
+    return String(n);
   }
   
-  var res = letras(entero);
+  var res = letras(entero) || 'Cero';
   res = res.charAt(0).toUpperCase() + res.slice(1);
-  return ('Son: ' + res + ' PESOS ' + centavos + '/100').toUpperCase();
+  var prefix = isNegative ? 'MENOS ' : '';
+  return ('Son: ' + prefix + res + ' PESOS ' + centavos + '/100').toUpperCase();
 }
 
 // Formateador sin el signo de pesos en el backend
 function cleanFmt(value) {
-  if (value === undefined || value === null) return "0.00";
-  var parts = parseFloat(value).toFixed(2).split('.');
+  if (value === undefined || value === null || isNaN(Number(value))) return "0.00";
+  var num = Number(value);
+  var isNeg = num < 0;
+  var parts = Math.abs(num).toFixed(2).split('.');
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return parts.join('.');
+  return (isNeg ? "-" : "") + parts.join('.');
 }
 
 // Sincronizador de configuración SMTP local con la global de PocketBase
@@ -602,23 +697,36 @@ function buildPhEmailHtml({
   notes: customNotes,
   prevMonthUnitRecaudo,
   prevMonthTotalRecaudo,
-  prevMonthName
+  prevMonthName,
+  futureAdvances,
+  futureAdvanceRemaining,
+  previousBalance
 }) {
   const numberText = invoice.getString("number");
   
   // Render de las filas agrupadas por concepto
   let tableRowsHtml = "";
   for (const c of conceptsList) {
-    const sAnt = c.saldoAnterior > 0 ? cleanFmt(c.saldoAnterior) : "";
-    const cMes = c.cobrosMes > 0 ? cleanFmt(c.cobrosMes) : "";
-    const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
+    const isNegativeAbono = c.cobrosMes < 0 || c.saldoAnterior < 0 || c.saldoActual < 0 ||
+                            (c.description && (c.description.indexOf('ANTICIPO') !== -1 || c.description.indexOf('SALDO A FAVOR') !== -1));
+    const formatCellHtml = (val, isTotal) => {
+      const n = Number(val) || 0;
+      if (Math.abs(n) < 0.01) return isTotal ? "$ 0" : "—";
+      if (n < 0) return "- $ " + cleanFmt(Math.abs(n));
+      return "$ " + cleanFmt(n);
+    };
+    const sAnt = formatCellHtml(c.saldoAnterior, false);
+    const cMes = formatCellHtml(c.cobrosMes, false);
+    const sAct = formatCellHtml(c.saldoActual, true);
+    const descStyle = isNegativeAbono ? "color: #047857; font-weight: bold;" : "";
+    const numStyle = isNegativeAbono ? "color: #047857; font-weight: bold;" : "";
     
     tableRowsHtml += `
       <tr style="height: 22px;">
-        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left; background-color: #ffffff;">${c.description}</td>
-        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${sAnt}</td>
-        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${cMes}</td>
-        <td style="padding: 5px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold; background-color: #ffffff;">${sAct}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left; background-color: #ffffff; ${descStyle}">${c.description}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff; ${c.saldoAnterior < -0.01 ? numStyle : ''}">${sAnt}</td>
+        <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff; ${c.cobrosMes < -0.01 ? numStyle : ''}">${cMes}</td>
+        <td style="padding: 5px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold; background-color: #ffffff; ${numStyle}">${sAct}</td>
       </tr>`;
   }
 
@@ -635,6 +743,22 @@ function buildPhEmailHtml({
   const contactSection = phoneSection ? `<div style="font-size: 10px; color: #000;">${phoneSection}</div>` : "";
   const emailSection = companyEmail ? `<div style="font-size: 10px; color: #000;">${companyEmail}</div>` : "";
   const citySection = companyCity ? `<div style="font-size: 10px; color: #000;">${companyCity}</div>` : "";
+
+  let prevBal = 0;
+  if (typeof previousBalance !== 'undefined' && previousBalance !== null) {
+    prevBal = Number(previousBalance) || 0;
+  } else {
+    prevBal = conceptsList.reduce((s, c) => s + (Number(c.saldoAnterior) || 0), 0);
+  }
+  let prevBalText = "$ 0 (AL DÍA)";
+  let prevBalColor = "color: #000000;";
+  if (prevBal < -0.01) {
+    prevBalText = "- $ " + cleanFmt(Math.abs(prevBal)) + " (A FAVOR)";
+    prevBalColor = "color: #047857; font-weight: bold;";
+  } else if (prevBal > 0.01) {
+    prevBalText = "+ $ " + cleanFmt(prevBal) + " (EN MORA)";
+    prevBalColor = "color: #b91c1c; font-weight: bold;";
+  }
 
   return `
 <!DOCTYPE html>
@@ -758,16 +882,16 @@ function buildPhEmailHtml({
       </tr>
     </table>
 
-    <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
+    <!-- Barra de Recaudo del Mes Inmediatamente Anterior y Saldo Anterior al Corte -->
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
       <tr>
         <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
+          <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
           <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
         </td>
         <td style="width: 50%; padding: 4.5px 8px; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
+          <span style="font-weight: bold; text-transform: uppercase;">Saldo Anterior al Corte:</span>
+          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px; ${prevBalColor}">${prevBalText}</span>
         </td>
       </tr>
     </table>
@@ -814,6 +938,49 @@ function buildPhEmailHtml({
         </td>
       </tr>
     </table>
+
+    <!-- Tabla de Cobertura por Anticipos (Si aplica) -->
+    ${(() => {
+      if (!futureAdvances || !Array.isArray(futureAdvances) || futureAdvances.length === 0) return "";
+      let rowsAdv = "";
+      for (var fa of futureAdvances) {
+        rowsAdv += `
+          <tr style="border-bottom: 1px solid #e2e8f0; font-size: 10px;">
+            <td style="padding: 4px 8px; font-weight: bold; color: #1e293b;">${fa.monthName || fa.period}</td>
+            <td style="padding: 4px 8px; text-align: right; font-family: monospace; color: #047857; font-weight: bold;">$ ${cleanFmt(fa.amount)}</td>
+            <td style="padding: 4px 8px; color: ${fa.isPartial ? '#b45309' : '#047857'}; font-weight: 500;">
+              ${fa.status || 'Cubierto por anticipado'}
+            </td>
+          </tr>`;
+      }
+      return `
+        <div style="margin-top: 14px; margin-bottom: 12px; border: 1.5px solid #059669; border-radius: 4px; overflow: hidden; background-color: #f0fdf4;">
+          <div style="background-color: #059669; color: #ffffff; padding: 5px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+            📌 Estado de Cobertura por Anticipos (Saldos a Favor Disponibles)
+          </div>
+          <table style="width: 100%; border-collapse: collapse; background-color: #ffffff;">
+            <thead>
+              <tr style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; font-size: 9px; text-transform: uppercase; color: #475569;">
+                <th style="padding: 4px 8px; text-align: left;">Período Futuro</th>
+                <th style="padding: 4px 8px; text-align: right;">Valor Cubierto</th>
+                <th style="padding: 4px 8px; text-align: left;">Estado de Cobertura</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsAdv}
+            </tbody>
+            ${(futureAdvanceRemaining && futureAdvanceRemaining > 0.01) ? `
+            <tfoot>
+              <tr style="border-top: 1.5px solid #059669; background-color: #ecfdf5; font-size: 10px; font-weight: bold; color: #065f46;">
+                <td style="padding: 5px 8px;">SALDO A FAVOR REMANENTE:</td>
+                <td style="padding: 5px 8px; text-align: right; font-family: monospace;">$ ${cleanFmt(futureAdvanceRemaining)}</td>
+                <td style="padding: 5px 8px; font-style: italic; font-weight: normal; font-size: 9px;">Disponible para próximas facturaciones</td>
+              </tr>
+            </tfoot>` : ''}
+          </table>
+        </div>
+      `;
+    })()}
 
     ${notesHtml}
 
@@ -3232,33 +3399,40 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
     let prevMonthTotalRecaudo = 0;
     const unitRecaudoMap = {};
 
-    // 1. Precarga en lote de recaudos del mes anterior (evita cientos de queries individuales)
-    if (prevPeriod) {
-      try {
-        const prevPaid = $app.findRecordsByFilter(
-          "ph_invoices",
-          `period = '${prevPeriod}' && status = 'paid'`,
-          "",
-          1000,
-          0
-        ) || [];
-        for (const p of prevPaid) {
-          const t = p.getFloat("total");
-          prevMonthTotalRecaudo += t;
-          const pid = p.getString("property_id");
-          unitRecaudoMap[pid] = (unitRecaudoMap[pid] || 0) + t;
-        }
-      } catch (errRec) {
-        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
-      }
-    }
-
-    // 2. Precarga de todas las propiedades y sus propietarios en memoria (Map)
+    // 1. Precarga de todas las propiedades y sus propietarios en memoria (Map)
     const allProps = $app.findRecordsByFilter("ph_properties", "", "code", 2000, 0) || [];
     const propsMap = {};
     for (const p of allProps) {
       try { $app.expandRecord(p, ["owner_id"], null); } catch (_) {}
       propsMap[p.id] = p;
+    }
+
+    // 2. Precarga en lote de recaudos del mes anterior basada en pagos contables reales
+    if (prevPeriod) {
+      try {
+        const prevStart = prevPeriod + "-01";
+        const prevEnd = prevPeriod + "-31";
+        const rcLines = [];
+        $app.db().newQuery(
+          "SELECT tl.credit, tl.cross_doc_ref, tx.teso_params " +
+          "FROM tx_lines tl JOIN transactions tx ON tl.tx_id = tx.id " +
+          "WHERE tx.status = 'active' AND tx.date >= '" + prevStart + "' AND tx.date <= '" + prevEnd + "' " +
+          "AND (tx.number LIKE 'RC-%' OR tx.teso_mode != '') AND tl.credit > 0"
+        ).all(rcLines);
+        for (const rl of rcLines) {
+          const cred = Number(rl.credit) || 0;
+          prevMonthTotalRecaudo += cred;
+          for (const pid in propsMap) {
+            if ((rl.cross_doc_ref && rl.cross_doc_ref.indexOf(pid) !== -1) ||
+                (rl.teso_params && rl.teso_params.indexOf(pid) !== -1)) {
+              unitRecaudoMap[pid] = (unitRecaudoMap[pid] || 0) + cred;
+              break;
+            }
+          }
+        }
+      } catch (errRec) {
+        console.warn("[GRAVY PH EMAIL] Advertencia al calcular recaudos mes anterior:", errRec);
+      }
     }
 
     // 3. Precarga de todas las líneas de factura del período en una sola consulta rápida
@@ -3293,8 +3467,15 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
         ) || [];
         for (const pInv of allPending) {
           const propId = pInv.getString("property_id");
-          if (!pendingByPropId[propId]) pendingByPropId[propId] = [];
-          pendingByPropId[propId].push(pInv);
+          const pPer = pInv.getString("period");
+          if (!pendingByPropId[propId]) pendingByPropId[propId] = {};
+          // Deduplicar: mantener solo la más reciente por período
+          if (!pendingByPropId[propId][pPer] || pInv.getString("number") > pendingByPropId[propId][pPer].getString("number")) {
+            pendingByPropId[propId][pPer] = pInv;
+          }
+        }
+        for (const pid in pendingByPropId) {
+          pendingByPropId[pid] = Object.values(pendingByPropId[pid]);
         }
       } catch (_) {}
     }
@@ -3412,6 +3593,66 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
 // ROUTE: GET /api/ph/unit-balance
 // Consulta saldo real pendiente por unidad via tx_lines.
 routerAdd('GET', '/api/ph/unit-balance', (c) => {
+  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function')
+    ? globalThis.getNetPaymentsForPhInvoice
+    : function(invoiceNumber, thirdPartyId) {
+        if (!invoiceNumber) return 0;
+        try {
+          var cleanNum = String(invoiceNumber).trim();
+          var sql =
+            "SELECT COALESCE(SUM(l.credit), 0) AS total_paid" +
+            " FROM tx_lines l" +
+            " INNER JOIN transactions t ON t.id = l.tx_id" +
+            " INNER JOIN accounts a ON a.id = l.account_id" +
+            " WHERE t.status = 'active'" +
+            "   AND a.code LIKE '13%'" +
+            "   AND (" +
+            "     l.cross_doc_ref = {:invoiceNumber}" +
+            "     OR l.cross_doc_ref LIKE {:invoiceNumberLike}" +
+            "     OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber})" +
+            "   )";
+          var binds = {
+            invoiceNumber: cleanNum,
+            invoiceNumberLike: cleanNum + '-%'
+          };
+          if (thirdPartyId && String(thirdPartyId).trim()) {
+            sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+            binds.thirdPartyId = String(thirdPartyId).trim();
+          }
+          var query = $app.db().newQuery(sql);
+          query.bind(binds);
+          var result = new DynamicModel({ total_paid: 0 });
+          query.one(result);
+          return Math.max(0, Number(result.total_paid || 0));
+        } catch (_) {
+          return 0;
+        }
+      };
+
+  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function')
+    ? globalThis.autoMarkPaidIfSettled
+    : function(invoiceRecord) {
+        try {
+          var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+          var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+          var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+          if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+          var paid = getNetPaymentsForPhInvoice(invNumber, null);
+          if (paid >= invTotal - 0.01) {
+            if (invoiceRecord.set) {
+              invoiceRecord.set("status", "paid");
+              $app.save(invoiceRecord);
+            } else if (invoiceRecord.id) {
+              var rec = $app.findRecordById("ph_invoices", invoiceRecord.id);
+              if (rec) {
+                rec.set("status", "paid");
+                $app.save(rec);
+              }
+            }
+          }
+        } catch (_) {}
+      };
+
   let propertyId = '';
   let period = '';
   let thirdId = '';

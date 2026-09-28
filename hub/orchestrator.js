@@ -3394,6 +3394,11 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
   conceptsList.sort((a, b) => {
     const nameA = a.description.toUpperCase();
     const nameB = b.description.toUpperCase();
+    const isAntA = nameA.includes('ANTICIPO') || nameA.includes('SALDO A FAVOR');
+    const isAntB = nameB.includes('ANTICIPO') || nameB.includes('SALDO A FAVOR');
+    if (isAntA && !isAntB) return 1;
+    if (!isAntA && isAntB) return -1;
+
     if (nameA.includes('ADMIN') && !nameB.includes('ADMIN')) return -1;
     if (!nameA.includes('ADMIN') && nameB.includes('ADMIN')) return 1;
     if (nameA.includes('MORA') && !nameB.includes('MORA')) return 1;
@@ -3405,25 +3410,32 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
   const notes = (d.notes || 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.').trim();
 
   const cleanFmt = (value) => {
-    if (value === undefined || value === null) return "0.00";
-    var parts = parseFloat(value).toFixed(2).split('.');
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    return parts[0];
+    if (value === undefined || value === null || isNaN(Number(value))) return "0.00";
+    var num = Number(value);
+    var isNeg = num < 0;
+    var absParts = Math.abs(num).toFixed(2).split('.');
+    absParts[0] = absParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return (isNeg ? "- " : "") + absParts[0];
   };
 
   const numeroALetras = (num) => {
-    var tempNum = parseFloat(String(num)).toFixed(2).split('.');
+    var rawFloat = parseFloat(String(num));
+    if (isNaN(rawFloat) || Math.abs(rawFloat) < 0.01) return 'SON: CERO PESOS M/CTE';
+    var isNegative = rawFloat < 0;
+    var absVal = Math.abs(rawFloat);
+    var tempNum = absVal.toFixed(2).split('.');
     var entero = parseInt(tempNum[0], 10);
-    if (entero === 0) return ('Son: Cero PESOS M/CTE').toUpperCase();
+    if (entero === 0) return 'SON: CERO PESOS M/CTE';
     function letras(n) {
-      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n];
-      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10];
+      if (n <= 0) return '';
+      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n] || '';
+      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10] || '';
       if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
       if (n < 100) {
         var u = n % 10;
         var d = Math.floor(n / 10);
         var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
-        return decenas[d] + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+        return (decenas[d] || '') + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
       }
       if (n < 1000) {
         var d_u = n % 100;
@@ -3431,7 +3443,7 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
         var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
         if (n === 100) return 'Cien';
         if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
-        return centenas[c] + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+        return (centenas[c] || '') + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
       }
       if (n < 1000000) {
         var mil = Math.floor(n / 1000);
@@ -3445,11 +3457,12 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
         var t = millon === 1 ? 'Un millón' : letras(millon) + ' millones';
         return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
       }
-      return '';
+      return String(n);
     }
-    var res = letras(entero);
+    var res = letras(entero) || 'Cero';
     res = res.charAt(0).toUpperCase() + res.slice(1);
-    return ('Son: ' + res + ' PESOS M/CTE').toUpperCase();
+    var prefix = isNegative ? 'MENOS ' : '';
+    return ('Son: ' + prefix + res + ' PESOS M/CTE').toUpperCase();
   };
 
   // ─── PALETA MONOCROMÁTICA EJECUTIVA (NEUTRAL MINIMALIST) ──
@@ -3618,15 +3631,47 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
 
   y += metaH + 7;
 
-  // ─── 3. BARRA DE RECAUDO UNIDAD HABITACIONAL (MES ANTERIOR) ─
+  // ─── 3. BARRA DE RECAUDO UNIDAD HABITACIONAL & SALDO ANTERIOR ─
   const recH = 21;
   const prevMonthLabel = prevMonthName ? `(${prevMonthName})` : '';
+  const halfGap = 8;
+  const boxW = (W - halfGap) / 2;
 
-  doc.roundedRect(L, y, W, recH, 3).fillAndStroke(COLOR_BG_ALT, COLOR_BORDER);
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT)
-     .text(`RECAUDO MES ANTERIOR UNIDAD HABITACIONAL ${prevMonthLabel}:`, L + 10, y + 6, { width: W - 140 });
+  // Box 1 (Izquierda): Recaudo Mes Anterior de la Unidad
+  const b1X = L;
+  doc.roundedRect(b1X, y, boxW, recH, 3).fillAndStroke(COLOR_BG_ALT, COLOR_BORDER);
+  doc.font('Helvetica-Bold').fontSize(7.2).fillColor(COLOR_TEXT)
+     .text(`RECAUDO MES ANTERIOR UNIDAD ${prevMonthLabel}:`.toUpperCase(), b1X + 8, y + 6, { width: boxW - 95 });
   doc.font('Helvetica-Bold').fontSize(8.5).fillColor(COLOR_PRIMARY)
-     .text(`$ ${cleanFmt(prevMonthUnitRecaudo)}`, L + W - 125, y + 5.5, { width: 115, align: 'right' });
+     .text(`$ ${cleanFmt(prevMonthUnitRecaudo)}`, b1X + boxW - 88, y + 5.5, { width: 80, align: 'right' });
+
+  // Box 2 (Derecha): Saldo Anterior al Corte
+  const b2X = L + boxW + halfGap;
+  let prevBal = 0;
+  if (d.previousBalance !== undefined && d.previousBalance !== null) {
+    prevBal = Number(d.previousBalance) || 0;
+  } else if (Number(d.totalAdvanceAvailable) > 0.01) {
+    prevBal = -Number(d.totalAdvanceAvailable);
+  } else {
+    const antSum = conceptsList.reduce((s, c) => s + (Number(c.saldoAnterior) || 0), 0);
+    prevBal = antSum;
+  }
+
+  let prevBalLabel = '$ 0 (AL DÍA)';
+  let prevBalColor = COLOR_PRIMARY;
+  if (prevBal < -0.01) {
+    prevBalLabel = `-$ ${cleanFmt(Math.abs(prevBal))} (A FAVOR)`;
+    prevBalColor = '#047857';
+  } else if (prevBal > 0.01) {
+    prevBalLabel = `+$ ${cleanFmt(prevBal)} (EN MORA)`;
+    prevBalColor = '#b91c1c';
+  }
+
+  doc.roundedRect(b2X, y, boxW, recH, 3).fillAndStroke(COLOR_BG_ALT, COLOR_BORDER);
+  doc.font('Helvetica-Bold').fontSize(7.2).fillColor(COLOR_TEXT)
+     .text('SALDO ANTERIOR AL CORTE:', b2X + 8, y + 6, { width: 130 });
+  doc.font('Helvetica-Bold').fontSize(8.2).fillColor(prevBalColor)
+     .text(prevBalLabel, b2X + 135, y + 5.5, { width: boxW - 143, align: 'right' });
 
   y += recH + 8;
 
@@ -3664,18 +3709,34 @@ function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1
     doc.moveTo(cX[3], y).lineTo(cX[3], y + rowItemH).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.5).stroke();
 
     if (item) {
-      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT)
+      const isNeg = (item.saldoActual < -0.01) || (item.saldoAnterior < -0.01) || (item.cobrosMes < -0.01) ||
+                    String(item.description || '').toUpperCase().includes('ANTICIPO') ||
+                    String(item.description || '').toUpperCase().includes('SALDO A FAVOR');
+      const textColor = isNeg ? '#047857' : COLOR_TEXT;
+
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(textColor)
          .text(item.description, cX[0] + 8, y + 4.5, { width: cWidths[0] - 14, ellipsis: true });
 
-      const sAnt = item.saldoAnterior > 0 ? `$ ${cleanFmt(item.saldoAnterior)}` : '—';
-      const cMes = item.cobrosMes > 0 ? `$ ${cleanFmt(item.cobrosMes)}` : '—';
-      const sAct = item.saldoActual > 0 ? `$ ${cleanFmt(item.saldoActual)}` : '$ 0';
+      const formatCol = (val, isTotalCol = false) => {
+        const n = Number(val) || 0;
+        if (Math.abs(n) < 0.01) return isTotalCol ? '$ 0' : '—';
+        if (n < 0) return `-$ ${cleanFmt(Math.abs(n))}`;
+        return `$ ${cleanFmt(n)}`;
+      };
 
-      doc.font('Helvetica').fontSize(7.5).fillColor(COLOR_MUTED)
+      const sAnt = formatCol(item.saldoAnterior, false);
+      const cMes = formatCol(item.cobrosMes, false);
+      const sAct = formatCol(item.saldoActual, true);
+
+      const sAntColor = (item.saldoAnterior < -0.01) ? '#047857' : (item.saldoAnterior > 0.01 ? COLOR_TEXT : COLOR_MUTED);
+      const cMesColor = (item.cobrosMes < -0.01) ? '#047857' : COLOR_TEXT;
+      const sActColor = (item.saldoActual < -0.01) ? '#047857' : (item.saldoActual > 0.01 ? COLOR_PRIMARY : COLOR_MUTED);
+
+      doc.font((item.saldoAnterior < -0.01) ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor(sAntColor)
          .text(sAnt, cX[1], y + 4.5, { width: cWidths[1] - 8, align: 'right' });
-      doc.font('Helvetica').fontSize(7.5).fillColor(COLOR_TEXT)
+      doc.font((item.cobrosMes < -0.01) ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor(cMesColor)
          .text(cMes, cX[2], y + 4.5, { width: cWidths[2] - 8, align: 'right' });
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR_PRIMARY)
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(sActColor)
          .text(sAct, cX[3], y + 4.5, { width: cWidths[3] - 10, align: 'right' });
     }
     y += rowItemH;

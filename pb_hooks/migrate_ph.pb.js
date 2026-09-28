@@ -169,7 +169,7 @@ onBootstrap((e) => {
         { name: 'code',            type: 'text',     required: true  },
         { name: 'name',            type: 'text',     required: true  },
         { name: 'description',     type: 'text',     required: false },
-        { name: 'amount',          type: 'number',   required: true,  min: 0 },
+        { name: 'amount',          type: 'number',   required: false, min: 0 },
         { name: 'is_variable',     type: 'bool',     required: false },
         { name: 'applies_coef',    type: 'bool',     required: false },
         { name: 'account_id',      type: 'relation', required: false,
@@ -181,6 +181,19 @@ onBootstrap((e) => {
     $app.save(phBillingConcepts);
     phBillingConceptsId = phBillingConcepts.id;
     console.log('[GRAVY-PH] Colección ph_billing_concepts creada.');
+  }
+
+  // Asegurar que ph_billing_concepts.amount NO sea required (permite valor 0 para conceptos variables como MORA)
+  try {
+    const pbcCol = $app.findCollectionByNameOrId('ph_billing_concepts');
+    const amtF = pbcCol.fields.getByName('amount');
+    if (amtF && amtF.required) {
+      amtF.required = false;
+      $app.save(pbcCol);
+      console.log('[GRAVY-PH] ph_billing_concepts.amount actualizado a required: false');
+    }
+  } catch (errCol) {
+    console.log('[GRAVY-PH] Aviso al normalizar ph_billing_concepts.amount: ' + errCol);
   }
 
   // Sembrar concepto de cobro MORA si no existe y vincular líneas huérfanas

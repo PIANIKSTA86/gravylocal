@@ -791,6 +791,41 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
     bankWrap.style.display = requiresBank ? 'block' : 'none';
   };
 
+  (window as any).dsOnPaymentFormChange = () => {
+    const formSel = document.getElementById('ds-payment-form') as HTMLSelectElement;
+    const creditPanel = document.getElementById('ds-credit-panel');
+    const paymentDianCodeSel = document.getElementById('ds-payment-dian-code') as HTMLSelectElement;
+    const isCredit = formSel?.value === '2';
+    if (creditPanel) {
+      creditPanel.style.display = isCredit ? 'grid' : 'none';
+    }
+    if (isCredit) {
+      if (paymentDianCodeSel && paymentDianCodeSel.value === '10') {
+        paymentDianCodeSel.value = '30';
+      }
+      (window as any).dsRecalcDueDate();
+    } else {
+      if (paymentDianCodeSel && paymentDianCodeSel.value === '30') {
+        paymentDianCodeSel.value = '10';
+      }
+    }
+    (window as any).dsOnPaymentDianCodeChange();
+  };
+
+  (window as any).dsRecalcDueDate = () => {
+    const dateInp = document.getElementById('ds-date') as HTMLInputElement;
+    const daysInp = document.getElementById('ds-credit-days') as HTMLInputElement;
+    const dueInp = document.getElementById('ds-due-date') as HTMLInputElement;
+    if (!dateInp || !dueInp) return;
+    const baseDate = dateInp.value || (window as any).todayStr();
+    const days = parseInt(daysInp?.value || '30', 10) || 0;
+    try {
+      const d = new Date(baseDate + 'T00:00:00');
+      d.setDate(d.getDate() + days);
+      dueInp.value = d.toISOString().slice(0, 10);
+    } catch (_) {}
+  };
+
   (window as any).dsSetRetMode = (isPerLine: boolean) => {
     (window as any).__dsRetMode = isPerLine ? 'line' : 'header';
     document.querySelectorAll('.ds-ret-col').forEach((el: any) => { el.style.display = isPerLine ? '' : 'none'; });
@@ -882,6 +917,28 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
   const retRulesRenta = withholdingRules.filter((r: any) => String(r.concept || '').toUpperCase() === 'RETERENTA');
   const retRulesIca = withholdingRules.filter((r: any) => String(r.concept || '').toUpperCase() === 'RETEICA');
 
+  const defaultDueDays = cfg.operational?.default_due_days || 30;
+  const initialBillDate = existingPur?.date || (window as any).todayStr();
+  let existingDueDate = existingPur?.due_date || '';
+  if (!existingDueDate) {
+    try {
+      const d = new Date(initialBillDate + 'T00:00:00');
+      d.setDate(d.getDate() + defaultDueDays);
+      existingDueDate = d.toISOString().slice(0, 10);
+    } catch (_) {
+      existingDueDate = initialBillDate;
+    }
+  }
+  let creditDaysDefault = defaultDueDays;
+  if (existingPur?.due_date && existingPur?.date) {
+    try {
+      const diffTime = Math.abs(new Date(existingPur.due_date).getTime() - new Date(existingPur.date).getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) creditDaysDefault = diffDays;
+    } catch (_) {}
+  }
+  const isExistingCredit = existingPur?.payment_form === '2' || existingPur?.payment_method === 'CREDITO';
+
   const bodyHtml = `
     <form id="form-nuevo-ds" class="space-y-4 text-sm" onsubmit="return false;">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -930,15 +987,27 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         </div>
         <div>
           <label class="form-label font-bold">Fecha Emisión</label>
-          <input type="date" id="ds-date" class="form-input w-full" value="${existingPur?.date || (window as any).todayStr()}">
+          <input type="date" id="ds-date" class="form-input w-full" value="${existingPur?.date || (window as any).todayStr()}" onchange="window.dsRecalcDueDate && window.dsRecalcDueDate()">
         </div>
         <!-- 3. Selector de Forma de Pago DIAN -->
         <div>
           <label class="form-label font-bold">Forma de Pago (DIAN)</label>
-          <select id="ds-payment-form" class="form-input w-full">
-            <option value="1"${existingPur?.payment_form === '1' ? ' selected' : ''}>1 - Contado</option>
-            <option value="2"${existingPur?.payment_form === '2' ? ' selected' : ''}>2 - Crédito Comercial</option>
+          <select id="ds-payment-form" class="form-input w-full font-semibold" onchange="window.dsOnPaymentFormChange()">
+            <option value="1"${(!isExistingCredit) ? ' selected' : ''}>1 - Contado</option>
+            <option value="2"${isExistingCredit ? ' selected' : ''}>2 - Crédito Comercial</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Panel de Crédito Comercial (Días y Vencimiento) -->
+      <div id="ds-credit-panel" class="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 bg-amber-50/80 border border-amber-200 rounded-xl" style="${isExistingCredit ? 'display:grid;' : 'display:none;'}">
+        <div>
+          <label class="form-label font-bold text-amber-900"><i class="fas fa-calendar-day mr-1"></i>Plazo Crédito (Días)</label>
+          <input type="number" id="ds-credit-days" class="form-input w-full font-semibold" min="1" max="365" value="${creditDaysDefault}" oninput="window.dsRecalcDueDate()">
+        </div>
+        <div>
+          <label class="form-label font-bold text-amber-900"><i class="fas fa-calendar-check mr-1"></i>Fecha de Vencimiento <span class="text-red-500">*</span></label>
+          <input type="date" id="ds-due-date" class="form-input w-full font-bold font-mono text-amber-900 bg-white" value="${existingDueDate}">
         </div>
       </div>
 
@@ -947,7 +1016,8 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         <div>
           <label class="form-label font-bold">Medio de Pago (DIAN)</label>
           <select id="ds-payment-dian-code" class="form-input w-full" onchange="window.dsOnPaymentDianCodeChange()">
-            <option value="10"${(existingPur?.payment_dian_code === '10' || !existingPur) ? ' selected' : ''}>10 - Efectivo</option>
+            <option value="10"${(existingPur?.payment_dian_code === '10' || (!existingPur && !isExistingCredit)) ? ' selected' : ''}>10 - Efectivo</option>
+            <option value="30"${(existingPur?.payment_dian_code === '30' || isExistingCredit) ? ' selected' : ''}>30 - Instrumento de crédito / Por definir</option>
             <option value="42"${existingPur?.payment_dian_code === '42' ? ' selected' : ''}>42 - Consignación bancaria</option>
             <option value="47"${existingPur?.payment_dian_code === '47' ? ' selected' : ''}>47 - Transferencia</option>
             <option value="48"${existingPur?.payment_dian_code === '48' ? ' selected' : ''}>48 - Tarjeta de crédito</option>
@@ -1115,7 +1185,7 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
 
   // Previsualizar consecutivo y medio de pago al abrir
   (window as any).dsUpdateConsecutivoPreview();
-  (window as any).dsOnPaymentDianCodeChange();
+  (window as any).dsOnPaymentFormChange();
 
   // 5. Guardar Borrador / Firmar y Contabilizar
   const submitDsForm = async (isEmitDirect: boolean) => {
@@ -1139,8 +1209,37 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
       showToast(isEmitDirect ? 'Procesando firma y emisión a la DIAN...' : 'Guardando Borrador...', 'info');
 
       const consecutivoPreview = (document.getElementById('ds-consecutivo-preview') as HTMLInputElement)?.value || 'DS';
+      const billDate = (document.getElementById('ds-date') as HTMLInputElement).value || (window as any).todayStr();
+
+      // Si es edición de borrador existente, conservar de forma estricta su número original
+      const validDocNumber = (existingPur && existingPur.number)
+        ? existingPur.number
+        : ((consecutivoPreview && !consecutivoPreview.includes('Sin resolución')) ? consecutivoPreview : 'AUTO');
+
+      const paymentForm = (document.getElementById('ds-payment-form') as HTMLSelectElement)?.value || '1';
+      const isCredit = (paymentForm === '2');
+      const creditDays = isCredit ? (parseInt((document.getElementById('ds-credit-days') as HTMLInputElement)?.value || '30', 10) || 30) : 0;
+      let dueDate = billDate;
+      if (isCredit) {
+        const customDueDate = (document.getElementById('ds-due-date') as HTMLInputElement)?.value;
+        if (customDueDate) {
+          dueDate = customDueDate;
+        } else {
+          try {
+            const d = new Date(billDate + 'T00:00:00');
+            d.setDate(d.getDate() + creditDays);
+            dueDate = d.toISOString().slice(0, 10);
+          } catch (_) {
+            dueDate = billDate;
+          }
+        }
+      }
+
+      const paymentMethod = isCredit ? 'CREDITO' : (requiresBank ? 'TRANSFERENCIA' : 'EFECTIVO');
 
       let subtotalSum = 0;
+      let retSum = 0;
+      const isPerLine = (window as any).__dsRetMode === 'line';
       const linesData: any[] = [];
 
       rows.forEach((r: any) => {
@@ -1154,6 +1253,22 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
         const lineSub = qty * price;
         subtotalSum += lineSub;
 
+        let lineRet = 0;
+        let lineRetRuleId: string | null = null;
+        let lineRetRate = 0;
+        let lineRetAccountCode: string | null = null;
+
+        if (isPerLine) {
+          lineRetRuleId = (document.getElementById(`dsl-ret-rule-${idx}`) as HTMLSelectElement)?.value || null;
+          const rule = withholdingRules.find((rr: any) => rr.id === lineRetRuleId);
+          if (rule) {
+            lineRetRate = Number(rule.rate || 0);
+            lineRet = Math.round(lineSub * (lineRetRate / 100));
+            lineRetAccountCode = rule.account_code || null;
+          }
+          retSum += lineRet;
+        }
+
         linesData.push({
           product_id: prodId || null,
           account_id: acctId || null,
@@ -1163,33 +1278,50 @@ async function openNuevoDsModal(editId: string | null = null, preResolutions: an
           iva_rate: 0,
           iva_amount: 0,
           subtotal: lineSub,
-          total: lineSub
+          total: lineSub,
+          ret_rule_id: lineRetRuleId,
+          ret_rate: lineRetRate,
+          ret_amount: lineRet,
+          ret_account_code: lineRetAccountCode
         });
       });
 
-      const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
-      const billDate = (document.getElementById('ds-date') as HTMLInputElement).value || (window as any).todayStr();
+      let retRuleRentaId = '';
+      let retRuleIcaId = '';
+      if (!isPerLine) {
+        retRuleRentaId = (document.getElementById('ds-hdr-ret-rule-renta') as HTMLSelectElement)?.value || '';
+        retRuleIcaId = (document.getElementById('ds-hdr-ret-rule-ica') as HTMLSelectElement)?.value || '';
+        const ruleRenta = withholdingRules.find((rr: any) => rr.id === retRuleRentaId);
+        const ruleIca = withholdingRules.find((rr: any) => rr.id === retRuleIcaId);
+        const rRentaVal = ruleRenta ? Math.round(subtotalSum * (Number(ruleRenta.rate || 0) / 100)) : 0;
+        const rIcaVal = ruleIca ? Math.round(subtotalSum * (Number(ruleIca.rate || 0) / 100)) : 0;
+        retSum = rRentaVal + rIcaVal;
+      }
 
-      // Si es edición de borrador existente, conservar de forma estricta su número original
-      const validDocNumber = (existingPur && existingPur.number)
-        ? existingPur.number
-        : ((consecutivoPreview && !consecutivoPreview.includes('Sin resolución')) ? consecutivoPreview : 'AUTO');
+      const payableTotal = Math.max(0, subtotalSum - retSum);
+      const warehouseId = (document.getElementById('ds-warehouse') as HTMLSelectElement)?.value || '';
 
       const headerPayload = {
         number: validDocNumber,
         tx_number: (existingPur && (existingPur.tx_number || existingPur.number)) ? (existingPur.tx_number || existingPur.number) : validDocNumber,
+        supplier_ref: validDocNumber,
         tx_type_id: txTypeId,
         supplier_id: supplierId,
         warehouse_id: warehouseId,
         date: billDate,
-        payment_form: (document.getElementById('ds-payment-form') as HTMLSelectElement)?.value || '1',
+        due_date: dueDate,
+        payment_form: paymentForm,
         payment_dian_code: dianCode,
+        payment_method: paymentMethod,
         bank_account_id: bankAccountId,
         notes: (document.getElementById('ds-notes') as HTMLTextAreaElement).value || 'Documento Soporte a No Obligado a Facturar',
         status: 'draft',
         subtotal: subtotalSum,
         total: subtotalSum,
-        payable_total: subtotalSum
+        ret_total: retSum,
+        payable_total: payableTotal,
+        ret_rule_renta_id: retRuleRentaId,
+        ret_rule_ica_id: retRuleIcaId
       };
 
       let purInv: any;

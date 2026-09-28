@@ -1413,6 +1413,9 @@ function renderTxLines(repaint = true) {
             <option value="customs" ${line.import_concept === 'customs' ? 'selected' : ''}>4. Aduana / DIAN</option>
             <option value="local_carrier" ${line.import_concept === 'local_carrier' ? 'selected' : ''}>5. Transporte Local</option>
             <option value="local_other" ${line.import_concept === 'local_other' ? 'selected' : ''}>6. Otros Gastos</option>
+            <option value="bank_fees" ${line.import_concept === 'bank_fees' ? 'selected' : ''}>7. Gastos Bancarios / Comisiones</option>
+            <option value="payment" ${line.import_concept === 'payment' ? 'selected' : ''}>8. Pago / Abono (Informativo - Tesorería)</option>
+            <option value="capitalization" ${line.import_concept === 'capitalization' ? 'selected' : ''}>9. Capitalización / Cierre Inventario</option>
           </select>
         </div>
         ` : ''}
@@ -3118,6 +3121,9 @@ function renderEditTxLines(repaint = true) {
             <option value="customs" ${line.import_concept === 'customs' ? 'selected' : ''}>4. Aduana / DIAN</option>
             <option value="local_carrier" ${line.import_concept === 'local_carrier' ? 'selected' : ''}>5. Transporte Local</option>
             <option value="local_other" ${line.import_concept === 'local_other' ? 'selected' : ''}>6. Otros Gastos</option>
+            <option value="bank_fees" ${line.import_concept === 'bank_fees' ? 'selected' : ''}>7. Gastos Bancarios / Comisiones</option>
+            <option value="payment" ${line.import_concept === 'payment' ? 'selected' : ''}>8. Pago / Abono (Informativo - Tesorería)</option>
+            <option value="capitalization" ${line.import_concept === 'capitalization' ? 'selected' : ''}>9. Capitalización / Cierre Inventario</option>
           </select>
         </div>
         ` : ''}

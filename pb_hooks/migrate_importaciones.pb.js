@@ -476,6 +476,35 @@ onBootstrap((e) => {
     console.log("[GRAVY-IMPORTACIONES] Error al extender import_lines: " + err);
   }
 
+  // ──────────────────────────────────────────────────────────
+  // 7. EXTENDER tx_lines con concepto bank_fees
+  // ──────────────────────────────────────────────────────────
+  try {
+    const txLinesCol = $app.findCollectionByNameOrId("tx_lines");
+    if (txLinesCol) {
+      const impConceptField = txLinesCol.fields.getByName("import_concept");
+      if (impConceptField) {
+        const curVals = impConceptField.values || [];
+        let changed = false;
+        if (!curVals.includes("bank_fees")) {
+          curVals.push("bank_fees");
+          changed = true;
+        }
+        if (!curVals.includes("payment")) {
+          curVals.push("payment");
+          changed = true;
+        }
+        if (changed) {
+          impConceptField.values = [...curVals];
+          $app.save(txLinesCol);
+          console.log("[GRAVY-IMPORTACIONES] Opciones 'bank_fees' y 'payment' agregadas a tx_lines.import_concept.");
+        }
+      }
+    }
+  } catch (err) {
+    console.log("[GRAVY-IMPORTACIONES] Error al extender tx_lines.import_concept: " + err);
+  }
+
   // Asegurar índices
   try {
     $app.nonconcurrentDB()
@@ -484,4 +513,24 @@ onBootstrap((e) => {
   } catch (_) {}
 
   console.log("[GRAVY-IMPORTACIONES] Migración de importaciones completada.");
+});
+
+routerAdd("GET", "/api/gravy/migrate-bank-fees", (c) => {
+  try {
+    const txLinesCol = $app.findCollectionByNameOrId("tx_lines");
+    if (!txLinesCol) return c.json(404, { error: "tx_lines collection not found" });
+
+    const impConceptField = txLinesCol.fields.getByName("import_concept");
+    if (!impConceptField) return c.json(404, { error: "import_concept field not found" });
+
+    const curVals = impConceptField.values || [];
+    if (!curVals.includes("bank_fees")) {
+      impConceptField.values = [...curVals, "bank_fees"];
+      $app.save(txLinesCol);
+      return c.json(200, { status: "updated", values: impConceptField.values });
+    }
+    return c.json(200, { status: "already_exists", values: curVals });
+  } catch (err) {
+    return c.json(500, { error: String(err) });
+  }
 });

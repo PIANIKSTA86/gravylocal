@@ -218,7 +218,8 @@ onBootstrap((e) => {
       "tx_insurance_id",
       "tx_customs_id",
       "tx_local_carrier_id",
-      "tx_local_other_id"
+      "tx_local_other_id",
+      "tx_bank_fees_id"
     ];
     for (const f of txFields) {
       if (!impFields.has(f) && transactionsId) {
@@ -239,7 +240,8 @@ onBootstrap((e) => {
       { name: "insurance_supplier_id", col: thirdPartiesId },
       { name: "customs_supplier_id", col: thirdPartiesId },
       { name: "local_carrier_id", col: thirdPartiesId },
-      { name: "local_other_supplier_id", col: thirdPartiesId }
+      { name: "local_other_supplier_id", col: thirdPartiesId },
+      { name: "bank_fees_supplier_id", col: thirdPartiesId }
     ];
     for (const f of supplierFields) {
       if (!impFields.has(f.name) && f.col) {
@@ -261,7 +263,8 @@ onBootstrap((e) => {
       "insurance_invoice_num",
       "customs_invoice_num",
       "local_carrier_invoice_num",
-      "local_other_invoice_num"
+      "local_other_invoice_num",
+      "bank_fees_invoice_num"
     ];
     for (const f of invoiceFields) {
       if (!impFields.has(f)) {
@@ -274,9 +277,29 @@ onBootstrap((e) => {
       }
     }
 
+    // Campos de costo y TRM de gastos bancarios
+    if (!impFields.has("bank_fees_cost")) {
+      impCol.fields.add(new Field({
+        name: "bank_fees_cost",
+        type: "number",
+        required: false,
+        min: 0
+      }));
+      needsSaveImp = true;
+    }
+    if (!impFields.has("bank_fees_trm")) {
+      impCol.fields.add(new Field({
+        name: "bank_fees_trm",
+        type: "number",
+        required: false,
+        min: 0
+      }));
+      needsSaveImp = true;
+    }
+
     if (needsSaveImp) {
       $app.save(impCol);
-      console.log("[GRAVY-IMPORTACIONES] Campos de etapas y causaciones agregados a imports.");
+      console.log("[GRAVY-IMPORTACIONES] Campos de etapas y causaciones (incluyendo bank_fees) agregados a imports.");
     }
   } catch (err) {
     console.log("[GRAVY-IMPORTACIONES] Error al extender imports: " + err);

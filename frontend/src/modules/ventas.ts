@@ -108,13 +108,23 @@ function defaultSalesConfig() {
         discount_code: '',
         freight_code: '',
         cash_code: '',
-        refund_code: '',
+        refund_code: '417505',
         inventory_loss_code: '531520',
       },
       withholding_rules: [
         { id: 'wr-renta-2.5', concept: 'RETERENTA', base_type: 'SUBTOTAL', min_base: 1100000, rate: 2.5, account_code: '135515' },
         { id: 'wr-ica-0.4', concept: 'RETEICA', base_type: 'SUBTOTAL', min_base: 0, rate: 0.414, account_code: '135518' },
       ],
+    },
+    refund_policy: {
+      default_tx_type_id: '',
+      default_resolution_id: '',
+      warehouse_mode: 'ORIGIN', // 'ORIGIN' | 'SPECIFIC'
+      default_warehouse_id: '',
+      default_dian_concept: '1',
+      auto_restock: true,
+      refund_account_code: '417505',
+      inventory_loss_account_code: '531520',
     },
   };
 }
@@ -178,10 +188,21 @@ function normalizeSalesConfig(cfg: any) {
         discount_code: String(acc.discount_code || '').trim(),
         freight_code: String(acc.freight_code || '').trim(),
         cash_code: String(acc.cash_code || '').trim(),
-        refund_code: String(acc.refund_code || '').trim(),
+        refund_code: String(acc.refund_code || cfg?.refund_policy?.refund_account_code || '417505').trim(),
+        inventory_loss_code: String(acc.inventory_loss_code || cfg?.refund_policy?.inventory_loss_account_code || '531520').trim(),
       },
 
       withholding_rules: normalizedRules.length ? normalizedRules : [...base.accounting.withholding_rules],
+    },
+    refund_policy: {
+      default_tx_type_id: String(cfg?.refund_policy?.default_tx_type_id || '').trim(),
+      default_resolution_id: String(cfg?.refund_policy?.default_resolution_id || '').trim(),
+      warehouse_mode: (cfg?.refund_policy?.warehouse_mode === 'SPECIFIC') ? 'SPECIFIC' : 'ORIGIN',
+      default_warehouse_id: String(cfg?.refund_policy?.default_warehouse_id || '').trim(),
+      default_dian_concept: String(cfg?.refund_policy?.default_dian_concept || '1').trim(),
+      auto_restock: cfg?.refund_policy?.auto_restock !== false,
+      refund_account_code: String(cfg?.refund_policy?.refund_account_code || acc.refund_code || '417505').trim(),
+      inventory_loss_account_code: String(cfg?.refund_policy?.inventory_loss_account_code || acc.inventory_loss_code || '531520').trim(),
     },
   };
 }
@@ -206,15 +227,33 @@ async function saveSalesConfig(cfg: any) {
 // --- Configuración Comercial de Ventas Modal ---
 async function openSalesSettingsModal(onSaved: any = null) {
   try {
-    const [cfg, accounts, warehouses, thirdParties] = await Promise.all([
+    const [cfg, accounts, warehouses, thirdParties, dianResolutions, txTypes] = await Promise.all([
       getSalesConfig(),
       (window as any).API.getAccounts(true),
       (window as any).API.getWarehouses(true).catch(() => []),
       (window as any).pb.listAll('third_parties', { filter: 'active=true', sort: 'name' }).catch(() => []),
+      (window as any).pb.listAll('dian_resolutions', { filter: 'active=true' }).catch(() => []),
+      (window as any).pb.listAll('transaction_types', { filter: 'active=true', sort: 'name' }).catch(() => []),
     ]);
 
     const warehouseOptions = (selectedId = '') => {
       return `<option value="">— Ninguna (Seleccionar al vender) —</option>${warehouses.map((w: any) => `<option value="${(window as any).esc(w.id)}"${w.id === selectedId ? ' selected' : ''}>${(window as any).esc(w.name)}</option>`).join('')}`;
+    };
+
+    const ncTxTypeOptions = (selectedId = '') => {
+      const ncTypes = (txTypes || []).filter((t: any) => {
+        const code = String(t.code || '').trim().toUpperCase();
+        const pfx = String(t.prefix || '').trim().toUpperCase();
+        const nm = String(t.name || '').toLowerCase();
+        if (nm.includes('proveedor') || pfx.includes('FC') || code.includes('FC')) return false;
+        return code === 'NC' || pfx === 'NC' || pfx === 'NCFE' || nm.includes('crédito') || nm.includes('credito');
+      });
+      return `<option value="">— Selección Automática —</option>${ncTypes.map((t: any) => `<option value="${(window as any).esc(t.id)}"${t.id === selectedId ? ' selected' : ''}>${(window as any).esc(t.prefix || t.code)} — ${(window as any).esc(t.name)}</option>`).join('')}`;
+    };
+
+    const ncResolutionOptions = (selectedId = '') => {
+      const ncRes = (dianResolutions || []).filter((r: any) => r.document_type === 'NC');
+      return `<option value="">— Selección Automática —</option>${ncRes.map((r: any) => `<option value="${(window as any).esc(r.id)}"${r.id === selectedId ? ' selected' : ''}>${(window as any).esc(r.prefix || '')} - ${(window as any).esc(r.resolution_number ? 'Res. ' + r.resolution_number : 'Interna')} (Rango: ${r.number_from} a ${r.number_to})</option>`).join('')}`;
     };
 
     const thirdPartyOptions = (selectedId = '') => {
@@ -353,6 +392,77 @@ async function openSalesSettingsModal(onSaved: any = null) {
             <p class="text-xs mt-2" style="color:#6B7280">Cada regla define concepto de activo (ej: 1355 ReteFuente), base mínima, tarifa y cuenta contable.</p>
           </div>
         </div>
+
+        <!-- ══ PARÁMETROS ESPECIALIZADOS DE DEVOLUCIONES Y NOTAS CRÉDITO (NC) ══ -->
+        <div class="rounded-xl border p-4" style="border-color:#DDD6FE;background:#F5F3FF">
+          <div class="flex items-center gap-2 mb-1">
+            <i class="fas fa-rotate-left text-purple-700 text-base"></i>
+            <h4 class="font-bold" style="color:#5B21B6">Parámetros de Devoluciones y Notas Crédito (NC)</h4>
+          </div>
+          <p class="text-xs mb-3" style="color:#6D28D9">Configuración especializada para la generación de ajustes, anulaciones y devoluciones en ventas sin alterar consecutivos ordinarios.</p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Comprobante Contable para NC</label>
+              <select id="so-cfg-refund-tx-type" class="form-input">
+                ${ncTxTypeOptions(cfg.refund_policy?.default_tx_type_id)}
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Resolución DIAN para NC por Defecto</label>
+              <select id="so-cfg-refund-resolution" class="form-input">
+                ${ncResolutionOptions(cfg.refund_policy?.default_resolution_id)}
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Destino de Mercancía Devuelta</label>
+              <select id="so-cfg-refund-wh-mode" class="form-input" onchange="const s = document.getElementById('so-cfg-refund-wh-box'); if (s) s.style.display = this.value === 'SPECIFIC' ? 'block' : 'none';">
+                <option value="ORIGIN"${cfg.refund_policy?.warehouse_mode !== 'SPECIFIC' ? ' selected' : ''}>Misma bodega de la venta original</option>
+                <option value="SPECIFIC"${cfg.refund_policy?.warehouse_mode === 'SPECIFIC' ? ' selected' : ''}>Bodega específica (Averías, Garantías o Cuarentena)</option>
+              </select>
+            </div>
+            <div class="form-group mb-0" id="so-cfg-refund-wh-box" style="display:${cfg.refund_policy?.warehouse_mode === 'SPECIFIC' ? 'block' : 'none'}">
+              <label class="form-label" style="color:#4C1D95">Bodega de Destino (Averías / Cuarentena)</label>
+              <select id="so-cfg-refund-wh-id" class="form-input">
+                ${warehouseOptions(cfg.refund_policy?.default_warehouse_id)}
+              </select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Motivo / Concepto DIAN por Defecto</label>
+              <select id="so-cfg-refund-dian-concept" class="form-input">
+                <option value="1"${(cfg.refund_policy?.default_dian_concept || '1') === '1' ? ' selected' : ''}>1 - Devolución de parte de los bienes</option>
+                <option value="2"${cfg.refund_policy?.default_dian_concept === '2' ? ' selected' : ''}>2 - Anulación de factura electrónica</option>
+                <option value="3"${cfg.refund_policy?.default_dian_concept === '3' ? ' selected' : ''}>3 - Rebaja total aplicada</option>
+                <option value="4"${cfg.refund_policy?.default_dian_concept === '4' ? ' selected' : ''}>4 - Descuento total aplicado</option>
+                <option value="5"${cfg.refund_policy?.default_dian_concept === '5' ? ' selected' : ''}>5 - Rescisión: nulidad por falta de requisitos / Otros</option>
+                <option value="6"${cfg.refund_policy?.default_dian_concept === '6' ? ' selected' : ''}>6 - Otros (Especificar en descripción)</option>
+              </select>
+            </div>
+            <div class="form-group mb-0 flex items-center pt-5">
+              <label class="inline-flex items-center gap-2 cursor-pointer font-medium text-purple-950">
+                <input id="so-cfg-refund-auto-restock" type="checkbox" ${cfg.refund_policy?.auto_restock !== false ? 'checked' : ''} class="w-4 h-4 accent-purple-600 rounded">
+                Reingresar existencias al stock físico por defecto
+              </label>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Cuenta Contable Devolución Ventas (Clase 4175)</label>
+              <select id="so-cfg-refund-acct" class="form-input">${accountOptions(cfg.refund_policy?.refund_account_code || cfg.accounting.accounts.refund_code)}</select>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label" style="color:#4C1D95">Cuenta Gasto Pérdida / Deterioro Inventario (Clase 5315)</label>
+              <select id="so-cfg-refund-loss-acct" class="form-input">${accountOptions(cfg.refund_policy?.inventory_loss_account_code || cfg.accounting.accounts.inventory_loss_code)}</select>
+            </div>
+            <div class="col-span-1 md:col-span-2 p-3 rounded-xl bg-purple-50/80 border border-purple-200 text-xs text-purple-900 mt-1">
+              <div class="flex items-center gap-1.5 font-bold text-purple-950 mb-1">
+                <i class="fas fa-scale-balanced text-purple-700"></i> Criterios Contables y Operativos de Ajustes:
+              </div>
+              <ul class="list-disc ml-5 space-y-1 text-[11px] text-purple-800">
+                <li><strong>Concepto 2 (Anulación de Factura):</strong> Reversa directamente las cuentas de ingreso originales de la factura (ej. 4135); <em>no utiliza la cuenta 4175</em>.</li>
+                <li><strong>Concepto 1 (Devolución):</strong> Se contabiliza en la cuenta de Devolución en Ventas (Clase 4175).</li>
+                <li><strong>Precedencia de Pérdida / Avería:</strong> El check de pérdida en el modal de captura prevalece por encima de la bodega configurada, enviando el costo al gasto (Clase 5315) sin reingresar al stock físico.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -447,6 +557,17 @@ async function openSalesSettingsModal(onSaved: any = null) {
         const getInputVal = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value;
         const getSelectVal = (id: string) => (document.getElementById(id) as HTMLSelectElement)?.value;
 
+        const refundPolicy = {
+          default_tx_type_id: getSelectVal('so-cfg-refund-tx-type') || '',
+          default_resolution_id: getSelectVal('so-cfg-refund-resolution') || '',
+          warehouse_mode: (getSelectVal('so-cfg-refund-wh-mode') === 'SPECIFIC') ? 'SPECIFIC' : 'ORIGIN',
+          default_warehouse_id: getSelectVal('so-cfg-refund-wh-id') || '',
+          default_dian_concept: getSelectVal('so-cfg-refund-dian-concept') || '1',
+          auto_restock: getCheckVal('so-cfg-refund-auto-restock') !== false,
+          refund_account_code: getSelectVal('so-cfg-refund-acct') || '417505',
+          inventory_loss_account_code: getSelectVal('so-cfg-refund-loss-acct') || '531520',
+        };
+
         const payload = {
           operational: {
             require_warehouse_for_goods: getCheckVal('so-cfg-req-wh'),
@@ -482,10 +603,12 @@ async function openSalesSettingsModal(onSaved: any = null) {
               discount_code: getSelectVal('so-cfg-discount-acct') || '',
               freight_code: getSelectVal('so-cfg-freight-acct') || '',
               cash_code: getSelectVal('so-cfg-cash-acct') || '',
-              refund_code: getSelectVal('so-cfg-refund-acct') || '',
+              refund_code: refundPolicy.refund_account_code,
+              inventory_loss_code: refundPolicy.inventory_loss_account_code,
             },
             withholding_rules: withholdingRules,
           },
+          refund_policy: refundPolicy,
         };
 
         await saveSalesConfig(payload);
@@ -699,23 +822,68 @@ function filterSoTable() {
     return (window as any).showToast('La factura no está contabilizada. Genera el comprobante primero.', 'warning');
   }
 
+  const cfg = await getSalesConfig().catch(() => ({ operational: {}, accounting: { accounts: {} }, refund_policy: {} }));
+  const refundPolicy = (cfg as any).refund_policy || {};
+  const defaultDianConcept = refundPolicy.default_dian_concept || '1';
+  // Si auto_restock es false, por defecto se asume pérdida; si es true, por defecto reingresa
+  const defaultIsLoss = refundPolicy.auto_restock === false;
+
   const html = `
     <div class="space-y-4 text-sm" style="color:#374151">
-      <div class="p-3 rounded bg-purple-50 text-purple-800 text-sm border border-purple-200">
-        <i class="fas fa-info-circle mr-1"></i> Generar ajuste / nota para la factura <strong>${(window as any).esc(invoiceNum)}</strong>.
+      <div class="p-3 rounded-xl bg-purple-50 text-purple-900 text-sm border border-purple-200">
+        <i class="fas fa-info-circle mr-1 text-purple-600"></i> Generar ajuste / nota para la factura <strong>${(window as any).esc(invoiceNum)}</strong>.
       </div>
-      <div class="form-group">
-        <label class="form-label">Tipo de Documento</label>
-        <select id="pre-note-type" class="form-input" onchange="window.updatePreNoteResolutions(this.value)">
-          <option value="NC">Nota Crédito (Devolución / Rebaja)</option>
-          <option value="ND">Nota Débito (Ajuste al alza)</option>
-        </select>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold text-gray-700">Tipo de Documento</label>
+          <select id="pre-note-type" class="form-input" onchange="window.updatePreNoteResolutions(this.value)">
+            <option value="NC" selected>Nota Crédito (Devolución / Rebaja)</option>
+            <option value="ND">Nota Débito (Ajuste al alza)</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label font-semibold text-gray-700">Prefijo / Resolución DIAN</label>
+          <select id="pre-note-resolution" class="form-input">
+            <option value="">Cargando resoluciones...</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Prefijo / Resolución DIAN</label>
-        <select id="pre-note-resolution" class="form-input">
-          <option value="">Cargando resoluciones...</option>
+
+      <div class="form-group mb-0">
+        <label class="form-label font-semibold text-gray-700">Motivo / Concepto DIAN <span class="text-red-500">*</span></label>
+        <select id="pre-note-dian-concept" class="form-input" onchange="window.updatePreNoteConceptHelp(this.value)">
+          <option value="1"${defaultDianConcept === '1' ? ' selected' : ''}>1 - Devolución de parte de los bienes</option>
+          <option value="2"${defaultDianConcept === '2' ? ' selected' : ''}>2 - Anulación de factura electrónica</option>
+          <option value="3"${defaultDianConcept === '3' ? ' selected' : ''}>3 - Rebaja total aplicada</option>
+          <option value="4"${defaultDianConcept === '4' ? ' selected' : ''}>4 - Descuento total aplicado</option>
+          <option value="5"${defaultDianConcept === '5' ? ' selected' : ''}>5 - Rescisión: nulidad por falta de requisitos / Otros</option>
+          <option value="6"${defaultDianConcept === '6' ? ' selected' : ''}>6 - Otros (Especificar en descripción)</option>
         </select>
+        <p id="pre-note-concept-help" class="text-[11px] text-gray-500 mt-1 font-medium">
+          ${defaultDianConcept === '2' 
+            ? '<i class="fas fa-arrow-turn-down text-purple-600 mr-1"></i><strong>Anulación:</strong> Se reversará exactamente el ingreso original de la factura (no usa cuenta 4175).' 
+            : '<i class="fas fa-arrow-turn-down text-purple-600 mr-1"></i><strong>Devolución:</strong> Se registrará en la cuenta de devoluciones en ventas (Clase 4175).'}
+        </p>
+      </div>
+
+      <!-- Control interactivo de Pérdida vs Reingreso físico -->
+      <div id="pre-note-loss-container" class="p-3 rounded-xl border border-amber-200 bg-amber-50/70 transition-all">
+        <label class="flex items-start gap-2.5 cursor-pointer select-none">
+          <input type="checkbox" id="pre-note-is-loss" class="w-4 h-4 mt-0.5 accent-amber-700 rounded cursor-pointer" ${defaultIsLoss ? 'checked' : ''} onchange="window.updatePreNoteLossDesc(this.checked)">
+          <div>
+            <span class="font-bold text-xs text-amber-950 block" id="pre-note-loss-title">
+              ¿La devolución corresponde a una Pérdida / Avería / Deterioro?
+            </span>
+            <span class="text-[11px] text-amber-800 block mt-0.5" id="pre-note-loss-desc">
+              ${defaultIsLoss 
+                ? 'Marcado: La mercancía NO reingresará a la bodega física y se contabilizará como gasto por pérdida/deterioro (Clase 5315).' 
+                : 'Desmarcado: La mercancía sí reingresará al stock físico de la bodega (origen o averías según configuración).'}
+            </span>
+            <span class="text-[10px] text-amber-900/80 font-semibold block mt-1">
+              <i class="fas fa-shield-alt text-amber-700 mr-1"></i>Esta indicación manual en el modal tiene prioridad sobre el parámetro general de la bodega.
+            </span>
+          </div>
+        </label>
       </div>
     </div>
   `;
@@ -727,16 +895,39 @@ function filterSoTable() {
 
   (window as any).openModal('Asistente de Ajustes (Notas)', html, footer, false);
 
+  (window as any).updatePreNoteConceptHelp = (conceptVal: string) => {
+    const helpEl = document.getElementById('pre-note-concept-help');
+    if (!helpEl) return;
+    if (conceptVal === '2') {
+      helpEl.innerHTML = '<i class="fas fa-arrow-turn-down text-purple-600 mr-1"></i><strong>Anulación:</strong> Se reversará exactamente el ingreso original de la factura (no usa cuenta 4175).';
+    } else {
+      helpEl.innerHTML = '<i class="fas fa-arrow-turn-down text-purple-600 mr-1"></i><strong>Devolución:</strong> Se registrará en la cuenta de devoluciones en ventas (Clase 4175).';
+    }
+  };
+
+  (window as any).updatePreNoteLossDesc = (checked: boolean) => {
+    const descEl = document.getElementById('pre-note-loss-desc');
+    if (!descEl) return;
+    descEl.textContent = checked 
+      ? 'Marcado: La mercancía NO reingresará a la bodega física y se contabilizará como gasto por pérdida/deterioro (Clase 5315).' 
+      : 'Desmarcado: La mercancía sí reingresará al stock físico de la bodega (origen o averías según configuración).';
+  };
+
   (window as any).updatePreNoteResolutions = async (type: string) => {
     const sel = document.getElementById('pre-note-resolution') as HTMLSelectElement;
     if (!sel) return;
     sel.innerHTML = '<option value="">Cargando...</option>';
     try {
+      const activeCfg = await getSalesConfig();
+      const defaultResId = type === 'NC' ? activeCfg.refund_policy?.default_resolution_id : '';
       const resolutions = await (window as any).pb.listAll('dian_resolutions', { filter: `active=true && document_type="${type}"` }).catch(() => []);
       const activeSel = document.getElementById('pre-note-resolution') as HTMLSelectElement;
       if (!activeSel) return;
       if (resolutions.length) {
-        activeSel.innerHTML = resolutions.map((r: any) => `<option value="${r.id}">${r.prefix || ''} - ${r.resolution_number ? 'Res. ' + r.resolution_number : 'Interna'}</option>`).join('');
+        activeSel.innerHTML = resolutions.map((r: any) => {
+          const isSelected = (defaultResId && r.id === defaultResId) || (!defaultResId && r.prefix === 'NC');
+          return `<option value="${r.id}"${isSelected ? ' selected' : ''}>${r.prefix || ''} - ${r.resolution_number ? 'Res. ' + r.resolution_number : 'Interna'} (Rango: ${r.number_from} a ${r.number_to})</option>`;
+        }).join('');
       } else {
         activeSel.innerHTML = '<option value="">Generación Automática (Según prefijo del tipo contable)</option>';
       }
@@ -753,10 +944,19 @@ function filterSoTable() {
   (window as any).continueToNoteForm = async (txId: string) => {
     const type = (document.getElementById('pre-note-type') as HTMLSelectElement)?.value || 'NC';
     const resId = (document.getElementById('pre-note-resolution') as HTMLSelectElement)?.value || '';
+    const dianConcept = (document.getElementById('pre-note-dian-concept') as HTMLSelectElement)?.value || defaultDianConcept;
+    const isLossCheck = (document.getElementById('pre-note-is-loss') as HTMLInputElement)?.checked;
     (window as any).closeModal();
 
-    // Ahora pasamos la orden de clonar la factura a nivel comercial (productos) en lugar de transaccional
-    window.openSalesForm(null, () => _loadVentasPage(document.getElementById('content-area') as HTMLElement), null, { originalInvoiceId: invoiceId, type, resolutionId: resId, originalInvoiceNum: invoiceNum });
+    window.openSalesForm(null, () => _loadVentasPage(document.getElementById('content-area') as HTMLElement), null, {
+      originalInvoiceId: invoiceId,
+      type,
+      resolutionId: resId,
+      originalInvoiceNum: invoiceNum,
+      dianConcept,
+      isLoss: !!isLossCheck,
+      userExplicitlySetLoss: true,
+    });
   };
 };
 
@@ -827,9 +1027,20 @@ window.soOnPaymentDianCodeChange = function() {
     lbl.textContent = 'Reingreso';
     lbl.className = 'font-bold text-[11px] text-gray-500';
   }
+  const allHdrChk = document.getElementById('so-loss-all-chk') as HTMLInputElement;
+  if (allHdrChk) {
+    const allChecks = Array.from(document.querySelectorAll('[id^="sol-is-loss-"]')) as HTMLInputElement[];
+    if (allChecks.length > 0) {
+      allHdrChk.checked = allChecks.every(c => c.checked);
+    }
+  }
 };
 
 (window as any).soToggleAllLoss = function(checked: boolean) {
+  const allHdrChk = document.getElementById('so-loss-all-chk') as HTMLInputElement;
+  if (allHdrChk && allHdrChk.checked !== checked) {
+    allHdrChk.checked = checked;
+  }
   const tableRows = document.querySelectorAll('#so-lines-body tr');
   tableRows.forEach((row: any) => {
     const idParts = row.id.split('-');
@@ -837,7 +1048,16 @@ window.soOnPaymentDianCodeChange = function() {
     const chk = document.getElementById(`sol-is-loss-${idx}`) as HTMLInputElement;
     if (chk) {
       chk.checked = checked;
-      (window as any).soUpdateLossDisplay(idx);
+      const lbl = document.getElementById(`sol-loss-lbl-${idx}`);
+      if (lbl) {
+        if (checked) {
+          lbl.textContent = 'Pérdida/Gasto';
+          lbl.className = 'font-bold text-[11px] text-red-700';
+        } else {
+          lbl.textContent = 'Reingreso';
+          lbl.className = 'font-bold text-[11px] text-gray-500';
+        }
+      }
     }
   });
 };
@@ -1171,7 +1391,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   (window as any).__soTxTypesCache = txTypes;
   (window as any).__soResolutionsCache = dianResolutions;
   (window as any).__soWarehousesCache = warehouses;
-  const isMultiWhEnabled = soConfig.operational?.enable_multi_warehouse_billing === true;
+  let isMultiWhEnabled = soConfig.operational?.enable_multi_warehouse_billing === true;
 
   const sellers = customers.filter((c: any) => c.type === 'EMPLEADO');
 
@@ -1304,27 +1524,66 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         const cufeStr = origCufe || 'No disponible';
         const defaultNotes = `${noteTypeLabel} referente a la Factura Electrónica N° ${invNumStr}. CUFE: ${cufeStr}`;
 
+        const refundPolicy = soConfig?.refund_policy || {};
+        const isSpecificWh = (noteConfig.type === 'NC' && refundPolicy.warehouse_mode === 'SPECIFIC' && refundPolicy.default_warehouse_id);
+        const specificWhId = isSpecificWh ? refundPolicy.default_warehouse_id : null;
+        let targetWhId = specificWhId || originalInvoice.warehouse_id;
+
+        const defaultConcept = noteConfig.dianConcept || ((noteConfig.type === 'NC' && refundPolicy.default_dian_concept) ? refundPolicy.default_dian_concept : '1');
+        
+        // Prioridad absoluta: la indicación de pérdida del modal prevalece sobre la configuración general
+        const isLoss = noteConfig.userExplicitlySetLoss !== undefined 
+          ? Boolean(noteConfig.isLoss) 
+          : (refundPolicy.auto_restock === false);
+
+        const effectiveTxTypeId = (noteConfig.type === 'NC' && refundPolicy.default_tx_type_id)
+          ? refundPolicy.default_tx_type_id
+          : (txTypes.find((t: any) => t.code === noteConfig.type)?.id || '');
+
         inv = {
           customer_id: originalInvoice.customer_id,
-          warehouse_id: originalInvoice.warehouse_id,
+          warehouse_id: targetWhId,
           seller_id: originalInvoice.seller_id,
           notes: defaultNotes,
           date: (window as any).todayStr(),
           payment_method: originalInvoice.payment_method,
-          tx_type_id: txTypes.find((t: any) => t.code === noteConfig.type)?.id || '',
-          dian_resolution_id: noteConfig.resolutionId || null,
-          cross_doc_ref: invNumStr
+          tx_type_id: effectiveTxTypeId,
+          dian_resolution_id: noteConfig.resolutionId || refundPolicy.default_resolution_id || null,
+          cross_doc_ref: invNumStr,
+          dian_concept: defaultConcept,
+          is_loss: isLoss,
         };
         
-        existingLines = lines.map((l: any) => ({
-          product_id: l.product_id,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          iva_rate: l.iva_rate,
-          iva_amount: l.iva_amount,
-          subtotal: l.subtotal,
-          total: l.total
-        }));
+        existingLines = lines.map((l: any) => {
+          // Si la política es bodega específica (ej. averías), va a esa bodega específica.
+          // Si es modo origen ('ORIGIN'), cada producto reingresa exactamente a su bodega de despacho original.
+          const lineTargetWh = specificWhId || l.warehouse_id || originalInvoice.warehouse_id || targetWhId;
+          return {
+            product_id: l.product_id,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            iva_rate: l.iva_rate,
+            iva_amount: l.iva_amount,
+            subtotal: l.subtotal,
+            total: l.total,
+            account_id: l.account_id || null, // Conserva la cuenta de ingreso exacta de la factura original
+            description: l.description || '',
+            is_loss: isLoss,
+            warehouse_id: lineTargetWh,
+            lot_id: l.lot_id || null,
+            lot_number: l.lot_number || '',
+            pallet_id: l.pallet_id || null,
+            pallet_code: l.pallet_code || '',
+            boxes_qty: l.boxes_qty || 0,
+          };
+        });
+
+        // Si la factura original provino de múltiples bodegas, activamos la vista multi-bodega
+        // para que cada producto muestre y permita verificar/modificar su bodega de retorno
+        const distinctWhs = new Set(existingLines.map((l: any) => l.warehouse_id).filter(Boolean));
+        if (distinctWhs.size > 1) {
+          isMultiWhEnabled = true;
+        }
       } catch (err: any) {
         console.error("Error precargando nota:", err);
         (window as any).showToast("Error al precargar la factura base: " + err.message, "error");
@@ -1591,19 +1850,23 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <label class="so-hdr-label" style="color:#991B1B">Concepto de Corrección DIAN para ${noteConfig.type} <span style="color:#EF4444">*</span></label>
             <select id="so-dian-concept" class="form-input so-compact-inp w-full" style="border-color:#FCA5A5; max-width:400px">
               <option value="">-- Selecciona el motivo de ajuste --</option>
-              <option value="1">1 - Devolución de parte de los bienes</option>
-              <option value="2">2 - Anulación de factura electrónica</option>
-              <option value="3">3 - Rebaja total aplicada</option>
-              <option value="4">4 - Descuento total aplicado</option>
-              <option value="5">5 - Rescisión: nulidad por falta de requisitos / Otros</option>
-              <option value="6">6 - Otros (Especificar en descripción)</option>
+              <option value="1"${(inv?.dian_concept === '1' || (!inv?.dian_concept && (soConfig?.refund_policy?.default_dian_concept || '1') === '1')) ? ' selected' : ''}>1 - Devolución de parte de los bienes</option>
+              <option value="2"${(inv?.dian_concept === '2' || (!inv?.dian_concept && soConfig?.refund_policy?.default_dian_concept === '2')) ? ' selected' : ''}>2 - Anulación de factura electrónica</option>
+              <option value="3"${(inv?.dian_concept === '3' || (!inv?.dian_concept && soConfig?.refund_policy?.default_dian_concept === '3')) ? ' selected' : ''}>3 - Rebaja total aplicada</option>
+              <option value="4"${(inv?.dian_concept === '4' || (!inv?.dian_concept && soConfig?.refund_policy?.default_dian_concept === '4')) ? ' selected' : ''}>4 - Descuento total aplicado</option>
+              <option value="5"${(inv?.dian_concept === '5' || (!inv?.dian_concept && soConfig?.refund_policy?.default_dian_concept === '5')) ? ' selected' : ''}>5 - Rescisión: nulidad por falta de requisitos / Otros</option>
+              <option value="6"${(inv?.dian_concept === '6' || (!inv?.dian_concept && soConfig?.refund_policy?.default_dian_concept === '6')) ? ' selected' : ''}>6 - Otros (Especificar en descripción)</option>
             </select>
           </div>
         </div>
-        <div class="flex items-center">
-          <label class="flex items-center gap-2 text-xs font-bold text-red-900 cursor-pointer select-none bg-red-100/80 px-3 py-1.5 rounded-lg border border-red-300">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="flex items-center gap-1.5 text-xs font-bold text-amber-900 cursor-pointer select-none bg-amber-100/90 hover:bg-amber-200/80 px-3 py-1.5 rounded-lg border border-amber-300 transition-colors" title="Al marcar, todas las líneas se considerarán pérdida/gasto y NO reingresarán a bodega. Prevalece sobre los parámetros de bodega.">
+            <input type="checkbox" id="so-loss-all-chk" class="w-4 h-4 accent-amber-700 rounded cursor-pointer" ${inv?.is_loss ? 'checked' : ''} onchange="window.soToggleAllLoss(this.checked)">
+            <span>¿Pérdida / Daño? (Gasto sin reingreso)</span>
+          </label>
+          <label class="flex items-center gap-2 text-xs font-bold text-red-900 cursor-pointer select-none bg-red-100/80 hover:bg-red-200/80 px-3 py-1.5 rounded-lg border border-red-300 transition-colors">
             <input type="checkbox" id="so-dian-sin-ref" class="w-4 h-4 accent-red-600 rounded cursor-pointer">
-            <span>Nota SIN Referencia a Factura (Sin CUFE)</span>
+            <span>Nota SIN Referencia a Factura</span>
           </label>
         </div>
       </div>` : ''}
@@ -2717,9 +2980,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const initialBoxesQty = preloadedLine?.boxes_qty || 0;
 
     const currentHdrWh = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || initialWhId;
-    const lineWhId = isMultiWhEnabled
-      ? (preloadedLine?.warehouse_id || currentHdrWh || (warehouses[0]?.id || ''))
-      : (currentHdrWh || (warehouses[0]?.id || ''));
+    const lineWhId = preloadedLine?.warehouse_id || currentHdrWh || (warehouses[0]?.id || '');
 
     const tr = document.createElement('tr');
     tr.id = `so-row-${idx}`;
@@ -3327,9 +3588,7 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
 
       const prodId = (document.getElementById(`sol-prod-id-${idx}`) as HTMLInputElement)?.value;
       const rawLineWhId = (document.getElementById(`sol-wh-${idx}`) as HTMLSelectElement)?.value;
-      const lineWhId = isMultiWhEnabled
-        ? (rawLineWhId || warehouseId || (warehouses.length === 1 ? warehouses[0].id : null))
-        : (warehouseId || (warehouses.length === 1 ? warehouses[0].id : null));
+      const lineWhId = rawLineWhId || warehouseId || (warehouses.length === 1 ? warehouses[0].id : null);
       const qty = parseFloat((document.getElementById(`sol-qty-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const price = parseFloat((document.getElementById(`sol-price-${idx}`) as HTMLInputElement)?.value || '0') || 0;
       const ivaRate = parseFloat((document.getElementById(`sol-iva-${idx}`) as HTMLInputElement)?.value || '0') || 0;

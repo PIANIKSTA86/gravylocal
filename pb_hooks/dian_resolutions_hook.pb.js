@@ -5,7 +5,7 @@
  * de consecutivos de facturación bajo resoluciones oficiales de la DIAN.
  */
 
-var extractDocPrefixAndDigits = function(nStr) {
+function extractDocPrefixAndDigits(nStr) {
   const s = String(nStr || "").trim();
   let docPrefix = "";
   let digitsPart = "";
@@ -24,9 +24,9 @@ var extractDocPrefixAndDigits = function(nStr) {
     }
   }
   return { prefix: docPrefix, digits: digitsPart };
-};
+}
 
-var getMaxConsecutiveFromDB = function(tableName, prefix) {
+function getMaxConsecutiveFromDB(tableName, prefix) {
   let maxVal = 0;
   try {
     const db = $app.nonconcurrentDB();
@@ -57,11 +57,64 @@ var getMaxConsecutiveFromDB = function(tableName, prefix) {
     console.log("[GRAVY-HOOK] Error querying max consecutive from " + tableName + " for prefix '" + prefix + "': " + err);
   }
   return maxVal;
-};
+}
 
 const resolutionHandler = (e) => {
+  function extractDocPrefixAndDigitsLocal(nStr) {
+    const s = String(nStr || "").trim();
+    let docPrefix = "";
+    let digitsPart = "";
+    if (s.includes("-")) {
+      const parts = s.split("-");
+      docPrefix = parts[0].toUpperCase();
+      digitsPart = parts[parts.length - 1];
+    } else {
+      const m = s.match(/^([A-Za-z]+)(\d+)$/);
+      if (m) {
+        docPrefix = m[1].toUpperCase();
+        digitsPart = m[2];
+      } else {
+        const mDigits = s.match(/(\d+)$/);
+        if (mDigits) digitsPart = mDigits[1];
+      }
+    }
+    return { prefix: docPrefix, digits: digitsPart };
+  }
+
   function fetchMaxConsecutive(tableName, prefix) {
-    return getMaxConsecutiveFromDB(tableName, prefix);
+    if (typeof getMaxConsecutiveFromDB === "function") {
+      try {
+        return getMaxConsecutiveFromDB(tableName, prefix);
+      } catch (_) {}
+    }
+    let maxVal = 0;
+    try {
+      const db = $app.nonconcurrentDB();
+      const cleanPrefix = String(prefix || "").trim().toUpperCase();
+      let sql = "";
+      if (cleanPrefix) {
+        sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + cleanPrefix + "-%' OR number LIKE '" + cleanPrefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
+      } else {
+        sql = "SELECT number FROM " + tableName + " WHERE number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number != ''";
+      }
+      const result = arrayOf(new DynamicModel({ number: "" }));
+      db.newQuery(sql).all(result);
+      for (let i = 0; i < result.length; i++) {
+        const info = extractDocPrefixAndDigitsLocal(result[i].number);
+        if (cleanPrefix && info.prefix && info.prefix !== cleanPrefix) {
+          continue;
+        }
+        if (info.digits) {
+          const val = parseInt(info.digits, 10);
+          if (!isNaN(val) && val > maxVal && info.digits.length <= 10) {
+            maxVal = val;
+          }
+        }
+      }
+    } catch (err) {
+      console.log("[GRAVY-HOOK] Error querying max consecutive from " + tableName + " for prefix '" + prefix + "': " + err);
+    }
+    return maxVal;
   }
 
   const record = e.record;
@@ -364,9 +417,11 @@ const resolutionHandler = (e) => {
       }
     }
 
-    // Si no se detectó como Nota y tiene turno POS, entonces es POS
+    // Si no se detectó como Nota y tiene turno POS, verificar si es Factura Electrónica o POS estándar
     if (docType === "FV" && posShiftId) {
-      docType = "POS";
+      if (!record.getBool("is_electronic")) {
+        docType = "POS";
+      }
     }
 
     // Verificar si existe alguna resolución DIAN activa para este docType y prefix
@@ -749,8 +804,56 @@ onBootstrap((e) => {
   }
 
   try {
+    function extractDocPrefixAndDigitsBoot(nStr) {
+      const s = String(nStr || "").trim();
+      let docPrefix = "";
+      let digitsPart = "";
+      if (s.includes("-")) {
+        const parts = s.split("-");
+        docPrefix = parts[0].toUpperCase();
+        digitsPart = parts[parts.length - 1];
+      } else {
+        const m = s.match(/^([A-Za-z]+)(\d+)$/);
+        if (m) {
+          docPrefix = m[1].toUpperCase();
+          digitsPart = m[2];
+        } else {
+          const mDigits = s.match(/(\d+)$/);
+          if (mDigits) digitsPart = mDigits[1];
+        }
+      }
+      return { prefix: docPrefix, digits: digitsPart };
+    }
+
     function fetchMaxConsecutiveBoot(tableName, prefix) {
-      return getMaxConsecutiveFromDB(tableName, prefix);
+      let maxVal = 0;
+      try {
+        const db = $app.nonconcurrentDB();
+        const cleanPrefix = String(prefix || "").trim().toUpperCase();
+        let sql = "";
+        if (cleanPrefix) {
+          sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + cleanPrefix + "-%' OR number LIKE '" + cleanPrefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
+        } else {
+          sql = "SELECT number FROM " + tableName + " WHERE number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number != ''";
+        }
+        const result = arrayOf(new DynamicModel({ number: "" }));
+        db.newQuery(sql).all(result);
+        for (let i = 0; i < result.length; i++) {
+          const info = extractDocPrefixAndDigitsBoot(result[i].number);
+          if (cleanPrefix && info.prefix && info.prefix !== cleanPrefix) {
+            continue;
+          }
+          if (info.digits) {
+            const val = parseInt(info.digits, 10);
+            if (!isNaN(val) && val > maxVal && info.digits.length <= 10) {
+              maxVal = val;
+            }
+          }
+        }
+      } catch (err) {
+        console.log("[GRAVY-RESOLUCIONES Bootstrap] Error querying " + tableName + " for prefix '" + prefix + "': " + err);
+      }
+      return maxVal;
     }
 
     const resolutions = $app.findRecordsByFilter("dian_resolutions", "active = true", "");

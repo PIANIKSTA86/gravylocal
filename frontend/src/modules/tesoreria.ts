@@ -278,6 +278,14 @@ function _initTesoTerceroAutocomplete(
   });
 }
 
+function _isPhModuleActive(): boolean {
+  if (typeof (window as any).hasModule === 'function') {
+    return (window as any).hasModule('copropiedades');
+  }
+  const em = (window as any).ENABLED_MODULES;
+  return Boolean(em?.has('copropiedades') || em?.has('full'));
+}
+
 let _tesoAllProperties: any[] = [];
 let _tesoCurrentOrigen: 'comercial' | 'ph' = 'comercial';
 let _tesoCurrentPropertyId: string | null = null;
@@ -342,18 +350,36 @@ function _initTesoPropertyAutocomplete(
 }
 
 (window as any)._changeTesoOrigen = async (origen: 'comercial' | 'ph') => {
+  if (origen === 'ph' && !_isPhModuleActive()) {
+    _showToast('La gestión de recaudos por copropiedad requiere la licencia activa del módulo.', 'warning');
+    origen = 'comercial';
+  }
   _tesoCurrentOrigen = origen;
   _tesoCurrentPropertyId = null;
   _tesoCurrentThirdParty = null;
   _tesoCurrentOpenItems = [];
+  _tesoConceptRows = [];
   
   _updateThirdPartyDetailsShow(null);
+
+  const btnCom = document.getElementById('teso-btn-origen-comercial');
+  const btnPh = document.getElementById('teso-btn-origen-ph');
+  if (btnCom && btnPh) {
+    if (origen === 'ph') {
+      btnPh.className = 'px-2 py-0.5 rounded font-bold bg-blue-600 text-white shadow-xs';
+      btnCom.className = 'px-2 py-0.5 rounded font-bold text-gray-600 hover:text-gray-900';
+    } else {
+      btnCom.className = 'px-2 py-0.5 rounded font-bold bg-blue-600 text-white shadow-xs';
+      btnPh.className = 'px-2 py-0.5 rounded font-bold text-gray-600 hover:text-gray-900';
+    }
+  }
   
   const lbl = document.getElementById('teso-lbl-tercero');
   const input = document.getElementById('modal-rc-search') as HTMLInputElement;
   const hidden = document.getElementById('modal-rc-hidden') as HTMLInputElement;
   const results = document.getElementById('modal-rc-results');
   const container = document.getElementById('teso-modal-items-container');
+
   
   if (input) { input.value = ''; input.oninput = null; input.onfocus = null; }
   if (hidden) hidden.value = '';
@@ -532,7 +558,7 @@ async function renderTesoListado(c: HTMLElement, tipo: 'RC' | 'CE') {
           <p class="text-sm text-gray-500">Historial de ${isRecaudo ? 'recaudos aplicados' : 'pagos emitidos'} en el período seleccionado.</p>
         </div>
         <div class="flex gap-2">
-          ${isRecaudo ? `<button class="btn btn-outline" onclick="window._openMassRCModal()"><i class="fas fa-file-upload mr-2"></i>Carga Masiva</button>` : ''}
+          ${isRecaudo && _isPhModuleActive() ? `<button class="btn btn-outline" onclick="window._openMassRCModal()"><i class="fas fa-file-upload mr-2"></i>Carga Masiva (PH)</button>` : ''}
           <button class="btn btn-primary" onclick="${btnAction}"><i class="fas fa-plus mr-2"></i>${btnText}</button>
         </div>
       </div>
@@ -780,9 +806,15 @@ async function _tesoVerDetalle(txId: string, tipo: string, autoprint = false) {
 
 
 
-// ─── MODALES TRANSACCIONALES ────────────────────────────────────────────────
 let _tesoCurrentOpenItems: any[] = [];
 let _tesoCurrentThirdParty: ThirdParty | null = null;
+let _tesoCurrentAnticipos: any[] = [];
+let _tesoConceptRows: any[] = [];
+let _tesoViewMode: 'facturas' | 'conceptos' = 'facturas';
+let _tesoCurrentTotalCartera: number = 0;
+let _tesoCurrentTotalAnticipo: number = 0;
+let _tesoCurrentSaldoNeto: number = 0;
+let _tesoLastIsRecaudo: boolean = true;
 
 interface TesoMixedRow {
   id: string;
@@ -1138,153 +1170,473 @@ async function _loadOpenItemsForModal(thirdPartyId: string, isRecaudo: boolean, 
     const allAnticipos = allDocs.filter(d => d.isAnticipo && d.saldo > 0.01);
     const totalAnticipo = allAnticipos.reduce((s, i) => s + i.saldo, 0);
 
-    const anticipoItems = cruzarAnticipos ? allAnticipos : [];
-
+    _tesoCurrentAnticipos = allAnticipos;
     _tesoCurrentOpenItems = allDocs
       .filter(d => !d.isAnticipo && Math.abs(d.saldo) > 0.01)
       .sort((a, b) => a.firstDate.localeCompare(b.firstDate));
 
     const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+    const saldoNeto = Math.max(0, totalCartera - totalAnticipo);
 
-    if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
-      c.innerHTML = `<div class="p-4 bg-gray-50 text-gray-500 rounded-lg border border-gray-200">El tercero no presenta saldos pendientes para esta operación.</div>`;
-      return;
+    _tesoCurrentTotalCartera = totalCartera;
+    _tesoCurrentTotalAnticipo = totalAnticipo;
+    _tesoCurrentSaldoNeto = saldoNeto;
+    _tesoLastIsRecaudo = isRecaudo;
+
+    // Cargar desglose de conceptos para PH si aplica
+    _tesoConceptRows = [];
+    if (_isPhModuleActive() && propertyId && _tesoCurrentOpenItems.length > 0) {
+      try {
+        const openNumbers = _tesoCurrentOpenItems.map(i => i.ref);
+        const invoices = await pb.listAll('ph_invoices', {
+          filter: `property_id="${propertyId}" && status!="voided"`,
+          sort: 'period'
+        });
+        const matchedInvs = invoices.filter((inv: any) => openNumbers.includes(inv.number));
+        if (matchedInvs.length > 0) {
+          const invFilter = matchedInvs.map((inv: any) => `invoice_id="${inv.id}"`).join(' || ');
+          const rawLines = await pb.listAll('ph_invoice_lines', {
+            filter: invFilter,
+            expand: 'concept_id,invoice_id',
+            sort: 'line_order'
+          });
+
+          for (const l of rawLines) {
+            const inv = l.expand?.invoice_id || matchedInvs.find((i: any) => i.id === l.invoice_id);
+            const openDoc = _tesoCurrentOpenItems.find(o => o.ref === inv?.number);
+            const invTotal = Number(inv?.total || 0);
+            const lineAmt = Number(l.amount || 0);
+            const invSaldo = openDoc ? openDoc.saldo : invTotal;
+            const factor = invTotal > 0 ? (invSaldo / invTotal) : 1;
+            const lineSaldo = Math.round(lineAmt * factor * 100) / 100;
+            if (lineSaldo <= 0.01) continue;
+
+            const cName = l.expand?.concept_id?.name || l.description || 'Concepto';
+            const cCode = String(l.expand?.concept_id?.code || '').trim().toUpperCase() || 'GEN';
+
+            _tesoConceptRows.push({
+              key: `concept|${l.id}|${inv?.number}`,
+              lineId: l.id,
+              invoiceNumber: inv?.number || '',
+              period: inv?.period || '',
+              conceptId: l.concept_id || '',
+              conceptCode: cCode,
+              conceptName: cName,
+              description: l.description || cName,
+              amount: lineAmt,
+              saldo: lineSaldo,
+              accountId: openDoc?.accountId || ''
+            });
+          }
+        }
+      } catch (errLines) {
+        console.warn('[TESO] Aviso cargando conceptos de facturas PH:', errLines);
+        _tesoConceptRows = [];
+      }
     }
 
-    // Banner de saldo a favor (anticipo)
-    const cuentaAnticiposLbl = isRecaudo ? 'Cuenta 28 (Pasivo Anticipos de Clientes)' : 'Cuenta 1330 (Activo Anticipos a Proveedores)';
-    const anticipoItemsHtml = allAnticipos.map(i => `
-      <div class="flex justify-between items-center text-xs py-1 border-t ${isRecaudo ? 'border-emerald-200/60' : 'border-amber-200/60'} mt-1">
-        <span><i class="fas fa-receipt ${isRecaudo ? 'text-emerald-600' : 'text-amber-600'} mr-1.5"></i><strong>${_esc(i.ref)}</strong> <span class="${isRecaudo ? 'text-emerald-700' : 'text-amber-700'} font-medium">(${_esc(i.accountCode || (isRecaudo ? '28' : '1330'))} — ${_esc(i.accountName || 'Anticipos')})</span></span>
-        <span class="font-bold ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'}">${_fmt(i.saldo)}</span>
-      </div>
-    `).join('');
+    _renderTesoOpenItemsGrid(isRecaudo);
 
-    const anticipoBanner = totalAnticipo > 0.01 ? `
-      <div class="p-3.5 rounded-xl mb-3 shadow-xs transition-all" style="background:${isRecaudo ? '#ECFDF5' : '#FFFBEB'};border:1.5px solid ${isRecaudo ? '#6EE7B7' : '#FCD34D'}">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <div class="${isRecaudo ? 'bg-emerald-600' : 'bg-amber-600'} text-white rounded-full w-9 h-9 flex items-center justify-center flex-shrink-0 shadow-sm">
-              <i class="fas ${isRecaudo ? 'fa-piggy-bank' : 'fa-hand-holding-dollar'} text-sm"></i>
-            </div>
-            <div class="flex-1">
-              <p class="font-bold ${isRecaudo ? 'text-emerald-950' : 'text-amber-950'} text-sm flex items-center gap-2">
-                <span>💡 Saldo a Favor en Anticipos: <strong class="text-base">${_fmt(totalAnticipo)}</strong></span>
-              </p>
-              <p class="text-xs ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'} mt-0.5">
-                El tercero cuenta con <strong>${allAnticipos.length}</strong> registro(s) a su favor en ${cuentaAnticiposLbl}.
-              </p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border ${isRecaudo ? 'border-emerald-300' : 'border-amber-300'} shadow-2xs">
-            <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-bold ${isRecaudo ? 'text-emerald-900' : 'text-amber-900'}">
-              <input type="checkbox" id="teso-modal-banner-cruzar-anticipos" ${cruzarAnticipos ? 'checked' : ''} class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500" onchange="window._handleToggleBannerCruzarAnticipos(this.checked)">
-              Cruzar / Aplicar Anticipo
-            </label>
-          </div>
-        </div>
-        ${cruzarAnticipos ? `
-          <div class="mt-2 pt-2 border-t ${isRecaudo ? 'border-emerald-200/80' : 'border-amber-200/80'}">
-            <div class="text-[10px] font-bold ${isRecaudo ? 'text-emerald-800' : 'text-amber-900'} uppercase tracking-wider mb-1">Desglose de Anticipos a Cruzar:</div>
-            ${anticipoItemsHtml}
-          </div>
-        ` : `
-          <div class="mt-2 pt-1 text-[11px] ${isRecaudo ? 'text-emerald-700' : 'text-amber-800'} italic">
-            ℹ️ El anticipo <strong>NO</strong> será aplicado a esta transacción. Se liquidará únicamente con los medios de pago ingresados.
-          </div>
-        `}
-      </div>
-    ` : '';
-
-    const noCartera = _tesoCurrentOpenItems.length === 0 ? `
-      <div class="p-3 text-center text-gray-500 text-sm">
-        <i class="fas fa-check-circle text-green-500 mr-2"></i>Cartera al día. El pago se registrará como anticipo.
-      </div>
-    ` : '';
-
-    const isRecaudoCtx = isRecaudo;
-    c.innerHTML = `
-      ${anticipoBanner}
-      ${noCartera}
-      ${_tesoCurrentOpenItems.length > 0 ? `
-      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs" style="max-height:280px;display:flex;flex-direction:column;background:#fff;">
-        <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
-          <colgroup>
-            <col style="width:38%">
-            <col style="width:27%">
-            <col style="width:17.5%">
-            <col style="width:17.5%">
-          </colgroup>
-          <thead style="position:sticky;top:0;z-index:2;background:#F8FAFC;">
-            <tr style="border-bottom:2px solid #E2E8F0;">
-              <th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Documento / Fecha</th>
-              <th style="padding:6px 10px;text-align:left;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Cuenta Contable</th>
-              <th style="padding:6px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Saldo Pendiente</th>
-              <th style="padding:6px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Abono ($)</th>
-            </tr>
-          </thead>
-        </table>
-        <div style="overflow-y:auto;flex:1;">
-        <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
-          <colgroup>
-            <col style="width:38%">
-            <col style="width:27%">
-            <col style="width:17.5%">
-            <col style="width:17.5%">
-          </colgroup>
-          <tbody>
-            ${_tesoCurrentOpenItems.map(i => `
-              <tr style="border-bottom:1px solid #F1F5F9;" onmouseover="this.style.background='#F0F9FF'" onmouseout="this.style.background=''">
-                <td style="padding:5px 10px;vertical-align:middle;">
-                  <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;">
-                    <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-                      <i class="fas fa-file-invoice text-blue-600" style="font-size:13px;"></i>
-                      <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13.5px;font-weight:900;background:#EFF6FF;color:#1E3A8A;padding:2px 8px;border-radius:5px;border:1.5px solid #93C5FD;letter-spacing:-0.02em;">${_esc(i.ref)}</span>
-                    </div>
-                    <span style="font-size:11px;font-weight:600;color:#64748B;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;">
-                      <i class="far fa-calendar-alt text-gray-400" style="font-size:10px;"></i>${_esc(i.firstDate.slice(0,10))}
-                    </span>
-                    ${_tesoCurrentOrigen === 'ph' && i.description ? `<span style="font-size:11px;font-weight:700;color:#1E3A8A;overflow:hidden;text-overflow:ellipsis;" title="${_esc(i.description)}">· ${_esc(i.description)}</span>` : ''}
-                  </div>
-                </td>
-                <td style="padding:5px 10px;vertical-align:middle;">
-                  <div style="font-size:11px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;" title="${_esc(i.accountCode)} - ${_esc(i.accountName)}">
-                    <span style="font-family:monospace;font-size:11px;color:#64748B;font-weight:800;flex-shrink:0;">${_esc(i.accountCode || '')}</span>
-                    <span style="color:#1E293B;font-weight:600;overflow:hidden;text-overflow:ellipsis;">${_esc(i.accountName)}</span>
-                  </div>
-                </td>
-                <td style="padding:5px 10px;text-align:right;vertical-align:middle;white-space:nowrap;">
-                  <span style="font-size:12.5px;font-weight:900;color:${i.saldo < 0 ? '#D97706' : (isRecaudoCtx ? '#DC2626' : '#2563EB')};">${_fmt(i.saldo)}</span>
-                </td>
-                <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
-                  <input type="text" class="teso-abono-input"
-                    style="width:100%;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:2px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
-                    data-key="${i.key}" data-ref="${i.ref}" data-account="${i.accountId}" data-max="${i.saldo}"
-                    placeholder="0" disabled oninput="window._handleAbonoInput(this)">
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-          <tfoot style="background:#F8FAFC;border-top:2px solid #E2E8F0;">
-            <tr>
-              <td colspan="2" style="padding:6px 10px;text-align:right;font-weight:800;font-size:11px;color:#334155;">
-                TOTAL CARTERA PENDIENTE:
-              </td>
-              <td style="padding:6px 10px;text-align:right;font-weight:900;font-size:12.5px;color:${totalCartera < 0 ? '#D97706' : '#DC2626'};">
-                ${_fmt(totalCartera)}
-              </td>
-              <td style="padding:6px 10px;text-align:right;font-weight:900;font-size:12.5px;color:#1E40AF;" id="teso-modal-total-abonos">$0</td>
-            </tr>
-          </tfoot>
-        </table>
-        </div>
-      </div>
-      ` : ''}
-    `;
+    // Sugerencia inteligente de monto: Si hay saldo neto positivo con anticipo, sugerir el saldo neto
+    const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+    if (montoEl && !montoEl.value) {
+      const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+      const defaultMonto = (totalAnticipo > 0.01 && saldoNeto > 0.01) ? saldoNeto : totalCartera;
+      if (defaultMonto > 0) {
+        montoEl.value = defaultMonto.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
+      }
+    }
   } catch (err: any) {
     c.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg border border-red-200"><i class="fas fa-exclamation-triangle mr-2"></i> Error: ${err.message}</div>`;
   }
 }
+
+// ─── RENDERIZADOR AVANZADO DE CARTERA Y CONCEPTOS ───────────────────────────
+function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
+  const c = document.getElementById('teso-modal-items-container');
+  if (!c) return;
+
+  const totalCartera = _tesoCurrentTotalCartera;
+  const totalAnticipo = _tesoCurrentTotalAnticipo;
+  const saldoNeto = _tesoCurrentSaldoNeto;
+  const cruzarAnticipos = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked ?? false;
+  const isRecaudoCtx = isRecaudo;
+
+  if (_tesoCurrentOpenItems.length === 0 && totalAnticipo <= 0.01) {
+    c.innerHTML = `<div class="p-5 text-center text-gray-500 bg-gray-50 rounded-xl border border-gray-200 w-full">
+      <i class="fas fa-check-circle text-emerald-500 text-lg mr-2"></i>El tercero o inmueble no presenta cartera pendiente ni saldos a favor.
+    </div>`;
+    return;
+  }
+
+  // 1. CARDS DE RESUMEN FINANCIERO SUPERIOR (KPIs)
+  const kpiCardsHtml = `
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-3 w-full">
+      <!-- Card 1: Total Facturas Vivas -->
+      <div class="bg-blue-50/60 p-2.5 rounded-xl border border-blue-200 shadow-2xs flex items-center justify-between">
+        <div>
+          <div class="text-[10px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fas fa-file-invoice text-blue-600"></i> Facturas Vivas (Bruto)
+          </div>
+          <div class="text-base font-black text-blue-950 mt-0.5">${_fmt(totalCartera)}</div>
+          <div class="text-[10px] text-blue-700 font-medium">${_tesoCurrentOpenItems.length} factura(s) pendiente(s)</div>
+        </div>
+        <button type="button" class="btn btn-xs bg-white text-blue-700 hover:bg-blue-100 border border-blue-300 font-bold shadow-2xs" onclick="window._setTesoMontoQuick(${totalCartera})" title="Cargar total bruto de facturas">
+          Pagar Bruto
+        </button>
+      </div>
+
+      <!-- Card 2: Saldo a Favor / Anticipo -->
+      <div class="p-2.5 rounded-xl border shadow-2xs flex items-center justify-between ${totalAnticipo > 0.01 ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950' : 'bg-gray-50/60 border-gray-200 text-gray-400'}">
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-gray-400'}">
+            <i class="fas fa-piggy-bank ${totalAnticipo > 0.01 ? 'text-emerald-600' : 'text-gray-400'}"></i> Saldo a Favor (Anticipos)
+          </div>
+          <div class="text-base font-black ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-gray-400'} mt-0.5">
+            ${_fmt(totalAnticipo)}
+          </div>
+          <div class="text-[10px] ${totalAnticipo > 0.01 ? 'text-emerald-700 font-medium' : 'text-gray-400'}">
+            ${totalAnticipo > 0.01 ? `${_tesoCurrentAnticipos.length} registro(s) disponible(s)` : 'Sin anticipos'}
+          </div>
+        </div>
+        ${totalAnticipo > 0.01 ? `
+          <label class="flex items-center gap-1.5 cursor-pointer text-[10.5px] font-bold bg-white px-2.5 py-1 rounded-lg border border-emerald-300 text-emerald-800 shadow-2xs hover:bg-emerald-50" title="Activa o desactiva la aplicación del saldo a favor">
+            <input type="checkbox" id="teso-modal-banner-cruzar-anticipos" ${cruzarAnticipos ? 'checked' : ''} class="rounded text-emerald-600 focus:ring-emerald-500 w-3.5 h-3.5" onchange="window._handleToggleBannerCruzarAnticipos(this.checked)">
+            Aplicar
+          </label>
+        ` : ''}
+      </div>
+
+      <!-- Card 3: Saldo Neto Exigible -->
+      <div class="bg-gradient-to-br from-indigo-50 to-purple-50/70 p-2.5 rounded-xl border-2 border-indigo-300 shadow-xs flex items-center justify-between">
+        <div>
+          <div class="text-[10px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fas fa-scale-balanced text-indigo-600"></i> Saldo Neto Exigible
+          </div>
+          <div class="text-lg font-black text-indigo-950 mt-0.5">${_fmt(saldoNeto)}</div>
+          <div class="text-[10px] text-indigo-700 font-semibold">Total a recaudar tras deducir anticipo</div>
+        </div>
+        <button type="button" class="btn btn-xs bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-2xs" onclick="window._setTesoMontoQuick(${saldoNeto})" title="Cargar saldo neto exigible en el monto del recaudo">
+          <i class="fas fa-bolt mr-1"></i>Aplicar Neto
+        </button>
+      </div>
+    </div>
+  `;
+
+  // 2. BARRA DE SWITCH VISTA (Por Factura vs Por Concepto) + ACCIONES
+  const viewSwitcherHtml = `
+    <div class="flex flex-wrap items-center justify-between gap-2 p-2 bg-gray-50 border border-gray-200 rounded-xl mb-2 w-full">
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Modo de Desglose:</span>
+        <div class="inline-flex rounded-lg border border-gray-300 bg-white p-0.5 shadow-2xs">
+          <button type="button" class="px-3 py-1 rounded-md text-xs font-bold transition-all ${_tesoViewMode === 'facturas' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}" onclick="window._setTesoViewMode('facturas')">
+            <i class="fas fa-file-invoice mr-1.5"></i>Por Facturas (${_tesoCurrentOpenItems.length})
+          </button>
+          ${_isPhModuleActive() && _tesoConceptRows.length > 0 ? `
+            <button type="button" class="px-3 py-1 rounded-md text-xs font-bold transition-all ${_tesoViewMode === 'conceptos' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}" onclick="window._setTesoViewMode('conceptos')">
+              <i class="fas fa-tags mr-1.5"></i>Por Conceptos (${_tesoConceptRows.length})
+            </button>
+          ` : ''}
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" class="btn btn-xs bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 font-semibold" onclick="window._clearTesoAbonos()">
+          <i class="fas fa-eraser mr-1"></i>Limpiar Abonos
+        </button>
+      </div>
+    </div>
+  `;
+
+  // 3. TABLA CONTENEDORA
+  let tableContentHtml = '';
+
+  if (_tesoViewMode === 'facturas') {
+    // ── VISTA POR FACTURAS ──
+    const anticipoRowHtml = totalAnticipo > 0.01 ? `
+      <tr style="background:#ECFDF5;border-bottom:1.5px solid #A7F3D0;">
+        <td style="padding:7px 10px;vertical-align:middle;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:900;background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:5px;border:1.5px solid #6EE7B7;">
+              <i class="fas fa-piggy-bank mr-1 text-emerald-600"></i>${_esc(_tesoCurrentAnticipos[0]?.ref || 'ANT')}
+            </span>
+            <span style="font-size:11px;font-weight:800;color:#065F46;text-transform:uppercase;">Saldo a Favor / Anticipo Disponible</span>
+          </div>
+        </td>
+        <td style="padding:7px 10px;vertical-align:middle;">
+          <div style="font-size:11px;font-weight:600;color:#047857;display:flex;align-items:center;gap:4px;">
+            <span style="font-family:monospace;font-weight:800;">${_esc(_tesoCurrentAnticipos[0]?.accountCode || '13459501')}</span>
+            <span>— ${_esc(_tesoCurrentAnticipos[0]?.accountName || 'Anticipos Cartera PH')}</span>
+          </div>
+        </td>
+        <td style="padding:7px 10px;text-align:right;vertical-align:middle;white-space:nowrap;">
+          <span style="font-size:13px;font-weight:900;color:#059669;">-${_fmt(totalAnticipo)}</span>
+        </td>
+        <td style="padding:5px 8px;text-align:right;vertical-align:middle;">
+          <span class="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-2 py-0.5 rounded">
+            <i class="fas fa-check-circle text-emerald-600 text-xs"></i>Crédito a Favor
+          </span>
+        </td>
+      </tr>
+    ` : '';
+
+    const invoicesRowsHtml = _tesoCurrentOpenItems.map(i => `
+      <tr style="border-bottom:1px solid #F1F5F9;" onmouseover="this.style.background='#F0F9FF'" onmouseout="this.style.background=''">
+        <td style="padding:6px 10px;vertical-align:middle;">
+          <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+              <i class="fas fa-file-invoice text-blue-600" style="font-size:13px;"></i>
+              <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;font-weight:900;background:#EFF6FF;color:#1E3A8A;padding:2px 8px;border-radius:5px;border:1.5px solid #93C5FD;letter-spacing:-0.02em;">${_esc(i.ref)}</span>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:#64748B;flex-shrink:0;display:inline-flex;align-items:center;gap:3px;">
+              <i class="far fa-calendar-alt text-gray-400" style="font-size:10px;"></i>${_esc(i.firstDate.slice(0,10))}
+            </span>
+            ${_tesoCurrentOrigen === 'ph' && i.description ? `<span style="font-size:11px;font-weight:700;color:#1E3A8A;overflow:hidden;text-overflow:ellipsis;" title="${_esc(i.description)}">· ${_esc(i.description)}</span>` : ''}
+          </div>
+        </td>
+        <td style="padding:6px 10px;vertical-align:middle;">
+          <div style="font-size:11px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:6px;" title="${_esc(i.accountCode)} - ${_esc(i.accountName)}">
+            <span style="font-family:monospace;font-size:11px;color:#64748B;font-weight:800;flex-shrink:0;">${_esc(i.accountCode || '')}</span>
+            <span style="color:#1E293B;font-weight:600;overflow:hidden;text-overflow:ellipsis;">${_esc(i.accountName)}</span>
+          </div>
+        </td>
+        <td style="padding:6px 10px;text-align:right;vertical-align:middle;white-space:nowrap;">
+          <span style="font-size:13px;font-weight:900;color:${i.saldo < 0 ? '#D97706' : (isRecaudoCtx ? '#DC2626' : '#2563EB')};">${_fmt(i.saldo)}</span>
+        </td>
+        <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
+          <input type="text" class="teso-abono-input"
+            style="width:100%;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
+            data-key="${i.key}" data-ref="${i.ref}" data-account="${i.accountId}" data-description="Abono a ${i.ref}" data-max="${i.saldo}"
+            placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+        </td>
+      </tr>
+    `).join('');
+
+    tableContentHtml = `
+      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="max-height:380px;display:flex;flex-direction:column;background:#fff;">
+        <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
+          <colgroup>
+            <col style="width:38%">
+            <col style="width:26%">
+            <col style="width:18%">
+            <col style="width:18%">
+          </colgroup>
+          <thead style="position:sticky;top:0;z-index:2;background:#F8FAFC;">
+            <tr style="border-bottom:2px solid #E2E8F0;">
+              <th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Documento / Fecha</th>
+              <th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Cuenta Contable</th>
+              <th style="padding:7px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Saldo Pendiente</th>
+              <th style="padding:7px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Abono ($)</th>
+            </tr>
+          </thead>
+        </table>
+        <div style="overflow-y:auto;flex:1;">
+          <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
+            <colgroup>
+              <col style="width:38%">
+              <col style="width:26%">
+              <col style="width:18%">
+              <col style="width:18%">
+            </colgroup>
+            <tbody>
+              ${anticipoRowHtml}
+              ${invoicesRowsHtml}
+            </tbody>
+            <tfoot style="background:#F8FAFC;border-top:2px solid #E2E8F0;position:sticky;bottom:0;z-index:1;">
+              <tr>
+                <td colspan="2" style="padding:7px 10px;text-align:right;font-weight:800;font-size:11px;color:#334155;">
+                  SUBTOTAL FACTURAS: ${_fmt(totalCartera)} ${totalAnticipo > 0 ? ` · <span class="text-emerald-700">ANTICIPOS: -${_fmt(totalAnticipo)}</span>` : ''} · <span class="text-indigo-900 font-black">NETO: ${_fmt(saldoNeto)}</span>
+                </td>
+                <td style="padding:7px 10px;text-align:right;font-weight:900;font-size:13px;color:${saldoNeto > 0 ? '#DC2626' : '#059669'};">
+                  ${_fmt(saldoNeto)}
+                </td>
+                <td style="padding:7px 10px;text-align:right;font-weight:900;font-size:13px;color:#1E40AF;" id="teso-modal-total-abonos">$0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  } else {
+    // ── VISTA POR CONCEPTOS (Agrupada por Concepto de Facturación) ──
+    const conceptsMap = new Map<string, any[]>();
+    for (const cRow of _tesoConceptRows) {
+      const cKey = cRow.conceptCode || cRow.conceptName;
+      if (!conceptsMap.has(cKey)) conceptsMap.set(cKey, []);
+      conceptsMap.get(cKey)!.push(cRow);
+    }
+
+    const conceptGroupsHtml = Array.from(conceptsMap.entries()).map(([cCode, rows]) => {
+      const groupSubtotal = rows.reduce((s, r) => s + r.saldo, 0);
+      const isMora = cCode.toUpperCase().includes('MORA');
+      const headerColor = isMora ? '#FEF3C7' : '#EFF6FF';
+      const borderColor = isMora ? '#FCD34D' : '#BFDBFE';
+      const textColor = isMora ? '#92400E' : '#1E40AF';
+      const iconClass = isMora ? 'fa-triangle-exclamation text-amber-600' : 'fa-building text-blue-600';
+      const conceptTitle = rows[0]?.conceptName || cCode;
+
+      const linesHtml = rows.map(r => `
+        <tr style="border-bottom:1px solid #F1F5F9;" onmouseover="this.style.background='#F0FDF4'" onmouseout="this.style.background=''">
+          <td style="padding:5px 10px;padding-left:24px;vertical-align:middle;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-family:monospace;font-size:11.5px;font-weight:800;color:#1E3A8A;background:#EFF6FF;padding:1px 6px;border-radius:4px;border:1px solid #BFDBFE;">${_esc(r.invoiceNumber)}</span>
+              <span style="font-size:11px;color:#64748B;font-weight:600;">Período ${_esc(r.period)}</span>
+              <span style="font-size:11px;color:#475569;">· ${_esc(r.description)}</span>
+            </div>
+          </td>
+          <td style="padding:5px 10px;vertical-align:middle;text-align:right;">
+            <span style="font-size:12px;font-weight:800;color:#334155;">${_fmt(r.saldo)}</span>
+          </td>
+          <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
+            <input type="text" class="teso-abono-input"
+              style="width:100%;text-align:right;font-size:12px;font-weight:800;border:1.5px solid #CBD5E1;border-radius:5px;padding:3px 6px;background:#FFFFFF;color:#0F172A;box-shadow:0 1px 2px rgba(0,0,0,0.03);"
+              data-key="${r.key}" data-ref="${r.invoiceNumber}" data-account="${r.accountId}" data-description="Abono a ${r.invoiceNumber} (${r.conceptName})" data-max="${r.saldo}"
+              placeholder="0" disabled oninput="window._handleAbonoInput(this)">
+          </td>
+        </tr>
+      `).join('');
+
+      return `
+        <!-- Grupo de Concepto: ${conceptTitle} -->
+        <tr style="background:${headerColor};border-top:1.5px solid ${borderColor};border-bottom:1.5px solid ${borderColor};">
+          <td style="padding:6px 10px;vertical-align:middle;">
+            <div style="display:flex;align-items:center;justify-content:between;">
+              <span style="font-size:11.5px;font-weight:900;color:${textColor};display:flex;align-items:center;gap:6px;">
+                <i class="fas ${iconClass}"></i>${_esc(conceptTitle.toUpperCase())}
+                <span style="font-size:10px;background:#fff;padding:1px 6px;border-radius:4px;border:1px solid ${borderColor};font-weight:800;">${rows.length} cuota(s)</span>
+              </span>
+            </div>
+          </td>
+          <td style="padding:6px 10px;text-align:right;vertical-align:middle;">
+            <span style="font-size:12.5px;font-weight:900;color:${textColor};">${_fmt(groupSubtotal)}</span>
+          </td>
+          <td style="padding:4px 8px;text-align:right;vertical-align:middle;">
+            <button type="button" class="btn btn-xs bg-white text-gray-700 hover:bg-gray-100 border border-gray-300 font-bold shadow-2xs" onclick="window._setTesoConceptQuickAbono('${_esc(cCode)}')" title="Abonar la totalidad de este concepto">
+              Pagar Concepto
+            </button>
+          </td>
+        </tr>
+        ${linesHtml}
+      `;
+    }).join('');
+
+    tableContentHtml = `
+      <div class="rounded-xl border border-gray-200 overflow-hidden shadow-xs w-full" style="max-height:380px;display:flex;flex-direction:column;background:#fff;">
+        <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
+          <colgroup>
+            <col style="width:58%">
+            <col style="width:22%">
+            <col style="width:20%">
+          </colgroup>
+          <thead style="position:sticky;top:0;z-index:2;background:#F8FAFC;">
+            <tr style="border-bottom:2px solid #E2E8F0;">
+              <th style="padding:7px 10px;text-align:left;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Concepto / Factura / Período</th>
+              <th style="padding:7px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Saldo Concepto</th>
+              <th style="padding:7px 10px;text-align:right;font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Abono ($)</th>
+            </tr>
+          </thead>
+        </table>
+        <div style="overflow-y:auto;flex:1;">
+          <table class="w-full text-xs" style="border-collapse:collapse;table-layout:fixed;">
+            <colgroup>
+              <col style="width:58%">
+              <col style="width:22%">
+              <col style="width:20%">
+            </colgroup>
+            <tbody>
+              ${conceptGroupsHtml}
+            </tbody>
+            <tfoot style="background:#F8FAFC;border-top:2px solid #E2E8F0;position:sticky;bottom:0;z-index:1;">
+              <tr>
+                <td style="padding:7px 10px;text-align:right;font-weight:800;font-size:11px;color:#334155;">
+                  TOTAL CARTERA POR CONCEPTOS: ${_fmt(totalCartera)}
+                </td>
+                <td style="padding:7px 10px;text-align:right;font-weight:900;font-size:13px;color:#DC2626;">
+                  ${_fmt(totalCartera)}
+                </td>
+                <td style="padding:7px 10px;text-align:right;font-weight:900;font-size:13px;color:#1E40AF;" id="teso-modal-total-abonos">$0</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  c.innerHTML = `
+    ${kpiCardsHtml}
+    ${viewSwitcherHtml}
+    ${tableContentHtml}
+  `;
+
+  // Sincronizar estado de inputs (si modo manual está activo)
+  const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
+  document.querySelectorAll('.teso-abono-input').forEach(el => {
+    (el as HTMLInputElement).disabled = !isManual;
+  });
+
+  _updateMontoIndicator();
+}
+
+// ─── CONTROLADORES Y ACCIONES DE VISTA DE CARTERA ───────────────────────────
+(window as any)._setTesoViewMode = (mode: 'facturas' | 'conceptos') => {
+  _tesoViewMode = mode;
+  _renderTesoOpenItemsGrid(_tesoLastIsRecaudo);
+};
+
+(window as any)._setTesoMontoQuick = (amount: number) => {
+  const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+  if (!montoEl) return;
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+  const target = Math.max(0, Math.round(amount * 100) / 100);
+  montoEl.value = target.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces });
+  (window as any)._handleMontoInput(montoEl);
+};
+
+(window as any)._setTesoConceptQuickAbono = (conceptCode: string) => {
+  // Poner modo manual para permitir edición por concepto
+  const modoSelect = document.getElementById('teso-modal-modo') as HTMLSelectElement | null;
+  if (modoSelect) modoSelect.value = 'manual';
+  _toggleModalManualMode();
+
+  const cTarget = String(conceptCode || '').trim().toUpperCase();
+  const decPlaces = (window as any).getDecimalPlaces ? (window as any).getDecimalPlaces() : 2;
+  let totalAbonado = 0;
+
+  document.querySelectorAll('.teso-abono-input').forEach(el => {
+    const inp = el as HTMLInputElement;
+    const desc = String(inp.dataset.description || '').toUpperCase();
+    const key = String(inp.dataset.key || '').toUpperCase();
+    const matches = desc.includes(cTarget) || key.includes(cTarget);
+    if (matches) {
+      const max = Number(inp.dataset.max || 0);
+      inp.value = max > 0 ? max.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+      totalAbonado += max;
+    } else {
+      inp.value = '';
+    }
+  });
+
+  const totEl = document.getElementById('teso-modal-total-abonos');
+  if (totEl) totEl.textContent = _fmt(totalAbonado);
+
+  const montoInput = document.getElementById('teso-modal-monto') as HTMLInputElement | null;
+  if (montoInput) {
+    montoInput.value = totalAbonado > 0 ? totalAbonado.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decPlaces }) : '';
+  }
+
+  _updateMontoIndicator();
+  _recalculateTesoNeto();
+};
+
+(window as any)._clearTesoAbonos = () => {
+  document.querySelectorAll('.teso-abono-input').forEach(el => {
+    (el as HTMLInputElement).value = '';
+  });
+  const totEl = document.getElementById('teso-modal-total-abonos');
+  if (totEl) totEl.textContent = '$0';
+  _updateMontoIndicator();
+  _recalculateTesoNeto();
+};
 
 function _toggleModalManualMode() {
   const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement).value === 'manual';
@@ -1319,14 +1671,14 @@ function _toggleModalManualMode() {
   }
 }
 
-// ─── INDICADOR DE DIFERENCIA (Opción 1) ────────────────────────────────────
+// ─── INDICADOR DE DIFERENCIA (Actualizado para Saldo Neto y Anticipos) ──────
 function _updateMontoIndicator() {
   const montoEl = document.getElementById('teso-modal-monto') as HTMLInputElement;
   const indicatorEl = document.getElementById('teso-monto-indicator');
   if (!montoEl || !indicatorEl) return;
 
   const monto = parseFormattedNumber(montoEl.value || '0');
-  const totalCartera = _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
+  const totalCartera = _tesoCurrentTotalCartera || _tesoCurrentOpenItems.reduce((s, i) => s + i.saldo, 0);
 
   if (monto <= 0 || totalCartera <= 0) {
     indicatorEl.innerHTML = '';
@@ -1348,16 +1700,18 @@ function _updateMontoIndicator() {
   }
 
   const isManual = (document.getElementById('teso-modal-modo') as HTMLSelectElement | null)?.value === 'manual';
-  let targetCartera = totalCartera;
+  const cruzarAnticipos = (document.getElementById('teso-modal-cruzar-anticipos') as HTMLInputElement)?.checked || false;
+  const totalAnticipo = _tesoCurrentTotalAnticipo;
+  const saldoNeto = _tesoCurrentSaldoNeto;
+
+  let targetCartera = (cruzarAnticipos && totalAnticipo > 0.01) ? saldoNeto : totalCartera;
   let activeDocsCount = 0;
+
   if (isManual) {
     const activeInputs = Array.from(document.querySelectorAll('.teso-abono-input')).filter(el => parseFormattedNumber((el as HTMLInputElement).value || '0') > 0) as HTMLInputElement[];
     activeDocsCount = activeInputs.length;
-    if (activeInputs.length > 0 && activeInputs.length < _tesoCurrentOpenItems.length) {
-      targetCartera = activeInputs.reduce((sum, inp) => {
-        const item = _tesoCurrentOpenItems.find(i => i.key === inp.dataset.key || i.ref === inp.dataset.ref);
-        return sum + (item ? item.saldo : parseFormattedNumber(inp.value || '0'));
-      }, 0);
+    if (activeInputs.length > 0) {
+      targetCartera = activeInputs.reduce((sum, inp) => sum + parseFormattedNumber(inp.value || '0'), 0);
     }
   }
 
@@ -1365,21 +1719,27 @@ function _updateMontoIndicator() {
   const absDiff = Math.abs(diff);
 
   if (absDiff < 0.01) {
-    const isSubset = isManual && activeDocsCount > 0 && activeDocsCount < _tesoCurrentOpenItems.length;
-    indicatorEl.innerHTML = `
-      <span class="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-        <i class="fas fa-check-circle"></i> ${isSubset ? 'Cubre exactamente factura(s) seleccionada(s)' : 'Cubre exactamente la cartera'} ${hasAjustePeso && ajusteAmt > 0 ? '(con ajuste al peso)' : ''}
-      </span>
-      ${isSubset ? `<span class="text-[11px] text-gray-500 ml-1">(Otras facturas pendientes: ${_fmt(totalCartera - targetCartera)})</span>` : ''}`;
+    if (cruzarAnticipos && totalAnticipo > 0.01 && !isManual) {
+      indicatorEl.innerHTML = `
+        <span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+          <i class="fas fa-check-circle text-emerald-600"></i> Cubre exactamente el Saldo Neto (${_fmt(saldoNeto)}) aplicando el saldo a favor (${_fmt(totalAnticipo)})
+        </span>`;
+    } else {
+      const isSubset = isManual && activeDocsCount > 0 && activeDocsCount < _tesoCurrentOpenItems.length;
+      indicatorEl.innerHTML = `
+        <span class="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+          <i class="fas fa-check-circle"></i> ${isSubset ? 'Cubre exactamente los conceptos seleccionados' : 'Cubre exactamente la cartera'} ${hasAjustePeso && ajusteAmt > 0 ? '(con ajuste al peso)' : ''}
+        </span>
+        ${isSubset ? `<span class="text-[11px] text-gray-500 ml-1">(Pendiente restante: ${_fmt(totalCartera - targetCartera)})</span>` : ''}`;
+    }
   } else if (diff < 0) {
     indicatorEl.innerHTML = `
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-        <i class="fas fa-exclamation-triangle"></i> ${isRecaudo ? 'Pago parcial &mdash; queda' : 'Abono parcial &mdash; queda'} ${_fmt(absDiff)} pendiente
+        <i class="fas fa-exclamation-triangle"></i> ${isRecaudo ? 'Pago parcial &mdash; queda' : 'Abono parcial &mdash; queda'} ${_fmt(absDiff)} pendiente ${cruzarAnticipos && totalAnticipo > 0 ? `(Saldo neto exigible: ${_fmt(saldoNeto)})` : ''}
       </span>`;
-  } else {
     indicatorEl.innerHTML = `
       <span class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-        <i class="fas fa-piggy-bank"></i> Excedente ${_fmt(absDiff)} &rarr; se registrará como anticipo
+        <i class="fas fa-plus-circle"></i> Excedente de ${_fmt(absDiff)} registrado como nuevo anticipo a favor
       </span>`;
   }
 }
@@ -2569,7 +2929,19 @@ async function openRecaudoModal() {
         <!-- Fila 2: Contribuyente, Forma de Pago, Método/Banco, Clasificador -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div class="form-group mb-0">
-            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1" id="teso-lbl-tercero">Contribuyente</label>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider" id="teso-lbl-tercero">Contribuyente</label>
+              ${_isPhModuleActive() ? `
+                <div class="inline-flex rounded border border-gray-300 bg-gray-100 p-0.5 text-[10px]">
+                  <button type="button" id="teso-btn-origen-comercial" class="px-2 py-0.5 rounded font-bold transition-all ${_tesoCurrentOrigen === 'comercial' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}" onclick="window._changeTesoOrigen('comercial')">
+                    Tercero
+                  </button>
+                  <button type="button" id="teso-btn-origen-ph" class="px-2 py-0.5 rounded font-bold transition-all ${_tesoCurrentOrigen === 'ph' ? 'bg-blue-600 text-white shadow-xs' : 'text-gray-600 hover:text-gray-900'}" onclick="window._changeTesoOrigen('ph')">
+                    Unidad PH
+                  </button>
+                </div>
+              ` : ''}
+            </div>
             <div id="modal-rc-wrap" class="relative">
               <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400"><i class="fas fa-search text-xs"></i></div>
               <input id="modal-rc-search" class="form-input pl-7 py-1.5 text-xs bg-gray-50 focus:bg-white transition-colors" autocomplete="off" placeholder="Buscar NIT/CC...">
@@ -2749,8 +3121,8 @@ async function openRecaudoModal() {
           </div>
         </div>
 
-        <!-- CONTENEDOR DE CARTERA (GRILLA DE FACTURAS) -->
-        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 overflow-hidden min-h-[80px] max-h-[230px] flex flex-col items-center justify-center text-gray-400">
+        <!-- CONTENEDOR DE CARTERA (GRILLA DE FACTURAS Y CONCEPTOS) -->
+        <div id="teso-modal-items-container" class="rounded-xl border border-gray-200 overflow-hidden min-h-[140px] flex flex-col items-center justify-center text-gray-400 transition-all">
           <div class="text-center p-6">
             <div class="bg-gray-100 rounded-full w-12 h-12 flex items-center justify-center mx-auto mb-2">
               <i class="fas fa-search-dollar text-xl text-gray-400"></i>
@@ -2798,7 +3170,7 @@ async function openRecaudoModal() {
       if (sets.length && sets[0].value) {
         try { rules = { ...rules, ...JSON.parse(sets[0].value) }; } catch(e) {}
       }
-      (window as any)._changeTesoOrigen(rules.modoOperacion === 'ph' ? 'ph' : 'comercial');
+      (window as any)._changeTesoOrigen((rules.modoOperacion === 'ph' && _isPhModuleActive()) ? 'ph' : 'comercial');
     } catch (e) {
       (window as any)._changeTesoOrigen('comercial');
     }
@@ -3257,6 +3629,7 @@ async function openTesoreriaConfigModal() {
       }
     }
 
+    const isPhLicensed = _isPhModuleActive();
     const accountOptions = cuentas.map((c:any) => `<option value="${c.code}">${c.code} - ${c.name}</option>`).join('');
     const accountOptionsWithId = cuentas.map((c:any) => `<option value="${c.id}">${c.code} - ${c.name}</option>`).join('');
     
@@ -3276,16 +3649,19 @@ async function openTesoreriaConfigModal() {
           <p class="text-xs text-gray-500 mb-4">Define el comportamiento predeterminado para buscar la cartera al hacer un Recibo de Caja.</p>
           <div class="space-y-3">
             <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
-              <input type="radio" name="teso-cfg-modo-operacion" value="comercial" class="mt-1 w-4 h-4 text-blue-600" ${rules.modoOperacion !== 'ph' ? 'checked' : ''}>
+              <input type="radio" name="teso-cfg-modo-operacion" value="comercial" class="mt-1 w-4 h-4 text-blue-600" ${(!isPhLicensed || rules.modoOperacion !== 'ph') ? 'checked' : ''}>
               <div>
                 <span class="block font-semibold text-sm text-gray-800">Comercial (Búsqueda por Tercero)</span>
                 <span class="block text-xs text-gray-500 mt-1">Busca clientes de forma global por nombre o documento.</span>
               </div>
             </label>
-            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-100 cursor-pointer hover:bg-blue-50 transition-colors">
-              <input type="radio" name="teso-cfg-modo-operacion" value="ph" class="mt-1 w-4 h-4 text-blue-600" ${rules.modoOperacion === 'ph' ? 'checked' : ''}>
+            <label class="flex items-start gap-3 p-3 rounded-lg border transition-colors ${isPhLicensed ? 'bg-white border-gray-100 cursor-pointer hover:bg-blue-50' : 'bg-gray-100/70 border-gray-200 cursor-not-allowed opacity-60'}">
+              <input type="radio" name="teso-cfg-modo-operacion" value="ph" class="mt-1 w-4 h-4 text-blue-600" ${isPhLicensed && rules.modoOperacion === 'ph' ? 'checked' : ''} ${!isPhLicensed ? 'disabled' : ''}>
               <div>
-                <span class="block font-semibold text-sm text-gray-800">Propiedad Horizontal (Búsqueda por Unidad)</span>
+                <div class="flex items-center gap-2">
+                  <span class="block font-semibold text-sm ${isPhLicensed ? 'text-gray-800' : 'text-gray-500'}">Propiedad Horizontal (Búsqueda por Unidad)</span>
+                  ${!isPhLicensed ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300"><i class="fas fa-lock text-[9px]"></i>Requiere Licencia Copropiedades</span>` : ''}
+                </div>
                 <span class="block text-xs text-gray-500 mt-1">Busca inmuebles (Ej: APTO A101) para filtrar y pagar solo la cartera de esa unidad.</span>
               </div>
             </label>
@@ -3371,18 +3747,25 @@ async function openTesoreriaConfigModal() {
               </div>
             </label>
 
-            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-blue-200 bg-blue-50/50 cursor-pointer">
-              <input type="checkbox" id="teso-cfg-interes" class="mt-1 w-4 h-4 text-blue-600" ${rules.interesPrioridad ? 'checked' : ''}>
-              <div class="w-full">
-                <span class="block font-semibold text-sm text-blue-900">Regla Especial: Interés a Capital (Copropiedades)</span>
-                <span class="block text-xs text-blue-700 mt-1 mb-2">Aplica el abono primero a las líneas de interés antes que a capital, identificándolas por código contable.</span>
-                
-                <div class="form-group mt-2 mb-0">
-                  <label class="text-xs font-semibold text-gray-600">Códigos contables de cuentas de Intereses (separados por coma)</label>
-                  <input id="teso-cfg-cuentas-interes" type="text" class="form-input text-sm" placeholder="Ej: 1345, 134510" value="${(rules.cuentasInteres || []).join(', ')}">
+            ${isPhLicensed ? `
+              <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-blue-200 bg-blue-50/50 cursor-pointer">
+                <input type="checkbox" id="teso-cfg-interes" class="mt-1 w-4 h-4 text-blue-600" ${rules.interesPrioridad ? 'checked' : ''}>
+                <div class="w-full">
+                  <span class="block font-semibold text-sm text-blue-900">Regla Especial: Interés a Capital (Copropiedades)</span>
+                  <span class="block text-xs text-blue-700 mt-1 mb-2">Aplica el abono primero a las líneas de interés antes que a capital, identificándolas por código contable.</span>
+                  
+                  <div class="form-group mt-2 mb-0">
+                    <label class="text-xs font-semibold text-gray-600">Códigos contables de cuentas de Intereses (separados por coma)</label>
+                    <input id="teso-cfg-cuentas-interes" type="text" class="form-input text-sm" placeholder="Ej: 1345, 134510" value="${(rules.cuentasInteres || []).join(', ')}">
+                  </div>
                 </div>
+              </label>
+            ` : `
+              <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 opacity-60 flex items-center justify-between text-xs text-gray-500">
+                <span class="font-semibold"><i class="fas fa-lock mr-2 text-gray-400"></i>Regla Especial: Interés a Capital (Copropiedades)</span>
+                <span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded font-medium">Requiere Licencia Copropiedades</span>
               </div>
-            </label>
+            `}
           </div>
         </div>
       </div>
@@ -3418,11 +3801,13 @@ async function openTesoreriaConfigModal() {
 
       const fifo = (document.getElementById('teso-cfg-fifo') as HTMLInputElement).checked;
       const mora = (document.getElementById('teso-cfg-mora') as HTMLInputElement).checked;
-      const interes = (document.getElementById('teso-cfg-interes') as HTMLInputElement).checked;
-      const ctasStr = (document.getElementById('teso-cfg-cuentas-interes') as HTMLInputElement).value;
+      const interes = isPhLicensed ? ((document.getElementById('teso-cfg-interes') as HTMLInputElement)?.checked ?? false) : false;
+      const ctasStr = isPhLicensed ? ((document.getElementById('teso-cfg-cuentas-interes') as HTMLInputElement)?.value || '') : '';
       const cuentasArr = ctasStr.split(',').map(s => s.trim()).filter(s => s.length > 0);
-      const modoOperacion = (document.querySelector('input[name="teso-cfg-modo-operacion"]:checked') as HTMLInputElement)?.value || 'comercial';
+      let modoOperacion = (document.querySelector('input[name="teso-cfg-modo-operacion"]:checked') as HTMLInputElement)?.value || 'comercial';
+      if (!isPhLicensed && modoOperacion === 'ph') modoOperacion = 'comercial';
       const allowManualDocNumber = (document.getElementById('teso-cfg-manual-doc') as HTMLInputElement).checked;
+
 
       const ajuste_peso_sobrante_account_id = (document.getElementById('teso-cfg-sobrante-account') as HTMLSelectElement)?.value || '';
       const ajuste_peso_faltante_account_id = (document.getElementById('teso-cfg-faltante-account') as HTMLSelectElement)?.value || '';
@@ -3922,6 +4307,10 @@ function _downloadPlantillaRC() {
 }
 
 async function _openMassRCModal() {
+  if (!_isPhModuleActive()) {
+    _showToast('La Carga Masiva de recaudos por unidad habitacional requiere la licencia activa de Copropiedades.', 'warning');
+    return;
+  }
   const pb = _pb();
   const [metodosPago, txTypes, phCfgList, rawAccounts] = await Promise.all([
     pb.listAll('bank_accounts', { expand: 'account_id', filter: 'active=true', sort: 'name' }),
@@ -4249,7 +4638,7 @@ async function _openMassRCModal() {
               contrapartida_account_id: r.cuentaAccId,
               cxc_account_id: r.cxcAccountId || undefined,
               cxc_code: r.cxcCode || undefined,
-              cruzar_anticipos: true,
+              cruzar_anticipos: false,
               is_cruce_anticipo: r.isAnticipoCruce === true,
               reglas: { primeroVencido: true, primeroMora: true }
             })

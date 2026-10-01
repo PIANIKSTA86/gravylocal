@@ -60,7 +60,14 @@ onRecordCreateRequest((e) => {
 
   const isRC = txType === 'RC';
   const propertyId = params.ph_property_id || null;
-  const cruzarAnticipos = params.cruzar_anticipos !== false;
+  const rawAmount = Number(params.amount || 0);
+  // Regla contable estricta PH / Tesorería:
+  // En recaudos bancarios o de tesorería (RC con monto real > 0), el recibo de caja
+  // procesa ÚNICAMENTE el dinero físico/bancario recibido contra las partidas pendientes (facturas).
+  // NUNCA debe auto-cruzar anticipos o saldos a favor preexistentes (los anticipos preexistentes
+  // se liquidan/cruzan exclusivamente en la facturación o mediante comprobante explícito de cruce contable).
+  const isCrucePuro = params.is_cruce_anticipo === true || (rawAmount <= 0.001 && params.cruzar_anticipos === true);
+  const cruzarAnticipos = isCrucePuro || (params.cruzar_anticipos === true && !propertyId && !isRC);
   const branch_id = rec.get("branch_id") || null;
   const cost_center_id = params.cost_center_id || null;
 
@@ -500,7 +507,7 @@ onRecordCreateRequest((e) => {
       cross_doc_ref: ab.cross_doc_ref,
       debit: isRC ? 0 : ab.monto,
       credit: isRC ? ab.monto : 0,
-      description: "Abono a " + ab.cross_doc_ref
+      description: ab.description || ("Abono a " + ab.cross_doc_ref)
     });
   }
 

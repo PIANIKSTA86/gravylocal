@@ -3192,15 +3192,36 @@ const API = {
     const ivaGroups: { [key: string]: { ivaAccId: string, rate: number, amount: number } } = {};
     let totalLineDiscount = 0;
 
-    // Resolve refund account if it's a Credit Note (and NOT concept '2' - Anulación de factura electrónica)
+    // Detectar si es Nota Crédito y si corresponde a Anulación (Concepto DIAN 2)
+    const dianMatch = String(inv.notes || '').match(/\[Ajuste DIAN:\s*(\d+)\]/i);
+    const dianConceptVal = String(inv.dian_concept || (dianMatch ? dianMatch[1] : '')).trim();
+    const isAnnulment = isCreditNote && (
+      dianConceptVal === '2' || 
+      String(inv.notes || '').toUpperCase().includes('[AJUSTE DIAN: 2]') ||
+      String(inv.notes || '').toLowerCase().includes('anulación') ||
+      String(inv.notes || '').toLowerCase().includes('anulacion')
+    );
+
+    // Cargar líneas de factura original si existe referencia cruzada para reversión exacta
+    let origInvoiceLines: any[] = [];
+    if (isCreditNote && inv.cross_doc_ref) {
+      try {
+        const safeRef = pb.escapeFilterValue(String(inv.cross_doc_ref).trim());
+        const origInvs = await pb.list('invoices', { filter: `number="${safeRef}"`, perPage: 1 });
+        if (origInvs.items.length) {
+          origInvoiceLines = await this.getInvoiceLines(origInvs.items[0].id).catch(() => []);
+        }
+      } catch (_) {}
+    }
+
+    // Resolve refund account if it's a Credit Note (and NOT concept '2' - Anulación de venta)
     let refundAccount = null;
-    const isAnnulment = String(inv.notes || '').includes('[Ajuste DIAN: 2]');
     if (isCreditNote && !isAnnulment) {
       try {
         const rawSalesCfg = await this.getSetting('sales_settings_v2');
         if (rawSalesCfg) {
           const sc = JSON.parse(rawSalesCfg);
-          const refCode = sc?.accounting?.accounts?.refund_code;
+          const refCode = sc?.refund_policy?.refund_account_code || sc?.accounting?.accounts?.refund_code;
           if (refCode) {
             refundAccount = await findAccByCode(refCode);
           }
@@ -3208,7 +3229,7 @@ const API = {
       } catch (_) { }
       if (!refundAccount) {
         try {
-          refundAccount = await findAccByCode('417505'); // fallback nacional
+          refundAccount = await findAccByCode('417505'); // fallback nacional devoluciones
         } catch (_) { }
       }
     }
@@ -3216,9 +3237,17 @@ const API = {
     for (const line of lines) {
       const prod = products.find(p => p.id === line.product_id);
       let incomeAccId = line.account_id;
-      if (isCreditNote && refundAccount) {
+      if (isCreditNote && !isAnnulment && refundAccount) {
+        // En devolución ordinaria se imputa a la cuenta de devoluciones (Clase 4175)
         incomeAccId = refundAccount.id;
       } else {
+        // En anulación (o venta regular) se reversa EXACTAMENTE el código de ingreso original
+        if (!incomeAccId && origInvoiceLines.length > 0) {
+          const matchedOrigLine = origInvoiceLines.find((ol: any) => ol.product_id === line.product_id && ol.account_id);
+          if (matchedOrigLine) {
+            incomeAccId = matchedOrigLine.account_id;
+          }
+        }
         if (!incomeAccId && prod) {
           incomeAccId = prod.income_account_id || defaultIncome.id;
         }
@@ -3272,7 +3301,16 @@ const API = {
       }));
     }
 
-    // 1. Agregar créditos consolidados de ingresos
+    // 1. Agregar créditos consolidados de ingresos (o reversión en caso de NC)
+    let incomeDesc = `Ingresos por ventas consolidados - ${inv.number}`;
+    if (isCreditNote) {
+      if (isAnnulment) {
+        incomeDesc = `Reversión ingresos por anulación venta ${inv.number}${inv.cross_doc_ref ? ' (Ref: ' + inv.cross_doc_ref + ')' : ''}`;
+      } else {
+        incomeDesc = `Devolución en ventas - ${inv.number}${inv.cross_doc_ref ? ' (Ref: ' + inv.cross_doc_ref + ')' : ''}`;
+      }
+    }
+
     for (const incomeAccId of Object.keys(incomeGroups)) {
       const amount = rDec(incomeGroups[incomeAccId]);
       if (amount > 0) {
@@ -3281,7 +3319,7 @@ const API = {
           thirdPartyId: inv.customer_id,
           debit: 0,
           credit: amount,
-          description: `Ingresos por ventas consolidados - ${inv.number}`,
+          description: incomeDesc,
           crossDocRef: inv.number,
         }));
       }
@@ -3359,7 +3397,7 @@ const API = {
         const rawSalesCfg = await this.getSetting('sales_settings_v2');
         if (rawSalesCfg) {
           const sc = JSON.parse(rawSalesCfg);
-          const code = sc?.accounting?.accounts?.inventory_loss_code;
+          const code = sc?.refund_policy?.inventory_loss_account_code || sc?.accounting?.accounts?.inventory_loss_code;
           if (code) {
             const acc = await findAccByCode(code);
             if (acc) return acc.id;
@@ -7031,15 +7069,15 @@ const API = {
   async getImportTxLines(importId: string) {
     if (!importId) return [];
     try {
-      const filterStr = `import_id="${pb.escapeFilterValue(importId)}" && import_concept != "" && import_concept != null`;
+      const filterStr = `import_id="${pb.escapeFilterValue(importId)}"`;
 
       const lines = await pb.listAll('tx_lines', {
         filter: filterStr,
         expand: 'tx_id,account_id,third_party_id,cost_center_id',
-        sort: 'line_order'
+        sort: 'created'
       });
 
-      // Solo retornar líneas que posean un concepto explícito de importación (FOB, Flete, Seguro, Aduana, Transporte, Otros)
+      // Retornar líneas con concepto de importación asociado
       return lines.filter((l: any) => l.import_concept && String(l.import_concept).trim() !== '');
     } catch (err) {
       console.warn('[getImportTxLines] Error al listar líneas:', err);
@@ -7434,6 +7472,7 @@ const API = {
       customs: { txField: 'tx_customs_id', supplierField: 'customs_supplier_id', invoiceField: 'customs_invoice_num', label: 'Aduanas / DIAN' },
       local_carrier: { txField: 'tx_local_carrier_id', supplierField: 'local_carrier_id', invoiceField: 'local_carrier_invoice_num', label: 'Transporte Local' },
       local_other: { txField: 'tx_local_other_id', supplierField: 'local_other_supplier_id', invoiceField: 'local_other_invoice_num', label: 'Otros Gastos' },
+      bank_fees: { txField: 'tx_bank_fees_id', supplierField: 'bank_fees_supplier_id', invoiceField: 'bank_fees_invoice_num', label: 'Gastos Bancarios / Comisiones' },
     };
 
     const map = mappings[stageName];
@@ -7459,7 +7498,8 @@ const API = {
       insurance: accountsCfg.insurance_payable_account_code || '233555',
       customs: accountsCfg.customs_payable_account_code || '233595',
       local_carrier: accountsCfg.local_carrier_payable_account_code || '233545',
-      local_other: accountsCfg.local_other_payable_account_code || '233595'
+      local_other: accountsCfg.local_other_payable_account_code || '233595',
+      bank_fees: accountsCfg.bank_fees_payable_account_code || '233595'
     };
 
     const targetAccountCode = stageAccountMapping[stageName];
@@ -7489,7 +7529,10 @@ const API = {
             debit: amount,
             credit: 0,
             description: `Causación Aduana/DIAN - Importación ${imp.number}`,
-            line_order: 1
+            line_order: 1,
+            import_id: importId,
+            import_concept: stageName,
+            import_invoice_ref: invoiceNum
           },
           {
             account_id: accCustoms.id,
@@ -7498,7 +7541,10 @@ const API = {
             credit: customsAmt,
             description: `Gastos Nac. - Importación ${imp.number} | Factura ${invoiceNum}${opts.comment ? ` | ${opts.comment}` : ''}`,
             line_order: 2,
-            cross_doc_ref: invoiceNum
+            cross_doc_ref: invoiceNum,
+            import_id: importId,
+            import_concept: stageName,
+            import_invoice_ref: invoiceNum
           },
           {
             account_id: accArancel.id,
@@ -7507,7 +7553,10 @@ const API = {
             credit: arancelAmt,
             description: `Aranceles DIAN - Importación ${imp.number}`,
             line_order: 3,
-            cross_doc_ref: invoiceNum
+            cross_doc_ref: invoiceNum,
+            import_id: importId,
+            import_concept: stageName,
+            import_invoice_ref: invoiceNum
           }
         ];
       }
@@ -7521,7 +7570,10 @@ const API = {
           debit: amount,
           credit: 0,
           description: `Causación ${map.label} - Importación ${imp.number}`,
-          line_order: 1
+          line_order: 1,
+          import_id: importId,
+          import_concept: stageName,
+          import_invoice_ref: invoiceNum
         },
         {
           account_id: accPayable.id,
@@ -7530,7 +7582,10 @@ const API = {
           credit: amount,
           description: `Causación ${map.label} - Importación ${imp.number} | Factura ${invoiceNum}${opts.comment ? ` | ${opts.comment}` : ''}`,
           line_order: 2,
-          cross_doc_ref: invoiceNum
+          cross_doc_ref: invoiceNum,
+          import_id: importId,
+          import_concept: stageName,
+          import_invoice_ref: invoiceNum
         }
       ];
     }
@@ -7541,7 +7596,11 @@ const API = {
       date: new Date().toISOString().slice(0, 10),
       description: `Causación ${map.label} Importación ${imp.number}${opts.invoiceId ? ` - Factura ${invoiceNum}` : ''}${opts.comment ? ` | ${opts.comment}` : ''}`,
       third_party_id: supplierId,
-      status: 'active'
+      status: 'active',
+      is_import: true,
+      import_id: importId,
+      import_concept: stageName,
+      import_invoice_ref: invoiceNum
     };
 
     const tx = await this.createTransaction(txData, lines);

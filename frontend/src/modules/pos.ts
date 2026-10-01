@@ -39,6 +39,7 @@ function defaultPOSConfig() {
       require_customer: true,
       price_source: 'base_price',
       catalog_view_mode: 'grid',
+      show_product_images: true,  // true = muestra miniaturas de fotos de producto en el catálogo
       prices_include_iva: false,  // true = precios con IVA incluido (precio tax-in)
       default_customer_id: '',
       print_logo: true,
@@ -631,6 +632,7 @@ async function openPOSSettingsModal(onSaved: any = null) {
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-price-edit" type="checkbox" ${cfg.special.allow_price_edit ? 'checked' : ''}>Permitir editar precio en venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-require-customer" type="checkbox" ${cfg.special.require_customer ? 'checked' : ''}>Exigir cliente en cada venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-prices-include-iva" type="checkbox" ${cfg.special.prices_include_iva ? 'checked' : ''}><span>Precios <strong>incluyen IVA</strong> (precio tax-in)</span></label>
+          <label class="inline-flex items-center gap-2"><input id="pos-cfg-show-images" type="checkbox" ${cfg.special?.show_product_images !== false ? 'checked' : ''}><span><i class="fas fa-image text-blue-500 mr-1"></i>Mostrar <strong>fotos de productos</strong> en catálogo</span></label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-print-logo" type="checkbox" ${cfg.special.print_logo !== false ? 'checked' : ''}>Imprimir logo en tirilla</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-enable-dian" type="checkbox" ${cfg.special.enable_dian_button !== false ? 'checked' : ''}>Habilitar botón "Enviar a DIAN" al finalizar venta</label>
           <label class="inline-flex items-center gap-2"><input id="pos-cfg-keyboard-mode" type="checkbox" ${cfg.special.keyboard_mode ? 'checked' : ''}>Modo de trabajo sin mouse (Teclado)</label>
@@ -651,11 +653,12 @@ async function openPOSSettingsModal(onSaved: any = null) {
             </select>
           </div>
           <div class="form-group mb-0">
-            <label class="form-label">Vista del Catálogo</label>
+            <label class="form-label">Modalidad de Navegación del Catálogo</label>
             <select id="pos-cfg-catalog-view" class="form-input">
-              <option value="grid" ${cfg.special.catalog_view_mode === 'grid' ? 'selected' : ''}>Cuadrícula Directa</option>
-              <option value="categories" ${cfg.special.catalog_view_mode === 'categories' ? 'selected' : ''}>Agrupado por Categorías</option>
-              <option value="lines" ${cfg.special.catalog_view_mode === 'lines' ? 'selected' : ''}>Agrupado por Líneas</option>
+              <option value="grid" ${(cfg.special.catalog_view_mode || 'grid') === 'grid' ? 'selected' : ''}>Cuadrícula Directa con Pestañas Superiores (Recomendado)</option>
+              <option value="categories" ${cfg.special.catalog_view_mode === 'categories' ? 'selected' : ''}>Navegación por Carpetas de Categorías (Oculta pestañas)</option>
+              <option value="lines" ${cfg.special.catalog_view_mode === 'lines' ? 'selected' : ''}>Navegación por Carpetas de Líneas (Oculta pestañas)</option>
+              <option value="flat" ${cfg.special.catalog_view_mode === 'flat' ? 'selected' : ''}>Cuadrícula Plana (Sin pestañas ni carpetas)</option>
             </select>
           </div>
           <div class="form-group mb-0 col-span-2">
@@ -743,6 +746,7 @@ async function openPOSSettingsModal(onSaved: any = null) {
           prices_include_iva: (document.getElementById('pos-cfg-prices-include-iva') as HTMLInputElement)?.checked,
           price_source: (document.getElementById('pos-cfg-price-source') as HTMLSelectElement)?.value || 'base_price',
           catalog_view_mode: (document.getElementById('pos-cfg-catalog-view') as HTMLSelectElement)?.value || 'grid',
+          show_product_images: (document.getElementById('pos-cfg-show-images') as HTMLInputElement)?.checked,
           default_customer_id: (document.getElementById('pos-cfg-default-customer') as HTMLSelectElement)?.value || '',
           print_logo: (document.getElementById('pos-cfg-print-logo') as HTMLInputElement)?.checked,
           enable_dian_button: (document.getElementById('pos-cfg-enable-dian') as HTMLInputElement)?.checked,
@@ -754,10 +758,13 @@ async function openPOSSettingsModal(onSaved: any = null) {
       posConfig = newCfg;
       (window as any).showToast('Configuración guardada', 'success');
       (window as any).closeModal();
-      if (onSaved) onSaved();
+      if (typeof (window as any).renderPOSCategoryChips === 'function') {
+        (window as any).renderPOSCategoryChips();
+      }
       if (typeof (window as any).filterPosProducts === 'function') {
         (window as any).filterPosProducts();
       }
+      if (onSaved) onSaved();
     });
   }, 100);
 }
@@ -827,9 +834,77 @@ function updatePOSHeldBadge() {
   }
 }
 
+const POS_ACTIVE_CART_KEY = 'pos_active_cart_state';
+
+function saveActivePOSCartState() {
+  try {
+    if (!posCart || posCart.length === 0) {
+      localStorage.removeItem(POS_ACTIVE_CART_KEY);
+      return;
+    }
+    const state = {
+      shiftId: activeShift?.id || '',
+      cart: posCart,
+      customerId: selectedCustomerId,
+      warehouseId: selectedWarehouseId,
+      discountType: posDiscountType,
+      discountValue: posDiscountValue,
+      freightAmt: posFreightAmt,
+      loadedSalesOrderId: loadedSalesOrderId,
+      loadedSellerId: loadedSellerId,
+      timestamp: Date.now()
+    };
+    localStorage.setItem(POS_ACTIVE_CART_KEY, JSON.stringify(state));
+  } catch (err) {
+    console.warn('Error al guardar estado activo del carrito POS:', err);
+  }
+}
+
+function clearActivePOSCartState() {
+  try {
+    localStorage.removeItem(POS_ACTIVE_CART_KEY);
+  } catch (_) {}
+}
+
+function restoreActivePOSCartState(): boolean {
+  try {
+    const raw = localStorage.getItem(POS_ACTIVE_CART_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    if (!state || !Array.isArray(state.cart) || state.cart.length === 0) {
+      clearActivePOSCartState();
+      return false;
+    }
+
+    // Descartar si pertenecía a un turno cerrado o si han transcurrido más de 24 horas
+    if (activeShift?.id && state.shiftId && state.shiftId !== activeShift.id) {
+      if (Date.now() - (state.timestamp || 0) > 24 * 3600 * 1000) {
+        clearActivePOSCartState();
+        return false;
+      }
+    }
+
+    posCart = state.cart;
+    if (state.customerId) selectedCustomerId = state.customerId;
+    if (state.warehouseId) selectedWarehouseId = state.warehouseId;
+    if (state.discountType) posDiscountType = state.discountType;
+    if (typeof state.discountValue === 'number') posDiscountValue = state.discountValue;
+    if (typeof state.freightAmt === 'number') posFreightAmt = state.freightAmt;
+    if (state.loadedSalesOrderId) loadedSalesOrderId = state.loadedSalesOrderId;
+    if (state.loadedSellerId) loadedSellerId = state.loadedSellerId;
+
+    return true;
+  } catch (err) {
+    console.warn('Error al restaurar carrito POS activo:', err);
+    return false;
+  }
+}
+
 (window as any).getPOSHeldCarts = getPOSHeldCarts;
 (window as any).savePOSHeldCarts = savePOSHeldCarts;
 (window as any).updatePOSHeldBadge = updatePOSHeldBadge;
+(window as any).saveActivePOSCartState = saveActivePOSCartState;
+(window as any).clearActivePOSCartState = clearActivePOSCartState;
 
 // Cargar estado inicial y renderizar
 export async function renderPOS(container: HTMLElement) {
@@ -919,16 +994,34 @@ window.renderShiftOpeningForm = function(registers: any[] = []) {
   const container = document.getElementById('pos-shift-container');
   if (!container) return;
 
-  const currentAssignedId = localStorage.getItem('gravy_pos_register_id') || '';
+  // Purga proactiva de ID huérfano en localStorage
+  let currentAssignedId = localStorage.getItem('gravy_pos_register_id') || '';
+  if (currentAssignedId && !registers.some(r => r.id === currentAssignedId)) {
+    localStorage.removeItem('gravy_pos_register_id');
+    currentAssignedId = '';
+  }
+
   let registerSelectHtml = '';
   if (registers.length > 0) {
     registerSelectHtml = `
       <div>
-        <label class="form-label mb-2 block">Caja Registradora / Terminal <span style="color:#EF4444">*</span></label>
+        <label class="form-label mb-2 block font-semibold text-xs text-gray-700">Caja Registradora / Terminal <span style="color:#EF4444">*</span></label>
         <select id="pos-opening-register" class="form-input w-full" style="background:#fff;color:#0D2137">
           <option value="">— Seleccionar Caja —</option>
           ${registers.map(r => `<option value="${r.id}" ${currentAssignedId === r.id ? 'selected' : ''}>${(window as any).esc(r.name)} (${(window as any).esc(r.terminal_key)})</option>`).join('')}
         </select>
+      </div>
+    `;
+  } else {
+    registerSelectHtml = `
+      <div class="p-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-xs space-y-2">
+        <div class="flex items-center gap-2 font-bold text-amber-800">
+          <i class="fas fa-triangle-exclamation text-sm"></i> No hay cajas registradoras activas
+        </div>
+        <p>Para abrir un turno POS se requiere una terminal física registrada.</p>
+        <button type="button" class="btn btn-sm btn-primary w-full mt-2" onclick="window.posQuickCreateDefaultRegister()">
+          <i class="fas fa-plus mr-1"></i> Aprovisionar Caja Principal (POS-01)
+        </button>
       </div>
     `;
   }
@@ -945,7 +1038,7 @@ window.renderShiftOpeningForm = function(registers: any[] = []) {
 
       <div class="space-y-4">
         <div>
-          <label class="form-label mb-2 block">Base Inicial en Efectivo (COP) <span style="color:#EF4444">*</span></label>
+          <label class="form-label mb-2 block font-semibold text-xs text-gray-700">Base Inicial en Efectivo (COP) <span style="color:#EF4444">*</span></label>
           <div class="relative">
             <span class="absolute left-3 top-2.5 text-gray-400 font-bold">$</span>
             <input type="number" id="pos-initial-cash" class="form-input w-full pl-8 font-bold text-lg" min="0" step="50" value="100000" style="background:#fff;color:#0D2137">
@@ -955,7 +1048,7 @@ window.renderShiftOpeningForm = function(registers: any[] = []) {
         ${registerSelectHtml}
 
         <div>
-          <label class="form-label mb-2 block">Notas de Apertura</label>
+          <label class="form-label mb-2 block font-semibold text-xs text-gray-700">Notas de Apertura</label>
           <textarea id="pos-opening-notes" class="form-input w-full" rows="2" placeholder="Ej: Billetes sencillos para cambio, turno mañana..." style="background:#fff;color:#0D2137"></textarea>
         </div>
 
@@ -978,6 +1071,29 @@ window.renderShiftOpeningForm = function(registers: any[] = []) {
     _histBtn.onclick = () => (window as any).showPOSShiftHistory();
     const _spaceDiv = container.querySelector('.space-y-4');
     if (_spaceDiv) _spaceDiv.appendChild(_histBtn);
+  }
+};
+
+// Aprovisionamiento rápido de caja por defecto
+(window as any).posQuickCreateDefaultRegister = async function() {
+  try {
+    const user = (window as any).pb.currentUser;
+    const activeBranchId = localStorage.getItem('active_branch_id');
+    const branchId = (activeBranchId && activeBranchId !== 'TODAS')
+      ? activeBranchId
+      : (user?.default_branch_id || null);
+
+    const reg = await (window as any).pb.create('pos_registers', {
+      name: 'Caja Principal 01',
+      terminal_key: 'POS-01',
+      active: true,
+      branch_id: branchId || null
+    });
+    localStorage.setItem('gravy_pos_register_id', reg.id);
+    (window as any).showToast('Caja Principal creada y asignada con éxito', 'success');
+    await window.checkActiveShift();
+  } catch (err: any) {
+    (window as any).showToast('Error al crear caja predeterminada: ' + err.message, 'error');
   }
 };
 
@@ -1070,49 +1186,57 @@ window.showPOSShiftHistory = async function() {
 window.openPOSShift = async function() {
   const initialCash = parseFloat((document.getElementById('pos-initial-cash') as HTMLInputElement)?.value || '0');
   const notes = (document.getElementById('pos-opening-notes') as HTMLTextAreaElement)?.value.trim() || '';
-  const registerId = (document.getElementById('pos-opening-register') as HTMLSelectElement)?.value || localStorage.getItem('gravy_pos_register_id') || '';
+  const registerField = document.getElementById('pos-opening-register') as HTMLSelectElement | null;
+  // Solo tomar el valor del select si existe en el DOM; NO recurrir a localStorage si el usuario dejó la opción vacía
+  let registerId = registerField ? registerField.value.trim() : (localStorage.getItem('gravy_pos_register_id') || '');
 
   if (Number.isNaN(initialCash) || initialCash < 0) {
     (window as any).showToast('La base inicial debe ser un número igual o mayor a cero.', 'warning');
     return;
   }
 
-  const registerField = document.getElementById('pos-opening-register');
   if (registerField && !registerId) {
     (window as any).showToast('Por favor selecciona la caja registradora para este turno.', 'warning');
     return;
   }
 
+  if (!registerId) {
+    (window as any).showToast('Debes configurar o seleccionar una caja registradora antes de abrir turno.', 'warning');
+    return;
+  }
+
+  // Validar existencia real de la caja en backend
+  let shiftBranchId: string | null = null;
+  try {
+    const reg = await (window as any).pb.get('pos_registers', registerId);
+    shiftBranchId = reg?.branch_id || null;
+  } catch (err: any) {
+    localStorage.removeItem('gravy_pos_register_id');
+    (window as any).showToast('La caja configurada no existe o fue eliminada. Selecciona una caja válida.', 'error');
+    await window.checkActiveShift();
+    return;
+  }
+
   // — Validación anti-doble turno: verificar si esta caja ya está tomada —
-  if (registerId) {
-    try {
-      const existing = await (window as any).pb.list('pos_shifts', {
-        filter: `pos_register_id="${registerId}" && status="open"`,
-        perPage: 1,
-        expand: 'user_id'
-      });
-      if (existing.items.length) {
-        const blocker = existing.items[0].expand?.user_id?.name || existing.items[0].expand?.user_id?.email || 'otro usuario';
-        const openedAt = existing.items[0].opened_at?.slice(0, 16).replace('T', ' ') || '—';
-        (window as any).showToast(`❌ Esta caja ya está abierta por: ${blocker} (desde ${openedAt}). Pídele que cierre su turno primero.`, 'error');
-        return;
-      }
-    } catch (_) {
-      // Si falla la verificación, continuar con precaución
+  try {
+    const existing = await (window as any).pb.list('pos_shifts', {
+      filter: `pos_register_id="${registerId}" && status="open"`,
+      perPage: 1,
+      expand: 'user_id'
+    });
+    if (existing.items.length) {
+      const blocker = existing.items[0].expand?.user_id?.name || existing.items[0].expand?.user_id?.email || 'otro usuario';
+      const openedAt = existing.items[0].opened_at?.slice(0, 16).replace('T', ' ') || '—';
+      (window as any).showToast(`❌ Esta caja ya está abierta por: ${blocker} (desde ${openedAt}). Pídele que cierre su turno primero.`, 'error');
+      return;
     }
+  } catch (_) {
+    // Si falla la verificación, continuar con precaución
   }
 
   try {
     const user = (window as any).pb.currentUser;
 
-    // Resolver sucursal: intentar desde la caja registradora, luego active_branch_id, luego default del usuario
-    let shiftBranchId: string | null = null;
-    if (registerId) {
-      try {
-        const reg = await (window as any).pb.get('pos_registers', registerId);
-        shiftBranchId = reg?.branch_id || null;
-      } catch (_) { }
-    }
     if (!shiftBranchId) {
       const activeBranchId = localStorage.getItem('active_branch_id');
       shiftBranchId = (activeBranchId && activeBranchId !== 'TODAS')
@@ -1210,15 +1334,19 @@ window.loadPOSInterface = async function() {
     mainWrap.innerHTML = `
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 pos-grid" style="height: 100%; min-height: 500px;">
         <!-- Panel Izquierdo: Catálogo y Buscador (Col 7) -->
-        <div class="lg:col-span-7 flex flex-col justify-between space-y-4 pos-catalog-container" style="height: 100%; overflow: hidden;">
-          <div class="flex items-center gap-3">
+        <div class="lg:col-span-7 flex flex-col justify-between space-y-3 pos-catalog-container" style="height: 100%; overflow: hidden;">
+          <div class="flex items-center gap-2">
             <div class="relative flex-grow" id="pos-search-product-wrap">
               <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-              <input type="text" id="pos-search-product" class="form-input w-full pl-9 py-2.5" placeholder="Buscar por código de barra, código SKU o nombre del producto..." oninput="window.filterPosProducts()" style="background:#fff;color:#0D2137" autocomplete="off">
+              <input type="text" id="pos-search-product" class="form-input w-full pl-9 py-2 text-xs" placeholder="Buscar por código de barra, SKU o nombre... [F3]" oninput="window.filterPosProducts()" style="background:#fff;color:#0D2137" autocomplete="off">
               <div id="pos-search-product-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:90"></div>
             </div>
-            <button class="btn btn-outline py-2.5" onclick="window.renderPOSStockReload()"><i class="fas fa-rotate"></i></button>
+            <button class="btn btn-outline py-2 px-3 text-xs" onclick="window.renderPOSStockReload()" title="Recargar Stock"><i class="fas fa-rotate"></i></button>
+            <button class="btn btn-outline py-2 px-3 text-xs" onclick="window.togglePOSFullscreen()" title="Pantalla Completa (F11)"><i class="fas fa-expand"></i></button>
           </div>
+
+          <!-- Barra de Categorías (Chips / Pills) -->
+          <div id="pos-category-chips-bar" class="flex items-center gap-1.5 overflow-x-auto py-1 flex-shrink-0" style="scrollbar-width: thin; -webkit-overflow-scrolling: touch;"></div>
  
           <!-- Cuadrícula Catálogo -->
           <div class="flex-grow overflow-y-auto pr-1" id="pos-catalog-grid" style="height: 0; flex-grow: 1; min-height: 0;">
@@ -1232,17 +1360,17 @@ window.loadPOSInterface = async function() {
         <div class="lg:col-span-5 flex flex-col rounded-2xl border pos-cart-container" style="border-color:#E5E7EB;background:#FCFCFD;overflow:hidden;height: 100%">
 
           <!-- Barra superior del Carrito -->
-          <div class="flex justify-between items-center border-b px-5 pt-4 pb-3 flex-shrink-0" style="border-color:#E5E7EB">
+          <div class="flex justify-between items-center border-b px-5 pt-3 pb-2.5 flex-shrink-0" style="border-color:#E5E7EB">
             <div>
               <span class="font-bold block text-sm" style="color:#0D2137"><i class="fas fa-cart-shopping text-blue-500 mr-1"></i> Carrito de Ventas</span>
               <span class="text-xs" style="color:#6B7280">Turno de: ${(window as any).esc((window as any).pb.currentUser?.name)}</span>
             </div>
             <div class="flex items-center gap-1.5 flex-wrap">
-              <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#EA580C" onclick="window.posHoldCart()" title="Congelar venta actual">
-                <i class="fas fa-snowflake mr-1"></i>Congelar
+              <button class="btn btn-outline btn-sm text-orange-600 flex items-center gap-1" style="border-color:#EA580C" onclick="window.posHoldCart()" title="Congelar venta actual (F7)">
+                <i class="fas fa-snowflake"></i>Congelar <kbd class="bg-orange-100 text-orange-800 text-[8px] font-mono px-1 rounded">F7</kbd>
               </button>
-              <button class="btn btn-outline btn-sm text-emerald-600 flex items-center gap-1" style="border-color:#059669" onclick="window.posShowHeldCartsModal()" title="Ventas en espera (Congeladas)">
-                <i class="fas fa-pause"></i>Espera
+              <button class="btn btn-outline btn-sm text-emerald-600 flex items-center gap-1" style="border-color:#059669" onclick="window.posShowHeldCartsModal()" title="Ventas en espera (F8)">
+                <i class="fas fa-pause"></i>Espera <kbd class="bg-emerald-100 text-emerald-800 text-[8px] font-mono px-1 rounded">F8</kbd>
                 <span id="pos-held-count-badge" class="px-1.5 py-0.2 text-[9px] bg-emerald-600 text-white rounded-full font-extrabold">${getPOSHeldCarts().length}</span>
               </button>
               <button class="btn btn-outline btn-sm" onclick="window.posLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#7F7CFF; color:#7F7CFF">
@@ -1264,10 +1392,10 @@ window.loadPOSInterface = async function() {
           <!-- Selector de Cliente y Bodega -->
           <div class="grid grid-cols-2 gap-3 px-5 pt-3 pb-2 flex-shrink-0">
             <div>
-              <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente</label>
+              <label class="text-[10px] uppercase font-bold block mb-1" style="color:#6B7280">Cliente <span class="text-gray-400 font-normal">[F4]</span></label>
               <div class="flex gap-1 items-center">
                 <div id="pos-cart-customer-wrap" class="relative flex-1">
-                  <input id="pos-cart-customer-search" class="form-input text-xs w-full" style="background:#fff;color:#0D2137;height:34px" autocomplete="off" placeholder="Escribe NIT o nombre...">
+                  <input id="pos-cart-customer-search" class="form-input text-xs w-full" style="background:#fff;color:#0D2137;height:34px" autocomplete="off" placeholder="Escribe NIT o nombre... [F4]">
                   <input id="pos-cart-customer" type="hidden" value="${selectedCustomerId}">
                   <div id="pos-cart-customer-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:220px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:40"></div>
                 </div>
@@ -1334,11 +1462,11 @@ window.loadPOSInterface = async function() {
               <button class="btn btn-outline py-2 font-semibold text-[9px] text-orange-500 hover:text-orange-400 flex flex-col items-center justify-center gap-1" onclick="window.openArqueoPOSModal()" title="Cerrar caja y arqueo">
                 <i class="fas fa-lock"></i><span>ARQUEO</span>
               </button>
-              <button class="btn btn-outline py-2 font-semibold text-[9px] text-purple-600 hover:text-purple-500 hover:border-purple-400 border-purple-200 bg-purple-50/20 flex flex-col items-center justify-center gap-1" onclick="window.openPOSCashMovementsModal()" title="Registrar gastos o recaudos directos">
-                <i class="fas fa-money-bill-transfer"></i><span>MOV. CAJA</span>
+              <button class="btn btn-outline py-2 font-semibold text-[9px] text-purple-600 hover:text-purple-500 hover:border-purple-400 border-purple-200 bg-purple-50/20 flex flex-col items-center justify-center gap-1" onclick="window.openPOSCashMovementsModal()" title="Registrar gastos o recaudos directos (F9)">
+                <i class="fas fa-money-bill-transfer"></i><span>MOV. CAJA <kbd class="bg-purple-100 text-purple-800 text-[8px] font-mono px-1 rounded">F9</kbd></span>
               </button>
-              <button class="btn btn-primary py-2 font-bold text-[9px] flex flex-col items-center justify-center gap-1" id="btn-pos-checkout" onclick="window.openPOSPaymentModal()" title="Cobrar y facturar">
-                <i class="fas fa-cash-register"></i><span>FACTURAR</span>
+              <button class="btn btn-primary py-2 font-bold text-[9px] flex flex-col items-center justify-center gap-1" id="btn-pos-checkout" onclick="window.openPOSPaymentModal()" title="Cobrar y facturar (F2)">
+                <i class="fas fa-cash-register"></i><span>FACTURAR <kbd class="bg-blue-800 text-white text-[8px] font-mono px-1 rounded">F2</kbd></span>
               </button>
             </div>
           </div>
@@ -1401,6 +1529,7 @@ window.loadPOSInterface = async function() {
         input.value = text;
         selectedCustomerId = id;
       }
+      saveActivePOSCartState();
     };
 
     initPosCustomerSearch();
@@ -1418,6 +1547,50 @@ window.loadPOSInterface = async function() {
     }
 
     await window.loadPosProductsWithStock();
+
+    // Restaurar carrito activo en curso si el explorador fue recargado
+    const restored = restoreActivePOSCartState();
+    if (restored && posCart.length > 0) {
+      if (selectedCustomerId) {
+        const cust = posCustomers.find((c: any) => c.id === selectedCustomerId);
+        if (cust) {
+          const hidden = document.getElementById('pos-cart-customer') as HTMLInputElement;
+          const input = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+          if (hidden) hidden.value = cust.id;
+          if (input) input.value = `${cust.name} (${cust.doc_number || cust.nit || ''})`;
+        }
+      }
+      if (selectedWarehouseId) {
+        const whSelect = document.getElementById('pos-cart-warehouse') as HTMLSelectElement;
+        if (whSelect) whSelect.value = selectedWarehouseId;
+      }
+      const discInput = document.getElementById('pos-cart-discount-input') as HTMLInputElement;
+      const discTypeSelect = document.getElementById('pos-cart-discount-type') as HTMLSelectElement;
+      if (discInput && posDiscountValue) discInput.value = String(posDiscountValue);
+      if (discTypeSelect && posDiscountType) discTypeSelect.value = posDiscountType;
+      const freightInput = document.getElementById('pos-cart-freight-input') as HTMLInputElement;
+      if (freightInput && posFreightAmt) freightInput.value = String(posFreightAmt);
+
+      if (loadedSalesOrderId) {
+        const banner = document.getElementById('pos-loaded-order-banner');
+        if (banner) banner.style.display = 'block';
+      }
+
+      window.renderPOSCart();
+      (window as any).showToast(`Venta en curso recuperada automáticamente (${posCart.length} productos)`, 'info', 2500);
+    }
+
+    // Advertencia de navegación/recarga accidental si hay artículos en carrito
+    if (!(window as any)._posBeforeUnloadAttached) {
+      (window as any)._posBeforeUnloadAttached = true;
+      window.addEventListener('beforeunload', (ev) => {
+        if (posCart && posCart.length > 0) {
+          ev.preventDefault();
+          ev.returnValue = 'Tienes una venta con productos cargados en el POS. ¿Deseas recargar la página?';
+          return ev.returnValue;
+        }
+      });
+    }
 
     // Foco automático inicial y listeners de escáner y teclado
     setTimeout(() => {
@@ -1484,8 +1657,24 @@ window.loadPOSInterface = async function() {
         }
       });
     }
+
+    window.renderPOSCategoryChips();
+    initPOSGlobalShortcutsAndScanner();
   } catch (err: any) {
     (window as any).showToast(err.message || 'Error al iniciar POS', 'error');
+  }
+};
+
+window.togglePOSFullscreen = function() {
+  const el = document.getElementById('pos-main-container') || document.documentElement;
+  if (!document.fullscreenElement) {
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
   }
 };
 
@@ -1510,6 +1699,7 @@ window.loadPosProductsWithStock = async function() {
     });
 
     window.filterPosProducts();
+    window.renderPOSCategoryChips();
   } catch (err: any) {
     (window as any).showToast('Error al actualizar existencias', 'error');
   }
@@ -1528,9 +1718,186 @@ function getProductPriceByConfig(prod: any, cfg: any) {
   return price;
 }
 
+window.renderPOSCategoryChips = function() {
+  const bar = document.getElementById('pos-category-chips-bar');
+  if (!bar) return;
+
+  // Si la modalidad es por carpetas ('categories' o 'lines') o 'flat',
+  // ocultar las pestañas superiores para evitar redundancia con el contenido
+  const viewMode = posConfig?.special?.catalog_view_mode || 'grid';
+  if (viewMode === 'categories' || viewMode === 'lines' || viewMode === 'flat') {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+
+  const cats = Array.from(new Set(posProducts.map((p: any) => (p.categoria || '').trim()).filter(Boolean))).sort();
+  if (!cats.length) {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+  bar.style.display = 'flex';
+
+  const isAll = !activeCategoryFilter;
+  let html = `
+    <button type="button" class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 border-none cursor-pointer flex-shrink-0 ${isAll ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}" onclick="window.setCatalogCategoryFilter('')">
+      <i class="fas fa-layer-group text-[10px]"></i> Todos <span class="text-[9px] ${isAll ? 'text-blue-100' : 'text-gray-500'}">(${posProducts.length})</span>
+    </button>
+  `;
+
+  cats.forEach((cat: any) => {
+    const isAct = activeCategoryFilter === cat;
+    const count = posProducts.filter((p: any) => (p.categoria || '').trim() === cat).length;
+    html += `
+      <button type="button" class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 border-none cursor-pointer flex-shrink-0 ${isAct ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-400/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}" onclick="window.setCatalogCategoryFilter('${(window as any).esc(cat)}')">
+        ${(window as any).esc(cat)} <span class="text-[9px] ${isAct ? 'text-blue-100' : 'text-gray-500'}">(${count})</span>
+      </button>
+    `;
+  });
+
+  bar.innerHTML = html;
+};
+
+let _posScannerBuffer = '';
+let _lastScannerKeyTime = 0;
+
+function initPOSGlobalShortcutsAndScanner() {
+  if ((window as any)._posShortcutsInitialized) return;
+  (window as any)._posShortcutsInitialized = true;
+
+  window.addEventListener('keydown', (ev: KeyboardEvent) => {
+    const mainContainer = document.getElementById('pos-main-container');
+    if (!mainContainer) return;
+
+    // Verificar si hay un modal de confirmación o modal general abierto
+    const modal = document.querySelector('.modal-container, .modal-backdrop');
+    const isModalOpen = modal && window.getComputedStyle(modal).display !== 'none';
+
+    // 1. Hotkeys de funciones rápidas
+    if (ev.key === 'F2') {
+      ev.preventDefault();
+      if (isModalOpen) return;
+      if (posCart.length > 0) {
+        if (typeof (window as any).openPOSPaymentModal === 'function') {
+          (window as any).openPOSPaymentModal();
+        }
+      } else {
+        (window as any).showToast('El carrito está vacío. Agrega productos primero.', 'info');
+      }
+      return;
+    }
+
+    if (ev.key === 'F3') {
+      ev.preventDefault();
+      const sInp = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (sInp) {
+        sInp.focus();
+        sInp.select();
+      }
+      return;
+    }
+
+    if (ev.key === 'F4') {
+      ev.preventDefault();
+      const cInp = document.getElementById('pos-cart-customer-search') as HTMLInputElement;
+      if (cInp) {
+        cInp.focus();
+        cInp.select();
+      }
+      return;
+    }
+
+    if (ev.key === 'F7') {
+      ev.preventDefault();
+      if (!isModalOpen && typeof (window as any).posHoldCart === 'function') {
+        (window as any).posHoldCart();
+      }
+      return;
+    }
+
+    if (ev.key === 'F8') {
+      ev.preventDefault();
+      if (!isModalOpen && typeof (window as any).posShowHeldCartsModal === 'function') {
+        (window as any).posShowHeldCartsModal();
+      }
+      return;
+    }
+
+    if (ev.key === 'F9') {
+      ev.preventDefault();
+      if (!isModalOpen && typeof (window as any).openPOSCashMovementsModal === 'function') {
+        (window as any).openPOSCashMovementsModal();
+      }
+      return;
+    }
+
+    if (ev.key === 'F11') {
+      ev.preventDefault();
+      (window as any).togglePOSFullscreen();
+      return;
+    }
+
+    // 2. Lector de Código de Barras (Hardware USB/Bluetooth)
+    if (isModalOpen) return;
+
+    const target = ev.target as HTMLElement;
+    const isWriting = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+
+    const now = Date.now();
+    const interval = now - _lastScannerKeyTime;
+    _lastScannerKeyTime = now;
+
+    if (ev.key === 'Enter') {
+      if (_posScannerBuffer.length >= 3) {
+        const scannedCode = _posScannerBuffer.trim();
+        _posScannerBuffer = '';
+        const match = posProducts.find((p: any) =>
+          (p.code && p.code.toLowerCase() === scannedCode.toLowerCase()) ||
+          (p.barcode && p.barcode.toLowerCase() === scannedCode.toLowerCase()) ||
+          (p.ean_code && p.ean_code.toLowerCase() === scannedCode.toLowerCase())
+        );
+
+        if (match) {
+          ev.preventDefault();
+          const allowNegative = posConfig?.operational?.allow_negative_stock;
+          const inCart = posCart.find(x => x.id === match.id);
+          const currentQty = inCart ? inCart.qty : 0;
+          if (match.type === 'BIEN' && !allowNegative && currentQty + 1 > match.stock) {
+            (window as any).showToast(`Existencias insuficientes para ${match.name} (disp. ${match.stock}).`, 'warning');
+            return;
+          }
+          (window as any).addToPOSCart(match.id);
+          (window as any).showToast(`+1 ${(window as any).esc(match.name)} (Escaneado)`, 'success');
+          const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+          if (searchInput) searchInput.value = '';
+          return;
+        }
+      }
+      _posScannerBuffer = '';
+      return;
+    }
+
+    // Si el usuario escribe en un campo normalmente con cadencia humana (> 70ms), no es escáner
+    if (isWriting && interval > 70) {
+      _posScannerBuffer = '';
+      return;
+    }
+
+    if (ev.key.length === 1) {
+      if (interval > 80) {
+        _posScannerBuffer = ev.key;
+      } else {
+        _posScannerBuffer += ev.key;
+      }
+    }
+  });
+}
+
 window.setCatalogCategoryFilter = function(cat: string) {
   activeCategoryFilter = cat;
   window.filterPosProducts();
+  window.renderPOSCategoryChips();
 };
 
 window.setCatalogLineFilter = function(ln: string) {
@@ -1542,6 +1909,7 @@ window.clearCatalogFilter = function() {
   activeCategoryFilter = "";
   activeLineFilter = "";
   window.filterPosProducts();
+  window.renderPOSCategoryChips();
 };
 
 window.filterPosProducts = function() {
@@ -1593,8 +1961,10 @@ window.filterPosProducts = function() {
     activeLineFilter = "";
   }
 
-  // 1. Mostrar categorías si está configurado y no hay filtros ni búsquedas activas
-  if (posConfig?.special?.catalog_view_mode === 'categories' && !activeCategoryFilter && !query) {
+  const viewMode = posConfig?.special?.catalog_view_mode || 'grid';
+
+  // 1. Mostrar categorías solo si la modalidad es 'categories' y no hay filtros ni búsquedas activas
+  if (viewMode === 'categories' && !activeCategoryFilter && !query) {
     const cats = [...new Set(posProducts.map(p => p.categoria?.trim()).filter(Boolean))].sort();
     if (posProducts.some(p => !p.categoria?.trim())) {
       cats.push("Sin Categoría");
@@ -1605,7 +1975,7 @@ window.filterPosProducts = function() {
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
         ${cats.map(cat => `
-          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-blue-300" 
+          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-blue-300 shadow-sm" 
                style="border-color:#E5E7EB;background:#FCFCFD"
                onclick="window.setCatalogCategoryFilter('${(window as any).esc(cat)}')">
             <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 text-lg">
@@ -1619,8 +1989,8 @@ window.filterPosProducts = function() {
     return;
   }
 
-  // 2. Mostrar líneas si está configurado y no hay filtros ni búsquedas activas
-  if (posConfig?.special?.catalog_view_mode === 'lines' && !activeLineFilter && !query) {
+  // 2. Mostrar líneas solo si la modalidad es 'lines' y no hay filtros ni búsquedas activas
+  if (viewMode === 'lines' && !activeLineFilter && !query) {
     const lns = [...new Set(posProducts.map(p => p.linea?.trim()).filter(Boolean))].sort();
     if (posProducts.some(p => !p.linea?.trim())) {
       lns.push("Sin Línea");
@@ -1631,7 +2001,7 @@ window.filterPosProducts = function() {
       </div>
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
         ${lns.map(ln => `
-          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-violet-300" 
+          <div class="rounded-xl border p-5 text-center cursor-pointer transition-all duration-200 hover:scale-[1.02] flex flex-col justify-center items-center gap-3 hover:border-violet-300 shadow-sm" 
                style="border-color:#E5E7EB;background:#FCFCFD"
                onclick="window.setCatalogLineFilter('${(window as any).esc(ln)}')">
             <div class="w-12 h-12 rounded-full bg-violet-50 flex items-center justify-center text-violet-500 text-lg">
@@ -1668,7 +2038,7 @@ window.filterPosProducts = function() {
   if (!filtered.length) {
     let returnBtn = "";
     if (activeCategoryFilter || activeLineFilter) {
-      returnBtn = `<button class="btn btn-outline btn-sm mt-3" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>`;
+      returnBtn = `<button class="btn btn-outline btn-sm mt-3" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver al Catálogo</button>`;
     }
     grid.innerHTML = `
       <div class="text-center py-12 text-gray-500 w-full col-span-3">
@@ -1679,25 +2049,25 @@ window.filterPosProducts = function() {
     return;
   }
 
-  // Generar miga de pan o barra de navegación para filtros activos
+  // Generar miga de pan solo si venimos de navegación de carpetas
   let filterBreadcrumb = "";
-  if (activeCategoryFilter) {
+  if (viewMode === 'categories' && activeCategoryFilter) {
     filterBreadcrumb = `
       <div class="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-xl p-3 mb-3 text-xs text-blue-800 font-medium">
         <span><i class="fas fa-folder-open mr-1"></i> Categoría: <strong>${(window as any).esc(activeCategoryFilter)}</strong></span>
-        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-blue-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>
+        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-blue-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver a categorías</button>
       </div>
     `;
-  } else if (activeLineFilter) {
+  } else if (viewMode === 'lines' && activeLineFilter) {
     filterBreadcrumb = `
       <div class="flex items-center justify-between bg-violet-50 border border-violet-100 rounded-xl p-3 mb-3 text-xs text-violet-800 font-medium">
         <span><i class="fas fa-tags mr-1"></i> Línea: <strong>${(window as any).esc(activeLineFilter)}</strong></span>
-        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-violet-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver</button>
+        <button class="btn btn-sm btn-outline py-1 px-3 text-[10px] text-violet-700 bg-white" onclick="window.clearCatalogFilter()"><i class="fas fa-chevron-left"></i> Volver a líneas</button>
       </div>
     `;
   }
 
-  const maxToShow = 36;
+  const maxToShow = 48;
   const itemsToShow = filtered.slice(0, maxToShow);
   const showMoreAlert = filtered.length > maxToShow 
     ? `<div class="w-full text-center py-3 px-4 text-xs bg-blue-50/80 text-blue-700 rounded-xl border border-blue-100 font-medium mt-4 col-span-2 sm:col-span-3">
@@ -1705,9 +2075,13 @@ window.filterPosProducts = function() {
        </div>`
     : '';
 
+  const showImages = posConfig?.special?.show_product_images !== false;
+  const pbUrl = (window as any).PB_URL || (window as any).pb?.baseUrl || '';
+  const authToken = (window as any).pb?.authStore?.token || (window as any).pb?.authToken || '';
+
   grid.innerHTML = `
     ${filterBreadcrumb}
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
       ${itemsToShow.map(p => {
         const allowNegative = posConfig?.operational?.allow_negative_stock;
         const isOutOfStock = p.type === 'BIEN' && p.stock <= 0;
@@ -1715,12 +2089,12 @@ window.filterPosProducts = function() {
 
         const stockLabel = p.type === 'SERVICIO' ? 'SERVICIO' : `${p.stock} DISP <i class="fas fa-circle-info ml-1" style="font-size:8px"></i>`;
         const stockBadgeClass = p.type === 'SERVICIO'
-          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+          ? 'bg-blue-500/10 text-blue-500 border border-blue-500/20'
           : p.stock > 10
-            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+            ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
             : p.stock > 0
-              ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
-              : 'bg-red-500/10 text-red-400 border border-red-500/20';
+              ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+              : 'bg-red-500/10 text-red-500 border border-red-500/20';
 
         const price = getProductPriceByConfig(p, posConfig);
         const isFree = posConfig?.special?.price_source === 'free';
@@ -1729,23 +2103,39 @@ window.filterPosProducts = function() {
           ? `<span class="text-[8px] text-orange-500 font-bold block leading-tight">IVA incl.</span>`
           : '';
 
+        const imageUrl = (showImages && p.image)
+          ? `${pbUrl}/api/files/products/${p.id}/${p.image}?thumb=300x300${authToken ? '&token=' + authToken : ''}`
+          : '';
+
+        const imageHtml = showImages
+          ? (imageUrl
+              ? `<div class="w-full h-28 rounded-lg overflow-hidden mb-2 bg-gray-50 flex items-center justify-center relative border border-gray-100 group">
+                   <img src="${imageUrl}" alt="${(window as any).esc(p.name)}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\\\'flex flex-col items-center justify-center text-gray-300 w-full h-full p-2 text-center\\\'><i class=\\\'fas fa-image text-xl mb-1 text-gray-300\\\'></i><span class=\\\'text-[9px] text-gray-400 font-medium\\\'>Sin imagen</span></div>'" />
+                 </div>`
+              : `<div class="w-full h-24 rounded-lg mb-2 bg-gray-50/70 border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-300">
+                   <i class="fas fa-box-open text-xl mb-1 text-gray-300"></i>
+                   <span class="text-[9px] text-gray-400 font-medium">Sin foto</span>
+                 </div>`)
+          : '';
+
         return `
-          <div class="rounded-xl border p-3 flex flex-col justify-between relative select-none cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:border-blue-200 ${isBlocked ? 'opacity-55 cursor-not-allowed' : ''}" 
+          <div class="rounded-xl border p-3 flex flex-col justify-between relative select-none cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:border-blue-300 hover:shadow-sm ${isBlocked ? 'opacity-55 cursor-not-allowed' : ''}" 
                style="border-color:#E5E7EB;background:#FCFCFD"
                onclick="${isBlocked ? '' : `window.addToPOSCart('${p.id}')`}">
             <div>
+              ${imageHtml}
               <div class="flex justify-between items-start gap-1">
-                <span class="text-[9px] font-mono text-gray-400 block">[${(window as any).esc(p.code || 'S/C')}]</span>
-                <span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${stockBadgeClass} hover:scale-105 active:scale-95 transition-transform" onclick="event.stopPropagation(); (window as any).showStockBreakdownModal('${p.id}', '${(window as any).esc(p.name)}')">${stockLabel}</span>
+                <span class="text-[9px] font-mono text-gray-400 block truncate" title="${(window as any).esc(p.code || '')}">[${(window as any).esc(p.code || 'S/C')}]</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${stockBadgeClass} hover:scale-105 active:scale-95 transition-transform flex-shrink-0" onclick="event.stopPropagation(); (window as any).showStockBreakdownModal('${p.id}', '${(window as any).esc(p.name)}')">${stockLabel}</span>
               </div>
-              <h4 class="font-semibold text-xs text-gray-800 mt-1.5 line-clamp-2" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
+              <h4 class="font-semibold text-xs text-gray-800 mt-1 line-clamp-2 leading-snug" title="${(window as any).esc(p.name)}">${(window as any).esc(p.name)}</h4>
             </div>
-            <div class="mt-3 flex justify-between items-end">
+            <div class="mt-2.5 pt-2 border-t border-gray-100 flex justify-between items-end">
               <div>
-                <span class="font-extrabold text-blue-600 text-sm">${priceLabel}</span>
+                <span class="font-extrabold text-blue-600 text-sm tracking-tight">${priceLabel}</span>
                 ${includesIvaBadge}
               </div>
-              <span class="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 text-xs hover:bg-blue-500/20"><i class="fas fa-plus"></i></span>
+              <span class="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 text-xs hover:bg-blue-500/20 active:scale-95 transition-all"><i class="fas fa-plus"></i></span>
             </div>
           </div>
         `;
@@ -1757,11 +2147,13 @@ window.filterPosProducts = function() {
 
 window.posOnCustomerChange = function() {
   selectedCustomerId = (document.getElementById('pos-cart-customer') as HTMLSelectElement)?.value || "";
+  saveActivePOSCartState();
 };
 
 window.posOnWarehouseChange = async function() {
   selectedWarehouseId = (document.getElementById('pos-cart-warehouse') as HTMLSelectElement)?.value || "";
   posCart = [];
+  clearActivePOSCartState();
   window.renderPOSCart();
   await window.loadPosProductsWithStock();
 };
@@ -1964,6 +2356,7 @@ window.clearPOSCart = function() {
   posCart = [];
   loadedSalesOrderId = null;
   loadedSellerId = null;
+  clearActivePOSCartState();
   const banner = document.getElementById('pos-loaded-order-banner');
   if (banner) banner.style.display = 'none';
   window.renderPOSCart();
@@ -2065,6 +2458,7 @@ window.renderPOSCart = function() {
   if (!body) return;
 
   if (!posCart.length) {
+    clearActivePOSCartState();
     body.innerHTML = `
       <div class="flex-grow flex flex-col justify-center items-center py-12 text-gray-500 h-full border border-dashed border-gray-800 rounded-2xl">
         <i class="fas fa-basket-shopping text-3xl mb-2"></i>
@@ -2224,6 +2618,7 @@ window.renderPOSCart = function() {
   }
 
   if (totLbl) totLbl.textContent = (window as any).fmt(total);
+  saveActivePOSCartState();
 };
 
 window.posUpdateDiscountFreight = function() {
@@ -2364,6 +2759,7 @@ window.closePOSShift = async function() {
 
     const diff = counted - expected;
     const closedShiftId = activeShift.id;
+    clearActivePOSCartState();
 
     // Mostrar modal con resumen de cierre y opciones de impresión
     const diffText = Math.abs(diff) < 0.01 
@@ -2778,6 +3174,32 @@ window.printInformeDiarioTicket = async function(shiftId: string) {
   }
 };
 
+// Variable de tipo de comprobante fiscal en POS
+let currentPOSDocType: 'POS' | 'FE' = 'POS';
+
+window.selectPosDocType = function(type: 'POS' | 'FE') {
+  currentPOSDocType = type;
+  const btnPos = document.getElementById('btn-pos-doc-pos');
+  const btnFe = document.getElementById('btn-pos-doc-fe');
+  const hint = document.getElementById('pos-doc-type-hint');
+  const warn = document.getElementById('pos-fe-warning');
+
+  if (type === 'POS') {
+    if (btnPos) btnPos.className = "btn btn-sm btn-primary text-xs py-1 px-3 font-bold";
+    if (btnFe) btnFe.className = "btn btn-sm btn-outline text-xs py-1 px-3 font-bold text-gray-600";
+    if (hint) hint.textContent = "Ticket POS (Doc. Equivalente)";
+    if (warn) warn.style.display = "none";
+  } else {
+    if (btnPos) btnPos.className = "btn btn-sm btn-outline text-xs py-1 px-3 font-bold text-gray-600";
+    if (btnFe) btnFe.className = "btn btn-sm btn-primary text-xs py-1 px-3 font-bold";
+    if (hint) hint.textContent = "Factura Electrónica de Venta (FE)";
+    
+    const cust = posCustomers.find((c: any) => c.id === selectedCustomerId);
+    const isFinalConsumer = !cust || cust.doc_number === '222222222' || cust.nit === '222222222' || (cust.name || '').toLowerCase().includes('consumidor');
+    if (warn) warn.style.display = isFinalConsumer ? "block" : "none";
+  }
+};
+
 // --- Modal de Pago Rápido POS ---
 
 window.openPOSPaymentModal = async function() {
@@ -2785,6 +3207,8 @@ window.openPOSPaymentModal = async function() {
     (window as any).showToast('Agrega productos al carrito primero.', 'warning');
     return;
   }
+
+  currentPOSDocType = 'POS'; // Reset a POS por defecto
 
   let sellers: any[] = [];
   let bankAccounts: any[] = [];
@@ -2823,14 +3247,33 @@ window.openPOSPaymentModal = async function() {
     : `<span class="text-[10px] text-gray-400">${ivaModeDetails}</span>`;
 
   const bodyHtml = `
-    <div class="space-y-6 text-sm" style="color:#374151">
+    <div class="space-y-5 text-sm" style="color:#374151">
       <div class="text-center p-4 rounded-xl" style="background:#EEF2F6">
         <span class="text-xs text-gray-500 uppercase font-black block">Total a Recaudar</span>
         <span class="text-3xl font-extrabold text-blue-700" id="pos-pay-tot" data-val="${total}">${(window as any).fmt(total)}</span>
         <div class="mt-1">${ivaModeLabel}</div>
       </div>
 
-      <div class="form-group mb-4">
+      <!-- Selector de Tipo de Documento Fiscal -->
+      <div class="p-3 rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-between">
+        <div>
+          <span class="text-xs font-bold text-gray-800 block">Comprobante Fiscal</span>
+          <span class="text-[10px] text-gray-500" id="pos-doc-type-hint">Ticket POS (Doc. Equivalente)</span>
+        </div>
+        <div class="flex gap-1" id="pos-doc-type-toggle">
+          <button type="button" class="btn btn-sm btn-primary text-xs py-1 px-3 font-bold" id="btn-pos-doc-pos" onclick="window.selectPosDocType('POS')">
+            <i class="fas fa-receipt mr-1"></i> Ticket POS
+          </button>
+          <button type="button" class="btn btn-sm btn-outline text-xs py-1 px-3 font-bold text-gray-600" id="btn-pos-doc-fe" onclick="window.selectPosDocType('FE')">
+            <i class="fas fa-file-invoice mr-1"></i> Factura Electrónica
+          </button>
+        </div>
+      </div>
+      <div id="pos-fe-warning" style="display:none;" class="p-2.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-900 text-xs">
+        <i class="fas fa-circle-exclamation mr-1 text-amber-700"></i> Recuerda verificar que el cliente seleccionado tenga NIT/Cédula y correo electrónico para emisión electrónica DIAN.
+      </div>
+
+      <div class="form-group mb-2">
         <label class="form-label font-bold text-gray-700 mb-1 block">Vendedor Asignado</label>
         <select id="pos-pay-seller" class="form-input w-full">
           <option value="">— Seleccionar Vendedor —</option>
@@ -3282,6 +3725,16 @@ window.confirmPOSPayment = async function() {
       } catch (_) {}
     }
 
+    const isFE = currentPOSDocType === 'FE';
+    if (isFE) {
+      const cust = posCustomers.find((c: any) => c.id === selectedCustomerId);
+      if (cust && (cust.doc_number === '222222222' || cust.nit === '222222222' || (cust.name || '').toLowerCase().includes('consumidor'))) {
+        (window as any).showToast('Para emitir Factura Electrónica debes asignar un cliente con NIT o Cédula válido, no Consumidor Final.', 'warning');
+        if (btn) { btn.disabled = false; btn.textContent = 'CONFIRMAR E IMPRIMIR'; }
+        return;
+      }
+    }
+
     const header = {
       number: invoiceNumber,
       customer_id: selectedCustomerId,
@@ -3291,7 +3744,7 @@ window.confirmPOSPayment = async function() {
       commission_amount: commissionAmount,
       date: (window as any).todayStr(),
       due_date: posDueDate,
-      notes: `Venta POS turno #${activeShift.id.slice(-5)}`,
+      notes: isFE ? `Factura Electrónica emitida en POS turno #${activeShift.id.slice(-5)}` : `Venta POS turno #${activeShift.id.slice(-5)}`,
       payment_method: currentPOSPayMethod,
       payment_form: posPayForm,
       payment_dian_code: posPayDianCode,
@@ -3304,6 +3757,7 @@ window.confirmPOSPayment = async function() {
       payment_split: paymentSplit,
       bank_account_id: bankAccountId,
       sales_order_id: loadedSalesOrderId,
+      is_electronic: isFE,
     };
 
     // 1. Crea factura

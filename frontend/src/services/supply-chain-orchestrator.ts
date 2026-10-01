@@ -87,6 +87,7 @@ export class SupplyChainOrchestrator {
         customs: 'Aranceles e Impuestos DIAN',
         local_carrier: 'Transporte Terrestre Local',
         local_other: 'Gastos Portuarios / Otros',
+        bank_fees: 'Gastos Bancarios / Comisiones',
       };
 
       const targetDueDate = dueDate || imp.estimated_arrival || (window as any).todayStr();

@@ -99,4 +99,48 @@ onBootstrap((e) => {
   } catch (err) {
     console.log("[GRAVY-RESOLUCIONES] Error al extender pos_shifts: " + err);
   }
+
+  // 4. Sembrado automático de caja registradora predeterminada si la colección está vacía
+  try {
+    const regCount = $app.findRecordsByFilter("pos_registers", "active = true", "", 1).length;
+    if (regCount === 0) {
+      const regCol = $app.findCollectionByNameOrId("pos_registers");
+      const defaultReg = new Record(regCol);
+      defaultReg.set("id", "2ss1le5f5q06wdt");
+      defaultReg.set("name", "Caja Principal 01");
+      defaultReg.set("terminal_key", "POS-01");
+      defaultReg.set("active", true);
+      try {
+        const defaultBranch = $app.findFirstRecordByFilter("branches", "active = true");
+        if (defaultBranch) defaultReg.set("branch_id", defaultBranch.id);
+      } catch (_) {}
+      $app.save(defaultReg);
+      console.log("[GRAVY-RESOLUCIONES] Creada Caja Registradora Principal inicial.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-RESOLUCIONES] Nota al verificar cajas iniciales: " + err);
+  }
+
+  // 5. Sembrado automático de resolución POS si no existe
+  try {
+    const posResCount = $app.findRecordsByFilter("dian_resolutions", "document_type = 'POS'", "", 1).length;
+    if (posResCount === 0) {
+      const resCol = $app.findCollectionByNameOrId("dian_resolutions");
+      const defaultRes = new Record(resCol);
+      defaultRes.set("document_type", "POS");
+      defaultRes.set("prefix", "POS");
+      defaultRes.set("resolution_number", "18764000001");
+      defaultRes.set("resolution_date", "2026-01-01");
+      defaultRes.set("number_from", 1);
+      defaultRes.set("number_to", 100000);
+      defaultRes.set("current_number", 0);
+      defaultRes.set("expiration_date", "2028-12-31");
+      defaultRes.set("pos_register_id", "");
+      defaultRes.set("active", true);
+      $app.save(defaultRes);
+      console.log("[GRAVY-RESOLUCIONES] Creada Resolución DIAN POS por defecto.");
+    }
+  } catch (err) {
+    console.log("[GRAVY-RESOLUCIONES] Nota al verificar resolución POS: " + err);
+  }
 });

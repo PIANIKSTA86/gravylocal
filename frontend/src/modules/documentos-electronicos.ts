@@ -38,6 +38,21 @@ interface ElecDoc {
   supplier_details?: string;
   user_id: string;
   branch_id?: string;
+  reception_source?: string;
+  matias_reception_id?: string;
+  radian_030_status?: string;
+  radian_030_date?: string;
+  radian_030_cude?: string;
+  radian_032_status?: string;
+  radian_032_date?: string;
+  radian_032_cude?: string;
+  radian_033_status?: string;
+  radian_033_date?: string;
+  radian_033_cude?: string;
+  radian_031_status?: string;
+  radian_031_claim_code?: string;
+  radian_031_notes?: string;
+  radian_last_response?: string;
   expand?: any;
 }
 
@@ -62,28 +77,34 @@ async function loadCdePage(c: HTMLElement) {
 
   const totalCount = docs.length;
   const pendingCount = docs.filter((d: any) => d.status === 'pendiente').length;
-  const homologatedCount = docs.filter((d: any) => d.status === 'homologado').length;
   const postedCount = docs.filter((d: any) => d.status === 'contabilizado').length;
-  const errorCount = docs.filter((d: any) => d.status === 'error').length;
+  const rad030Count = docs.filter((d: any) => d.radian_030_status === 'sent').length;
+  const rad032Count = docs.filter((d: any) => d.radian_032_status === 'sent').length;
+  const rad033Count = docs.filter((d: any) => d.radian_033_status === 'sent').length;
 
   c.innerHTML = `
-    <!-- KPIs -->
+    <!-- Header & Acciones de Ingesta -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <h3 class="text-lg font-bold" style="color:#0D2137">Centro de Documentos Electrónicos</h3>
-        <p class="text-sm" style="color:#6B7280">Importa facturas electrónicas de compras y servicios (XML/ZIP) y automatiza su homologación y contabilización.</p>
+        <h3 class="text-lg font-bold" style="color:#0D2137">Centro de Documentos Electrónicos & Buzón RADIAN</h3>
+        <p class="text-sm" style="color:#6B7280">Buzón tributario de facturas recibidas (IMAP / Excel DIAN / XML), gestión de eventos RADIAN y contabilización ERP.</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
+        <button class="btn btn-primary" id="btn-sync-imap" title="Conectar al buzón de correo IMAP y sincronizar facturas"><i class="fas fa-inbox mr-1.5"></i>Sincronizar Correo</button>
+        <button class="btn btn-outline" id="btn-import-excel-dian" title="Importar reporte oficial Excel descargado de DIAN Muisca"><i class="fas fa-file-excel mr-1.5 text-emerald-600"></i>Importar Excel DIAN</button>
+        <button class="btn btn-outline" id="btn-import-cufe" title="Importar documento directamente por su CUFE / TrackId"><i class="fas fa-barcode mr-1.5 text-indigo-600"></i>Importar CUFE</button>
         <button class="btn btn-outline" id="btn-cde-config" title="Configurar cuentas predeterminadas y reglas"><i class="fas fa-gear mr-1"></i>Configuración</button>
       </div>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+    <!-- KPIs -->
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
       ${cdeKpi('Total Documentos', totalCount, 'fas fa-file-invoice', '#1A4B8C', '#EEF4FF')}
-      ${cdeKpi('Pendientes', pendingCount, 'fas fa-clock', '#6B7280', '#F3F4F6')}
-      ${cdeKpi('Homologados', homologatedCount, 'fas fa-code-merge', '#0284C7', '#E0F2FE')}
-      ${cdeKpi('Contabilizados', postedCount, 'fas fa-circle-check', '#059669', '#ECFDF5')}
-      ${cdeKpi('Con Error', errorCount, 'fas fa-circle-xmark', '#EF4444', '#FEF2F2')}
+      ${cdeKpi('Pendientes ERP', pendingCount, 'fas fa-clock', '#D97706', '#FEF3C7')}
+      ${cdeKpi('Acuse DIAN (030)', rad030Count, 'fas fa-envelope-circle-check', '#0284C7', '#E0F2FE')}
+      ${cdeKpi('Recibo Bien (032)', rad032Count, 'fas fa-box-open', '#6366F1', '#EEF2FF')}
+      ${cdeKpi('Título Valor (033)', rad033Count, 'fas fa-award', '#059669', '#ECFDF5')}
+      ${cdeKpi('Contabilizados', postedCount, 'fas fa-circle-check', '#10B981', '#D1FAE5')}
     </div>
 
     <!-- Drag & Drop Zone -->
@@ -108,13 +129,27 @@ async function loadCdePage(c: HTMLElement) {
 
     <!-- Filtros -->
     <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center" style="border-color:#F0F0F0">
-      <input id="cde-q" class="form-input flex-1 min-w-48" placeholder="Buscar por número o proveedor...">
+      <input id="cde-q" class="form-input flex-1 min-w-48" placeholder="Buscar por número, proveedor o CUFE...">
       <select id="cde-status-f" class="form-input" style="max-width:180px">
-        <option value="">Todos los estados</option>
+        <option value="">Todos los estados ERP</option>
         <option value="pendiente">Pendiente</option>
         <option value="homologado">Homologado</option>
         <option value="contabilizado">Contabilizado</option>
         <option value="error">Con Error</option>
+      </select>
+      <select id="cde-radian-f" class="form-input" style="max-width:200px">
+        <option value="">Todos los eventos DIAN</option>
+        <option value="pending_030">Pendiente Acuse (030)</option>
+        <option value="pending_032">Pendiente Recibo Bien (032)</option>
+        <option value="033">Aceptada Título (033)</option>
+        <option value="031">Reclamada DIAN (031)</option>
+      </select>
+      <select id="cde-source-f" class="form-input" style="max-width:160px">
+        <option value="">Todos los orígenes</option>
+        <option value="email">Buzón IMAP</option>
+        <option value="excel_dian">Excel DIAN</option>
+        <option value="manual_cufe">CUFE Manual</option>
+        <option value="xml">Carga XML/ZIP</option>
       </select>
     </div>
 
@@ -131,12 +166,13 @@ async function loadCdePage(c: HTMLElement) {
               <th class="text-right">Subtotal</th>
               <th class="text-right">IVA</th>
               <th class="text-right">Total</th>
-              <th>Estado</th>
+              <th>Estado ERP</th>
+              <th>Eventos RADIAN (DIAN)</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="cde-tbody">
-            ${docs.length ? docs.map(d => renderDocRow(d)).join('') : `<tr><td colspan="9" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-file-invoice mr-2"></i>No hay documentos electrónicos importados.</td></tr>`}
+            ${docs.length ? docs.map(d => renderDocRow(d)).join('') : `<tr><td colspan="10" class="text-center py-10" style="color:#9CA3AF"><i class="fas fa-file-invoice mr-2"></i>No hay documentos electrónicos en el buzón.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -150,6 +186,9 @@ async function loadCdePage(c: HTMLElement) {
   dropZone?.addEventListener('click', () => fileInput?.click());
   fileInput?.addEventListener('change', (e: any) => handleFilesSelected(e.target.files, c));
   document.getElementById('btn-cde-config')?.addEventListener('click', () => openCdeSettingsModal(c));
+  document.getElementById('btn-sync-imap')?.addEventListener('click', () => syncImapInbox());
+  document.getElementById('btn-import-excel-dian')?.addEventListener('click', () => openExcelImportModal());
+  document.getElementById('btn-import-cufe')?.addEventListener('click', () => openCufeImportModal());
 
   dropZone?.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -172,22 +211,37 @@ async function loadCdePage(c: HTMLElement) {
   const applyFilter = () => {
     const q = (document.getElementById('cde-q') as HTMLInputElement)?.value.toLowerCase().trim();
     const st = (document.getElementById('cde-status-f') as HTMLSelectElement)?.value;
+    const rad = (document.getElementById('cde-radian-f') as HTMLSelectElement)?.value;
+    const src = (document.getElementById('cde-source-f') as HTMLSelectElement)?.value;
     const rows = document.querySelectorAll('#cde-tbody tr');
 
     rows.forEach((tr: any) => {
       if (tr.children.length === 1 && tr.textContent.includes('No hay')) return;
       const text = tr.textContent.toLowerCase();
       const status = tr.dataset.status;
+      const radian = tr.dataset.radian;
+      const source = tr.dataset.source;
 
       const matchesQ = !q || text.includes(q);
       const matchesStatus = !st || status === st;
+      let matchesRadian = true;
+      if (rad === 'pending_030') {
+        matchesRadian = radian !== '030' && radian !== '032' && radian !== '033' && radian !== '031';
+      } else if (rad === 'pending_032') {
+        matchesRadian = radian === '030';
+      } else if (rad) {
+        matchesRadian = radian === rad;
+      }
+      const matchesSource = !src || source === src;
 
-      tr.style.display = (matchesQ && matchesStatus) ? '' : 'none';
+      tr.style.display = (matchesQ && matchesStatus && matchesRadian && matchesSource) ? '' : 'none';
     });
   };
 
   document.getElementById('cde-q')?.addEventListener('input', applyFilter);
   document.getElementById('cde-status-f')?.addEventListener('change', applyFilter);
+  document.getElementById('cde-radian-f')?.addEventListener('change', applyFilter);
+  document.getElementById('cde-source-f')?.addEventListener('change', applyFilter);
 
   const tbl = document.getElementById('cde-table') as HTMLTableElement;
   if (tbl) (window as any).makeTableSortable(tbl);
@@ -243,8 +297,84 @@ function renderDocRow(d: ElecDoc) {
   const canApprove = (window as any).can ? (window as any).can('canApprove') : ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
   const canReverse = ['superadmin', 'administrador', 'admin', 'contador'].includes(userRole);
 
+  const isPurchase = d.document_type === 'invoice_purchase' || !d.document_type.includes('sale');
+  let radianCellHtml = '';
+
+  if (!isPurchase) {
+    radianCellHtml = `<span class="text-[11px] text-slate-400 italic">Emisión Propia</span>`;
+  } else if (d.radian_031_status === 'sent') {
+    radianCellHtml = `
+      <div class="flex items-center gap-1">
+        <span class="badge badge-red text-[10px]" title="Causal ${d.radian_031_claim_code || '01'}: ${d.radian_031_notes || ''}">
+          <i class="fas fa-ban mr-1"></i>031 Reclamada
+        </span>
+        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos" onclick="window.openRadianHistoryModal('${d.id}')">
+          <i class="fas fa-clock-rotate-left"></i>
+        </button>
+      </div>
+    `;
+  } else if (d.radian_033_status === 'sent') {
+    radianCellHtml = `
+      <div class="flex items-center gap-1">
+        <span class="badge text-[10px] bg-emerald-100 text-emerald-800 font-bold border border-emerald-300" title="Título Valor RADIAN constituido (${d.radian_033_date || ''})">
+          <i class="fas fa-award mr-1"></i>033 Título Valor
+        </span>
+        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700" title="Ver auditoría de eventos" onclick="window.openRadianHistoryModal('${d.id}')">
+          <i class="fas fa-clock-rotate-left"></i>
+        </button>
+      </div>
+    `;
+  } else {
+    const is030 = d.radian_030_status === 'sent';
+    const is032 = d.radian_032_status === 'sent';
+
+    radianCellHtml = `
+      <div class="flex items-center gap-1 flex-wrap">
+        ${is030 ? `
+          <span class="badge badge-green text-[10px]" title="Acuse enviado (${d.radian_030_date || ''})">
+            <i class="fas fa-check mr-0.5"></i>030
+          </span>
+        ` : `
+          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-blue-600 hover:bg-blue-50 border-blue-200" title="Emitir Acuse de Recibo (Evento 030)" onclick="window.sendRadianEvent('${d.id}', '030')">
+            <i class="fas fa-envelope-open-text mr-0.5"></i>030 Acuse
+          </button>
+        `}
+
+        ${is032 ? `
+          <span class="badge badge-green text-[10px]" title="Recibo del bien/servicio confirmado (${d.radian_032_date || ''})">
+            <i class="fas fa-check mr-0.5"></i>032
+          </span>
+        ` : (is030 ? `
+          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-indigo-600 hover:bg-indigo-50 border-indigo-200" title="Confirmar Recibo de Bien o Servicio (Evento 032)" onclick="window.sendRadianEvent('${d.id}', '032')">
+            <i class="fas fa-box-open mr-0.5"></i>032 Recibo
+          </button>
+          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1 text-red-500 hover:bg-red-50 border-red-200" title="Reclamar / Rechazar ante la DIAN (Evento 031)" onclick="window.openRadianClaimModal('${d.id}', '${(window as any).esc(d.number)}', '${(window as any).esc(d.supplier_name)}')">
+            <i class="fas fa-triangle-exclamation"></i>
+          </button>
+        ` : `
+          <span class="text-[10px] text-gray-300 font-mono" title="Requiere emitir 030 primero">032</span>
+        `)}
+
+        ${is032 ? `
+          <button class="btn btn-outline btn-sm text-[10px] py-0.5 px-1.5 text-emerald-600 hover:bg-emerald-50 border-emerald-300" title="Aceptación Expresa de Factura como Título Valor (Evento 033)" onclick="window.sendRadianEvent('${d.id}', '033')">
+            <i class="fas fa-file-signature mr-0.5"></i>033 Aceptar
+          </button>
+        ` : `
+          <span class="text-[10px] text-gray-300 font-mono" title="Requiere emitir 032 primero">033</span>
+        `}
+
+        <button class="btn btn-ghost btn-sm text-[10px] py-0 px-1 text-slate-400 hover:text-slate-700 ml-0.5" title="Ver auditoría de eventos" onclick="window.openRadianHistoryModal('${d.id}')">
+          <i class="fas fa-clock-rotate-left"></i>
+        </button>
+      </div>
+    `;
+  }
+
+  const radianAttr = d.radian_031_status === 'sent' ? '031' : (d.radian_033_status === 'sent' ? '033' : (d.radian_032_status === 'sent' ? '032' : (d.radian_030_status === 'sent' ? '030' : 'none')));
+  const sourceAttr = d.reception_source || 'xml';
+
   return `
-    <tr data-id="${d.id}" data-status="${d.status}">
+    <tr data-id="${d.id}" data-status="${d.status}" data-radian="${radianAttr}" data-source="${sourceAttr}">
       <td class="font-medium text-xs">
         <i class="fas ${typeIcons[d.document_type] || 'fa-file text-slate-500'} mr-2"></i>
         ${typeLabels[d.document_type] || d.document_type}
@@ -262,13 +392,16 @@ function renderDocRow(d: ElecDoc) {
         <span class="badge ${statusBadges[d.status] || 'badge-gray'} text-xs capitalize">${d.status}</span>
       </td>
       <td>
+        ${radianCellHtml}
+      </td>
+      <td>
         <div class="flex items-center gap-1.5">
           <button class="btn btn-outline btn-sm text-[11px] py-1 px-2" title="Ver Detalle XML" onclick="viewDocXmlDetails('${d.id}')">
             <i class="fas fa-eye"></i>
           </button>
 
           ${d.status !== 'contabilizado' ? `
-            <button class="btn btn-primary btn-sm text-[11px] py-1 px-2" title="Homologar y Contabilizar" onclick="openDocHomologationModal('${d.id}')">
+            <button class="btn btn-primary btn-sm text-[11px] py-1 px-2" title="Homologar y Contabilizar en ERP" onclick="openDocHomologationModal('${d.id}')">
               <i class="fas fa-magic"></i> Contabilizar
             </button>
             <button class="btn btn-outline btn-sm text-red-500 hover:bg-red-50 text-[11px] py-1 px-2 transition" title="Eliminar registro no contabilizado" onclick="deleteDocElectronico('${d.id}')">
@@ -2716,6 +2849,357 @@ async function reverseDocContabilization(docId: string) {
   }
 }
 
+// ──────────────────────────────────────────────────────────
+// BUZÓN TRIBUTARIO & EVENTOS RADIAN (MATIAS API)
+// ──────────────────────────────────────────────────────────
+
+async function syncImapInbox() {
+  const btn = document.getElementById('btn-sync-imap') as HTMLButtonElement;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1.5"></i>Sincronizando buzón...`;
+  }
+  (window as any).showToast('Conectando al servidor IMAP y analizando facturas XML adjuntas...', 'info');
+
+  try {
+    const res = await fetch('/api/radian/sync-email', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Error al sincronizar buzón IMAP.');
+    }
+    (window as any).showToast(data.message || `Buzón sincronizado. Nuevas: ${data.importedCount}, Existentes: ${data.existingCount}`, 'success');
+    renderDocumentosElectronicos();
+  } catch (err: any) {
+    (window as any).showToast(`Error IMAP: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fas fa-inbox mr-1.5"></i>Sincronizar Correo`;
+    }
+  }
+}
+
+function openExcelImportModal() {
+  const htmlBody = `
+    <div class="space-y-4 text-xs">
+      <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 leading-relaxed">
+        <i class="fas fa-info-circle mr-1.5 text-blue-600"></i>
+        Descargue el archivo Excel de <strong>Documentos Recibidos</strong> desde el portal <strong>DIAN Muisca</strong> (Menú Facturación Electrónica -> Documentos Recibidos -> Descargar Excel). Al cargarlo aquí, MATIAS API procesará los CUFEs y los agregará al buzón local.
+      </div>
+      <div id="excel-drop-zone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:bg-slate-50 transition">
+        <i class="fas fa-file-excel text-4xl text-emerald-600 mb-2"></i>
+        <p class="font-bold text-slate-700">Arrastre su archivo Excel (.xlsx / .xls) aquí</p>
+        <p class="text-slate-400 text-[11px] mt-1">O haga clic para seleccionarlo desde su equipo</p>
+        <input type="file" id="excel-file-input" accept=".xlsx,.xls" class="hidden">
+      </div>
+      <div id="excel-file-name" class="hidden text-xs text-emerald-700 font-semibold p-2 bg-emerald-50 rounded-lg border border-emerald-200"></div>
+    </div>
+  `;
+
+  const htmlFooter = `
+    <div class="flex gap-2">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-submit-excel-import" disabled>
+        <i class="fas fa-upload mr-1"></i>Procesar Excel DIAN
+      </button>
+    </div>
+  `;
+
+  (window as any).openModal('Importación Masiva de Facturas desde Excel DIAN', htmlBody, htmlFooter, false);
+
+  let selectedFile: File | null = null;
+  const dropZone = document.getElementById('excel-drop-zone');
+  const fileInput = document.getElementById('excel-file-input') as HTMLInputElement;
+  const fileNameDiv = document.getElementById('excel-file-name');
+  const submitBtn = document.getElementById('btn-submit-excel-import') as HTMLButtonElement;
+
+  const onFile = (file: File) => {
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      return (window as any).showToast('Seleccione un archivo Excel válido (.xlsx o .xls)', 'warning');
+    }
+    selectedFile = file;
+    if (fileNameDiv) {
+      fileNameDiv.textContent = `Archivo seleccionado: ${file.name} (${Math.round(file.size / 1024)} KB)`;
+      fileNameDiv.classList.remove('hidden');
+    }
+    if (submitBtn) submitBtn.disabled = false;
+  };
+
+  dropZone?.addEventListener('click', () => fileInput?.click());
+  fileInput?.addEventListener('change', (e: any) => {
+    if (e.target.files?.[0]) onFile(e.target.files[0]);
+  });
+  dropZone?.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#10B981'; });
+  dropZone?.addEventListener('dragleave', () => { dropZone.style.borderColor = '#CBD5E1'; });
+  dropZone?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.borderColor = '#CBD5E1';
+    if (e.dataTransfer?.files?.[0]) onFile(e.dataTransfer.files[0]);
+  });
+
+  submitBtn?.addEventListener('click', async () => {
+    if (!selectedFile) return;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Transmitiendo a MATIAS API...`;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64Data = (reader.result as string).split(',')[1];
+          const res = await fetch('/api/radian/import-excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ document_base64: base64Data })
+          });
+          const result = await res.json();
+          if (!res.ok || !result.success) {
+            throw new Error(result.error || 'Error procesando el archivo Excel.');
+          }
+          (window as any).closeModal();
+          (window as any).showToast(result.message || 'Excel procesado con éxito.', 'success');
+          renderDocumentosElectronicos();
+        } catch (err: any) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = `<i class="fas fa-upload mr-1"></i>Procesar Excel DIAN`;
+          (window as any).showToast(`Error: ${err.message}`, 'error');
+        }
+      };
+      reader.readAsDataURL(selectedFile);
+    } catch (err: any) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<i class="fas fa-upload mr-1"></i>Procesar Excel DIAN`;
+      (window as any).showToast(`Error de lectura: ${err.message}`, 'error');
+    }
+  });
+}
+
+function openCufeImportModal() {
+  const htmlBody = `
+    <div class="space-y-4 text-xs">
+      <p class="text-slate-500">Ingrese el CUFE (Código Único de Factura Electrónica) o TrackID del documento para solicitar su consulta y vinculación ante MATIAS API.</p>
+      <div>
+        <label class="block font-bold mb-1 text-slate-700">CUFE / TrackID *</label>
+        <textarea id="cufe-import-input" class="form-input w-full font-mono text-xs h-24" placeholder="Pegue aquí el CUFE alfanumérico (ej: ad20e8c21f359c96...)"></textarea>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold mb-1 text-slate-700">Número de Factura (Opcional)</label>
+          <input type="text" id="cufe-import-num" class="form-input w-full text-xs" placeholder="Ej: SETP123">
+        </div>
+        <div>
+          <label class="block font-bold mb-1 text-slate-700">Nombre del Emisor (Opcional)</label>
+          <input type="text" id="cufe-import-name" class="form-input w-full text-xs" placeholder="Ej: PROVEEDOR S.A.S.">
+        </div>
+      </div>
+    </div>
+  `;
+
+  const htmlFooter = `
+    <div class="flex gap-2">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-submit-cufe-import">
+        <i class="fas fa-check mr-1"></i>Importar a Buzón
+      </button>
+    </div>
+  `;
+
+  (window as any).openModal('Importar Factura por CUFE', htmlBody, htmlFooter, false);
+
+  document.getElementById('btn-submit-cufe-import')?.addEventListener('click', async () => {
+    const cufe = (document.getElementById('cufe-import-input') as HTMLTextAreaElement)?.value.trim();
+    const number = (document.getElementById('cufe-import-num') as HTMLInputElement)?.value.trim();
+    const supplier_name = (document.getElementById('cufe-import-name') as HTMLInputElement)?.value.trim();
+
+    if (!cufe) {
+      return (window as any).showToast('Debe ingresar un CUFE válido.', 'warning');
+    }
+
+    const btn = document.getElementById('btn-submit-cufe-import') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-1"></i>Consultando...`;
+
+    try {
+      const res = await fetch('/api/radian/import-cufe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cufe, number, supplier_name })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'No se pudo importar el documento.');
+      }
+      (window as any).closeModal();
+      (window as any).showToast(data.message || 'Factura importada correctamente.', 'success');
+      renderDocumentosElectronicos();
+    } catch (err: any) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fas fa-check mr-1"></i>Importar a Buzón`;
+      (window as any).showToast(`Error: ${err.message}`, 'error');
+    }
+  });
+}
+
+async function sendRadianEvent(docId: string, code: '030' | '032' | '033' | '031', claimCode?: string, notes?: string) {
+  const eventNames: Record<string, string> = {
+    '030': 'Acuse de Recibo (030)',
+    '032': 'Recibo del Bien y/o Servicio (032)',
+    '033': 'Aceptación Expresa - Título Valor (033)',
+    '031': 'Reclamo Formal ante la DIAN (031)'
+  };
+
+  if (code !== '031') {
+    if (!confirm(`¿Transmitir a la DIAN el evento ${eventNames[code]} para esta factura? Esta acción registrará el evento fiscal y generará el CUDE correspondiente.`)) {
+      return;
+    }
+  }
+
+  (window as any).showToast(`Transmitiendo ${eventNames[code]} a la DIAN...`, 'info');
+
+  try {
+    const res = await fetch('/api/radian/send-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docId,
+        code,
+        claim_code: claimCode,
+        notes
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Error al emitir evento RADIAN');
+    }
+
+    (window as any).showToast(data.message || `Evento ${code} autorizado exitosamente por la DIAN.`, 'success');
+    renderDocumentosElectronicos();
+  } catch (err: any) {
+    (window as any).showToast(`Error DIAN/RADIAN: ${err.message}`, 'error');
+  }
+}
+
+function openRadianClaimModal(docId: string, number: string, supplierName: string) {
+  const htmlBody = `
+    <div class="space-y-4 text-xs">
+      <div class="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
+        <i class="fas fa-triangle-exclamation mr-1.5 text-red-600"></i>
+        Está a punto de emitir un <strong>Reclamo Legal (Evento 031)</strong> ante la DIAN para la factura <strong>${(window as any).esc(number)}</strong> de <strong>${(window as any).esc(supplierName)}</strong>.
+      </div>
+      <div>
+        <label class="block font-bold mb-1 text-slate-700">Causal Legal de Reclamo DIAN *</label>
+        <select id="radian-claim-code" class="form-input w-full text-xs">
+          <option value="01">01 - Documento con inconsistencias</option>
+          <option value="02">02 - Mercancía no entregada totalmente</option>
+          <option value="03">03 - Mercancía no entregada parcialmente</option>
+          <option value="04">04 - Servicio no prestado</option>
+        </select>
+      </div>
+      <div>
+        <label class="block font-bold mb-1 text-slate-700">Observaciones / Motivo Detallado *</label>
+        <textarea id="radian-claim-notes" class="form-input w-full text-xs h-20" placeholder="Escriba la justificación fiscal o comercial del reclamo..."></textarea>
+      </div>
+    </div>
+  `;
+
+  const htmlFooter = `
+    <div class="flex gap-2">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-danger" id="btn-submit-radian-claim" style="background:#DC2626;color:#fff;">
+        <i class="fas fa-ban mr-1"></i>Transmitir Reclamo (031)
+      </button>
+    </div>
+  `;
+
+  (window as any).openModal('Reclamo de Factura ante la DIAN (Evento 031)', htmlBody, htmlFooter, false);
+
+  document.getElementById('btn-submit-radian-claim')?.addEventListener('click', async () => {
+    const code = (document.getElementById('radian-claim-code') as HTMLSelectElement)?.value;
+    const notes = (document.getElementById('radian-claim-notes') as HTMLTextAreaElement)?.value.trim();
+    if (!notes) {
+      return (window as any).showToast('Debe ingresar una observación o motivo para el reclamo.', 'warning');
+    }
+    (window as any).closeModal();
+    await sendRadianEvent(docId, '031', code, notes);
+  });
+}
+
+async function openRadianHistoryModal(docId: string) {
+  try {
+    const d = await (window as any).pb.get('electronic_documents', docId);
+
+    const formatEventItem = (code: string, title: string, status: string, date: string, cude: string, desc: string) => {
+      const isSent = status === 'sent';
+      return `
+        <div class="p-3 border rounded-xl ${isSent ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-bold text-xs ${isSent ? 'text-emerald-800' : 'text-slate-600'}">
+              <i class="fas ${isSent ? 'fa-circle-check text-emerald-600' : 'fa-circle-pause text-slate-400'} mr-1.5"></i>
+              Evento ${code} — ${title}
+            </span>
+            <span class="badge ${isSent ? 'badge-green' : 'badge-gray'} text-[10px]">
+              ${isSent ? 'AUTORIZADO DIAN' : 'PENDIENTE'}
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 mb-1">${desc}</p>
+          ${isSent ? `
+            <div class="text-[10px] text-slate-600 mt-2 space-y-0.5 font-mono">
+              <div><strong>Fecha DIAN:</strong> ${d[`radian_${code}_date`] || 'Registrado'}</div>
+              ${cude ? `<div class="truncate"><strong>CUDE:</strong> ${(window as any).esc(cude)}</div>` : ''}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    };
+
+    const htmlBody = `
+      <div class="space-y-3 text-xs">
+        <div class="flex justify-between items-center p-3 bg-slate-100 rounded-xl">
+          <div>
+            <div class="font-bold text-sm text-slate-800">${(window as any).esc(d.number)}</div>
+            <div class="text-slate-500 text-[11px]">${(window as any).esc(d.supplier_name)} (NIT: ${(window as any).esc(d.supplier_nit)})</div>
+          </div>
+          <div class="text-right">
+            <div class="font-bold text-sm text-slate-800">${(window as any).fmt(d.total)}</div>
+            <div class="text-[10px] text-slate-400">Origen: ${d.reception_source || 'XML Directo'}</div>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          ${formatEventItem('030', 'Acuse de Recibo de Factura', d.radian_030_status, d.radian_030_date, d.radian_030_cude, 'Confirma a la DIAN la recepción formal del documento electrónico.')}
+          ${formatEventItem('032', 'Recibo del Bien y/o Servicio', d.radian_032_status, d.radian_032_date, d.radian_032_cude, 'Certifica que la mercancía o prestación del servicio fue recibida a satisfacción (Requisito DIAN para deducción de costos y gastos).')}
+          ${formatEventItem('033', 'Aceptación Expresa (Título Valor)', d.radian_033_status, d.radian_033_date, d.radian_033_cude, 'Convierte formalmente la factura en título valor transferible y negociable en el sistema RADIAN.')}
+        </div>
+
+        ${d.radian_031_status === 'sent' ? `
+          <div class="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800">
+            <div class="font-bold text-xs"><i class="fas fa-ban mr-1.5"></i>Evento 031 — Reclamo DIAN Registrado</div>
+            <div class="text-[11px] mt-1"><strong>Causal:</strong> ${d.radian_031_claim_code}</div>
+            <div class="text-[11px] mt-0.5"><strong>Motivo:</strong> ${(window as any).esc(d.radian_031_notes || 'Sin notas')}</div>
+          </div>
+        ` : ''}
+
+        ${d.radian_last_response ? `
+          <div class="p-2 bg-slate-50 border rounded-lg text-[10px] text-slate-500">
+            <strong>Última Respuesta DIAN:</strong> ${(window as any).esc(d.radian_last_response)}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    const htmlFooter = `
+      <div class="flex justify-end">
+        <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
+      </div>
+    `;
+
+    (window as any).openModal(`Historial de Eventos RADIAN — ${(window as any).esc(d.number)}`, htmlBody, htmlFooter, false);
+  } catch (err: any) {
+    (window as any).showToast(`Error al cargar historial: ${err.message}`, 'error');
+  }
+}
+
 (window as any).viewDocXmlDetails = viewDocXmlDetails;
 (window as any).openDocHomologationModal = openDocHomologationModal;
 (window as any).renderDocumentosElectronicos = renderDocumentosElectronicos;
@@ -2723,4 +3207,11 @@ async function reverseDocContabilization(docId: string) {
 (window as any).approveCdeTx = approveCdeTx;
 (window as any).reverseDocContabilization = reverseDocContabilization;
 (window as any).deleteDocElectronico = deleteDocElectronico;
+(window as any).syncImapInbox = syncImapInbox;
+(window as any).openExcelImportModal = openExcelImportModal;
+(window as any).openCufeImportModal = openCufeImportModal;
+(window as any).sendRadianEvent = sendRadianEvent;
+(window as any).openRadianClaimModal = openRadianClaimModal;
+(window as any).openRadianHistoryModal = openRadianHistoryModal;
+
 

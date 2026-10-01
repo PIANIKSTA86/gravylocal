@@ -3927,6 +3927,8 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       if (lineVac > 0) acc.noveltySet.add('VAC');
       if (lineBonif > 0 || lineAjuste > 0) acc.noveltySet.add('VST');
 
+      const days = (line.days_worked !== undefined && line.days_worked !== null && !isNaN(Number(line.days_worked))) ? Number(line.days_worked) : 30;
+
       // Fondo de solidaridad y meta de nómina: campo directo o desde notes
       const pilaNotesObj = (() => { try { const n = JSON.parse(line.notes || '{}'); return n.payroll_meta || {}; } catch(_) { return {}; } })();
       if (Number(pilaNotesObj.dias_licencia_no_rem || 0) > 0) {
@@ -3944,8 +3946,6 @@ async function renderPlanillaPilaRevision(year: number, month: number) {
       const endDate = effectiveRule.end_date || empObj.termination_date || '';
       if (startDate && startDate.startsWith(ymPrefix)) acc.noveltySet.add('ING');
       if (endDate && endDate.startsWith(ymPrefix)) acc.noveltySet.add('RET');
-
-      const days = (line.days_worked !== undefined && line.days_worked !== null && !isNaN(Number(line.days_worked))) ? Number(line.days_worked) : 30;
 
       // Base salary proportional to days worked in this period
       const proportionalSalary = round2(((line.salary_base || 0) / 30) * days);

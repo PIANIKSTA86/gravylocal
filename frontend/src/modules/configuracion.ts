@@ -242,13 +242,49 @@ async function renderConfiguracion(c) {
           <div class="form-group md:col-span-2">
             <label class="form-label">Método de Integración</label>
             <select id="einvoice-method" class="form-input" ${canEdit ? '' : 'disabled'}>
-              <option value="dian" ${byKey['einvoice_method']?.value === 'dian' || !byKey['einvoice_method']?.value ? 'selected' : ''}>Directo DIAN (Software Propio)</option>
+              <option value="matias" ${byKey['einvoice_method']?.value === 'matias' || (!byKey['einvoice_method']?.value && byKey['einvoice_method']?.value !== 'facturatech' && byKey['einvoice_method']?.value !== 'dian') ? 'selected' : ''}>MATIAS API (Emisión DIAN + Eventos RADIAN)</option>
               <option value="facturatech" ${byKey['einvoice_method']?.value === 'facturatech' ? 'selected' : ''}>Proveedor Tecnológico (Facturatech)</option>
+              <option value="dian" ${byKey['einvoice_method']?.value === 'dian' ? 'selected' : ''}>Directo DIAN (Software Propio / En desarrollo)</option>
             </select>
           </div>
 
+          <!-- CONTENEDOR MATIAS API -->
+          <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="matias-fields-container" style="${(byKey['einvoice_method']?.value === 'matias' || (!byKey['einvoice_method']?.value && byKey['einvoice_method']?.value !== 'facturatech' && byKey['einvoice_method']?.value !== 'dian')) ? '' : 'display:none'}">
+            <div class="form-group">
+              <label class="form-label">Ambiente MATIAS API</label>
+              <select id="matias-environment" class="form-input" ${canEdit ? '' : 'disabled'}>
+                <option value="sandbox" ${byKey['matias_environment']?.value === 'sandbox' || !byKey['matias_environment']?.value ? 'selected' : ''}>Ambiente de Pruebas (Sandbox Gratuito)</option>
+                <option value="production" ${byKey['matias_environment']?.value === 'production' ? 'selected' : ''}>Ambiente de Producción DIAN</option>
+              </select>
+              <p class="text-xs mt-1" style="color:#6B7280">En Sandbox use la cuenta de <b>sandbox-auth.matias-api.com</b> (No requiere contrato DIAN).</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Client UUID (Casas de Software / Multi-tenant)</label>
+              <input id="matias-client-uuid" class="form-input" value="${esc(byKey['matias_client_uuid']?.value || '')}" placeholder="Opcional: UUID de la empresa si opera como software house" ${canEdit ? '' : 'readonly'}>
+              <p class="text-xs mt-1" style="color:#9CA3AF">Dejar en blanco si el token corresponde directamente a la empresa emisora.</p>
+            </div>
+
+            <div class="form-group md:col-span-2">
+              <div class="flex justify-between items-center mb-1">
+                <label class="form-label mb-0">Token de Autenticación (Bearer Token)</label>
+                <button type="button" id="btn-toggle-matias-token" class="text-xs text-blue-600 hover:underline">
+                  <i class="fas fa-eye mr-1"></i>Ver / Ocultar
+                </button>
+              </div>
+              <input id="matias-api-token" type="password" class="form-input font-mono text-xs" value="${esc(byKey['matias_api_token']?.value || '')}" placeholder="Pegue aquí el Bearer Token de MATIAS API" ${canEdit ? '' : 'readonly'}>
+              <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
+                <p class="text-xs" style="color:#9CA3AF">Token obtenido en el portal de MATIAS API para emisión de facturas y eventos RADIAN.</p>
+                <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-test-matias">
+                  <i class="fas fa-plug mr-1"></i> Probar Conexión MATIAS API
+                </button>
+              </div>
+              <div id="matias-test-result" class="mt-2 text-xs hidden"></div>
+            </div>
+          </div>
+
           <!-- CONTENEDOR DIRECTO DIAN -->
-          <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="dian-fields-container" style="${(byKey['einvoice_method']?.value === 'dian' || !byKey['einvoice_method']?.value) ? '' : 'display:none'}">
+          <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3" id="dian-fields-container" style="${byKey['einvoice_method']?.value === 'dian' ? '' : 'display:none'}">
             <div class="form-group">
               <label class="form-label">Ambiente de Destino</label>
               <select id="dian-environment" class="form-input" ${canEdit ? '' : 'disabled'}>
@@ -381,6 +417,57 @@ async function renderConfiguracion(c) {
           <div class="form-group">
             <label class="form-label">Dirección del Remitente (Opcional)</label>
             <input id="smtp-sender-address" type="email" class="form-input" value="${esc(byKey['smtp_sender_address']?.value || '')}" placeholder="Ej: remitente@empresa.com" ${canEdit ? '' : 'readonly'}>
+          </div>
+
+          <!-- SUBPANEL IMAP BUZÓN TRIBUTARIO (RECEPCIÓN DE FACTURAS) -->
+          <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 border-t pt-4" style="border-color:#F0F0F0">
+            <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h5 class="font-bold text-sm" style="color:#0D2137"><i class="fas fa-inbox mr-1.5" style="color:#1A4B8C"></i> Buzón de Recepción de Facturas (IMAP - RADIAN)</h5>
+                <p class="text-xs" style="color:#6B7280">Configura la lectura del correo registrado en el RUT para sincronizar automáticamente facturas de proveedores.</p>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-copy-smtp-to-imap" title="Copia el host, usuario y clave desde la configuración SMTP si son el mismo correo">
+                <i class="fas fa-copy mr-1"></i> Copiar desde SMTP
+              </button>
+            </div>
+
+            <div class="form-group md:col-span-2">
+              <label class="inline-flex items-center gap-2 text-sm" style="color:#374151">
+                <input id="imap-enabled" type="checkbox" ${byKey['imap_enabled']?.value === '1' ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+                Activar lectura automática del buzón de facturación electrónica
+              </label>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Servidor IMAP (Host)</label>
+              <input id="imap-host" class="form-input" value="${esc(byKey['imap_host']?.value || '')}" placeholder="Ej: imap.gmail.com o mail.miempresa.com" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Puerto IMAP</label>
+              <input id="imap-port" type="number" class="form-input" value="${esc(byKey['imap_port']?.value || '993')}" placeholder="Ej: 993 (SSL)" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Usuario / Correo del Buzón</label>
+              <input id="imap-username" type="email" class="form-input" value="${esc(byKey['imap_username']?.value || '')}" placeholder="Ej: facturacion@miempresa.com" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Contraseña IMAP / Clave de Aplicación</label>
+              <input id="imap-password" type="password" class="form-input" value="${esc(byKey['imap_password']?.value || '')}" placeholder="Contraseña o clave de aplicación" ${canEdit ? '' : 'readonly'}>
+            </div>
+
+            <div class="form-group md:col-span-2 flex flex-wrap items-center justify-between gap-2">
+              <label class="inline-flex items-center gap-2 text-xs" style="color:#4B5563">
+                <input id="imap-tls" type="checkbox" ${byKey['imap_tls']?.value !== '0' ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+                Conexión segura SSL/TLS (Recomendado activado)
+              </label>
+              <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-test-imap">
+                <i class="fas fa-envelope-circle-check mr-1"></i> Probar Conexión al Buzón IMAP
+              </button>
+            </div>
+            <div id="imap-test-result" class="md:col-span-2 text-xs hidden"></div>
           </div>
         </div>
       </div>
@@ -686,14 +773,125 @@ async function renderConfiguracion(c) {
 
     $('#einvoice-method')?.addEventListener('change', (e) => {
       const val = (e.target as HTMLSelectElement).value;
+      const matiasCont = $('#matias-fields-container');
       const dianCont = $('#dian-fields-container');
       const ftechCont = $('#ftech-fields-container');
-      if (val === 'dian') {
-        if (dianCont) (dianCont as HTMLElement).style.display = 'grid';
-        if (ftechCont) (ftechCont as HTMLElement).style.display = 'none';
-      } else {
-        if (dianCont) (dianCont as HTMLElement).style.display = 'none';
-        if (ftechCont) (ftechCont as HTMLElement).style.display = 'grid';
+      if (matiasCont) (matiasCont as HTMLElement).style.display = val === 'matias' ? 'grid' : 'none';
+      if (dianCont) (dianCont as HTMLElement).style.display = val === 'dian' ? 'grid' : 'none';
+      if (ftechCont) (ftechCont as HTMLElement).style.display = val === 'facturatech' ? 'grid' : 'none';
+    });
+
+    $('#btn-toggle-matias-token')?.addEventListener('click', () => {
+      const input = $('#matias-api-token') as HTMLInputElement | null;
+      if (input) {
+        input.type = input.type === 'password' ? 'text' : 'password';
+      }
+    });
+
+    $('#btn-test-matias')?.addEventListener('click', async () => {
+      const token = (getInputVal('matias-api-token') || '').trim();
+      const env = (getInputVal('matias-environment') || 'sandbox').trim();
+      const clientUuid = (getInputVal('matias-client-uuid') || '').trim();
+      const resDiv = $('#matias-test-result');
+      if (!token) return showToast('Ingrese el token de MATIAS API antes de probar la conexión', 'error');
+
+      if (resDiv) {
+        resDiv.classList.remove('hidden');
+        resDiv.innerHTML = '<span class="text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>Conectando con MATIAS API...</span>';
+      }
+
+      try {
+        const baseUrl = env === 'production' 
+          ? 'https://api.matias-api.com/api/ubl2.1' 
+          : 'https://sandbox-api.matias-api.com/api/ubl2.1';
+        
+        const url = `${baseUrl}/company${clientUuid ? '?client_uuid=' + encodeURIComponent(clientUuid) : ''}`;
+        const resp = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          const companyName = data?.data?.name || data?.name || data?.company?.name || 'Empresa conectada';
+          if (resDiv) {
+            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>¡Conexión Exitosa con MATIAS API (${env.toUpperCase()})! ${companyName}</span>`;
+          }
+          showToast('Conexión con MATIAS API exitosa', 'success');
+        } else {
+          const errData = await resp.json().catch(() => ({}));
+          const errMsg = errData?.message || errData?.error || `Error HTTP ${resp.status}`;
+          if (resDiv) {
+            resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error de conexión: ${errMsg}</span>`;
+          }
+          showToast(`Error al validar token: ${errMsg}`, 'error');
+        }
+      } catch (e: any) {
+        if (resDiv) {
+          resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error de red: ${e.message}</span>`;
+        }
+        showToast(`Fallo al contactar MATIAS API: ${e.message}`, 'error');
+      }
+    });
+
+    $('#btn-copy-smtp-to-imap')?.addEventListener('click', () => {
+      const smtpHost = getInputVal('smtp-host').trim();
+      const smtpUser = getInputVal('smtp-username').trim();
+      const smtpPass = getInputVal('smtp-password').trim();
+
+      let imapHost = smtpHost.replace(/^smtp\./i, 'imap.');
+      if (smtpHost.includes('gmail.com')) imapHost = 'imap.gmail.com';
+      else if (smtpHost.includes('outlook.com') || smtpHost.includes('office365.com')) imapHost = 'outlook.office365.com';
+
+      setInputVal('imap-host', imapHost);
+      setInputVal('imap-port', '993');
+      setInputVal('imap-username', smtpUser);
+      setInputVal('imap-password', smtpPass);
+      const imapTlsEl = document.getElementById('imap-tls') as HTMLInputElement | null;
+      if (imapTlsEl) imapTlsEl.checked = true;
+      const imapEnabledEl = document.getElementById('imap-enabled') as HTMLInputElement | null;
+      if (imapEnabledEl) imapEnabledEl.checked = true;
+
+      showToast('Credenciales copiadas desde SMTP al Buzón IMAP', 'info');
+    });
+
+    $('#btn-test-imap')?.addEventListener('click', async () => {
+      const host = getInputVal('imap-host').trim();
+      const port = getInputVal('imap-port').trim() || '993';
+      const user = getInputVal('imap-username').trim();
+      const pass = getInputVal('imap-password').trim();
+      const tls = (document.getElementById('imap-tls') as HTMLInputElement)?.checked ? '1' : '0';
+      const resDiv = $('#imap-test-result');
+
+      if (!host || !user || !pass) {
+        return showToast('Complete Host, Usuario y Contraseña para probar el buzón IMAP', 'error');
+      }
+
+      if (resDiv) {
+        resDiv.classList.remove('hidden');
+        resDiv.innerHTML = '<span class="text-blue-600"><i class="fas fa-spinner fa-spin mr-1"></i>Probando conexión con el servidor IMAP...</span>';
+      }
+
+      try {
+        const resp = await pb.send('/api/radian/test-imap', {
+          method: 'POST',
+          body: { host, port, user, pass, tls }
+        });
+        if (resp?.success) {
+          if (resDiv) {
+            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>¡Buzón IMAP conectado con éxito! Correos detectados: ${resp.messagesCount || 0}</span>`;
+          }
+          showToast('Conexión IMAP establecida correctamente', 'success');
+        } else {
+          throw new Error(resp?.error || 'No se pudo conectar al buzón');
+        }
+      } catch (e: any) {
+        if (resDiv) {
+          resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error IMAP: ${e.message}</span>`;
+        }
+        showToast(`Error al conectar con el buzón: ${e.message}`, 'error');
       }
     });
 
@@ -833,6 +1031,9 @@ async function renderConfiguracion(c) {
       try {
         const payload = [
           ['einvoice_method', getInputVal('einvoice-method').trim()],
+          ['matias_environment', getInputVal('matias-environment').trim() || 'sandbox'],
+          ['matias_api_token', getInputVal('matias-api-token').trim()],
+          ['matias_client_uuid', getInputVal('matias-client-uuid').trim()],
           ['dian_environment', getInputVal('dian-environment').trim()],
           ['dian_nit', getInputVal('dian-nit').trim()],
           ['dian_cltec', getInputVal('dian-cltec').trim()],
@@ -869,6 +1070,12 @@ async function renderConfiguracion(c) {
           ['smtp_password', getInputVal('smtp-password').trim()],
           ['smtp_sender_name', getInputVal('smtp-sender-name').trim()],
           ['smtp_sender_address', getInputVal('smtp-sender-address').trim()],
+          ['imap_enabled', (document.getElementById('imap-enabled') as HTMLInputElement)?.checked ? '1' : '0'],
+          ['imap_host', getInputVal('imap-host').trim()],
+          ['imap_port', getInputVal('imap-port').trim()],
+          ['imap_username', getInputVal('imap-username').trim()],
+          ['imap_password', getInputVal('imap-password').trim()],
+          ['imap_tls', (document.getElementById('imap-tls') as HTMLInputElement)?.checked ? '1' : '0'],
         ];
         await Promise.all(payload.map(([key, value]) => API.setSetting(key, value)));
         showToast('Configuración SMTP guardada con éxito', 'success');

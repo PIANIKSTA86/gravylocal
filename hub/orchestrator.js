@@ -9,6 +9,7 @@ const http = require('http');
 const net = require('net');
 const PDFDocument = require('pdfkit');
 const backupService = require('./backup-service');
+const imapService = require('./imap-service');
 const crypto = require('crypto');
 
 // Cargar configuración de puertos si existe config/ports.env
@@ -4065,6 +4066,9 @@ process.on('SIGTERM', () => { cleanupSpawnedProcesses(); process.exit(0); });
 // Registrar rutas y programador de respaldos desatendidos
 backupService.registerRoutes(app);
 backupService.setupScheduler(2); // Ejecutar respaldo automático diario a las 2:00 AM
+
+// Registrar rutas del servicio IMAP para lectura de facturas electrónicas
+imapService.registerRoutes(app);
 
 // Iniciar inquilinos registrados antes de escuchar
 startExistingCompanies().catch(err => {

@@ -2968,6 +2968,174 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       });
       return;
     }
+
+    if (einvoiceMethod === "matias") {
+      console.log("[GRAVY HOOK] Emitiendo documento electrónico vía MATIAS API...");
+
+      // Determinar endpoint y tipo de documento MATIAS API
+      let matiasEndpoint = "/invoice";
+      let matiasTypeDocId = 7; // Factura Electrónica estándar
+
+      if (isPOS) {
+        matiasTypeDocId = 20; // POS Electrónico
+      } else if (isNC || isNDS) {
+        matiasEndpoint = "/notes/credit";
+        matiasTypeDocId = 5; // Nota Crédito
+      } else if (isND) {
+        matiasEndpoint = "/notes/debit";
+        matiasTypeDocId = 4; // Nota Débito
+      } else if (isDS) {
+        matiasEndpoint = "/ds/document";
+        matiasTypeDocId = 11; // Documento Soporte
+      }
+
+      // Mapear tipo documento identificación del cliente para MATIAS API
+      // 1=RC, 2=TI, 3=CC, 4=TE, 5=Pasaporte, 6=NIT
+      let matiasIdDocType = 3;
+      if (custDIANDocType === "31") matiasIdDocType = 6;
+      else if (custDIANDocType === "13") matiasIdDocType = 3;
+      else if (custDIANDocType === "22" || custDIANDocType === "21") matiasIdDocType = 4;
+      else if (custDIANDocType === "41") matiasIdDocType = 5;
+      else if (custDIANDocType === "12") matiasIdDocType = 2;
+      else if (custDIANDocType === "11") matiasIdDocType = 1;
+
+      // Líneas para MATIAS API
+      const matiasLines = items.map((it, idx) => {
+        const itemLineTotal = parseFloat((it.qty * it.unitPrice).toFixed(2));
+        const itemIvaRate = parseFloat(it.ivaRate || 0);
+        const itemIvaAmt = parseFloat((itemLineTotal * itemIvaRate / 100).toFixed(2));
+        const lineObj = {
+          unit_measure_id: 70, // Unidad estándar (94 en DIAN)
+          invoiced_quantity: String(it.qty),
+          line_extension_amount: itemLineTotal.toFixed(2),
+          free_of_charge_indicator: false,
+          description: it.desc || "Producto / Servicio",
+          code: it.code || String(idx + 1),
+          type_item_identification_id: 4, // Estándar de adopción del contribuyente
+          price_amount: parseFloat(it.unitPrice).toFixed(2),
+          base_quantity: String(it.qty)
+        };
+
+        if (itemIvaRate > 0) {
+          lineObj.tax_totals = [{
+            tax_id: 1, // IVA
+            percent: itemIvaRate.toFixed(2),
+            taxable_amount: itemLineTotal.toFixed(2),
+            tax_amount: itemIvaAmt.toFixed(2)
+          }];
+        }
+
+        return lineObj;
+      });
+
+      const resNum = resolution ? resolution.getString("resolution_number") : getSetting("dian_resolution_number", "18760000001");
+      const cleanDocNum = String(folio || tx.getInt("number") || "1");
+
+      const matiasPayload = {
+        resolution_number: String(resNum || "18760000001"),
+        prefix: prefix || "",
+        document_number: cleanDocNum,
+        operation_type_id: mandanteInfo ? 3 : 1,
+        type_document_id: matiasTypeDocId,
+        date: issueDate,
+        time: issueTime ? issueTime.slice(0, 8) : "12:00:00",
+        notes: tx.getString("description") || "Generado por GRAVY ERP",
+        customer: {
+          identification_number: String(custDocNum || "222222222222"),
+          name: custName || "Consumidor Final",
+          email: custEmail || "facturacion@cliente.com",
+          phone: custPhone || "555-5555",
+          address: custAddress || "Ciudad",
+          merchant_registration: "0000000-00",
+          type_document_identification_id: matiasIdDocType,
+          type_organization_id: custDIANDocType === "31" ? 1 : 2,
+          type_liability_id: (customer && (customer.getString("tax_regime") === 'common' || customer.getString("tax_regime") === 'responsable')) ? 116 : 117,
+          municipality_id: 149
+        },
+        payment_form: {
+          payment_form_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
+          payment_method_id: parseInt(paymentDianCode || 10, 10),
+          payment_due_date: dueDate || issueDate,
+          duration_measure: "0"
+        },
+        legal_monetary_totals: {
+          line_extension_amount: parseFloat(subtotal).toFixed(2),
+          tax_exclusive_amount: parseFloat(subtotal).toFixed(2),
+          tax_inclusive_amount: parseFloat(total).toFixed(2),
+          payable_amount: parseFloat(total).toFixed(2)
+        },
+        lines: matiasLines
+      };
+
+      if (ivaTotal > 0) {
+        matiasPayload.tax_totals = [{
+          tax_id: 1,
+          percent: "19.00",
+          taxable_amount: parseFloat(subtotal).toFixed(2),
+          tax_amount: parseFloat(ivaTotal).toFixed(2)
+        }];
+      }
+
+      // Si es POS, MATIAS API requiere point_of_sale
+      if (isPOS) {
+        matiasPayload.point_of_sale = {
+          number: cajaName || "CAJA-01",
+          type: "POS"
+        };
+      }
+
+      // Enviar a MATIAS API
+      const matiasCaller = globalThis.callMatiasApi;
+      if (!matiasCaller) {
+        throw new Error("Módulo de integración MATIAS API no cargado. Verifique radian.pb.js");
+      }
+
+      const matiasRes = matiasCaller(matiasEndpoint, "POST", matiasPayload);
+      if (!matiasRes.ok) {
+        const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
+        docRecord.set("status", "rechazada");
+        docRecord.set("dian_response", errMsg + (matiasRes.data?.response?.ErrorMessage?.string ? ": " + JSON.stringify(matiasRes.data.response.ErrorMessage.string) : ""));
+        $app.save(docRecord);
+        e.json(matiasRes.statusCode || 400, {
+          success: false,
+          error: errMsg,
+          details: matiasRes.data
+        });
+        return;
+      }
+
+      const matiasData = matiasRes.data || {};
+      const xmlDocKey = matiasData.XmlDocumentKey || matiasData.cufe || matiasData.cude || "";
+      const isDianValid = matiasData.response?.IsValid === "true" || matiasData.response?.IsValid === true || matiasData.response?.StatusCode === "00";
+      const statusMsg = matiasData.response?.StatusMessage || matiasData.message || "Procesado Correctamente por la DIAN.";
+
+      docRecord.set("status", isDianValid ? "aceptada" : "rechazada");
+      docRecord.set("cufe", xmlDocKey);
+      docRecord.set("dian_response", statusMsg);
+      if (matiasData.response?.XmlBase64Bytes) {
+        docRecord.set("xml_content", matiasData.response.XmlBase64Bytes);
+      }
+      docRecord.set("sent_at", new Date(Date.now() - 5 * 3600 * 1000).toISOString().replace("T", " ").slice(0, 19));
+      $app.save(docRecord);
+
+      // Envío automático de correo si fue aceptada
+      if (docRecord.getString("status") === "aceptada") {
+        try {
+          sendInvoiceEmailHelper(txId);
+        } catch (emailErr) {
+          console.error("[GRAVY HOOK] Error al enviar correo automático MATIAS:", emailErr);
+        }
+      }
+
+      e.json(200, {
+        success: true,
+        status: docRecord.get("status"),
+        cufe: docRecord.get("cufe"),
+        dianResponse: docRecord.get("dian_response"),
+        matiasData: matiasData
+      });
+      return;
+    }
     
     // Call Hub (Direct DIAN)
     const hubUrl = "http://127.0.0.1:8088/api/dian/sign-and-send";

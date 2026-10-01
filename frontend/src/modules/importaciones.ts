@@ -742,6 +742,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
   let lineCounter = 0;
   const suggestedNumber = !imp ? await (window as any).API.nextImportConsecutive().catch(() => '') : '';
   const consecutive = imp?.number || suggestedNumber;
+  const currency = imp?.currency || 'USD';
 
   const formHtml = `
     <div class="space-y-6 text-sm" style="color:#374151">
@@ -1042,28 +1043,29 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           </div>
         </div>
 
-        <div class="border rounded-xl bg-white shadow-2xs overflow-hidden" style="border-color:#DCE6F8">
-          <div style="overflow-x:auto;max-height:480px;overflow-y:auto">
-            <table class="data-table" id="imp-lines-table" style="min-width:1420px">
-              <thead style="position:sticky;top:0;z-index:10">
-                <tr>
-                  <th style="min-width:320px;background:#F4F8FF">Producto & Control Lote/Estibas</th>
-                  <th class="col-consolidated-th ${imp?.is_consolidated ? '' : 'hidden'}" style="min-width:180px;background:#F4F8FF">Proveedor / Factura</th>
-                  <th class="text-right" style="width:140px;background:#F4F8FF">Cant. Total & Unidad</th>
-                  <th class="text-right" style="width:130px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (USD)</th>
-                  <th class="text-right" style="width:90px;background:#F4F8FF">Arancel %</th>
-                  <th class="text-right" style="width:85px;background:#F4F8FF">IVA %</th>
-                  <th style="min-width:140px;background:#F4F8FF">Nro. Manifiesto</th>
-                  <th style="width:130px;background:#F4F8FF">Archivo PDF</th>
-                  <th class="text-right" style="width:125px;background:#F4F8FF">Costo Est. (COP)</th>
-                  <th class="text-right" style="width:130px;background:#F4F8FF">Total (COP)</th>
-                  <th style="width:45px;background:#F4F8FF">Acción</th>
-                </tr>
-              </thead>
-              <tbody id="imp-lines-body"></tbody>
-            </table>
+          <div class="border rounded-xl bg-white shadow-2xs overflow-hidden" style="border-color:#DCE6F8">
+            <div style="overflow-x:auto;max-height:480px;overflow-y:auto">
+              <table class="data-table" id="imp-lines-table" style="min-width:1300px">
+                <thead style="position:sticky;top:0;z-index:10">
+                  <tr>
+                    <th style="min-width:300px;background:#F4F8FF">Producto & Control Lote/Estibas</th>
+                    <th class="col-consolidated-th ${imp?.is_consolidated ? '' : 'hidden'}" style="min-width:160px;background:#F4F8FF">Proveedor / Factura</th>
+                    <th class="text-right" style="width:130px;background:#F4F8FF">Cant. Total & Unidad</th>
+                    <th class="text-right" style="width:115px;background:#F4F8FF" id="lbl-th-fob-price">P. FOB (${currency || 'USD'})</th>
+                    <th class="text-right" style="width:125px;background:#F4F8FF" id="lbl-th-fob-total">Total FOB (${currency || 'USD'})</th>
+                    <th style="width:140px;background:#F4F8FF">Partida arancelaria</th>
+                    <th class="text-right" style="width:90px;background:#F4F8FF">Arancel %</th>
+                    <th class="text-right" style="width:160px;background:#F4F8FF">P. FOB + Costo IMP (COP)</th>
+                    <th class="text-right" style="width:140px;background:#F4F8FF">Total (COP)</th>
+                    <th style="width:45px;background:#F4F8FF">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="imp-lines-body"></tbody>
+              </table>
+            </div>
+            <!-- Widget de Conciliación en Tiempo Real con Sección 1 FOB Mercancía -->
+            <div id="imp-fob-reconciliation-widget" class="p-3 bg-slate-50 border-t border-slate-200"></div>
           </div>
-        </div>
       </div>
 
       <!-- 4. Causaciones por Etapas y Gastos de Nacionalización (Sistema de Pestañas con Pipeline) -->
@@ -2319,7 +2321,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const lblFreightCurrency = document.getElementById('lbl-freight-currency');
     const lblInsuranceCurrency = document.getElementById('lbl-insurance-currency');
 
+    const thFobTotal = document.getElementById('lbl-th-fob-total');
+
     if (thFobPrice) thFobPrice.textContent = `P. FOB (${currency})`;
+    if (thFobTotal) thFobTotal.textContent = `Total FOB (${currency})`;
     if (lblFobCurrency) lblFobCurrency.textContent = `(${currency})`;
     if (lblFreightCurrency) lblFreightCurrency.textContent = `(${currency})`;
     if (lblInsuranceCurrency) lblInsuranceCurrency.textContent = `(${currency})`;
@@ -2415,6 +2420,14 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         const netInput = document.getElementById(`impl-peso-neto-${idx}`) as HTMLInputElement;
         netInput?.focus();
       }
+    }
+  };
+
+  // Helper para control de Manifiesto / PDF de importación en línea
+  (window as any).impToggleManifFields = function(idx: number) {
+    const wrap = document.getElementById(`wrap-manif-fields-${idx}`);
+    if (wrap) {
+      wrap.classList.toggle('hidden');
     }
   };
 
@@ -2577,6 +2590,9 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md text-gray-600 hover:text-blue-700" id="btn-pallet-${idx}" onclick="window.impOpenPalletModal(${idx})" title="Configurar desglose por pallets/estibas para las ${initQty} ${formatUnitOfMeasure(prodUnit)}">
               <i class="fas fa-boxes-stacked text-blue-600 mr-1"></i><span id="lbl-pallet-${idx}">Estibas (${(window as any).esc(formatUnitOfMeasure(prodUnit))})</span>
             </button>
+            <button type="button" class="btn btn-outline btn-xs text-[10px] py-0.5 px-2 rounded-md ${manifestNum || manifestFile ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold' : 'text-gray-600 hover:text-amber-700'}" id="btn-toggle-manif-${idx}" onclick="window.impToggleManifFields(${idx})" title="Adjuntar manifiesto aduanero o soporte PDF de esta línea">
+              <i class="fas fa-file-invoice mr-1 text-amber-600"></i><span id="lbl-manif-btn-${idx}">${manifestNum ? `Manif: ${(window as any).esc(manifestNum)}` : '+ Manif/PDF'}</span>
+            </button>
           </div>
 
           <!-- Inputs ocultos para sincronización y persistencia de lote -->
@@ -2616,10 +2632,33 @@ async function openImportForm(importId: string | null = null, onDone: any = null
             </div>
           </div>
 
+          <!-- Micro-formulario expandible de Manifiesto / Soporte PDF -->
+          <div id="wrap-manif-fields-${idx}" class="hidden mt-1.5 p-2 bg-amber-50/70 border border-amber-200 rounded-lg space-y-1.5">
+            <div class="grid grid-cols-2 gap-2 text-[10px]">
+              <div>
+                <span class="text-[9px] text-amber-900 font-bold uppercase block">Nro. Manifiesto / Declaración:</span>
+                <input type="text" id="impl-manifest-num-${idx}" class="form-input text-[10px] font-mono py-0.5 px-1.5 h-6 bg-white" placeholder="Ej: 260500..." value="${(window as any).esc(manifestNum)}">
+              </div>
+              <div>
+                <span class="text-[9px] text-amber-900 font-bold uppercase block">Archivo PDF / Soporte:</span>
+                <div class="flex items-center gap-1">
+                  <input type="file" id="file-manifest-${idx}" accept="application/pdf,image/*" style="display:none" onchange="window.impHandleFileSelect('manifest_file_${idx - 1}', this.files)">
+                  <button type="button" class="btn btn-outline btn-xs flex-1 h-6 text-[10px]" onclick="document.getElementById('file-manifest-${idx}').click()">
+                    <i class="fas fa-upload mr-1"></i><span id="lbl-manifest-${idx - 1}">${manifestFile ? 'Reemplazar' : 'Adjuntar PDF'}</span>
+                  </button>
+                  ${manifestFile ? `
+                    <a href="${(window as any).PB_URL}/api/files/import_lines/${lineId}/${manifestFile}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="btn btn-outline btn-xs p-1 text-blue-600 h-6" title="Ver manifiesto">
+                      <i class="fas fa-file-pdf"></i>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <input type="hidden" id="impl-prod-id-${idx}" value="${(window as any).esc(productId)}">
 
           <!-- Campos técnicos ocultos (prorrateo/cumplimiento) -->
-          <input type="hidden" id="impl-pos-arancel-${idx}" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria || '')}">
           <input type="hidden" id="impl-pais-origen-${idx}" value="${(window as any).esc(preloadedLine?.pais_origen || productObj?.pais_origen || '')}">
           <input type="hidden" id="impl-cert-origen-${idx}" value="${(window as any).esc(preloadedLine?.certificado_origen_num || '')}">
         </div>
@@ -2649,26 +2688,40 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           </div>
         </div>
       </td>
-      <td><input type="number" id="impl-price-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="number" id="impl-iva-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="1" value="${initIva}" oninput="window.impRecalcTotals()"></td>
-      <td><input type="text" id="impl-manifest-num-${idx}" class="form-input w-full font-mono text-xs" style="height:32px" placeholder="Ej: 260500..." value="${(window as any).esc(manifestNum)}"></td>
+
+      <!-- P. FOB (USD) -->
       <td>
-        <div class="flex items-center gap-1.5">
-          <input type="file" id="file-manifest-${idx}" accept="application/pdf,image/*" style="display:none" onchange="window.impHandleFileSelect('manifest_file_${idx - 1}', this.files)">
-          <button type="button" class="btn btn-outline btn-sm w-full py-1 text-xs" style="height:32px" onclick="document.getElementById('file-manifest-${idx}').click()">
-            <i class="fas fa-upload"></i> <span id="lbl-manifest-${idx - 1}">${manifestFile ? 'Reemplazar' : 'Adjuntar PDF'}</span>
-          </button>
-          ${manifestFile ? `
-            <a href="${(window as any).PB_URL}/api/files/import_lines/${lineId}/${manifestFile}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}" target="_blank" class="btn btn-outline btn-sm p-1.5 text-blue-600" title="Ver manifiesto actual">
-              <i class="fas fa-file-pdf"></i>
-            </a>
-          ` : ''}
-        </div>
+        <input type="number" id="impl-price-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" step="0.01" value="${initPrice || ''}" oninput="window.impRecalcTotals()">
       </td>
-      <td class="text-right font-semibold" style="color:#4B5563;font-size:13px" id="impl-unit-cop-${idx}">$ 0</td>
-      <td class="text-right font-bold text-blue-700" style="font-size:13px" id="impl-total-cop-${idx}">$ 0</td>
-      <td class="text-center">
+
+      <!-- Total FOB (USD) [NUEVO CAMPO SOLICITADO] -->
+      <td class="text-right font-bold text-slate-800 font-mono" style="font-size:13px;vertical-align:middle" id="impl-total-fob-${idx}">
+        $ 0.00
+      </td>
+
+      <!-- Partida arancelaria [NUEVO CAMPO SOLICITADO] -->
+      <td>
+        <input type="text" id="impl-pos-arancel-${idx}" class="form-input w-full font-mono text-xs font-semibold text-slate-700 uppercase" style="height:34px" placeholder="Ej: 6907.21.00" value="${(window as any).esc(preloadedLine?.posicion_arancelaria || productObj?.posicion_arancelaria || '')}" oninput="window.impRecalcTotals()">
+      </td>
+
+      <!-- Arancel % -->
+      <td>
+        <input type="number" id="impl-arancel-${idx}" class="form-input text-right w-full font-semibold font-mono" style="font-size:13px;height:34px;padding:0 8px" min="0" max="100" step="0.1" value="${initArancel}" oninput="window.impRecalcTotals()">
+        <input type="hidden" id="impl-iva-${idx}" value="${initIva}">
+      </td>
+
+      <!-- P. FOB + Costo IMP (COP) [SOLICITADO POR EL USUARIO] -->
+      <td class="text-right font-semibold text-slate-700 font-mono" style="font-size:13px;vertical-align:middle" id="impl-unit-cop-${idx}">
+        $ 0
+      </td>
+
+      <!-- Total (COP) -->
+      <td class="text-right font-bold text-blue-700 font-mono" style="font-size:13px;vertical-align:middle" id="impl-total-cop-${idx}">
+        $ 0
+      </td>
+
+      <!-- Acción -->
+      <td class="text-center" style="vertical-align:middle">
         <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('imp-row-${idx}').remove(); window.impRecalcTotals();" title="Quitar línea"><i class="fas fa-trash-can"></i></button>
       </td>
     `;
@@ -2813,48 +2866,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     const fobTx = isInverseMode ? (linkedTxLines || []).find((l: any) => l.import_concept === 'fob') : null;
     const effectiveTrm = Number(fobTx?.import_trm) || exchangeRate || 1;
 
-    // En Modo Inverso, el valor acumulado de compra asignado (inverseFobCOP) se reparte proporcionalmente entre las referencias
-    if (isInverseMode && inverseFobCOP > 0) {
-      if (rowDataList.length === 1) {
-        rowDataList[0].lineFOBCop = inverseFobCOP;
-      } else {
-        let totalMetric = 0;
-        if (prorationMethod === 'GROSS_WEIGHT') {
-          totalMetric = totalWeight;
-        } else if (prorationMethod === 'CUBIC_VOLUME') {
-          totalMetric = totalVolume;
-        } else {
-          totalMetric = rowDataList.reduce((s, r) => s + (r.rawFob > 0 ? r.rawFob : (r.qty > 0 ? r.qty : 1)), 0);
-        }
-
-        rowDataList.forEach(r => {
-          let m = 0;
-          if (prorationMethod === 'GROSS_WEIGHT') m = r.pesoBrutoLine;
-          else if (prorationMethod === 'CUBIC_VOLUME') m = r.lineCbm;
-          else m = r.rawFob > 0 ? r.rawFob : (r.qty > 0 ? r.qty : 1);
-
-          const ratio = totalMetric > 0 ? (m / totalMetric) : (1 / rowDataList.length);
-          r.lineFOBCop = ratio * inverseFobCOP;
-        });
-      }
-
-      // Indicar y sincronizar el precio de compra unitario en base al valor contable
-      rowDataList.forEach(r => {
-        if (r.qty > 0) {
-          const calcPriceCOP = r.lineFOBCop / r.qty;
-          const calcPriceUSD = effectiveTrm > 0 ? (calcPriceCOP / effectiveTrm) : calcPriceCOP;
-          const priceInput = document.getElementById(`impl-price-${r.idx}`) as HTMLInputElement;
-          if (priceInput && document.activeElement !== priceInput) {
-            priceInput.value = (Math.round(calcPriceUSD * 100) / 100).toFixed(2);
-            r.price = calcPriceUSD;
-          }
-        }
-      });
-    } else {
-      rowDataList.forEach(r => {
-        r.lineFOBCop = r.qty * r.price * exchangeRate;
-      });
-    }
+    // Inmutabilidad del precio FOB: Cada línea conserva su precio unitario original digitado por el usuario
+    rowDataList.forEach(r => {
+      r.lineFOBCop = r.qty * r.price * exchangeRate;
+    });
 
     // Calcular costos prorrateados y totales por línea
     rowDataList.forEach(r => {
@@ -2863,8 +2878,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         factor = r.pesoBrutoLine / totalWeight;
       } else if (prorationMethod === 'CUBIC_VOLUME' && totalVolume > 0) {
         factor = r.lineCbm / totalVolume;
-      } else if (totalFOBCop > 0) {
-        factor = r.lineFOBCop / totalFOBCop;
+      } else if (totalFOB > 0) {
+        factor = r.rawFob / totalFOB;
       }
 
       const proratedCost = factor * totalExpensesToProrateCOP;
@@ -2875,8 +2890,10 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       arancelTotalCOP += arancelAmount;
 
       // Update line labels
+      const totalFobLabel = document.getElementById(`impl-total-fob-${r.idx}`);
       const unitLabel = document.getElementById(`impl-unit-cop-${r.idx}`);
       const totalLabel = document.getElementById(`impl-total-cop-${r.idx}`);
+      if (totalFobLabel) totalFobLabel.textContent = `$ ${(window as any).fmtN(r.rawFob, 2)}`;
       if (unitLabel) unitLabel.textContent = (window as any).fmt(unitCostCOP);
       if (totalLabel) totalLabel.textContent = (window as any).fmt(lineTotalCOP);
     });
@@ -2909,6 +2926,87 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     if (lblResLocales) lblResLocales.textContent = (window as any).fmt(transporteCOP + otrosGastosCOP + gastosBancariosCOP);
     if (lblResTotalUsd) lblResTotalUsd.textContent = `Equiv. $ ${(window as any).fmtN(grandTotalCOP / (effectiveTrm || exchangeRate))} USD`;
     if (lblResTotal) lblResTotal.textContent = (window as any).fmt(grandTotalCOP);
+
+    // --- Condición de Conciliación FOB Mercancía ---
+    // La sumatoria final de los Total FOB (USD) de los productos multiplicada por la TRM del proveedor extranjero
+    // debe concordar con el valor FOB (COP) contabilizado y asociado en la Sección 1. FOB Mercancía.
+    const fobTxLines = (linkedTxLines || []).filter((l: any) => l.import_concept === 'fob');
+    const fobContabilizadoCOP = isInverseMode 
+      ? fobTxLines.reduce((s: number, l: any) => s + (Number(l.debit || 0) - Number(l.credit || 0)), 0)
+      : (imp?.fob_total ? (imp.fob_total * exchangeRate) : (totalFOB * exchangeRate));
+    
+    const supplierFobTrm = Number(fobTx?.import_trm) || exchangeRate || 1;
+    const fobProductosCalculadoCOP = totalFOB * supplierFobTrm;
+    const difFobCOP = fobProductosCalculadoCOP - fobContabilizadoCOP;
+    const difFobUSD = supplierFobTrm > 0 ? (difFobCOP / supplierFobTrm) : 0;
+    const isFobConciliado = fobContabilizadoCOP > 0 ? (Math.abs(difFobCOP) <= 100) : true;
+
+    const reconWidget = document.getElementById('imp-fob-reconciliation-widget');
+    if (reconWidget) {
+      if (fobContabilizadoCOP > 0) {
+        if (isFobConciliado) {
+          reconWidget.innerHTML = `
+            <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div class="flex items-center gap-2.5">
+                <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                  <i class="fas fa-check"></i>
+                </span>
+                <div>
+                  <span class="font-bold text-emerald-950">Conciliación FOB Cuadrada con Sección 1 (FOB Mercancía)</span>
+                  <div class="text-[11px] text-emerald-800 mt-0.5 font-mono">
+                    Σ Total FOB: <strong>$ ${(window as any).fmtN(totalFOB, 2)} ${currency}</strong> × TRM Proveedor: <strong>${(window as any).fmtN(supplierFobTrm, 2)}</strong> = <strong>${(window as any).fmt(fobProductosCalculadoCOP)}</strong> · Contabilizado en Sección 1: <strong>${(window as any).fmt(fobContabilizadoCOP)}</strong>
+                  </div>
+                </div>
+              </div>
+              <span class="badge badge-emerald text-xs font-bold py-1 px-3 shadow-xs">
+                <i class="fas fa-circle-check mr-1.5"></i>100% Conciliado (Dif: ${(window as any).fmt(difFobCOP)})
+              </span>
+            </div>
+          `;
+        } else {
+          reconWidget.innerHTML = `
+            <div class="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div class="flex items-center gap-2.5">
+                <span class="w-6 h-6 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs flex-shrink-0 animate-pulse">
+                  <i class="fas fa-triangle-exclamation"></i>
+                </span>
+                <div>
+                  <span class="font-bold text-amber-950">Descuadre Detectado con Sección 1 (FOB Mercancía)</span>
+                  <div class="text-[11px] text-amber-900 mt-0.5 font-mono">
+                    Σ Total FOB: <strong>$ ${(window as any).fmtN(totalFOB, 2)} ${currency}</strong> × TRM Proveedor: <strong>${(window as any).fmtN(supplierFobTrm, 2)}</strong> = <strong>${(window as any).fmt(fobProductosCalculadoCOP)}</strong> vs. Contabilizado en Sección 1: <strong>${(window as any).fmt(fobContabilizadoCOP)}</strong>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="badge badge-red text-xs font-bold py-1 px-3 shadow-xs">
+                  <i class="fas fa-arrows-split-up-and-left mr-1.5"></i>Diferencia: ${(window as any).fmt(difFobCOP)} (≈ $ ${(window as any).fmtN(difFobUSD, 2)} ${currency})
+                </span>
+                <span class="text-[10px] text-slate-500 block mt-0.5">Ajusta cantidades o precios FOB de los productos para concordar con la factura del proveedor</span>
+              </div>
+            </div>
+          `;
+        }
+      } else {
+        reconWidget.innerHTML = `
+          <div class="flex items-center justify-between flex-wrap gap-2 text-xs text-slate-600">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                <i class="fas fa-calculator"></i>
+              </span>
+              <div>
+                <span class="font-bold text-slate-800">Liquidación FOB de Productos</span>
+                <span class="text-[11px] text-slate-500 block font-mono">
+                  Σ Total FOB: <strong>$ ${(window as any).fmtN(totalFOB, 2)} ${currency}</strong> × TRM Proveedor: <strong>${(window as any).fmtN(supplierFobTrm, 2)}</strong> = <strong class="text-blue-700">${(window as any).fmt(fobProductosCalculadoCOP)}</strong>
+                </span>
+              </div>
+            </div>
+            <span class="text-[11px] text-slate-500 italic">
+              <i class="fas fa-circle-info mr-1 text-blue-500"></i>Sección 1 FOB Mercancía pendiente de registro o causación contable
+            </span>
+          </div>
+        `;
+      }
+    }
     if (customsArancel) customsArancel.textContent = (window as any).fmt(arancelTotalCOP);
 
     // Subtotales en las cabeceras de cada pestaña de etapa
@@ -4841,12 +4939,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
     }
   };
 
-  // Guardar Borrador
+  // Guardar Borrador (con bloqueo estricto contra doble envío o clics repetidos)
+  let isSavingImport = false;
   document.getElementById('btn-save-import')?.addEventListener('click', async () => {
+    if (isSavingImport) return;
+    isSavingImport = true;
+
     const btn = document.getElementById('btn-save-import') as HTMLButtonElement;
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardando...';
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Guardando...';
     }
 
     try {
@@ -5038,37 +5140,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
       const fobTx = isInverseMode ? (linkedTxLines || []).find((l: any) => l.import_concept === 'fob') : null;
       const effectiveTrm = Number(fobTx?.import_trm) || exchangeRate || 1;
 
-      // En Modo Inverso, repartir el FOB contable proporcionalmente entre las referencias
-      if (isInverseMode && inverseFobCOP > 0) {
-        if (lines.length === 1) {
-          lines[0].lineFOBCop = inverseFobCOP;
-          if (lines[0].qty > 0) {
-            lines[0].fob_price = Math.round(((inverseFobCOP / lines[0].qty) / effectiveTrm) * 100) / 100;
-          }
-        } else {
-          let totalMetric = 0;
-          if (prorationMethod === 'GROSS_WEIGHT') {
-            totalMetric = totalWeight;
-          } else if (prorationMethod === 'CUBIC_VOLUME') {
-            totalMetric = totalVolume;
-          } else {
-            totalMetric = lines.reduce((s, l) => s + (((l.qty * l.fob_price) > 0) ? (l.qty * l.fob_price) : (l.qty > 0 ? l.qty : 1)), 0);
-          }
+      // Inmutabilidad del precio FOB: Cada línea conserva de forma estricta su fob_price pactado y digitado
 
-          lines.forEach(l => {
-            let m = 0;
-            if (prorationMethod === 'GROSS_WEIGHT') m = l.peso_bruto_total || 0;
-            else if (prorationMethod === 'CUBIC_VOLUME') m = l.cubic_meters_total || 0;
-            else m = ((l.qty * l.fob_price) > 0) ? (l.qty * l.fob_price) : (l.qty > 0 ? l.qty : 1);
-
-            const ratio = totalMetric > 0 ? (m / totalMetric) : (1 / lines.length);
-            l.lineFOBCop = ratio * inverseFobCOP;
-            if (l.qty > 0) {
-              l.fob_price = Math.round(((l.lineFOBCop / l.qty) / effectiveTrm) * 100) / 100;
-            }
-          });
-        }
-      }
 
       lines.forEach(l => {
         let factor = 0;
@@ -5076,8 +5149,16 @@ async function openImportForm(importId: string | null = null, onDone: any = null
           factor = (l.peso_bruto_total || 0) / totalWeight;
         } else if (prorationMethod === 'CUBIC_VOLUME' && totalVolume > 0) {
           factor = (l.cubic_meters_total || 0) / totalVolume;
-        } else if (totalFOBCop > 0) {
-          factor = l.lineFOBCop / totalFOBCop;
+        } else if (totalFOB > 0) {
+          factor = (l.qty * l.fob_price) / totalFOB;
+        }
+
+        // Si estamos en modo inverso con causación FOB real en transacciones contables,
+        // el FOB en COP de cada línea debe provenir de totalFOBCop (valor real de compra),
+        // y no de multiplicar por una TRM teórica desalineada:
+        if (isInverseMode && totalFOBCop > 0) {
+          const fobShare = totalFOB > 0 ? ((l.qty * l.fob_price) / totalFOB) : (1 / lines.length);
+          l.lineFOBCop = totalFOBCop * fobShare;
         }
 
         l.prorated_cost = factor * totalExpensesToProrateCOP;
@@ -5320,6 +5401,8 @@ async function openImportForm(importId: string | null = null, onDone: any = null
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-floppy-disk"></i> Guardar Borrador';
       }
+    } finally {
+      isSavingImport = false;
     }
   });
 }

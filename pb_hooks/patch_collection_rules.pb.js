@@ -81,7 +81,11 @@ onBootstrap((e) => {
     "sales_order_lines",
     "payroll_lines",
     "payroll_novelties",
-    "inmo_invoice_lines"
+    "inmo_invoice_lines",
+    "inventory_lots",
+    "inventory_pallets",
+    "import_lines",
+    "import_pallet_configs"
   ]);
 
   function applyRules(collections, writeRule) {

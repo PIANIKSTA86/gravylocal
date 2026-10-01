@@ -5,25 +5,50 @@
  * de consecutivos de facturación bajo resoluciones oficiales de la DIAN.
  */
 
+var extractDocPrefixAndDigits = function(nStr) {
+  const s = String(nStr || "").trim();
+  let docPrefix = "";
+  let digitsPart = "";
+  if (s.includes("-")) {
+    const parts = s.split("-");
+    docPrefix = parts[0].toUpperCase();
+    digitsPart = parts[parts.length - 1];
+  } else {
+    const m = s.match(/^([A-Za-z]+)(\d+)$/);
+    if (m) {
+      docPrefix = m[1].toUpperCase();
+      digitsPart = m[2];
+    } else {
+      const mDigits = s.match(/(\d+)$/);
+      if (mDigits) digitsPart = mDigits[1];
+    }
+  }
+  return { prefix: docPrefix, digits: digitsPart };
+};
+
 var getMaxConsecutiveFromDB = function(tableName, prefix) {
   let maxVal = 0;
   try {
     const db = $app.nonconcurrentDB();
+    const cleanPrefix = String(prefix || "").trim().toUpperCase();
     let sql = "";
-    if (prefix) {
-      sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + prefix + "-%' OR number LIKE '" + prefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
+    if (cleanPrefix) {
+      sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + cleanPrefix + "-%' OR number LIKE '" + cleanPrefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
     } else {
       sql = "SELECT number FROM " + tableName + " WHERE number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number != ''";
     }
     const result = arrayOf(new DynamicModel({ number: "" }));
     db.newQuery(sql).all(result);
     for (let i = 0; i < result.length; i++) {
-      const nStr = String(result[i].number || "");
-      const matchDigits = nStr.match(/(\d+)$/);
-      if (matchDigits) {
-        const val = parseInt(matchDigits[1], 10);
+      const info = extractDocPrefixAndDigits(result[i].number);
+      // Validación estricta: si se solicita 'NC', no admitir 'NCFC', 'NCFE', etc.
+      if (cleanPrefix && info.prefix && info.prefix !== cleanPrefix) {
+        continue;
+      }
+      if (info.digits) {
+        const val = parseInt(info.digits, 10);
         // Descartar timestamps mayores a 10 dígitos
-        if (!isNaN(val) && val > maxVal && matchDigits[1].length <= 10) {
+        if (!isNaN(val) && val > maxVal && info.digits.length <= 10) {
           maxVal = val;
         }
       }
@@ -36,31 +61,7 @@ var getMaxConsecutiveFromDB = function(tableName, prefix) {
 
 const resolutionHandler = (e) => {
   function fetchMaxConsecutive(tableName, prefix) {
-    let maxVal = 0;
-    try {
-      const db = $app.nonconcurrentDB();
-      let sql = "";
-      if (prefix) {
-        sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + prefix + "-%' OR number LIKE '" + prefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
-      } else {
-        sql = "SELECT number FROM " + tableName + " WHERE number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number != ''";
-      }
-      const result = arrayOf(new DynamicModel({ number: "" }));
-      db.newQuery(sql).all(result);
-      for (let i = 0; i < result.length; i++) {
-        const nStr = String(result[i].number || "");
-        const matchDigits = nStr.match(/(\d+)$/);
-        if (matchDigits) {
-          const val = parseInt(matchDigits[1], 10);
-          if (!isNaN(val) && val > maxVal && matchDigits[1].length <= 10) {
-            maxVal = val;
-          }
-        }
-      }
-    } catch (err) {
-      console.log("[GRAVY-HOOK] Error querying max consecutive from " + tableName + " for prefix '" + prefix + "': " + err);
-    }
-    return maxVal;
+    return getMaxConsecutiveFromDB(tableName, prefix);
   }
 
   const record = e.record;
@@ -187,17 +188,22 @@ const resolutionHandler = (e) => {
           }
           
           if (resolutionLocal && status !== "draft") {
-            const currentResNum = resolutionLocal.getInt("current_number");
-            if (numVal > currentResNum) {
-              try {
-                const freshRes = $app.findRecordById("dian_resolutions", resolutionLocal.id);
-                if (numVal > freshRes.getInt("current_number")) {
-                  freshRes.set("current_number", numVal);
-                  $app.save(freshRes);
-                  console.log("[GRAVY-RESOLUCIONES] Consecutivo de resolución DIAN guardado directo a: " + numVal);
+            const maxAuth = resolutionLocal.getInt("number_to");
+            if (maxAuth > 0 && numVal > maxAuth) {
+              console.log("[GRAVY-RESOLUCIONES] ADVERTENCIA: Consecutivo directo " + numVal + " excede el rango máximo autorizado (" + maxAuth + ") para resolución " + prefixLocal);
+            } else {
+              const currentResNum = resolutionLocal.getInt("current_number");
+              if (numVal > currentResNum) {
+                try {
+                  const freshRes = $app.findRecordById("dian_resolutions", resolutionLocal.id);
+                  if (numVal > freshRes.getInt("current_number")) {
+                    freshRes.set("current_number", numVal);
+                    $app.save(freshRes);
+                    console.log("[GRAVY-RESOLUCIONES] Consecutivo de resolución DIAN guardado directo a: " + numVal);
+                  }
+                } catch (errRes) {
+                  console.log("[GRAVY-RESOLUCIONES] Error actualizando resolución: " + errRes);
                 }
-              } catch (errRes) {
-                console.log("[GRAVY-RESOLUCIONES] Error actualizando resolución: " + errRes);
               }
             }
           }
@@ -561,24 +567,35 @@ const resolutionHandler = (e) => {
     const prefix = resolution.getString("prefix");
 
     // Sincronizar dinámicamente el número actual con el máximo consecutivo entero real en BD
-    const maxInv = fetchMaxConsecutive("invoices", prefix);
-    const maxTx = fetchMaxConsecutive("transactions", prefix);
-    const maxPur = fetchMaxConsecutive("purchase_invoices", prefix);
-    const realMaxInDB = Math.max(maxInv, maxTx, maxPur);
+    // IMPORTANTE: Separar ámbito de ventas vs compras para evitar contaminación cruzada de prefijos
+    let realMaxInDB = 0;
+    if (collectionName === "purchase_invoices" || docType === "DS" || docType === "NDS") {
+      const maxPur = fetchMaxConsecutive("purchase_invoices", prefix);
+      const maxTx = fetchMaxConsecutive("transactions", prefix);
+      realMaxInDB = Math.max(maxPur, maxTx);
+    } else {
+      const maxInv = fetchMaxConsecutive("invoices", prefix);
+      const maxTx = fetchMaxConsecutive("transactions", prefix);
+      realMaxInDB = Math.max(maxInv, maxTx);
+    }
 
     let currentResNum = resolution.getInt("current_number");
     if (realMaxInDB > currentResNum) {
-      console.log("[GRAVY-RESOLUCIONES] Sincronizando consecutivo desfasado (" + currentResNum + " -> " + realMaxInDB + ")");
-      currentResNum = realMaxInDB;
-      try {
-        $app.runInTransaction((txApp) => {
-          const resRec = txApp.findRecordById("dian_resolutions", resolution.id);
-          if (realMaxInDB > resRec.getInt("current_number")) {
-            resRec.set("current_number", realMaxInDB);
-            txApp.save(resRec);
-          }
-        });
-      } catch (_) {}
+      if (maxNumber > 0 && realMaxInDB > maxNumber) {
+        console.log("[GRAVY-RESOLUCIONES] ADVERTENCIA: El número detectado en BD (" + realMaxInDB + ") excede el rango máximo autorizado de la resolución (" + maxNumber + "). No se actualizará current_number fuera de rango legal.");
+      } else {
+        console.log("[GRAVY-RESOLUCIONES] Sincronizando consecutivo desfasado (" + currentResNum + " -> " + realMaxInDB + ")");
+        currentResNum = realMaxInDB;
+        try {
+          $app.runInTransaction((txApp) => {
+            const resRec = txApp.findRecordById("dian_resolutions", resolution.id);
+            if (realMaxInDB > resRec.getInt("current_number")) {
+              resRec.set("current_number", realMaxInDB);
+              txApp.save(resRec);
+            }
+          });
+        } catch (_) {}
+      }
     }
 
     let nextNumber = currentResNum;
@@ -654,7 +671,10 @@ const resolutionHandler = (e) => {
   if (resolutionIdToUpdate && nextNumberToSave > 0) {
     try {
       const freshRes = $app.findRecordById("dian_resolutions", resolutionIdToUpdate);
-      if (nextNumberToSave > freshRes.getInt("current_number")) {
+      const maxAuth = freshRes.getInt("number_to");
+      if (maxAuth > 0 && nextNumberToSave > maxAuth) {
+        console.log("[GRAVY-RESOLUCIONES] ADVERTENCIA: nextNumberToSave " + nextNumberToSave + " excede el rango máximo autorizado (" + maxAuth + ").");
+      } else if (nextNumberToSave > freshRes.getInt("current_number")) {
         freshRes.set("current_number", nextNumberToSave);
         $app.save(freshRes);
         console.log("[GRAVY-RESOLUCIONES] Consecutivo guardado directo en resolución DIAN: " + formattedNumberLog);
@@ -730,29 +750,7 @@ onBootstrap((e) => {
 
   try {
     function fetchMaxConsecutiveBoot(tableName, prefix) {
-      let maxVal = 0;
-      try {
-        const db = $app.nonconcurrentDB();
-        let sql = "";
-        if (prefix) {
-          sql = "SELECT number FROM " + tableName + " WHERE (number LIKE '" + prefix + "-%' OR number LIKE '" + prefix + "%') AND number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number NOT LIKE '%SUG%'";
-        } else {
-          sql = "SELECT number FROM " + tableName + " WHERE number NOT LIKE 'BORR-%' AND number NOT LIKE 'TEMP-%' AND number NOT LIKE 'FC-BORR-%' AND number NOT LIKE 'DS-BORR-%' AND number != ''";
-        }
-        const result = arrayOf(new DynamicModel({ number: "" }));
-        db.newQuery(sql).all(result);
-        for (let i = 0; i < result.length; i++) {
-          const nStr = String(result[i].number || "");
-          const matchDigits = nStr.match(/(\d+)$/);
-          if (matchDigits) {
-            const val = parseInt(matchDigits[1], 10);
-            if (!isNaN(val) && val > maxVal && matchDigits[1].length <= 10) {
-              maxVal = val;
-            }
-          }
-        }
-      } catch (_) {}
-      return maxVal;
+      return getMaxConsecutiveFromDB(tableName, prefix);
     }
 
     const resolutions = $app.findRecordsByFilter("dian_resolutions", "active = true", "");
@@ -765,7 +763,10 @@ onBootstrap((e) => {
         const maxTx = fetchMaxConsecutiveBoot("transactions", pfx);
         const maxPur = isPurDoc ? fetchMaxConsecutiveBoot("purchase_invoices", pfx) : 0;
         const realMax = Math.max(maxInv, maxTx, maxPur);
-        if (realMax > res.getInt("current_number")) {
+        const maxAuth = res.getInt("number_to");
+        if (maxAuth > 0 && realMax > maxAuth) {
+          console.log("[GRAVY-RESOLUCIONES Bootstrap] ADVERTENCIA: Consecutivo en BD (" + realMax + ") excede límite autorizado (" + maxAuth + ") para resolución " + pfx + ". No se inflará current_number.");
+        } else if (realMax > res.getInt("current_number")) {
           res.set("current_number", realMax);
           $app.save(res);
           console.log("[GRAVY-RESOLUCIONES Bootstrap] Consecutivo ajustado para resolución " + pfx + " a " + realMax);

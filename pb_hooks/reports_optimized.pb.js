@@ -948,6 +948,7 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         ` + thirdFilter + `
         ` + extraCond + `
         ` + propertyCondPeriod + `
+      ORDER BY t.date ASC, t.number ASC, COALESCE(l.line_order, 0) ASC, l.id ASC
     `;
 
     const queryPeriod = $app.db().newQuery(sqlPeriod);
@@ -1631,7 +1632,15 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
       movBinds.branchId = branchId;
     }
 
-    movSql += ` ORDER BY m.date ASC, l.line_order ASC`;
+    movSql += ` ORDER BY m.date ASC, 
+      CASE 
+        WHEN m.mov_type IN ('ENTRADA', 'AJUSTE_POSITIVO') THEN 1
+        WHEN m.mov_type = 'TRASLADO' THEN 2
+        WHEN m.mov_type IN ('SALIDA', 'AJUSTE_NEGATIVO') THEN 3
+        ELSE 4
+      END ASC,
+      m.number ASC,
+      l.line_order ASC`;
 
     const movQuery = $app.db().newQuery(movSql);
     movQuery.bind(movBinds);
@@ -1649,7 +1658,17 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
     }));
     movQuery.all(movsData);
 
+    let costingScope = "GLOBAL";
+    try {
+      const invSetting = $app.findFirstRecordByFilter("settings", "key = 'inventory_settings_v1'");
+      if (invSetting) {
+        const parsed = JSON.parse(invSetting.getString("value") || "{}");
+        if (parsed.costing_scope) costingScope = parsed.costing_scope;
+      }
+    } catch (_) {}
+
     const stockMap = {};
+    const globalStock = {};
 
     for (const mov of movsData) {
       if (!prodMap[mov.product_id]) continue;
@@ -1663,7 +1682,6 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
 
       const adjust = (pId, wId, qtyDelta, unitCost) => {
         if (!wId) return 0;
-        if (warehouseId && wId !== warehouseId) return 0;
 
         const key = pId + "_" + wId;
         if (!stockMap[key]) {
@@ -1682,13 +1700,15 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
         const newQty = curQty + qtyDelta;
         let newCost = curCost;
 
-        if (qtyDelta > 0 && unitCost !== null && unitCost !== undefined && unitCost > 0) {
-          if (newQty > 0) {
-            newCost = ((curQty * curCost) + (qtyDelta * unitCost)) / newQty;
-          } else {
-            newCost = unitCost;
+        if (costingScope !== "GLOBAL") {
+          if (qtyDelta > 0 && unitCost !== null && unitCost !== undefined && unitCost > 0) {
+            if (newQty > 0) {
+              newCost = ((curQty * curCost) + (qtyDelta * unitCost)) / newQty;
+            } else {
+              newCost = unitCost;
+            }
+            newCost = Math.round(newCost * 100) / 100;
           }
-          newCost = Math.round(newCost * 100) / 100;
         }
 
         st.qty_on_hand = newQty;
@@ -1697,16 +1717,49 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
         return newCost;
       };
 
-      if (mType === "ENTRADA" || mType === "AJUSTE_POSITIVO") {
-        adjust(prodId, whOrig, qty, cost);
-      } else if (mType === "SALIDA" || mType === "AJUSTE_NEGATIVO") {
-        adjust(prodId, whOrig, -qty, null);
-      } else if (mType === "TRASLADO") {
-        const keyOrig = prodId + "_" + whOrig;
-        const origAvg = stockMap[keyOrig] ? stockMap[keyOrig].avg_cost : (prodMap[prodId]?.cost_price || 0);
-        adjust(prodId, whOrig, -qty, null);
-        if (whDest) {
-          adjust(prodId, whDest, qty, origAvg);
+      if (costingScope === "GLOBAL") {
+        const g = globalStock[prodId] || { qty: 0, avg_cost: prodMap[prodId] ? prodMap[prodId].cost_price : 0 };
+        if (mType === "ENTRADA" || mType === "AJUSTE_POSITIVO") {
+          adjust(prodId, whOrig, qty, cost);
+          const newGQty = g.qty + qty;
+          if (cost > 0) {
+            g.avg_cost = newGQty > 0 ? (((Math.max(0, g.qty) * g.avg_cost) + (qty * cost)) / newGQty) : cost;
+            g.avg_cost = Math.round(g.avg_cost * 100) / 100;
+          }
+          g.qty = newGQty;
+        } else if (mType === "SALIDA" || mType === "AJUSTE_NEGATIVO") {
+          adjust(prodId, whOrig, -qty, null);
+          g.qty -= qty;
+        } else if (mType === "TRASLADO") {
+          adjust(prodId, whOrig, -qty, null);
+          if (whDest) {
+            adjust(prodId, whDest, qty, null);
+          }
+        }
+        globalStock[prodId] = g;
+      } else {
+        if (mType === "ENTRADA" || mType === "AJUSTE_POSITIVO") {
+          adjust(prodId, whOrig, qty, cost);
+        } else if (mType === "SALIDA" || mType === "AJUSTE_NEGATIVO") {
+          adjust(prodId, whOrig, -qty, null);
+        } else if (mType === "TRASLADO") {
+          const keyOrig = prodId + "_" + whOrig;
+          const origAvg = stockMap[keyOrig] ? stockMap[keyOrig].avg_cost : 0;
+          const transferCost = (cost > 0) ? cost : (origAvg > 0 ? origAvg : (prodMap[prodId]?.cost_price || 0));
+          adjust(prodId, whOrig, -qty, null);
+          if (whDest) {
+            adjust(prodId, whDest, qty, transferCost);
+          }
+        }
+      }
+    }
+
+    if (costingScope === "GLOBAL") {
+      for (const k in stockMap) {
+        const st = stockMap[k];
+        const g = globalStock[st.product_id];
+        if (g && g.avg_cost > 0) {
+          st.avg_cost = g.avg_cost;
         }
       }
     }
@@ -1716,6 +1769,7 @@ routerAdd("GET", "/api/gravy/report-inventory-as-of", (c) => {
 
     for (const k of keys) {
       const st = stockMap[k];
+      if (warehouseId && st.warehouse_id !== warehouseId) continue;
       const prod = prodMap[st.product_id];
       if (!prod) continue;
 

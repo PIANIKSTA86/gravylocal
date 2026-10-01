@@ -1166,6 +1166,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
   const salesAllowNegative = soConfig.operational?.allow_negative_stock === true;
   soConfig.operational.allow_negative_stock = salesAllowNegative && invAllowNegative;
   (window as any).__soConfig = soConfig;
+  (window as any).__soNoteConfig = noteConfig;
 
   (window as any).__soTxTypesCache = txTypes;
   (window as any).__soResolutionsCache = dianResolutions;
@@ -1512,6 +1513,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       const code = String(t.code || '').trim().toUpperCase();
       const prefix = String(t.prefix || '').trim().toUpperCase();
       const name = String(t.name || '').toLowerCase();
+      // EXCLUIR explícitamente notas crédito de compras / proveedor (ej. NCFC, NDFC)
+      if (name.includes('proveedor') || prefix.includes('FC') || code.includes('FC')) return false;
       const fallbackName = searchType === 'NC' ? 'crédito' : 'débito';
       return code === searchType || prefix === searchType || name.includes(fallbackName);
     });
@@ -2275,7 +2278,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     // Auto-adjust electronic flag based on selected tx_type prefix
     const isElectronicEl = document.getElementById('so-is-electronic') as HTMLInputElement;
     if (isElectronicEl) {
-      const isFE = prefix === 'FV' || prefix === 'FE';
+      const isFE = prefix === 'FV' || prefix === 'FE' || prefix === 'NC' || prefix === 'NCFE' || prefix === 'ND';
       isElectronicEl.checked = isFE;
       if (typeof (window as any).soUpdateSaveButton === 'function') {
         (window as any).soUpdateSaveButton();
@@ -2283,6 +2286,22 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     }
 
     const today = new Date();
+    // 1. Si hay una resolución DIAN asignada explícitamente en el estado (noteConfig.resolutionId)
+    const noteCfg = (window as any).__soNoteConfig;
+    if (noteCfg?.resolutionId) {
+      const explicitRes = resolutions.find((r: any) => r.id === noteCfg.resolutionId && r.active);
+      if (explicitRes) {
+        const current = Number(explicitRes.current_number || 0);
+        const from = Number(explicitRes.number_from || 0);
+        const nextNum = current >= from ? current + 1 : from;
+        const resPfx = explicitRes.prefix ? `${explicitRes.prefix}-` : (prefix ? `${prefix}-` : '');
+        el.value = `${resPfx}${String(nextNum).padStart(8, '0')}`;
+        el.placeholder = '';
+        return;
+      }
+    }
+
+    // 2. Coincidencia exacta de prefijo
     let candidates = resolutions.filter((r: any) => {
       if (String(r.prefix || '').toUpperCase() !== prefix) return false;
       if (Number(r.current_number || 0) >= Number(r.number_to || 0)) return false;
@@ -2295,7 +2314,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       // Fallback: buscar resolución activa por tipo de comprobante compatible
       const txCode = String(txType.code || '').toUpperCase();
       let matchDocType = 'FV';
-      if (txCode === 'NC' || prefix === 'NC') matchDocType = 'NC';
+      if (txCode === 'NC' || prefix === 'NC' || prefix === 'NCFE') matchDocType = 'NC';
       else if (txCode === 'ND' || prefix === 'ND') matchDocType = 'ND';
       else if (txCode === 'POS' || prefix === 'POS') matchDocType = 'POS';
       
@@ -2306,7 +2325,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         return true;
       });
       if (fallbackCandidates.length) {
-        res = fallbackCandidates[0];
+        res = fallbackCandidates.find((r: any) => String(r.prefix || '').toUpperCase() === prefix) || fallbackCandidates[0];
       }
     }
 
@@ -2314,7 +2333,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       const current = Number(res.current_number || 0);
       const from = Number(res.number_from || 0);
       const nextNum = current >= from ? current + 1 : from;
-      const pfxStr = res.prefix ? `${res.prefix}-` : '';
+      const resPrefix = res.prefix ? String(res.prefix).toUpperCase() : prefix;
+      const pfxStr = resPrefix ? `${resPrefix}-` : '';
       el.value = `${pfxStr}${String(nextNum).padStart(8, '0')}`;
       el.placeholder = '';
       return;

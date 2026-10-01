@@ -5685,18 +5685,10 @@ async function generateAuxiliaryRows() {
           activeAccountKeys.add(accId);
         }
       } else {
-        if (isCruce) {
-          const dk = `${accId}|${thirdId}|${docCruce}`;
-          if (!activeDocKeys.has(dk)) {
-            needRow = true;
-            activeDocKeys.add(dk);
-          }
-        } else {
-          const tk = `${accId}|${thirdId}`;
-          if (!activeThirdKeys.has(tk)) {
-            needRow = true;
-            activeThirdKeys.add(tk);
-          }
+        const tk = `${accId}|${thirdId}`;
+        if (!activeThirdKeys.has(tk)) {
+          needRow = true;
+          activeThirdKeys.add(tk);
         }
       }
 
@@ -5737,16 +5729,57 @@ async function generateAuxiliaryRows() {
       return;
     }
 
-    // ── Pre-calcular saldos por fila ─────────────────────────────────────────
-    if (mode === 'cuenta-sin-tercero') {
-      const sortedForBalance = [...rows].sort((a, b) => {
-        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
-        return `${a.accountId}|${a.fecha}|${a.comprobante}|${a.txId}`.localeCompare(
-               `${b.accountId}|${b.fecha}|${b.comprobante}|${b.txId}`);
-      });
+    const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
+    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta'  : 'keyTercero';
+    const primaryLabel   = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? (isPhActive ? 'Inmueble / Tercero' : 'Tercero') : 'Cuenta');
+    const secondaryLabel = mode === 'cuenta-sin-tercero' ? 'Sin Terceros' : (mode === 'tercero-cuenta' ? 'Cuenta' : (isPhActive ? 'Inmueble / Tercero' : 'Tercero'));
 
+    // ── Ordenamiento Estrictamente Cronológico ───────────────────────────────
+    if (mode === 'cuenta-sin-tercero') {
+      rows.sort((a, b) => {
+        const codeA = a.accountCode || '';
+        const codeB = b.accountCode || '';
+        if (codeA !== codeB) return codeA.localeCompare(codeB, undefined, { numeric: true });
+        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
+        const fechaA = a.fecha || '';
+        const fechaB = b.fecha || '';
+        if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
+        const compA = a.comprobante || '';
+        const compB = b.comprobante || '';
+        const compCmp = compA.localeCompare(compB, undefined, { numeric: true });
+        if (compCmp !== 0) return compCmp;
+        const cruceA = a.doc_cruce || '';
+        const cruceB = b.doc_cruce || '';
+        if (cruceA !== cruceB) return cruceA.localeCompare(cruceB, undefined, { numeric: true });
+        return (a.txId || '').localeCompare(b.txId || '');
+      });
+    } else {
+      rows.sort((a, b) => {
+        const pA = a[primaryField] || '';
+        const pB = b[primaryField] || '';
+        if (pA !== pB) return pA.localeCompare(pB, undefined, { numeric: true });
+        const sA = a[secondaryField] || '';
+        const sB = b[secondaryField] || '';
+        if (sA !== sB) return sA.localeCompare(sB, undefined, { numeric: true });
+        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
+        const fechaA = a.fecha || '';
+        const fechaB = b.fecha || '';
+        if (fechaA !== fechaB) return fechaA.localeCompare(fechaB);
+        const compA = a.comprobante || '';
+        const compB = b.comprobante || '';
+        const compCmp = compA.localeCompare(compB, undefined, { numeric: true });
+        if (compCmp !== 0) return compCmp;
+        const cruceA = a.doc_cruce || '';
+        const cruceB = b.doc_cruce || '';
+        if (cruceA !== cruceB) return cruceA.localeCompare(cruceB, undefined, { numeric: true });
+        return (a.txId || '').localeCompare(b.txId || '');
+      });
+    }
+
+    // ── Pre-calcular saldos continuos por fila en orden cronológico ──────────
+    if (mode === 'cuenta-sin-tercero') {
       const accRunningBalance = new Map<string, number>();
-      for (const row of sortedForBalance) {
+      for (const row of rows) {
         row.balanceKey = `acc|${row.accountId}`;
         const prevBal = accRunningBalance.has(row.accountId)
           ? accRunningBalance.get(row.accountId)!
@@ -5757,59 +5790,18 @@ async function generateAuxiliaryRows() {
         accRunningBalance.set(row.accountId, row.saldo_actual);
       }
     } else {
-      const sortedForBalance = [...rows].sort((a, b) => {
-        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
-        const cruceA = a.doc_cruce || 'SIN_DOC';
-        const cruceB = b.doc_cruce || 'SIN_DOC';
-        return `${a.accountId}|${a.thirdId}|${cruceA}|${a.fecha}|${a.comprobante}`.localeCompare(
-               `${b.accountId}|${b.thirdId}|${cruceB}|${b.fecha}|${b.comprobante}`);
-      });
-
       const streamRunningBalance = new Map<string, number>();
-      for (const row of sortedForBalance) {
-        const cruceKey = row.doc_cruce ? row.doc_cruce : (row.accountManejaCruce ? 'SIN_DOC' : 'NO_CRUCE');
-        const balanceKey = row.accountManejaCruce
-          ? `doc|${row.accountId}|${row.thirdId}|${cruceKey}`
-          : `acc|${row.accountId}|${row.thirdId}`;
+      for (const row of rows) {
+        const balanceKey = `${row.accountId}|${row.thirdId}`;
         row.balanceKey = balanceKey;
-
-        let prevBal = 0;
-        if (streamRunningBalance.has(balanceKey)) {
-          prevBal = streamRunningBalance.get(balanceKey)!;
-        } else {
-          if (row.accountManejaCruce) {
-            prevBal = openingByDoc.get(`${row.accountId}|${row.thirdId}|${cruceKey}`) || 0;
-          } else {
-            prevBal = openingByThirdAccount.get(`${row.accountId}|${row.thirdId}`) || 0;
-          }
-        }
+        const prevBal = streamRunningBalance.has(balanceKey)
+          ? streamRunningBalance.get(balanceKey)!
+          : (openingByThirdAccount.get(balanceKey) || 0);
         const delta = row.debito - row.credito;
         row.saldo_anterior = prevBal;
         row.saldo_actual = prevBal + delta;
         streamRunningBalance.set(balanceKey, row.saldo_actual);
       }
-    }
-
-    const primaryField   = mode === 'tercero-cuenta' ? 'keyTercero' : 'keyCuenta';
-    const secondaryField = mode === 'tercero-cuenta' ? 'keyCuenta'  : 'keyTercero';
-    const primaryLabel   = mode === 'cuenta-sin-tercero' ? 'Cuenta' : (mode === 'tercero-cuenta' ? (isPhActive ? 'Inmueble / Tercero' : 'Tercero') : 'Cuenta');
-    const secondaryLabel = mode === 'cuenta-sin-tercero' ? 'Sin Terceros' : (mode === 'tercero-cuenta' ? 'Cuenta' : (isPhActive ? 'Inmueble / Tercero' : 'Tercero'));
-
-    if (mode === 'cuenta-sin-tercero') {
-      rows.sort((a, b) => {
-        if (a.isOpeningRow !== b.isOpeningRow) return a.isOpeningRow ? -1 : 1;
-        const aKey = `${a.accountCode}|${a.fecha}|${a.comprobante}|${a.txId}`;
-        const bKey = `${b.accountCode}|${b.fecha}|${b.comprobante}|${b.txId}`;
-        return aKey.localeCompare(bKey);
-      });
-    } else {
-      rows.sort((a, b) => {
-        const cruceA = a.doc_cruce || 'SIN_DOC';
-        const cruceB = b.doc_cruce || 'SIN_DOC';
-        const aKey = `${a[primaryField]}|${a[secondaryField]}|${cruceA}|${a.isOpeningRow ? '0' : '1'}|${a.fecha}|${a.comprobante}`;
-        const bKey = `${b[primaryField]}|${b[secondaryField]}|${cruceB}|${b.isOpeningRow ? '0' : '1'}|${b.fecha}|${b.comprobante}`;
-        return aKey.localeCompare(bKey);
-      });
     }
 
     // ── Totales Generales (Derivados del Gran Total del Libro Mayor) ──
@@ -6020,7 +6012,7 @@ async function generateAuxiliaryRows() {
 
     results.innerHTML = `
       <div class="flex items-center justify-between mb-3">
-        <p class="text-sm" style="color:#6B7280">Orden actual: <strong>${esc(primaryLabel)}${mode === 'cuenta-sin-tercero' ? '' : ' → ' + esc(secondaryLabel)} → Fecha → Doc. Cruce</strong> · Registros: <strong>${fmtN(rows.length)}</strong></p>
+        <p class="text-sm" style="color:#6B7280">Orden actual: <strong>${esc(primaryLabel)}${mode === 'cuenta-sin-tercero' ? '' : ' → ' + esc(secondaryLabel)} → Fecha → Comprobante</strong> · Registros: <strong>${fmtN(rows.length)}</strong></p>
         <div class="flex items-center gap-2">
           <button class="btn btn-outline btn-sm" id="btn-pdf-aux" style="border-color:#6B7280;color:#374151"><i class="fas fa-file-pdf"></i> PDF</button>
           <button class="btn btn-outline btn-sm" id="btn-exp-aux"><i class="fas fa-file-excel"></i> Exportar</button>

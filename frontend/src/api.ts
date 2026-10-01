@@ -1386,9 +1386,11 @@ const API = {
         // Obtener costo promedio en la bodega origen
         const sourceStock = await this.getInventoryStock({ warehouseId: mov.warehouse_id, productId: line.product_id }).catch(() => []);
         const sourceAvgCost = Number(sourceStock[0]?.avg_cost || 0);
+        const lineCost = Number(line.unit_cost || 0);
+        const transferCost = (lineCost > 0) ? lineCost : (sourceAvgCost > 0 ? sourceAvgCost : 0);
 
         await this.upsertStock(line.product_id, mov.warehouse_id, -line.qty, null, today, mov.branch_id || null);
-        await this.upsertStock(line.product_id, mov.dest_warehouse_id, line.qty, sourceAvgCost, today, mov.branch_id || null);
+        await this.upsertStock(line.product_id, mov.dest_warehouse_id, line.qty, transferCost, today, mov.branch_id || null);
       } else {
         await this.upsertStock(line.product_id, mov.warehouse_id, delta, line.unit_cost ?? null, today, mov.branch_id || null);
       }
@@ -6374,7 +6376,14 @@ const API = {
 
     for (const old of existing) {
       if (!keepIds.has(old.id)) {
-        await pb.delete('import_pallet_configs', old.id);
+        try {
+          await pb.delete('import_pallet_configs', old.id);
+        } catch (delErr: any) {
+          const status = delErr?.status || delErr?.statusCode || delErr?.response?.code || delErr?.status_code;
+          if (status !== 404) {
+            console.warn(`[saveImportPalletConfigs] Advertencia al eliminar pallet_config huérfano ${old.id}:`, delErr);
+          }
+        }
       }
     }
   },
@@ -6630,7 +6639,15 @@ const API = {
 
     for (const oldId of Object.keys(oldLinesMap)) {
       if (!keepIds.has(oldId)) {
-        await pb.delete('import_lines', oldId);
+        try {
+          await pb.delete('import_lines', oldId);
+        } catch (delErr: any) {
+          // Idempotencia: Si la línea ya no existe (404), el objetivo de eliminación ya está cumplido
+          const status = delErr?.status || delErr?.statusCode || delErr?.response?.code || delErr?.status_code;
+          if (status !== 404) {
+            console.warn(`[updateImport] Advertencia al eliminar import_line huérfana ${oldId}:`, delErr);
+          }
+        }
       }
     }
 
@@ -7891,6 +7908,27 @@ const API = {
       }
     }
 
+    // Cuadre exacto obligatorio entre el costo contable capitalizado (totalAmount) y las líneas de inventario:
+    const initialLinesSum = lines.reduce((s: number, l: any) => s + (Number(l.total_cop) || (Number(l.qty || 0) * Number(l.unit_cost_cop || 0))), 0);
+    if (Math.abs(initialLinesSum - totalAmount) > 1 && initialLinesSum > 0) {
+      const scaleRatio = totalAmount / initialLinesSum;
+      let accumScaledTotal = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (i === lines.length - 1) {
+          l.total_cop = totalAmount - accumScaledTotal;
+        } else {
+          l.total_cop = Math.round((Number(l.total_cop) || (Number(l.qty || 0) * Number(l.unit_cost_cop || 0))) * scaleRatio);
+          accumScaledTotal += l.total_cop;
+        }
+        l.unit_cost_cop = Number(l.qty || 0) > 0 ? (Math.round((l.total_cop / Number(l.qty)) * 100) / 100) : 0;
+        await pb.update('import_lines', l.id, {
+          total_cop: l.total_cop,
+          unit_cost_cop: l.unit_cost_cop
+        }).catch(() => {});
+      }
+    }
+
     const lotConfigs = await this.getImportLotConfigs(importId).catch(() => []);
 
     for (let i = 0; i < lines.length; i++) {
@@ -8054,31 +8092,35 @@ const API = {
       throw new Error(`La importación ${imp.number} no está en estado "recibido". Estado actual: ${imp.status}`);
     }
 
-    // 1. Identificar Movimiento de Inventario
+    // 1. Identificar Movimiento de Inventario de CAPITALIZACIÓN (exclusivo de bodega)
     let mov: any = null;
     if (imp.capitalization_mov_id) {
       mov = await pb.get('inventory_movements', imp.capitalization_mov_id).catch(() => null);
     }
     if (!mov) {
-      const candidateMovs = await pb.listAll('inventory_movements', {
-        filter: `notes ~ "Importación ${imp.number}" && status="applied"`,
-        sort: '-created'
+      const foundMovs = await pb.listAll('inventory_movements', {
+        filter: `notes ~ "Capitalización" && notes ~ "${imp.number}" && status="applied"`,
+        sort: '-id',
+        perPage: 1
       }).catch(() => []);
-      if (candidateMovs.length) mov = candidateMovs[0];
+      if (foundMovs.length) mov = foundMovs[0];
     }
 
-    // 2. Identificar Transacción Contable
+    // 2. Identificar Transacción Contable de CAPITALIZACIÓN (1435 vs 1465)
+    // IMPORTANTE: Únicamente se anula el asiento de capitalización (ingreso físico a inventario).
+    // Las causaciones de FOB, fletes, seguros, aranceles y facturas comerciales NO se tocan.
     let tx: any = null;
     const targetTxId = imp.capitalization_tx_id || mov?.tx_id || null;
     if (targetTxId) {
       tx = await pb.get('transactions', targetTxId).catch(() => null);
     }
     if (!tx) {
-      const candidateTxs = await pb.listAll('transactions', {
-        filter: `description ~ "Capitalización Importación ${imp.number}" && status!="voided"`,
-        sort: '-created'
+      const foundTxs = await pb.listAll('transactions', {
+        filter: `description ~ "Capitalización" && (import_id="${pb.escapeFilterValue(imp.id)}" || description ~ "${imp.number}") && status!="voided"`,
+        sort: '-id',
+        perPage: 1
       }).catch(() => []);
-      if (candidateTxs.length) tx = candidateTxs[0];
+      if (foundTxs.length) tx = foundTxs[0];
     }
 
     const issues: string[] = [];
@@ -8154,7 +8196,9 @@ const API = {
       issues,
       warnings,
       movement: mov,
+      movements: mov ? [mov] : [],
       transaction: tx,
+      transactions: tx ? [tx] : [],
       stockChecks,
       affectedReservationsCount: resLines.length,
       lotsCount: lots.length,
@@ -8178,7 +8222,7 @@ const API = {
     const mov = preflight.movement;
     const tx = preflight.transaction;
 
-    // A. Revertir movimiento físico de bodega
+    // A. Revertir movimiento físico de bodega de capitalización
     if (mov && mov.status === 'applied') {
       await this.unapplyMovementForEdit(mov.id);
       await pb.update('inventory_movements', mov.id, {
@@ -8187,17 +8231,22 @@ const API = {
       }).catch(() => {});
     }
 
-    // B. Revertir Lotes asociados
+    // B. Revertir Lotes asociados (eliminar o agotar los creados por la importación)
     try {
       const lots = await pb.listAll('inventory_lots', {
         filter: `import_id="${pb.escapeFilterValue(importId)}"`
       });
       for (const lot of lots) {
-        await pb.update('inventory_lots', lot.id, {
-          status: 'cancelled',
-          qty_on_hand: 0,
-          notes: `${lot.notes || ''} | Cancelado por reapertura de importación ${imp.number}`.trim()
-        }).catch(() => {});
+        try {
+          await pb.delete('inventory_lots', lot.id);
+        } catch {
+          // Si no se puede eliminar por integridad referencial, actualizar a depleted (válido en schema PB)
+          await pb.update('inventory_lots', lot.id, {
+            status: 'depleted',
+            qty_on_hand: 0,
+            notes: `${lot.notes || ''} | Revertido por reapertura de importación ${imp.number}`.trim()
+          }).catch(() => {});
+        }
       }
     } catch (lotErr) {
       console.warn('[reopenCapitalizedImport] Advertencia al ajustar lotes:', lotErr);
@@ -8215,9 +8264,10 @@ const API = {
       console.warn('[reopenCapitalizedImport] Advertencia al limpiar estibas:', pltErr);
     }
 
-    // D. Revertir Contabilidad: Anular transacción 1435 vs 1465
+    // D. Revertir Contabilidad: Anular ÚNICAMENTE el asiento de capitalización (1435 Bodega vs 1465 Tránsito)
+    // NUNCA anular causaciones de compras FOB, fletes, seguros, aduana ni facturas comerciales
     if (tx && tx.status !== 'voided') {
-      await this.voidTransaction(tx.id, `Anulación por reapertura de importación ${imp.number}. Motivo: ${reason.trim()}`);
+      await this.voidTransaction(tx.id, `Anulación de capitalización por reapertura de importación ${imp.number}. Motivo: ${reason.trim()}`);
     }
 
     // E. Pausar Reservas Comerciales Asociadas

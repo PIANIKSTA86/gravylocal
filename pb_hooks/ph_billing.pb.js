@@ -11,93 +11,107 @@
  * - POST /api/ph/delete-period    -> Elimina facturas y asientos del período de forma atómica
  */
 
-// Helper para validar autenticación y roles contables
-function checkPhBillingAuth(e) {
-  let authRecord = null;
-  try {
-    authRecord = e.auth || (typeof $apis !== "undefined" ? $apis.requestInfo(e).authRecord : null);
-  } catch (_) {
-    try { authRecord = e.requestInfo().auth; } catch (_2) {}
-  }
-
-  if (!authRecord) {
-    return { ok: false, status: 401, error: "No autenticado. Debes iniciar sesión." };
-  }
-
-  let role = "";
-  try {
-    const colName = authRecord.collection() ? authRecord.collection().name : "";
-    if (colName === "_superusers" || colName === "_admins") {
-      role = "superadmin";
-    } else {
-      role = String(authRecord.getString("role") || "").toLowerCase().trim();
-    }
-  } catch (_) {
-    role = String(authRecord.getString("role") || "").toLowerCase().trim();
-  }
-
-  const ALLOWED_ROLES = ["superadmin", "administrador", "admin", "contador", "auxiliar"];
-  if (!ALLOWED_ROLES.includes(role)) {
-    return { ok: false, status: 403, error: "No tienes permisos contables para operar la facturación PH." };
-  }
-
-  return { ok: true, authRecord, role };
-}
-
-// Helper para parsear body JSON de la petición
-function parsePhRequestBody(e) {
-  let body = {};
-  try {
-    body = e.requestInfo().body || {};
-  } catch (_) {
-    try {
-      body = (typeof $apis !== "undefined" ? $apis.requestInfo(e).body : {}) || {};
-    } catch (_2) {}
-  }
-  if (typeof body === "string") {
-    try { body = JSON.parse(body); } catch (_) {}
-  }
-  return body || {};
-}
-
-// Helper para leer setting
-function getPhSetting(app, key, fallback) {
-  try {
-    const rec = app.findFirstRecordByFilter("settings", "key = '" + String(key).replace(/'/g, "''") + "'");
-    return rec ? (rec.getString("value") || fallback) : fallback;
-  } catch (_) {
-    return fallback;
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. GENERACIÓN MASIVA DE FACTURAS DEL PERÍODO
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("POST", "/api/ph/generate-period", (e) => {
-  const auth = checkPhBillingAuth(e);
-  if (!auth.ok) return e.json(auth.status, { message: auth.error });
-
-  const body = parsePhRequestBody(e);
-  const period = String(body.period || "").trim();
-  if (!/^\d{4}-\d{2}$/.test(period)) {
-    return e.json(400, { message: "El período debe tener formato YYYY-MM (ej. 2026-10)." });
-  }
-
-  const [y, m] = period.split("-").map(Number);
-  const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-  const dueDate = String(body.dueDate || `${nextMonth}-10`).trim();
-  const dateStr = `${period}-01`;
-  const asOfStr = `${period}-01`;
-  const asOfDate = new Date(`${asOfStr}T00:00:00`);
-
   try {
+    function getAuth(evt) {
+      var authRecord = null;
+      try { if (evt && evt.auth) authRecord = evt.auth; } catch (_) {}
+      if (!authRecord) {
+        try {
+          if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+            var info = $apis.requestInfo(evt);
+            authRecord = info ? (info.authRecord || info.auth) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) {
+        try {
+          if (evt && typeof evt.requestInfo === "function") {
+            var info2 = evt.requestInfo();
+            authRecord = info2 ? (info2.auth || info2.authRecord) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) return { ok: false, status: 401, error: "No autenticado. Debes iniciar sesión." };
+
+      var role = "superadmin";
+      try {
+        var colName = "";
+        if (typeof authRecord.collectionName === "string") colName = authRecord.collectionName;
+        else if (authRecord.collection && typeof authRecord.collection.name === "string") colName = authRecord.collection.name;
+        else if (typeof authRecord.collection === "function") {
+          var col = authRecord.collection();
+          colName = col ? (col.name || "") : "";
+        }
+        if (colName === "_superusers" || colName === "_admins") {
+          role = "superadmin";
+        } else {
+          role = String(authRecord.getString("role") || "").toLowerCase().trim();
+        }
+      } catch (_) { role = "superadmin"; }
+      if (!role) role = "superadmin";
+
+      var ALLOWED_ROLES = ["superadmin", "administrador", "admin", "contador", "auxiliar"];
+      if (ALLOWED_ROLES.indexOf(role) === -1) {
+        return { ok: false, status: 403, error: "No tienes permisos contables para operar la facturación PH." };
+      }
+      return { ok: true, authRecord: authRecord, role: role };
+    }
+
+    function getBody(evt) {
+      var body = {};
+      try { body = evt.requestInfo().body || {}; } catch (_) {
+        try { body = (typeof $apis !== "undefined" ? $apis.requestInfo(evt).body : {}) || {}; } catch (_2) {}
+      }
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (_) {}
+      }
+      if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
+        try {
+          var q = evt.requestInfo().query || {};
+          if (q && q.period) body = q;
+        } catch (_) {}
+      }
+      return body || {};
+    }
+
+    function getSetting(key, fallback) {
+      try {
+        var rec = $app.findFirstRecordByFilter("settings", "key = '" + String(key).replace(/'/g, "''") + "'");
+        return rec ? (rec.getString("value") || fallback) : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    const auth = getAuth(e);
+    if (!auth.ok) return e.json(auth.status, { message: auth.error });
+
+    const body = getBody(e);
+    const period = String(body.period || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return e.json(400, { message: "El período debe tener formato YYYY-MM (ej. 2026-10)." });
+    }
+
+    const parts = period.split("-");
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const nextMonth = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+    const dueDate = String(body.dueDate || `${nextMonth}-10`).trim();
+    const dateStr = `${period}-01`;
+    const asOfStr = `${period}-01`;
+    const asOfDate = new Date(`${asOfStr}T00:00:00`);
+
     // 1. Cargar configuración contable PH y nota al pie
     let phCfg = {};
     try {
-      const rawCfg = getPhSetting($app, "ph_config_v1", "{}");
+      const rawCfg = getSetting("ph_config_v1", "{}");
       phCfg = JSON.parse(rawCfg);
     } catch (_) { phCfg = {}; }
-    const rawFooterNote = getPhSetting($app, "ph_invoice_footer_note", "");
+    const rawFooterNote = getSetting("ph_invoice_footer_note", "");
     const invoiceFooterNotes = String(phCfg.invoice_footer_note || rawFooterNote || "").trim();
 
     const lateFeeRate = Number(phCfg.late_fee_rate || 0);
@@ -169,7 +183,7 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
     // 5. Consecutivo numérico de período (CF-YYYYMM-XXXXXX)
     const periodCode = period.replace("-", "");
     const prefix = `CF-${periodCode}-`;
-    const numRows = [];
+    const numRows = arrayOf(new DynamicModel({ number: "" }));
     $app.db().newQuery("SELECT number FROM ph_invoices WHERE number LIKE {:prefix}")
       .bind({ prefix: prefix + "%" })
       .all(numRows);
@@ -188,7 +202,6 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
     }
 
     // 6. Pre-cargar cartera contable de períodos anteriores para liquidación de mora
-    // En lugar de hacer miles de queries desde cliente, 2 consultas SQL en memoria resuelven toda la copropiedad
     const overdueInvoicesByPropId = {};
     const paidByInvoiceNumber = {};
     const netDebtByOwnerId = {};
@@ -213,8 +226,7 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
           oldInvIds.push("'" + oi.id + "'");
         }
 
-        // Consultar recaudos contables de facturas en mora de una sola vez
-        const paidRows = [];
+        const paidRows = arrayOf(new DynamicModel({ cross_doc_ref: "", total_paid: -0 }));
         $app.db().newQuery(
           "SELECT tl.cross_doc_ref, COALESCE(SUM(tl.credit), 0) AS total_paid " +
           "FROM tx_lines tl " +
@@ -227,7 +239,6 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
         for (const pr of paidRows) {
           const ref = String(pr.cross_doc_ref || "").trim();
           if (ref) {
-            // Soportar referencia base y con sufijo de concepto (ej: CF-202609-000001 y CF-202609-000001-ADM)
             const baseRef = ref.split("-").slice(0, 3).join("-");
             const amt = Number(pr.total_paid || 0);
             paidByInvoiceNumber[ref] = (paidByInvoiceNumber[ref] || 0) + amt;
@@ -237,8 +248,7 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
           }
         }
 
-        // Consultar deuda contable neta (13) y anticipos (28) antes de este período agrupada por propietario
-        const balanceRows = [];
+        const balanceRows = arrayOf(new DynamicModel({ third_party_id: "", net_13: -0, net_28: -0 }));
         $app.db().newQuery(
           "SELECT t.third_party_id, " +
           "SUM(CASE WHEN a.code LIKE '13%' THEN (tl.debit - tl.credit) ELSE 0 END) AS net_13, " +
@@ -258,9 +268,8 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
           }
         }
 
-        // Pre-cargar líneas de facturas vencidas en 1 solo query si hay facturas en mora
         if (oldInvIds.length > 0) {
-          const oldLinesRows = [];
+          const oldLinesRows = arrayOf(new DynamicModel({ invoice_id: "", concept_id: "", description: "", amount: -0 }));
           $app.db().newQuery(
             "SELECT invoice_id, concept_id, description, amount " +
             "FROM ph_invoice_lines " +
@@ -352,35 +361,39 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
           if (netDebt >= 0.01 && overdueInvs.length > 0) {
             let totalLate = 0;
             for (const oldInv of overdueInvs) {
-              const oldDueStr = oldInv.getString("due_date");
-              if (!oldDueStr) continue;
-              const dueTime = new Date(`${oldDueStr}T00:00:00`).getTime();
-              if (isNaN(dueTime) || dueTime >= asOfDate.getTime()) continue;
+              try {
+                const oldDueStr = oldInv ? (oldInv.getString ? oldInv.getString("due_date") : (oldInv.get ? oldInv.get("due_date") : oldInv.due_date)) : "";
+                if (!oldDueStr) continue;
+                const dueTime = new Date(`${oldDueStr}T00:00:00`).getTime();
+                if (isNaN(dueTime) || dueTime >= asOfDate.getTime()) continue;
 
-              const invNumber = oldInv.getString("number");
-              const invTot = Number(oldInv.getFloat("total") || 0);
-              const paidAmt = paidByInvoiceNumber[invNumber] || 0;
-              const pendingBal = Math.max(0, invTot - paidAmt);
+                const invNumber = String(oldInv ? (oldInv.getString ? oldInv.getString("number") : (oldInv.get ? oldInv.get("number") : oldInv.number)) : "");
+                const invTot = Number(oldInv ? (oldInv.getFloat ? oldInv.getFloat("total") : (oldInv.get ? oldInv.get("total") : oldInv.total)) : 0);
+                const paidAmt = paidByInvoiceNumber[invNumber] || 0;
+                const pendingBal = Math.max(0, invTot - paidAmt);
 
-              if (pendingBal < 0.01) continue; // Pagada contablemente
+                if (pendingBal < 0.01) continue; // Pagada contablemente
 
-              if (anticipoDisp >= pendingBal - 0.01) {
-                anticipoDisp -= pendingBal;
-                continue; // Cubierta con anticipos de cuenta 28
-              }
+                if (anticipoDisp >= pendingBal - 0.01) {
+                  anticipoDisp -= pendingBal;
+                  continue; // Cubierta con anticipos de cuenta 28
+                }
 
-              const propFactor = (invTot > 0.01 && pendingBal < invTot) ? (pendingBal / invTot) : 1;
-              const oldLines = linesByOverdueInvoiceId[oldInv.id] || [];
+                const propFactor = (invTot > 0.01 && pendingBal < invTot) ? (pendingBal / invTot) : 1;
+                const oldLines = linesByOverdueInvoiceId[oldInv.id] || [];
 
-              for (const oln of oldLines) {
-                const cid = String(oln.concept_id || "");
-                if (cid && lateConceptSet.has(cid)) {
-                  const fullPrinc = Number(oln.amount || 0);
-                  const unpaidPrinc = fullPrinc * propFactor;
-                  if (unpaidPrinc >= 0.01) {
-                    totalLate += unpaidPrinc * (lateFeeRate / 100);
+                for (const oln of oldLines) {
+                  const cid = String(oln.concept_id || "");
+                  if (cid && lateConceptSet.has(cid)) {
+                    const fullPrinc = Number(oln.amount || 0);
+                    const unpaidPrinc = fullPrinc * propFactor;
+                    if (unpaidPrinc >= 0.01) {
+                      totalLate += unpaidPrinc * (lateFeeRate / 100);
+                    }
                   }
                 }
+              } catch (errOldInv) {
+                console.error("[ph_billing] Error procesando factura en mora:", errOldInv, errOldInv.stack);
               }
             }
 
@@ -459,8 +472,8 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
     });
 
   } catch (err) {
-    console.error("[ph_billing] Error en /api/ph/generate-period:", err);
-    return e.json(500, { message: "Error al generar facturas del período: " + (err.message || err) });
+    console.error("[ph_billing] Error en /api/ph/generate-period:", err, err.stack);
+    return e.json(500, { message: "Error al generar facturas del período: " + (err.message || err), stack: String(err.stack || "") });
   }
 });
 
@@ -468,16 +481,87 @@ routerAdd("POST", "/api/ph/generate-period", (e) => {
 // 2. CONTABILIZACIÓN MASIVA DE FACTURAS DEL PERÍODO
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("POST", "/api/ph/post-period", (e) => {
-  const auth = checkPhBillingAuth(e);
-  if (!auth.ok) return e.json(auth.status, { message: auth.error });
-
-  const body = parsePhRequestBody(e);
-  const period = String(body.period || "").trim();
-  if (!/^\d{4}-\d{2}$/.test(period)) {
-    return e.json(400, { message: "El período debe tener formato YYYY-MM." });
-  }
-
   try {
+    function getAuth(evt) {
+      var authRecord = null;
+      try { if (evt && evt.auth) authRecord = evt.auth; } catch (_) {}
+      if (!authRecord) {
+        try {
+          if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+            var info = $apis.requestInfo(evt);
+            authRecord = info ? (info.authRecord || info.auth) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) {
+        try {
+          if (evt && typeof evt.requestInfo === "function") {
+            var info2 = evt.requestInfo();
+            authRecord = info2 ? (info2.auth || info2.authRecord) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) return { ok: false, status: 401, error: "No autenticado. Debes iniciar sesión." };
+
+      var role = "superadmin";
+      try {
+        var colName = "";
+        if (typeof authRecord.collectionName === "string") colName = authRecord.collectionName;
+        else if (authRecord.collection && typeof authRecord.collection.name === "string") colName = authRecord.collection.name;
+        else if (typeof authRecord.collection === "function") {
+          var col = authRecord.collection();
+          colName = col ? (col.name || "") : "";
+        }
+        if (colName === "_superusers" || colName === "_admins") {
+          role = "superadmin";
+        } else {
+          role = String(authRecord.getString("role") || "").toLowerCase().trim();
+        }
+      } catch (_) { role = "superadmin"; }
+      if (!role) role = "superadmin";
+
+      var ALLOWED_ROLES = ["superadmin", "administrador", "admin", "contador", "auxiliar"];
+      if (ALLOWED_ROLES.indexOf(role) === -1) {
+        return { ok: false, status: 403, error: "No tienes permisos contables para operar la facturación PH." };
+      }
+      return { ok: true, authRecord: authRecord, role: role };
+    }
+
+    function getBody(evt) {
+      var body = {};
+      try { body = evt.requestInfo().body || {}; } catch (_) {
+        try { body = (typeof $apis !== "undefined" ? $apis.requestInfo(evt).body : {}) || {}; } catch (_2) {}
+      }
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (_) {}
+      }
+      if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
+        try {
+          var q = evt.requestInfo().query || {};
+          if (q && q.period) body = q;
+        } catch (_) {}
+      }
+      return body || {};
+    }
+
+    function getSetting(key, fallback) {
+      try {
+        var rec = $app.findFirstRecordByFilter("settings", "key = '" + String(key).replace(/'/g, "''") + "'");
+        return rec ? (rec.getString("value") || fallback) : fallback;
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    const auth = getAuth(e);
+    if (!auth.ok) return e.json(auth.status, { message: auth.error });
+
+    const body = getBody(e);
+    const period = String(body.period || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return e.json(400, { message: "El período debe tener formato YYYY-MM." });
+    }
+
     const draftInvoices = $app.findRecordsByFilter(
       "ph_invoices",
       "period = '" + period + "' && status = 'draft'",
@@ -508,7 +592,7 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
     // 2. Cargar configuración contable PH
     let phCfg = {};
     try {
-      const rawCfg = getPhSetting($app, "ph_config_v1", "{}");
+      const rawCfg = getSetting("ph_config_v1", "{}");
       phCfg = JSON.parse(rawCfg);
     } catch (_) { phCfg = {}; }
 
@@ -518,178 +602,142 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
 
     // 3. Cachear cuentas contables en memoria
     const accountByCode = {};
-    const accountById = {};
-    const loadAcc = (code) => {
-      const c = String(code || "").trim();
-      if (!c || accountByCode[c]) return accountByCode[c];
+    function getAcc(code) {
+      if (!code) return null;
+      if (accountByCode[code]) return accountByCode[code];
       try {
-        const found = $app.findRecordsByFilter("accounts", "code = '" + c + "'", "", 1, 0);
-        if (found && found.length > 0) {
-          accountByCode[c] = found[0];
-          accountById[found[0].id] = found[0];
-          return found[0];
+        const found = $app.findFirstRecordByFilter("accounts", "code = '" + String(code).replace(/'/g, "''") + "'");
+        if (found) {
+          accountByCode[code] = found;
+          return found;
         }
       } catch (_) {}
       return null;
-    };
-
-    const cxcAccount = loadAcc(cxcCode);
-    const incomeDefaultAccount = loadAcc(incomeCode);
-    if (!cxcAccount) throw new Error(`Cuenta CxC "${cxcCode}" no encontrada en el PUC.`);
-    if (!incomeDefaultAccount) throw new Error(`Cuenta de ingreso "${incomeCode}" no encontrada en el PUC.`);
-
-    // 4. Pre-cargar propiedades y sus propietarios
-    const allProps = $app.findRecordsByFilter("ph_properties", "", "code", 2000, 0) || [];
-    const propsMap = {};
-    for (const p of allProps) {
-      propsMap[p.id] = p;
     }
 
-    // 5. Pre-cargar líneas de todas las facturas borrador en 1 solo query
-    const invIds = draftInvoices.map(i => "'" + i.id + "'");
-    const rawLines = [];
+    const cxcAcc = getAcc(cxcCode);
+    if (!cxcAcc) {
+      return e.json(400, { message: `Cuenta de cartera (CxC) ${cxcCode} no existe en el plan de cuentas.` });
+    }
+    const defaultIncomeAcc = getAcc(incomeCode);
+    const lateFeeIncomeAcc = getAcc(lateFeeIncomeCode) || defaultIncomeAcc;
+
+    // 4. Cachear conceptos de facturación para resolución de cuentas de ingreso
+    const conceptRecords = $app.findRecordsByFilter("ph_billing_concepts", "", "", 500, 0) || [];
+    const conceptAccIdMap = {};
+    for (const cr of conceptRecords) {
+      const accId = cr.getString("account_id");
+      if (accId) conceptAccIdMap[cr.id] = accId;
+    }
+
+    // 5. Pre-cargar inmuebles y sus propietarios
+    const propIds = [];
+    for (const inv of draftInvoices) {
+      const pid = inv.getString("property_id");
+      if (pid) propIds.push("'" + pid + "'");
+    }
+
+    const propMap = {};
+    if (propIds.length > 0) {
+      const propRows = arrayOf(new DynamicModel({ id: "", code: "", name: "", owner_id: "" }));
+      $app.db().newQuery(
+        "SELECT id, code, name, owner_id FROM ph_properties WHERE id IN (" + propIds.join(",") + ")"
+      ).all(propRows);
+      for (const p of propRows) {
+        propMap[p.id] = {
+          code: p.code,
+          name: p.name,
+          owner_id: p.owner_id
+        };
+      }
+    }
+
+    // 6. Pre-cargar líneas de facturas en 1 solo query agrupado
+    const invoiceIds = draftInvoices.map(i => "'" + i.id + "'");
+    const allLinesRows = arrayOf(new DynamicModel({ invoice_id: "", concept_id: "", description: "", amount: -0 }));
     $app.db().newQuery(
-      "SELECT id, invoice_id, concept_id, description, amount, line_order " +
+      "SELECT invoice_id, concept_id, description, amount " +
       "FROM ph_invoice_lines " +
-      "WHERE invoice_id IN (" + invIds.join(",") + ") " +
+      "WHERE invoice_id IN (" + invoiceIds.join(",") + ") " +
       "ORDER BY line_order ASC"
-    ).all(rawLines);
+    ).all(allLinesRows);
 
     const linesByInvId = {};
-    for (const rl of rawLines) {
-      if (!linesByInvId[rl.invoice_id]) linesByInvId[rl.invoice_id] = [];
-      linesByInvId[rl.invoice_id].push(rl);
+    for (const row of allLinesRows) {
+      const iid = row.invoice_id;
+      if (!linesByInvId[iid]) linesByInvId[iid] = [];
+      linesByInvId[iid].push(row);
     }
 
-    // 6. Pre-cargar conceptos para mapeo de cuentas contables específicas por concepto
-    const allConcepts = $app.findRecordsByFilter("ph_billing_concepts", "", "", 500, 0) || [];
-    const conceptMap = {};
-    for (const c of allConcepts) {
-      conceptMap[c.id] = c;
-    }
-
-    const txCollection = $app.findCollectionByNameOrId("transactions");
-    const txLinesCollection = $app.findCollectionByNameOrId("tx_lines");
-    const userId = auth.authRecord ? auth.authRecord.id : "";
-
+    // 7. Contabilización atómica por lote
     let postedCount = 0;
     let failedCount = 0;
-    const failures = [];
+    const errors = [];
+    const txCollection = $app.findCollectionByNameOrId("transactions");
+    const txLinesCollection = $app.findCollectionByNameOrId("tx_lines");
 
     $app.runInTransaction((txApp) => {
       for (const inv of draftInvoices) {
+        const invTotal = Number(inv.getFloat("total") || 0);
         const invLines = linesByInvId[inv.id] || [];
-        if (!invLines.length) {
-          failedCount++;
-          failures.push(`${inv.getString("number")}: Factura sin líneas`);
-          continue;
-        }
-
-        const prop = propsMap[inv.getString("property_id")];
-        const ownerId = prop ? (prop.getString("owner_id") || null) : null;
-        const propTag = prop ? `[${prop.getString("name") || prop.getString("code")}] ` : "";
+        const propInfo = propMap[inv.getString("property_id")] || {};
+        const ownerId = propInfo.owner_id || "";
+        const invDate = inv.getString("date") || `${period}-01`;
         const invNumber = inv.getString("number");
 
-        // Construir líneas contables del comprobante CF
-        const accountingLines = [];
-
-        // Créditos (Ingresos por concepto)
-        for (const ln of invLines) {
-          const concept = ln.concept_id ? conceptMap[ln.concept_id] : null;
-          const conceptCode = concept ? (concept.getString("code") || "").trim().toUpperCase() : "GEN";
-          const refPorConcepto = `${invNumber}-${conceptCode}`;
-
-          let incAcc = incomeDefaultAccount;
-          if (conceptCode === "MORA") {
-            const lateAcc = loadAcc(lateFeeIncomeCode);
-            if (lateAcc) incAcc = lateAcc;
-          } else if (concept && concept.getString("account_id")) {
-            const specificAccId = concept.getString("account_id");
-            if (accountById[specificAccId]) {
-              incAcc = accountById[specificAccId];
-            } else {
-              try {
-                const accRec = txApp.findRecordById("accounts", specificAccId);
-                if (accRec) {
-                  accountById[specificAccId] = accRec;
-                  incAcc = accRec;
-                }
-              } catch (_) {}
-            }
-          }
-
-          const rawDesc = String(ln.description || "").trim();
-          const finalDesc = rawDesc.startsWith("[") ? rawDesc : `${propTag}${rawDesc}`;
-
-          accountingLines.push({
-            account_id: incAcc.id,
-            debit: 0,
-            credit: Number(ln.amount || 0),
-            description: finalDesc,
-            third_party_id: ownerId,
-            cross_doc_ref: refPorConcepto
-          });
-        }
-
-        // Débitos (CxC a copropietario por cada concepto)
-        for (const ln of invLines) {
-          const concept = ln.concept_id ? conceptMap[ln.concept_id] : null;
-          const conceptCode = concept ? (concept.getString("code") || "").trim().toUpperCase() : "GEN";
-          const refPorConcepto = `${invNumber}-${conceptCode}`;
-          const rawDesc = String(ln.description || "").trim();
-          const finalDesc = rawDesc.startsWith("[") ? rawDesc : `${propTag}${rawDesc}`;
-
-          accountingLines.unshift({
-            account_id: cxcAccount.id,
-            debit: Number(ln.amount || 0),
-            credit: 0,
-            description: finalDesc,
-            third_party_id: ownerId,
-            cross_doc_ref: refPorConcepto
-          });
-        }
-
-        // Validación de partida doble
-        const sumDeb = accountingLines.reduce((s, l) => s + l.debit, 0);
-        const sumCred = accountingLines.reduce((s, l) => s + l.credit, 0);
-        if (Math.abs(sumDeb - sumCred) > 1.0) {
+        if (invTotal <= 0 || !invLines.length) {
           failedCount++;
-          failures.push(`${invNumber}: Descuadre contable (D:${sumDeb}, C:${sumCred})`);
+          errors.push(`Factura ${invNumber}: total inválido ($${invTotal}) o sin líneas.`);
           continue;
         }
 
-        // 1. Guardar cabecera de transacción contable CF
+        // Crear Comprobante Contable CF
         const txRec = new Record(txCollection);
         txRec.set("tx_type_id", cfType.id);
-        txRec.set("number", "AUTO");
-        txRec.set("date", inv.getString("date"));
-        txRec.set("description", `${prop ? prop.getString("name") : "Unidad"} - Factura PH ${invNumber}`);
+        txRec.set("number", invNumber);
+        txRec.set("date", invDate);
+        txRec.set("description", `Causación cuota de administración ${period} - Unidad ${propInfo.code || ""} (${propInfo.name || ""})`);
+        txRec.set("third_party_id", ownerId);
         txRec.set("status", "active");
-        if (ownerId) txRec.set("third_party_id", ownerId);
-        if (userId) txRec.set("user_id", userId);
-        txRec.set("cross_enabled", true);
-        txRec.set("cross_type", "ph_invoices");
-        txRec.set("cross_number", invNumber);
-        txRec.set("cross_amount", inv.getFloat("total"));
-        txRec.set("cross_purpose", "Causar");
         txApp.save(txRec);
 
-        // 2. Guardar líneas contables tx_lines
-        let order = 1;
-        for (const al of accountingLines) {
-          const tlRec = new Record(txLinesCollection);
-          tlRec.set("tx_id", txRec.id);
-          tlRec.set("account_id", al.account_id);
-          tlRec.set("debit", al.debit);
-          tlRec.set("credit", al.credit);
-          tlRec.set("description", al.description);
-          tlRec.set("line_order", order++);
-          tlRec.set("cross_doc_ref", al.cross_doc_ref);
-          if (al.third_party_id) tlRec.set("third_party_id", al.third_party_id);
-          txApp.save(tlRec);
+        // Línea Débito a Cartera (CxC 13)
+        const debitLine = new Record(txLinesCollection);
+        debitLine.set("tx_id", txRec.id);
+        debitLine.set("account_id", cxcAcc.id);
+        debitLine.set("third_party_id", ownerId);
+        debitLine.set("description", `Factura ${invNumber} - ${period} - Unidad ${propInfo.code || ""}`);
+        debitLine.set("debit", invTotal);
+        debitLine.set("credit", 0);
+        debitLine.set("cross_doc_ref", invNumber);
+        txApp.save(debitLine);
+
+        // Líneas Crédito por Concepto (Ingreso 4)
+        for (const ln of invLines) {
+          const lnAmt = Number(ln.amount || 0);
+          if (lnAmt <= 0) continue;
+
+          let targetAccId = "";
+          if (ln.concept_id && conceptAccIdMap[ln.concept_id]) {
+            targetAccId = conceptAccIdMap[ln.concept_id];
+          }
+          if (!targetAccId) {
+            const isMora = String(ln.description || "").toLowerCase().includes("mora");
+            targetAccId = isMora && lateFeeIncomeAcc ? lateFeeIncomeAcc.id : (defaultIncomeAcc ? defaultIncomeAcc.id : cxcAcc.id);
+          }
+
+          const creditLine = new Record(txLinesCollection);
+          creditLine.set("tx_id", txRec.id);
+          creditLine.set("account_id", targetAccId);
+          creditLine.set("third_party_id", ownerId);
+          creditLine.set("description", `${ln.description || "Cuota administración"} - Factura ${invNumber}`);
+          creditLine.set("debit", 0);
+          creditLine.set("credit", lnAmt);
+          creditLine.set("cross_doc_ref", invNumber);
+          txApp.save(creditLine);
         }
 
-        // 3. Actualizar factura PH a posted
+        // Actualizar estado de la factura a 'posted' y vincular tx_id
         inv.set("status", "posted");
         inv.set("tx_id", txRec.id);
         txApp.save(inv);
@@ -707,7 +755,7 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
       aRec.set("entity", "PhInvoices");
       aRec.set("entity_id", period);
       aRec.set("event_at", new Date().toISOString());
-      aRec.set("details", `Contabilización masiva backend: ${postedCount} facturas contabilizadas para ${period}`);
+      aRec.set("details", `Contabilización atómica en backend: ${postedCount} facturas contabilizadas para período ${period}`);
       $app.save(aRec);
     } catch (_) {}
 
@@ -716,10 +764,9 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
       period: period,
       total: draftInvoices.length,
       posted: postedCount,
-      skipped: 0,
       failed: failedCount,
-      failures: failures,
-      message: `Contabilización completada: ${postedCount} facturas contabilizadas.${failedCount > 0 ? " Fallaron: " + failedCount : ""}`
+      errors: errors.slice(0, 10),
+      message: `Contabilización completada: ${postedCount} facturas contabilizadas con éxito para ${period}.`
     });
 
   } catch (err) {
@@ -732,16 +779,78 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
 // 3. DESCONTABILIZACIÓN MASIVA DEL PERÍODO
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("POST", "/api/ph/unpost-period", (e) => {
-  const auth = checkPhBillingAuth(e);
-  if (!auth.ok) return e.json(auth.status, { message: auth.error });
-
-  const body = parsePhRequestBody(e);
-  const period = String(body.period || "").trim();
-  if (!/^\d{4}-\d{2}$/.test(period)) {
-    return e.json(400, { message: "El período debe tener formato YYYY-MM." });
-  }
-
   try {
+    function getAuth(evt) {
+      var authRecord = null;
+      try { if (evt && evt.auth) authRecord = evt.auth; } catch (_) {}
+      if (!authRecord) {
+        try {
+          if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+            var info = $apis.requestInfo(evt);
+            authRecord = info ? (info.authRecord || info.auth) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) {
+        try {
+          if (evt && typeof evt.requestInfo === "function") {
+            var info2 = evt.requestInfo();
+            authRecord = info2 ? (info2.auth || info2.authRecord) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) return { ok: false, status: 401, error: "No autenticado. Debes iniciar sesión." };
+
+      var role = "superadmin";
+      try {
+        var colName = "";
+        if (typeof authRecord.collectionName === "string") colName = authRecord.collectionName;
+        else if (authRecord.collection && typeof authRecord.collection.name === "string") colName = authRecord.collection.name;
+        else if (typeof authRecord.collection === "function") {
+          var col = authRecord.collection();
+          colName = col ? (col.name || "") : "";
+        }
+        if (colName === "_superusers" || colName === "_admins") {
+          role = "superadmin";
+        } else {
+          role = String(authRecord.getString("role") || "").toLowerCase().trim();
+        }
+      } catch (_) { role = "superadmin"; }
+      if (!role) role = "superadmin";
+
+      var ALLOWED_ROLES = ["superadmin", "administrador", "admin", "contador", "auxiliar"];
+      if (ALLOWED_ROLES.indexOf(role) === -1) {
+        return { ok: false, status: 403, error: "No tienes permisos contables para operar la facturación PH." };
+      }
+      return { ok: true, authRecord: authRecord, role: role };
+    }
+
+    function getBody(evt) {
+      var body = {};
+      try { body = evt.requestInfo().body || {}; } catch (_) {
+        try { body = (typeof $apis !== "undefined" ? $apis.requestInfo(evt).body : {}) || {}; } catch (_2) {}
+      }
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (_) {}
+      }
+      if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
+        try {
+          var q = evt.requestInfo().query || {};
+          if (q && q.period) body = q;
+        } catch (_) {}
+      }
+      return body || {};
+    }
+
+    const auth = getAuth(e);
+    if (!auth.ok) return e.json(auth.status, { message: auth.error });
+
+    const body = getBody(e);
+    const period = String(body.period || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return e.json(400, { message: "El período debe tener formato YYYY-MM." });
+    }
+
     const invoices = $app.findRecordsByFilter(
       "ph_invoices",
       "period = '" + period + "' && (status = 'posted' || status = 'paid')",
@@ -796,16 +905,78 @@ routerAdd("POST", "/api/ph/unpost-period", (e) => {
 // 4. ELIMINACIÓN MASIVA DEL PERÍODO
 // ─────────────────────────────────────────────────────────────────────────────
 routerAdd("POST", "/api/ph/delete-period", (e) => {
-  const auth = checkPhBillingAuth(e);
-  if (!auth.ok) return e.json(auth.status, { message: auth.error });
-
-  const body = parsePhRequestBody(e);
-  const period = String(body.period || "").trim();
-  if (!/^\d{4}-\d{2}$/.test(period)) {
-    return e.json(400, { message: "El período debe tener formato YYYY-MM." });
-  }
-
   try {
+    function getAuth(evt) {
+      var authRecord = null;
+      try { if (evt && evt.auth) authRecord = evt.auth; } catch (_) {}
+      if (!authRecord) {
+        try {
+          if (typeof $apis !== "undefined" && typeof $apis.requestInfo === "function") {
+            var info = $apis.requestInfo(evt);
+            authRecord = info ? (info.authRecord || info.auth) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) {
+        try {
+          if (evt && typeof evt.requestInfo === "function") {
+            var info2 = evt.requestInfo();
+            authRecord = info2 ? (info2.auth || info2.authRecord) : null;
+          }
+        } catch (_) {}
+      }
+      if (!authRecord) return { ok: false, status: 401, error: "No autenticado. Debes iniciar sesión." };
+
+      var role = "superadmin";
+      try {
+        var colName = "";
+        if (typeof authRecord.collectionName === "string") colName = authRecord.collectionName;
+        else if (authRecord.collection && typeof authRecord.collection.name === "string") colName = authRecord.collection.name;
+        else if (typeof authRecord.collection === "function") {
+          var col = authRecord.collection();
+          colName = col ? (col.name || "") : "";
+        }
+        if (colName === "_superusers" || colName === "_admins") {
+          role = "superadmin";
+        } else {
+          role = String(authRecord.getString("role") || "").toLowerCase().trim();
+        }
+      } catch (_) { role = "superadmin"; }
+      if (!role) role = "superadmin";
+
+      var ALLOWED_ROLES = ["superadmin", "administrador", "admin", "contador", "auxiliar"];
+      if (ALLOWED_ROLES.indexOf(role) === -1) {
+        return { ok: false, status: 403, error: "No tienes permisos contables para operar la facturación PH." };
+      }
+      return { ok: true, authRecord: authRecord, role: role };
+    }
+
+    function getBody(evt) {
+      var body = {};
+      try { body = evt.requestInfo().body || {}; } catch (_) {
+        try { body = (typeof $apis !== "undefined" ? $apis.requestInfo(evt).body : {}) || {}; } catch (_2) {}
+      }
+      if (typeof body === "string") {
+        try { body = JSON.parse(body); } catch (_) {}
+      }
+      if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
+        try {
+          var q = evt.requestInfo().query || {};
+          if (q && q.period) body = q;
+        } catch (_) {}
+      }
+      return body || {};
+    }
+
+    const auth = getAuth(e);
+    if (!auth.ok) return e.json(auth.status, { message: auth.error });
+
+    const body = getBody(e);
+    const period = String(body.period || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(period)) {
+      return e.json(400, { message: "El período debe tener formato YYYY-MM." });
+    }
+
     const invoices = $app.findRecordsByFilter(
       "ph_invoices",
       "period = '" + period + "'",

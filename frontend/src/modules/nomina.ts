@@ -2415,16 +2415,14 @@ async function liquidarPeriodoMasivo(periodId) {
       const employerHealth = (isAprendiz || isArt114Exempt) ? 0 : round2(ibcSS * 0.085);
       // Aporte pensión empleador: 12% sobre ibcSS (cubre la SLN para no recortar semanas cotizadas)
       const employerPension = (isAprendiz || empRule.is_pensioner) ? 0 : round2(ibcSS * 0.12);
-      // Seguridad Social (ARL, Salud y Pensión): Se mantienen estrictamente sobre la base ordinaria trabajada (sin vacaciones de retiro)
+      // Seguridad Social (ARL, Salud y Pensión): Se calculan sobre la base completa del período (ibcSS)
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
-      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(rawIbc * arlRate);
+      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(ibcSS * arlRate);
 
       // Aportes Parafiscales (Caja de Compensación Familiar, SENA e ICBF):
-      // Art. 17 Ley 21 de 1982: Los pagos por vacaciones compensadas en dinero NO forman parte de la base,
-      // EXCEPTO en el caso de liquidación o terminación del contrato de trabajo (retiro / finiquito),
-      // donde SÍ forman parte de la base para aportes a Cajas de Compensación Familiar (4%) y Parafiscales.
+      // Se unifican sobre la base completa del período (ibcSS) más vacaciones de retiro si aplica.
       const vacacionesRetiroAmount = isVacacionesRetiro ? vacacionesAmount : 0;
-      const baseParafiscales = isAprendiz ? 0 : round2(rawIbc + vacacionesRetiroAmount);
+      const baseParafiscales = isAprendiz ? 0 : round2(ibcSS + vacacionesRetiroAmount);
 
       const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.02);
       const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.03);
@@ -8789,7 +8787,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const neto = round2(devengado - dedTotal);
 
     const smmlvVal = companyRules.smmlv || 1750905;
-    const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibc < (smmlvVal * 10));
+    const isArt114Exempt = !!companyRules.exempt_sena_icbf && (ibcSS < (smmlvVal * 10));
 
     const isAprendiz = empRule.subtipoTrabajador === 'APRENDIZ';
     const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
@@ -8800,9 +8798,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     const cajaRate = isAprendiz ? 0 : 0.04;
     const isRetiro = !!conceptAmounts.es_retiro;
     const vacRetiroAmount = isRetiro ? (conceptAmounts.vacaciones || 0) : 0;
-    const baseCaja = isAprendiz ? 0 : round2(ibc + vacRetiroAmount);
+    const baseCaja = isAprendiz ? 0 : round2(ibcSS + vacRetiroAmount);
     const cajaVal = round2(baseCaja * cajaRate);
-    const para = round2((ibc * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate)) + cajaVal);
+    const para = round2((ibcSS * (healthEmployerRate + pensionRate + arlRate + senaRate + icbfRate)) + cajaVal);
 
     // Base prestaciones sociales del período (Cesantías, Intereses, Prima y Vacaciones sobre diasPeriodoBase):
     const monthlyAuxTransport = (salary <= (SMLV_VIGENTE * 2) && !isIntegralSalary && !isAprendiz) ? (companyRules.transport_allowance || 162000) : 0;
@@ -9174,9 +9172,9 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       const arlRate = ARL_RISK_RATES[empRule.arl_risk_level] || ARL_RISK_RATES[1];
       const isRetiro = !!conceptAmounts.es_retiro;
       const vacRetiroAmount = isRetiro ? (conceptAmounts.vacaciones || 0) : 0;
-      const baseParafiscales = isAprendiz ? 0 : round2(rawIbc + vacRetiroAmount);
+      const baseParafiscales = isAprendiz ? 0 : round2(ibcSS + vacRetiroAmount);
 
-      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(rawIbc * arlRate);
+      const employerArl = isAprendiz ? round2(salaryProportional * ARL_RISK_RATES[1]) : round2(ibcSS * arlRate);
       const sena = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.02);
       const icbf = (isAprendiz || isArt114Exempt) ? 0 : round2(baseParafiscales * 0.03);
       const cajaComp = isAprendiz ? 0 : round2(baseParafiscales * 0.04);

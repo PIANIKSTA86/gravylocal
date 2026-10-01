@@ -829,13 +829,14 @@ async function openUnifiedInventoryConfigModal() {
     if (rawProd) prodCfg = { ...prodCfg, ...JSON.parse(rawProd) };
   } catch (_) {}
 
-  let invCfg = { allow_negative_stock: false, default_iva_rate: 19 };
+  let invCfg = { allow_negative_stock: false, default_iva_rate: 19, costing_scope: 'GLOBAL' };
   try {
     const rawInv = await API.getSetting('inventory_settings_v1');
     if (rawInv) invCfg = { ...invCfg, ...JSON.parse(rawInv) };
   } catch (_) {}
 
   const currentDefaultIva = Number(invCfg.default_iva_rate ?? 19);
+  const currentCostingScope = invCfg.costing_scope || 'GLOBAL';
 
   const bodyHtml = `
     <div class="space-y-4 text-left" style="font-family:'Segoe UI',sans-serif">
@@ -894,6 +895,30 @@ async function openUnifiedInventoryConfigModal() {
             <option value="5" ${currentDefaultIva === 5 ? 'selected' : ''}>5 % — Tarifa Reducida</option>
             <option value="0" ${currentDefaultIva === 0 ? 'selected' : ''}>0 % — Exento / Excluido</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Sección 4: Enfoque de Costeo de Inventario -->
+      <div class="p-4 rounded-xl border border-gray-200 bg-gray-50/70">
+        <h4 class="font-bold text-gray-800 text-sm mb-2 flex items-center gap-2 border-b pb-2">
+          <i class="fas fa-layer-group text-purple-600"></i> Enfoque de Costeo de Inventario
+        </h4>
+        <p class="text-xs text-gray-500 mb-3">Define si el costo promedio ponderado de los productos se calcula de forma corporativa (global para toda la empresa) o de manera independiente por cada bodega física.</p>
+        <div class="space-y-2">
+          <label class="flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer hover:bg-white transition-colors ${currentCostingScope === 'GLOBAL' ? 'border-purple-300 bg-purple-50/50' : 'border-gray-200'}">
+            <input type="radio" name="inv-costing-scope" value="GLOBAL" class="form-radio text-purple-600 mt-1" ${currentCostingScope === 'GLOBAL' ? 'checked' : ''}>
+            <div>
+              <span class="font-bold text-gray-800 text-xs block">Global / Corporativo (Recomendado)</span>
+              <span class="text-[11px] text-gray-500 block">Un producto maneja un único costo promedio ponderado en toda la empresa. Los traslados entre bodegas no alteran el costo ni generan discrepancias de valorización entre sucursales.</span>
+            </div>
+          </label>
+          <label class="flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer hover:bg-white transition-colors ${currentCostingScope === 'POR_BODEGA' ? 'border-purple-300 bg-purple-50/50' : 'border-gray-200'}">
+            <input type="radio" name="inv-costing-scope" value="POR_BODEGA" class="form-radio text-purple-600 mt-1" ${currentCostingScope === 'POR_BODEGA' ? 'checked' : ''}>
+            <div>
+              <span class="font-bold text-gray-800 text-xs block">Individual por Bodega</span>
+              <span class="text-[11px] text-gray-500 block">Cada bodega mantiene un costo promedio independiente según sus compras directas y el costo al que recibió sus traslados de mercancía.</span>
+            </div>
+          </label>
         </div>
       </div>
     </div>
@@ -2788,105 +2813,191 @@ async function renderKardexTab(c, ctx = {}) {
         currentProductName = prod ? `${prod.code} - ${prod.name}` : 'Producto';
         currentWarehouseName = wh ? wh.name : 'Bodega';
 
-        let runningQty = 0;
-        let runningAvgCost = 0;
-
-        // 1. Calculate historical opening balance (Saldo Inicial) if startDate is set
-        if (startDate) {
-          const historicalLines = await (window as any).pb.listAll('inventory_movement_lines', {
-            filter: `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied" && movement_id.date < "${startDate}"`,
-            expand: 'movement_id,movement_id.warehouse_id,movement_id.dest_warehouse_id'
-          });
-
-          const filteredHist = historicalLines.filter((line: any) => {
-            const mov = line.expand?.movement_id;
-            if (!mov) return false;
-            if (mov.mov_type === 'TRASLADO') {
-              return mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
-            }
-            return mov.warehouse_id === whId;
-          });
-
-          filteredHist.sort((a: any, b: any) => {
-            const movA = a.expand?.movement_id;
-            const movB = b.expand?.movement_id;
-            const dateA = movA?.date || '';
-            const dateB = movB?.date || '';
-            if (dateA !== dateB) return dateA.localeCompare(dateB);
-
-            const timeA = movA?.created || '';
-            const timeB = movB?.created || '';
-            if (timeA !== timeB) return timeA.localeCompare(timeB);
-
-            return (a.line_order || 0) - (b.line_order || 0);
-          });
-
-          for (const line of filteredHist) {
-            const mov = line.expand?.movement_id;
-            let isInput = false;
-            let isOutput = false;
-
-            if (mov.mov_type === 'TRASLADO') {
-              if (mov.dest_warehouse_id === whId) isInput = true;
-              else if (mov.warehouse_id === whId) isOutput = true;
-            } else {
-              isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
-              isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
-            }
-
-            const qty = line.qty || 0;
-            const cost = line.unit_cost || 0;
-
-            if (isInput) {
-              const prevQty = runningQty;
-              const prevCost = runningAvgCost;
-              runningQty += qty;
-              if (runningQty > 0) {
-                runningAvgCost = ((prevQty * prevCost) + (qty * cost)) / runningQty;
-              } else {
-                runningAvgCost = cost;
-              }
-              runningAvgCost = Math.round(runningAvgCost * 100) / 100;
-            } else if (isOutput) {
-              runningQty -= qty;
-            }
+        let costingScope = 'GLOBAL';
+        try {
+          const rawInv = await API.getSetting('inventory_settings_v1');
+          if (rawInv) {
+            const p = JSON.parse(rawInv);
+            if (p.costing_scope) costingScope = p.costing_scope;
           }
+        } catch (_) {}
+
+        // Fetch all applied movements for this product (to compute global corporate cost timeline and transfer origins)
+        let productFilter = `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied"`;
+        if (endDate) {
+          productFilter += ` && movement_id.date <= "${endDate}"`;
         }
 
-        // 2. Fetch movements within date range
-        let rangeFilter = `product_id="${(window as any).pb.escapeFilterValue(prodId)}" && movement_id.status="applied"`;
-        if (startDate) rangeFilter += ` && movement_id.date >= "${startDate}"`;
-        if (endDate) rangeFilter += ` && movement_id.date <= "${endDate}"`;
-
-        const lines = await (window as any).pb.listAll('inventory_movement_lines', {
-          filter: rangeFilter,
+        const allProductLines = await (window as any).pb.listAll('inventory_movement_lines', {
+          filter: productFilter,
           expand: 'movement_id,movement_id.warehouse_id,movement_id.dest_warehouse_id,movement_id.third_party_id'
         });
 
-        const filteredLines = lines.filter((line: any) => {
-          const mov = line.expand?.movement_id;
-          if (!mov) return false;
-          if (mov.mov_type === 'TRASLADO') {
-            return mov.warehouse_id === whId || mov.dest_warehouse_id === whId;
-          }
-          return mov.warehouse_id === whId;
-        });
+        const typePriority: Record<string, number> = {
+          'ENTRADA': 1, 'AJUSTE_POSITIVO': 1,
+          'TRASLADO': 2,
+          'SALIDA': 3, 'AJUSTE_NEGATIVO': 3
+        };
 
-        filteredLines.sort((a: any, b: any) => {
+        allProductLines.sort((a: any, b: any) => {
           const movA = a.expand?.movement_id;
           const movB = b.expand?.movement_id;
           const dateA = movA?.date || '';
           const dateB = movB?.date || '';
           if (dateA !== dateB) return dateA.localeCompare(dateB);
 
-          const timeA = movA?.created || '';
-          const timeB = movB?.created || '';
-          if (timeA !== timeB) return timeA.localeCompare(timeB);
+          const pA = typePriority[movA?.mov_type] || 4;
+          const pB = typePriority[movB?.mov_type] || 4;
+          if (pA !== pB) return pA - pB;
+
+          const numA = movA?.number || '';
+          const numB = movB?.number || '';
+          if (numA !== numB) return numA.localeCompare(numB);
 
           return (a.line_order || 0) - (b.line_order || 0);
         });
 
-        // 3. Map movements and prepends opening balance
+        let globalQty = 0;
+        let globalAvgCost = Number(prod?.cost_price || 0);
+        const whStockMap: Record<string, { qty: number, avgCost: number }> = {};
+        const getWhState = (wId: string) => {
+          if (!whStockMap[wId]) whStockMap[wId] = { qty: 0, avgCost: Number(prod?.cost_price || 0) };
+          return whStockMap[wId];
+        };
+
+        let openingWhQty = 0;
+        let openingWhCost = 0;
+        const visibleRows: any[] = [];
+
+        for (const line of allProductLines) {
+          const mov = line.expand?.movement_id;
+          if (!mov) continue;
+
+          const movType = mov.mov_type;
+          const srcWhId = mov.warehouse_id;
+          const dstWhId = mov.dest_warehouse_id;
+          const movDate = mov.date || '';
+          const qty = Number(line.qty || 0);
+          const rawCost = Number(line.unit_cost || 0);
+
+          // 1. Update Global corporate cost state
+          if (movType === 'ENTRADA' || movType === 'AJUSTE_POSITIVO') {
+            const prevGQty = globalQty;
+            const prevGCost = globalAvgCost;
+            globalQty += qty;
+            if (globalQty > 0 && rawCost > 0) {
+              globalAvgCost = Math.round((((Math.max(0, prevGQty) * prevGCost) + (qty * rawCost)) / globalQty) * 100) / 100;
+            } else if (rawCost > 0) {
+              globalAvgCost = rawCost;
+            }
+          } else if (movType === 'SALIDA' || movType === 'AJUSTE_NEGATIVO') {
+            globalQty -= qty;
+          }
+
+          // 2. Update per-warehouse stock state
+          const srcState = getWhState(srcWhId);
+          const transferCost = costingScope === 'GLOBAL' ? globalAvgCost : (srcState.avgCost > 0 ? srcState.avgCost : (rawCost > 0 ? rawCost : Number(prod?.cost_price || 0)));
+
+          if (movType === 'ENTRADA' || movType === 'AJUSTE_POSITIVO') {
+            const prevQty = srcState.qty;
+            const prevCost = srcState.avgCost;
+            srcState.qty += qty;
+            if (costingScope === 'GLOBAL') {
+              srcState.avgCost = globalAvgCost;
+            } else {
+              if (srcState.qty > 0 && rawCost > 0) {
+                srcState.avgCost = Math.round((((prevQty * prevCost) + (qty * rawCost)) / srcState.qty) * 100) / 100;
+              } else if (rawCost > 0) {
+                srcState.avgCost = rawCost;
+              }
+            }
+          } else if (movType === 'SALIDA' || movType === 'AJUSTE_NEGATIVO') {
+            srcState.qty -= qty;
+            if (costingScope === 'GLOBAL') {
+              srcState.avgCost = globalAvgCost;
+            }
+          } else if (movType === 'TRASLADO') {
+            srcState.qty -= qty;
+            if (dstWhId) {
+              const dstState = getWhState(dstWhId);
+              const prevDstQty = dstState.qty;
+              const prevDstCost = dstState.avgCost;
+              dstState.qty += qty;
+              if (costingScope === 'GLOBAL') {
+                srcState.avgCost = globalAvgCost;
+                dstState.avgCost = globalAvgCost;
+              } else {
+                if (dstState.qty > 0 && transferCost > 0) {
+                  dstState.avgCost = Math.round((((prevDstQty * prevDstCost) + (qty * transferCost)) / dstState.qty) * 100) / 100;
+                } else if (transferCost > 0) {
+                  dstState.avgCost = transferCost;
+                }
+              }
+            }
+          }
+
+          // 3. Determine if this movement touches the queried whId
+          const isTargetWh = (movType === 'TRASLADO') ? (srcWhId === whId || dstWhId === whId) : (srcWhId === whId);
+          if (!isTargetWh) continue;
+
+          let isInput = false;
+          let isOutput = false;
+          let costIn = 0;
+          let costOut = 0;
+
+          if (movType === 'TRASLADO') {
+            if (dstWhId === whId) {
+              isInput = true;
+              costIn = costingScope === 'GLOBAL' ? globalAvgCost : transferCost;
+            } else if (srcWhId === whId) {
+              isOutput = true;
+              costOut = costingScope === 'GLOBAL' ? globalAvgCost : transferCost;
+            }
+          } else if (movType === 'ENTRADA' || movType === 'AJUSTE_POSITIVO') {
+            isInput = true;
+            costIn = rawCost;
+          } else if (movType === 'SALIDA' || movType === 'AJUSTE_NEGATIVO') {
+            isOutput = true;
+            costOut = costingScope === 'GLOBAL' ? globalAvgCost : srcState.avgCost;
+          }
+
+          const currentTargetState = getWhState(whId);
+          const currentBalCost = costingScope === 'GLOBAL' ? globalAvgCost : currentTargetState.avgCost;
+          const currentBalQty = currentTargetState.qty;
+
+          const isHistorical = startDate && movDate < startDate;
+          if (isHistorical) {
+            openingWhQty = currentBalQty;
+            openingWhCost = currentBalCost;
+          } else {
+            const partner = mov.expand?.third_party_id?.name || '—';
+            const qtyIn = isInput ? qty : 0;
+            const totalIn = qtyIn * costIn;
+            const qtyOut = isOutput ? qty : 0;
+            const totalOut = qtyOut * costOut;
+            const totalBal = currentBalQty * currentBalCost;
+
+            visibleRows.push({
+              date: movDate,
+              docNumber: mov.number,
+              movType: mov.mov_type,
+              notes: line.notes || mov.notes || '',
+              partner,
+              qtyIn,
+              costIn,
+              totalIn,
+              qtyOut,
+              costOut,
+              totalOut,
+              qtyBal: currentBalQty,
+              costBal: currentBalCost,
+              totalBal,
+              txId: mov.tx_id || '',
+              movId: mov.id
+            });
+          }
+        }
+
         currentKardexData = [];
         if (startDate) {
           currentKardexData.push({
@@ -2901,83 +3012,14 @@ async function renderKardexTab(c, ctx = {}) {
             qtyOut: 0,
             costOut: 0,
             totalOut: 0,
-            qtyBal: runningQty,
-            costBal: runningAvgCost,
-            totalBal: runningQty * runningAvgCost,
+            qtyBal: openingWhQty,
+            costBal: openingWhCost,
+            totalBal: openingWhQty * openingWhCost,
             isInitial: true
           });
         }
 
-        const mappedLines = filteredLines.map((line: any) => {
-          const mov = line.expand?.movement_id;
-          const partner = mov.expand?.third_party_id?.name || '—';
-          
-          let isInput = false;
-          let isOutput = false;
-
-          if (mov.mov_type === 'TRASLADO') {
-            if (mov.dest_warehouse_id === whId) isInput = true;
-            else if (mov.warehouse_id === whId) isOutput = true;
-          } else {
-            isInput = mov.mov_type === 'ENTRADA' || mov.mov_type === 'AJUSTE_POSITIVO';
-            isOutput = mov.mov_type === 'SALIDA' || mov.mov_type === 'AJUSTE_NEGATIVO';
-          }
-
-          const qty = line.qty || 0;
-          const cost = line.unit_cost || 0;
-
-          let qtyIn = 0;
-          let costIn = 0;
-          let totalIn = 0;
-          let qtyOut = 0;
-          let costOut = 0;
-          let totalOut = 0;
-
-          if (isInput) {
-            qtyIn = qty;
-            costIn = cost;
-            totalIn = qty * cost;
-
-            const prevQty = runningQty;
-            const prevCost = runningAvgCost;
-            runningQty += qty;
-            if (runningQty > 0) {
-              runningAvgCost = ((prevQty * prevCost) + (qty * cost)) / runningQty;
-            } else {
-              runningAvgCost = cost;
-            }
-            runningAvgCost = Math.round(runningAvgCost * 100) / 100;
-          } else if (isOutput) {
-            qtyOut = qty;
-            costOut = runningAvgCost;
-            totalOut = qty * costOut;
-
-            runningQty -= qty;
-          }
-
-          const runningTotal = runningQty * runningAvgCost;
-
-          return {
-            date: mov.date,
-            docNumber: mov.number,
-            movType: mov.mov_type,
-            notes: line.notes || mov.notes || '',
-            partner,
-            qtyIn,
-            costIn,
-            totalIn,
-            qtyOut,
-            costOut,
-            totalOut,
-            qtyBal: runningQty,
-            costBal: runningAvgCost,
-            totalBal: runningTotal,
-            txId: mov.tx_id || '',
-            movId: mov.id
-          };
-        });
-
-        currentKardexData.push(...mappedLines);
+        currentKardexData.push(...visibleRows);
 
         if (resultsContainer) {
           if (currentKardexData.length === 0 || (currentKardexData.length === 1 && currentKardexData[0].isInitial && currentKardexData[0].qtyBal === 0)) {
@@ -4940,11 +4982,20 @@ async function _analyzeRevaluation() {
       if (inv.inv_movement_id) invByMovMap.set(inv.inv_movement_id, inv);
     });
 
-    // 3. Ordenar las líneas cronológicamente por fecha, fecha de creación y orden de línea
+    // 3. Ordenar las líneas cronológicamente por fecha, tipo (entradas antes de traslados y salidas), fecha de creación y orden de línea
+    const typePriority: Record<string, number> = {
+      'ENTRADA': 1, 'AJUSTE_POSITIVO': 1,
+      'TRASLADO': 2,
+      'SALIDA': 3, 'AJUSTE_NEGATIVO': 3
+    };
     lines.sort((a: any, b: any) => {
       const dateA = a.expand?.movement_id?.date || '';
       const dateB = b.expand?.movement_id?.date || '';
       if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      const pA = typePriority[a.expand?.movement_id?.mov_type] || 4;
+      const pB = typePriority[b.expand?.movement_id?.mov_type] || 4;
+      if (pA !== pB) return pA - pB;
 
       const createdA = a.expand?.movement_id?.created || '';
       const createdB = b.expand?.movement_id?.created || '';
@@ -4953,8 +5004,19 @@ async function _analyzeRevaluation() {
       return (a.line_order || 0) - (b.line_order || 0);
     });
 
-    // 4. Inicializar estado de stock por producto y bodega
+    // 4. Obtener Enfoque de Costeo (GLOBAL corporativo vs POR_BODEGA)
+    let costingScope = 'GLOBAL';
+    try {
+      const rawInv = await API.getSetting('inventory_settings_v1');
+      if (rawInv) {
+        const p = JSON.parse(rawInv);
+        if (p.costing_scope) costingScope = p.costing_scope;
+      }
+    } catch (_) {}
+
+    // Inicializar estado de stock por producto y bodega
     const stockState: { [prodId: string]: { [whId: string]: { qty: number, avg_cost: number } } } = {};
+    const globalStock: { [prodId: string]: { qty: number, avg_cost: number } } = {};
 
     const getStock = (pId: string, wId: string) => {
       if (!stockState[pId]) stockState[pId] = {};
@@ -4963,6 +5025,14 @@ async function _analyzeRevaluation() {
         stockState[pId][wId] = { qty: 0, avg_cost: Number(prod?.cost_price || 0) };
       }
       return stockState[pId][wId];
+    };
+
+    const getGlobalStock = (pId: string) => {
+      if (!globalStock[pId]) {
+        const prod = prodMap.get(pId);
+        globalStock[pId] = { qty: 0, avg_cost: Number(prod?.cost_price || 0) };
+      }
+      return globalStock[pId];
     };
 
     const simulatedAdjustments: any[] = [];
@@ -4991,14 +5061,233 @@ async function _analyzeRevaluation() {
         String(mov.notes || '').toLowerCase().includes('devolucion')
       );
 
-      if (type === 'ENTRADA' || type === 'AJUSTE_POSITIVO') {
-        const st = getStock(prodId, mov.warehouse_id);
-        const priorQty = st.qty;
-        const priorAvgCost = st.avg_cost;
+      if (costingScope === 'GLOBAL') {
+        // ── ENFOQUE CORPORATIVO GLOBAL ──
+        if (type === 'ENTRADA' || type === 'AJUSTE_POSITIVO') {
+          const st = getStock(prodId, mov.warehouse_id);
+          const g = getGlobalStock(prodId);
+          const priorGQty = g.qty;
+          const priorGCost = g.avg_cost;
 
-        // Si es una Devolución en Venta (Nota Crédito): reingresa al costo promedio ponderado vigente
-        if (isCreditNote) {
-          let effectiveAvgCost = priorAvgCost;
+          if (isCreditNote) {
+            let effectiveAvgCost = priorGCost;
+            if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
+              effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
+              g.avg_cost = effectiveAvgCost;
+            }
+
+            const recordedCost = unitCost;
+            const costDiff = effectiveAvgCost - recordedCost;
+            const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
+
+            if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
+              simulatedAdjustments.push({
+                prodId,
+                whId: mov.warehouse_id,
+                date,
+                adjustmentVal,
+                resolvedQty: qty,
+                costDiff,
+                priorAvgCost: recordedCost,
+                newCost: effectiveAvgCost,
+                movementNumber: mov.number,
+                movementId: mov.id,
+                movementLineId: line.id,
+                kind: 'DEVOLUCION_VENTA_COST_FIX',
+                isCreditNote: true
+              });
+            }
+
+            st.qty += qty;
+            const newGQty = priorGQty + qty;
+            if (newGQty > 0) {
+              g.avg_cost = Math.round((((priorGQty * priorGCost) + (qty * effectiveAvgCost)) / newGQty) * 100) / 100;
+            } else {
+              g.avg_cost = effectiveAvgCost;
+            }
+            g.qty = newGQty;
+            st.avg_cost = g.avg_cost;
+          } else {
+            // Entrada normal / Compra
+            st.qty += qty;
+            const newGQty = priorGQty + qty;
+
+            if (priorGQty < 0) {
+              const resolvedQty = Math.min(qty, Math.abs(priorGQty));
+              const costDiff = unitCost - priorGCost;
+              const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+              if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+                simulatedAdjustments.push({
+                  prodId,
+                  whId: mov.warehouse_id,
+                  date,
+                  adjustmentVal,
+                  resolvedQty,
+                  costDiff,
+                  priorAvgCost: priorGCost,
+                  newCost: unitCost,
+                  movementNumber: mov.number,
+                  movementId: mov.id,
+                  movementLineId: line.id,
+                  kind: 'NEG_STOCK_RESOLUTION'
+                });
+              }
+              g.avg_cost = unitCost;
+            } else {
+              if (newGQty > 0 && unitCost > 0) {
+                g.avg_cost = Math.round((((Math.max(0, priorGQty) * priorGCost) + (qty * unitCost)) / newGQty) * 100) / 100;
+              } else if (unitCost > 0) {
+                g.avg_cost = unitCost;
+              }
+            }
+            g.qty = newGQty;
+            st.avg_cost = g.avg_cost;
+          }
+        } else if (type === 'SALIDA' || type === 'AJUSTE_NEGATIVO') {
+          const st = getStock(prodId, mov.warehouse_id);
+          const g = getGlobalStock(prodId);
+          let effectiveAvgCost = g.avg_cost;
+          if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
+            effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
+            g.avg_cost = effectiveAvgCost;
+          }
+
+          const recordedCost = unitCost;
+          const costDiff = effectiveAvgCost - recordedCost;
+          const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
+
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
+            simulatedAdjustments.push({
+              prodId,
+              whId: mov.warehouse_id,
+              date,
+              adjustmentVal,
+              resolvedQty: qty,
+              costDiff,
+              priorAvgCost: recordedCost,
+              newCost: effectiveAvgCost,
+              movementNumber: mov.number,
+              movementId: mov.id,
+              movementLineId: line.id,
+              kind: 'SALIDA_COST_FIX',
+              isCreditNote: false
+            });
+          }
+
+          st.qty -= qty;
+          g.qty -= qty;
+          st.avg_cost = effectiveAvgCost;
+        } else if (type === 'TRASLADO') {
+          // En costeo GLOBAL corporativo, los traslados no alteran el costo ni generan desfase entre bodegas
+          const stSrc = getStock(prodId, mov.warehouse_id);
+          const stDst = getStock(prodId, mov.dest_warehouse_id);
+          const g = getGlobalStock(prodId);
+          stSrc.qty -= qty;
+          stDst.qty += qty;
+          stSrc.avg_cost = g.avg_cost;
+          stDst.avg_cost = g.avg_cost;
+
+          const recordedCost = unitCost;
+          const effectiveCost = g.avg_cost > 0 ? g.avg_cost : (recordedCost > 0 ? recordedCost : Number(prodMap.get(prodId)?.cost_price || 0));
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(recordedCost - effectiveCost) > 0.009 && effectiveCost > 0) {
+            simulatedAdjustments.push({
+              prodId,
+              whId: mov.warehouse_id,
+              destWhId: mov.dest_warehouse_id,
+              date,
+              adjustmentVal: 0,
+              resolvedQty: qty,
+              costDiff: effectiveCost - recordedCost,
+              priorAvgCost: recordedCost,
+              newCost: effectiveCost,
+              movementNumber: mov.number,
+              movementId: mov.id,
+              movementLineId: line.id,
+              kind: 'TRASLADO_COST_FIX',
+              isCreditNote: false
+            });
+          }
+        }
+      } else {
+        // ── ENFOQUE INDIVIDUAL POR BODEGA ──
+        if (type === 'ENTRADA' || type === 'AJUSTE_POSITIVO') {
+          const st = getStock(prodId, mov.warehouse_id);
+          const priorQty = st.qty;
+          const priorAvgCost = st.avg_cost;
+
+          if (isCreditNote) {
+            let effectiveAvgCost = priorAvgCost;
+            if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
+              effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
+              st.avg_cost = effectiveAvgCost;
+            }
+
+            const recordedCost = unitCost;
+            const costDiff = effectiveAvgCost - recordedCost;
+            const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
+
+            if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
+              simulatedAdjustments.push({
+                prodId,
+                whId: mov.warehouse_id,
+                date,
+                adjustmentVal,
+                resolvedQty: qty,
+                costDiff,
+                priorAvgCost: recordedCost,
+                newCost: effectiveAvgCost,
+                movementNumber: mov.number,
+                movementId: mov.id,
+                movementLineId: line.id,
+                kind: 'DEVOLUCION_VENTA_COST_FIX',
+                isCreditNote: true
+              });
+            }
+
+            st.qty = priorQty + qty;
+            if (st.qty > 0) {
+              st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * effectiveAvgCost)) / st.qty) * 100) / 100;
+            } else {
+              st.avg_cost = effectiveAvgCost;
+            }
+          } else {
+            st.qty = priorQty + qty;
+
+            if (priorQty < 0) {
+              const resolvedQty = Math.min(qty, Math.abs(priorQty));
+              const costDiff = unitCost - priorAvgCost;
+              const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
+
+              if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
+                simulatedAdjustments.push({
+                  prodId,
+                  whId: mov.warehouse_id,
+                  date,
+                  adjustmentVal,
+                  resolvedQty,
+                  costDiff,
+                  priorAvgCost,
+                  newCost: unitCost,
+                  movementNumber: mov.number,
+                  movementId: mov.id,
+                  movementLineId: line.id,
+                  kind: 'NEG_STOCK_RESOLUTION'
+                });
+              }
+              st.avg_cost = unitCost;
+            } else {
+              if (st.qty > 0) {
+                st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * unitCost)) / st.qty) * 100) / 100;
+              } else {
+                st.avg_cost = unitCost;
+              }
+            }
+          }
+        } else if (type === 'SALIDA' || type === 'AJUSTE_NEGATIVO') {
+          const st = getStock(prodId, mov.warehouse_id);
+          const priorQty = st.qty;
+          let effectiveAvgCost = st.avg_cost;
           if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
             effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
             st.avg_cost = effectiveAvgCost;
@@ -5021,157 +5310,99 @@ async function _analyzeRevaluation() {
               movementNumber: mov.number,
               movementId: mov.id,
               movementLineId: line.id,
-              kind: 'DEVOLUCION_VENTA_COST_FIX',
-              isCreditNote: true
+              kind: 'SALIDA_COST_FIX',
+              isCreditNote: false
             });
           }
 
-          st.qty = priorQty + qty;
-          if (st.qty > 0) {
-            st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * effectiveAvgCost)) / st.qty) * 100) / 100;
-          } else {
-            st.avg_cost = effectiveAvgCost;
-          }
-        } else {
-          // Entrada normal / Compra
-          st.qty = priorQty + qty;
+          st.qty = priorQty - qty;
+        } else if (type === 'TRASLADO') {
+          const stSrc = getStock(prodId, mov.warehouse_id);
+          const sourceCost = (stSrc.avg_cost > 0) ? stSrc.avg_cost : (unitCost > 0 ? unitCost : Number(prodMap.get(prodId)?.cost_price || 0));
+          const transferCost = sourceCost;
+          stSrc.qty = stSrc.qty - qty;
 
-          if (priorQty < 0) {
-            // Resolución de stock negativo
-            const resolvedQty = Math.min(qty, Math.abs(priorQty));
-            const costDiff = unitCost - priorAvgCost;
+          const stDst = getStock(prodId, mov.dest_warehouse_id);
+          const priorQtyDst = stDst.qty;
+          const priorAvgCostDst = stDst.avg_cost;
+
+          stDst.qty = priorQtyDst + qty;
+
+          const recordedCost = unitCost;
+          if (isWithinDateRange && isTargetWarehouse && Math.abs(recordedCost - transferCost) > 0.009 && transferCost > 0) {
+            simulatedAdjustments.push({
+              prodId,
+              whId: mov.warehouse_id,
+              destWhId: mov.dest_warehouse_id,
+              date,
+              adjustmentVal: 0,
+              resolvedQty: qty,
+              costDiff: transferCost - recordedCost,
+              priorAvgCost: recordedCost,
+              newCost: transferCost,
+              movementNumber: mov.number,
+              movementId: mov.id,
+              movementLineId: line.id,
+              kind: 'TRASLADO_COST_FIX',
+              isCreditNote: false
+            });
+          }
+
+          if (priorQtyDst < 0) {
+            const resolvedQty = Math.min(qty, Math.abs(priorQtyDst));
+            const costDiff = transferCost - priorAvgCostDst;
             const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
 
             if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
               simulatedAdjustments.push({
                 prodId,
-                whId: mov.warehouse_id,
+                whId: mov.dest_warehouse_id,
                 date,
                 adjustmentVal,
                 resolvedQty,
                 costDiff,
-                priorAvgCost,
-                newCost: unitCost,
+                priorAvgCost: priorAvgCostDst,
+                newCost: transferCost,
                 movementNumber: mov.number,
                 movementId: mov.id,
-                movementLineId: line.id,
                 kind: 'NEG_STOCK_RESOLUTION'
               });
             }
-            st.avg_cost = unitCost;
-          } else {
-            if (st.qty > 0) {
-              st.avg_cost = Math.round((((priorQty * priorAvgCost) + (qty * unitCost)) / st.qty) * 100) / 100;
-            } else {
-              st.avg_cost = unitCost;
-            }
-          }
-        }
-      } else if (type === 'SALIDA' || type === 'AJUSTE_NEGATIVO') {
-        const st = getStock(prodId, mov.warehouse_id);
-        const priorQty = st.qty;
-        let effectiveAvgCost = st.avg_cost;
-        if (effectiveAvgCost <= 0 && prodMap.get(prodId)?.cost_price > 0) {
-          effectiveAvgCost = Number(prodMap.get(prodId).cost_price);
-          st.avg_cost = effectiveAvgCost;
-        }
-
-        const recordedCost = unitCost;
-        const costDiff = effectiveAvgCost - recordedCost;
-        const adjustmentVal = Math.round((qty * costDiff) * 100) / 100;
-
-        if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009 && effectiveAvgCost > 0) {
-          simulatedAdjustments.push({
-            prodId,
-            whId: mov.warehouse_id,
-            date,
-            adjustmentVal,
-            resolvedQty: qty,
-            costDiff,
-            priorAvgCost: recordedCost,
-            newCost: effectiveAvgCost,
-            movementNumber: mov.number,
-            movementId: mov.id,
-            movementLineId: line.id,
-            kind: 'SALIDA_COST_FIX',
-            isCreditNote: false
-          });
-        }
-
-        st.qty = priorQty - qty;
-      } else if (type === 'TRASLADO') {
-        // Origen
-        const stSrc = getStock(prodId, mov.warehouse_id);
-        const transferCost = stSrc.avg_cost > 0 ? stSrc.avg_cost : Number(prodMap.get(prodId)?.cost_price || 0);
-        stSrc.qty = stSrc.qty - qty;
-
-        // Destino
-        const stDst = getStock(prodId, mov.dest_warehouse_id);
-        const priorQtyDst = stDst.qty;
-        const priorAvgCostDst = stDst.avg_cost;
-
-        stDst.qty = priorQtyDst + qty;
-
-        if (priorQtyDst < 0) {
-          const resolvedQty = Math.min(qty, Math.abs(priorQtyDst));
-          const costDiff = transferCost - priorAvgCostDst;
-          const adjustmentVal = Math.round((resolvedQty * costDiff) * 100) / 100;
-
-          if (isWithinDateRange && isTargetWarehouse && Math.abs(adjustmentVal) > 0.009) {
-            simulatedAdjustments.push({
-              prodId,
-              whId: mov.dest_warehouse_id,
-              date,
-              adjustmentVal,
-              resolvedQty,
-              costDiff,
-              priorAvgCost: priorAvgCostDst,
-              newCost: transferCost,
-              movementNumber: mov.number,
-              movementId: mov.id,
-              kind: 'NEG_STOCK_RESOLUTION'
-            });
-          }
-          stDst.avg_cost = transferCost;
-        } else {
-          if (stDst.qty > 0) {
-            stDst.avg_cost = Math.round((((priorQtyDst * priorAvgCostDst) + (qty * transferCost)) / stDst.qty) * 100) / 100;
-          } else {
             stDst.avg_cost = transferCost;
+          } else {
+            if (stDst.qty > 0) {
+              stDst.avg_cost = Math.round((((priorQtyDst * priorAvgCostDst) + (qty * transferCost)) / stDst.qty) * 100) / 100;
+            } else {
+              stDst.avg_cost = transferCost;
+            }
           }
         }
       }
     }
 
-    // 5.1 Enlazar los ajustes directos (SALIDA_COST_FIX y DEVOLUCION_VENTA_COST_FIX) con su factura/nota y periodo
-    const directCandidateAdjustments = simulatedAdjustments.filter((a: any) => 
-      a.kind === 'SALIDA_COST_FIX' || a.kind === 'DEVOLUCION_VENTA_COST_FIX'
-    );
+    // 5.1 Enlazar TODOS los ajustes que correspondan a movimientos con factura/nota y periodo
+    let periodos: any[] = [];
+    try {
+      const raw = await API.getSetting('periodos_cierre');
+      if (raw) periodos = JSON.parse(raw);
+    } catch (_) { /* sin periodos configurados */ }
+    const isClosedPeriod = (dateStr: string) => {
+      if (!periodos || !periodos.length) return false;
+      const key = (dateStr || '').slice(0, 7);
+      const found = periodos.find((p: any) => p.key === key);
+      return !!(found && found.closed === true);
+    };
 
-    if (directCandidateAdjustments.length) {
-      let periodos: any[] = [];
-      try {
-        const raw = await API.getSetting('periodos_cierre');
-        if (raw) periodos = JSON.parse(raw);
-      } catch (_) { /* sin periodos configurados */ }
-      const isClosedPeriod = (dateStr: string) => {
-        if (!periodos || !periodos.length) return false;
-        const key = (dateStr || '').slice(0, 7);
-        const found = periodos.find((p: any) => p.key === key);
-        return !!(found && found.closed === true);
-      };
-
-      for (const adj of directCandidateAdjustments) {
-        const inv = invByMovMap.get(adj.movementId);
-        adj.invoiceId = inv ? inv.id : null;
-        adj.invoiceNumber = inv ? inv.number : null;
-        adj.invoiceTxId = inv ? inv.tx_id : null;
-        adj.invoiceDate = inv ? inv.date : null;
-        adj.periodClosed = inv ? isClosedPeriod(inv.date) : false;
-        adj.directTarget = !!(inv && inv.tx_id && !adj.periodClosed);
-        if (inv && String(inv.number || '').startsWith('NC')) {
-          adj.isCreditNote = true;
-        }
+    for (const adj of simulatedAdjustments) {
+      const inv = invByMovMap.get(adj.movementId);
+      adj.invoiceId = inv ? inv.id : null;
+      adj.invoiceNumber = inv ? inv.number : null;
+      adj.invoiceTxId = inv ? inv.tx_id : null;
+      adj.invoiceDate = inv ? inv.date : null;
+      adj.periodClosed = inv ? isClosedPeriod(inv.date) : false;
+      adj.directTarget = !!(inv && inv.tx_id && !adj.periodClosed);
+      if (inv && String(inv.number || '').startsWith('NC')) {
+        adj.isCreditNote = true;
       }
     }
 
@@ -5197,9 +5428,11 @@ async function _analyzeRevaluation() {
       }
       grouped[key].totalAdjustment += adj.adjustmentVal;
       grouped[key].details.push(adj);
-      if ((adj.kind === 'SALIDA_COST_FIX' || adj.kind === 'DEVOLUCION_VENTA_COST_FIX') && adj.directTarget) {
+      if (adj.directTarget) {
         if (adj.isCreditNote) grouped[key].directCreditNotesCount++;
         else grouped[key].directInvoicesCount++;
+      } else if (adj.kind === 'TRASLADO_COST_FIX') {
+        grouped[key].transfersCount = (grouped[key].transfersCount || 0) + 1;
       } else {
         grouped[key].consolidatedCount++;
       }
@@ -5239,6 +5472,7 @@ async function _analyzeRevaluation() {
 
       const destinoHtml = [
         directParts.length ? `<span class="badge badge-blue text-[10px]" title="Se corrige directamente el asiento">${directParts.join(', ')}</span>` : '',
+        item.transfersCount ? `<span class="badge badge-purple text-[10px]" title="Corrección de costo en traslado entre bodegas">${item.transfersCount} Traslado(s)</span>` : '',
         item.consolidatedCount ? `<span class="badge badge-gray text-[10px]" title="Periodo cerrado, sin documento asociado o resolución de stock negativo: va a un asiento consolidado AJ-REV">${item.consolidatedCount} Consolidado</span>` : ''
       ].filter(Boolean).join(' ');
 
@@ -5340,7 +5574,7 @@ async function _applyRevaluation() {
       }
 
       for (const d of (item.details || [])) {
-        const isDirect = (d.kind === 'SALIDA_COST_FIX' || d.kind === 'DEVOLUCION_VENTA_COST_FIX') && d.directTarget && d.invoiceId;
+        const isDirect = d.directTarget && d.invoiceId;
         if (isDirect) {
           allDirectDetails.push({ ...d, prod });
         } else {
@@ -5528,10 +5762,10 @@ async function _applyRevaluation() {
       consolidatedByProd[pId].details.push(d);
     }
 
-    // Actualizar unit_cost en inventory_movement_lines para los movimientos consolidados de salida
+    // Actualizar unit_cost en inventory_movement_lines para los movimientos consolidados de salida y traslados
     for (const group of Object.values(consolidatedByProd)) {
       for (const d of group.details) {
-        if (d.movementLineId && d.kind === 'SALIDA_COST_FIX') {
+        if (d.movementLineId && (d.kind === 'SALIDA_COST_FIX' || d.kind === 'TRASLADO_COST_FIX' || d.kind === 'DEVOLUCION_VENTA_COST_FIX')) {
           const movLine = await pb.get('inventory_movement_lines', d.movementLineId).catch(() => null);
           if (movLine) {
             const patch: any = { unit_cost: round2(d.newCost) };
@@ -5551,9 +5785,11 @@ async function _applyRevaluation() {
         if (movLines.length) {
           const totalCost = movLines.reduce((sum: number, ml: any) => sum + (Number(ml.qty || 0) * Number(ml.unit_cost || 0)), 0);
           const currentMov = await pb.get('inventory_movements', movId).catch(() => null);
+          const updateData: any = { total_cost: round2(totalCost) };
           if (currentMov && currentMov.status === 'draft') {
-            await pb.update('inventory_movements', movId, { status: 'applied' });
+            updateData.status = 'applied';
           }
+          await pb.update('inventory_movements', movId, updateData);
         }
       } catch (movErr) {
         console.warn(`[REVAL] No se pudo actualizar cabecera del movimiento ${movId}:`, movErr);
@@ -6429,11 +6665,13 @@ async function _saveUnifiedInventoryConfig() {
     const prodConfig = { auto_code, prefix, consecutive, digits };
     await API.setSetting('product_config_v1', JSON.stringify(prodConfig));
 
-    // 2. Guardar Configuración de Stock Negativo y Tarifa de IVA por Defecto
+    // 2. Guardar Configuración de Stock Negativo, Tarifa de IVA por Defecto y Enfoque de Costeo
     const allow_negative_stock = (document.getElementById('inv-cfg-allow-negative') as HTMLInputElement)?.checked || false;
     const default_iva_rate_raw = parseFloat((document.getElementById('inv-cfg-default-iva') as HTMLSelectElement)?.value || '19');
     const default_iva_rate = isNaN(default_iva_rate_raw) ? 19 : default_iva_rate_raw;
-    const invConfig = { allow_negative_stock, default_iva_rate };
+    const costingScopeRadio = document.querySelector('input[name="inv-costing-scope"]:checked') as HTMLInputElement;
+    const costing_scope = costingScopeRadio ? costingScopeRadio.value : 'GLOBAL';
+    const invConfig = { allow_negative_stock, default_iva_rate, costing_scope };
     await API.setSetting('inventory_settings_v1', JSON.stringify(invConfig));
 
     showToast('Configuración de productos e inventario guardada correctamente.', 'success');

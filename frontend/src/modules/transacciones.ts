@@ -1536,6 +1536,276 @@ function showCarteraForLine(lineIdx, ctx) {
   showCarteraModal(thirdId, { returnToPrevious: true, skipCtxOverride: true });
 }
 
+// ── Cartera PH por Conceptos: Estado y utilidades ───────────────────────────
+let CARTERA_PH_CURRENT_PARTIES: any[] = [];
+let CARTERA_PH_CONFIG: any = null;
+let CARTERA_PH_SELECTED_THIRD: string = '';
+let CARTERA_PH_CURRENT_TAB: string = 'ph'; // 'ph' | 'docs'
+
+(window as any).switchCarteraTab = function(tabName: string) {
+  CARTERA_PH_CURRENT_TAB = tabName;
+  const panePh = document.getElementById('cartera-pane-ph');
+  const paneDocs = document.getElementById('cartera-pane-docs');
+  const btnPh = document.getElementById('tab-btn-cartera-ph');
+  const btnDocs = document.getElementById('tab-btn-cartera-docs');
+
+  if (panePh && paneDocs) {
+    if (tabName === 'ph') {
+      panePh.style.display = 'block';
+      paneDocs.style.display = 'none';
+      if (btnPh) {
+        btnPh.className = 'px-4 py-2 text-xs font-bold border-b-2 border-blue-600 text-blue-700 bg-blue-50/50 flex items-center gap-2 cursor-pointer transition';
+      }
+      if (btnDocs) {
+        btnDocs.className = 'px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent flex items-center gap-2 cursor-pointer transition';
+      }
+    } else {
+      panePh.style.display = 'none';
+      paneDocs.style.display = 'block';
+      if (btnPh) {
+        btnPh.className = 'px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent flex items-center gap-2 cursor-pointer transition';
+      }
+      if (btnDocs) {
+        btnDocs.className = 'px-4 py-2 text-xs font-bold border-b-2 border-blue-600 text-blue-700 bg-blue-50/50 flex items-center gap-2 cursor-pointer transition';
+      }
+    }
+  }
+};
+
+(window as any).onPhConceptAbonoChange = function(index: number, val: any) {
+  const item = CARTERA_PH_CURRENT_PARTIES[index];
+  if (!item) return;
+  const num = Math.max(0, Math.min(item.amount, Number(parseNum(val) || 0)));
+  item.abono = num;
+  const inp = document.getElementById(`ph-abono-input-${index}`) as HTMLInputElement;
+  if (inp && document.activeElement !== inp) {
+    inp.value = num > 0 ? String(num) : '';
+  }
+  const chk = document.getElementById(`ph-abono-chk-${index}`) as HTMLInputElement;
+  if (chk) chk.checked = num > 0;
+  _updatePhCarteraTotalDisplay();
+};
+
+(window as any).togglePhConceptCheckbox = function(index: number, isChecked: boolean) {
+  const item = CARTERA_PH_CURRENT_PARTIES[index];
+  if (!item) return;
+  item.abono = isChecked ? item.amount : 0;
+  const inp = document.getElementById(`ph-abono-input-${index}`) as HTMLInputElement;
+  if (inp) inp.value = item.abono > 0 ? String(item.abono) : '';
+  _updatePhCarteraTotalDisplay();
+};
+
+(window as any).fillPhConceptFullAbono = function(index: number) {
+  const item = CARTERA_PH_CURRENT_PARTIES[index];
+  if (!item) return;
+  item.abono = item.amount;
+  const inp = document.getElementById(`ph-abono-input-${index}`) as HTMLInputElement;
+  if (inp) inp.value = String(item.amount);
+  const chk = document.getElementById(`ph-abono-chk-${index}`) as HTMLInputElement;
+  if (chk) chk.checked = true;
+  _updatePhCarteraTotalDisplay();
+};
+
+(window as any).fillAllPhAbonos = function() {
+  CARTERA_PH_CURRENT_PARTIES.forEach((item, i) => {
+    item.abono = item.amount;
+    const inp = document.getElementById(`ph-abono-input-${i}`) as HTMLInputElement;
+    if (inp) inp.value = String(item.amount);
+    const chk = document.getElementById(`ph-abono-chk-${i}`) as HTMLInputElement;
+    if (chk) chk.checked = true;
+  });
+  _updatePhCarteraTotalDisplay();
+  showToast('Se asignó el saldo total a todos los conceptos.', 'info');
+};
+
+(window as any).clearAllPhAbonos = function() {
+  CARTERA_PH_CURRENT_PARTIES.forEach((item, i) => {
+    item.abono = 0;
+    const inp = document.getElementById(`ph-abono-input-${i}`) as HTMLInputElement;
+    if (inp) inp.value = '';
+    const chk = document.getElementById(`ph-abono-chk-${i}`) as HTMLInputElement;
+    if (chk) chk.checked = false;
+  });
+  const gInp = document.getElementById('ph-global-abono-amt') as HTMLInputElement;
+  if (gInp) gInp.value = '';
+  _updatePhCarteraTotalDisplay();
+};
+
+(window as any).autoDistributePhAbono = function() {
+  const gInp = document.getElementById('ph-global-abono-amt') as HTMLInputElement;
+  let remaining = Math.max(0, Number(parseNum(gInp?.value || '0')));
+  if (remaining <= 0) {
+    showToast('Ingresa un monto global mayor a 0 para distribuir.', 'warning');
+    return;
+  }
+
+  // 1. Limpiar abonos previos
+  CARTERA_PH_CURRENT_PARTIES.forEach(item => { item.abono = 0; });
+
+  // 2. Orden de prelación legal (Ley 675 / Art 881 C.Co):
+  //    1º: Intereses de mora (MORA) más antiguos
+  //    2º: Sanciones y multas (SANC / MULT)
+  //    3º: Cuotas extraordinarias (EXT)
+  //    4º: Cuotas ordinarias de administración (ADM / GEN) por fecha más antigua
+  //    5º: Otros conceptos
+  const sortedIndices = CARTERA_PH_CURRENT_PARTIES.map((item, idx) => ({ item, idx }))
+    .sort((a, b) => {
+      const priority = (it: any) => {
+        const c = String(it.conceptCode || '').toUpperCase();
+        if (c === 'MORA') return 1;
+        if (c.includes('SANC') || c.includes('MULT')) return 2;
+        if (c === 'EXT') return 3;
+        if (c === 'ADM') return 4;
+        return 5;
+      };
+      const pDiff = priority(a.item) - priority(b.item);
+      if (pDiff !== 0) return pDiff;
+      const d1 = String(a.item.periodo || a.item.fechaDoc || '');
+      const d2 = String(b.item.periodo || b.item.fechaDoc || '');
+      return d1.localeCompare(d2);
+    });
+
+  for (const entry of sortedIndices) {
+    if (remaining <= 0) break;
+    const it = entry.item;
+    const canCover = Math.min(remaining, it.amount);
+    it.abono = canCover;
+    remaining -= canCover;
+  }
+
+  // Refrescar inputs visuales
+  CARTERA_PH_CURRENT_PARTIES.forEach((item, i) => {
+    const inp = document.getElementById(`ph-abono-input-${i}`) as HTMLInputElement;
+    if (inp) inp.value = item.abono > 0 ? String(item.abono) : '';
+    const chk = document.getElementById(`ph-abono-chk-${i}`) as HTMLInputElement;
+    if (chk) chk.checked = item.abono > 0;
+  });
+
+  _updatePhCarteraTotalDisplay();
+
+  if (remaining > 0) {
+    showToast(`Monto distribuido. Queda un excedente de ${fmt(remaining)} que se sugiere registrar como anticipo en cuenta 28.`, 'info');
+  } else {
+    showToast('Abono distribuido exitosamente por prelación legal.', 'success');
+  }
+};
+
+function _updatePhCarteraTotalDisplay() {
+  const total = CARTERA_PH_CURRENT_PARTIES.reduce((sum, it) => sum + (Number(it.abono) || 0), 0);
+  const count = CARTERA_PH_CURRENT_PARTIES.filter(it => (Number(it.abono) || 0) > 0).length;
+  const disp = document.getElementById('ph-total-abono-display');
+  const cntDisp = document.getElementById('ph-selected-concepts-count');
+  const btnApply = document.getElementById('btn-apply-ph-cartera') as HTMLButtonElement;
+  if (disp) disp.textContent = fmt(total);
+  if (cntDisp) cntDisp.textContent = String(count);
+  if (btnApply) btnApply.disabled = total <= 0;
+}
+
+(window as any).applyPhConceptsToTx = function() {
+  const itemsToApply = CARTERA_PH_CURRENT_PARTIES.filter(it => Number(it.abono || 0) > 0);
+  if (!itemsToApply.length) {
+    showToast('Debes seleccionar o ingresar un monto a abonar en al menos un concepto.', 'warning');
+    return;
+  }
+
+  const inEdit = CARTERA_CONTEXT === 'edit' || (!!$('#edit-tx-lines') && !!TX_EDIT_STATE?.accountMap?.size);
+  const state = inEdit ? TX_EDIT_STATE : TX_STATE;
+  const rerender = inEdit ? renderEditTxLines : renderTxLines;
+  const thirdId = CARTERA_PH_SELECTED_THIRD;
+
+  // 1. Determinar cuenta de cartera (CxC 13) para copropiedades
+  let cxcAcc = null;
+  const phCxcCode = String(CARTERA_PH_CONFIG?.cxc_code || '130505').trim();
+  cxcAcc = [...(state.accountMap?.values?.() || [])].find(a => String(a.code).trim() === phCxcCode);
+
+  if (!cxcAcc) {
+    cxcAcc = [...(state.accountMap?.values?.() || [])].find(a => String(a.code).startsWith('13') && a.maneja_cruce);
+  }
+  if (!cxcAcc && CARTERA_TARGET_LINE !== null && state.lines[CARTERA_TARGET_LINE]?.account_id) {
+    cxcAcc = state.accountMap.get(state.lines[CARTERA_TARGET_LINE].account_id);
+  }
+  if (!cxcAcc) {
+    cxcAcc = [...(state.accountMap?.values?.() || [])].find(a => a.maneja_cruce) || (state.accounts || [])[0];
+  }
+
+  const cxcAccountId = cxcAcc?.id || '';
+  const headerBranchId = inEdit ? ($('#edit-tx-branch')?.value || '') : (getSelectVal('tx-branch') || '');
+
+  // 2. Aplicar partidas por concepto a las líneas contables (Crédito a CxC)
+  let isFirstLineTargeted = false;
+  itemsToApply.forEach((item, idx) => {
+    const crossRef = item.crossDocRef || `${item.invoiceNumber}-${item.conceptCode || 'GEN'}`;
+    const desc = `Abono ${item.concepto || 'Cuota'} - Factura ${item.invoiceNumber}${item.propertyCode ? ` (Unidad ${item.propertyCode})` : ''}`;
+    const creditAmt = Number(item.abono || 0);
+
+    if (CARTERA_TARGET_LINE !== null && !isFirstLineTargeted && state.lines[CARTERA_TARGET_LINE]) {
+      // Reemplaza la línea desde la cual se abrió la cartera
+      const line = state.lines[CARTERA_TARGET_LINE];
+      line.account_id = line.account_id || cxcAccountId;
+      line.third_party_id = thirdId;
+      line.cross_doc_ref = crossRef;
+      line.description = desc;
+      line.credit = creditAmt;
+      line.debit = 0;
+      isFirstLineTargeted = true;
+    } else {
+      // Busca si hay alguna línea en blanco al final para reusarla
+      const emptyIdx = state.lines.findIndex(l => !l.account_id && !l.debit && !l.credit && !l.cross_doc_ref);
+      if (emptyIdx !== -1) {
+        const line = state.lines[emptyIdx];
+        line.account_id = cxcAccountId;
+        line.third_party_id = thirdId;
+        line.cross_doc_ref = crossRef;
+        line.description = desc;
+        line.credit = creditAmt;
+        line.debit = 0;
+        line.branch_id = line.branch_id || headerBranchId;
+      } else {
+        state.lines.push({
+          account_id: cxcAccountId,
+          third_party_id: thirdId,
+          cost_center_id: '',
+          branch_id: headerBranchId,
+          debit: 0,
+          credit: creditAmt,
+          description: desc,
+          cross_doc_ref: crossRef,
+          ret_base: '',
+          ret_rate: '',
+          import_concept: ''
+        });
+      }
+    }
+  });
+
+  // 3. Revisar si el usuario seleccionó cuenta de contrapartida (Débito: Banco o Caja)
+  const contrapartidaSelect = document.getElementById('ph-contrapartida-account') as HTMLSelectElement;
+  const contraAccId = contrapartidaSelect?.value || '';
+  const totalAbonado = itemsToApply.reduce((s, it) => s + Number(it.abono || 0), 0);
+
+  if (contraAccId) {
+    const contraAcc = state.accountMap.get(contraAccId);
+    state.lines.push({
+      account_id: contraAccId,
+      third_party_id: thirdId,
+      cost_center_id: '',
+      branch_id: headerBranchId,
+      debit: totalAbonado,
+      credit: 0,
+      description: `Recaudo cartera PH (${itemsToApply.length} concepto${itemsToApply.length > 1 ? 's' : ''}) - Doc. ${itemsToApply[0]?.invoiceNumber || ''}`,
+      cross_doc_ref: '',
+      ret_base: '',
+      ret_rate: '',
+      import_concept: ''
+    });
+  }
+
+  CARTERA_TARGET_LINE = null;
+  closeCarteraModal();
+  rerender(true);
+  showToast(`Se aplicaron ${itemsToApply.length} abono(s) por concepto a la transacción por total de ${fmt(totalAbonado)}`, 'success');
+};
+
 async function showCarteraModal(thirdId, opts = {}) {
     const { returnToPrevious = false, skipCtxOverride = false } = opts;
     if (!thirdId) return;
@@ -1544,6 +1814,8 @@ async function showCarteraModal(thirdId, opts = {}) {
       CARTERA_CONTEXT = (returnToPrevious || usingEdit) ? 'edit' : 'new';
     }
     const state = usingEdit ? TX_EDIT_STATE : TX_STATE;
+    CARTERA_PH_SELECTED_THIRD = thirdId;
+
     let tercero = (state.terceros || []).find(t => t.id === thirdId);
     if (!tercero) {
       try {
@@ -1590,40 +1862,50 @@ async function showCarteraModal(thirdId, opts = {}) {
 
     openModal(
       `<i class="fas fa-file-invoice-dollar mr-2" style="color:#1A4B8C"></i>Cartera: ${esc(tercero?.name || thirdId)}`,
-      `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos...</div>`,
+      `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos de cartera...</div>`,
       `<button class="btn btn-outline" onclick="closeCarteraModal()">Cerrar</button>`,
       true
     );
 
     try {
-      if (!cruceAccountIds.size) {
-        _carteraSetContent('<p class="text-center py-6" style="color:#9CA3AF">No hay cuentas configuradas con documento de cruce.</p>');
-        return;
-      }
-
-      // Fetch all tx_lines for this third party on cruce accounts (via relation filter)
+      // 1. Consultar en paralelo:
+      //    A. tx_lines contables de cruce general
+      //    B. Partidas abiertas por concepto de PH para este tercero
+      //    C. Configuración contable PH
       const safeId = pb.escapeFilterValue(thirdId);
-      let lines;
-      try {
-        lines = await pb.listAll('tx_lines', {
+      const isPhModuleActive = Boolean((window as any).ENABLED_MODULES?.has('copropiedades') || (window as any).ENABLED_MODULES?.has('full') || true);
+
+      let linesPromise: Promise<any>;
+      if (cruceAccountIds.size > 0) {
+        linesPromise = pb.listAll('tx_lines', {
           filter: `third_party_id="${safeId}" && account_id.maneja_cruce=true`,
           expand: 'account_id,tx_id',
           sort: 'tx_id.date',
-        });
-      } catch (_) {
-        // Fallback: fetch without relation filter and filter in JS
-        const allLines = await pb.listAll('tx_lines', {
-          filter: `third_party_id="${safeId}"`,
-          expand: 'account_id,tx_id',
-          sort: '-id',
-        });
-        lines = { items: (Array.isArray(allLines) ? allLines : (allLines?.items || [])).filter(l => cruceAccountIds.has(l.account_id)) };
+        }).catch(() => []);
+      } else {
+        linesPromise = Promise.resolve([]);
       }
 
-      const items = lines.items ?? lines;
+      let phPartiesPromise: Promise<any[]> = Promise.resolve([]);
+      let phCfgPromise: Promise<any> = Promise.resolve({});
 
-      // Aggregate by cross_doc_ref
-      const docs = new Map(); // cross_doc_ref → { ref, account, accountCode, accountNat, firstDate, debit, credit, txNumbers }
+      if (isPhModuleActive) {
+        phPartiesPromise = API.getPhCarteraOpenPartiesByThird(thirdId).catch(() => []);
+        phCfgPromise = API.getSetting('ph_config_v1').then(r => r ? JSON.parse(r) : {}).catch(() => ({}));
+      }
+
+      const [linesResult, phParties, phCfg] = await Promise.all([
+        linesPromise,
+        phPartiesPromise,
+        phCfgPromise,
+      ]);
+
+      CARTERA_PH_CONFIG = phCfg || {};
+      CARTERA_PH_CURRENT_PARTIES = (phParties || []).map(p => ({ ...p, abono: 0 }));
+
+      // 2. Procesar documentos de cruce contables tradicionales
+      const items = Array.isArray(linesResult) ? linesResult : (linesResult?.items || []);
+      const docs = new Map();
       for (const l of items) {
         const ref = (l.cross_doc_ref || '').trim();
         if (!ref) continue;
@@ -1646,12 +1928,6 @@ async function showCarteraModal(thirdId, opts = {}) {
         if (l.expand?.tx_id?.number) d.txNumbers.add(l.expand.tx_id.number);
       }
 
-      if (!docs.size) {
-        _carteraSetContent(`<p class="text-center py-8" style="color:#9CA3AF"><i class="fas fa-check-circle mr-2" style="color:#22C55E"></i>No hay documentos de cruce pendientes para este tercero.</p>`);
-        return;
-      }
-
-      // Determinar si la cuenta es de naturaleza crédito (Pasivo 2xx, etc.)
       const isCreditNature = (code = '', nat = '') => {
         const n = String(nat || '').trim().toLowerCase();
         if (n === 'c' || n === 'credito' || n === 'crédito') return true;
@@ -1660,24 +1936,41 @@ async function showCarteraModal(thirdId, opts = {}) {
         return firstChar === '2' || firstChar === '3' || firstChar === '4';
       };
 
-      // Build table rows considering account nature for net balance
       const rows = [...docs.values()].map(d => {
         const isCred = isCreditNature(d.accountCode, d.accountNat);
-        // netVal según naturaleza normal:
-        // Si Crédito (Pasivo / CxP): Crédito - Débito
-        // Si Débito (Activo / CxC): Débito - Crédito
         const netVal = isCred ? (d.credit - d.debit) : (d.debit - d.credit);
         const absSaldo = Math.abs(netVal);
         const esCancelado = absSaldo < 0.0001;
-        const esAFavor = !esCancelado && netVal < 0; // Negativo = a favor
-
+        const esAFavor = !esCancelado && netVal < 0;
         return { ...d, netVal, absSaldo, esCancelado, esAFavor };
       });
 
       const pendientes = rows.filter(r => !r.esCancelado);
       const cancelados = rows.filter(r => r.esCancelado);
 
-      const rowHtml = (r, dimmed) => {
+      // 3. Determinar qué pestaña mostrar activada por defecto
+      const hasPhParties = CARTERA_PH_CURRENT_PARTIES.length > 0;
+      CARTERA_PH_CURRENT_TAB = hasPhParties ? 'ph' : 'docs';
+
+      // 4. Renderizar HTML completo con pestañas y herramientas de abono
+      const totalCarteraPh = CARTERA_PH_CURRENT_PARTIES.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+      const uniqueUnits = [...new Set(CARTERA_PH_CURRENT_PARTIES.map(it => it.propertyCode).filter(Boolean))].join(', ');
+
+      // Cuentas de disponible para contrapartida automática (Caja 1105, Banco 1110)
+      const availableAccs = [...(state.accountMap?.values?.() || [])].filter(a => {
+        const c = String(a.code || '').trim();
+        return (c.startsWith('1105') || c.startsWith('1110') || c.startsWith('1120')) && state.postableAccountIds.has(a.id);
+      });
+
+      const conceptBadge = (code: string) => {
+        const c = String(code || '').toUpperCase();
+        if (c === 'MORA') return '<span class="badge" style="background:#FEE2E2;color:#991B1B;font-weight:700"><i class="fas fa-triangle-exclamation mr-1"></i>Mora</span>';
+        if (c === 'EXT') return '<span class="badge" style="background:#F3E8FF;color:#6B21A8;font-weight:700"><i class="fas fa-star mr-1"></i>Extraordinaria</span>';
+        if (c === 'ADM') return '<span class="badge" style="background:#DBEAFE;color:#1E40AF;font-weight:700"><i class="fas fa-house-chimney mr-1"></i>Admin</span>';
+        return `<span class="badge" style="background:#F1F5F9;color:#334155;font-weight:600">${esc(c)}</span>`;
+      };
+
+      const docRowHtml = (r, dimmed) => {
         let saldoCellHtml = '';
         if (r.esCancelado) {
           saldoCellHtml = `<span style="color:#16A34A"><i class="fas fa-check"></i> Cancelado</span>`;
@@ -1694,9 +1987,7 @@ async function showCarteraModal(thirdId, opts = {}) {
           <td class="text-xs">${esc(r.account)}</td>
           <td class="text-right">${fmt(r.debit)}</td>
           <td class="text-right">${fmt(r.credit)}</td>
-          <td class="text-right font-bold">
-            ${saldoCellHtml}
-          </td>
+          <td class="text-right font-bold">${saldoCellHtml}</td>
           <td>
             ${!r.esCancelado ? `<button class="btn btn-outline btn-sm" style="border-color:#1A4B8C;color:#1A4B8C;font-size:11px" onclick="useCrossDoc('${esc(r.ref)}', ${Number(r.netVal || 0)})">
               <i class="fas fa-arrow-down-to-line"></i> Usar
@@ -1705,7 +1996,6 @@ async function showCarteraModal(thirdId, opts = {}) {
         </tr>`;
       };
 
-      // Sumar saldos netos con signo para el total
       const totalNetoAbierto = pendientes.reduce((sum, r) => sum + r.netVal, 0);
       const totalAbs = Math.abs(totalNetoAbierto);
       const totalAFavor = totalNetoAbierto < -0.0001;
@@ -1713,20 +2003,172 @@ async function showCarteraModal(thirdId, opts = {}) {
       const totalColor = totalAFavor ? '#DC2626' : '#16A34A';
 
       _carteraSetContent(`
-        <div class="mb-3 flex items-center gap-4 flex-wrap">
-          <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#1A4B8C">${pendientes.length}</span></span>
-          <span class="text-sm font-semibold" style="color:#0D2137">Saldo total abierto: <span style="color:${totalColor}">${totalFormatted}</span></span>
+        <!-- Barra de Pestañas Superiores -->
+        <div class="flex items-center gap-1 border-b border-slate-200 mb-4 bg-slate-50/50 -mt-2 -mx-4 px-4 pt-1">
+          <button id="tab-btn-cartera-ph" type="button" onclick="window.switchCarteraTab('ph')"
+                  class="${hasPhParties ? 'px-4 py-2 text-xs font-bold border-b-2 border-blue-600 text-blue-700 bg-blue-50/50 flex items-center gap-2 cursor-pointer transition' : 'px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent flex items-center gap-2 cursor-pointer transition'}">
+            <i class="fas fa-building text-blue-600"></i>
+            Cartera Copropiedades por Conceptos (PH)
+            <span class="badge ${hasPhParties ? 'badge-blue' : 'badge-gray'} text-[10px] py-0.5 px-1.5">${CARTERA_PH_CURRENT_PARTIES.length}</span>
+          </button>
+          <button id="tab-btn-cartera-docs" type="button" onclick="window.switchCarteraTab('docs')"
+                  class="${!hasPhParties ? 'px-4 py-2 text-xs font-bold border-b-2 border-blue-600 text-blue-700 bg-blue-50/50 flex items-center gap-2 cursor-pointer transition' : 'px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 border-b-2 border-transparent flex items-center gap-2 cursor-pointer transition'}">
+            <i class="fas fa-folder-open text-slate-500"></i>
+            Documentos Contables Generales
+            <span class="badge badge-gray text-[10px] py-0.5 px-1.5">${pendientes.length}</span>
+          </button>
         </div>
-        <div class="overflow-x-auto">
-          <table class="data-table">
-            <thead><tr><th>Doc. Cruce</th><th>Fecha</th><th>Cuenta</th><th>Débito Acum.</th><th>Crédito Acum.</th><th>Saldo</th><th></th></tr></thead>
-            <tbody>
-              ${pendientes.map(r => rowHtml(r, false)).join('')}
-              ${cancelados.map(r => rowHtml(r, true)).join('')}
-            </tbody>
-          </table>
+
+        <!-- PANE 1: CARTERA PH POR CONCEPTOS -->
+        <div id="cartera-pane-ph" style="display:${hasPhParties ? 'block' : 'none'}">
+          ${hasPhParties ? `
+            <!-- Resumen superior PH -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <div class="p-3 bg-gradient-to-br from-blue-50 to-indigo-50/40 rounded-xl border border-blue-200/80">
+                <span class="block text-[11px] font-semibold text-blue-700 uppercase">Unidad(es) Copropiedad</span>
+                <span class="block text-sm font-bold text-slate-800 mt-0.5"><i class="fas fa-house-chimney text-blue-600 mr-1.5"></i>${esc(uniqueUnits || 'Unidad')}</span>
+              </div>
+              <div class="p-3 bg-gradient-to-br from-emerald-50 to-teal-50/40 rounded-xl border border-emerald-200/80">
+                <span class="block text-[11px] font-semibold text-emerald-700 uppercase">Saldo Pendiente PH</span>
+                <span class="block text-base font-black text-emerald-800 mt-0.5">${fmt(totalCarteraPh)}</span>
+              </div>
+              <div class="p-3 bg-gradient-to-br from-purple-50 to-pink-50/40 rounded-xl border border-purple-200/80">
+                <span class="block text-[11px] font-semibold text-purple-700 uppercase">Conceptos por Saldar</span>
+                <span class="block text-base font-bold text-purple-900 mt-0.5">${CARTERA_PH_CURRENT_PARTIES.length} partidas abiertas</span>
+              </div>
+            </div>
+
+            <!-- Herramienta de Distribución Rápida de Abonos -->
+            <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200 mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2 flex-wrap">
+                <label class="text-xs font-bold text-slate-700">Monto total recibido (COP):</label>
+                <div class="relative">
+                  <span class="absolute left-2.5 top-1.5 text-xs text-slate-400 font-bold">$</span>
+                  <input id="ph-global-abono-amt" type="number" step="1" class="form-input text-xs font-mono font-bold pl-6 py-1.5 w-36" placeholder="0" onkeydown="if(event.key==='Enter'){ event.preventDefault(); window.autoDistributePhAbono(); }">
+                </div>
+                <button type="button" class="btn btn-outline btn-sm text-xs font-semibold py-1.5" onclick="window.autoDistributePhAbono()" style="border-color:#1E40AF;color:#1E40AF">
+                  <i class="fas fa-scale-balanced mr-1 text-blue-600"></i>Auto-Distribuir (Prelación Legal)
+                </button>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button type="button" class="btn btn-outline btn-sm text-xs py-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50" onclick="window.fillAllPhAbonos()">
+                  <i class="fas fa-check-double mr-1 text-emerald-600"></i>Saldar Todo
+                </button>
+                <button type="button" class="btn btn-outline btn-sm text-xs py-1.5 text-slate-600 border-slate-300 hover:bg-slate-100" onclick="window.clearAllPhAbonos()">
+                  <i class="fas fa-rotate-left mr-1"></i>Limpiar
+                </button>
+              </div>
+            </div>
+
+            <!-- Grilla de Conceptos PH -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200 max-h-[360px] overflow-y-auto mb-4">
+              <table class="data-table text-xs">
+                <thead class="sticky top-0 bg-slate-100 shadow-xs z-10">
+                  <tr>
+                    <th style="width:36px" class="text-center">#</th>
+                    <th>Doc. Factura</th>
+                    <th>Unidad</th>
+                    <th>Concepto</th>
+                    <th>Vencimiento</th>
+                    <th class="text-right">Facturado</th>
+                    <th class="text-right">Abonos</th>
+                    <th class="text-right font-bold text-slate-800">Saldo Pendiente</th>
+                    <th class="text-center" style="width:170px">Abono a Aplicar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${CARTERA_PH_CURRENT_PARTIES.map((p, idx) => `
+                    <tr class="hover:bg-blue-50/30 transition">
+                      <td class="text-center">
+                        <input type="checkbox" id="ph-abono-chk-${idx}" class="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer" onchange="window.togglePhConceptCheckbox(${idx}, this.checked)">
+                      </td>
+                      <td>
+                        <span class="font-mono font-bold text-blue-900">${esc(p.invoiceNumber)}</span>
+                        <span class="block text-[10px] text-slate-500">${esc(p.periodo || '')}</span>
+                      </td>
+                      <td>
+                        <span class="font-bold text-slate-700">${esc(p.propertyCode || '—')}</span>
+                      </td>
+                      <td>
+                        <div class="flex items-center gap-1.5">
+                          ${conceptBadge(p.conceptCode)}
+                          <span class="font-medium text-slate-800">${esc(p.concepto || 'Cuota')}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="${p.diasMora > 0 ? 'text-red-600 font-bold' : 'text-slate-600'}">${esc(p.dueDate || p.fechaDoc || '—')}</span>
+                        ${p.diasMora > 0 ? `<span class="block text-[10px] text-red-500 font-semibold">${p.diasMora} d mora</span>` : ''}
+                      </td>
+                      <td class="text-right text-slate-600">${fmt(p.originalAmount)}</td>
+                      <td class="text-right text-slate-500">${p.abono > 0 ? fmt(p.abono) : '—'}</td>
+                      <td class="text-right font-bold text-emerald-700 font-mono">${fmt(p.amount)}</td>
+                      <td>
+                        <div class="flex items-center gap-1">
+                          <input id="ph-abono-input-${idx}" type="number" step="1" max="${p.amount}" min="0"
+                                 class="form-input text-xs py-1 text-right font-mono font-bold text-blue-900 w-full"
+                                 placeholder="0"
+                                 oninput="window.onPhConceptAbonoChange(${idx}, this.value)">
+                          <button type="button" class="btn btn-outline btn-xs px-1.5 py-1 text-[10px] font-bold text-blue-600 border-blue-300 hover:bg-blue-50" title="Abonar todo este concepto" onclick="window.fillPhConceptFullAbono(${idx})">
+                            Todo
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Barra de Aplicación y Contrapartida -->
+            <div class="p-3.5 bg-gradient-to-r from-slate-50 to-blue-50/50 rounded-xl border border-blue-200/90 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <label class="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <i class="fas fa-coins text-amber-600"></i>
+                  Contrapartida Débito (Caja/Banco):
+                </label>
+                <select id="ph-contrapartida-account" class="form-input text-xs py-1.5 font-medium max-w-xs">
+                  <option value="">-- No generar contrapartida automática --</option>
+                  ${availableAccs.map(a => `<option value="${esc(a.id)}" ${a.code.startsWith('1105') ? 'selected' : ''}>${esc(a.code)} - ${esc(a.name)}</option>`).join('')}
+                </select>
+              </div>
+
+              <div class="flex items-center gap-4">
+                <div class="text-right">
+                  <span class="block text-[10px] uppercase font-bold text-slate-500">Total Abono Seleccionado (<span id="ph-selected-concepts-count">0</span>)</span>
+                  <span id="ph-total-abono-display" class="text-lg font-black text-emerald-700 font-mono">$0</span>
+                </div>
+                <button type="button" id="btn-apply-ph-cartera" class="btn btn-primary text-xs font-bold py-2 px-4 shadow-sm" onclick="window.applyPhConceptsToTx()" disabled>
+                  <i class="fas fa-check-double mr-1.5"></i>Aplicar Abono a la Transacción
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div class="p-8 text-center text-slate-400">
+              <i class="fas fa-circle-check text-4xl text-emerald-500 mb-2"></i>
+              <p class="font-bold text-slate-700">Sin cartera pendiente de copropiedades</p>
+              <p class="text-xs text-slate-500 mt-1">Este tercero no tiene facturas ni conceptos de cuotas de administración pendientes de cobro.</p>
+            </div>
+          `}
         </div>
-        <p class="text-xs mt-3" style="color:#9CA3AF"><i class="fas fa-info-circle mr-1"></i>Haz clic en <strong>Usar</strong> para aplicar el documento de cruce a la línea correspondiente del comprobante actual.</p>
+
+        <!-- PANE 2: DOCUMENTOS CONTABLES GENERALES -->
+        <div id="cartera-pane-docs" style="display:${!hasPhParties ? 'block' : 'none'}">
+          <div class="mb-3 flex items-center gap-4 flex-wrap">
+            <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#1A4B8C">${pendientes.length}</span></span>
+            <span class="text-sm font-semibold" style="color:#0D2137">Saldo total abierto: <span style="color:${totalColor}">${totalFormatted}</span></span>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="data-table text-xs">
+              <thead><tr><th>Doc. Cruce</th><th>Fecha</th><th>Cuenta</th><th class="text-right">Débito Acum.</th><th class="text-right">Crédito Acum.</th><th class="text-right">Saldo</th><th></th></tr></thead>
+              <tbody>
+                ${pendientes.map(r => docRowHtml(r, false)).join('')}
+                ${cancelados.map(r => docRowHtml(r, true)).join('')}
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs mt-3 text-slate-400"><i class="fas fa-info-circle mr-1"></i>Haz clic en <strong>Usar</strong> para aplicar el saldo total del documento a la línea contable.</p>
+        </div>
       `);
     } catch (err) {
       _carteraSetContent(`<p class="text-center py-6" style="color:#EF4444"><i class="fas fa-circle-exclamation mr-2"></i>${esc(err.message)}</p>`);

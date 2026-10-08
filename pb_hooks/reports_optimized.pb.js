@@ -599,7 +599,12 @@ routerAdd("GET", "/api/gravy/report-trial-balance", (c) => {
         )
         LEFT JOIN ph_properties prop ON prop.id = COALESCE(
           phi.property_id,
-          CASE WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) ELSE NULL END
+          json_extract(t.teso_params, '$.ph_property_id'),
+          CASE 
+            WHEN l.cross_doc_ref LIKE 'ANTICIPO-%' THEN SUBSTR(l.cross_doc_ref, -15)
+            WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) 
+            ELSE NULL 
+          END
         )
         WHERE t.status = 'active'
           AND t.date <= {:toDate3}
@@ -725,8 +730,10 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
         t.number AS comprobante,
         t.description AS descripcion,
         COALESCE(tp.name, 'Sin tercero') AS tercero,
+        COALESCE(tp.doc_number, '') AS terceroDoc,
         a.code AS accountCode,
         a.name AS accountName,
+        COALESCE(NULLIF(TRIM(l.cross_doc_ref), ''), NULLIF(TRIM(t.cross_number), ''), '') AS doc_cruce,
         l.debit AS debito,
         l.credit AS credito,
         t.tx_type_id AS typeId,
@@ -766,8 +773,10 @@ routerAdd("GET", "/api/gravy/report-journal", (c) => {
       comprobante: "",
       descripcion: "",
       tercero: "",
+      terceroDoc: "",
       accountCode: "",
       accountName: "",
+      doc_cruce: "",
       debito: -0,
       credito: -0,
       typeId: "",
@@ -867,7 +876,12 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
         )
         LEFT JOIN ph_properties prop_o ON prop_o.id = COALESCE(
           phi_o.property_id,
-          CASE WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) ELSE NULL END
+          json_extract(t.teso_params, '$.ph_property_id'),
+          CASE 
+            WHEN l.cross_doc_ref LIKE 'ANTICIPO-%' THEN SUBSTR(l.cross_doc_ref, -15)
+            WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) 
+            ELSE NULL 
+          END
         )`;
       propertyCondOpening = " AND prop_o.id = {:auxPropertyId} ";
       propertyJoinPeriod = "";
@@ -939,7 +953,12 @@ routerAdd("GET", "/api/gravy/report-auxiliary", (c) => {
       )
       LEFT JOIN ph_properties prop ON prop.id = COALESCE(
         phi.property_id,
-        CASE WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) ELSE NULL END
+        json_extract(t.teso_params, '$.ph_property_id'),
+        CASE 
+          WHEN l.cross_doc_ref LIKE 'ANTICIPO-%' THEN SUBSTR(l.cross_doc_ref, -15)
+          WHEN l.cross_doc_ref LIKE 'ANT-%' THEN SUBSTR(l.cross_doc_ref, 5) 
+          ELSE NULL 
+        END
       )
       WHERE t.status = 'active'
         AND t.date >= {:fromDate}

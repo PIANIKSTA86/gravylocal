@@ -293,11 +293,15 @@ function renderPhInvRows(invoices) {
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(inv.id)}" title="Ver detalle">
             <i class="fas fa-eye"></i>
           </button>
-          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(inv.id)}" title="Descargar PDF (Factura / Cuenta de Cobro)"
+          <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(inv.id)}" title="Descargar PDF (Estado de Cuenta Integral)"
             style="color:#DC2626;border-color:#FCA5A5">
             <i class="fas fa-file-pdf"></i>
           </button>
           ${inv.status === 'draft' ? `
+            <button class="btn btn-outline btn-sm ph-inv-edit-draft" data-id="${esc(inv.id)}" title="Editar factura borrador (conceptos y valores)"
+              style="color:#D97706;border-color:#FDE68A">
+              <i class="fas fa-pen-to-square"></i>
+            </button>
             <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(inv.id)}" title="Añadir concepto individual"
               style="color:#7F7CFF;border-color:#C4B5FD">
               <i class="fas fa-plus-circle"></i>
@@ -329,6 +333,9 @@ function renderPhInvRows(invoices) {
 
 function attachPhInvActions() {
   document.querySelectorAll('.ph-inv-view').forEach(btn => {
+    btn.addEventListener('click', () => openPhInvoiceDetail((btn as HTMLElement).dataset.id!));
+  });
+  document.querySelectorAll('.ph-inv-edit-draft').forEach(btn => {
     btn.addEventListener('click', () => openPhInvoiceDetail((btn as HTMLElement).dataset.id!));
   });
   document.querySelectorAll('.ph-inv-download-pdf').forEach(btn => {
@@ -571,13 +578,14 @@ async function openPhInvoiceDetail(invoiceId) {
     const owner = prop?.expand?.owner_id;
     const meta  = PH_STATUS[inv.status] || PH_STATUS.draft;
     const canEditDraftLines = inv.status === 'draft' && (typeof (window as any).can === 'function' ? (window as any).can('canWrite') : true);
-    const isLateLine = (line) => {
+    const getLineBadge = (line: any) => {
       const code = String(line?.expand?.concept_id?.code || '').trim().toUpperCase();
-      if (code === 'MORA') return true;
+      if (code === 'MORA') return '<span class="badge badge-orange text-xs mr-1.5" title="Interés de mora">MORA</span>';
+      if (code) return `<span class="badge badge-purple text-xs mr-1.5" title="Concepto maestro: ${esc(line?.expand?.concept_id?.name || '')}">${esc(code)}</span>`;
       const desc = String(line?.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      return desc.includes('interes') || desc.includes('mora');
+      if (desc.includes('interes') || desc.includes('mora')) return '<span class="badge badge-orange text-xs mr-1.5" title="Interés de mora">MORA</span>';
+      return '<span class="badge badge-gray text-xs mr-1.5" title="Concepto individual / manual">MANUAL</span>';
     };
-    const isEditableManualLine = (line) => canEditDraftLines && !line?.concept_id && !isLateLine(line);
 
     openModal(
       `Factura ${inv.number}`,
@@ -592,17 +600,28 @@ async function openPhInvoiceDetail(invoiceId) {
           <div><p class="text-xs" style="color:#6B7280">Estado</p><span class="badge ${meta.badge}">${meta.label}</span></div>
           ${inv.tx_id ? `<div><p class="text-xs" style="color:#6B7280">Asiento</p><p class="font-mono text-xs" style="color:#374151">${esc(inv.expand?.tx_id?.number || inv.tx_id)}</p></div>` : ''}
         </div>
+        ${canEditDraftLines ? `
+          <div class="p-3 rounded-xl border flex items-center justify-between gap-3 text-xs" style="background:#FFFBEB;border-color:#FDE68A;color:#92400E">
+            <div class="flex items-center gap-2">
+              <i class="fas fa-pen-to-square text-amber-600 text-sm"></i>
+              <span>Factura en <strong>Borrador</strong>: Puedes editar valores o eliminar conceptos antes de contabilizar. El total se recalculará automáticamente.</span>
+            </div>
+            <button class="btn btn-outline btn-xs flex-shrink-0 ph-inv-detail-add-concept" data-id="${esc(inv.id)}" style="color:#7F7CFF;border-color:#C4B5FD">
+              <i class="fas fa-plus-circle mr-1"></i>Añadir concepto
+            </button>
+          </div>
+        ` : ''}
         <table class="data-table text-sm">
-          <thead><tr><th>Concepto</th><th class="text-right">Valor</th>${canEditDraftLines ? '<th>Acciones</th>' : ''}</tr></thead>
+          <thead><tr><th>Concepto</th><th class="text-right">Valor</th>${canEditDraftLines ? '<th style="width:90px" class="text-center">Acciones</th>' : ''}</tr></thead>
           <tbody>
             ${lines.map(l => `<tr>
-              <td>${esc(l.description)}</td>
+              <td>${getLineBadge(l)}<span class="font-medium text-gray-800">${esc(l.description)}</span></td>
               <td class="text-right font-semibold">${fmt(l.amount || 0)}</td>
-              ${canEditDraftLines ? `<td>
-                ${isEditableManualLine(l) ? `<div class="flex gap-1">
-                  <button class="btn btn-outline btn-sm ph-line-edit" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" title="Editar línea"><i class="fas fa-pen"></i></button>
-                  <button class="btn btn-outline btn-sm ph-line-del" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" title="Eliminar línea" style="color:#DC2626;border-color:#FECACA"><i class="fas fa-trash"></i></button>
-                </div>` : '<span class="text-xs" style="color:#9CA3AF">No editable</span>'}
+              ${canEditDraftLines ? `<td class="text-center">
+                <div class="flex items-center justify-center gap-1">
+                  <button class="btn btn-outline btn-sm ph-line-edit" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" title="Editar valor o descripción"><i class="fas fa-pen"></i></button>
+                  <button class="btn btn-outline btn-sm ph-line-del" data-line-id="${esc(l.id)}" data-inv-id="${esc(inv.id)}" data-desc="${esc(l.description)}" title="Eliminar concepto de la factura" style="color:#DC2626;border-color:#FECACA"><i class="fas fa-trash"></i></button>
+                </div>
               </td>` : ''}
             </tr>`).join('')}
             <tr style="border-top:2px solid #E5E7EB">
@@ -628,8 +647,7 @@ async function openPhInvoiceDetail(invoiceId) {
       </div>`,
       `<div class="flex flex-wrap gap-2">
         <button class="btn btn-outline" id="ph-inv-detail-download-pdf" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf mr-1"></i> Descargar PDF</button>
-        <button class="btn btn-outline" id="ph-inv-detail-print-inv"><i class="fas fa-print mr-1"></i> Imprimir Factura</button>
-        <button class="btn btn-outline" id="ph-inv-detail-print-statement"><i class="fas fa-file-invoice mr-1"></i> Imprimir Estado Cuenta</button>
+        <button class="btn btn-outline" id="ph-inv-detail-print-statement"><i class="fas fa-print mr-1"></i> Imprimir Estado de Cuenta</button>
         <button class="btn btn-primary" id="ph-inv-detail-send-email"><i class="fas fa-envelope mr-1"></i> Enviar Correo</button>
         <button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
        </div>`
@@ -637,7 +655,6 @@ async function openPhInvoiceDetail(invoiceId) {
 
     setTimeout(() => {
       document.getElementById('ph-inv-detail-download-pdf')?.addEventListener('click', () => openPhDownloadPdfModal(invoiceId));
-      document.getElementById('ph-inv-detail-print-inv')?.addEventListener('click', () => printPhInvoice(invoiceId, 'invoice'));
       document.getElementById('ph-inv-detail-print-statement')?.addEventListener('click', () => printPhInvoice(invoiceId, 'statement'));
       document.getElementById('ph-inv-detail-send-email')?.addEventListener('click', () => openPhInvoiceEmailModal(invoiceId));
 
@@ -666,11 +683,15 @@ async function openPhInvoiceDetail(invoiceId) {
           }, 50);
         });
 
+        document.querySelectorAll('.ph-inv-detail-add-concept').forEach(btn => {
+          btn.addEventListener('click', () => openPhAddIndividualLinesModal((btn as HTMLElement).dataset.id));
+        });
         document.querySelectorAll('.ph-line-edit').forEach(btn => {
-          btn.addEventListener('click', () => openPhEditDraftLineModal(btn.dataset.lineId, btn.dataset.invId));
+          btn.addEventListener('click', () => openPhEditDraftLineModal((btn as HTMLElement).dataset.lineId, (btn as HTMLElement).dataset.invId));
         });
         document.querySelectorAll('.ph-line-del').forEach(btn => {
-          btn.addEventListener('click', () => removePhDraftLineConfirm(btn.dataset.lineId, btn.dataset.invId));
+          const b = btn as HTMLElement;
+          b.addEventListener('click', () => removePhDraftLineConfirm(b.dataset.lineId, b.dataset.invId, b.dataset.desc));
         });
       }
     }, 40);
@@ -688,19 +709,22 @@ async function openPhEditDraftLineModal(lineId, invoiceId) {
     return;
   }
   openModal(
-    'Editar Concepto Manual',
+    'Editar Concepto en Borrador',
     `<div class="space-y-4">
       <div class="form-group mb-0">
-        <label class="form-label">Descripción <span class="text-red-500">*</span></label>
+        <label class="form-label">Descripción del Concepto <span class="text-red-500">*</span></label>
         <input id="ph-line-edit-desc" class="form-input" value="${esc(line.description || '')}">
       </div>
       <div class="form-group mb-0">
-        <label class="form-label">Valor <span class="text-red-500">*</span></label>
+        <label class="form-label">Valor ($) <span class="text-red-500">*</span></label>
         <input id="ph-line-edit-amount" type="number" min="0" step="1" class="form-input" value="${esc(line.amount || 0)}">
       </div>
+      <p class="text-xs text-gray-500 italic">
+        Al guardar, el subtotal y total de la factura borrador se recalcularán automáticamente.
+      </p>
     </div>`,
     `<button class="btn btn-outline" onclick="openPhInvoiceDetail('${esc(invoiceId)}')">Cancelar</button>
-     <button class="btn btn-primary" id="ph-line-edit-save-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+     <button class="btn btn-primary" id="ph-line-edit-save-btn"><i class="fas fa-save mr-1"></i>Guardar Cambios</button>`
   );
 
   setTimeout(() => {
@@ -708,35 +732,46 @@ async function openPhEditDraftLineModal(lineId, invoiceId) {
       const desc = (document.getElementById('ph-line-edit-desc')?.value || '').trim();
       const amount = parseFloat(document.getElementById('ph-line-edit-amount')?.value || 0) || 0;
       if (!desc || amount <= 0) {
-        showToast('Descripción y valor son obligatorios.', 'warning');
+        showToast('Descripción y valor (mayor a 0) son obligatorios.', 'warning');
         return;
       }
       const btn = document.getElementById('ph-line-edit-save-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
       try {
-        await API.updatePhDraftInvoiceLine(lineId, {
+        const res = await API.updatePhDraftInvoiceLine(lineId, {
           description: desc,
           amount,
           account_code: line.account_code || '',
         });
-        showToast('Línea actualizada.', 'success');
+        showToast('Concepto actualizado y total recalculado.', 'success');
+        const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
+        if (row && res?.total !== undefined) {
+          const totalCell = row.querySelector('td:nth-child(5)');
+          if (totalCell) totalCell.textContent = fmt(res.total);
+        }
         openPhInvoiceDetail(invoiceId);
-      } catch (err) {
+      } catch (err: any) {
         showToast(err.message || 'Error al actualizar línea.', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar Cambios'; }
       }
     }, { once: true });
   }, 40);
 }
 
-async function removePhDraftLineConfirm(lineId, invoiceId) {
-  if (!confirm('¿Eliminar este concepto manual de la factura?')) return;
+async function removePhDraftLineConfirm(lineId, invoiceId, lineDesc = '') {
+  const label = lineDesc ? `"${lineDesc}"` : 'este concepto';
+  if (!confirm(`¿Estás seguro de eliminar el concepto ${label} de esta factura en borrador?\n\nEl total de la factura se recalculará automáticamente.`)) return;
   try {
-    await API.deletePhDraftInvoiceLine(lineId);
-    showToast('Línea eliminada.', 'success');
+    const res = await API.deletePhDraftInvoiceLine(lineId);
+    showToast('Concepto eliminado y total recalculado.', 'success');
+    const row = document.querySelector(`tr[data-id="${CSS.escape(invoiceId)}"]`);
+    if (row && res?.total !== undefined) {
+      const totalCell = row.querySelector('td:nth-child(5)');
+      if (totalCell) totalCell.textContent = fmt(res.total);
+    }
     openPhInvoiceDetail(invoiceId);
-  } catch (err) {
-    showToast(err.message || 'Error al eliminar línea.', 'error');
+  } catch (err: any) {
+    showToast(err.message || 'Error al eliminar concepto.', 'error');
   }
 }
 
@@ -810,6 +845,8 @@ async function unpostPhInvoiceConfirm(invoiceId, btn) {
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
+          <button class="btn btn-outline btn-sm ph-inv-edit-draft" data-id="${esc(invoiceId)}" title="Editar factura borrador (conceptos y valores)"
+            style="color:#D97706;border-color:#FDE68A"><i class="fas fa-pen-to-square"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(invoiceId)}" title="Añadir concepto individual"
             style="color:#7F7CFF;border-color:#C4B5FD"><i class="fas fa-plus-circle"></i></button>
           <button class="btn btn-sm ph-inv-post" data-id="${esc(invoiceId)}" title="Contabilizar"
@@ -2428,8 +2465,8 @@ async function renderPhConfig(c) {
     const defaultFooterNote = 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.';
     const invoiceFooterNote = (rawFooterNote || phCfg.invoice_footer_note || defaultFooterNote).trim();
 
-    const defaultEmailSubject = '{copropiedad} — Cuenta de Cobro No. {numero_factura} — Unidad {unidad}';
-    const defaultEmailBody = `Estimado(a) {propietario},\n\nLe compartimos su cuenta de cobro correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
+    const defaultEmailSubject = '{copropiedad} — Estado de Cuenta {periodo} — Unidad {unidad}';
+    const defaultEmailBody = `Estimado(a) {propietario},\n\nLe compartimos su estado de cuenta integral correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
     const emailSubject = rawMailSubject || defaultEmailSubject;
     const emailBody = rawMailBody || defaultEmailBody;
     const emailNotice = rawMailNotice || '';
@@ -4364,10 +4401,9 @@ async function openPhInvoiceEmailModal(invoiceId: string) {
           <input id="ph-email-dest" type="email" class="form-input" value="${(window as any).esc(defaultEmail)}" placeholder="correo@ejemplo.com">
         </div>
         <div class="form-group mb-0">
-          <label class="form-label">Tipo de Envío</label>
-          <select id="ph-email-type" class="form-input">
-            <option value="statement" selected>Estado de Cuenta Completo (Incluye Cartera)</option>
-            <option value="invoice">Factura del Período</option>
+          <label class="form-label">Tipo de Documento</label>
+          <select id="ph-email-type" class="form-input" disabled>
+            <option value="statement" selected>Estado de Cuenta Completo (Incluye Cartera y Saldos Anteriores)</option>
           </select>
         </div>
         <div class="form-group mb-0">
@@ -4417,79 +4453,7 @@ async function openPhInvoiceEmailModal(invoiceId: string) {
 }
 
 async function openPhDownloadPdfModal(invoiceId: string) {
-  try {
-    const inv = await pb.get('ph_invoices', invoiceId, { expand: 'property_id,property_id.owner_id' });
-    const prop = inv.expand?.property_id;
-    const propName = prop?.name || prop?.code || 'Unidad';
-    const num = inv.number || 'Factura';
-
-    (window as any).openModal(
-      `Descargar Documento PDF — ${esc(propName)}`,
-      `<div class="space-y-4">
-        <p class="text-sm text-gray-600">
-          Selecciona el formato de documento PDF que deseas generar y descargar para la factura <strong>${esc(num)}</strong> (${esc(propName)}):
-        </p>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div id="ph-opt-dl-statement" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#3B82F6; background:#F8FAFC;">
-            <div class="flex items-center gap-2 mb-1.5">
-              <i class="fas fa-file-lines text-indigo-600 text-lg"></i>
-              <span class="font-bold text-sm text-gray-800">Estado de Cuenta Integral</span>
-            </div>
-            <p class="text-xs text-gray-500 leading-relaxed">
-              Incluye saldo anterior de períodos vencidos no pagados, cobros del mes y saldo total acumulado a la fecha.
-            </p>
-          </div>
-          <div id="ph-opt-dl-invoice" class="p-3.5 rounded-xl border-2 cursor-pointer transition-all hover:border-blue-500 hover:bg-blue-50/50" style="border-color:#E2E8F0; background:#FFFFFF;">
-            <div class="flex items-center gap-2 mb-1.5">
-              <i class="fas fa-file-invoice text-blue-600 text-lg"></i>
-              <span class="font-bold text-sm text-gray-800">Factura / Cuenta del Mes</span>
-            </div>
-            <p class="text-xs text-gray-500 leading-relaxed">
-              Muestra exclusivamente los conceptos y valores liquidados para el período facturado actual (${fmtPeriod(inv.period)}).
-            </p>
-          </div>
-        </div>
-        <div id="ph-dl-pdf-status" class="hidden text-xs font-semibold text-blue-600 flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
-          <i class="fas fa-spinner fa-spin"></i>
-          <span>Generando archivo PDF oficial...</span>
-        </div>
-      </div>`,
-      `<button class="btn btn-outline" id="ph-dl-pdf-cancel" onclick="closeModal()">Cancelar</button>
-       <button class="btn btn-primary" id="ph-dl-pdf-btn"><i class="fas fa-download mr-1"></i> Descargar PDF</button>`
-    );
-
-    setTimeout(() => {
-      let selectedType: 'invoice' | 'statement' = 'statement';
-      const optInv = document.getElementById('ph-opt-dl-invoice');
-      const optStat = document.getElementById('ph-opt-dl-statement');
-      const btn = document.getElementById('ph-dl-pdf-btn') as HTMLButtonElement;
-      const cancelBtn = document.getElementById('ph-dl-pdf-cancel') as HTMLButtonElement;
-      const statusBox = document.getElementById('ph-dl-pdf-status');
-
-      optInv?.addEventListener('click', () => {
-        selectedType = 'invoice';
-        if (optInv) { optInv.style.borderColor = '#3B82F6'; optInv.style.background = '#F8FAFC'; }
-        if (optStat) { optStat.style.borderColor = '#E2E8F0'; optStat.style.background = '#FFFFFF'; }
-      });
-
-      optStat?.addEventListener('click', () => {
-        selectedType = 'statement';
-        if (optStat) { optStat.style.borderColor = '#3B82F6'; optStat.style.background = '#F8FAFC'; }
-        if (optInv) { optInv.style.borderColor = '#E2E8F0'; optInv.style.background = '#FFFFFF'; }
-      });
-
-      btn?.addEventListener('click', async () => {
-        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Generando...'; }
-        if (cancelBtn) cancelBtn.disabled = true;
-        if (statusBox) statusBox.classList.remove('hidden');
-
-        await executePhInvoicePdfDownload(invoiceId, selectedType);
-        (window as any).closeModal();
-      });
-    }, 40);
-  } catch (err: any) {
-    (window as any).showToast(err.message || 'Error al preparar descarga de factura', 'error');
-  }
+  await executePhInvoicePdfDownload(invoiceId, 'statement');
 }
 
 async function executePhInvoicePdfDownload(invoiceId: string, type: 'invoice' | 'statement') {
@@ -4564,9 +4528,8 @@ async function openPhBulkPdfModal() {
         </div>
         <div class="form-group mb-0">
           <label class="form-label">Tipo de Documento</label>
-          <select id="ph-bulk-pdf-type" class="form-input">
-            <option value="invoice">Facturas del Período (Solo cobros del mes)</option>
-            <option value="statement">Estados de Cuenta Integrales (Con Cartera / Saldos Anteriores)</option>
+          <select id="ph-bulk-pdf-type" class="form-input" disabled>
+            <option value="statement" selected>Estados de Cuenta Integrales (Con Cartera / Saldos Anteriores)</option>
           </select>
         </div>
       </div>
@@ -4595,7 +4558,7 @@ async function openPhBulkPdfModal() {
         return;
       }
 
-      const type = ((document.getElementById('ph-bulk-pdf-type') as HTMLSelectElement)?.value || 'invoice') as 'invoice' | 'statement';
+      const type = 'statement';
       const downloadBtn = document.getElementById('ph-bulk-pdf-download-btn') as HTMLButtonElement;
       const cancelBtn = document.getElementById('ph-bulk-pdf-cancel') as HTMLButtonElement;
       const statusBox = document.getElementById('ph-bulk-pdf-status');
@@ -4681,8 +4644,8 @@ async function openPhBulkEmailModal() {
     }
   } catch (_) {}
 
-  const defaultSubject = savedSubject || '{copropiedad} — Cuenta de Cobro No. {numero_factura} — Unidad {unidad}';
-  const defaultBody = savedBody || `Estimado(a) {propietario},\n\nLe compartimos su cuenta de cobro correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
+  const defaultSubject = savedSubject || '{copropiedad} — Estado de Cuenta {periodo} — Unidad {unidad}';
+  const defaultBody = savedBody || `Estimado(a) {propietario},\n\nLe compartimos su estado de cuenta integral correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}`;
   const defaultNotice = savedNotice || '';
 
   (window as any).openModal(
@@ -4701,9 +4664,8 @@ async function openPhBulkEmailModal() {
         </div>
         <div class="form-group mb-0">
           <label class="form-label font-semibold">Tipo de Documento</label>
-          <select id="ph-bulk-email-type" class="form-input">
-            <option value="invoice">Factura del Período</option>
-            <option value="statement">Estado de Cuenta (Con Cartera)</option>
+          <select id="ph-bulk-email-type" class="form-input" disabled>
+            <option value="statement" selected>Estado de Cuenta Integral (Con Cartera y Saldos Anteriores)</option>
           </select>
         </div>
       </div>
@@ -4901,7 +4863,7 @@ async function openPhBulkEmailModal() {
         return;
       }
 
-      const type = (document.getElementById('ph-bulk-email-type') as HTMLSelectElement)?.value || 'invoice';
+      const type = 'statement';
       const subject = (document.getElementById('ph-bulk-email-subject') as HTMLInputElement)?.value.trim();
       const message = (document.getElementById('ph-bulk-email-message') as HTMLTextAreaElement)?.value.trim();
       const notice = (document.getElementById('ph-bulk-email-notice') as HTMLTextAreaElement)?.value.trim();

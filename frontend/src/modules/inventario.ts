@@ -3899,8 +3899,7 @@ async function _saveTomaFisica() {
     // 4. Construir las líneas de transacción contable (Debito y Credito balanceados)
     const txLines = [];
     const today = date || (window as any).todayStr();
-    const rand = String(Date.now()).slice(-4);
-    const txNumber = `AJ-${today.replaceAll('-', '')}-${rand}`;
+    const txNumber = await api.nextConsecutive(txTypeId);
 
     for (const adj of adjustments) {
       const prod = prodMap.get(adj.productId);
@@ -5812,8 +5811,7 @@ async function _applyRevaluation() {
         })];
       }
       const txTypeId = ajType[0].id;
-      const rand = String(Date.now()).slice(-4);
-      consolidatedTxNumber = `AJ-REV-${today.replaceAll('-', '')}-${rand}`;
+      consolidatedTxNumber = await api.nextConsecutive(txTypeId);
       const txLines: any[] = [];
 
       for (const { prod, total } of consolidatedItemsToPost) {

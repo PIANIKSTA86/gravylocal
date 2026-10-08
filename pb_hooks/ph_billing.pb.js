@@ -622,13 +622,27 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
     const defaultIncomeAcc = getAcc(incomeCode);
     const lateFeeIncomeAcc = getAcc(lateFeeIncomeCode) || defaultIncomeAcc;
 
-    // 4. Cachear conceptos de facturación para resolución de cuentas de ingreso
+    // 4. Cachear conceptos de facturación para resolución de cuentas de ingreso y códigos
     const conceptRecords = $app.findRecordsByFilter("ph_billing_concepts", "", "", 500, 0) || [];
     const conceptAccIdMap = {};
+    const conceptCodeMap = {};
     for (const cr of conceptRecords) {
       const accId = cr.getString("account_id");
       if (accId) conceptAccIdMap[cr.id] = accId;
+      const cCode = cr.getString("code");
+      if (cCode) conceptCodeMap[cr.id] = String(cCode).trim().toUpperCase();
     }
+
+    const resolveLineConceptCode = (ln) => {
+      if (ln.concept_id && conceptCodeMap[ln.concept_id]) {
+        return conceptCodeMap[ln.concept_id];
+      }
+      const d = String(ln.description || "").toLowerCase();
+      if (d.includes("mora") || d.includes("interes")) return "MORA";
+      if (d.includes("extra")) return "EXT";
+      if (d.includes("admin")) return "ADM";
+      return "GEN";
+    };
 
     // 5. Pre-cargar inmuebles y sus propietarios
     const propIds = [];
@@ -701,16 +715,23 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
         txRec.set("status", "active");
         txApp.save(txRec);
 
-        // Línea Débito a Cartera (CxC 13)
-        const debitLine = new Record(txLinesCollection);
-        debitLine.set("tx_id", txRec.id);
-        debitLine.set("account_id", cxcAcc.id);
-        debitLine.set("third_party_id", ownerId);
-        debitLine.set("description", `Factura ${invNumber} - ${period} - Unidad ${propInfo.code || ""}`);
-        debitLine.set("debit", invTotal);
-        debitLine.set("credit", 0);
-        debitLine.set("cross_doc_ref", invNumber);
-        txApp.save(debitLine);
+        // Líneas Débito a Cartera por Concepto (CxC 13)
+        for (const ln of invLines) {
+          const lnAmt = Number(ln.amount || 0);
+          if (lnAmt <= 0) continue;
+          const cCode = resolveLineConceptCode(ln);
+          const refConcepto = `${invNumber}-${cCode}`;
+
+          const debitLine = new Record(txLinesCollection);
+          debitLine.set("tx_id", txRec.id);
+          debitLine.set("account_id", cxcAcc.id);
+          debitLine.set("third_party_id", ownerId);
+          debitLine.set("description", `Factura ${invNumber} [${cCode}] - ${period} - Unidad ${propInfo.code || ""}`);
+          debitLine.set("debit", lnAmt);
+          debitLine.set("credit", 0);
+          debitLine.set("cross_doc_ref", refConcepto);
+          txApp.save(debitLine);
+        }
 
         // Líneas Crédito por Concepto (Ingreso 4)
         for (const ln of invLines) {
@@ -726,6 +747,9 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
             targetAccId = isMora && lateFeeIncomeAcc ? lateFeeIncomeAcc.id : (defaultIncomeAcc ? defaultIncomeAcc.id : cxcAcc.id);
           }
 
+          const cCode = resolveLineConceptCode(ln);
+          const refConcepto = `${invNumber}-${cCode}`;
+
           const creditLine = new Record(txLinesCollection);
           creditLine.set("tx_id", txRec.id);
           creditLine.set("account_id", targetAccId);
@@ -733,7 +757,7 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
           creditLine.set("description", `${ln.description || "Cuota administración"} - Factura ${invNumber}`);
           creditLine.set("debit", 0);
           creditLine.set("credit", lnAmt);
-          creditLine.set("cross_doc_ref", invNumber);
+          creditLine.set("cross_doc_ref", refConcepto);
           txApp.save(creditLine);
         }
 

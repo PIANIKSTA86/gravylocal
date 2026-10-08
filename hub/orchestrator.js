@@ -6,25 +6,9 @@ const forge = require('node-forge');
 const AdmZip = require('adm-zip');
 const https = require('https');
 const http = require('http');
-const net = require('net');
 const PDFDocument = require('pdfkit');
 const backupService = require('./backup-service');
-const imapService = require('./imap-service');
 const crypto = require('crypto');
-
-// Cargar configuración de puertos si existe config/ports.env
-try {
-  const portsEnvPath = path.resolve(__dirname, '..', 'config', 'ports.env');
-  if (fs.existsSync(portsEnvPath)) {
-    const lines = fs.readFileSync(portsEnvPath, 'utf8').split('\n');
-    for (const line of lines) {
-      const match = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*([^\s#]+)/);
-      if (match && !process.env[match[1]]) {
-        process.env[match[1]] = match[2];
-      }
-    }
-  }
-} catch (_) {}
 
 /**
  * hashFtechPassword: Returns SHA-256 hex of the password.
@@ -136,35 +120,6 @@ if (!fs.existsSync(EMPRESAS_DIR)) {
 
 // Store active processes
 const activeProcesses = {};
-
-function getPocketbaseBinaryPath() {
-  const isWin = process.platform === 'win32';
-  const binName = isWin ? 'pocketbase.exe' : 'pocketbase';
-  const primaryPath = path.join(BASE_DIR, binName);
-  if (fs.existsSync(primaryPath)) return primaryPath;
-  const altPath = path.join(BASE_DIR, isWin ? 'pocketbase' : 'pocketbase.exe');
-  if (fs.existsSync(altPath)) return altPath;
-  return primaryPath;
-}
-
-function killProcessOnPort(port) {
-  return new Promise((resolve) => {
-    const isWin = process.platform === 'win32';
-    if (isWin) {
-      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
-      exec(killCmd, (err, stdout) => {
-        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${(stdout || '').trim()}`);
-        resolve();
-      });
-    } else {
-      const killCmd = `lsof -ti :${port} | xargs kill -9 2>/dev/null || true`;
-      exec(killCmd, (err, stdout) => {
-        console.log(`[ORCHESTRATOR] Detener proceso resultado en puerto ${port} (Unix)`);
-        resolve();
-      });
-    }
-  });
-}
 
 app.post('/api/orchestrate/create', async (req, res) => {
   try {
@@ -384,8 +339,8 @@ onBootstrap((e) => {
     }
 
     // Spawn PocketBase
-    const pbExe = getPocketbaseBinaryPath();
-    console.log(`Starting PocketBase for ${name} on port ${port}... (Binary: ${pbExe})`);
+    const pbExe = path.join(BASE_DIR, 'pocketbase.exe');
+    console.log(`Starting PocketBase for ${name} on port ${port}...`);
     
     const bindIp = process.env.GRAVY_BIND_IP || '127.0.0.1';
     const pbProcess = spawn(pbExe, [
@@ -405,6 +360,22 @@ onBootstrap((e) => {
 
     // Register active process
     activeProcesses[port] = { port, pid: pbProcess.pid };
+    
+    // Add to start.bat if it exists (so it survives reboots in manual dev modes)
+    const startBatPath = path.join(BASE_DIR, 'start.bat');
+    if (fs.existsSync(startBatPath)) {
+      try {
+        let startBat = fs.readFileSync(startBatPath, 'utf8');
+        const startCmd = `echo  Iniciando Empresa: ${name} (localhost:${port})...\r\nstart "Gravy Empresa ${port}" cmd /k "cd /d "%ROOT%" && pocketbase.exe serve --http=127.0.0.1:${port} --dir="%ROOT%empresas\\empresa_${port}\\pb_data" --publicDir="%ROOT%pb_public" --hooksDir="%ROOT%empresas\\empresa_${port}\\pb_hooks" --migrationsDir="%ROOT%pb_migrations""`;
+        
+        if (!startBat.includes(`empresa_${port}`)) {
+          startBat = startBat.replace('echo.\r\necho  URLs locales:', `${startCmd}\r\n\r\necho.\r\necho  URLs locales:`);
+          fs.writeFileSync(startBatPath, startBat);
+        }
+      } catch (err) {
+        console.warn('[GRAVY ORCHESTRATOR] Warning updating start.bat:', err.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -427,8 +398,14 @@ app.post('/api/orchestrate/delete', async (req, res) => {
 
     console.log(`[ORCHESTRATOR] Solicitando eliminación completa de la empresa en el puerto ${port}...`);
 
-    // 1. Detener el proceso que escucha en ese puerto (Multiplataforma Windows / macOS / Linux)
-    await killProcessOnPort(port);
+    // 1. Detener el proceso que escucha en ese puerto en Windows
+    await new Promise((resolve) => {
+      const killCmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-NetTCPConnection -LocalPort ${port} -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; if ($p) { Stop-Process -Id $p -Force; write-host 'Proceso detenido.' } else { write-host 'No hay procesos en ese puerto.' }"`;
+      exec(killCmd, (err, stdout) => {
+        console.log(`[ORCHESTRATOR] Detener proceso resultado: ${stdout.trim()}`);
+        resolve();
+      });
+    });
 
     // Remover del registro de procesos internos si existe
     if (activeProcesses[port]) {
@@ -443,6 +420,20 @@ app.post('/api/orchestrate/delete', async (req, res) => {
     if (fs.existsSync(companyDir)) {
       console.log(`[ORCHESTRATOR] Eliminando carpeta física: ${companyDir}`);
       fs.rmSync(companyDir, { recursive: true, force: true });
+    }
+
+    // 4. Remover la empresa del archivo start.bat si existe
+    const startBatPath = path.join(BASE_DIR, 'start.bat');
+    if (fs.existsSync(startBatPath)) {
+      try {
+        let startBat = fs.readFileSync(startBatPath, 'utf8');
+        const lines = startBat.split('\r\n');
+        const filteredLines = lines.filter(line => !line.includes(`empresa_${port}`));
+        fs.writeFileSync(startBatPath, filteredLines.join('\r\n'));
+        console.log(`[ORCHESTRATOR] start.bat actualizado.`);
+      } catch (err) {
+        console.warn(`[ORCHESTRATOR] Error actualizando start.bat: ${err.message}`);
+      }
     }
 
     res.json({ success: true, message: `Empresa del puerto ${port} eliminada por completo.` });
@@ -548,32 +539,25 @@ function extractSoapTag(xml, tagName) {
   return match ? match[1].trim() : '';
 }
 
-function postSoapRequest(endpointUrl, soapAction, soapEnvelope, customContentType) {
+function postSoapRequest(endpointUrl, soapAction, soapEnvelope) {
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(endpointUrl);
-    const contentType = customContentType || 'text/xml;charset=UTF-8';
-
-    const headers = {
-      'Content-Type': contentType,
-      'Content-Length': Buffer.byteLength(soapEnvelope)
-    };
-
-    if (soapAction) {
-      let formattedSoapAction = soapAction;
-      if (formattedSoapAction && !formattedSoapAction.startsWith('"')) {
-        formattedSoapAction = `"${formattedSoapAction}"`;
-      }
-      headers['SOAPAction'] = formattedSoapAction;
+    let formattedSoapAction = soapAction;
+    if (formattedSoapAction && !formattedSoapAction.startsWith('"')) {
+      formattedSoapAction = `"${formattedSoapAction}"`;
     }
-
     const options = {
       method: 'POST',
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
       path: parsedUrl.pathname + parsedUrl.search,
-      headers: headers
+      headers: {
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': formattedSoapAction,
+        'Content-Length': Buffer.byteLength(soapEnvelope)
+      }
     };
-
+    
     const client = parsedUrl.protocol === 'https:' ? https : http;
     const req = client.request(options, (res) => {
       res.on('error', (err) => {
@@ -590,10 +574,11 @@ function postSoapRequest(endpointUrl, soapAction, soapEnvelope, customContentTyp
       });
     });
 
+    
     req.on('error', (err) => {
       reject(err);
     });
-
+    
     req.write(soapEnvelope);
     req.end();
   });
@@ -952,62 +937,30 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
     // 2. Real Mode: Use password — detect if already SHA-256 hashed (64 hex chars)
     const hashedPassword = hashFtechPassword(ftechPassword);
     console.log(`[GRAVY FTECH] Usando password hash (${hashedPassword.length} chars): ${hashedPassword.slice(0,8)}...`);
-    const isNomina = req.body.isNomina || documentType === 'NominaIndividual' || documentType === 'Nomina';
-    const isSupportDoc = isDS || isNDS || documentType === 'SupportDocument' || documentType === 'SupportDocumentAdjust';
-
-    let finalXml = xmlContent;
-    if (isNomina) {
-      finalXml = xmlContent.replace(/\bCUNE="[^"]*"/g, 'CUNE=""');
-      if (!finalXml.includes('EncripCUNE="CUNE-SHA384"')) {
-        finalXml = finalXml.replace(/EncripCUNE="[^"]*"/g, 'EncripCUNE="CUNE-SHA384"');
-      }
-    }
-    const xmlBase64 = Buffer.from(finalXml, 'utf8').toString('base64');
+    const xmlBase64 = Buffer.from(xmlContent, 'utf8').toString('base64');
 
     // 3. Construct SOAP Envelope & determine Endpoint
     let soapEnvelope = '';
     let endpointUrl = '';
     let soapAction = '';
-    let soapContentType = 'text/xml;charset=UTF-8';
 
-    if (isNomina) {
-      const nominaNs = 'urn:https://ws-nomina.facturatech.co/v1/pro/';
-      endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
-        ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
-        : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
+    if (isDS || isNDS) {
+      soapEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <uploadInvoiceFile xmlns="http://webservice.facturatech.co/">
+      <username>${ftechUsername}</username>
+      <password>${hashedPassword}</password>
+      <xmlBase64>${xmlBase64}</xmlBase64>
+    </uploadInvoiceFile>
+  </soap:Body>
+</soap:Envelope>`;
 
-      soapEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${nominaNs}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <xmlBase64 xsi:type="xsd:string">${xmlBase64}</xmlBase64>
-      </urn:FtechAction.uploadDocument>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-
-      soapAction = `${nominaNs}#FtechAction.uploadDocument`;
-      soapContentType = 'text/xml;charset=UTF-8';
-    } else if (isSupportDoc) {
-      const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
       endpointUrl = ftechEnvironment === '1'
-        ? 'https://ws-dse.facturatech.co/v1/pro/'
-        : 'https://ws-dse.facturatech.co/v1/demo/';
+        ? 'https://webservice.facturatech.co/v2/WSDOCSOPORTEPRO.asmx'
+        : 'https://webservice.facturatech.co/v2/BETA/WSDOCSOPORTEPRO.asmx';
 
-      soapEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:uploadDocument soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <xmlBase64 xsi:type="xsd:string">${xmlBase64}</xmlBase64>
-      </urn:uploadDocument>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-
-      soapAction = `${dseNamespace}uploadDocument`;
-      soapContentType = 'text/xml;charset=UTF-8';
+      soapAction = 'http://webservice.facturatech.co/uploadInvoiceFile';
     } else if (isPOS) {
       soapEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-pos.facturatech.co/v1/pro/">
    <soapenv:Header/>
@@ -1028,7 +981,7 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
    <soapenv:Body>
       <urn:FtechAction.uploadInvoiceFile soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
          <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password>${hashedPassword}</password>
+         <password xsi:type="xsd:string">${hashedPassword}</password>
          <xmlBase64 xsi:type="xsd:string">${xmlBase64}</xmlBase64>
       </urn:FtechAction.uploadInvoiceFile>
    </soapenv:Body>
@@ -1042,7 +995,7 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
     }
 
     console.log(`[GRAVY FTECH] Subiendo factura a Facturatech (${endpointUrl})...`);
-    const response = await postSoapRequest(endpointUrl, soapAction, soapEnvelope, soapContentType);
+    const response = await postSoapRequest(endpointUrl, soapAction, soapEnvelope);
 
     if (response.statusCode !== 200) {
       console.error('[GRAVY FTECH] Error SOAP HTTP Status:', response.statusCode, response.data);
@@ -1066,26 +1019,10 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
     const xmlRes = response.data;
     const code = extractSoapTag(xmlRes, 'code');
     const success = extractSoapTag(xmlRes, 'success').toLowerCase() === 'true';
-    let transaccionID = extractSoapTag(xmlRes, 'transaccionID') || extractSoapTag(xmlRes, 'transId') || extractSoapTag(xmlRes, 'transactionID');
+    const transaccionID = extractSoapTag(xmlRes, 'transaccionID') || extractSoapTag(xmlRes, 'transId') || extractSoapTag(xmlRes, 'transactionID');
     const message = extractSoapTag(xmlRes, 'message') || extractSoapTag(xmlRes, 'error');
 
-    // Extraer transaccionID del mensaje si viene dentro del texto (ej. "TrasactionID b65db717...")
-    if (!transaccionID && message) {
-      const matchTx = message.match(/Tr[a|a-z]*sactionID\s*[:=]?\s*([a-fA-F0-9]+)/i);
-      if (matchTx) {
-        transaccionID = matchTx[1];
-        console.log(`[GRAVY FTECH] Extraído transaccionID del mensaje: ${transaccionID}`);
-      }
-    }
-
-    const isAlreadySignedOrProcessing = message && (
-      message.toLowerCase().includes('firmado previamente') ||
-      message.toLowerCase().includes('ya ha sido firmado') ||
-      message.toLowerCase().includes('ya existe un documento') ||
-      message.toLowerCase().includes('status de procesamiento')
-    );
-
-    console.log(`[GRAVY FTECH] Respuesta Facturatech: success=${success}, code=${code}, transId=${transaccionID}, isAlreadySigned=${isAlreadySignedOrProcessing}`);
+    console.log(`[GRAVY FTECH] Respuesta Facturatech: success=${success}, code=${code}, transId=${transaccionID}`);
 
     writeDocumentLog(documentNumber, 'FACTURATECH UPLOAD-AND-SEND', {
       provider: 'Facturatech',
@@ -1102,7 +1039,7 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
       parsedMessage: message
     });
 
-    if (code === '200' || code === '201' || code === '100' || success || isAlreadySignedOrProcessing) {
+    if (code === '200' || code === '201' || code === '100' || success) {
       res.json({
         success: true,
         transaccionID,
@@ -1127,23 +1064,21 @@ app.post('/api/facturatech/upload-and-send', async (req, res) => {
 });
 
 app.post('/api/facturatech/check-status', async (req, res) => {
-  const {
-    transId,
-    ftechUsername,
-    ftechPassword,
-    ftechEnvironment,
-    documentType,
-    documentNumber,
-    prefix,
-    folio,
-    isPOS,
-    isDS,
-    isNDS
-  } = req.body || {};
-
-  const docNumber = documentNumber || (prefix ? `${prefix}${folio}` : folio) || 'unknown';
-
   try {
+    const {
+      transId,
+      ftechUsername,
+      ftechPassword,
+      ftechEnvironment,
+      prefix,
+      folio,
+      isPOS,
+      documentNumber,
+      isDS,
+      isNDS
+    } = req.body;
+
+    const docNumber = documentNumber || (prefix ? `${prefix}${folio}` : folio);
 
     if (!transId || !ftechUsername) {
       return res.status(400).json({ error: 'Faltan parámetros requeridos (transId, ftechUsername).' });
@@ -1184,176 +1119,23 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     let statusEnvelope = '';
     let statusAction = '';
 
-    const isSupportDoc = isDS || isNDS || documentType === 'SupportDocument' || documentType === 'SupportDocumentAdjust';
-    const isNomina = req.body.isNomina || documentType === 'NominaIndividual' || documentType === 'Nomina';
-
-    let statusContentType = 'text/xml;charset=UTF-8';
-
-    if (isNomina) {
-      endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
-        ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
-        : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
-
-      // Para Nómina Electrónica, si tenemos prefix y folio, intentamos verificar CUNE directo
-      if (prefix && folio) {
-        try {
-          const checkCuneEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.downloadCUNE soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:FtechAction.downloadCUNE>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-          const cuneCheckRes = await postSoapRequest(endpointUrl, 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.downloadCUNE', checkCuneEnvelope, 'text/xml;charset=UTF-8');
-          if (cuneCheckRes.statusCode === 200) {
-            const cuneCode = extractSoapTag(cuneCheckRes.data, 'code');
-            const cuneData = extractSoapTag(cuneCheckRes.data, 'resourceData');
-            if (cuneCode === '200' && cuneData && /^[a-f0-9]{32,}$/i.test(cuneData.trim())) {
-              const validCune = cuneData.trim();
-              console.log(`[GRAVY FTECH NOMINA] CUNE confirmado para ${prefix}${folio}: ${validCune.slice(0, 16)}...`);
-              
-              // Descargar el XML firmado oficial
-              const xmlCheckEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:FtechAction.downloadXML>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-              let xmlNominaContent = '';
-              try {
-                const xmlNomRes = await postSoapRequest(endpointUrl, 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.downloadXML', xmlCheckEnvelope, 'text/xml;charset=UTF-8');
-                if (xmlNomRes.statusCode === 200) {
-                  const b64 = extractSoapTag(xmlNomRes.data, 'documentBase64') || extractSoapTag(xmlNomRes.data, 'resourceData');
-                  if (b64) xmlNominaContent = Buffer.from(b64, 'base64').toString('utf8');
-                }
-              } catch (_) {}
-
-              return res.json({
-                success: true,
-                status: 'aceptada',
-                cufe: validCune,
-                xmlContent: xmlNominaContent,
-                message: 'Nómina Electrónica autorizada y validada por la DIAN.'
-              });
-            }
-          }
-        } catch (cuneErr) {
-          console.warn('[GRAVY FTECH NOMINA] Error en verificación previa downloadCUNE:', cuneErr.message);
-        }
-      }
-
-      if (!transId || transId.trim() === '') {
-        return res.json({
-          success: true,
-          status: 'enviada',
-          message: 'Documento en proceso de validación ante Facturatech / DIAN.'
-        });
-      }
-
-      statusEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <transaccionID xsi:type="xsd:string">${transId}</transaccionID>
-      </urn:FtechAction.documentStatus>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-      statusAction = 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.documentStatus';
-    } else if (isSupportDoc) {
-      const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
+    if (isDS || isNDS) {
       endpointUrl = ftechEnvironment === '1'
-        ? 'https://ws-dse.facturatech.co/v1/pro/'
-        : 'https://ws-dse.facturatech.co/v1/demo/';
+        ? 'https://webservice.facturatech.co/v2/WSDOCSOPORTEPRO.asmx'
+        : 'https://webservice.facturatech.co/v2/BETA/WSDOCSOPORTEPRO.asmx';
 
-      // Para Documento Soporte, si tenemos prefix y folio, intentamos verificar CUDS directo
-      if (prefix && folio) {
-        try {
-          const checkCudsEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:downloadCUDS soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:downloadCUDS>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-          const cudsCheckRes = await postSoapRequest(endpointUrl, `${dseNamespace}downloadCUDSResponse`, checkCudsEnvelope, 'text/xml;charset=UTF-8');
-          if (cudsCheckRes.statusCode === 200) {
-            const cudsCode = extractSoapTag(cudsCheckRes.data, 'code');
-            const cudsData = extractSoapTag(cudsCheckRes.data, 'resourceData') || extractSoapTag(cudsCheckRes.data, 'downloadCUDSResult');
-            if (cudsCode === '200' && cudsData && /^[a-f0-9]{32,}$/i.test(cudsData.trim())) {
-              const validCuds = cudsData.trim();
-              console.log(`[GRAVY FTECH DSE] CUDS confirmado para ${prefix}${folio}: ${validCuds.slice(0, 16)}...`);
-              
-              // Descargar el XML firmado oficial
-              const xmlCheckEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:downloadXML>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-              let xmlDseContent = '';
-              try {
-                const xmlDseRes = await postSoapRequest(endpointUrl, `${dseNamespace}downloadXML`, xmlCheckEnvelope, 'text/xml;charset=UTF-8');
-                if (xmlDseRes.statusCode === 200) {
-                  const b64 = extractSoapTag(xmlDseRes.data, 'documentBase64') || extractSoapTag(xmlDseRes.data, 'resourceData');
-                  if (b64) xmlDseContent = Buffer.from(b64, 'base64').toString('utf8');
-                }
-              } catch (_) {}
+      statusEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <documentStatusFile xmlns="http://webservice.facturatech.co/">
+      <UserName>${ftechUsername}</UserName>
+      <Password>${hashedPassword}</Password>
+      <transaccionID>${transId}</transaccionID>
+    </documentStatusFile>
+  </soap:Body>
+</soap:Envelope>`;
 
-              return res.json({
-                success: true,
-                status: 'aceptada',
-                cufe: validCuds,
-                xmlContent: xmlDseContent,
-                message: 'Documento Soporte autorizado y validado por la DIAN.'
-              });
-            }
-          }
-        } catch (cudsErr) {
-          console.warn('[GRAVY FTECH DSE] Error en verificación previa downloadCUDS:', cudsErr.message);
-        }
-      }
-
-      if (!transId || transId.trim() === '') {
-        return res.json({
-          success: true,
-          status: 'enviada',
-          message: 'Documento en proceso de validación ante Facturatech / DIAN.'
-        });
-      }
-
-      statusEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:documentStatus soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <transaccionID xsi:type="xsd:string">${transId}</transaccionID>
-      </urn:documentStatus>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-
-      statusAction = `${dseNamespace}documentStatus`;
-      statusContentType = 'text/xml;charset=UTF-8';
+      statusAction = 'http://webservice.facturatech.co/documentStatusFile';
     } else if (isPOS) {
       endpointUrl = 'https://ws-pos.facturatech.co/v1/pro/';
       statusEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-pos.facturatech.co/v1/pro/">
@@ -1385,7 +1167,7 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     }
 
     console.log(`[GRAVY FTECH] Consultando estado de transId ${transId}...`);
-    const statusResponse = await postSoapRequest(endpointUrl, statusAction, statusEnvelope, statusContentType);
+    const statusResponse = await postSoapRequest(endpointUrl, statusAction, statusEnvelope);
 
     if (statusResponse.statusCode !== 200) {
       writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (HTTP ERROR)', {
@@ -1409,52 +1191,13 @@ app.post('/api/facturatech/check-status', async (req, res) => {
     const statusXml = statusResponse.data;
     const statusCode = extractSoapTag(statusXml, 'code');
     const statusVal = extractSoapTag(statusXml, 'status');
-    const statusSuccess = extractSoapTag(statusXml, 'success');
-    const statusMsg = extractSoapTag(statusXml, 'message') || extractSoapTag(statusXml, 'error') || extractSoapTag(statusXml, 'messageError') || statusSuccess;
+    const statusMsg = extractSoapTag(statusXml, 'message') || extractSoapTag(statusXml, 'error') || extractSoapTag(statusXml, 'messageError');
     const documentBase64 = extractSoapTag(statusXml, 'documentBase64') || extractSoapTag(statusXml, 'resourceData');
 
     console.log(`[GRAVY FTECH] Resultado estado: code=${statusCode}, status=${statusVal}, msg=${statusMsg}, hasDocBase64=${!!documentBase64}`);
 
-    const isSigned = (statusVal && (statusVal.toUpperCase() === 'SIGNED_XML' || statusVal.toUpperCase() === 'AUTHORIZED' || statusVal.toUpperCase() === 'ACCEPTED')) || 
-                     (statusMsg && (statusMsg.toLowerCase().includes('signed_xml') || statusMsg.toLowerCase().includes('firmado') || statusMsg.toLowerCase().includes('autorizado'))) || 
-                     (statusSuccess && (statusSuccess.toLowerCase().includes('firmado') || statusSuccess.toLowerCase().includes('autorizado') || statusSuccess.toLowerCase().includes('aceptado'))) ||
-                     (statusCode === '200' && !!documentBase64) || 
-                     (!!documentBase64 && (!statusVal || !statusVal.toUpperCase().includes('ERROR')));
-
-    const isRejected = (statusVal === 'ERROR') ||
-                       (statusCode === '404' || statusCode === '409') ||
-                       (statusMsg && (statusMsg.toLowerCase().includes('rechaz') || statusMsg.toLowerCase().includes('fall') || statusMsg.toLowerCase().includes('error'))) ||
-                       (statusXml && (statusXml.toLowerCase().includes('rechazado') || statusXml.toLowerCase().includes('rechazo')));
-
-    const isProcessing = !isSigned && !isRejected && (
-                         (statusVal && statusVal.toUpperCase() === 'PROCESSING') ||
-                         (statusMsg && statusMsg.toLowerCase().includes('en proceso')) ||
-                         (statusCode === '100') ||
-                         (statusCode === '201'));
-
-    // If rejected, return rechazada
-    if (isRejected || (!isSigned && (statusVal === 'ERROR' || statusCode === '404' || statusCode === '409'))) {
-      writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (REJECTED)', {
-        provider: 'Facturatech',
-        transId,
-        prefix,
-        folio,
-        endpointUrl,
-        statusEnvelope,
-        rawResponse: statusXml,
-        parsedCode: statusCode,
-        parsedStatus: statusVal,
-        parsedMessage: statusMsg
-      });
-      return res.json({
-        success: true,
-        status: 'rechazada',
-        message: statusMsg || 'Documento rechazado por validaciones de Facturatech/DIAN.'
-      });
-    }
-
     // If still processing, return enviada status
-    if (!isSigned && (isProcessing || (statusCode === '200' && !documentBase64))) {
+    if (statusVal === 'PROCESSING' || (statusCode === '200' && !documentBase64) || statusCode === '100') {
       writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (PROCESSING)', {
         provider: 'Facturatech',
         transId,
@@ -1474,49 +1217,49 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       });
     }
 
+    // If rejected, return rechazada
+    if (statusVal === 'ERROR' || statusCode === '404' || statusCode === '409') {
+      writeDocumentLog(docNumber, 'FACTURATECH CHECK-STATUS (REJECTED)', {
+        provider: 'Facturatech',
+        transId,
+        prefix,
+        folio,
+        endpointUrl,
+        statusEnvelope,
+        rawResponse: statusXml,
+        parsedCode: statusCode,
+        parsedStatus: statusVal,
+        parsedMessage: statusMsg
+      });
+      return res.json({
+        success: true,
+        status: 'rechazada',
+        message: statusMsg || 'Documento rechazado por validaciones de Facturatech/DIAN.'
+      });
+    }
+
     // If signed/accepted, we proceed to download CUFE & XML
-    if (isSigned) {
-      // 3. Download CUFE / CUNE
+    if (statusVal === 'SIGNED_XML' || statusCode === '201' || (statusCode === '200' && documentBase64)) {
+      // 3. Download CUFE
       let cufeEnvelope = '';
       let cufeAction = '';
-      let cufeContentType = 'text/xml;charset=UTF-8';
 
-      if (isNomina) {
-        endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
-          ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
-          : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
-
-        cufeEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.downloadCUNE soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:FtechAction.downloadCUNE>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-        cufeAction = 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.downloadCUNE';
-      } else if (isDS || isNDS) {
-        const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
+      if (isDS || isNDS) {
+        cufeEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <downloadCUDS xmlns="http://webservice.facturatech.co/">
+      <username>${ftechUsername}</username>
+      <password>${hashedPassword}</password>
+      <prefix>${prefix}</prefix>
+      <number>${folio}</number>
+    </downloadCUDS>
+  </soap:Body>
+</soap:Envelope>`;
+        cufeAction = 'http://webservice.facturatech.co/downloadCUDS';
         endpointUrl = ftechEnvironment === '1'
-          ? 'https://ws-dse.facturatech.co/v1/pro/'
-          : 'https://ws-dse.facturatech.co/v1/demo/';
-
-        cufeEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:downloadCUDS soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:downloadCUDS>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-        cufeAction = `${dseNamespace}downloadCUDSResponse`;
-        cufeContentType = 'text/xml;charset=UTF-8';
+          ? 'https://webservice.facturatech.co/v2/WSDOCSOPORTEPRO.asmx'
+          : 'https://webservice.facturatech.co/v2/BETA/WSDOCSOPORTEPRO.asmx';
       } else if (isPOS) {
         cufeEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-pos.facturatech.co/v1/pro/">
    <soapenv:Header/>
@@ -1545,63 +1288,37 @@ app.post('/api/facturatech/check-status', async (req, res) => {
         cufeAction = 'urn:https://ws.facturatech.co/v2/pro/#FtechAction.getCUFEFile';
       }
 
-      console.log(`[GRAVY FTECH] Descargando CUFE/CUNE para prefijo=${prefix}, folio=${folio}...`);
+      console.log(`[GRAVY FTECH] Descargando CUFE para prefijo=${prefix}, folio=${folio}...`);
       let cufe = '';
       try {
-        if (cufeEnvelope) {
-          const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope, cufeContentType);
-          if (cufeResponse.statusCode === 200) {
-            const rawCufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult') || extractSoapTag(cufeResponse.data, 'downloadCUNEResult');
-            if (rawCufe && /^[a-f0-9]{32,}$/i.test(rawCufe.trim())) {
-              cufe = rawCufe.trim();
-            }
-          }
+        const cufeResponse = await postSoapRequest(endpointUrl, cufeAction, cufeEnvelope);
+        if (cufeResponse.statusCode === 200) {
+          cufe = extractSoapTag(cufeResponse.data, 'resourceData') || extractSoapTag(cufeResponse.data, 'downloadCUDSResult') || extractSoapTag(cufeResponse.data, 'code');
         }
       } catch (err) {
-        console.warn(`[GRAVY FTECH] Error al descargar CUFE/CUNE por SOAP (se intentará fallback regex):`, err.message);
+        console.warn(`[GRAVY FTECH] Error al descargar CUFE por SOAP (se intentará fallback regex):`, err.message);
       }
 
       // 4. Download signed XML
       let xmlEnvelope = '';
       let xmlAction = '';
-      let xmlContentType = 'text/xml;charset=UTF-8';
 
-      if (isNomina) {
-        endpointUrl = (ftechEnvironment === '1' || ftechEnvironment === 'pro')
-          ? 'https://ws-nomina.facturatech.co/v1/pro/index.php'
-          : 'https://ws-nomina.facturatech.co/v1/demo/index.php';
-
-        xmlEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-nomina.facturatech.co/v1/pro/">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:FtechAction.downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:FtechAction.downloadXML>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-        xmlAction = 'urn:https://ws-nomina.facturatech.co/v1/pro/#FtechAction.downloadXML';
-      } else if (isDS || isNDS) {
-        const dseNamespace = ftechEnvironment === '1' ? 'urn:https://ws-dse.facturatech.co/v1/pro/' : 'urn:https://ws-dse.facturatech.co/v1/demo/';
+      if (isDS || isNDS) {
+        xmlEnvelope = `<?xml version="1.0" encoding="utf-8"?>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <downloadXML xmlns="http://webservice.facturatech.co/">
+      <username>${ftechUsername}</username>
+      <password>${hashedPassword}</password>
+      <prefix>${prefix}</prefix>
+      <number>${folio}</number>
+    </downloadXML>
+  </soap:Body>
+</soap:Envelope>`;
+        xmlAction = 'http://webservice.facturatech.co/downloadXML';
         endpointUrl = ftechEnvironment === '1'
-          ? 'https://ws-dse.facturatech.co/v1/pro/'
-          : 'https://ws-dse.facturatech.co/v1/demo/';
-
-        xmlEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="${dseNamespace}">
-   <soapenv:Header/>
-   <soapenv:Body>
-      <urn:downloadXML soapenv:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
-         <username xsi:type="xsd:string">${ftechUsername}</username>
-         <password xsi:type="xsd:string">${hashedPassword}</password>
-         <prefix xsi:type="xsd:string">${prefix}</prefix>
-         <number xsi:type="xsd:integer">${folio}</number>
-      </urn:downloadXML>
-   </soapenv:Body>
-</soapenv:Envelope>`;
-        xmlAction = `${dseNamespace}downloadXML`;
-        xmlContentType = 'text/xml;charset=UTF-8';
+          ? 'https://webservice.facturatech.co/v2/WSDOCSOPORTEPRO.asmx'
+          : 'https://webservice.facturatech.co/v2/BETA/WSDOCSOPORTEPRO.asmx';
       } else if (isPOS) {
         xmlEnvelope = `<soapenv:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:https://ws-pos.facturatech.co/v1/pro/">
    <soapenv:Header/>
@@ -1633,7 +1350,7 @@ app.post('/api/facturatech/check-status', async (req, res) => {
       console.log(`[GRAVY FTECH] Descargando XML firmado...`);
       let xmlContent = '';
       try {
-        const xmlResponse = await postSoapRequest(endpointUrl, xmlAction, xmlEnvelope, xmlContentType);
+        const xmlResponse = await postSoapRequest(endpointUrl, xmlAction, xmlEnvelope);
         if (xmlResponse.statusCode === 200) {
           const base64Xml = extractSoapTag(xmlResponse.data, 'documentBase64') || extractSoapTag(xmlResponse.data, 'resourceData');
           if (base64Xml) {
@@ -1650,16 +1367,10 @@ app.post('/api/facturatech/check-status', async (req, res) => {
         xmlContent = Buffer.from(documentBase64, 'base64').toString('utf8');
       }
       if (!cufe && xmlContent) {
-        const cudeAttrMatch = xmlContent.match(/CU[D|F|N]E="([0-9a-fA-F]{64,96})"/i);
-        const cufeMatch = xmlContent.match(/<[^>]*UUID[^>]*>([a-fA-F0-9]+)<\/[^>]*UUID>/i) ||
-                          xmlContent.match(/<CUNE[^>]*>([a-fA-F0-9]+)<\/CUNE>/i) ||
-                          xmlContent.match(/<CUDE[^>]*>([a-fA-F0-9]+)<\/CUDE>/i);
-        if (cudeAttrMatch) {
-          cufe = cudeAttrMatch[1];
-          console.log(`[GRAVY FTECH] CUNE/CUDE extraído del XML firmado mediante atributo: ${cufe}`);
-        } else if (cufeMatch) {
+        const cufeMatch = xmlContent.match(/<[^>]*UUID[^>]*>([a-fA-F0-9]+)<\/[^>]*UUID>/i);
+        if (cufeMatch) {
           cufe = cufeMatch[1];
-          console.log(`[GRAVY FTECH] CUFE/CUDE extraído del XML firmado mediante tag: ${cufe}`);
+          console.log(`[GRAVY FTECH] CUFE extraído del XML firmado mediante regex: ${cufe}`);
         }
       }
 
@@ -2288,54 +1999,23 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         issueTime   = getTag('IssueTime') || (invoiceData && invoiceData.issueTime) || '';
         cufe        = getTag('UUID') || (invoiceData && invoiceData.cufe) || 'No disponible';
         
-        const xmlDueDate = getTag('DueDate') || getTag('PaymentDueDate') || extractField('PaymentMeans', 'DueDate') || extractField('PaymentTerms', 'PaymentDueDate') || getTag('ENC_16');
-        const dueDate = xmlDueDate || (invoiceData && (invoiceData.dueDate || invoiceData.due_date)) || issueDate;
-        
         const docTypeRaw  = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode(?:\s[^>]*)?>(.*?)<\/(?:[a-zA-Z0-9_-]+:)?InvoiceTypeCode>/i);
         const docTypeCode = docTypeRaw ? stripTags(docTypeRaw[1].trim()) : '';
-
-        const isDS = filename.toUpperCase().includes('DS') || 
-                     filename.toUpperCase().includes('DSE') || 
-                     cleanXml.includes('DOCUMENTO_SOPORTE') || 
-                     cleanXml.includes('DocumentoSoporte') || 
-                     (invoiceData && (invoiceData.isDS || invoiceData.docType === 'DS' || invoiceData.docType === 'DSE'));
-        const isNDS = filename.toUpperCase().includes('NDS') || 
-                      cleanXml.includes('NotaAjusteDocumentoSoporte') || 
-                      (invoiceData && (invoiceData.isNDS || invoiceData.docType === 'NDS'));
-        const isNC = !isDS && !isNDS && (filename.toUpperCase().includes('NC') || docTypeCode === '91');
-        const isND = !isDS && !isNDS && (filename.toUpperCase().includes('ND') || docTypeCode === '92');
-
-        if (isDS) {
-          docTypeLabel = 'DOCUMENTO SOPORTE EN ADQUISICIONES EFECTUADAS A NO OBLIGADOS A FACTURAR';
-        } else if (isNDS) {
-          docTypeLabel = 'NOTA DE AJUSTE AL DOCUMENTO SOPORTE EN ADQUISICIONES EFECTUADAS A NO OBLIGADOS A FACTURAR';
-        } else if (isNC) {
-          docTypeLabel = 'Nota Crédito';
-        } else if (isND) {
-          docTypeLabel = 'Nota Débito';
-        } else {
-          docTypeLabel = 'Factura Electrónica de Venta';
-        }
+        const isNC = filename.toUpperCase().includes('NC') || docTypeCode === '91';
+        const isND = filename.toUpperCase().includes('ND') || docTypeCode === '92';
+        docTypeLabel = isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Factura Electrónica de Venta';
 
         supplierName = extractField('AccountingSupplierParty', 'RegistrationName') || extractField('AccountingSupplierParty', 'Name') || (invoiceData && invoiceData.supplierName);
         supplierNit = extractField('AccountingSupplierParty', 'CompanyID') || (invoiceData && invoiceData.supplierNit);
         supplierEmail = extractField('AccountingSupplierParty', 'ElectronicMail') || (invoiceData && invoiceData.supplierEmail);
         supplierPhone = extractField('AccountingSupplierParty', 'Telephone') || (invoiceData && invoiceData.supplierPhone);
         supplierAddress = extractField('AccountingSupplierParty', 'Line') || extractField('AccountingSupplierParty', 'AddressLine') || (invoiceData && invoiceData.supplierAddress);
-        supplierCity = extractField('AccountingSupplierParty', 'CityName') || extractField('AccountingSupplierParty', 'DFE_6') || extractField('AccountingSupplierParty', 'EMI_19') || (invoiceData && (invoiceData.supplierCity || invoiceData.companyCity)) || '';
-        supplierDept = extractField('AccountingSupplierParty', 'CountrySubentity') || extractField('AccountingSupplierParty', 'DFE_7') || extractField('AccountingSupplierParty', 'EMI_13') || (invoiceData && (invoiceData.supplierDept || invoiceData.companyDept)) || '';
-        supplierCityCode = extractField('AccountingSupplierParty', 'CityCode') || extractField('AccountingSupplierParty', 'DFE_4') || extractField('AccountingSupplierParty', 'DFE_1') || extractField('AccountingSupplierParty', 'EMI_14') || (invoiceData && (invoiceData.supplierCityCode || invoiceData.companyCityCode || invoiceData.companyDane)) || '';
-        supplierDeptCode = extractField('AccountingSupplierParty', 'CountrySubentityCode') || extractField('AccountingSupplierParty', 'DFE_2') || extractField('AccountingSupplierParty', 'EMI_11') || (invoiceData && (invoiceData.supplierDeptCode || invoiceData.companyDeptCode)) || '';
 
         customerName = extractField('AccountingCustomerParty', 'RegistrationName') || extractField('AccountingCustomerParty', 'Name') || (invoiceData && invoiceData.customerName);
         customerNit = extractField('AccountingCustomerParty', 'CompanyID') || (invoiceData && invoiceData.customerNit);
         customerEmail = extractField('AccountingCustomerParty', 'ElectronicMail') || (invoiceData && invoiceData.customerEmail);
         customerPhone = extractField('AccountingCustomerParty', 'Telephone') || (invoiceData && invoiceData.customerPhone);
         customerAddress = extractField('AccountingCustomerParty', 'Line') || extractField('AccountingCustomerParty', 'AddressLine') || (invoiceData && invoiceData.customerAddress);
-        customerCity = extractField('AccountingCustomerParty', 'CityName') || extractField('AccountingCustomerParty', 'ADQ_13') || (invoiceData && invoiceData.customerCity) || '';
-        customerDept = extractField('AccountingCustomerParty', 'CountrySubentity') || extractField('AccountingCustomerParty', 'ADQ_12') || (invoiceData && invoiceData.customerDept) || '';
-        customerCityCode = extractField('AccountingCustomerParty', 'CityCode') || extractField('AccountingCustomerParty', 'ADQ_14') || extractField('AccountingCustomerParty', 'ADQ_23') || (invoiceData && invoiceData.customerCityCode) || '';
-        customerDeptCode = extractField('AccountingCustomerParty', 'CountrySubentityCode') || extractField('AccountingCustomerParty', 'ADQ_11') || (invoiceData && invoiceData.customerDeptCode) || '';
 
         const xmlPayableAmount = cleanXml.match(/<(?:[a-zA-Z0-9_-]+:)?PayableAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?PayableAmount>/i);
         payableAmount = xmlPayableAmount ? parseFloat(stripTags(xmlPayableAmount[1])) : (invoiceData && invoiceData.payableAmount) || 0;
@@ -2365,29 +2045,7 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         let lineMatch;
         while ((lineMatch = linePattern.exec(cleanXml)) !== null) {
           const lineXml = lineMatch[1];
-
-          // 1. Extraer la descripción prioritariamente dentro del sub-bloque <cac:Item>
-          // para evitar falsos positivos con <cac:InvoicePeriod><cbc:Description> ("Por operación" obligatorio en Documento Soporte)
-          const itemBlockMatch = lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Item\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Item>/i);
-          const itemXml = itemBlockMatch ? itemBlockMatch[1] : '';
-
-          let desc = '';
-          if (itemXml) {
-            desc = stripTags((itemXml.match(/<(?:[a-zA-Z0-9_-]+:)?Description\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
-          }
-
-          // Si no se encontró dentro de <cac:Item>, remover <InvoicePeriod> antes de buscar <Description> general
-          if (!desc) {
-            const lineWithoutPeriod = lineXml.replace(/<(?:[a-zA-Z0-9_-]+:)?InvoicePeriod\b[\s\S]*?<\/(?:[a-zA-Z0-9_-]+:)?InvoicePeriod>/gi, '');
-            desc = stripTags((lineWithoutPeriod.match(/<(?:[a-zA-Z0-9_-]+:)?Description\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
-          }
-
-          // Extraer comentario o nota por concepto a nivel de línea si existe (<cbc:Note>)
-          const lineNote = stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Note\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Note>/i) || [])[1] || '');
-          if (lineNote && lineNote !== desc && !desc.includes(lineNote)) {
-            desc = desc ? `${desc} — ${lineNote}` : lineNote;
-          }
-
+          const desc = stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?Description>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?Description>/i) || [])[1] || '');
           const qty = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?(?:Invoiced|Credited|Debited)Quantity>/i) || [])[1] || '0'));
           const unitPrice = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?PriceAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?PriceAmount>/i) || [])[1] || '0'));
           const lineTotal = parseFloat(stripTags((lineXml.match(/<(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount(?:\s[^>]*)?>([\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?LineExtensionAmount>/i) || [])[1] || '0'));
@@ -2424,12 +2082,12 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
             taxName = stripTags((taxSubxml.match(/<cac:TaxScheme>[\s\S]*?<cbc:Name[^>]*>([\s\S]*?)<\/cbc:Name>/i) || [])[1] || 'IVA');
           }
 
-          if (desc || lineTotal > 0) {
+          if (desc) {
             const hasSellerId = sellerId && sellerId !== '—';
             const hasStandardId = standardId && standardId !== '—';
 
             lines.push({
-              desc: desc || 'Concepto / Servicio No Obligado',
+              desc,
               code: hasSellerId ? sellerId : (hasStandardId ? standardId : '—'),
               standardId: hasSellerId ? standardId : '—',
               qty,
@@ -2443,67 +2101,6 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
               um
             });
           }
-        }
-
-        // 2. Si no se encontraron líneas UBL estándar, intentar parsear formato SOAP FacturaTech <ITE>
-        if (lines.length === 0) {
-          const itePattern = /<ITE>([\s\S]*?)<\/ITE>/gi;
-          let iteMatch;
-          while ((iteMatch = itePattern.exec(cleanXml)) !== null) {
-            const iteXml = iteMatch[1];
-            const desc = stripTags((iteXml.match(/<ITE_11\b[^>]*>([\s\S]*?)<\/ITE_11>/i) || [])[1] || '');
-            const qty = parseFloat(stripTags((iteXml.match(/<ITE_3\b[^>]*>([\s\S]*?)<\/ITE_3>/i) || iteXml.match(/<ITE_27\b[^>]*>([\s\S]*?)<\/ITE_27>/i) || [])[1] || '1'));
-            const unitPrice = parseFloat(stripTags((iteXml.match(/<ITE_7\b[^>]*>([\s\S]*?)<\/ITE_7>/i) || [])[1] || '0'));
-            const lineTotal = parseFloat(stripTags((iteXml.match(/<ITE_5\b[^>]*>([\s\S]*?)<\/ITE_5>/i) || iteXml.match(/<ITE_19\b[^>]*>([\s\S]*?)<\/ITE_19>/i) || [])[1] || '0')) || (qty * unitPrice);
-            const um = stripTags((iteXml.match(/<ITE_4\b[^>]*>([\s\S]*?)<\/ITE_4>/i) || iteXml.match(/<ITE_28\b[^>]*>([\s\S]*?)<\/ITE_28>/i) || [])[1] || 'ZZ');
-            const code = stripTags((iteXml.match(/<IAE_1\b[^>]*>([\s\S]*?)<\/IAE_1>/i) || [])[1] || '—');
-
-            if (desc || lineTotal > 0) {
-              lines.push({
-                desc: desc || 'Concepto / Servicio No Obligado',
-                code: (code && code !== '99999999' && code !== 'R001') ? code : '—',
-                standardId: '—',
-                qty: qty || 1,
-                unitPrice: unitPrice || lineTotal,
-                lineTotal: lineTotal,
-                ivaRate: 0,
-                taxName: 'IVA',
-                taxVal: 0,
-                discountRate: 0,
-                discountVal: 0,
-                um: um || 'EA'
-              });
-            }
-          }
-        }
-
-        // 3. Fallback a invoiceData.lines si no hubo líneas en el XML o el XML es borrador
-        if (lines.length === 0 && invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length > 0) {
-          lines = invoiceData.lines.map(l => ({
-            desc: l.desc || l.description || 'Concepto / Servicio No Obligado',
-            code: l.code || '—',
-            standardId: l.standardId || '—',
-            qty: Number(l.qty || 1),
-            unitPrice: Number(l.unitPrice || l.unit_price || 0),
-            lineTotal: Number(l.lineTotal || l.total || 0),
-            ivaRate: Number(l.ivaRate || l.iva_rate || 0),
-            taxName: l.taxName || 'IVA',
-            taxVal: Number(l.taxVal || l.tax_amount || 0),
-            discountRate: Number(l.discountRate || l.discount_rate || 0),
-            discountVal: Number(l.discountVal || l.discount_amount || 0),
-            um: l.um || l.unit || 'EA'
-          }));
-        } else if (invoiceData && Array.isArray(invoiceData.lines) && invoiceData.lines.length === lines.length) {
-          // Si lines se extrajo del XML pero alguna descripción dice 'Por operación', 'Producto/Servicio' o 'Producto', enriquecer con invoiceData.lines
-          lines.forEach((l, idx) => {
-            const dbLine = invoiceData.lines[idx];
-            if (dbLine && dbLine.desc && (!l.desc || l.desc === 'Por operación' || l.desc === 'Producto/Servicio' || l.desc === 'Producto')) {
-              l.desc = dbLine.desc;
-            }
-            if (dbLine && dbLine.code && dbLine.code !== '—' && (!l.code || l.code === '—' || l.code === '99999999' || l.code === 'R001')) {
-              l.code = dbLine.code;
-            }
-          });
         }
 
         // Retrieve specs and calculate equivalences
@@ -2589,11 +2186,10 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         let taxY = y + Math.max(logoHeight, 45) + 10;
 
-        // Draw configurable header block (Company/Emitter name + paragraph layout)
-        const emitterHeaderName = (isDS || isNDS) ? customerName : supplierName;
+        // Draw configurable header block (Supplier name + paragraph layout)
         doc.font('Helvetica').fontSize(7.5).fillColor('#1F2937');
-        const headerParagraph = emitterHeaderName 
-          ? `${emitterHeaderName}. ${configHeader.replace(/\\n/g, ' ')}`
+        const headerParagraph = supplierName 
+          ? `${supplierName}. ${configHeader.replace(/\\n/g, ' ')}`
           : configHeader.replace(/\\n/g, ' ');
           
         doc.text(headerParagraph, L, taxY, { width: 230, align: 'justify' });
@@ -2605,12 +2201,12 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const rw = W - (rx - L);
         let ry = 30;
 
-        // Determine document prefix for title (FE / NC / ND / DS / NDS)
-        const docPrefix = isDS ? (resolutionPrefix || 'DS') : isNDS ? 'NDS' : isNC ? 'NC' : isND ? 'ND' : 'FE';
+        // Determine document prefix for title (FE / NC / ND)
+        const docPrefix = isNC ? 'NC' : isND ? 'ND' : 'FE';
 
         // Extract referenced billing document for NC and ND
         let referencedDocId = '';
-        if (isNC || isND || isNDS) {
+        if (isNC || isND) {
           const billingRefMatch = cleanXml.match(/<cac:BillingReference>[\s\S]*?<cbc:ID[^>]*>([\s\S]*?)<\/cbc:ID>/i);
           if (billingRefMatch) referencedDocId = stripTags(billingRefMatch[1]);
           if (!referencedDocId) {
@@ -2619,43 +2215,24 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
           }
         }
 
-        // Document Type Title + PREFIX - Number
+        // Document Type Title + PREFIX - Number on same baseline
+        doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11.5);
         const docNumOnly = docId.replace(/^[A-Za-z\-]+/g, '');
-        if (isDS || isNDS) {
-          doc.fillColor('#991B1B').font('Helvetica-Bold').fontSize(8.5);
-          doc.text(docTypeLabel, rx, ry, { width: rw });
-          const titleH = doc.heightOfString(docTypeLabel, { width: rw });
-          ry += titleH + 3;
-          doc.fillColor('#000000').font('Helvetica-Bold').fontSize(12);
-          doc.text(`${docPrefix}${docNumOnly}`, rx, ry, { width: rw });
-          ry += 14;
-        } else {
-          doc.fillColor('#000000').font('Helvetica-Bold').fontSize(11.5);
-          const docTitleStr = `${docTypeLabel.toUpperCase()}  ${docPrefix} - ${docNumOnly}`;
-          doc.text(docTitleStr, rx, ry, { width: rw });
-          const docTypeHeight = doc.heightOfString(docTitleStr, { width: rw });
-          ry += docTypeHeight + 2;
-        }
+        const docTitleStr = `${docTypeLabel.toUpperCase()}  ${docPrefix} - ${docNumOnly}`;
+        doc.text(docTitleStr, rx, ry, { width: rw });
+        const docTypeHeight = doc.heightOfString(docTitleStr, { width: rw });
         
+        ry += docTypeHeight + 2;
         doc.font('Helvetica').fontSize(7).fillColor('#4B5563');
 
         // Authorization label and text — adapted per document type
-        if (isDS) {
-          doc.text('Autorización Documento Soporte Electrónico', rx, ry);
-          ry += 9;
-          const resText = resolutionNumber 
-            ? `No. ${resolutionNumber} de ${resolutionDate} - ${resolutionExpiry} autoriza DS - ${resolutionRangeFrom} a ${resolutionPrefix ? resolutionPrefix + '-' : ''}${resolutionRangeTo}`
-            : 'Autorización de documento soporte en proceso';
-          doc.text(resText, rx, ry, { width: rw });
-          const resHeight = doc.heightOfString(resText, { width: rw });
-          ry += Math.max(resHeight + 6, 18);
-        } else if (isNC || isND || isNDS) {
-          const docTypeName = isNDS ? 'Nota de Ajuste DSE' : isNC ? 'Nota Crédito' : 'Nota Débito';
+        if (isNC || isND) {
+          const docTypeName = isNC ? 'Nota Crédito' : 'Nota Débito';
           doc.text(`Autorización ${docTypeName} Electrónica`, rx, ry);
           ry += 9;
           const resText = referencedDocId
-            ? `Nota referenciada al Documento: ${referencedDocId}`
-            : 'Nota emitida bajo resolución del documento original';
+            ? `Nota referenciada a la Factura: ${referencedDocId}`
+            : 'Nota emitida bajo resolución de la factura original';
           doc.text(resText, rx, ry, { width: rw });
           const resHeight = doc.heightOfString(resText, { width: rw });
           ry += Math.max(resHeight + 6, 18);
@@ -2682,7 +2259,6 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         };
 
         const genDateStr = fmtDate(issueDate) || new Date().toISOString().slice(0, 10);
-        const dueDateStr = fmtDate(dueDate) || genDateStr;
         const paymentModeStr = paymentMethod === 'CREDITO' ? 'Crédito' : 'Contado';
         const paymentDetailStr = paymentMethod === 'CREDITO' ? 'Acuerdo mutuo' : (paymentMethod || 'Consignación bancaria');
 
@@ -2690,7 +2266,7 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const metaRows = [
           ['Tipo de Operación', isNC ? 'Nota Crédito' : isND ? 'Nota Débito' : 'Estandar'],
           ['Fecha de Generación', genDateStr],
-          ['Fecha de Vencimiento', dueDateStr],
+          ['Fecha de Vencimiento', genDateStr],
           ['Fecha de Validación', genDateStr],
         ];
         if ((isNC || isND) && referencedDocId) {
@@ -2716,135 +2292,21 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         // --- 4. EMITTER & CUSTOMER DETAILS SECTION ---
         doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#000000');
-        if (isDS || isNDS) {
-          doc.text('PROVEEDOR (VENDEDOR NO OBLIGADO)', L, y, { width: 260, align: 'center' });
-          doc.text('ADQUIRENTE (COMPRADOR)', L + 280, y, { width: 260, align: 'center' });
-        } else {
-          doc.text('DATOS DEL EMISOR', L, y, { width: 260, align: 'center' });
-          doc.text('DATOS DEL CLIENTE', L + 280, y, { width: 260, align: 'center' });
-        }
+        doc.text('DATOS DEL EMISOR', L, y, { width: 260, align: 'center' });
+        doc.text('DATOS DEL CLIENTE', L + 280, y, { width: 260, align: 'center' });
         
         y += 12;
         doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.5).stroke();
         
-        const detailsStartY = y + 6;
+        // Vertical Divider line between Emitter and Customer details
+        const detailsBoxHeight = 88;
+        doc.moveTo(L + 270, y - 12).lineTo(L + 270, y + detailsBoxHeight).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
+        
+        y += 6;
 
-        const DANE_DEPTS = {
-          '05': 'ANTIOQUIA', '08': 'ATLÁNTICO', '11': 'BOGOTÁ, D.C.', '13': 'BOLÍVAR',
-          '15': 'BOYACÁ', '17': 'CALDAS', '18': 'CAQUETÁ', '19': 'CAUCA', '20': 'CESAR',
-          '23': 'CÓRDOBA', '25': 'CUNDINAMARCA', '27': 'CHOCÓ', '41': 'HUILA', '44': 'LA GUAJIRA',
-          '47': 'MAGDALENA', '50': 'META', '52': 'NARIÑO', '54': 'NORTE DE SANTANDER',
-          '63': 'QUINDÍO', '66': 'RISARALDA', '68': 'SANTANDER', '70': 'SUCRE', '73': 'TOLIMA',
-          '76': 'VALLE DEL CAUCA', '81': 'ARAUCA', '85': 'CASANARE', '86': 'PUTUMAYO',
-          '88': 'SAN ANDRÉS Y PROVIDENCIA', '91': 'AMAZONAS', '94': 'GUAINÍA', '95': 'GUAVIARE',
-          '97': 'VAUPÉS', '99': 'VICHADA'
-        };
-
-        const DANE_MUNIS = {
-          '05001': { city: 'MEDELLÍN', dept: 'ANTIOQUIA' },
-          '08001': { city: 'BARRANQUILLA', dept: 'ATLÁNTICO' },
-          '11001': { city: 'BOGOTÁ, D.C.', dept: 'BOGOTÁ, D.C.' },
-          '13001': { city: 'CARTAGENA', dept: 'BOLÍVAR' },
-          '15001': { city: 'TUNJA', dept: 'BOYACÁ' },
-          '17001': { city: 'MANIZALES', dept: 'CALDAS' },
-          '18001': { city: 'FLORENCIA', dept: 'CAQUETÁ' },
-          '19001': { city: 'POPAYÁN', dept: 'CAUCA' },
-          '20001': { city: 'VALLEDUPAR', dept: 'CESAR' },
-          '23001': { city: 'MONTERÍA', dept: 'CÓRDOBA' },
-          '27001': { city: 'QUIBDÓ', dept: 'CHOCÓ' },
-          '41001': { city: 'NEIVA', dept: 'HUILA' },
-          '44001': { city: 'RIOHACHA', dept: 'LA GUAJIRA' },
-          '47001': { city: 'SANTA MARTA', dept: 'MAGDALENA' },
-          '50001': { city: 'VILLAVICENCIO', dept: 'META' },
-          '52001': { city: 'PASTO', dept: 'NARIÑO' },
-          '54001': { city: 'CÚCUTA', dept: 'NORTE DE SANTANDER' },
-          '63001': { city: 'ARMENIA', dept: 'QUINDÍO' },
-          '66001': { city: 'PEREIRA', dept: 'RISARALDA' },
-          '68001': { city: 'BUCARAMANGA', dept: 'SANTANDER' },
-          '70001': { city: 'SINCELEJO', dept: 'SUCRE' },
-          '73001': { city: 'IBAGUÉ', dept: 'TOLIMA' },
-          '76001': { city: 'CALI', dept: 'VALLE DEL CAUCA' },
-          '76109': { city: 'BUENAVENTURA', dept: 'VALLE DEL CAUCA' },
-          '76111': { city: 'BUGA', dept: 'VALLE DEL CAUCA' },
-          '76520': { city: 'PALMIRA', dept: 'VALLE DEL CAUCA' },
-          '76892': { city: 'YUMBO', dept: 'VALLE DEL CAUCA' },
-          '76364': { city: 'JAMUNDÍ', dept: 'VALLE DEL CAUCA' },
-          '76147': { city: 'CARTAGO', dept: 'VALLE DEL CAUCA' },
-          '76834': { city: 'TULUÁ', dept: 'VALLE DEL CAUCA' },
-          '81001': { city: 'ARAUCA', dept: 'ARAUCA' },
-          '85001': { city: 'YOPAL', dept: 'CASANARE' },
-          '86001': { city: 'MOCOA', dept: 'PUTUMAYO' },
-          '88001': { city: 'SAN ANDRÉS', dept: 'SAN ANDRÉS Y PROVIDENCIA' },
-          '91001': { city: 'LETICIA', dept: 'AMAZONAS' },
-          '94001': { city: 'INÍRIDA', dept: 'GUAINÍA' },
-          '95001': { city: 'SAN JOSÉ DEL GUAVIARE', dept: 'GUAVIARE' },
-          '97001': { city: 'MITÚ', dept: 'VAUPÉS' },
-          '99001': { city: 'PUERTO CARREÑO', dept: 'VICHADA' }
-        };
-
-        const formatCityDeptStr = (cityVal, deptVal, cityCodeVal, deptCodeVal, fallbackAddrInfo) => {
-          let code = (cityCodeVal || '').trim();
-          let city = (cityVal || '').trim();
-          let dept = (deptVal || '').trim();
-
-          if (!code && /^\d{5}$/.test(city)) {
-            code = city;
-            city = '';
-          }
-
-          if (code && DANE_MUNIS[code]) {
-            if (!city) city = DANE_MUNIS[code].city;
-            if (!dept) dept = DANE_MUNIS[code].dept;
-          }
-
-          if (!dept) {
-            let dCode = (deptCodeVal || '').trim();
-            if (!dCode && code && code.length >= 2) {
-              dCode = code.slice(0, 2);
-            }
-            if (dCode && DANE_DEPTS[dCode]) {
-              dept = DANE_DEPTS[dCode];
-            }
-          }
-
-          if ((!city || !dept) && fallbackAddrInfo?.cityDept) {
-            const parts = fallbackAddrInfo.cityDept.split(',');
-            if (!city && parts[0]) city = parts[0].trim();
-            if (!dept && parts[1]) dept = parts[1].trim();
-          }
-
-          let locationText = '';
-          if (city && dept) {
-            locationText = city.toLowerCase() === dept.toLowerCase() ? city : `${city}, ${dept}`;
-          } else {
-            locationText = city || dept || '';
-          }
-
-          if (code) {
-            return locationText ? `${code} - ${locationText}` : code;
-          }
-          return locationText;
-        };
-
-        // Helper to draw a list of info key-value pairs dynamically without text collision
-        const drawInfoBlock = (items, xOffset, startY) => {
-          let currY = startY;
-          items.forEach(({ label, val }) => {
-            const labelWidth = 85;
-            const valWidth = 170;
-            const textVal = String(val || '').trim();
-            
-            doc.font('Helvetica').fontSize(8);
-            const labelHeight = doc.heightOfString(label, { width: labelWidth });
-            const valHeight = textVal ? doc.heightOfString(textVal, { width: valWidth }) : 10;
-            const rowHeight = Math.max(labelHeight, valHeight, 10);
-
-            doc.font('Helvetica').fontSize(8).fillColor('#000000').text(label, xOffset, currY, { width: labelWidth });
-            doc.font('Helvetica').fontSize(8).fillColor('#1F2937').text(textVal, xOffset + 90, currY, { width: valWidth });
-
-            currY += rowHeight + 1.5;
-          });
-          return currY;
+        const drawInfoLine = (label, val, xOffset, yOffset) => {
+          doc.font('Helvetica').fontSize(8).fillColor('#000000').text(label, xOffset, yOffset, { width: 85 });
+          doc.font('Helvetica').fontSize(8).fillColor('#1F2937').text(val || '', xOffset + 90, yOffset, { width: 170 });
         };
 
         // Supplier clean NIT (strip existing DV)
@@ -2857,16 +2319,15 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         // Emitter values
         const suppAddrInfo = parseAddress(supplierAddress);
-        const suppCityDeptStr = formatCityDeptStr(supplierCity, supplierDept, supplierCityCode, supplierDeptCode, suppAddrInfo);
-        const emitterItems = [
-          { label: 'Razón Social', val: supplierName },
-          { label: 'NIT', val: rawSupplierNit + (supplierDv ? ` - ${supplierDv}` : '') },
-          { label: 'Obligación', val: supplierTaxLevel },
-          { label: 'Email', val: supplierEmail || '' },
-          { label: 'Teléfono', val: supplierPhone || '' },
-          { label: 'Dirección Fiscal', val: suppAddrInfo.mainAddr || supplierAddress || '' },
-          { label: 'Ciudad, Depart.', val: suppCityDeptStr || '' }
-        ];
+        drawInfoLine('Razón Social', supplierName, L, y);
+        drawInfoLine('NIT', rawSupplierNit + (supplierDv ? ` - ${supplierDv}` : ''), L, y + 11);
+        drawInfoLine('Obligación', supplierTaxLevel, L, y + 22);
+        drawInfoLine('Email', supplierEmail || '', L, y + 33);
+        drawInfoLine('Teléfono', supplierPhone || '', L, y + 44);
+        drawInfoLine('Dirección Fiscal', suppAddrInfo.mainAddr || '', L, y + 55);
+        if (suppAddrInfo.cityDept) {
+          drawInfoLine('', suppAddrInfo.cityDept, L, y + 66);
+        }
 
         // Customer clean NIT
         const rawCustomerNit = String(customerNit || '').split('-')[0];
@@ -2874,26 +2335,15 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
 
         // Customer values
         const custAddrInfo = parseAddress(customerAddress);
-        const custCityDeptStr = formatCityDeptStr(customerCity, customerDept, customerCityCode, customerDeptCode, custAddrInfo);
-        const customerItems = [
-          { label: 'Razón Social', val: customerName },
-          { label: 'NIT', val: rawCustomerNit + (custDv ? ` - ${custDv}` : '') },
-          { label: 'Obligación', val: customerTaxLevel },
-          { label: 'Email', val: customerEmail || '' },
-          { label: 'Teléfono', val: customerPhone || '' },
-          { label: 'Dirección', val: custAddrInfo.mainAddr || customerAddress || '' },
-          { label: 'Ciudad, Depart.', val: custCityDeptStr || '' }
-        ];
+        drawInfoLine('Razón Social', customerName, L + 280, y);
+        drawInfoLine('NIT', rawCustomerNit + (custDv ? ` - ${custDv}` : ''), L + 280, y + 11);
+        drawInfoLine('Obligación', customerTaxLevel, L + 280, y + 22);
+        drawInfoLine('Email', customerEmail || '', L + 280, y + 33);
+        drawInfoLine('Teléfono', customerPhone || '', L + 280, y + 44);
+        drawInfoLine('Dirección', custAddrInfo.mainAddr || '', L + 280, y + 55);
+        drawInfoLine('Ciudad, Depart.', custAddrInfo.cityDept || '', L + 280, y + 66);
 
-        const emitterEndY = drawInfoBlock(emitterItems, L, detailsStartY);
-        const customerEndY = drawInfoBlock(customerItems, L + 280, detailsStartY);
-
-        const detailsBoxHeight = Math.max(emitterEndY, customerEndY) - detailsStartY;
-
-        // Vertical Divider line between Emitter and Customer details
-        doc.moveTo(L + 270, y).lineTo(L + 270, detailsStartY + detailsBoxHeight).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
-
-        y = detailsStartY + detailsBoxHeight + 8;
+        y += detailsBoxHeight + 8;
 
         // --- 5. ITEMS TABLE HEADER ---
         doc.moveTo(L, y).lineTo(L + W, y).strokeColor('#000000').lineWidth(0.75).stroke();
@@ -3119,22 +2569,7 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
            .text(fmt(payableAmount - totalWithholdingVal), rightColX + 90, rightY, { width: rightColW - 90, align: 'right' });
         rightY += 16;
         
-        y = Math.max(leftY, rightY) + 14;
-
-        // Render Observaciones / Comentarios si existen en invoiceData o en el XML
-        const generalNotes = ((invoiceData && invoiceData.notes) || getTag('Note') || '').trim();
-        if (generalNotes) {
-          if (y > doc.page.height - 140) {
-            doc.addPage();
-            y = 50;
-          }
-          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000');
-          doc.text('OBSERVACIONES / COMENTARIOS:', L, y);
-          y += 10;
-          doc.font('Helvetica').fontSize(7).fillColor('#374151');
-          doc.text(generalNotes, L, y, { width: W });
-          y += doc.heightOfString(generalNotes, { width: W }) + 14;
-        }
+        y = Math.max(leftY, rightY) + 20;
 
         // --- 8. SIGNATURES SECTION ---
         if (y > doc.page.height - 90) {
@@ -3158,18 +2593,13 @@ function generateInvoicePdf(xmlContent, filename, invoiceData) {
         const pageH = doc.page.height;
         doc.page.margins.bottom = 10;
         
-        const codeLabel = (isDS || isNDS) ? 'CUDS: ' : 'CUFE: ';
         doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#000000')
-           .text(codeLabel, L, pageH - 62, { continued: true })
+           .text('CUFE: ', L, pageH - 62, { continued: true })
            .font('Helvetica').fontSize(6.5).fillColor('#1F2937')
            .text(cufe, { width: W });
         
-        const defaultFooter = (isDS || isNDS)
-          ? 'Representación impresa de Documento soporte en adquisiciones efectuadas a no obligados a facturar generada conforme a la Resolución 000167 de 2021 de la DIAN. Software: GRAVY.'
-          : 'Este documento es la representación gráfica de una Factura Electrónica de Venta generada conforme al Decreto 358 de 2020 y la Resolución 000042 de 2020 de la DIAN. La validez fiscal recae exclusivamente sobre el archivo XML firmado digitalmente.';
-
         doc.font('Helvetica').fontSize(7).fillColor('#4B5563')
-           .text(configFooter || defaultFooter, L, pageH - 45, { width: W, align: 'center' });
+           .text(configFooter, L, pageH - 45, { width: W, align: 'center' });
 
         doc.font('Helvetica').fontSize(7.5).fillColor('#000000')
            .text('PÁGINA 1 / 1', L + W - 60, pageH - 35, { width: 60, align: 'right' });
@@ -3268,714 +2698,9 @@ app.post('/api/dian/generate-pdf', async (req, res) => {
   }
 });
 
-/**
- * Generador de PDF de Cuentas de Cobro / Estados de Cuenta para Copropiedades
- */
-/**
- * Renderiza una página completa (LETTER) para una Cuenta de Cobro / Estado de Cuenta PH
- */
-function renderPhStatementPage(doc, statementData, pageIndex = 0, totalPages = 1, sharedOptions = {}) {
-  const d = statementData || {};
-  const c = sharedOptions.companyData || {};
-  const companyName = d.companyName || c.companyName || 'COPROPIEDAD RESIDENCIAL P.H.';
-  const companyNit = d.companyNit || c.companyNit || '';
-  const companyAddress = d.companyAddress || c.companyAddress || '';
-  const companyPhone = d.companyPhone || c.companyPhone || '';
-  const companyEmail = d.companyEmail || c.companyEmail || '';
-  const companyCity = d.companyCity || c.companyCity || '';
-  const companyLogo = d.companyLogo || c.companyLogo || '';
-  const sharedLogo = sharedOptions.sharedLogo || null;
+const ORCHESTRATOR_PORT = 8088;
 
-  const docType = d.docType || 'invoice';
-  const docLabel = docType === 'statement' ? 'ESTADO DE CUENTA' : 'CUENTA DE COBRO';
-  const docNumber = d.docNumber || '0000';
-  const period = d.period || '';
-
-  const getMonthNameUpper = (p) => {
-    if (!p) return '—';
-    const parts = String(p).split('-');
-    const m = parseInt(parts[1], 10) || 1;
-    const months = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
-    return months[m - 1] || '';
-  };
-  const periodName = getMonthNameUpper(period);
-  const periodYear = period.split('-')[0] || '';
-
-  const fmtDateDDMMYYYY = (dStr) => {
-    if (!dStr) return '—';
-    const s = String(dStr).trim();
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-    return s;
-  };
-
-  const date = fmtDateDDMMYYYY(d.date);
-  const dueDate = fmtDateDDMMYYYY(d.dueDate || d.date);
-
-  const ownerName = d.ownerName || 'Copropietario';
-  const ownerNit = d.ownerDocNumber || d.ownerNit || '—';
-  const ownerAddress = d.ownerAddress || '';
-  const ownerPhone = d.ownerPhone || '—';
-  const ownerEmail = d.ownerEmail || '—';
-
-  const prevMonthUnitRecaudo = Number(d.prevMonthUnitRecaudo) || 0;
-  const prevMonthTotalRecaudo = Number(d.prevMonthTotalRecaudo) || 0;
-  const prevMonthName = d.prevMonthName || '';
-
-  const propertyName = d.propertyName || 'Unidad';
-  const propertyCode = d.propertyCode || propertyName;
-  const propertyArea = d.propertyArea || '';
-  const propertyCoef = d.propertyCoef || '';
-  const propertyMatricula = d.propertyMatricula || '';
-
-  const getCanonicalConceptName = (rawDesc) => {
-    if (!rawDesc) return 'CONCEPTO';
-    const str = String(rawDesc).trim();
-    const norm = str
-      .toLowerCase()
-      .replace(/[áàäâ]/g, 'a')
-      .replace(/[éèëê]/g, 'e')
-      .replace(/[íìïî]/g, 'i')
-      .replace(/[óòöô]/g, 'o')
-      .replace(/[úùüû]/g, 'u');
-
-    if (
-      (norm.includes('interes') && norm.includes('mora')) ||
-      norm === 'mora' ||
-      norm.startsWith('mora ') ||
-      norm.includes('intereses mora')
-    ) {
-      return 'INTERESES DE MORA';
-    }
-
-    if (
-      norm.includes('cuota de administracion') ||
-      norm.includes('cuota administracion') ||
-      norm.includes('cuota ordinaria') ||
-      norm === 'administracion'
-    ) {
-      return 'CUOTA ADMINISTRACION';
-    }
-
-    if (
-      norm.includes('fondo de imprevistos') ||
-      norm.includes('fondo imprevistos')
-    ) {
-      return 'FONDO DE IMPREVISTOS';
-    }
-
-    return str;
-  };
-
-  // Regrupar conceptos por rubro (ID-First con unificación canónica de mora)
-  const rawList = d.conceptsList || [];
-  const conceptsMap = {};
-  rawList.forEach(item => {
-    const rawId = item.conceptId || item.concept_id || '';
-    const desc = getCanonicalConceptName(item.description);
-    const isMora = desc === 'INTERESES DE MORA' || String(item.description || '').toLowerCase().includes('mora');
-    const groupKey = isMora ? '__MORA__' : (rawId ? ('ID_' + rawId) : ('__TEXT_' + desc));
-    const displayName = isMora ? 'INTERESES DE MORA' : (item.description ? String(item.description).toUpperCase() : desc);
-
-    if (!conceptsMap[groupKey]) {
-      conceptsMap[groupKey] = {
-        conceptId: rawId,
-        description: displayName,
-        saldoAnterior: 0,
-        cobrosMes: 0,
-        saldoActual: 0
-      };
-    }
-    conceptsMap[groupKey].saldoAnterior += Number(item.saldoAnterior) || 0;
-    conceptsMap[groupKey].cobrosMes += Number(item.cobrosMes) || 0;
-    conceptsMap[groupKey].saldoActual += Number(item.saldoActual) || 0;
-  });
-
-  const conceptsList = Object.keys(conceptsMap).map(k => conceptsMap[k]);
-  conceptsList.sort((a, b) => {
-    const nameA = a.description.toUpperCase();
-    const nameB = b.description.toUpperCase();
-    const isAntA = nameA.includes('ANTICIPO') || nameA.includes('SALDO A FAVOR');
-    const isAntB = nameB.includes('ANTICIPO') || nameB.includes('SALDO A FAVOR');
-    if (isAntA && !isAntB) return 1;
-    if (!isAntA && isAntB) return -1;
-
-    if (nameA.includes('ADMIN') && !nameB.includes('ADMIN')) return -1;
-    if (!nameA.includes('ADMIN') && nameB.includes('ADMIN')) return 1;
-    if (nameA.includes('MORA') && !nameB.includes('MORA')) return 1;
-    if (!nameA.includes('MORA') && nameB.includes('MORA')) return -1;
-    return nameA.localeCompare(nameB);
-  });
-
-  const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
-  const notes = (d.notes || 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.').trim();
-
-  const cleanFmt = (value) => {
-    if (value === undefined || value === null || isNaN(Number(value))) return "0.00";
-    var num = Number(value);
-    var isNeg = num < 0;
-    var absParts = Math.abs(num).toFixed(2).split('.');
-    absParts[0] = absParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    return (isNeg ? "- " : "") + absParts[0];
-  };
-
-  const numeroALetras = (num) => {
-    var rawFloat = parseFloat(String(num));
-    if (isNaN(rawFloat) || Math.abs(rawFloat) < 0.01) return 'SON: CERO PESOS M/CTE';
-    var isNegative = rawFloat < 0;
-    var absVal = Math.abs(rawFloat);
-    var tempNum = absVal.toFixed(2).split('.');
-    var entero = parseInt(tempNum[0], 10);
-    if (entero === 0) return 'SON: CERO PESOS M/CTE';
-    function letras(n) {
-      if (n <= 0) return '';
-      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n] || '';
-      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10] || '';
-      if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
-      if (n < 100) {
-        var u = n % 10;
-        var d = Math.floor(n / 10);
-        var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
-        return (decenas[d] || '') + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
-      }
-      if (n < 1000) {
-        var d_u = n % 100;
-        var c = Math.floor(n / 100);
-        var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
-        if (n === 100) return 'Cien';
-        if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
-        return (centenas[c] || '') + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
-      }
-      if (n < 1000000) {
-        var mil = Math.floor(n / 1000);
-        var resto = n % 1000;
-        var t = mil === 1 ? 'Mil' : letras(mil) + ' mil';
-        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
-      }
-      if (n < 1000000000) {
-        var millon = Math.floor(n / 1000000);
-        var resto = n % 1000000;
-        var t = millon === 1 ? 'Un millón' : letras(millon) + ' millones';
-        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
-      }
-      return String(n);
-    }
-    var res = letras(entero) || 'Cero';
-    res = res.charAt(0).toUpperCase() + res.slice(1);
-    var prefix = isNegative ? 'MENOS ' : '';
-    return ('Son: ' + prefix + res + ' PESOS M/CTE').toUpperCase();
-  };
-
-  // ─── PALETA MONOCROMÁTICA EJECUTIVA (NEUTRAL MINIMALIST) ──
-  const COLOR_PRIMARY      = '#111827';
-  const COLOR_TEXT         = '#1f2937';
-  const COLOR_MUTED        = '#4b5563';
-  const COLOR_LIGHT        = '#d1d5db';
-  const COLOR_BORDER       = '#d1d5db';
-  const COLOR_BORDER_LIGHT = '#e5e7eb';
-  const COLOR_BG_CARD      = '#f9fafb';
-  const COLOR_BG_ALT       = '#f3f4f6';
-
-  const W = doc.page.width - 56;
-  const L = 28;
-  let y = 22;
-
-  // ─── 1. HEADER EJECUTIVO (Logo con Máximo Protagonismo Visual) ──
-  const colLogoW = 140;
-  const colBoxW  = 165;
-  const colCenterW = W - colLogoW - colBoxW - 16;
-  const headerBoxH = 72;
-
-  let logoRendered = false;
-  if (sharedLogo) {
-    try {
-      doc.image(sharedLogo, L, y + 2, { fit: [colLogoW - 5, headerBoxH - 4] });
-      logoRendered = true;
-    } catch (e) {
-      console.warn('[ORCHESTRATOR PH] Error rendering shared logo:', e.message);
-    }
-  } else if (companyLogo) {
-    try {
-      const base64Data = companyLogo.replace(/^data:image\/\w+;base64,/, '');
-      const imgBuf = Buffer.from(base64Data, 'base64');
-      doc.image(imgBuf, L, y + 2, { fit: [colLogoW - 5, headerBoxH - 4] });
-      logoRendered = true;
-    } catch (e) {
-      console.warn('[ORCHESTRATOR PH] Error rendering logo:', e.message);
-    }
-  }
-  if (!logoRendered) {
-    doc.roundedRect(L, y + 2, colLogoW - 15, headerBoxH - 6, 4)
-       .fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-    doc.font('Helvetica-Bold').fontSize(16).fillColor(COLOR_PRIMARY)
-       .text(companyName.substring(0, 4).toUpperCase(), L, y + 24, { width: colLogoW - 15, align: 'center' });
-  }
-
-  // Datos Copropiedad
-  const centerX = L + colLogoW;
-  doc.font('Helvetica-Bold').fontSize(11.5).fillColor(COLOR_PRIMARY)
-     .text(companyName.toUpperCase(), centerX, y + 2, { width: colCenterW, align: 'center' });
-  
-  let curCenterY = y + 17;
-  if (companyNit) {
-    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(COLOR_TEXT)
-       .text(`NIT ${companyNit}`, centerX, curCenterY, { width: colCenterW, align: 'center' });
-    curCenterY += 11;
-  }
-  
-  doc.font('Helvetica').fontSize(7.5).fillColor(COLOR_MUTED);
-  if (companyAddress) {
-    doc.text(companyAddress, centerX, curCenterY, { width: colCenterW, align: 'center' });
-    curCenterY += 9.5;
-  }
-  if (companyPhone || companyEmail) {
-    const contactLine = [companyPhone ? `Tel: ${companyPhone}` : '', companyEmail].filter(Boolean).join('  •  ');
-    doc.text(contactLine, centerX, curCenterY, { width: colCenterW, align: 'center' });
-    curCenterY += 9.5;
-  }
-  if (companyCity) {
-    doc.text(companyCity, centerX, curCenterY, { width: colCenterW, align: 'center' });
-    curCenterY += 9.5;
-  }
-
-  // Voucher Card
-  const boxX = L + W - colBoxW;
-  doc.roundedRect(boxX, y, colBoxW, headerBoxH, 5)
-     .fillAndStroke('#ffffff', COLOR_BORDER);
-  
-  doc.roundedRect(boxX, y, colBoxW, 19, 4)
-     .fill(COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(8).fillColor('#ffffff')
-     .text(docLabel, boxX, y + 5.5, { width: colBoxW, align: 'center', characterSpacing: 0.5 });
-
-  doc.font('Helvetica-Bold').fontSize(13.5).fillColor(COLOR_PRIMARY)
-     .text(`No. ${docNumber}`, boxX, y + 26, { width: colBoxW, align: 'center' });
-
-  doc.moveTo(boxX + 10, y + 47).lineTo(boxX + colBoxW - 10, y + 47).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.6).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_MUTED)
-     .text(`PERÍODO: `, boxX, y + 53, { width: colBoxW / 2 - 2, align: 'right' });
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_PRIMARY)
-     .text(`${periodName} ${periodYear}`.trim(), boxX + colBoxW / 2, y + 53, { width: colBoxW / 2 - 4, align: 'left' });
-
-  y += headerBoxH + 7;
-
-  doc.moveTo(L, y).lineTo(L + W, y).strokeColor(COLOR_BORDER).lineWidth(0.8).stroke();
-  y += 6;
-
-  // ─── 2. BLOQUE METADATOS: 3 PANELES ESTRUCTURADOS ────────
-  const metaH = 80;
-  const col1W = 250;
-  const col2W = 145;
-  const col3W = W - col1W - col2W - 12;
-
-  // Panel 1: Datos del Copropietario
-  const p1X = L;
-  doc.roundedRect(p1X, y, col1W, metaH, 4).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-  doc.rect(p1X, y, col1W, 16).fill(COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
-     .text('INFORMACIÓN DEL COPROPIETARIO', p1X + 8, y + 4.5);
-
-  let p1Y = y + 21;
-  const renderMetaRow = (label, val, x, yPos, labelW, valW) => {
-    doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_MUTED).text(label, x, yPos);
-    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT).text(val || '—', x + labelW, yPos, { width: valW, ellipsis: true });
-  };
-
-  renderMetaRow('Nombre:', ownerName, p1X + 8, p1Y, 52, col1W - 68);
-  p1Y += 13.5;
-  renderMetaRow('NIT / C.C.:', ownerNit, p1X + 8, p1Y, 52, col1W - 68);
-  p1Y += 13.5;
-  renderMetaRow('Dirección:', ownerAddress || propertyName, p1X + 8, p1Y, 52, col1W - 68);
-  p1Y += 13.5;
-  renderMetaRow('Contacto:', [ownerPhone, ownerEmail].filter(s => s && s !== '—').join(' • ') || '—', p1X + 8, p1Y, 52, col1W - 68);
-
-  // Panel 2: Unidad y Referencia Bancaria
-  const p2X = p1X + col1W + 6;
-  doc.roundedRect(p2X, y, col2W, metaH, 4).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-  doc.rect(p2X, y, col2W, 16).fill(COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
-     .text('INMUEBLE & REFERENCIA', p2X, y + 4.5, { width: col2W, align: 'center' });
-
-  doc.font('Helvetica').fontSize(6.5).fillColor(COLOR_MUTED).text('UNIDAD / INMUEBLE', p2X, y + 21, { width: col2W, align: 'center' });
-  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(COLOR_PRIMARY).text(propertyName, p2X, y + 30, { width: col2W, align: 'center' });
-
-  doc.moveTo(p2X + 12, y + 45).lineTo(p2X + col2W - 12, y + 45).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.5).stroke();
-
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor(COLOR_MUTED).text('REF. BANCO / RECAUDO', p2X, y + 49, { width: col2W, align: 'center' });
-  doc.roundedRect(p2X + 12, y + 59, col2W - 24, 15, 3).fillAndStroke('#ffffff', COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(COLOR_PRIMARY)
-     .text(propertyCode || propertyName, p2X + 12, y + 62.5, { width: col2W - 24, align: 'center' });
-
-  // Panel 3: Fechas y Coeficiente
-  const p3X = p2X + col2W + 6;
-  doc.roundedRect(p3X, y, col3W, metaH, 4).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-  doc.rect(p3X, y, col3W, 16).fill(COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(7).fillColor('#ffffff')
-     .text('CONTROL & FECHAS', p3X, y + 4.5, { width: col3W, align: 'center' });
-
-  let p3Y = y + 21;
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_MUTED).text('Emisión:', p3X + 8, p3Y);
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT).text(date, p3X + 68, p3Y);
-  p3Y += 13.5;
-
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_PRIMARY).text('Vence:', p3X + 8, p3Y);
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR_PRIMARY).text(dueDate, p3X + 68, p3Y);
-  p3Y += 13.5;
-
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_MUTED).text('Área:', p3X + 8, p3Y);
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT).text(propertyArea ? `${propertyArea} m²` : '—', p3X + 68, p3Y);
-  p3Y += 13.5;
-
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_MUTED).text('Coeficiente:', p3X + 8, p3Y);
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor(COLOR_TEXT).text(propertyCoef ? `${propertyCoef}` : '—', p3X + 68, p3Y);
-
-  y += metaH + 7;
-
-  // ─── 3. BARRA DE RECAUDO UNIDAD HABITACIONAL & SALDO ANTERIOR ─
-  const recH = 21;
-  const prevMonthLabel = prevMonthName ? `(${prevMonthName})` : '';
-  const halfGap = 8;
-  const boxW = (W - halfGap) / 2;
-
-  // Box 1 (Izquierda): Recaudo Mes Anterior de la Unidad
-  const b1X = L;
-  doc.roundedRect(b1X, y, boxW, recH, 3).fillAndStroke(COLOR_BG_ALT, COLOR_BORDER);
-  doc.font('Helvetica-Bold').fontSize(7.2).fillColor(COLOR_TEXT)
-     .text(`RECAUDO MES ANTERIOR UNIDAD ${prevMonthLabel}:`.toUpperCase(), b1X + 8, y + 6, { width: boxW - 95 });
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(COLOR_PRIMARY)
-     .text(`$ ${cleanFmt(prevMonthUnitRecaudo)}`, b1X + boxW - 88, y + 5.5, { width: 80, align: 'right' });
-
-  // Box 2 (Derecha): Saldo Anterior al Corte
-  const b2X = L + boxW + halfGap;
-  let prevBal = 0;
-  if (d.previousBalance !== undefined && d.previousBalance !== null) {
-    prevBal = Number(d.previousBalance) || 0;
-  } else if (Number(d.totalAdvanceAvailable) > 0.01) {
-    prevBal = -Number(d.totalAdvanceAvailable);
-  } else {
-    const antSum = conceptsList.reduce((s, c) => s + (Number(c.saldoAnterior) || 0), 0);
-    prevBal = antSum;
-  }
-
-  let prevBalLabel = '$ 0 (AL DÍA)';
-  let prevBalColor = COLOR_PRIMARY;
-  if (prevBal < -0.01) {
-    prevBalLabel = `-$ ${cleanFmt(Math.abs(prevBal))} (A FAVOR)`;
-    prevBalColor = '#047857';
-  } else if (prevBal > 0.01) {
-    prevBalLabel = `+$ ${cleanFmt(prevBal)} (EN MORA)`;
-    prevBalColor = '#b91c1c';
-  }
-
-  doc.roundedRect(b2X, y, boxW, recH, 3).fillAndStroke(COLOR_BG_ALT, COLOR_BORDER);
-  doc.font('Helvetica-Bold').fontSize(7.2).fillColor(COLOR_TEXT)
-     .text('SALDO ANTERIOR AL CORTE:', b2X + 8, y + 6, { width: 130 });
-  doc.font('Helvetica-Bold').fontSize(8.2).fillColor(prevBalColor)
-     .text(prevBalLabel, b2X + 135, y + 5.5, { width: boxW - 143, align: 'right' });
-
-  y += recH + 8;
-
-  // ─── 4. TABLA DE CONCEPTOS & LIQUIDACIÓN ─────────────────
-  const thH = 20;
-  const cWidths = [W * 0.46, W * 0.18, W * 0.18, W * 0.18];
-  const cX = [
-    L,
-    L + cWidths[0],
-    L + cWidths[0] + cWidths[1],
-    L + cWidths[0] + cWidths[1] + cWidths[2]
-  ];
-
-  doc.roundedRect(L, y, W, thH, 3).fill(COLOR_PRIMARY);
-  doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff')
-     .text('CONCEPTO / DESCRIPCIÓN', cX[0] + 8, y + 6, { width: cWidths[0] - 12, align: 'left' })
-     .text('SALDO ANTERIOR', cX[1], y + 6, { width: cWidths[1] - 8, align: 'right' })
-     .text('COBROS DEL MES', cX[2], y + 6, { width: cWidths[2] - 8, align: 'right' })
-     .text('SALDO TOTAL', cX[3], y + 6, { width: cWidths[3] - 10, align: 'right' });
-
-  y += thH;
-
-  const rowItemH = 17;
-  const targetRows = Math.max(conceptsList.length, 5);
-
-  for (let i = 0; i < targetRows; i++) {
-    const item = conceptsList[i];
-    const isEven = i % 2 === 0;
-    const rowBg = isEven ? '#ffffff' : COLOR_BG_CARD;
-
-    doc.rect(L, y, W, rowItemH).fillAndStroke(rowBg, COLOR_BORDER_LIGHT);
-
-    doc.moveTo(cX[1], y).lineTo(cX[1], y + rowItemH).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.5).stroke();
-    doc.moveTo(cX[2], y).lineTo(cX[2], y + rowItemH).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.5).stroke();
-    doc.moveTo(cX[3], y).lineTo(cX[3], y + rowItemH).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.5).stroke();
-
-    if (item) {
-      const isNeg = (item.saldoActual < -0.01) || (item.saldoAnterior < -0.01) || (item.cobrosMes < -0.01) ||
-                    String(item.description || '').toUpperCase().includes('ANTICIPO') ||
-                    String(item.description || '').toUpperCase().includes('SALDO A FAVOR');
-      const textColor = isNeg ? '#047857' : COLOR_TEXT;
-
-      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(textColor)
-         .text(item.description, cX[0] + 8, y + 4.5, { width: cWidths[0] - 14, ellipsis: true });
-
-      const formatCol = (val, isTotalCol = false) => {
-        const n = Number(val) || 0;
-        if (Math.abs(n) < 0.01) return isTotalCol ? '$ 0' : '—';
-        if (n < 0) return `-$ ${cleanFmt(Math.abs(n))}`;
-        return `$ ${cleanFmt(n)}`;
-      };
-
-      const sAnt = formatCol(item.saldoAnterior, false);
-      const cMes = formatCol(item.cobrosMes, false);
-      const sAct = formatCol(item.saldoActual, true);
-
-      const sAntColor = (item.saldoAnterior < -0.01) ? '#047857' : (item.saldoAnterior > 0.01 ? COLOR_TEXT : COLOR_MUTED);
-      const cMesColor = (item.cobrosMes < -0.01) ? '#047857' : COLOR_TEXT;
-      const sActColor = (item.saldoActual < -0.01) ? '#047857' : (item.saldoActual > 0.01 ? COLOR_PRIMARY : COLOR_MUTED);
-
-      doc.font((item.saldoAnterior < -0.01) ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor(sAntColor)
-         .text(sAnt, cX[1], y + 4.5, { width: cWidths[1] - 8, align: 'right' });
-      doc.font((item.cobrosMes < -0.01) ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor(cMesColor)
-         .text(cMes, cX[2], y + 4.5, { width: cWidths[2] - 8, align: 'right' });
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(sActColor)
-         .text(sAct, cX[3], y + 4.5, { width: cWidths[3] - 10, align: 'right' });
-    }
-    y += rowItemH;
-  }
-
-  y += 8;
-
-  // ─── 5. TOTALES Y BLOQUE DE RECAUDO ──────────────────────
-  const totalsBoxW = 195;
-  const notesBoxW  = W - totalsBoxW - 12;
-  const totBoxH    = 60;
-
-  doc.roundedRect(L, y, notesBoxW, 23, 3).fillAndStroke(COLOR_BG_CARD, COLOR_BORDER);
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(COLOR_PRIMARY)
-     .text(numeroALetras(totalActual), L + 8, y + 6.5, { width: notesBoxW - 16, ellipsis: true });
-
-  const totX = L + W - totalsBoxW;
-  doc.roundedRect(totX, y, totalsBoxW, totBoxH, 5)
-     .fillAndStroke(COLOR_PRIMARY, COLOR_PRIMARY);
-
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(COLOR_LIGHT)
-     .text('TOTAL A PAGAR', totX, y + 9, { width: totalsBoxW, align: 'center', characterSpacing: 1 });
-
-  doc.font('Helvetica-Bold').fontSize(17).fillColor('#ffffff')
-     .text(`$ ${cleanFmt(totalActual)}`, totX, y + 25, { width: totalsBoxW, align: 'center' });
-
-  doc.font('Helvetica').fontSize(6.5).fillColor(COLOR_LIGHT)
-     .text(`PAGAR ANTES DE: ${dueDate}`, totX, y + 47, { width: totalsBoxW, align: 'center' });
-
-  const notesY = y + 28;
-  const notesH = totBoxH - 28;
-  doc.roundedRect(L, notesY, notesBoxW, notesH, 3).fillAndStroke('#ffffff', COLOR_BORDER);
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor(COLOR_PRIMARY)
-     .text('INSTRUCCIONES DE CONSIGNACIÓN Y PAGO:', L + 8, notesY + 5);
-  doc.font('Helvetica').fontSize(6.8).fillColor(COLOR_TEXT)
-     .text(notes.toUpperCase(), L + 8, notesY + 14, { width: notesBoxW - 16, lineGap: 1.5 });
-
-  y += totBoxH + 10;
-
-  // ─── 6. FOOTER BLINDADO (GARANTÍA 1 PÁGINA) ──────────────
-  const footerLineY = doc.page.height - 24;
-  doc.moveTo(L, footerLineY).lineTo(L + W, footerLineY).strokeColor(COLOR_BORDER_LIGHT).lineWidth(0.6).stroke();
-
-  doc.font('Helvetica').fontSize(6.5).fillColor(COLOR_MUTED)
-     .text('Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.', L, footerLineY + 5, { width: W - 110, align: 'left', lineBreak: false });
-  
-  const pageLabel = totalPages > 1 ? `Pág. ${pageIndex + 1} de ${totalPages}` : 'Página 1 de 1';
-  doc.font('Helvetica-Bold').fontSize(6.5).fillColor(COLOR_MUTED)
-     .text(pageLabel, L + W - 100, footerLineY + 5, { width: 100, align: 'right', lineBreak: false });
-}
-
-/**
- * Generador de PDF individual de Cuentas de Cobro / Estados de Cuenta para Copropiedades
- */
-function generatePhStatementPdf(statementData) {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({
-        margins: { top: 22, bottom: 10, left: 28, right: 28 },
-        size: 'LETTER',
-        bufferPages: true,
-        autoFirstPage: true
-      });
-
-      const buffers = [];
-      doc.on('data', chunk => buffers.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
-
-      renderPhStatementPage(doc, statementData, 0, 1);
-
-      doc.end();
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-/**
- * Generador de PDF ÚNICO MULTIPÁGINA consolidando todas las facturas de un lote/período
- * Optimizado: Streaming directo (sin bufferPages en RAM) y logo pre-parseado una sola vez.
- */
-function generatePhMultiStatementPdf(statementsArray, companyData = {}) {
-  return new Promise((resolve, reject) => {
-    try {
-      const list = Array.isArray(statementsArray) ? statementsArray : [];
-      const totalPages = list.length;
-
-      const doc = new PDFDocument({
-        margins: { top: 22, bottom: 10, left: 28, right: 28 },
-        size: 'LETTER',
-        bufferPages: false, // STREAMING DIRECTO: libera cada página de RAM inmediatamente (elimina GC Thrashing)
-        autoFirstPage: false
-      });
-
-      const buffers = [];
-      doc.on('data', chunk => buffers.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(buffers)));
-      doc.on('error', reject);
-
-      // Pre-cargar y pre-parsear el logotipo UNA SOLA VEZ para todo el documento
-      let sharedLogo = null;
-      const rawLogo = (companyData && companyData.companyLogo) || (list[0] && list[0].companyLogo) || '';
-      if (rawLogo) {
-        try {
-          const base64Data = rawLogo.replace(/^data:image\/\w+;base64,/, '');
-          const imgBuf = Buffer.from(base64Data, 'base64');
-          sharedLogo = doc.openImage(imgBuf);
-        } catch (e) {
-          console.warn('[ORCHESTRATOR PH] Advertencia al pre-parsear logo único:', e.message);
-        }
-      }
-
-      const sharedOptions = {
-        sharedLogo,
-        companyData: companyData || {}
-      };
-
-      if (list.length === 0) {
-        doc.addPage({ margins: { top: 22, bottom: 10, left: 28, right: 28 } });
-        doc.font('Helvetica').fontSize(12).text('No hay facturas para mostrar en este período.', 50, 100);
-      } else {
-        for (let i = 0; i < list.length; i++) {
-          doc.addPage({ margins: { top: 22, bottom: 10, left: 28, right: 28 } });
-          renderPhStatementPage(doc, list[i], i, totalPages, sharedOptions);
-        }
-      }
-
-      doc.end();
-    } catch (err) {
-      reject(err);
-    }
-  });
-}
-
-app.post('/api/ph/generate-pdf', async (req, res) => {
-  try {
-    const { filename = 'cuenta_cobro', statementData, format } = req.body;
-    const pdfBuffer = await generatePhStatementPdf(statementData);
-    
-    // Si se solicita en formato base64 para descarga en frontend
-    if (format === 'base64') {
-      const sanitizedFilename = String(filename).replace(/[^a-zA-Z0-9_\-]/g, '_');
-      return res.json({
-        success: true,
-        pdfBase64: pdfBuffer.toString('base64'),
-        filename: `${sanitizedFilename}.pdf`
-      });
-    }
-
-    // Si se solicita explícitamente en formato binario para visualización o descarga
-    if (format === 'binary' || req.query.download === '1') {
-      res.set({
-        'Content-Type': 'application/pdf',
-        'Content-Length': pdfBuffer.length,
-        'Content-Disposition': `inline; filename="${filename}.pdf"`
-      });
-      return res.send(pdfBuffer);
-    }
-
-    // Por defecto guardar en temp_pdfs y retornar ruta absoluta para consumo seguro en PocketBase
-    const tempDir = path.resolve(__dirname, '..', 'temp_pdfs');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-
-    const sanitizedFilename = String(filename).replace(/[^a-zA-Z0-9_\-]/g, '_');
-    const absolutePdfPath = path.join(tempDir, `${sanitizedFilename}.pdf`);
-    fs.writeFileSync(absolutePdfPath, pdfBuffer);
-
-    console.log(`[GRAVY ORCHESTRATOR] PDF de copropiedad guardado en: ${absolutePdfPath}`);
-    res.json({
-      success: true,
-      pdfPath: absolutePdfPath,
-      filename: `${sanitizedFilename}.pdf`
-    });
-  } catch (err) {
-    console.error('[GRAVY ORCHESTRATOR] Error al generar PDF Copropiedades:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ──────────────────────────────────────────────────────────
-// ROUTE: Generar PDF Único Unificado (Multipágina) para el lote del período
-// ──────────────────────────────────────────────────────────
-app.post('/api/ph/generate-bulk-pdf', async (req, res) => {
-  try {
-    const { filename = 'Facturas_Copropiedad', statements = [], companyData = {}, format = 'base64' } = req.body;
-    console.log(`[GRAVY ORCHESTRATOR] Generando PDF unificado con ${statements.length} facturas/páginas (modo streaming de alto rendimiento)...`);
-
-    const pdfBuffer = await generatePhMultiStatementPdf(statements, companyData);
-    const sanitizedFilename = String(filename).replace(/[^a-zA-Z0-9_\-]/g, '_');
-
-    if (format === 'base64') {
-      return res.json({
-        success: true,
-        pdfBase64: pdfBuffer.toString('base64'),
-        filename: `${sanitizedFilename}.pdf`,
-        totalPages: statements.length
-      });
-    }
-
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Length': pdfBuffer.length,
-      'Content-Disposition': `attachment; filename="${sanitizedFilename}.pdf"`
-    });
-    return res.send(pdfBuffer);
-  } catch (err) {
-    console.error('[GRAVY ORCHESTRATOR] Error al generar PDF unificado Copropiedades:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-
-
-const ORCHESTRATOR_PORT = parseInt(process.env.GRAVY_ORCHESTRATOR_PORT || '8088', 10);
-
-function isPortInUse(port, host = '127.0.0.1') {
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    socket.setTimeout(400);
-    socket.on('connect', () => {
-      socket.destroy();
-      resolve(true);
-    });
-    socket.on('timeout', () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.on('error', () => {
-      resolve(false);
-    });
-    socket.connect(port, host);
-  });
-}
-
-async function startExistingCompanies() {
+function startExistingCompanies() {
   try {
     if (!fs.existsSync(EMPRESAS_DIR)) {
       console.log(`[GRAVY ORCHESTRATOR] Directorio de empresas no encontrado: ${EMPRESAS_DIR}`);
@@ -3984,10 +2709,10 @@ async function startExistingCompanies() {
     
     const bindIp = process.env.GRAVY_BIND_IP || '127.0.0.1';
     const files = fs.readdirSync(EMPRESAS_DIR);
-    const pbExe = getPocketbaseBinaryPath();
+    const pbExe = path.join(BASE_DIR, 'pocketbase.exe');
     
     if (!fs.existsSync(pbExe)) {
-      console.error(`[GRAVY ORCHESTRATOR] Binario de PocketBase no encontrado en ${pbExe}`);
+      console.error(`[GRAVY ORCHESTRATOR] pocketbase.exe no encontrado en ${pbExe}`);
       return;
     }
     
@@ -4007,7 +2732,7 @@ async function startExistingCompanies() {
         try {
           const hookFiles = fs.readdirSync(PB_HOOKS_DIR);
           for (const hFile of hookFiles) {
-            if (hFile === 'setup.pb.js' || hFile === 'zz_seed_user.pb.js' || hFile === 'zz_clean_on_first_run.pb.js') continue;
+            if (hFile === 'setup.pb.js' || hFile === 'zz_seed_user.pb.js') continue;
             const srcPath = path.join(PB_HOOKS_DIR, hFile);
             const destPath = path.join(companyPbHooks, hFile);
             if (fs.statSync(srcPath).isFile()) {
@@ -4018,13 +2743,6 @@ async function startExistingCompanies() {
         } catch (syncErr) {
           console.warn(`[GRAVY ORCHESTRATOR] Advertencia al sincronizar hooks para empresa ${port}:`, syncErr.message);
         }
-      }
-
-      const inUse = await isPortInUse(port, '127.0.0.1');
-      if (inUse) {
-        console.log(`[GRAVY ORCHESTRATOR] Empresa en puerto ${port} ya está activa/escuchando.`);
-        activeProcesses[port] = { port, pid: null };
-        continue;
       }
 
       console.log(`[GRAVY ORCHESTRATOR] Auto-arrancando empresa existente en puerto ${port} (bind: ${bindIp})...`);
@@ -4050,48 +2768,16 @@ async function startExistingCompanies() {
   }
 }
 
-function cleanupSpawnedProcesses() {
-  console.log('[GRAVY ORCHESTRATOR] Deteniendo subprocesos de empresas activas...');
-  for (const [port, procInfo] of Object.entries(activeProcesses)) {
-    try {
-      if (procInfo && procInfo.pid) {
-        process.kill(procInfo.pid);
-      }
-    } catch (_) {}
-  }
-}
-process.on('SIGINT', () => { cleanupSpawnedProcesses(); process.exit(0); });
-process.on('SIGTERM', () => { cleanupSpawnedProcesses(); process.exit(0); });
-
 // Registrar rutas y programador de respaldos desatendidos
 backupService.registerRoutes(app);
 backupService.setupScheduler(2); // Ejecutar respaldo automático diario a las 2:00 AM
 
-// Registrar rutas del servicio IMAP para lectura de facturas electrónicas
-imapService.registerRoutes(app);
-
 // Iniciar inquilinos registrados antes de escuchar
-startExistingCompanies().catch(err => {
-  console.error('[GRAVY ORCHESTRATOR] Error al iniciar inquilinos:', err);
-});
+startExistingCompanies();
 
 app.listen(ORCHESTRATOR_PORT, () => {
   console.log(`GRAVY Orchestrator running on port ${ORCHESTRATOR_PORT}`);
 }).on('error', (err) => {
   writeCrashLog('LISTEN_ERROR', err);
-  // Surface the failure loudly: without this, the process stays alive but
-  // never actually listens, and nothing but the crash log reveals why.
-  if (err && err.code === 'EACCES') {
-    console.error(`[GRAVY ORCHESTRATOR] No se pudo escuchar en el puerto ${ORCHESTRATOR_PORT} (EACCES). ` +
-      `Es probable que Windows tenga este puerto reservado por Hyper-V/WSL2/Docker. ` +
-      `Verifique con: netsh interface ipv4 show excludedportrange protocol=tcp`);
-  } else if (err && err.code === 'EADDRINUSE') {
-    console.error(`[GRAVY ORCHESTRATOR] El puerto ${ORCHESTRATOR_PORT} ya está en uso por otro proceso (EADDRINUSE).`);
-  } else {
-    console.error(`[GRAVY ORCHESTRATOR] Error al escuchar en el puerto ${ORCHESTRATOR_PORT}:`, err);
-  }
-  // Exit instead of lingering as a "zombie" process that looks alive but
-  // never bound the port; PM2/NSSM (or the user) can then see/restart it.
-  process.exit(1);
 });
 

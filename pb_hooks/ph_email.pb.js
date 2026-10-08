@@ -445,21 +445,6 @@ function buildGroupedConceptsList(lines, outstandingInvoices, cache, propertyId,
   }
   var conceptsMap = {};
 
-  // Validación de deuda neta previa: si la unidad estaba a paz y salvo en cartera contable antes de este período, omitir saldo anterior
-  if (propertyId && invoicePeriod && outstandingInvoices && outstandingInvoices.length > 0) {
-    try {
-      var asOfDate = invoicePeriod + '-01';
-      var sqlDebt = "SELECT COALESCE(SUM(l.debit - l.credit), 0) AS net_cartera FROM tx_lines l INNER JOIN transactions t ON t.id = l.tx_id INNER JOIN accounts a ON a.id = l.account_id WHERE t.status = 'active' AND a.code LIKE '13%' AND t.date < {:asOfDate} AND (l.cross_doc_ref LIKE {:pIdPattern} OR t.teso_params LIKE {:pIdJson})";
-      var qDebt = $app.db().newQuery(sqlDebt);
-      qDebt.bind({ asOfDate: asOfDate, pIdPattern: '%' + propertyId + '%', pIdJson: '%"ph_property_id":"' + propertyId + '"%' });
-      var resDebt = new DynamicModel({ net_cartera: 0 });
-      qDebt.one(resDebt);
-      if (Number(resDebt.net_cartera || 0) < 0.01) {
-        outstandingInvoices = [];
-      }
-    } catch (_) {}
-  }
-
   if (lines) {
     for (var i = 0; i < lines.length; i++) {
       var l = lines[i];
@@ -986,7 +971,7 @@ function buildPhEmailHtml({
 
     <!-- Pie de Software -->
     <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
-      Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
+      Documento emitido por GRAVY v2.0 | Desarrollado por JULIAN ESPINOSA ARRUBLA, NIT. 1130636393-2 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
     </div>
 
   </div>
@@ -1024,8 +1009,8 @@ function generatePhPdfAttachment({
   prevMonthName
 }) {
   const numberText = invoice.getString("number") || "cuenta";
-  const docType = type || 'invoice';
-  const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}`;
+    const docType = 'statement';
+    const filename = `EstadoCuenta_${numberText}`;
 
   try {
     const orchestratorRes = $http.send({
@@ -1035,14 +1020,7 @@ function generatePhPdfAttachment({
       body: JSON.stringify({
         filename: filename,
         statementData: {
-          companyName,
-          companyNit,
-          companyAddress,
-          companyPhone,
-          companyEmail,
-          companyCity,
-          companyLogo,
-          docType,
+          docType: 'statement',
           docNumber: numberText,
           period: invoice.getString("period"),
           date: invoice.getString("date"),
@@ -1134,13 +1112,371 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     return y + '-' + (m < 10 ? '0' + m : m);
   };
 
-  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function') ? globalThis.getCanonicalConceptName : function(rawDesc) { return String(rawDesc || '').trim() || 'CONCEPTO'; };
-  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function') ? globalThis.getPhConceptsCache : function() { return { byId:{}, moraId:'', admId:'', byCanonicalName:{} }; };
-  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function') ? globalThis.resolveConceptGroup : function(line, cache) { return { groupKey: "__CONCEPT__", conceptId: "", description: "CONCEPTO" }; };
-  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function') ? globalThis.getNetPaymentsForPhInvoice : function() { return 0; };
-  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function') ? globalThis.autoMarkPaidIfSettled : function() {};
-  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function') ? globalThis.getPreviousMonthRecaudos : function() { return { unitRecaudo: 0, totalRecaudo: 0 }; };
-  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function') ? globalThis.buildGroupedConceptsList : function() { return []; };
+  const getCanonicalConceptName = function(rawDesc) {
+    if (!rawDesc) return 'CONCEPTO';
+    var str = String(rawDesc).trim();
+    var norm = str
+      .toLowerCase()
+      .replace(/[áàäâ]/g, 'a')
+      .replace(/[éèëê]/g, 'e')
+      .replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o')
+      .replace(/[úùüû]/g, 'u');
+
+    if (
+      (norm.indexOf('interes') !== -1 && norm.indexOf('mora') !== -1) ||
+      norm === 'mora' ||
+      norm.indexOf('mora ') === 0 ||
+      norm.indexOf(' intereses mora') !== -1
+    ) {
+      return 'INTERESES DE MORA';
+    }
+
+    if (
+      norm.indexOf('cuota de administracion') !== -1 ||
+      norm.indexOf('cuota administracion') !== -1 ||
+      norm.indexOf('cuota ordinaria') !== -1 ||
+      norm === 'administracion'
+    ) {
+      return 'CUOTA ADMINISTRACION';
+    }
+
+    if (
+      norm.indexOf('fondo de imprevistos') !== -1 ||
+      norm.indexOf('fondo imprevistos') !== -1
+    ) {
+      return 'FONDO DE IMPREVISTOS';
+    }
+
+    return str;
+  };
+
+  const getPhConceptsCache = function() {
+    var cache = {
+      byId: {},
+      moraId: '',
+      admId: '',
+      byCanonicalName: {}
+    };
+    try {
+      var records = $app.findRecordsByFilter("ph_billing_concepts", "", "code", 500, 0);
+      if (records) {
+        for (var i = 0; i < records.length; i++) {
+          var r = records[i];
+          var id = r.id || (r.getString ? r.getString("id") : "");
+          var code = (r.getString ? r.getString("code") : (r.code || "")).trim().toUpperCase();
+          var name = (r.getString ? r.getString("name") : (r.name || "")).trim();
+          var upperName = name.toUpperCase();
+          cache.byId[id] = { id: id, code: code, name: name };
+
+          if (code === "MORA" || upperName.indexOf("MORA") !== -1) {
+            cache.moraId = id;
+          }
+          if (code === "ADM" || upperName.indexOf("ADMIN") !== -1) {
+            cache.admId = id;
+          }
+
+          var canonical = getCanonicalConceptName(name);
+          cache.byCanonicalName[canonical] = id;
+        }
+      }
+    } catch (e) {
+      console.warn("[GRAVY PH] Advertencia al cargar catálogo de conceptos:", e);
+    }
+    return cache;
+  };
+
+  const resolveConceptGroup = function(line, cache) {
+    var rawId = line.getString ? line.getString("concept_id") : (line.concept_id || "");
+    var rawDesc = line.getString ? line.getString("description") : (line.description || "Concepto");
+    var canonicalDesc = getCanonicalConceptName(rawDesc);
+
+    var conceptObj = (rawId && cache && cache.byId) ? cache.byId[rawId] : null;
+    var isMoraById = rawId && (rawId === (cache ? cache.moraId : '') || (conceptObj && (conceptObj.code === "MORA" || conceptObj.name.toUpperCase().indexOf("MORA") !== -1)));
+    var isMoraByText = canonicalDesc === "INTERESES DE MORA";
+
+    if (isMoraById || isMoraByText) {
+      return {
+        groupKey: "__MORA__",
+        conceptId: (conceptObj ? conceptObj.id : (cache ? cache.moraId : "")) || "",
+        description: "INTERESES DE MORA"
+      };
+    }
+
+    if (conceptObj) {
+      return {
+        groupKey: "ID_" + conceptObj.id,
+        conceptId: conceptObj.id,
+        description: conceptObj.name.toUpperCase()
+      };
+    }
+
+    if (cache && cache.byCanonicalName && cache.byCanonicalName[canonicalDesc]) {
+      var matchedId = cache.byCanonicalName[canonicalDesc];
+      var matchedConcept = cache.byId[matchedId];
+      if (matchedConcept) {
+        return {
+          groupKey: "ID_" + matchedConcept.id,
+          conceptId: matchedConcept.id,
+          description: matchedConcept.name.toUpperCase()
+        };
+      }
+    }
+
+    if (rawId) {
+      return {
+        groupKey: "ID_" + rawId,
+        conceptId: rawId,
+        description: canonicalDesc || String(rawDesc).toUpperCase()
+      };
+    }
+
+    return {
+      groupKey: "__TEXT_" + canonicalDesc,
+      conceptId: "",
+      description: canonicalDesc || "CONCEPTO"
+    };
+  };
+
+  const getNetPaymentsForPhInvoice = function(invoiceNumber, thirdPartyId) {
+    if (!invoiceNumber) return 0;
+    try {
+      var cleanNum = String(invoiceNumber).trim();
+      var sql =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total_paid" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (" +
+        "     l.cross_doc_ref = {:invoiceNumber}" +
+        "     OR l.cross_doc_ref LIKE {:invoiceNumberLike}" +
+        "     OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber})" +
+        "   )";
+      var binds = {
+        invoiceNumber: cleanNum,
+        invoiceNumberLike: cleanNum + '-%'
+      };
+      if (thirdPartyId && String(thirdPartyId).trim()) {
+        sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+        binds.thirdPartyId = String(thirdPartyId).trim();
+      }
+      var query = $app.db().newQuery(sql);
+      query.bind(binds);
+      var result = new DynamicModel({ total_paid: 0 });
+      query.one(result);
+      return Math.max(0, Number(result.total_paid || 0));
+    } catch (_) {
+      return 0;
+    }
+  };
+
+  const autoMarkPaidIfSettled = function(invoiceRecord) {
+    try {
+      var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+      var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+      var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+      if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+      var paid = getNetPaymentsForPhInvoice(invNumber, null);
+      if (paid >= invTotal - 0.01) {
+        if (invoiceRecord.set) {
+          invoiceRecord.set("status", "paid");
+          $app.save(invoiceRecord);
+        } else if (invoiceRecord.id) {
+          var rec = $app.findRecordById("ph_invoices", invoiceRecord.id);
+          if (rec) {
+            rec.set("status", "paid");
+            $app.save(rec);
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  const getPreviousMonthRecaudos = function(propertyId, ownerId, prevPeriod) {
+    var unitRecaudo = 0;
+    var totalRecaudo = 0;
+    if (!prevPeriod) return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+    var startDate = prevPeriod + '-01';
+    var endDate = prevPeriod + '-31 23:59:59';
+
+    try {
+      var sqlAll =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+        "   AND t.date >= {:startDate}" +
+        "   AND t.date <= {:endDate}";
+      var qAll = $app.db().newQuery(sqlAll);
+      qAll.bind({ startDate: startDate, endDate: endDate });
+      var resAll = new DynamicModel({ total: 0 });
+      qAll.one(resAll);
+      totalRecaudo = Number(resAll.total || 0);
+    } catch (_) {}
+
+    try {
+      var sqlUnit =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+        "   AND t.date >= {:startDate}" +
+        "   AND t.date <= {:endDate}" +
+        "   AND (";
+      var conds = [];
+      var binds = { startDate: startDate, endDate: endDate };
+      if (ownerId && String(ownerId).trim()) {
+        conds.push("t.third_party_id = {:ownerId}");
+        conds.push("l.third_party_id = {:ownerId}");
+        binds.ownerId = String(ownerId).trim();
+      }
+      if (propertyId && String(propertyId).trim()) {
+        conds.push("t.teso_params LIKE {:propPattern}");
+        binds.propPattern = '%"ph_property_id":"' + String(propertyId).trim() + '"%';
+      }
+      if (conds.length > 0) {
+        sqlUnit += conds.join(" OR ") + ")";
+        var qUnit = $app.db().newQuery(sqlUnit);
+        qUnit.bind(binds);
+        var resUnit = new DynamicModel({ total: 0 });
+        qUnit.one(resUnit);
+        unitRecaudo = Number(resUnit.total || 0);
+      }
+    } catch (_) {}
+
+    if (unitRecaudo <= 0 && propertyId) {
+      try {
+        var unitPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          "property_id = '" + propertyId + "' && period = '" + prevPeriod + "' && status = 'paid'",
+          "",
+          100,
+          0
+        );
+        if (unitPaid) {
+          for (var i = 0; i < unitPaid.length; i++) {
+            unitRecaudo += unitPaid[i].getFloat("total");
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (totalRecaudo <= 0 && prevPeriod) {
+      try {
+        var allPaidInvs = $app.findRecordsByFilter(
+          "ph_invoices",
+          "period = '" + prevPeriod + "' && status = 'paid'",
+          "",
+          1000,
+          0
+        );
+        if (allPaidInvs) {
+          for (var ap = 0; ap < allPaidInvs.length; ap++) {
+            totalRecaudo += allPaidInvs[ap].getFloat("total");
+          }
+        }
+      } catch (_) {}
+    }
+
+    return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+  };
+
+  const buildGroupedConceptsList = function(lines, outstandingInvoices, cache, propertyId, invoicePeriod) {
+    if (!cache) {
+      cache = getPhConceptsCache();
+    }
+    var conceptsMap = {};
+
+    if (lines) {
+      for (var i = 0; i < lines.length; i++) {
+        var l = lines[i];
+        var group = resolveConceptGroup(l, cache);
+        var key = group.groupKey;
+        var amount = l.getFloat ? l.getFloat("amount") : (Number(l.amount) || 0);
+        if (!conceptsMap[key]) {
+          conceptsMap[key] = {
+            conceptId: group.conceptId,
+            description: group.description,
+            saldoAnterior: 0,
+            cobrosMes: 0,
+            saldoActual: 0
+          };
+        }
+        conceptsMap[key].cobrosMes += amount;
+        conceptsMap[key].saldoActual += amount;
+      }
+    }
+
+    if (outstandingInvoices) {
+      for (var j = 0; j < outstandingInvoices.length; j++) {
+        var oldInv = outstandingInvoices[j];
+        var invNumber    = oldInv.getString ? oldInv.getString("number")         : (oldInv.number         || "");
+        var invThirdId   = oldInv.getString ? oldInv.getString("third_party_id") : (oldInv.third_party_id || "");
+        var invoiceTotal = oldInv.getFloat  ? oldInv.getFloat("total")           : (Number(oldInv.total)  || 0);
+
+        var alreadyPaid    = getNetPaymentsForPhInvoice(invNumber, invThirdId);
+        var pendingBalance = Math.max(0, invoiceTotal - alreadyPaid);
+
+        if (pendingBalance < 0.01) {
+          try { autoMarkPaidIfSettled(oldInv); } catch (_) {}
+          continue;
+        }
+
+        var proportionFactor = (invoiceTotal > 0.01) ? (pendingBalance / invoiceTotal) : 1;
+
+        var oldLines = $app.findRecordsByFilter(
+          "ph_invoice_lines",
+          "invoice_id = '" + oldInv.id + "'",
+          "line_order",
+          200,
+          0
+        );
+        if (oldLines) {
+          for (var k = 0; k < oldLines.length; k++) {
+            var ol        = oldLines[k];
+            var groupOld  = resolveConceptGroup(ol, cache);
+            var keyOld    = groupOld.groupKey;
+            var amountOld = ol.getFloat ? ol.getFloat("amount") : (Number(ol.amount) || 0);
+            var pendingAmt = Math.round(amountOld * proportionFactor * 100) / 100;
+            if (pendingAmt < 0.01) continue;
+            if (!conceptsMap[keyOld]) {
+              conceptsMap[keyOld] = {
+                conceptId: groupOld.conceptId,
+                description: groupOld.description,
+                saldoAnterior: 0,
+                cobrosMes: 0,
+                saldoActual: 0
+              };
+            }
+            conceptsMap[keyOld].saldoAnterior += pendingAmt;
+            conceptsMap[keyOld].saldoActual   += pendingAmt;
+          }
+        }
+      }
+    }
+
+    var list = Object.keys(conceptsMap).map(function(k) { return conceptsMap[k]; });
+
+    list.sort(function(a, b) {
+      var nameA = String(a.description || '').toUpperCase();
+      var nameB = String(b.description || '').toUpperCase();
+      if (nameA.indexOf('ADMIN') !== -1 && nameB.indexOf('ADMIN') === -1) return -1;
+      if (nameA.indexOf('ADMIN') === -1 && nameB.indexOf('ADMIN') !== -1) return 1;
+      if (nameA.indexOf('MORA') !== -1 && nameB.indexOf('MORA') === -1) return 1;
+      if (nameA.indexOf('MORA') === -1 && nameB.indexOf('MORA') !== -1) return -1;
+      return nameA.localeCompare(nameB);
+    });
+
+    return list;
+  };
 
   const numeroALetras = function(num) {
     var tempNum = parseFloat(String(num)).toFixed(2).split('.');
@@ -1235,250 +1571,251 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     }
   };
 
-  const buildPhEmailHtml = function({
-    invoice,
-    conceptsList,
-    propertyName,
-    propertyCode,
-    propertyArea,
-    propertyCoef,
-    propertyMatricula,
-    ownerName,
-    ownerDocNumber,
-    ownerAddress,
-    ownerPhone,
-    companyName,
-    companyNit,
-    companyAddress,
-    companyPhone,
-    companyEmail,
-    companyCity,
-    companyLogo,
-    totalActual,
-    notes: customNotes,
-    prevMonthUnitRecaudo,
-    prevMonthTotalRecaudo,
-    prevMonthName
-  }) {
-    const numberText = invoice.getString("number");
-    
-    // Render de las filas agrupadas por concepto
-    let tableRowsHtml = "";
-    for (const c of conceptsList) {
-      const sAnt = c.saldoAnterior > 0 ? cleanFmt(c.saldoAnterior) : "";
-      const cMes = c.cobrosMes > 0 ? cleanFmt(c.cobrosMes) : "";
-      const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
-      
-      tableRowsHtml += `
-        <tr style="height: 22px;">
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left; background-color: #ffffff;">${c.description}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${sAnt}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${cMes}</td>
-          <td style="padding: 5px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold; background-color: #ffffff;">${sAct}</td>
-        </tr>`;
+  function buildPhEmailHtml({
+  invoice,
+  conceptsList,
+  propertyName,
+  propertyCode,
+  propertyArea,
+  propertyCoef,
+  propertyMatricula,
+  ownerName,
+  ownerDocNumber,
+  ownerAddress,
+  ownerPhone,
+  companyName,
+  companyNit,
+  companyAddress,
+  companyPhone,
+  companyEmail,
+  companyCity,
+  companyLogo,
+  totalActual,
+  saldoAnterior,
+  cobrosMes,
+  dueDate,
+  periodName,
+  periodYear,
+  notes: customNotes,
+  customMessageHtml,
+  customNoticeHtml
+}) {
+  const numberText = (invoice && invoice.getString) ? (invoice.getString("number") || "") : (invoice?.number || "");
+  const pName = propertyName || "Unidad";
+  const oName = ownerName || "Copropietario";
+  const cName = companyName || "Copropiedad";
+
+  const list = conceptsList || [];
+  const sAntVal = (typeof saldoAnterior !== 'undefined' && saldoAnterior !== null)
+    ? Number(saldoAnterior)
+    : list.reduce(function(s, c) { return s + (Number(c.saldoAnterior) || 0); }, 0);
+  const cMesVal = (typeof cobrosMes !== 'undefined' && cobrosMes !== null)
+    ? Number(cobrosMes)
+    : list.reduce(function(s, c) { return s + (Number(c.cobrosMes) || 0); }, 0);
+  const totVal = (typeof totalActual !== 'undefined' && totalActual !== null)
+    ? Number(totalActual)
+    : (sAntVal + cMesVal);
+
+  const cleanFmt = function(value) {
+    if (value === undefined || value === null || isNaN(Number(value))) return "0.00";
+    var num = Number(value);
+    var isNeg = num < 0;
+    var absParts = Math.abs(num).toFixed(2).split('.');
+    absParts[0] = absParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return (isNeg ? "- " : "") + absParts[0];
+  };
+
+  const numeroALetras = function(num) {
+    var rawFloat = parseFloat(String(num));
+    if (isNaN(rawFloat) || Math.abs(rawFloat) < 0.01) return 'SON: CERO PESOS M/CTE';
+    var isNegative = rawFloat < 0;
+    var absVal = Math.abs(rawFloat);
+    var tempNum = absVal.toFixed(2).split('.');
+    var entero = parseInt(tempNum[0], 10);
+    if (entero === 0) return 'SON: CERO PESOS M/CTE';
+    function letras(n) {
+      if (n <= 0) return '';
+      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n] || '';
+      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10] || '';
+      if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
+      if (n < 100) {
+        var u = n % 10;
+        var d = Math.floor(n / 10);
+        var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+        return (decenas[d] || '') + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+      }
+      if (n < 1000) {
+        var d_u = n % 100;
+        var c = Math.floor(n / 100);
+        var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+        if (n === 100) return 'Cien';
+        if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+        return (centenas[c] || '') + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+      }
+      if (n < 1000000) {
+        var mil = Math.floor(n / 1000);
+        var resto = n % 1000;
+        var t = mil === 1 ? 'Mil' : letras(mil) + ' mil';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      if (n < 1000000000) {
+        var millon = Math.floor(n / 1000000);
+        var resto = n % 1000000;
+        var t = millon === 1 ? 'Un millón' : letras(mil) + ' millones';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      return String(n);
     }
+    var res = letras(entero) || 'Cero';
+    res = res.charAt(0).toUpperCase() + res.slice(1);
+    var prefix = isNegative ? 'MENOS ' : '';
+    return ('Son: ' + prefix + res + ' PESOS M/CTE').toUpperCase();
+  };
 
-    // Nota al pie de factura / instrucciones de recaudo
-    let defaultFooterNote = "";
-    try {
-      defaultFooterNote = getSetting("ph_invoice_footer_note", "");
-    } catch (_) {}
-    const notes = (customNotes || invoice.getString("notes") || defaultFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
+  const pNameTitle = (periodName || '') + (periodYear ? (' ' + periodYear) : '');
 
-    const phoneSection = companyPhone ? `TEL / PORTERÍA: ${companyPhone}` : "";
-    const addressSection = companyAddress ? `<div style="font-size: 10px; color: #000;">${companyAddress}</div>` : "";
-    const contactSection = phoneSection ? `<div style="font-size: 10px; color: #000;">${phoneSection}</div>` : "";
-    const emailSection = companyEmail ? `<div style="font-size: 10px; color: #000;">${companyEmail}</div>` : "";
-    const citySection = companyCity ? `<div style="font-size: 10px; color: #000;">${companyCity}</div>` : "";
-
-    return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Cuenta de Cobro No. ${numberText}</title>
+  <title>Estado de Cuenta — ${pName}</title>
 </head>
-<body style="font-family: Arial, Helvetica, sans-serif; color: #000; background-color: #f1f5f9; margin: 0; padding: 20px; -webkit-text-size-adjust: 100%;">
-  <div style="max-width: 720px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #cbd5e1;">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; background-color: #f8fafc; margin: 0; padding: 24px 12px; -webkit-text-size-adjust: 100%;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     
-    <!-- Encabezado Principal: Logo, Datos Copropiedad y Caja de Documento -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 10px;">
-      <tr>
-        <td style="width: 25%; vertical-align: middle; text-align: left; padding-right: 10px;">
-          ${companyLogo 
-            ? `<img src="data:image/png;base64,${companyLogo}" style="max-height: 75px; max-width: 170px; object-fit: contain; display: block;" alt="Logo Copropiedad" />`
-            : `<div style="font-size: 20px; font-weight: 900; color: #000; font-family: sans-serif; letter-spacing: -0.5px;">${companyName.substring(0, 4)}</div>`
-          }
-        </td>
-        <td style="width: 45%; text-align: center; vertical-align: top; line-height: 1.3; padding: 0 10px;">
-          <div style="font-size: 14.5px; font-weight: bold; color: #000; text-transform: uppercase;">${companyName}</div>
-          <div style="font-size: 11px; font-weight: bold; color: #000; margin-top: 2px;">NIT ${companyNit}</div>
-          ${addressSection}
-          ${contactSection}
-          ${emailSection}
-          ${citySection}
-        </td>
-        <td style="width: 30%; vertical-align: top; text-align: right;">
-          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; text-transform: uppercase; letter-spacing: 0.5px;">CUENTA DE COBRO No.</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; text-align: center; font-size: 17px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; font-family: monospace;">${numberText}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px; text-align: center; font-size: 9.5px; font-weight: bold; color: #000; background-color: #ffffff; text-transform: uppercase;">PERÍODO: ${getMonthNameUpper(invoice.getString("period"))}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Ficha de Datos / Metadatos (Fondo Blanco Puro) -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
-      <tr>
-        <!-- Columna 1: Info del Propietario -->
-        <td style="width: 55%; vertical-align: top; padding-right: 15px;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <tr>
-              <td style="width: 22%; font-weight: bold; padding: 3.5px 0; color: #000;">Nombre:</td>
-              <td style="width: 78%; padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerName}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Dirección:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerAddress || propertyName}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Contacto:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerPhone || '—'}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Cód. Unidad:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="border: none; padding: 0; font-weight: bold; color: #000;">${propertyCode || propertyName}</td>
-                    <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; color: #000; background-color: #ffffff;">NIT / C.C.</td>
-                    <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">${ownerDocNumber || '—'}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Correo:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${invoice.getString("email_sent_to") || '—'}</td>
-            </tr>
-          </table>
-        </td>
-        
-        <!-- Columna 2: Matrícula / Ref. Banco -->
-        <td style="width: 22%; vertical-align: top; padding-right: 12px;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Matrícula</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyMatricula || '&nbsp;'}</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Ref. Banco</td>
-            </tr>
-            <tr>
-              <td style="padding: 5px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyName}</td>
-            </tr>
-          </table>
-        </td>
-
-        <!-- Columna 3: Fechas / Área -->
-        <td style="width: 23%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Emisión</td>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Vencimiento</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("date"))}</td>
-              <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("due_date") || invoice.getString("date"))}</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Área (m²)</td>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Coeficiente</td>
-            </tr>
-            <tr>
-              <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyArea || '&nbsp;'}</td>
-              <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyCoef || '—'}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-      <tr>
-        <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
-        </td>
-        <td style="width: 50%; padding: 4.5px 8px; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Tabla de Conceptos (100% de Ancho, Fondo Blanco) -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 14px;">
-      <thead>
-        <tr style="border-bottom: 1.5px solid #000;">
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: left; width: 46%; background-color: #ffffff;">CONCEPTO</th>
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO ANTERIOR</th>
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">COBROS DEL MES</th>
-          <th style="padding: 6px 8px; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO TOTAL</th>
+    <!-- Header Corporativo -->
+    <div style="background-color: #0f172a; padding: 24px 28px; color: #ffffff;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="vertical-align: middle;">
+            ${companyLogo 
+              ? `<img src="data:image/png;base64,${companyLogo}" style="max-height: 52px; max-width: 160px; object-fit: contain; display: block; margin-bottom: 8px;" alt="Logo Copropiedad" />`
+              : ''
+            }
+            <div style="font-size: 16px; font-weight: 800; color: #ffffff; letter-spacing: -0.2px; text-transform: uppercase;">${cName}</div>
+            ${companyNit ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">NIT ${companyNit}</div>` : ''}
+          </td>
+          <td style="vertical-align: middle; text-align: right;">
+            <div style="display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 6px 12px; text-align: right;">
+              <div style="font-size: 9.5px; font-weight: 700; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.5px;">ESTADO DE CUENTA</div>
+              <div style="font-size: 13px; font-weight: 800; color: #ffffff; font-family: monospace;">No. ${numberText}</div>
+              ${pNameTitle ? `<div style="font-size: 9.5px; color: #cbd5e1; text-transform: uppercase; margin-top: 1px;">${pNameTitle}</div>` : ''}
+            </div>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+      </table>
+    </div>
 
-    <!-- Totales y Nota de Pago (Sin Rellenos de Color) -->
-    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
-      <tr>
-        <td style="width: 65%; vertical-align: top; text-align: left; padding-right: 15px;">
-          <div style="background-color: #ffffff; padding: 6px 8px; border: 1px solid #000; margin-bottom: 8px; font-size: 10.5px; font-weight: bold; color: #000; text-transform: uppercase;">
-            ${numeroALetras(totalActual)}
-          </div>
-          <div style="font-size: 10px; font-weight: bold; color: #000; line-height: 1.4; font-style: italic; text-transform: uppercase;">
-            ${notes ? notes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
-          </div>
-        </td>
-        <td style="width: 35%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
+    <!-- Contenido Principal -->
+    <div style="padding: 28px 28px 20px 28px;">
+      
+      <!-- Saludo y Mensaje de Texto -->
+      <div style="font-size: 14.5px; line-height: 1.6; color: #334155; margin-bottom: 20px;">
+        ${customMessageHtml ? customMessageHtml : `
+          <p style="margin: 0 0 12px 0;">Estimado(a) <strong>${oName}</strong>,</p>
+          <p style="margin: 0 0 12px 0;">Le compartimos su <strong>Estado de Cuenta integral</strong> correspondiente al período <strong>${pNameTitle || 'facturado'}</strong> para la unidad <strong>${pName}</strong>.</p>
+        `}
+      </div>
+
+      <!-- Aviso Importante de Administración -->
+      ${customNoticeHtml ? `
+      <div style="margin-bottom: 22px; padding: 14px 16px; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 12.5px; line-height: 1.5; color: #92400e;">
+        <div style="font-weight: 700; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px;">📢 Aviso Importante de la Administración</div>
+        <div>${customNoticeHtml}</div>
+      </div>` : ''}
+
+      <!-- TARJETA RESUMEN DE LA CUENTA A PAGAR -->
+      <div style="background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; overflow: hidden; margin-bottom: 24px;">
+        <div style="background-color: #f1f5f9; padding: 10px 16px; border-bottom: 1px solid #cbd5e1;">
+          <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; border-bottom: 1px solid #000; text-transform: uppercase; background-color: #ffffff;">TOTAL A PAGAR</td>
-            </tr>
-            <tr>
-              <td style="padding: 9px 10px; font-size: 18px; font-weight: bold; color: #000; background-color: #ffffff;">
-                <div style="float: left;">$</div>
-                <div style="float: right;">${cleanFmt(totalActual)}</div>
-                <div style="clear: both;"></div>
-              </td>
+              <td style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Resumen de Cobro</td>
+              <td style="font-size: 11px; font-weight: 700; color: #475569; text-align: right;">Inmueble: <strong style="color: #0f172a;">${pName}</strong></td>
             </tr>
           </table>
-        </td>
-      </tr>
-    </table>
+        </div>
+        
+        <div style="padding: 16px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px;">
+            <tr style="border-bottom: 1px dashed #e2e8f0;">
+              <td style="padding: 7px 0; color: #64748b;">Saldo Anterior (Meses anteriores):</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; font-family: monospace; ${sAntVal > 0.01 ? 'color: #b91c1c;' : (sAntVal < -0.01 ? 'color: #047857;' : 'color: #334155;')}">
+                ${sAntVal > 0.01 ? '+ $ ' + cleanFmt(sAntVal) : (sAntVal < -0.01 ? '- $ ' + cleanFmt(Math.abs(sAntVal)) : '$ 0 (Al día)')}
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px dashed #e2e8f0;">
+              <td style="padding: 7px 0; color: #64748b;">Cobros del Mes (${pNameTitle || 'Actual'}):</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; font-family: monospace; color: #334155;">
+                $ ${cleanFmt(cMesVal)}
+              </td>
+            </tr>
+            ${dueDate ? `
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Fecha Límite / Vencimiento:</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; color: #334155;">
+                ${dueDate}
+              </td>
+            </tr>` : ''}
+          </table>
 
-    <!-- Pie de Software -->
-    <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
-      Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
+          <!-- Bloque Total Destacado -->
+          <div style="background-color: #0f172a; border-radius: 8px; padding: 14px 18px; color: #ffffff;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">TOTAL A PAGAR</div>
+                  <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px; text-transform: uppercase;">${numeroALetras(totVal)}</div>
+                </td>
+                <td style="vertical-align: middle; text-align: right;">
+                  <div style="font-size: 22px; font-weight: 800; color: #ffffff; font-family: monospace; letter-spacing: -0.5px;">
+                    $ ${cleanFmt(totVal)}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Callout de Archivo PDF Adjunto -->
+      <div style="background-color: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 22px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="width: 28px; vertical-align: middle; font-size: 18px;">📎</td>
+            <td style="vertical-align: middle; font-size: 12.5px; color: #1e40af; line-height: 1.4;">
+              <strong>Archivo PDF oficial adjunto:</strong> Encuentre anexo el <strong>Estado de Cuenta oficial</strong> con el detalle completo de saldos anteriores, movimientos y conceptos discriminados.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Instrucciones de Pago -->
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 18px; margin-bottom: 18px;">
+        <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+          💳 Instrucciones de Pago
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.5; color: #475569; font-style: italic; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px;">
+          ${customNotes ? customNotes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
+        </div>
+      </div>
+
+      <!-- Despedida -->
+      <div style="font-size: 12.5px; color: #64748b; line-height: 1.5;">
+        Agradecemos realizar su pago oportunamente.<br>
+        <strong>Administración ${cName}</strong>
+      </div>
+
+    </div>
+
+    <!-- Footer de Software -->
+    <div style="background-color: #f1f5f9; padding: 12px 20px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #64748b; text-align: center;">
+      Documento emitido por GRAVY v2.0 | Desarrollado por JULIAN ESPINOSA ARRUBLA, NIT. 1130636393-2 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
     </div>
 
   </div>
 </body>
 </html>`;
-  };
+};
 
   const generatePhPdfAttachment = function({
     invoice,
@@ -1509,8 +1846,8 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     prevMonthName
   }) {
     const numberText = invoice.getString("number") || "cuenta";
-    const docType = type || 'invoice';
-    const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}`;
+    const docType = 'statement';
+    const filename = `EstadoCuenta_${numberText}`;
 
     try {
       const orchestratorRes = $http.send({
@@ -1520,14 +1857,7 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
         body: JSON.stringify({
           filename: filename,
           statementData: {
-            companyName,
-            companyNit,
-            companyAddress,
-            companyPhone,
-            companyEmail,
-            companyCity,
-            companyLogo,
-            docType,
+          docType: 'statement',
             docNumber: numberText,
             period: invoice.getString("period"),
             date: invoice.getString("date"),
@@ -1599,9 +1929,10 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     } catch (_) {}
   }
 
-  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
-  const customEmail = String(body?.email || '').trim();
+  const type = 'statement';
+    const customEmail = String(body?.email || '').trim();
   const customSubject = String(body?.subject || '').trim();
+  const customMessage = String(body?.message || '').trim();
 
   if (!invoiceId) {
     return e.json(400, { message: "El ID de la factura (invoiceId) es requerido." });
@@ -1646,7 +1977,7 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
 
     // Obtener cartera pendiente (para Saldo Anterior)
     const outstandingInvoices = [];
-    if (type === 'statement') {
+    {
       const res = $app.findRecordsByFilter(
         "ph_invoices",
         `property_id = '${prop.id}' && id != '${invoice.id}' && status != 'paid' && status != 'voided' && period < '${invoice.getString("period")}'`,
@@ -1662,7 +1993,8 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     }
 
     // Agrupar por conceptos de forma canónica (unificando saldos anteriores y cobros del mes)
-    const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices);
+    const conceptsCache = getPhConceptsCache();
+    const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache, prop ? prop.id : '', invoice.getString("period"));
     const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
     const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
@@ -1686,6 +2018,69 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
     const invoiceNotes = (invoice.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
 
     // Generar plantilla de correo
+        const saldoAnterior = conceptsList.reduce(function(s, c) { return s + (c.saldoAnterior || 0); }, 0);
+    const cobrosMes = conceptsList.reduce(function(s, c) { return s + (c.cobrosMes || 0); }, 0);
+    const totalPagar = totalActual;
+    const periodParts = String(invoice.getString("period") || "").split("-");
+    const periodMonthName = getMonthNameUpper(invoice.getString("period"));
+    const periodYear = periodParts.length > 0 ? periodParts[0] : "";
+    const periodLabel = periodMonthName + (periodYear ? (" " + periodYear) : "");
+    const dueDateFormatted = fmtDateDDMMYYYY(invoice.getString("due_date") || invoice.getString("date"));
+
+    const defaultSubjectTemplate = getSetting("ph_email_template_statement_subject", "") || "{copropiedad} — Estado de Cuenta {periodo} — Unidad {unidad}";
+    const defaultBodyTemplate = getSetting("ph_email_template_statement_body", "") || "Estimado(a) {propietario},\n\nLe compartimos su estado de cuenta integral correspondiente al período {periodo} para la unidad {unidad}.\n\n{aviso_adicional}\n\nAdjunto a este correo encontrará su documento oficial en formato PDF.\n\nInstrucciones de Pago:\n{instrucciones_pago}\n\nAgradecemos realizar su pago oportunamente.\nAtentamente,\nAdministración {copropiedad}";
+    const rawNotice = getSetting("ph_email_monthly_notice", "");
+
+    const interpolatePhTokens = function(templateStr, ctx) {
+      if (!templateStr) return "";
+      let res = String(templateStr);
+      res = res.replace(/\{aviso_adicional\}/gi, ctx.noticeText || "");
+      res = res.replace(/\{propietario\}/gi, ctx.ownerName || "Copropietario");
+      res = res.replace(/\{unidad\}/gi, ctx.unitName || "Unidad");
+      res = res.replace(/\{periodo\}/gi, ctx.periodLabel || "");
+      res = res.replace(/\{numero_factura\}/gi, ctx.invoiceNumber || "");
+      res = res.replace(/\{total_mes\}/gi, ctx.totalMesFmt || "$ 0");
+      res = res.replace(/\{saldo_anterior\}/gi, ctx.saldoAnteriorFmt || "$ 0");
+      res = res.replace(/\{total_pagar\}/gi, ctx.totalPagarFmt || "$ 0");
+      res = res.replace(/\{fecha_emision\}/gi, ctx.dateFmt || "");
+      res = res.replace(/\{fecha_vencimiento\}/gi, ctx.dueDateFmt || "");
+      res = res.replace(/\{copropiedad\}/gi, ctx.companyName || "Copropiedad");
+      res = res.replace(/\{nit_copropiedad\}/gi, ctx.companyNit || "");
+      res = res.replace(/\{instrucciones_pago\}/gi, ctx.paymentInstructions || "");
+      return res;
+    };
+
+    const tokenCtx = {
+      ownerName: owner ? (owner.getString("name") || "Copropietario") : "Copropietario",
+      unitName: prop.getString("name") || prop.getString("code") || "Unidad",
+      periodLabel: periodLabel,
+      invoiceNumber: invoice.getString("number"),
+      totalMesFmt: fmtCurrency(cobrosMes),
+      saldoAnteriorFmt: fmtCurrency(saldoAnterior),
+      totalPagarFmt: fmtCurrency(totalPagar),
+      dateFmt: fmtDateDDMMYYYY(invoice.getString("date")),
+      dueDateFmt: dueDateFormatted,
+      companyName: companyName,
+      companyNit: companyNit,
+      paymentInstructions: invoiceNotes,
+      noticeText: rawNotice
+    };
+
+    const emailSubject = customSubject ? interpolatePhTokens(customSubject, tokenCtx) : interpolatePhTokens(defaultSubjectTemplate, tokenCtx);
+
+    let messageParagraphsHtml = "";
+    if (customMessage) {
+      messageParagraphsHtml = customMessage.split('\n').map(function(p) { return p.trim() ? `<p style="margin: 0 0 8px 0;">${p}</p>` : ''; }).join('');
+    } else {
+      const interpolatedBody = interpolatePhTokens(defaultBodyTemplate, tokenCtx);
+      messageParagraphsHtml = interpolatedBody.split('\n').map(function(p) { return p.trim() ? `<p style="margin: 0 0 8px 0;">${p}</p>` : ''; }).join('');
+    }
+
+    let noticeBlockHtml = "";
+    if (rawNotice && (!defaultBodyTemplate.includes("{aviso_adicional}") || customMessage)) {
+      noticeBlockHtml = rawNotice.split('\n').map(function(p) { return p.trim() ? `<p style="margin: 0 0 6px 0;">${p}</p>` : ''; }).join('');
+    }
+
     const htmlContent = buildPhEmailHtml({
       invoice,
       conceptsList,
@@ -1706,14 +2101,15 @@ routerAdd('POST', '/api/ph/send-invoice-email', (e) => {
       companyCity,
       companyLogo,
       totalActual,
+      saldoAnterior,
+      cobrosMes,
+      dueDate: dueDateFormatted,
+      periodName: periodMonthName,
+      periodYear,
       notes: invoiceNotes,
-      prevMonthUnitRecaudo,
-      prevMonthTotalRecaudo,
-      prevMonthName
+      customMessageHtml: messageParagraphsHtml,
+      customNoticeHtml: noticeBlockHtml
     });
-
-    const docLabel = type === 'statement' ? 'Estado de Cuenta' : 'Cuenta de Cobro';
-    const emailSubject = customSubject || `${companyName} - ${docLabel} No. ${invoice.getString("number")} - Unidad ${prop.getString("name")}`;
 
     // Intentar enviar el correo electrónico con adjunto PDF
     try {
@@ -1852,13 +2248,371 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     return y + '-' + (m < 10 ? '0' + m : m);
   };
 
-  const getCanonicalConceptName = (typeof globalThis.getCanonicalConceptName === 'function') ? globalThis.getCanonicalConceptName : function(rawDesc) { return String(rawDesc || '').trim() || 'CONCEPTO'; };
-  const getPhConceptsCache = (typeof globalThis.getPhConceptsCache === 'function') ? globalThis.getPhConceptsCache : function() { return { byId:{}, moraId:'', admId:'', byCanonicalName:{} }; };
-  const resolveConceptGroup = (typeof globalThis.resolveConceptGroup === 'function') ? globalThis.resolveConceptGroup : function(line, cache) { return { groupKey: "__CONCEPT__", conceptId: "", description: "CONCEPTO" }; };
-  const getNetPaymentsForPhInvoice = (typeof globalThis.getNetPaymentsForPhInvoice === 'function') ? globalThis.getNetPaymentsForPhInvoice : function() { return 0; };
-  const autoMarkPaidIfSettled = (typeof globalThis.autoMarkPaidIfSettled === 'function') ? globalThis.autoMarkPaidIfSettled : function() {};
-  const getPreviousMonthRecaudos = (typeof globalThis.getPreviousMonthRecaudos === 'function') ? globalThis.getPreviousMonthRecaudos : function() { return { unitRecaudo: 0, totalRecaudo: 0 }; };
-  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function') ? globalThis.buildGroupedConceptsList : function() { return []; };
+  const getCanonicalConceptName = function(rawDesc) {
+    if (!rawDesc) return 'CONCEPTO';
+    var str = String(rawDesc).trim();
+    var norm = str
+      .toLowerCase()
+      .replace(/[áàäâ]/g, 'a')
+      .replace(/[éèëê]/g, 'e')
+      .replace(/[íìïî]/g, 'i')
+      .replace(/[óòöô]/g, 'o')
+      .replace(/[úùüû]/g, 'u');
+
+    if (
+      (norm.indexOf('interes') !== -1 && norm.indexOf('mora') !== -1) ||
+      norm === 'mora' ||
+      norm.indexOf('mora ') === 0 ||
+      norm.indexOf(' intereses mora') !== -1
+    ) {
+      return 'INTERESES DE MORA';
+    }
+
+    if (
+      norm.indexOf('cuota de administracion') !== -1 ||
+      norm.indexOf('cuota administracion') !== -1 ||
+      norm.indexOf('cuota ordinaria') !== -1 ||
+      norm === 'administracion'
+    ) {
+      return 'CUOTA ADMINISTRACION';
+    }
+
+    if (
+      norm.indexOf('fondo de imprevistos') !== -1 ||
+      norm.indexOf('fondo imprevistos') !== -1
+    ) {
+      return 'FONDO DE IMPREVISTOS';
+    }
+
+    return str;
+  };
+
+  const getPhConceptsCache = function() {
+    var cache = {
+      byId: {},
+      moraId: '',
+      admId: '',
+      byCanonicalName: {}
+    };
+    try {
+      var records = $app.findRecordsByFilter("ph_billing_concepts", "", "code", 500, 0);
+      if (records) {
+        for (var i = 0; i < records.length; i++) {
+          var r = records[i];
+          var id = r.id || (r.getString ? r.getString("id") : "");
+          var code = (r.getString ? r.getString("code") : (r.code || "")).trim().toUpperCase();
+          var name = (r.getString ? r.getString("name") : (r.name || "")).trim();
+          var upperName = name.toUpperCase();
+          cache.byId[id] = { id: id, code: code, name: name };
+
+          if (code === "MORA" || upperName.indexOf("MORA") !== -1) {
+            cache.moraId = id;
+          }
+          if (code === "ADM" || upperName.indexOf("ADMIN") !== -1) {
+            cache.admId = id;
+          }
+
+          var canonical = getCanonicalConceptName(name);
+          cache.byCanonicalName[canonical] = id;
+        }
+      }
+    } catch (e) {
+      console.warn("[GRAVY PH] Advertencia al cargar catálogo de conceptos:", e);
+    }
+    return cache;
+  };
+
+  const resolveConceptGroup = function(line, cache) {
+    var rawId = line.getString ? line.getString("concept_id") : (line.concept_id || "");
+    var rawDesc = line.getString ? line.getString("description") : (line.description || "Concepto");
+    var canonicalDesc = getCanonicalConceptName(rawDesc);
+
+    var conceptObj = (rawId && cache && cache.byId) ? cache.byId[rawId] : null;
+    var isMoraById = rawId && (rawId === (cache ? cache.moraId : '') || (conceptObj && (conceptObj.code === "MORA" || conceptObj.name.toUpperCase().indexOf("MORA") !== -1)));
+    var isMoraByText = canonicalDesc === "INTERESES DE MORA";
+
+    if (isMoraById || isMoraByText) {
+      return {
+        groupKey: "__MORA__",
+        conceptId: (conceptObj ? conceptObj.id : (cache ? cache.moraId : "")) || "",
+        description: "INTERESES DE MORA"
+      };
+    }
+
+    if (conceptObj) {
+      return {
+        groupKey: "ID_" + conceptObj.id,
+        conceptId: conceptObj.id,
+        description: conceptObj.name.toUpperCase()
+      };
+    }
+
+    if (cache && cache.byCanonicalName && cache.byCanonicalName[canonicalDesc]) {
+      var matchedId = cache.byCanonicalName[canonicalDesc];
+      var matchedConcept = cache.byId[matchedId];
+      if (matchedConcept) {
+        return {
+          groupKey: "ID_" + matchedConcept.id,
+          conceptId: matchedConcept.id,
+          description: matchedConcept.name.toUpperCase()
+        };
+      }
+    }
+
+    if (rawId) {
+      return {
+        groupKey: "ID_" + rawId,
+        conceptId: rawId,
+        description: canonicalDesc || String(rawDesc).toUpperCase()
+      };
+    }
+
+    return {
+      groupKey: "__TEXT_" + canonicalDesc,
+      conceptId: "",
+      description: canonicalDesc || "CONCEPTO"
+    };
+  };
+
+  const getNetPaymentsForPhInvoice = function(invoiceNumber, thirdPartyId) {
+    if (!invoiceNumber) return 0;
+    try {
+      var cleanNum = String(invoiceNumber).trim();
+      var sql =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total_paid" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (" +
+        "     l.cross_doc_ref = {:invoiceNumber}" +
+        "     OR l.cross_doc_ref LIKE {:invoiceNumberLike}" +
+        "     OR (t.cross_type = 'ph_invoices' AND t.cross_number = {:invoiceNumber})" +
+        "   )";
+      var binds = {
+        invoiceNumber: cleanNum,
+        invoiceNumberLike: cleanNum + '-%'
+      };
+      if (thirdPartyId && String(thirdPartyId).trim()) {
+        sql += " AND COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) = {:thirdPartyId}";
+        binds.thirdPartyId = String(thirdPartyId).trim();
+      }
+      var query = $app.db().newQuery(sql);
+      query.bind(binds);
+      var result = new DynamicModel({ total_paid: 0 });
+      query.one(result);
+      return Math.max(0, Number(result.total_paid || 0));
+    } catch (_) {
+      return 0;
+    }
+  };
+
+  const autoMarkPaidIfSettled = function(invoiceRecord) {
+    try {
+      var invNumber = invoiceRecord.getString ? invoiceRecord.getString("number") : (invoiceRecord.number || "");
+      var invStatus = invoiceRecord.getString ? invoiceRecord.getString("status") : (invoiceRecord.status || "");
+      var invTotal  = invoiceRecord.getFloat  ? invoiceRecord.getFloat("total")   : (Number(invoiceRecord.total) || 0);
+      if (!invNumber || invTotal <= 0 || invStatus === 'paid' || invStatus === 'voided') return;
+      var paid = getNetPaymentsForPhInvoice(invNumber, null);
+      if (paid >= invTotal - 0.01) {
+        if (invoiceRecord.set) {
+          invoiceRecord.set("status", "paid");
+          $app.save(invoiceRecord);
+        } else if (invoiceRecord.id) {
+          var rec = $app.findRecordById("ph_invoices", invoiceRecord.id);
+          if (rec) {
+            rec.set("status", "paid");
+            $app.save(rec);
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  const getPreviousMonthRecaudos = function(propertyId, ownerId, prevPeriod) {
+    var unitRecaudo = 0;
+    var totalRecaudo = 0;
+    if (!prevPeriod) return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+    var startDate = prevPeriod + '-01';
+    var endDate = prevPeriod + '-31 23:59:59';
+
+    try {
+      var sqlAll =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+        "   AND t.date >= {:startDate}" +
+        "   AND t.date <= {:endDate}";
+      var qAll = $app.db().newQuery(sqlAll);
+      qAll.bind({ startDate: startDate, endDate: endDate });
+      var resAll = new DynamicModel({ total: 0 });
+      qAll.one(resAll);
+      totalRecaudo = Number(resAll.total || 0);
+    } catch (_) {}
+
+    try {
+      var sqlUnit =
+        "SELECT COALESCE(SUM(l.credit), 0) AS total" +
+        " FROM tx_lines l" +
+        " INNER JOIN transactions t ON t.id = l.tx_id" +
+        " INNER JOIN accounts a ON a.id = l.account_id" +
+        " WHERE t.status = 'active'" +
+        "   AND a.code LIKE '13%'" +
+        "   AND (t.number LIKE 'RC-%' OR t.teso_mode != '')" +
+        "   AND t.date >= {:startDate}" +
+        "   AND t.date <= {:endDate}" +
+        "   AND (";
+      var conds = [];
+      var binds = { startDate: startDate, endDate: endDate };
+      if (ownerId && String(ownerId).trim()) {
+        conds.push("t.third_party_id = {:ownerId}");
+        conds.push("l.third_party_id = {:ownerId}");
+        binds.ownerId = String(ownerId).trim();
+      }
+      if (propertyId && String(propertyId).trim()) {
+        conds.push("t.teso_params LIKE {:propPattern}");
+        binds.propPattern = '%"ph_property_id":"' + String(propertyId).trim() + '"%';
+      }
+      if (conds.length > 0) {
+        sqlUnit += conds.join(" OR ") + ")";
+        var qUnit = $app.db().newQuery(sqlUnit);
+        qUnit.bind(binds);
+        var resUnit = new DynamicModel({ total: 0 });
+        qUnit.one(resUnit);
+        unitRecaudo = Number(resUnit.total || 0);
+      }
+    } catch (_) {}
+
+    if (unitRecaudo <= 0 && propertyId) {
+      try {
+        var unitPaid = $app.findRecordsByFilter(
+          "ph_invoices",
+          "property_id = '" + propertyId + "' && period = '" + prevPeriod + "' && status = 'paid'",
+          "",
+          100,
+          0
+        );
+        if (unitPaid) {
+          for (var i = 0; i < unitPaid.length; i++) {
+            unitRecaudo += unitPaid[i].getFloat("total");
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (totalRecaudo <= 0 && prevPeriod) {
+      try {
+        var allPaidInvs = $app.findRecordsByFilter(
+          "ph_invoices",
+          "period = '" + prevPeriod + "' && status = 'paid'",
+          "",
+          1000,
+          0
+        );
+        if (allPaidInvs) {
+          for (var ap = 0; ap < allPaidInvs.length; ap++) {
+            totalRecaudo += allPaidInvs[ap].getFloat("total");
+          }
+        }
+      } catch (_) {}
+    }
+
+    return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
+  };
+
+  const buildGroupedConceptsList = function(lines, outstandingInvoices, cache, propertyId, invoicePeriod) {
+    if (!cache) {
+      cache = getPhConceptsCache();
+    }
+    var conceptsMap = {};
+
+    if (lines) {
+      for (var i = 0; i < lines.length; i++) {
+        var l = lines[i];
+        var group = resolveConceptGroup(l, cache);
+        var key = group.groupKey;
+        var amount = l.getFloat ? l.getFloat("amount") : (Number(l.amount) || 0);
+        if (!conceptsMap[key]) {
+          conceptsMap[key] = {
+            conceptId: group.conceptId,
+            description: group.description,
+            saldoAnterior: 0,
+            cobrosMes: 0,
+            saldoActual: 0
+          };
+        }
+        conceptsMap[key].cobrosMes += amount;
+        conceptsMap[key].saldoActual += amount;
+      }
+    }
+
+    if (outstandingInvoices) {
+      for (var j = 0; j < outstandingInvoices.length; j++) {
+        var oldInv = outstandingInvoices[j];
+        var invNumber    = oldInv.getString ? oldInv.getString("number")         : (oldInv.number         || "");
+        var invThirdId   = oldInv.getString ? oldInv.getString("third_party_id") : (oldInv.third_party_id || "");
+        var invoiceTotal = oldInv.getFloat  ? oldInv.getFloat("total")           : (Number(oldInv.total)  || 0);
+
+        var alreadyPaid    = getNetPaymentsForPhInvoice(invNumber, invThirdId);
+        var pendingBalance = Math.max(0, invoiceTotal - alreadyPaid);
+
+        if (pendingBalance < 0.01) {
+          try { autoMarkPaidIfSettled(oldInv); } catch (_) {}
+          continue;
+        }
+
+        var proportionFactor = (invoiceTotal > 0.01) ? (pendingBalance / invoiceTotal) : 1;
+
+        var oldLines = $app.findRecordsByFilter(
+          "ph_invoice_lines",
+          "invoice_id = '" + oldInv.id + "'",
+          "line_order",
+          200,
+          0
+        );
+        if (oldLines) {
+          for (var k = 0; k < oldLines.length; k++) {
+            var ol        = oldLines[k];
+            var groupOld  = resolveConceptGroup(ol, cache);
+            var keyOld    = groupOld.groupKey;
+            var amountOld = ol.getFloat ? ol.getFloat("amount") : (Number(ol.amount) || 0);
+            var pendingAmt = Math.round(amountOld * proportionFactor * 100) / 100;
+            if (pendingAmt < 0.01) continue;
+            if (!conceptsMap[keyOld]) {
+              conceptsMap[keyOld] = {
+                conceptId: groupOld.conceptId,
+                description: groupOld.description,
+                saldoAnterior: 0,
+                cobrosMes: 0,
+                saldoActual: 0
+              };
+            }
+            conceptsMap[keyOld].saldoAnterior += pendingAmt;
+            conceptsMap[keyOld].saldoActual   += pendingAmt;
+          }
+        }
+      }
+    }
+
+    var list = Object.keys(conceptsMap).map(function(k) { return conceptsMap[k]; });
+
+    list.sort(function(a, b) {
+      var nameA = String(a.description || '').toUpperCase();
+      var nameB = String(b.description || '').toUpperCase();
+      if (nameA.indexOf('ADMIN') !== -1 && nameB.indexOf('ADMIN') === -1) return -1;
+      if (nameA.indexOf('ADMIN') === -1 && nameB.indexOf('ADMIN') !== -1) return 1;
+      if (nameA.indexOf('MORA') !== -1 && nameB.indexOf('MORA') === -1) return 1;
+      if (nameA.indexOf('MORA') === -1 && nameB.indexOf('MORA') !== -1) return -1;
+      return nameA.localeCompare(nameB);
+    });
+
+    return list;
+  };
 
   const numeroALetras = function(num) {
     var tempNum = parseFloat(String(num)).toFixed(2).split('.');
@@ -1953,265 +2707,251 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     }
   };
 
-  const buildPhEmailHtml = function({
-    invoice,
-    conceptsList,
-    propertyName,
-    propertyCode,
-    propertyArea,
-    propertyCoef,
-    propertyMatricula,
-    ownerName,
-    ownerDocNumber,
-    ownerAddress,
-    ownerPhone,
-    companyName,
-    companyNit,
-    companyAddress,
-    companyPhone,
-    companyEmail,
-    companyCity,
-    companyLogo,
-    totalActual,
-    notes: customNotes,
-    prevMonthUnitRecaudo,
-    prevMonthTotalRecaudo,
-    prevMonthName,
-    customMessageHtml,
-    customNoticeHtml
-  }) {
-    const numberText = invoice.getString("number");
-    
-    // Render de las filas agrupadas por concepto
-    let tableRowsHtml = "";
-    for (const c of conceptsList) {
-      const sAnt = c.saldoAnterior > 0 ? cleanFmt(c.saldoAnterior) : "";
-      const cMes = c.cobrosMes > 0 ? cleanFmt(c.cobrosMes) : "";
-      const sAct = c.saldoActual > 0 ? cleanFmt(c.saldoActual) : "";
-      
-      tableRowsHtml += `
-        <tr style="height: 22px;">
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: left; background-color: #ffffff;">${c.description}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${sAnt}</td>
-          <td style="padding: 5px 8px; border-right: 1px solid #000; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; background-color: #ffffff;">${cMes}</td>
-          <td style="padding: 5px 8px; border-bottom: 1px solid #000; font-size: 11px; color: #000; text-align: right; font-weight: bold; background-color: #ffffff;">${sAct}</td>
-        </tr>`;
+  function buildPhEmailHtml({
+  invoice,
+  conceptsList,
+  propertyName,
+  propertyCode,
+  propertyArea,
+  propertyCoef,
+  propertyMatricula,
+  ownerName,
+  ownerDocNumber,
+  ownerAddress,
+  ownerPhone,
+  companyName,
+  companyNit,
+  companyAddress,
+  companyPhone,
+  companyEmail,
+  companyCity,
+  companyLogo,
+  totalActual,
+  saldoAnterior,
+  cobrosMes,
+  dueDate,
+  periodName,
+  periodYear,
+  notes: customNotes,
+  customMessageHtml,
+  customNoticeHtml
+}) {
+  const numberText = (invoice && invoice.getString) ? (invoice.getString("number") || "") : (invoice?.number || "");
+  const pName = propertyName || "Unidad";
+  const oName = ownerName || "Copropietario";
+  const cName = companyName || "Copropiedad";
+
+  const list = conceptsList || [];
+  const sAntVal = (typeof saldoAnterior !== 'undefined' && saldoAnterior !== null)
+    ? Number(saldoAnterior)
+    : list.reduce(function(s, c) { return s + (Number(c.saldoAnterior) || 0); }, 0);
+  const cMesVal = (typeof cobrosMes !== 'undefined' && cobrosMes !== null)
+    ? Number(cobrosMes)
+    : list.reduce(function(s, c) { return s + (Number(c.cobrosMes) || 0); }, 0);
+  const totVal = (typeof totalActual !== 'undefined' && totalActual !== null)
+    ? Number(totalActual)
+    : (sAntVal + cMesVal);
+
+  const cleanFmt = function(value) {
+    if (value === undefined || value === null || isNaN(Number(value))) return "0.00";
+    var num = Number(value);
+    var isNeg = num < 0;
+    var absParts = Math.abs(num).toFixed(2).split('.');
+    absParts[0] = absParts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    return (isNeg ? "- " : "") + absParts[0];
+  };
+
+  const numeroALetras = function(num) {
+    var rawFloat = parseFloat(String(num));
+    if (isNaN(rawFloat) || Math.abs(rawFloat) < 0.01) return 'SON: CERO PESOS M/CTE';
+    var isNegative = rawFloat < 0;
+    var absVal = Math.abs(rawFloat);
+    var tempNum = absVal.toFixed(2).split('.');
+    var entero = parseInt(tempNum[0], 10);
+    if (entero === 0) return 'SON: CERO PESOS M/CTE';
+    function letras(n) {
+      if (n <= 0) return '';
+      if (n < 10) return ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve'][n] || '';
+      if (n < 20) return ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciséis', 'Diecisiete', 'Dieciocho', 'Diecinueve'][n - 10] || '';
+      if (n < 30) return n === 20 ? 'Veinte' : 'Veinti' + letras(n - 20).toLowerCase();
+      if (n < 100) {
+        var u = n % 10;
+        var d = Math.floor(n / 10);
+        var decenas = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+        return (decenas[d] || '') + (u > 0 ? ' y ' + letras(u).toLowerCase() : '');
+      }
+      if (n < 1000) {
+        var d_u = n % 100;
+        var c = Math.floor(n / 100);
+        var centenas = ['', 'Cien', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+        if (n === 100) return 'Cien';
+        if (c === 1) return 'Ciento ' + letras(d_u).toLowerCase();
+        return (centenas[c] || '') + (d_u > 0 ? ' ' + letras(d_u).toLowerCase() : '');
+      }
+      if (n < 1000000) {
+        var mil = Math.floor(n / 1000);
+        var resto = n % 1000;
+        var t = mil === 1 ? 'Mil' : letras(mil) + ' mil';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      if (n < 1000000000) {
+        var millon = Math.floor(n / 1000000);
+        var resto = n % 1000000;
+        var t = millon === 1 ? 'Un millón' : letras(mil) + ' millones';
+        return t + (resto > 0 ? ' ' + letras(resto).toLowerCase() : '');
+      }
+      return String(n);
     }
+    var res = letras(entero) || 'Cero';
+    res = res.charAt(0).toUpperCase() + res.slice(1);
+    var prefix = isNegative ? 'MENOS ' : '';
+    return ('Son: ' + prefix + res + ' PESOS M/CTE').toUpperCase();
+  };
 
-    // Nota al pie de factura / instrucciones de recaudo
-    let defaultFooterNote = "";
-    try {
-      defaultFooterNote = getSetting("ph_invoice_footer_note", "");
-    } catch (_) {}
-    const notes = (customNotes || invoice.getString("notes") || defaultFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
+  const pNameTitle = (periodName || '') + (periodYear ? (' ' + periodYear) : '');
 
-    const phoneSection = companyPhone ? `TEL / PORTERÍA: ${companyPhone}` : "";
-    const addressSection = companyAddress ? `<div style="font-size: 10px; color: #000;">${companyAddress}</div>` : "";
-    const contactSection = phoneSection ? `<div style="font-size: 10px; color: #000;">${phoneSection}</div>` : "";
-    const emailSection = companyEmail ? `<div style="font-size: 10px; color: #000;">${companyEmail}</div>` : "";
-    const citySection = companyCity ? `<div style="font-size: 10px; color: #000;">${companyCity}</div>` : "";
-
-    return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Cuenta de Cobro No. ${numberText}</title>
+  <title>Estado de Cuenta — ${pName}</title>
 </head>
-<body style="font-family: Arial, Helvetica, sans-serif; color: #000; background-color: #f1f5f9; margin: 0; padding: 20px; -webkit-text-size-adjust: 100%;">
-  <div style="max-width: 720px; margin: 0 auto; background: #ffffff; padding: 20px; border: 1px solid #cbd5e1;">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; background-color: #f8fafc; margin: 0; padding: 24px 12px; -webkit-text-size-adjust: 100%;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
     
-    <!-- Encabezado Principal: Logo, Datos Copropiedad y Caja de Documento -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border-bottom: 2px solid #000; padding-bottom: 10px;">
-      <tr>
-        <td style="width: 25%; vertical-align: middle; text-align: left; padding-right: 10px;">
-          ${companyLogo 
-            ? `<img src="data:image/png;base64,${companyLogo}" style="max-height: 75px; max-width: 170px; object-fit: contain; display: block;" alt="Logo Copropiedad" />`
-            : `<div style="font-size: 20px; font-weight: 900; color: #000; font-family: sans-serif; letter-spacing: -0.5px;">${companyName.substring(0, 4)}</div>`
-          }
-        </td>
-        <td style="width: 45%; text-align: center; vertical-align: top; line-height: 1.3; padding: 0 10px;">
-          <div style="font-size: 14.5px; font-weight: bold; color: #000; text-transform: uppercase;">${companyName}</div>
-          <div style="font-size: 11px; font-weight: bold; color: #000; margin-top: 2px;">NIT ${companyNit}</div>
-          ${addressSection}
-          ${contactSection}
-          ${emailSection}
-          ${citySection}
-        </td>
-        <td style="width: 30%; vertical-align: top; text-align: right;">
-          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; text-transform: uppercase; letter-spacing: 0.5px;">CUENTA DE COBRO No.</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; text-align: center; font-size: 17px; font-weight: bold; color: #000; background-color: #ffffff; border-bottom: 1px solid #000; font-family: monospace;">${numberText}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px; text-align: center; font-size: 9.5px; font-weight: bold; color: #000; background-color: #ffffff; text-transform: uppercase;">PERÍODO: ${getMonthNameUpper(invoice.getString("period"))}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Mensaje Personalizado de la Administración -->
-    ${customMessageHtml ? `
-    <div style="margin-bottom: 14px; padding: 12px 16px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #1e293b;">
-      ${customMessageHtml}
-    </div>` : ''}
-
-    <!-- Aviso Especial / Circular / Asamblea -->
-    ${customNoticeHtml ? `
-    <div style="margin-bottom: 14px; padding: 12px 16px; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #92400e;">
-      <div style="font-weight: bold; margin-bottom: 4px; font-size: 12.5px;">📢 AVISO IMPORTANTE DE LA ADMINISTRACIÓN</div>
-      <div>${customNoticeHtml}</div>
-    </div>` : ''}
-
-    <!-- Ficha de Datos / Metadatos (Fondo Blanco Puro) -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px;">
-      <tr>
-        <!-- Columna 1: Info del Propietario -->
-        <td style="width: 55%; vertical-align: top; padding-right: 15px;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-            <tr>
-              <td style="width: 22%; font-weight: bold; padding: 3.5px 0; color: #000;">Nombre:</td>
-              <td style="width: 78%; padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerName}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Dirección:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerAddress || propertyName}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Contacto:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${ownerPhone || '—'}</td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Cód. Unidad:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="border: none; padding: 0; font-weight: bold; color: #000;">${propertyCode || propertyName}</td>
-                    <td style="width: 28%; border: 1px solid #000; font-weight: bold; text-align: center; font-size: 9px; padding: 2px; text-transform: uppercase; color: #000; background-color: #ffffff;">NIT / C.C.</td>
-                    <td style="width: 38%; border-bottom: 1px solid #000; padding: 0 4px; font-weight: bold; color: #000;">${ownerDocNumber || '—'}</td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td style="font-weight: bold; padding: 3.5px 0; color: #000;">Correo:</td>
-              <td style="padding: 3.5px 0; border-bottom: 1px solid #000; font-weight: bold; color: #000;">${invoice.getString("email_sent_to") || '—'}</td>
-            </tr>
-          </table>
-        </td>
-        
-        <!-- Columna 2: Matrícula / Ref. Banco -->
-        <td style="width: 22%; vertical-align: top; padding-right: 12px;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff; text-transform: uppercase;">Matrícula</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; padding: 5px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyMatricula || '&nbsp;'}</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 4px; text-align: center; color: #000; background-color: #ffffff;">Ref. Banco</td>
-            </tr>
-            <tr>
-              <td style="padding: 5px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyName}</td>
-            </tr>
-          </table>
-        </td>
-
-        <!-- Columna 3: Fechas / Área -->
-        <td style="width: 23%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Emisión</td>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; width: 50%; color: #000; background-color: #ffffff;">Vencimiento</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("date"))}</td>
-              <td style="border-bottom: 1px solid #000; padding: 4px; text-align: center; font-weight: bold; color: #000; background-color: #ffffff;">${fmtDateDDMMYYYY(invoice.getString("due_date") || invoice.getString("date"))}</td>
-            </tr>
-            <tr>
-              <td style="border-bottom: 1px solid #000; border-right: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Área (m²)</td>
-              <td style="border-bottom: 1px solid #000; font-weight: bold; padding: 3.5px; text-align: center; color: #000; background-color: #ffffff;">Coeficiente</td>
-            </tr>
-            <tr>
-              <td style="border-right: 1px solid #000; padding: 4px; text-align: center; height: 18px; font-weight: bold; color: #000; background-color: #ffffff;">${propertyArea || '&nbsp;'}</td>
-              <td style="padding: 4px; text-align: center; font-weight: bold; height: 18px; color: #000; background-color: #ffffff;">${propertyCoef || '—'}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Barra de Recaudo del Mes Inmediatamente Anterior -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; border: 1px solid #000; background-color: #ffffff;">
-      <tr>
-        <td style="width: 50%; padding: 4.5px 8px; border-right: 1px solid #000; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Recaudo Mes Anterior Unidad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthUnitRecaudo)}</span>
-        </td>
-        <td style="width: 50%; padding: 4.5px 8px; background-color: #ffffff; color: #000;">
-          <span style="font-weight: bold; text-transform: uppercase;">Total Recaudo Copropiedad ${prevMonthName ? '(' + prevMonthName + ')' : ''}:</span>
-          <span style="font-weight: bold; font-family: monospace; font-size: 11px; margin-left: 6px;">$ ${cleanFmt(prevMonthTotalRecaudo)}</span>
-        </td>
-      </tr>
-    </table>
-
-    <!-- Tabla de Conceptos (100% de Ancho, Fondo Blanco) -->
-    <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 14px;">
-      <thead>
-        <tr style="border-bottom: 1.5px solid #000;">
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: left; width: 46%; background-color: #ffffff;">CONCEPTO</th>
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO ANTERIOR</th>
-          <th style="padding: 6px 8px; border-right: 1px solid #000; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">COBROS DEL MES</th>
-          <th style="padding: 6px 8px; font-size: 11px; font-weight: bold; color: #000; text-align: right; width: 18%; background-color: #ffffff;">SALDO TOTAL</th>
+    <!-- Header Corporativo -->
+    <div style="background-color: #0f172a; padding: 24px 28px; color: #ffffff;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="vertical-align: middle;">
+            ${companyLogo 
+              ? `<img src="data:image/png;base64,${companyLogo}" style="max-height: 52px; max-width: 160px; object-fit: contain; display: block; margin-bottom: 8px;" alt="Logo Copropiedad" />`
+              : ''
+            }
+            <div style="font-size: 16px; font-weight: 800; color: #ffffff; letter-spacing: -0.2px; text-transform: uppercase;">${cName}</div>
+            ${companyNit ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">NIT ${companyNit}</div>` : ''}
+          </td>
+          <td style="vertical-align: middle; text-align: right;">
+            <div style="display: inline-block; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 6px 12px; text-align: right;">
+              <div style="font-size: 9.5px; font-weight: 700; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.5px;">ESTADO DE CUENTA</div>
+              <div style="font-size: 13px; font-weight: 800; color: #ffffff; font-family: monospace;">No. ${numberText}</div>
+              ${pNameTitle ? `<div style="font-size: 9.5px; color: #cbd5e1; text-transform: uppercase; margin-top: 1px;">${pNameTitle}</div>` : ''}
+            </div>
+          </td>
         </tr>
-      </thead>
-      <tbody>
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+      </table>
+    </div>
 
-    <!-- Totales y Nota de Pago (Sin Rellenos de Color) -->
-    <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
-      <tr>
-        <td style="width: 65%; vertical-align: top; text-align: left; padding-right: 15px;">
-          <div style="background-color: #ffffff; padding: 6px 8px; border: 1px solid #000; margin-bottom: 8px; font-size: 10.5px; font-weight: bold; color: #000; text-transform: uppercase;">
-            ${numeroALetras(totalActual)}
-          </div>
-          <div style="font-size: 10px; font-weight: bold; color: #000; line-height: 1.4; font-style: italic; text-transform: uppercase;">
-            ${notes ? notes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
-          </div>
-        </td>
-        <td style="width: 35%; vertical-align: top;">
-          <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; background-color: #ffffff;">
+    <!-- Contenido Principal -->
+    <div style="padding: 28px 28px 20px 28px;">
+      
+      <!-- Saludo y Mensaje de Texto -->
+      <div style="font-size: 14.5px; line-height: 1.6; color: #334155; margin-bottom: 20px;">
+        ${customMessageHtml ? customMessageHtml : `
+          <p style="margin: 0 0 12px 0;">Estimado(a) <strong>${oName}</strong>,</p>
+          <p style="margin: 0 0 12px 0;">Le compartimos su <strong>Estado de Cuenta integral</strong> correspondiente al período <strong>${pNameTitle || 'facturado'}</strong> para la unidad <strong>${pName}</strong>.</p>
+        `}
+      </div>
+
+      <!-- Aviso Importante de Administración -->
+      ${customNoticeHtml ? `
+      <div style="margin-bottom: 22px; padding: 14px 16px; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 6px; font-size: 12.5px; line-height: 1.5; color: #92400e;">
+        <div style="font-weight: 700; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px;">📢 Aviso Importante de la Administración</div>
+        <div>${customNoticeHtml}</div>
+      </div>` : ''}
+
+      <!-- TARJETA RESUMEN DE LA CUENTA A PAGAR -->
+      <div style="background-color: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; overflow: hidden; margin-bottom: 24px;">
+        <div style="background-color: #f1f5f9; padding: 10px 16px; border-bottom: 1px solid #cbd5e1;">
+          <table style="width: 100%; border-collapse: collapse;">
             <tr>
-              <td style="padding: 4px; text-align: center; font-size: 10px; font-weight: bold; color: #000; border-bottom: 1px solid #000; text-transform: uppercase; background-color: #ffffff;">TOTAL A PAGAR</td>
-            </tr>
-            <tr>
-              <td style="padding: 9px 10px; font-size: 18px; font-weight: bold; color: #000; background-color: #ffffff;">
-                <div style="float: left;">$</div>
-                <div style="float: right;">${cleanFmt(totalActual)}</div>
-                <div style="clear: both;"></div>
-              </td>
+              <td style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Resumen de Cobro</td>
+              <td style="font-size: 11px; font-weight: 700; color: #475569; text-align: right;">Inmueble: <strong style="color: #0f172a;">${pName}</strong></td>
             </tr>
           </table>
-        </td>
-      </tr>
-    </table>
+        </div>
+        
+        <div style="padding: 16px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px;">
+            <tr style="border-bottom: 1px dashed #e2e8f0;">
+              <td style="padding: 7px 0; color: #64748b;">Saldo Anterior (Meses anteriores):</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; font-family: monospace; ${sAntVal > 0.01 ? 'color: #b91c1c;' : (sAntVal < -0.01 ? 'color: #047857;' : 'color: #334155;')}">
+                ${sAntVal > 0.01 ? '+ $ ' + cleanFmt(sAntVal) : (sAntVal < -0.01 ? '- $ ' + cleanFmt(Math.abs(sAntVal)) : '$ 0 (Al día)')}
+              </td>
+            </tr>
+            <tr style="border-bottom: 1px dashed #e2e8f0;">
+              <td style="padding: 7px 0; color: #64748b;">Cobros del Mes (${pNameTitle || 'Actual'}):</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; font-family: monospace; color: #334155;">
+                $ ${cleanFmt(cMesVal)}
+              </td>
+            </tr>
+            ${dueDate ? `
+            <tr>
+              <td style="padding: 7px 0; color: #64748b;">Fecha Límite / Vencimiento:</td>
+              <td style="padding: 7px 0; text-align: right; font-weight: 700; color: #334155;">
+                ${dueDate}
+              </td>
+            </tr>` : ''}
+          </table>
 
-    <!-- Pie de Software -->
-    <div style="border-top: 1px solid #000; margin-top: 22px; padding-top: 6px; font-size: 8.5px; color: #333; text-align: center;">
-      Documento emitido por GRAVY v2.0 / NIT. 901.442.115-3 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
+          <!-- Bloque Total Destacado -->
+          <div style="background-color: #0f172a; border-radius: 8px; padding: 14px 18px; color: #ffffff;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <div style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">TOTAL A PAGAR</div>
+                  <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px; text-transform: uppercase;">${numeroALetras(totVal)}</div>
+                </td>
+                <td style="vertical-align: middle; text-align: right;">
+                  <div style="font-size: 22px; font-weight: 800; color: #ffffff; font-family: monospace; letter-spacing: -0.5px;">
+                    $ ${cleanFmt(totVal)}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Callout de Archivo PDF Adjunto -->
+      <div style="background-color: #eff6ff; border: 1.5px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 22px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="width: 28px; vertical-align: middle; font-size: 18px;">📎</td>
+            <td style="vertical-align: middle; font-size: 12.5px; color: #1e40af; line-height: 1.4;">
+              <strong>Archivo PDF oficial adjunto:</strong> Encuentre anexo el <strong>Estado de Cuenta oficial</strong> con el detalle completo de saldos anteriores, movimientos y conceptos discriminados.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Instrucciones de Pago -->
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 18px; margin-bottom: 18px;">
+        <div style="font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+          💳 Instrucciones de Pago
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.5; color: #475569; font-style: italic; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px;">
+          ${customNotes ? customNotes.replace(/\n/g, '<br>') : 'CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.'}
+        </div>
+      </div>
+
+      <!-- Despedida -->
+      <div style="font-size: 12.5px; color: #64748b; line-height: 1.5;">
+        Agradecemos realizar su pago oportunamente.<br>
+        <strong>Administración ${cName}</strong>
+      </div>
+
+    </div>
+
+    <!-- Footer de Software -->
+    <div style="background-color: #f1f5f9; padding: 12px 20px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #64748b; text-align: center;">
+      Documento emitido por GRAVY v2.0 | Desarrollado por JULIAN ESPINOSA ARRUBLA, NIT. 1130636393-2 — Sistema Integral de Control y Gestión de Propiedad Horizontal.
     </div>
 
   </div>
 </body>
 </html>`;
-  };
+};
 
   const generatePhPdfAttachment = function({
     invoice,
@@ -2242,8 +2982,8 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     prevMonthName
   }) {
     const numberText = invoice.getString("number") || "cuenta";
-    const docType = type || 'invoice';
-    const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}`;
+    const docType = 'statement';
+    const filename = `EstadoCuenta_${numberText}`;
 
     try {
       const orchestratorRes = $http.send({
@@ -2253,14 +2993,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         body: JSON.stringify({
           filename: filename,
           statementData: {
-            companyName,
-            companyNit,
-            companyAddress,
-            companyPhone,
-            companyEmail,
-            companyCity,
-            companyLogo,
-            docType,
+          docType: 'statement',
             docNumber: numberText,
             period: invoice.getString("period"),
             date: invoice.getString("date"),
@@ -2334,7 +3067,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
     } catch (_) {}
   }
 
-  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+  const type = 'statement';
   const customSubject = String(body?.subject || '').trim();
   const customMessage = String(body?.message || '').trim();
   const customNotice = String(body?.notice !== undefined ? body.notice : '').trim();
@@ -2517,7 +3250,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
 
         // Obtener cartera pendiente (para Saldo Anterior)
         const outstandingInvoices = [];
-        if (type === 'statement') {
+    {
           const res = $app.findRecordsByFilter(
             "ph_invoices",
             `property_id = '${prop.id}' && id != '${inv.id}' && status != 'paid' && status != 'voided' && period < '${inv.getString("period")}'`,
@@ -2533,7 +3266,7 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
         }
 
         // Agrupar por conceptos de forma canónica (unificando saldos anteriores y cobros del mes)
-        const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache);
+        const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache, prop ? prop.id : '', inv.getString("period"));
         const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
         const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
@@ -2596,9 +3329,8 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           companyCity,
           companyLogo,
           totalActual,
-          notes: invoiceNotes,
           prevMonthUnitRecaudo,
-          prevMonthTotalRecaudo,
+          prevMonthTotalRecaudo: (prevMonthTotalRecaudo > 0 ? prevMonthTotalRecaudo : (prevRecaudosBatch.totalRecaudo || 0)),
           prevMonthName,
           customMessageHtml: messageParagraphsHtml,
           customNoticeHtml: noticeBlockHtml
@@ -2628,7 +3360,10 @@ routerAdd('POST', '/api/ph/send-bulk-emails', (e) => {
           companyLogo,
           totalActual,
           type,
-          notes: invoiceNotes
+          notes: invoiceNotes,
+          prevMonthUnitRecaudo,
+          prevMonthTotalRecaudo: (prevMonthTotalRecaudo > 0 ? prevMonthTotalRecaudo : (prevRecaudosBatch.totalRecaudo || 0)),
+          prevMonthName
         });
 
         // Enviar usando el cliente mailer de PocketBase
@@ -2895,9 +3630,7 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
         return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
       };
 
-  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function')
-    ? globalThis.buildGroupedConceptsList
-    : function(lines, outstandingInvoices, cache) {
+  const buildGroupedConceptsList = function(lines, outstandingInvoices, cache, propertyId, invoicePeriod) {
         if (!cache) cache = getPhConceptsCache();
         var conceptsMap = {};
         if (lines) {
@@ -2982,7 +3715,8 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
     } catch (_) {}
   }
 
-  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+  const type = 'statement';
+  const customMessage = String(body?.message || '').trim(); // 'invoice' o 'statement'
 
   if (!invoiceId) {
     return e.json(400, { message: "El ID de la factura es requerido." });
@@ -3013,7 +3747,7 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
     );
 
     const outstandingInvoices = [];
-    if (type === 'statement') {
+    {
       const res = $app.findRecordsByFilter(
         "ph_invoices",
         `property_id = '${prop.id}' && id != '${inv.id}' && status != 'paid' && status != 'voided' && period < '${inv.getString("period")}'`,
@@ -3029,7 +3763,8 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
     }
 
     // Agrupar por conceptos de forma canónica (unificando saldos anteriores y cobros del mes)
-    const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices);
+    const conceptsCache = getPhConceptsCache();
+    const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache, prop ? prop.id : '', inv.getString("period"));
     const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
     const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";
@@ -3052,10 +3787,10 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
     const invoiceNotes = (inv.getString("notes") || companyFooterNote || "CONSIGNAR EN LAS CUENTAS BANCARIAS AUTORIZADAS DE LA COPROPIEDAD INDICANDO LA REFERENCIA DE UNIDAD PARA RECAUDO.").trim();
 
     const numberText = inv.getString("number") || "cuenta";
-    const docType = type || 'invoice';
+    const docType = 'statement';
     const rawUnit = prop.getString("name") || prop.getString("code") || "Unidad";
     const cleanUnit = rawUnit.replace(/[^a-zA-Z0-9_\-]/g, '_');
-    const filename = `${docType === 'statement' ? 'EstadoCuenta' : 'CuentaCobro'}_${numberText}_${cleanUnit}`;
+    const filename = `EstadoCuenta_${numberText}_${cleanUnit}`;
 
     const orchestratorRes = $http.send({
       url: "http://127.0.0.1:8088/api/ph/generate-pdf",
@@ -3065,14 +3800,7 @@ routerAdd('POST', '/api/ph/download-invoice-pdf', (e) => {
         filename: filename,
         format: "base64",
         statementData: {
-          companyName,
-          companyNit,
-          companyAddress,
-          companyPhone,
-          companyEmail,
-          companyCity,
-          companyLogo,
-          docType,
+          docType: 'statement',
           docNumber: numberText,
           period: inv.getString("period"),
           date: inv.getString("date"),
@@ -3281,9 +4009,7 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
         return { unitRecaudo: unitRecaudo, totalRecaudo: totalRecaudo };
       };
 
-  const buildGroupedConceptsList = (typeof globalThis.buildGroupedConceptsList === 'function')
-    ? globalThis.buildGroupedConceptsList
-    : function(lines, outstandingInvoices, cache) {
+  const buildGroupedConceptsList = function(lines, outstandingInvoices, cache, propertyId, invoicePeriod) {
         if (!cache) cache = getPhConceptsCache();
         var conceptsMap = {};
         if (lines) {
@@ -3364,7 +4090,8 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
     } catch (_) {}
   }
 
-  const type = String(body?.type || 'invoice').trim(); // 'invoice' o 'statement'
+  const type = 'statement';
+  const customMessage = String(body?.message || '').trim(); // 'invoice' o 'statement'
 
   if (!period) {
     return e.json(400, { message: "El período de facturación es requerido (formato YYYY-MM)." });
@@ -3511,7 +4238,7 @@ routerAdd('POST', '/api/ph/download-period-pdf', (e) => {
       const outstandingInvoices = (type === 'statement') ? (pendingByPropId[prop.id] || []) : [];
 
       // Agrupar por conceptos de forma canónica (unificando saldos anteriores y cobros del mes)
-      const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache);
+      const conceptsList = buildGroupedConceptsList(lines, outstandingInvoices, conceptsCache, prop ? prop.id : '', period);
       const totalActual = conceptsList.reduce((s, c) => s + c.saldoActual, 0);
 
       const ownerDocNumber = owner ? (owner.getString("doc_number") ? (owner.getString("doc_number") + (owner.getString("dv") ? "-" + owner.getString("dv") : "")) : (owner.getString("nit") || owner.getString("document") || "—")) : "—";

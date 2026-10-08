@@ -365,6 +365,8 @@ async function _openMassProductsImportModal() {
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassProductsImport(parsedRows));
 
@@ -619,8 +621,9 @@ async function _executeMassProductsImport(rows) {
 ══════════════════════════════════════════════════════════ */
 function _downloadMassFixedAssetsTemplate() {
   const headers = [
-    'codigo', 'nombre', 'categoria', 'costo', 'vida_util_niif', 'vida_util_fiscal',
-    'valor_residual', 'metodo_depreciacion', 'centro_costos', 'responsable',
+    'codigo', 'nombre', 'categoria', 'costo', 'es_depreciable', 'vida_util_niif', 'vida_util_fiscal',
+    'valor_residual', 'metodo_depreciacion', 'depr_acum_inicial_niif', 'depr_acum_inicial_fiscal',
+    'periodo_corte_depreciacion', 'centro_costos', 'responsable',
     'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero',
     'marca', 'modelo', 'serie', 'placa_qr', 'estado', 'activo_padre'
   ];
@@ -631,10 +634,14 @@ function _downloadMassFixedAssetsTemplate() {
       nombre: 'Portátil Lenovo ThinkPad E14 Gen 4 Core i7 16GB',
       categoria: 'COMP',
       costo: 4850000,
+      es_depreciable: 'SI',
       vida_util_niif: 60,
       vida_util_fiscal: 60,
       valor_residual: 485000,
       metodo_depreciacion: 'linea_recta',
+      depr_acum_inicial_niif: 0,
+      depr_acum_inicial_fiscal: 0,
+      periodo_corte_depreciacion: '2025-12',
       centro_costos: 'ADM-01',
       responsable: 'admin@empresa.com',
       proveedor: '900123456',
@@ -651,13 +658,17 @@ function _downloadMassFixedAssetsTemplate() {
     },
     {
       codigo: 'VEH-002',
-      nombre: 'Camión Foton Aumark 3.5 Toneladas Furgón Aislado',
+      nombre: 'Camioneta Changan Deepal S05 Eléctrica',
       categoria: 'VEH',
-      costo: 128000000,
-      vida_util_niif: 120,
-      vida_util_fiscal: 120,
-      valor_residual: 12800000,
+      costo: 133990000,
+      es_depreciable: 'SI',
+      vida_util_niif: 60,
+      vida_util_fiscal: 60,
+      valor_residual: 1000000,
       metodo_depreciacion: 'linea_recta',
+      depr_acum_inicial_niif: 6649500,
+      depr_acum_inicial_fiscal: 6649500,
+      periodo_corte_depreciacion: '2025-12',
       centro_costos: 'LOG-01',
       responsable: '',
       proveedor: '890987654',
@@ -702,10 +713,14 @@ function _downloadMassFixedAssetsTemplate() {
     ['nombre', 'SÍ', 'Texto Libre', 'Descripción o nombre comercial completo del activo fijo.', 'Portátil Lenovo ThinkPad E14 Gen 4'],
     ['categoria', 'SÍ', 'Código o Nombre', 'Código (ej: COMP, VEH, MAQ) o nombre de la Categoría de Activos Fijos existente en el módulo NIIF.', 'COMP'],
     ['costo', 'SÍ', 'Número Positivo (> 0)', 'Costo histórico de adquisición del activo en pesos colombianos ($ COP).', '4850000'],
+    ['es_depreciable', 'NO (Default: SI)', 'Texto (SI/NO)', 'Indica si el activo es depreciable. Si es NO (terrenos, lotes, obras de arte), no genera cuota contable.', 'SI'],
     ['vida_util_niif', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil contable bajo NIIF en meses. Si se omite, toma la vida útil por defecto de la categoría.', '60'],
     ['vida_util_fiscal', 'NO (Auto)', 'Número Entero (Meses)', 'Vida útil tributaria fiscal en meses (Estatuto Tributario Art. 137). Si se omite, toma la de la categoría o la vida útil NIIF.', '60'],
     ['valor_residual', 'NO (Auto)', 'Número (>= 0)', 'Valor de salvamento o residual NIIF ($ COP). Si se omite, se calcula con el % por defecto de la categoría o 0.', '485000'],
     ['metodo_depreciacion', 'NO', 'Texto', 'Método de cálculo. Valores admitidos: linea_recta, saldos_decrecientes, unidades_produccion (Default: linea_recta).', 'linea_recta'],
+    ['depr_acum_inicial_niif', 'NO (Opcional)', 'Número (>= 0)', 'Depreciación acumulada contable al corte de migración/saldo inicial (ej: dic/2025). Alícuota individual de esta placa.', '6649500'],
+    ['depr_acum_inicial_fiscal', 'NO (Opcional)', 'Número (>= 0)', 'Depreciación acumulada tributaria fiscal al corte. Si se omite, toma el valor NIIF.', '6649500'],
+    ['periodo_corte_depreciacion', 'NO (Opcional)', 'Texto AAAA-MM', 'Periodo contable del saldo inicial (ej: 2025-12). GRAVY calculará cuotas pendientes a partir del mes siguiente.', '2025-12'],
     ['centro_costos', 'NO', 'Código o Nombre', 'Código o nombre del Centro de Costos registrado en GRAVY (ej: ADM-01, 01, Ventas).', 'ADM-01'],
     ['responsable', 'NO', 'Email, Cédula o Nombre', 'Usuario responsable o custodio del activo registrado en el sistema.', 'admin@empresa.com'],
     ['proveedor', 'NO', 'NIT o Documento', 'Número de identificación o NIT del proveedor en el directorio de terceros.', '900123456'],
@@ -735,16 +750,21 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
   if ((window as any)._massFixedAssetsImportInProgress) return showToast('Importación de activos en curso, por favor espera...', 'warning');
 
   const reqCols = ['codigo', 'nombre', 'categoria', 'costo'];
-  const optColsFin = ['vida_util_niif', 'vida_util_fiscal', 'valor_residual', 'metodo_depreciacion', 'centro_costos'];
+  const optColsFin = ['es_depreciable', 'vida_util_niif', 'vida_util_fiscal', 'valor_residual', 'metodo_depreciacion', 'depr_acum_inicial_niif', 'depr_acum_inicial_fiscal', 'periodo_corte_depreciacion', 'centro_costos'];
   const optColsAdmin = ['responsable', 'proveedor', 'ubicacion', 'fecha_compra', 'fecha_puesta_servicio', 'factura_numero', 'marca', 'modelo', 'serie', 'placa_qr', 'estado', 'activo_padre'];
 
   openModal(
     '<i class="fas fa-boxes-stacked mr-2" style="color:#059669"></i>Carga masiva de activos fijos',
     `<div class="mb-2">
-      <p class="text-sm mb-3" style="color:#374151">
-        Carga un archivo <strong>Excel (.xlsx/.xls)</strong> o <strong>CSV</strong> con el catálogo de activos fijos.<br>
-        Si el <strong>código/placa</strong> ya existe, el activo será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
-      </p>
+      <div class="flex items-center justify-between mb-3">
+        <p class="text-sm" style="color:#374151">
+          Carga un archivo <strong>Excel (.xlsx/.xls)</strong> o <strong>CSV</strong> con el catálogo de activos fijos.<br>
+          Si el <strong>código/placa</strong> ya existe, el activo será <strong>actualizado</strong>; si no existe, será <strong>creado</strong>.
+        </p>
+        <button type="button" class="btn btn-outline btn-xs whitespace-nowrap ml-2" id="btn-mass-assets-modal-tpl" style="color:#059669;border-color:#A7F3D0">
+          <i class="fas fa-file-excel mr-1 text-emerald-600"></i>Descargar plantilla
+        </button>
+      </div>
       <div class="rounded-xl p-3 mb-3 text-xs" style="background:#ECFDF5;border:1px solid #A7F3D0">
         <p class="font-semibold mb-1" style="color:#059669;text-transform:uppercase;letter-spacing:.05em">Columnas requeridas</p>
         <div class="flex flex-wrap gap-1.5 mb-2">
@@ -762,6 +782,7 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
           <strong>Categoría</strong>: Código (ej: COMP, VEH) o nombre de categoría NIIF. 
           <strong>Fechas</strong>: Formato YYYY-MM-DD. 
           <strong>Valores monetarios</strong>: Cifras numéricas sin puntos de mil ni signos de peso.
+          <br><strong>Saldos Iniciales de Depreciación</strong>: Usa <code>depr_acum_inicial_niif</code>, <code>depr_acum_inicial_fiscal</code> y <code>periodo_corte_depreciacion</code> (ej: <code>2025-12</code>) para conciliar saldos históricos previos.
         </p>
       </div>
 
@@ -787,7 +808,7 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
         <div class="rounded-xl border overflow-hidden" style="border-color:#F0F0F0;max-height:320px;overflow-y:auto">
           <table class="data-table text-xs" id="mass-assets-preview-table">
             <thead><tr>
-              <th>#</th><th>Código</th><th>Activo</th><th>Categoría</th><th>Costo</th><th>Vida NIIF</th><th>Centro Costo</th><th>Estado</th><th>Acción</th>
+              <th>#</th><th>Código</th><th>Activo</th><th>Categoría</th><th>Costo</th><th>Vida NIIF</th><th>Depr. Inicial</th><th>Periodo Corte</th><th>Centro Costo</th><th>Estado</th><th>Acción</th>
             </tr></thead>
             <tbody id="mass-assets-preview-body"></tbody>
           </table>
@@ -840,6 +861,8 @@ async function _openMassFixedAssetsImportModal(options?: { onComplete?: () => Pr
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassFixedAssetsImport(parsedRows, options?.onComplete));
 
@@ -970,22 +993,90 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
       return { ok: false, rowNo, error: `Fila ${rowNo}: La categoría "${catRaw}" no existe en la parametrización NIIF.` };
     }
 
+    // Comprobar si ya existe para upsert
+    const existing = assetsByCode.get(code);
+    const mode = existing ? 'update' : 'create';
+
+    // Determinar si es depreciable
+    const depreciableRaw = get('es_depreciable', 'depreciable', 'is_depreciable').toLowerCase().trim();
+    let is_depreciable = true;
+    if (depreciableRaw === 'no' || depreciableRaw === 'false' || depreciableRaw === '0') {
+      is_depreciable = false;
+    } else if (existing && depreciableRaw === '') {
+      is_depreciable = existing.is_depreciable !== false;
+    }
+
     // Resolver Vidas Útiles (Prioridad: fila Excel > default de categoría > fallback)
     const lifeNiifRaw = get('vida_util_niif', 'useful_life_niif', 'vida_niif', 'meses_niif');
-    let useful_life_niif = lifeNiifRaw ? parseInt(lifeNiifRaw, 10) : (resolvedCat.useful_life_niif_default || 60);
+    let useful_life_niif = is_depreciable
+      ? (lifeNiifRaw ? parseInt(lifeNiifRaw, 10) : (resolvedCat.useful_life_niif_default || 60))
+      : (existing?.useful_life_niif || 120);
     if (isNaN(useful_life_niif) || useful_life_niif <= 0) useful_life_niif = 60;
 
     const lifeFiscalRaw = get('vida_util_fiscal', 'useful_life_fiscal', 'vida_fiscal', 'meses_fiscal');
-    let useful_life_fiscal = lifeFiscalRaw ? parseInt(lifeFiscalRaw, 10) : (resolvedCat.useful_life_fiscal_default || useful_life_niif);
+    let useful_life_fiscal = is_depreciable
+      ? (lifeFiscalRaw ? parseInt(lifeFiscalRaw, 10) : (resolvedCat.useful_life_fiscal_default || useful_life_niif))
+      : (existing?.useful_life_fiscal || useful_life_niif);
     if (isNaN(useful_life_fiscal) || useful_life_fiscal <= 0) useful_life_fiscal = useful_life_niif;
 
     // Resolver Valor Residual
     const residualRaw = get('valor_residual', 'residual_value', 'salvamento');
     let residual_value = 0;
-    if (residualRaw !== '') {
-      residual_value = parseFloat(residualRaw.replace(/[^0-9.-]/g, '')) || 0;
-    } else if (resolvedCat.residual_value_percent_default) {
-      residual_value = Math.round(cost * (resolvedCat.residual_value_percent_default / 100));
+    if (is_depreciable) {
+      if (residualRaw !== '') {
+        residual_value = parseFloat(residualRaw.replace(/[^0-9.-]/g, '')) || 0;
+      } else if (resolvedCat.residual_value_percent_default) {
+        residual_value = Math.round(cost * (resolvedCat.residual_value_percent_default / 100));
+      } else if (existing) {
+        residual_value = existing.residual_value || 0;
+      }
+    }
+
+    // Resolver Depreciación Acumulada Inicial (NIIF y Fiscal)
+    const initDeprNiifRaw = get('depr_acum_inicial_niif', 'saldo_inicial_depr_niif', 'depr_inicial_niif', 'depr_inicial', 'initial_depreciation_niif');
+    const initDeprFiscalRaw = get('depr_acum_inicial_fiscal', 'saldo_inicial_depr_fiscal', 'depr_inicial_fiscal', 'initial_depreciation_fiscal');
+
+    let initial_depreciation_niif = 0;
+    let initial_depreciation_fiscal = 0;
+
+    if (is_depreciable) {
+      if (initDeprNiifRaw !== '') {
+        initial_depreciation_niif = parseFloat(initDeprNiifRaw.replace(/[^0-9.-]/g, '')) || 0;
+      } else if (existing) {
+        initial_depreciation_niif = Number(existing.initial_depreciation_niif) || 0;
+      }
+
+      if (initDeprFiscalRaw !== '') {
+        initial_depreciation_fiscal = parseFloat(initDeprFiscalRaw.replace(/[^0-9.-]/g, '')) || 0;
+      } else if (initDeprNiifRaw !== '') {
+        initial_depreciation_fiscal = initial_depreciation_niif;
+      } else if (existing) {
+        initial_depreciation_fiscal = Number(existing.initial_depreciation_fiscal) || initial_depreciation_niif;
+      }
+    }
+
+    // Resolver Periodo de Corte de Depreciación Inicial (ej: 2025-12)
+    const cutoffRaw = get('periodo_corte_depreciacion', 'periodo_corte', 'ultimo_periodo_depr', 'ultimo_cierre', 'last_depreciation_period').trim();
+    let last_depreciation_period: string | null = null;
+    if (is_depreciable) {
+      if (cutoffRaw) {
+        if (/^\d{4}-\d{2}$/.test(cutoffRaw)) {
+          last_depreciation_period = cutoffRaw;
+        } else if (/^\d{4}[\/\-]\d{1,2}/.test(cutoffRaw)) {
+          const parts = cutoffRaw.split(/[\/\-]/);
+          last_depreciation_period = `${parts[0]}-${parts[1].padStart(2, '0')}`;
+        } else if (/^\d{1,2}[\/\-]\d{4}/.test(cutoffRaw)) {
+          const parts = cutoffRaw.split(/[\/\-]/);
+          last_depreciation_period = `${parts[1]}-${parts[0].padStart(2, '0')}`;
+        } else {
+          const parsedD = parseDateString(cutoffRaw);
+          if (parsedD) last_depreciation_period = parsedD.substring(0, 7);
+        }
+      } else if (initial_depreciation_niif > 0 || initial_depreciation_fiscal > 0) {
+        last_depreciation_period = existing?.last_depreciation_period || '2025-12';
+      } else if (existing?.last_depreciation_period) {
+        last_depreciation_period = existing.last_depreciation_period;
+      }
     }
 
     // Resolver Método de Depreciación
@@ -1047,19 +1138,19 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
 
     const active = status !== 'retired';
 
-    // Comprobar si ya existe para upsert
-    const existing = assetsByCode.get(code);
-    const mode = existing ? 'update' : 'create';
-
     const payload = {
       code,
       name,
       category_id: resolvedCat.id,
       cost,
+      is_depreciable,
       useful_life_niif,
       useful_life_fiscal,
       residual_value,
-      depreciation_method: methodRaw,
+      initial_depreciation_niif,
+      initial_depreciation_fiscal,
+      last_depreciation_period,
+      depreciation_method: is_depreciable ? methodRaw : 'linea_recta',
       cost_center_id,
       owner_id,
       provider_id,
@@ -1084,7 +1175,10 @@ async function _massFixedAssetsBuildDraft(rawRows: any[]) {
       name,
       category: resolvedCat.name,
       cost,
+      is_depreciable,
       useful_life_niif,
+      initial_depreciation_niif,
+      last_depreciation_period,
       costCenterDisplay,
       status,
       mode,
@@ -1120,7 +1214,9 @@ function _massFixedAssetsRenderPreview(rows: any[]) {
         <td><div class="font-medium text-gray-800 text-xs">${esc(r.name)}</div></td>
         <td><span class="text-xs text-gray-600">${esc(r.category)}</span></td>
         <td class="font-semibold">${fmt(r.cost)}</td>
-        <td>${r.useful_life_niif} m</td>
+        <td>${r.is_depreciable === false ? '<span class="text-gray-400">No depr.</span>' : `${r.useful_life_niif} m`}</td>
+        <td>${r.is_depreciable === false ? '<span class="text-gray-400">—</span>' : (r.initial_depreciation_niif ? `<strong class="text-emerald-700">${fmt(r.initial_depreciation_niif)}</strong>` : '$ 0')}</td>
+        <td>${r.is_depreciable === false ? '<span class="text-gray-400">—</span>' : (r.last_depreciation_period ? `<span class="badge badge-purple font-mono">${esc(r.last_depreciation_period)}</span>` : '<span class="text-gray-400">Sin corte</span>')}</td>
         <td><span class="text-xxs text-gray-500">${esc(r.costCenterDisplay)}</span></td>
         <td>${statusMap[r.status] || `<span class="badge badge-green">${esc(r.status)}</span>`}</td>
         <td><span class="badge ${r.mode === 'update' ? 'badge-orange' : 'badge-blue'}">${r.mode === 'update' ? 'Actualizar' : 'Crear'}</span></td>
@@ -1128,7 +1224,7 @@ function _massFixedAssetsRenderPreview(rows: any[]) {
     }
     return `<tr style="background:#FEF2F2">
       <td>${r.rowNo}</td>
-      <td colspan="7" class="text-xs font-medium" style="color:#DC2626">${esc(r.error || 'Error en la fila')}</td>
+      <td colspan="9" class="text-xs font-medium" style="color:#DC2626">${esc(r.error || 'Error en la fila')}</td>
       <td><span class="badge badge-red">Error</span></td>
     </tr>`;
   }).join('');
@@ -1223,7 +1319,7 @@ async function renderUtilidades(container) {
   const isAdmin = requireRole('admin') || isSuperAdmin;
   const userRole = String(pb.currentUser?.role || '').toLowerCase().trim();
   const isContador = userRole === 'contador' || requireRole('contador');
-  const canRenumber = isSuperAdmin || isAdmin || isContador;
+  const canRenumber = isSuperAdmin;
 
   container.innerHTML = `
     <div class="anim-slide-up">
@@ -1384,28 +1480,30 @@ async function renderUtilidades(container) {
         ` : ''}
 
         ${canRenumber ? `
-        <!-- ── Tarjeta: Renumeración Masiva de Consecutivos ── -->
-        <div class="stat-card orange" id="util-card-renumber-tx" style="border-left-color: #D97706;">
+        <!-- Tarjeta: Corrección y Renumeración Masiva de Consecutivos (Exclusivo Superadmin) -->
+        <div class="stat-card purple" id="util-card-renumber-tx" style="border-left-color: #7C3AED;">
           <div class="flex items-start justify-between mb-4">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl flex items-center justify-center"
-                   style="background:rgba(217,119,6,.12)">
-                <i class="fas fa-list-ol" style="color:#D97706;font-size:18px"></i>
+                   style="background:rgba(124,58,237,.12)">
+                <i class="fas fa-arrow-down-1-9" style="color:#7C3AED;font-size:18px"></i>
               </div>
               <div>
-                <h3 class="font-bold text-base" style="color:#0D2137">Renumeración de documentos</h3>
-                <p class="text-xs" style="color:#D97706;font-weight:600">SUPERADMIN / ADMIN / CONTADOR</p>
+                <h3 class="font-bold text-base" style="color:#0D2137">Corrección y Renumeración de Documentos</h3>
+                <p class="text-xs flex items-center gap-1" style="color:#7C3AED;font-weight:700">
+                  <i class="fas fa-shield-halved"></i> EXCLUSIVO SUPERADMIN
+                </p>
               </div>
             </div>
           </div>
 
           <p class="text-sm mb-4" style="color:#4B5563;line-height:1.6">
-            Renumera secuencialmente la numeración de los comprobantes de un tipo de transacción específico en un rango de fechas y/o consecutivo.
+            Herramienta de auditoría para corregir numeraciones anómalas, saltos en la secuencia o renumerar cronológicamente cualquier tipo de documento (comprobantes contables, ajustes, movimientos de inventario, etc.) en un lapso de tiempo.
           </p>
 
           <div class="flex gap-3 flex-wrap">
-            <button id="btn-renumber-tx-open" class="btn btn-warning btn-sm" style="background:#D97706;border-color:#D97706;color:#fff">
-              <i class="fas fa-arrow-down-1-9 mr-1"></i> Renumerar documentos
+            <button id="btn-renumber-tx-open" class="btn btn-sm" style="background:#7C3AED;border-color:#7C3AED;color:#fff">
+              <i class="fas fa-wand-magic-sparkles mr-1"></i> Corregir Numeración
             </button>
           </div>
         </div>
@@ -2692,6 +2790,8 @@ async function _openMassTxImportModal() {
     if (file) processFile(file);
   });
 
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassTxImport(parsedGroups));
 
@@ -3613,6 +3713,8 @@ async function _openMassTpImportModal() {
     const file = fileInput.files?.[0];
     if (file) processFile(file);
   });
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
+  $('#btn-mass-assets-modal-tpl')?.addEventListener('click', _downloadMassFixedAssetsTemplate);
   clearBtn?.addEventListener('click', resetPreview);
   runBtn?.addEventListener('click', () => _executeMassTpImport(parsedRows));
 
@@ -5829,15 +5931,12 @@ function _openBulkReplaceModal() {
 ══════════════════════════════════════════════════════════ */
 async function _openRenumberTxModal() {
   const isSuperAdmin = requireRole('superadmin');
-  const isAdmin = requireRole('admin') || isSuperAdmin;
-  const userRole = String(pb.currentUser?.role || '').toLowerCase().trim();
-  const isContador = userRole === 'contador' || requireRole('contador');
-  if (!isSuperAdmin && !isAdmin && !isContador) {
-    showToast('Solo Superadministradores, Administradores o Contadores pueden acceder a esta herramienta', 'error');
+  if (!isSuperAdmin) {
+    showToast('Acceso denegado: Esta herramienta está restringida exclusivamente a usuarios Superadmin.', 'error');
     return;
   }
 
-  showToast('Cargando tipos de transacción...', 'info');
+  showToast('Cargando tipos de documentos...', 'info');
   let txTypes: any[] = [];
   try {
     txTypes = await pb.listAll('transaction_types', { sort: 'code' });
@@ -5846,15 +5945,11 @@ async function _openRenumberTxModal() {
     return;
   }
 
-  if (!txTypes || txTypes.length === 0) {
-    showToast('No se encontraron tipos de transacción configurados', 'warning');
-    return;
-  }
-
-  const optionsHtml = txTypes.map(t => {
+  const txOptionsHtml = txTypes.map(t => {
     const pfx = t.prefix ? ` [${esc(t.prefix)}]` : '';
-    const consec = t.consecutive !== undefined ? ` (Último consecutivo: ${t.consecutive})` : '';
-    return `<option value="${esc(t.id)}">${esc(t.code)} — ${esc(t.name)}${pfx}${consec}</option>`;
+    const modeTag = t.numbering_mode === 'period' ? ' [Mensual]' : ' [Continuo]';
+    const consec = t.consecutive !== undefined ? ` (Último: ${t.consecutive})` : '';
+    return `<option value="${esc(t.id)}" data-prefix="${esc(t.prefix || t.code || '')}" data-padding="${esc(t.padding || (t.numbering_mode === 'period' ? 6 : 8))}" data-mode="${esc(t.numbering_mode || 'continuous')}">${esc(t.code)} — ${esc(t.name)}${pfx}${modeTag}${consec}</option>`;
   }).join('');
 
   // Fechas por defecto: primer y último día del mes actual (Hora Colombia)
@@ -5862,61 +5957,111 @@ async function _openRenumberTxModal() {
   const lastDay = (window as any).getColombiaLastDayOfMonth();
 
   openModal(
-    'Renumeración Masiva de Consecutivos',
+    'Auditoría y Corrección de Numeración (Superadmin)',
     `
     <div class="flex flex-col gap-4">
-      <p class="text-sm" style="color:#4B5563">
-        Esta utilidad permite renumerar secuencialmente la numeración de los documentos pertenecientes a un 
-        <strong>tipo de transacción específico</strong> en orden cronológico (por fecha de emisión).
-      </p>
+      <div class="p-3 rounded-xl flex items-center justify-between text-xs" style="background:#F5F3FF;border:1px solid #DDD6FE;color:#6D28D9">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-shield-halved text-base"></i>
+          <span><strong>Módulo Exclusivo de Superadmin:</strong> Auditoría, corrección de consecutivos rotos y renumeración secuencial cronológica respetando la regla continua o mensual configurada.</span>
+        </div>
+        <span class="badge badge-purple text-[10px]">Modo Seguro con Previsualización</span>
+      </div>
 
       <div class="rounded-xl p-4 flex flex-col gap-3" style="background:#F8F9FB;border:1px solid #E5E7EB">
-        <div>
-          <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Tipo de transacción / documento <span class="text-red-500">*</span></label>
-          <select id="renum-tx-type" class="form-select w-full">
-            <option value="">-- Selecciona un tipo de transacción --</option>
-            ${optionsHtml}
-          </select>
-        </div>
-
+        <!-- Categoría y Tipo de Documento -->
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Fecha inicial (Opcional)</label>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Categoría de Documento <span class="text-red-500">*</span></label>
+            <select id="renum-category" class="form-select w-full font-semibold">
+              <option value="transactions">Comprobantes Contables / Transacciones</option>
+              <option value="inventory_movements">Movimientos de Inventario (Kardex)</option>
+            </select>
+          </div>
+          <div id="renum-tx-type-container">
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold uppercase" style="color:#374151">Tipo de Comprobante <span class="text-red-500">*</span></label>
+              <span id="renum-mode-badge" class="text-[10px]"></span>
+            </div>
+            <select id="renum-tx-type" class="form-select w-full">
+              <option value="">-- Selecciona un tipo --</option>
+              ${txOptionsHtml}
+            </select>
+          </div>
+          <div id="renum-mov-type-container" class="hidden">
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Tipo de Movimiento Kardex <span class="text-red-500">*</span></label>
+            <select id="renum-mov-type" class="form-select w-full">
+              <option value="TODOS">Todos los Movimientos</option>
+              <option value="AJUSTE_POSITIVO">Ajustes Positivos (Sobrantes)</option>
+              <option value="AJUSTE_NEGATIVO">Ajustes Negativos (Faltantes)</option>
+              <option value="ENTRADA">Entradas de Almacén</option>
+              <option value="SALIDA">Salidas de Almacén</option>
+              <option value="TRASLADO">Traslados entre Bodegas</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Lapso de Tiempo -->
+        <div class="grid grid-cols-2 gap-3 pt-2" style="border-top:1px dashed #D1D5DB">
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Fecha Inicial (Lapso de Tiempo) <span class="text-red-500">*</span></label>
             <input type="date" id="renum-date-from" class="form-input w-full" value="${firstDay}">
           </div>
           <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Fecha final (Opcional)</label>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Fecha Final (Lapso de Tiempo) <span class="text-red-500">*</span></label>
             <input type="date" id="renum-date-to" class="form-input w-full" value="${lastDay}">
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3 pt-2" style="border-top:1px dashed #D1D5DB">
-          <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Desde Consecutivo Actual (Opcional)</label>
-            <input type="number" id="renum-num-from" class="form-input w-full" placeholder="Ej: 1">
+        <!-- Configuración de Numeración (Continuo vs Mensual) -->
+        <div class="grid grid-cols-4 gap-3 pt-2" style="border-top:1px dashed #D1D5DB">
+          <div class="col-span-2">
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Modalidad de Numeración <span class="text-red-500">*</span></label>
+            <select id="renum-mode" class="form-select w-full font-semibold">
+              <option value="auto">Respetar Configuración del Tipo (Recomendado)</option>
+              <option value="period">Mensual por Período (PREFIJO-AAAAMM-000001)</option>
+              <option value="continuous">Continuo Acumulado (PREFIJO-00000001)</option>
+            </select>
           </div>
           <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Hasta Consecutivo Actual (Opcional)</label>
-            <input type="number" id="renum-num-to" class="form-input w-full" placeholder="Ej: 500">
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Consecutivo Inicial <span class="text-red-500">*</span></label>
+            <input type="number" id="renum-new-start" class="form-input w-full font-mono font-bold" min="1" step="1" value="1" placeholder="Ej: 1">
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Relleno (Padding)</label>
+            <input type="number" id="renum-pad-digits" class="form-input w-full font-mono" min="1" max="10" value="8">
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3 pt-2" style="border-top:1px dashed #D1D5DB">
+        <div class="grid grid-cols-2 gap-3 pt-1">
           <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Nuevo Consecutivo Inicial <span class="text-red-500">*</span></label>
-            <input type="number" id="renum-new-start" class="form-input w-full font-mono font-bold" min="1" step="1" value="1" placeholder="Ej: 1001">
+            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Prefijo Personalizado (Opcional)</label>
+            <input type="text" id="renum-custom-prefix" class="form-input w-full font-mono uppercase" placeholder="(Auto del tipo seleccionado)">
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase mb-1" style="color:#374151">Relleno de Dígitos (Padding)</label>
-            <input type="number" id="renum-pad-digits" class="form-input w-full font-mono" min="1" max="12" value="8">
+          <div class="flex items-center pt-5">
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+              <input type="checkbox" id="renum-sync-docs" class="rounded text-purple-600 w-4 h-4" checked>
+              <span>Sincronizar facturas y movimientos vinculados</span>
+            </label>
           </div>
+        </div>
+
+        <div class="pt-2 flex justify-end">
+          <button id="btn-renum-run-preview" class="btn btn-outline btn-sm font-semibold text-purple-700 border-purple-300 hover:bg-purple-50">
+            <i class="fas fa-eye mr-1"></i> Previsualizar Documentos y Verificar Secuencia
+          </button>
+        </div>
+
+        <!-- Área de Previsualización de Documentos -->
+        <div id="renum-preview-box" class="hidden mt-2 p-3 rounded-lg border flex flex-col gap-2" style="background:#FFFFFF;border-color:#E5E7EB;max-height:280px;overflow-y:auto">
+          <div id="renum-preview-summary" class="text-xs font-semibold flex items-center justify-between pb-2 border-b"></div>
+          <div id="renum-preview-table-container"></div>
         </div>
 
         <div class="p-3 rounded-lg text-xs flex gap-2 items-start" style="background:#FFFBEB;border:1px solid #FDE68A;color:#B45309">
           <i class="fas fa-triangle-exclamation mt-0.5 text-sm"></i>
           <div>
-            <strong>Advertencia:</strong> La renumeración modificará permanentemente el número de los comprobantes seleccionados 
-            en las tablas de transacciones y facturas asociadas. Descarga un respaldo antes de proceder.
+            <strong>Advertencia de Auditoría:</strong> Esta acción reasignará la numeración de los documentos según la regla seleccionada (continuo o mensual) y actualizará la configuración oficial de la serie para emitir los siguientes con estricta correlatividad.
           </div>
         </div>
       </div>
@@ -5924,53 +6069,219 @@ async function _openRenumberTxModal() {
     `,
     `
     <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
-    <button class="btn btn-primary" id="btn-renumber-tx-execute" style="background:#D97706;border-color:#D97706">
-      <i class="fas fa-arrow-down-1-9 mr-1"></i> Ejecutar Renumeración
+    <button class="btn btn-primary" id="btn-renumber-tx-execute" style="background:#7C3AED;border-color:#7C3AED" disabled>
+      <i class="fas fa-check-double mr-1"></i> Aplicar Corrección Definitiva
     </button>
     `,
-    false
+    true
   );
 
-  $('#btn-renumber-tx-execute')?.addEventListener('click', async () => {
-    const txTypeId = getInputVal('renum-tx-type').trim();
+  // Toggle entre Categoría Contable e Inventario
+  $('#renum-category')?.addEventListener('change', (ev: any) => {
+    const val = ev.target.value;
+    const txCont = $('#renum-tx-type-container');
+    const movCont = $('#renum-mov-type-container');
+    const modeBadge = $('#renum-mode-badge');
+    const padInput = $('#renum-pad-digits') as HTMLInputElement;
+
+    if (val === 'transactions') {
+      txCont?.classList.remove('hidden');
+      movCont?.classList.add('hidden');
+      if (padInput) padInput.value = '8';
+    } else {
+      txCont?.classList.add('hidden');
+      movCont?.classList.remove('hidden');
+      if (modeBadge) modeBadge.innerHTML = '<span class="badge badge-purple">Kardex Mensual</span>';
+      if (padInput) padInput.value = '4';
+    }
+  });
+
+  // Autocompletar configuración al cambiar el tipo de transacción
+  $('#renum-tx-type')?.addEventListener('change', (ev: any) => {
+    const selOpt = ev.target.selectedOptions?.[0];
+    if (selOpt) {
+      const pfx = selOpt.getAttribute('data-prefix') || '';
+      const pad = selOpt.getAttribute('data-padding') || '8';
+      const mode = selOpt.getAttribute('data-mode') || 'continuous';
+      const customPfx = $('#renum-custom-prefix') as HTMLInputElement;
+      const padInput = $('#renum-pad-digits') as HTMLInputElement;
+      const modeBadge = $('#renum-mode-badge');
+
+      if (customPfx && !customPfx.value) customPfx.placeholder = pfx;
+      if (padInput) padInput.value = pad;
+
+      if (modeBadge) {
+        if (mode === 'period') {
+          modeBadge.innerHTML = '<span class="badge badge-purple text-[10px]"><i class="fas fa-calendar-days mr-1"></i>Modo: Mensual</span>';
+        } else {
+          modeBadge.innerHTML = '<span class="badge badge-blue text-[10px]"><i class="fas fa-arrow-down-1-9 mr-1"></i>Modo: Continuo</span>';
+        }
+      }
+    }
+  });
+
+  // Handler para Previsualizar
+  $('#btn-renum-run-preview')?.addEventListener('click', async () => {
+    const category = getInputVal('renum-category');
+    const txTypeId = getInputVal('renum-tx-type');
+    const movType = getInputVal('renum-mov-type');
     const startDate = getInputVal('renum-date-from').trim();
     const endDate = getInputVal('renum-date-to').trim();
-    const fromNum = getInputVal('renum-num-from').trim();
-    const toNum = getInputVal('renum-num-to').trim();
-    const newStartConsecutive = parseInt(getInputVal('renum-new-start').trim() || '0', 10);
+    const numberingMode = getInputVal('renum-mode');
+    const newStartConsecutive = parseInt(getInputVal('renum-new-start').trim() || '1', 10);
     const padDigits = parseInt(getInputVal('renum-pad-digits').trim() || '8', 10);
+    const customPrefix = getInputVal('renum-custom-prefix').trim();
 
-    if (!txTypeId) {
+    if (category === 'transactions' && !txTypeId) {
       return showToast('Debes seleccionar un tipo de transacción', 'warning');
     }
-    if (isNaN(newStartConsecutive) || newStartConsecutive < 1) {
-      return showToast('Debes ingresar un nuevo consecutivo inicial válido (mayor o igual a 1)', 'warning');
+    if (!startDate || !endDate) {
+      return showToast('Debes definir la fecha inicial y final del lapso', 'warning');
     }
 
-    const selectedType = txTypes.find(t => t.id === txTypeId);
-    const typeLabel = selectedType ? `${selectedType.code} - ${selectedType.name}` : txTypeId;
-    const prefix = selectedType?.prefix || selectedType?.code || '';
-    const exampleFormat = prefix ? `${prefix}-${String(newStartConsecutive).padStart(padDigits, '0')}` : `${newStartConsecutive}`;
+    try {
+      showToast('Consultando documentos para previsualización...', 'info');
+      const res = await fetch(`${pb.baseUrl}/api/gravy/renumber-transactions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          mode: 'preview',
+          category,
+          txTypeId,
+          movType,
+          startDate,
+          endDate,
+          numberingMode,
+          newStartConsecutive,
+          padDigits,
+          customPrefix
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': pb.authToken || ''
+        }
+      });
+
+      const data = await res.json();
+      const pBox = $('#renum-preview-box');
+      const pSummary = $('#renum-preview-summary');
+      const pTable = $('#renum-preview-table-container');
+      const execBtn = $('#btn-renumber-tx-execute') as HTMLButtonElement;
+
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Error al obtener la previsualización', 'error');
+        pBox?.classList.add('hidden');
+        if (execBtn) execBtn.disabled = true;
+        return;
+      }
+
+      if (data.count === 0) {
+        showToast(data.message || 'No se encontraron documentos en el lapso seleccionado.', 'info');
+        pBox?.classList.add('hidden');
+        if (execBtn) execBtn.disabled = true;
+        return;
+      }
+
+      pBox?.classList.remove('hidden');
+      if (execBtn) execBtn.disabled = false;
+
+      const anomBadge = data.anomaliesCount > 0
+        ? `<span class="badge badge-red text-[11px]"><i class="fas fa-triangle-exclamation mr-1"></i>${data.anomaliesCount} anomalías detectadas</span>`
+        : `<span class="badge badge-green text-[11px]"><i class="fas fa-check mr-1"></i>Secuencia ordenada</span>`;
+
+      const modeLabel = data.numberingMode === 'period'
+        ? `<span class="badge badge-purple text-[10px]">Modo Aplicado: MENSUAL (${(data.monthsInvolved || []).join(', ')})</span>`
+        : `<span class="badge badge-blue text-[10px]">Modo Aplicado: CONTINUO</span>`;
+
+      if (pSummary) {
+        pSummary.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span>Total: <strong>${data.count}</strong> | Nuevo Rango: <code class="text-purple-700 font-bold">${data.firstNewNumber} ... ${data.lastNewNumber}</code></span>
+            ${modeLabel}
+          </div>
+          <div>${anomBadge}</div>
+        `;
+      }
+
+      if (pTable) {
+        const rowsHtml = (data.preview || []).slice(0, 60).map((r: any) => {
+          const rowCls = r.isAnomalous ? 'bg-red-50 text-red-900 font-semibold' : 'hover:bg-gray-50';
+          const badgeAnom = r.isAnomalous ? '<span class="badge badge-red text-[9px] ml-1">Anomalía</span>' : '';
+          return `
+            <tr class="${rowCls} border-b border-gray-100 text-xs">
+              <td class="p-1.5 font-mono">${esc(r.date)}</td>
+              <td class="p-1.5 font-mono font-bold text-gray-500">${esc(r.periodTag || '')}</td>
+              <td class="p-1.5 font-mono ${r.isAnomalous ? 'text-red-600' : 'text-gray-600'}">${esc(r.oldNumber)}${badgeAnom}</td>
+              <td class="p-1.5 font-mono font-bold text-green-700"><i class="fas fa-arrow-right text-[10px] mr-1 text-gray-400"></i>${esc(r.newNumber)}</td>
+              <td class="p-1.5 text-gray-600 truncate max-w-[200px]" title="${esc(r.description)}">${esc(r.description)}</td>
+            </tr>
+          `;
+        }).join('');
+
+        pTable.innerHTML = `
+          <table class="w-full text-left">
+            <thead>
+              <tr class="text-[10px] text-gray-500 uppercase bg-gray-50 border-b">
+                <th class="p-1.5">Fecha</th>
+                <th class="p-1.5">Período</th>
+                <th class="p-1.5">Número Actual</th>
+                <th class="p-1.5">Nuevo Número</th>
+                <th class="p-1.5">Detalle</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+          ${data.count > 60 ? `<p class="text-[10px] text-gray-400 text-center pt-2">Mostrando los primeros 60 de ${data.count} documentos coincidentes...</p>` : ''}
+        `;
+      }
+
+      showToast(`Se identificaron ${data.count} documentos (${data.anomaliesCount} con anomalías). Modo: ${data.numberingMode === 'period' ? 'Mensual' : 'Continuo'}.`, 'info');
+
+    } catch (err: any) {
+      showToast(err.message || 'Error al procesar la previsualización', 'error');
+    }
+  });
+
+  // Handler para Ejecución Definitiva
+  $('#btn-renumber-tx-execute')?.addEventListener('click', async () => {
+    const category = getInputVal('renum-category');
+    const txTypeId = getInputVal('renum-tx-type');
+    const movType = getInputVal('renum-mov-type');
+    const startDate = getInputVal('renum-date-from').trim();
+    const endDate = getInputVal('renum-date-to').trim();
+    const numberingMode = getInputVal('renum-mode');
+    const newStartConsecutive = parseInt(getInputVal('renum-new-start').trim() || '1', 10);
+    const padDigits = parseInt(getInputVal('renum-pad-digits').trim() || '8', 10);
+    const customPrefix = getInputVal('renum-custom-prefix').trim();
+    const syncRelatedDocs = ($('#renum-sync-docs') as HTMLInputElement)?.checked ?? true;
 
     confirmDialog(
-      'Confirmar Renumeración Masiva',
-      `¿Estás seguro de que deseas renumerar los documentos de tipo <strong>${esc(typeLabel)}</strong>?<br><br>
-       - <strong>Período:</strong> ${startDate && endDate ? `${startDate} al ${endDate}` : 'Todos los períodos'}<br>
-       - <strong>Nuevo Consecutivo Inicial:</strong> ${newStartConsecutive} (Ejemplo: <code>${esc(exampleFormat)}</code>)<br><br>
-       Esta acción cambiará de forma definitiva la numeración de los documentos coincidentes.`,
+      'Confirmar Corrección Definitiva de Numeración',
+      `¿Estás completamente seguro de aplicar la corrección de consecutivos?<br><br>
+       - <strong>Categoría:</strong> ${category === 'transactions' ? 'Comprobantes Contables' : 'Movimientos de Inventario'}<br>
+       - <strong>Lapso:</strong> ${startDate} al ${endDate}<br>
+       - <strong>Modalidad:</strong> ${numberingMode === 'period' ? 'Mensual (AAAAMM)' : numberingMode === 'continuous' ? 'Continuo' : 'Según configuración del tipo'}<br>
+       - <strong>Consecutivo Inicial:</strong> ${newStartConsecutive}<br>
+       - <strong>Sincronización de Documentos:</strong> ${syncRelatedDocs ? 'Sí (Facturas y Almacén)' : 'No'}<br><br>
+       <span class="text-red-600 font-semibold">Esta acción modificará los números permanentemente en la base de datos y quedará registrada en auditoría.</span>`,
       async () => {
         try {
-          showToast('Procesando renumeración de documentos en el servidor...', 'info');
+          showToast('Aplicando corrección y renumeración masiva en el servidor...', 'info');
           const res = await fetch(`${pb.baseUrl}/api/gravy/renumber-transactions`, {
             method: 'POST',
             body: JSON.stringify({
+              mode: 'execute',
+              category,
               txTypeId,
+              movType,
               startDate,
               endDate,
-              fromNum: fromNum !== '' ? Number(fromNum) : null,
-              toNum: toNum !== '' ? Number(toNum) : null,
+              numberingMode,
               newStartConsecutive,
-              padDigits
+              padDigits,
+              customPrefix,
+              syncRelatedDocs
             }),
             headers: {
               'Content-Type': 'application/json',
@@ -5981,23 +6292,18 @@ async function _openRenumberTxModal() {
           const data = await res.json();
           if (res.ok && data && data.success) {
             closeModal();
-            showToast(data.message, 'success', 6000);
+            showToast(data.message, 'success', 8000);
             _loadSysInfo();
           } else {
-            showToast((data && data.message) || 'Ocurrió un error inesperado al renumerar', 'error');
+            showToast((data && data.message) || 'Error al ejecutar la renumeración', 'error');
           }
         } catch (err: any) {
-          showToast(err.message || 'Error al ejecutar la renumeración', 'error');
+          showToast(err.message || 'Error de conexión al renumerar', 'error');
         }
       }
     );
   });
 }
-
-/* ══════════════════════════════════════════════════════════
-   HELPER: modal con botones de acción (utiliza el router unificado de utils.ts)
-══════════════════════════════════════════════════════════ */
-
 
 function initKeyboardAutocomplete({
   input,

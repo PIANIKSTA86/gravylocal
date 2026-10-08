@@ -118,7 +118,15 @@ if exist "%SHORTCUT_PATH%" (
 ) else (
     echo    AVISO - No se pudo crear acceso directo ^(opcional^).
 )
-echo.
+
+if exist "%ROOT%scripts\sync_hub_tenants.js" (
+    echo  Sincronizando empresas contables con el catálogo del HUB...
+    if exist "%ROOT%bin\node.exe" (
+        "%ROOT%bin\node.exe" "%ROOT%scripts\sync_hub_tenants.js" >nul 2>&1
+    ) else (
+        where node >nul 2>nul && node "%ROOT%scripts\sync_hub_tenants.js" >nul 2>&1
+    )
+)
 
 :: ─────────────────────────────────────────────
 :: 5. INICIAR GRAVY

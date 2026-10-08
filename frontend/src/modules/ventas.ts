@@ -1127,6 +1127,171 @@ window.soMixedCalc = function() {
   }
 };
 
+window.soToggleSpecialOpSec = function() {
+  const container = document.getElementById('so-special-op-container');
+  const chevron = document.getElementById('so-special-op-chevron');
+  if (!container) return;
+  const isHidden = container.style.display === 'none' || !container.style.display;
+  container.style.display = isHidden ? 'block' : 'none';
+  if (chevron) {
+    if (isHidden) {
+      chevron.classList.remove('fa-chevron-down');
+      chevron.classList.add('fa-chevron-up');
+    } else {
+      chevron.classList.remove('fa-chevron-up');
+      chevron.classList.add('fa-chevron-down');
+    }
+  }
+};
+
+window.soOnSpecialOpChange = function() {
+  const typeEl = document.getElementById('so-special-op-type') as HTMLSelectElement;
+  const opType = typeEl ? typeEl.value : 'standard';
+  const badge = document.getElementById('so-special-op-badge');
+  const hint = document.getElementById('so-special-op-hint');
+  const container = document.getElementById('so-special-op-container');
+  const chevron = document.getElementById('so-special-op-chevron');
+
+  const secHealth = document.getElementById('so-sec-health');
+  const secExport = document.getElementById('so-sec-export');
+  const secMandate = document.getElementById('so-sec-mandate');
+  const secContingency = document.getElementById('so-sec-contingency');
+
+  if (secHealth) secHealth.style.display = opType === 'health' ? 'block' : 'none';
+  if (secExport) secExport.style.display = opType === 'export' ? 'block' : 'none';
+  if (secMandate) secMandate.style.display = opType === 'mandate' ? 'block' : 'none';
+  if (secContingency) secContingency.style.display = opType === 'contingency' ? 'block' : 'none';
+
+  if (container && container.style.display === 'none') {
+    container.style.display = 'block';
+    if (chevron) {
+      chevron.classList.remove('fa-chevron-down');
+      chevron.classList.add('fa-chevron-up');
+    }
+  }
+
+  const badgeLabels: Record<string, string> = {
+    standard: 'Estándar',
+    health: 'Sector Salud',
+    export: 'Exportación',
+    mandate: 'Mandato',
+    contingency: 'Contingencia'
+  };
+
+  const hints: Record<string, string> = {
+    standard: 'Operación comercial estándar sin requisitos sectoriales adicionales.',
+    health: 'Facturación electrónica de salud con campos RIPS (Res. 000948/Circular 008).',
+    export: 'Emisión en divisa extranjera con TRM e Incoterms (Tipo 8).',
+    mandate: 'Facturación a nombre de un tercero mandante (Operación 3).',
+    contingency: 'Legalización de talonario de contingencia por fallas técnicas (Tipo 9).'
+  };
+
+  if (badge) {
+    badge.textContent = badgeLabels[opType] || 'Estándar';
+    if (opType !== 'standard') {
+      badge.className = 'px-2 py-0.5 rounded-full text-3xs font-extrabold bg-blue-600 text-white uppercase';
+    } else {
+      badge.className = 'px-2 py-0.5 rounded-full text-3xs font-extrabold bg-slate-200 text-slate-700 uppercase';
+    }
+  }
+
+  if (hint) {
+    hint.textContent = hints[opType] || hints.standard;
+  }
+};
+
+window.soGetSpecialOpPayload = function(validate: boolean = false): string {
+  const typeEl = document.getElementById('so-special-op-type') as HTMLSelectElement;
+  const opType = typeEl ? typeEl.value : 'standard';
+  if (!opType || opType === 'standard') return '';
+
+  let specialData: any = { type: opType };
+
+  if (opType === 'health') {
+    const providerCode = (document.getElementById('so-health-provider-code') as HTMLInputElement)?.value?.trim() || '';
+    const operationType = (document.getElementById('so-health-operation-type') as HTMLSelectElement)?.value || 'SS-CUFE';
+    const paymentModalityId = (document.getElementById('so-health-payment-modality') as HTMLSelectElement)?.value || '01';
+    const coverageId = (document.getElementById('so-health-coverage') as HTMLSelectElement)?.value || '01';
+    const startDate = (document.getElementById('so-health-start-date') as HTMLInputElement)?.value || '';
+    const endDate = (document.getElementById('so-health-end-date') as HTMLInputElement)?.value || '';
+    const authNumber = (document.getElementById('so-health-auth-number') as HTMLInputElement)?.value?.trim() || '';
+    const copayment = parseFloat((document.getElementById('so-health-copay') as HTMLInputElement)?.value || '0') || 0;
+    const patientDocTypeId = (document.getElementById('so-health-patient-doctype') as HTMLSelectElement)?.value || '3';
+    const patientDocNum = (document.getElementById('so-health-patient-docnum') as HTMLInputElement)?.value?.trim() || '';
+    const patientFirstName = (document.getElementById('so-health-patient-name') as HTMLInputElement)?.value?.trim() || '';
+    const patientLastName = (document.getElementById('so-health-patient-lastname') as HTMLInputElement)?.value?.trim() || '';
+
+    if (validate && !patientDocNum) {
+      throw new Error('Para Factura Sector Salud debes ingresar el número de identificación del paciente/usuario.');
+    }
+
+    specialData = {
+      type: 'health',
+      providerCode,
+      operationType,
+      paymentModalityId,
+      coverageId,
+      startDate,
+      endDate,
+      authNumber,
+      copayment,
+      patientDocTypeId,
+      patientDocNum,
+      patientFirstName,
+      patientLastName
+    };
+  } else if (opType === 'export') {
+    const currencyId = (document.getElementById('so-export-currency') as HTMLSelectElement)?.value || '169';
+    const trm = parseFloat((document.getElementById('so-export-trm') as HTMLInputElement)?.value || '0') || 0;
+    const incoterm = (document.getElementById('so-export-incoterm') as HTMLSelectElement)?.value || 'FOB';
+    const countryId = (document.getElementById('so-export-country') as HTMLSelectElement)?.value || '239';
+
+    if (validate && trm <= 0) {
+      throw new Error('Para Factura de Exportación debes ingresar una Tasa de Cambio (TRM) válida mayor a cero.');
+    }
+
+    specialData = {
+      type: 'export',
+      currencyId,
+      trm,
+      incoterm,
+      countryId
+    };
+  } else if (opType === 'mandate') {
+    const mandanteNit = (document.getElementById('so-mandate-nit') as HTMLInputElement)?.value?.trim() || '';
+    const mandanteDv = (document.getElementById('so-mandate-dv') as HTMLInputElement)?.value?.trim() || '';
+    const mandanteName = (document.getElementById('so-mandate-name') as HTMLInputElement)?.value?.trim() || '';
+
+    if (validate && !mandanteNit) {
+      throw new Error('Para Facturación por Mandato debes ingresar el NIT del mandante.');
+    }
+
+    specialData = {
+      type: 'mandate',
+      mandanteNit,
+      mandanteDv,
+      mandanteName
+    };
+  } else if (opType === 'contingency') {
+    const contingencyDate = (document.getElementById('so-contingency-date') as HTMLInputElement)?.value || '';
+    const paperNumber = (document.getElementById('so-contingency-paper-num') as HTMLInputElement)?.value?.trim() || '';
+    const reason = (document.getElementById('so-contingency-reason') as HTMLSelectElement)?.value || '1';
+
+    if (validate && !paperNumber) {
+      throw new Error('Para Factura de Contingencia debes ingresar el Folio o Número de papel talonario.');
+    }
+
+    specialData = {
+      type: 'contingency',
+      contingencyDate,
+      paperNumber,
+      reason
+    };
+  }
+
+  return `[DIAN_SPECIAL_OP:${JSON.stringify(specialData)}]`;
+};
+
 // --- Recálculo Completo de Totales ---
 window.soRecalcLine = function(rowIdx: number) {
   const roundDec = (v: number) => typeof (window as any).roundDecimals === 'function'
@@ -1406,6 +1571,14 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       (window as any).pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,sales_order_id' }),
       (window as any).API.getInvoiceLines(invoiceId),
     ]);
+  }
+
+  let initialSpecialOp: any = { type: 'standard' };
+  if (inv && inv.notes) {
+    const specialOpMatch = inv.notes.match(/\[DIAN_SPECIAL_OP:(.*?)\]/);
+    if (specialOpMatch && specialOpMatch[1]) {
+      try { initialSpecialOp = JSON.parse(specialOpMatch[1]); } catch (_) {}
+    }
   }
 
   if (inv && inv.payment_method === 'MIXTO' && inv.payment_split) {
@@ -2020,7 +2193,233 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         <!-- Notas -->
         <div class="mt-2">
           <label class="so-hdr-label">Notas / Observaciones</label>
-          <input id="so-notes" class="form-input so-compact-inp" placeholder="Observaciones, condiciones de entrega..." value="${(window as any).esc(inv?.notes || '')}">
+          <input id="so-notes" class="form-input so-compact-inp" placeholder="Observaciones, condiciones de entrega..." value="${(window as any).esc((inv?.notes || '').replace(/\[DIAN_SPECIAL_OP:.*?\]\s*/g, ''))}">
+        </div>
+
+        <!-- ══ PANEL OPERACIÓN DIAN ESPECIAL ══ -->
+        <div class="mt-2 border rounded-xl p-3 transition-all" style="background:#F8FAFC; border-color:#CBD5E1">
+          <div class="flex items-center justify-between cursor-pointer select-none" onclick="window.soToggleSpecialOpSec()">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shadow-2xs">
+                <i class="fas fa-file-shield"></i>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-800">Tipo de Operación DIAN Especial</span>
+                <span id="so-special-op-badge" class="px-2 py-0.5 rounded-full text-3xs font-extrabold ${initialSpecialOp.type !== 'standard' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'} uppercase">
+                  ${initialSpecialOp.type === 'health' ? 'Sector Salud' : (initialSpecialOp.type === 'export' ? 'Exportación' : (initialSpecialOp.type === 'mandate' ? 'Mandato' : (initialSpecialOp.type === 'contingency' ? 'Contingencia' : 'Estándar')))}
+                </span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-3xs text-slate-400">Clic para Salud, Exportación o Contingencia</span>
+              <i id="so-special-op-chevron" class="fas ${initialSpecialOp.type !== 'standard' ? 'fa-chevron-up' : 'fa-chevron-down'} text-slate-400 text-xs transition-transform duration-200"></i>
+            </div>
+          </div>
+
+          <div id="so-special-op-container" style="display:${initialSpecialOp.type !== 'standard' ? 'block' : 'none'};" class="mt-3 pt-3 border-t border-slate-200 space-y-3">
+            <!-- Selector principal de tipo -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="so-hdr-label font-bold text-slate-700">Régimen / Tipo de Documento DIAN</label>
+                <select id="so-special-op-type" class="form-input so-compact-inp text-xs font-bold" onchange="window.soOnSpecialOpChange()">
+                  <option value="standard" ${initialSpecialOp.type === 'standard' ? 'selected' : ''}>1. Estándar (Venta Comercial Nacional)</option>
+                  <option value="health" ${initialSpecialOp.type === 'health' ? 'selected' : ''}>2. Sector Salud (IPS / RIPS — Res. 000948 de 2026)</option>
+                  <option value="export" ${initialSpecialOp.type === 'export' ? 'selected' : ''}>3. Factura de Exportación (Venta al Exterior / Divisas)</option>
+                  <option value="mandate" ${initialSpecialOp.type === 'mandate' ? 'selected' : ''}>4. Facturación por Mandato / Intermediación</option>
+                  <option value="contingency" ${initialSpecialOp.type === 'contingency' ? 'selected' : ''}>5. Factura de Contingencia DIAN (Tipo 03)</option>
+                </select>
+              </div>
+              <div class="flex items-center text-xs text-slate-600 bg-white p-2 rounded-lg border border-slate-200">
+                <i class="fas fa-info-circle text-blue-500 mr-2 text-sm flex-shrink-0"></i>
+                <span id="so-special-op-hint">
+                  ${initialSpecialOp.type === 'health' ? 'Facturación electrónica de salud con campos RIPS (Res. 000948/Circular 008).' : (initialSpecialOp.type === 'export' ? 'Emisión en divisa extranjera con TRM e Incoterms (Tipo 8).' : (initialSpecialOp.type === 'mandate' ? 'Facturación a nombre de un tercero mandante (Operación 3).' : (initialSpecialOp.type === 'contingency' ? 'Legalización de talonario de contingencia por fallas técnicas (Tipo 9).' : 'Operación comercial estándar sin requisitos sectoriales adicionales.')))}
+                </span>
+              </div>
+            </div>
+
+            <!-- 1. CAMPOS SECTOR SALUD -->
+            <div id="so-sec-health" class="p-3 bg-white rounded-lg border border-blue-200 space-y-2.5" style="display:${initialSpecialOp.type === 'health' ? 'block' : 'none'};">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-blue-800">
+                <i class="fas fa-hospital text-blue-600"></i>
+                <span>Información del Sector Salud (Resolución 000948 / Circular 008)</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <label class="so-hdr-label">Cód. Habilitación Prestador (IPS)</label>
+                  <input id="so-health-provider-code" class="form-input so-compact-inp text-xs font-mono" placeholder="Ej: 110010000101" value="${(window as any).esc(initialSpecialOp.providerCode || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Tipo Operación Salud</label>
+                  <select id="so-health-operation-type" class="form-input so-compact-inp text-xs">
+                    <option value="SS-CUFE" ${initialSpecialOp.operationType === 'SS-CUFE' ? 'selected' : ''}>SS-CUFE (Con validación previa)</option>
+                    <option value="SS-SinAporte" ${initialSpecialOp.operationType === 'SS-SinAporte' ? 'selected' : ''}>SS-SinAporte (Sin aporte usuario)</option>
+                    <option value="SS-Recaudo" ${initialSpecialOp.operationType === 'SS-Recaudo' ? 'selected' : ''}>SS-Recaudo (Recaudo cuotas/copagos)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="so-hdr-label">Modalidad Contratación</label>
+                  <select id="so-health-payment-modality" class="form-input so-compact-inp text-xs">
+                    <option value="01" ${initialSpecialOp.paymentModalityId === '01' ? 'selected' : ''}>01 — Pago por evento</option>
+                    <option value="02" ${initialSpecialOp.paymentModalityId === '02' ? 'selected' : ''}>02 — Pago por capitación</option>
+                    <option value="03" ${initialSpecialOp.paymentModalityId === '03' ? 'selected' : ''}>03 — Pago por caso / conjunto</option>
+                    <option value="04" ${initialSpecialOp.paymentModalityId === '04' ? 'selected' : ''}>04 — Pago global prospectivo</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="so-hdr-label">Cobertura / Plan</label>
+                  <select id="so-health-coverage" class="form-input so-compact-inp text-xs">
+                    <option value="01" ${initialSpecialOp.coverageId === '01' ? 'selected' : ''}>01 — Plan beneficios salud (PBS)</option>
+                    <option value="02" ${initialSpecialOp.coverageId === '02' ? 'selected' : ''}>02 — Plan complementario</option>
+                    <option value="03" ${initialSpecialOp.coverageId === '03' ? 'selected' : ''}>03 — Medicina prepagada</option>
+                    <option value="04" ${initialSpecialOp.coverageId === '04' ? 'selected' : ''}>04 — Póliza de salud</option>
+                    <option value="05" ${initialSpecialOp.coverageId === '05' ? 'selected' : ''}>05 — Cobertura ARL</option>
+                    <option value="06" ${initialSpecialOp.coverageId === '06' ? 'selected' : ''}>06 — Cobertura SOAT</option>
+                    <option value="07" ${initialSpecialOp.coverageId === '07' ? 'selected' : ''}>07 — Particular</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="so-hdr-label">Inicio Periodo Atención</label>
+                  <input type="date" id="so-health-start-date" class="form-input so-compact-inp text-xs" value="${(window as any).esc(initialSpecialOp.startDate || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Fin Periodo Atención</label>
+                  <input type="date" id="so-health-end-date" class="form-input so-compact-inp text-xs" value="${(window as any).esc(initialSpecialOp.endDate || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Num. Autorización / MIPRES</label>
+                  <input id="so-health-auth-number" class="form-input so-compact-inp text-xs font-mono" placeholder="Autorización EPS o MIPRES" value="${(window as any).esc(initialSpecialOp.authNumber || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Copago / Cuota Moderadora ($)</label>
+                  <input type="number" id="so-health-copay" class="form-input so-compact-inp text-xs" min="0" step="0.01" placeholder="0.00" value="${initialSpecialOp.copayment || ''}">
+                </div>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
+                <div>
+                  <label class="so-hdr-label">Doc. Paciente / Usuario</label>
+                  <div class="flex gap-1">
+                    <select id="so-health-patient-doctype" class="form-input so-compact-inp text-xs w-20">
+                      <option value="3" ${initialSpecialOp.patientDocTypeId === '3' ? 'selected' : ''}>CC</option>
+                      <option value="2" ${initialSpecialOp.patientDocTypeId === '2' ? 'selected' : ''}>TI</option>
+                      <option value="1" ${initialSpecialOp.patientDocTypeId === '1' ? 'selected' : ''}>RC</option>
+                      <option value="4" ${initialSpecialOp.patientDocTypeId === '4' ? 'selected' : ''}>CE</option>
+                      <option value="5" ${initialSpecialOp.patientDocTypeId === '5' ? 'selected' : ''}>PAS</option>
+                      <option value="13" ${initialSpecialOp.patientDocTypeId === '13' ? 'selected' : ''}>MS</option>
+                    </select>
+                    <input id="so-health-patient-docnum" class="form-input so-compact-inp text-xs flex-1" placeholder="Num identificación" value="${(window as any).esc(initialSpecialOp.patientDocNum || '')}">
+                  </div>
+                </div>
+                <div>
+                  <label class="so-hdr-label">Primer Nombre Paciente</label>
+                  <input id="so-health-patient-name" class="form-input so-compact-inp text-xs" placeholder="Nombre paciente" value="${(window as any).esc(initialSpecialOp.patientFirstName || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Primer Apellido Paciente</label>
+                  <input id="so-health-patient-lastname" class="form-input so-compact-inp text-xs" placeholder="Apellido paciente" value="${(window as any).esc(initialSpecialOp.patientLastName || '')}">
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. CAMPOS EXPORTACIÓN -->
+            <div id="so-sec-export" class="p-3 bg-white rounded-lg border border-emerald-200 space-y-2.5" style="display:${initialSpecialOp.type === 'export' ? 'block' : 'none'};">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                <i class="fas fa-globe-americas text-emerald-600"></i>
+                <span>Información de Exportación (Venta en Divisa Extranjera — Tipo 8)</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                <div>
+                  <label class="so-hdr-label">Divisa de Negociación</label>
+                  <select id="so-export-currency" class="form-input so-compact-inp text-xs font-bold">
+                    <option value="169" ${initialSpecialOp.currencyId === '169' ? 'selected' : ''}>USD — Dólar Estadounidense</option>
+                    <option value="75" ${initialSpecialOp.currencyId === '75' ? 'selected' : ''}>EUR — Euro</option>
+                    <option value="79" ${initialSpecialOp.currencyId === '79' ? 'selected' : ''}>GBP — Libra Esterlina</option>
+                    <option value="43" ${initialSpecialOp.currencyId === '43' ? 'selected' : ''}>CAD — Dólar Canadiense</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="so-hdr-label">Tasa de Cambio (TRM del Día)</label>
+                  <input type="number" id="so-export-trm" class="form-input so-compact-inp text-xs font-mono font-bold" step="0.01" placeholder="Ej: 4150.00" value="${initialSpecialOp.trm || ''}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Término de Entrega (Incoterm)</label>
+                  <select id="so-export-incoterm" class="form-input so-compact-inp text-xs font-semibold">
+                    <option value="FOB" ${initialSpecialOp.incoterm === 'FOB' ? 'selected' : ''}>FOB — Free On Board</option>
+                    <option value="CIF" ${initialSpecialOp.incoterm === 'CIF' ? 'selected' : ''}>CIF — Cost, Insurance & Freight</option>
+                    <option value="EXW" ${initialSpecialOp.incoterm === 'EXW' ? 'selected' : ''}>EXW — Ex Works</option>
+                    <option value="FCA" ${initialSpecialOp.incoterm === 'FCA' ? 'selected' : ''}>FCA — Free Carrier</option>
+                    <option value="CPT" ${initialSpecialOp.incoterm === 'CPT' ? 'selected' : ''}>CPT — Carriage Paid To</option>
+                    <option value="CIP" ${initialSpecialOp.incoterm === 'CIP' ? 'selected' : ''}>CIP — Carriage & Insurance Paid</option>
+                    <option value="DAP" ${initialSpecialOp.incoterm === 'DAP' ? 'selected' : ''}>DAP — Delivered at Place</option>
+                    <option value="DDP" ${initialSpecialOp.incoterm === 'DDP' ? 'selected' : ''}>DDP — Delivered Duty Paid</option>
+                    <option value="CFR" ${initialSpecialOp.incoterm === 'CFR' ? 'selected' : ''}>CFR — Cost and Freight</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="so-hdr-label">País de Destino (Cliente)</label>
+                  <select id="so-export-country" class="form-input so-compact-inp text-xs">
+                    <option value="239" ${initialSpecialOp.countryId === '239' ? 'selected' : ''}>Estados Unidos (USA)</option>
+                    <option value="73" ${initialSpecialOp.countryId === '73' ? 'selected' : ''}>España (ESP)</option>
+                    <option value="142" ${initialSpecialOp.countryId === '142' ? 'selected' : ''}>México (MEX)</option>
+                    <option value="63" ${initialSpecialOp.countryId === '63' ? 'selected' : ''}>Ecuador (ECU)</option>
+                    <option value="169" ${initialSpecialOp.countryId === '169' ? 'selected' : ''}>Panamá (PAN)</option>
+                    <option value="49" ${initialSpecialOp.countryId === '49' ? 'selected' : ''}>Chile (CHL)</option>
+                    <option value="171" ${initialSpecialOp.countryId === '171' ? 'selected' : ''}>Perú (PER)</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-3xs text-emerald-700 italic">En Matías API se transmitirá como tipo documento 8 (Factura de Exportación) con conversión y sellado en divisa internacional.</p>
+            </div>
+
+            <!-- 3. CAMPOS MANDATO -->
+            <div id="so-sec-mandate" class="p-3 bg-white rounded-lg border border-purple-200 space-y-2.5" style="display:${initialSpecialOp.type === 'mandate' ? 'block' : 'none'};">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-purple-800">
+                <i class="fas fa-handshake text-purple-600"></i>
+                <span>Facturación por Mandato / Intermediación Comercial</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <label class="so-hdr-label">NIT del Mandante (Dueño mercancía)</label>
+                  <input id="so-mandate-nit" class="form-input so-compact-inp text-xs font-mono" placeholder="NIT sin guión ni DV" value="${(window as any).esc(initialSpecialOp.mandanteNit || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Dígito Verificación (DV)</label>
+                  <input id="so-mandate-dv" class="form-input so-compact-inp text-xs font-mono w-16" placeholder="0-9" maxlength="1" value="${(window as any).esc(initialSpecialOp.mandanteDv || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Razón Social del Mandante</label>
+                  <input id="so-mandate-name" class="form-input so-compact-inp text-xs" placeholder="Nombre o Razón Social completa" value="${(window as any).esc(initialSpecialOp.mandanteName || '')}">
+                </div>
+              </div>
+              <p class="text-3xs text-purple-700 italic">Se asignará operación tipo 3 ante la DIAN, declarando que la empresa factura a nombre de un tercero mandante.</p>
+            </div>
+
+            <!-- 4. CAMPOS CONTINGENCIA -->
+            <div id="so-sec-contingency" class="p-3 bg-white rounded-lg border border-amber-200 space-y-2.5" style="display:${initialSpecialOp.type === 'contingency' ? 'block' : 'none'};">
+              <div class="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+                <i class="fas fa-triangle-exclamation text-amber-600"></i>
+                <span>Factura de Contingencia DIAN (Tipo 03)</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div>
+                  <label class="so-hdr-label">Fecha/Hora Evento Contingencia</label>
+                  <input type="datetime-local" id="so-contingency-date" class="form-input so-compact-inp text-xs" value="${(window as any).esc(initialSpecialOp.contingencyDate || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Folio / Número Papel Talonario</label>
+                  <input id="so-contingency-paper-num" class="form-input so-compact-inp text-xs font-mono" placeholder="Ej: CONT-045" value="${(window as any).esc(initialSpecialOp.paperNumber || '')}">
+                </div>
+                <div>
+                  <label class="so-hdr-label">Causal de Contingencia</label>
+                  <select id="so-contingency-reason" class="form-input so-compact-inp text-xs">
+                    <option value="1" ${initialSpecialOp.reason === '1' ? 'selected' : ''}>1 — Falla tecnológica emisor</option>
+                    <option value="2" ${initialSpecialOp.reason === '2' ? 'selected' : ''}>2 — Falla conectividad internet</option>
+                    <option value="3" ${initialSpecialOp.reason === '3' ? 'selected' : ''}>3 — Indisponibilidad DIAN</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-3xs text-amber-700 italic">Se transmitirá con tipo documento 9 (Factura de Contingencia) legalizando la factura física previa ante la DIAN.</p>
+            </div>
+          </div>
         </div>
 
         <!-- Sección Pago Mixto en Venta -->
@@ -3313,7 +3712,11 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
     const warehouseId = (document.getElementById('so-warehouse') as HTMLSelectElement)?.value || '';
     const txTypeId = (document.getElementById('so-tx-type') as HTMLSelectElement)?.value || '';
     const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || '';
-    const notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+    let notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+    const specialOpPayload = (window as any).soGetSpecialOpPayload ? (window as any).soGetSpecialOpPayload(false) : '';
+    if (specialOpPayload) {
+      notes = `${specialOpPayload} ${notes}`.trim();
+    }
     const salesOrderId = (document.getElementById('so-sales-order-id') as HTMLInputElement)?.value || '';
     const dianConcept = (document.getElementById('so-dian-concept') as HTMLSelectElement)?.value || '';
     const poNumber = (document.getElementById('so-po-number') as HTMLInputElement)?.value || '';
@@ -3557,6 +3960,11 @@ async function saveInvoiceDraftWrapper(invoiceId: string | null, onDone: any = n
     const sellerId = (document.getElementById('so-seller') as HTMLSelectElement)?.value || null;
     const pendingDelivery = !!(document.getElementById('so-pending-delivery') as HTMLInputElement)?.checked;
     let notes = (document.getElementById('so-notes') as HTMLInputElement)?.value || '';
+
+    const specialOpPayload = (window as any).soGetSpecialOpPayload ? (window as any).soGetSpecialOpPayload(true) : '';
+    if (specialOpPayload) {
+      notes = `${specialOpPayload} ${notes}`.trim();
+    }
 
     const dianConcept = document.getElementById('so-dian-concept') as HTMLSelectElement;
     const isSinRef = (document.getElementById('so-dian-sin-ref') as HTMLInputElement)?.checked;
@@ -4061,7 +4469,7 @@ window.printInvoiceCarta = async function(invoiceId: string, formatOverride?: st
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compDept, compCountry, logoBase64] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),

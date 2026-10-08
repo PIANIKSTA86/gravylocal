@@ -1497,7 +1497,16 @@ window.loadPOSInterface = async function() {
           : posCustomers.filter(c => `${c.name} ${c.doc_number} ${c.nit}`.toLowerCase().includes(query)).slice(0, 30);
 
         if (!filtered.length) {
-          results.innerHTML = '<div class="px-3 py-2 text-xs text-gray-400">Sin coincidencias</div>';
+          const safeVal = (window as any).esc(val.trim());
+          results.innerHTML = `
+            <div class="p-3 text-xs text-center space-y-2">
+              <div class="text-gray-500 font-medium">No se encontró cliente con "${safeVal || 'este criterio'}"</div>
+              <button type="button" class="btn btn-sm btn-primary w-full py-1.5 text-xs font-bold flex items-center justify-center gap-1.5 rounded-lg shadow-2xs cursor-pointer"
+                      onmousedown="event.preventDefault(); window.posQuickAddCustomer('${safeVal}')">
+                <i class="fas fa-bolt text-amber-300"></i> Crear cliente rápido
+              </button>
+            </div>
+          `;
           return;
         }
 
@@ -1507,7 +1516,14 @@ window.loadPOSInterface = async function() {
             <div class="font-bold text-gray-800">${(window as any).esc(c.name)}</div>
             <div class="text-[10px] text-gray-500">Doc: ${c.doc_number || c.nit || 'S/N'}</div>
           </button>
-        `).join('');
+        `).join('') + `
+          <div class="p-1.5 border-t border-gray-100 bg-gray-50">
+            <button type="button" class="w-full py-1 text-2xs text-blue-600 hover:text-blue-800 font-bold flex items-center justify-center gap-1 cursor-pointer"
+                    onmousedown="event.preventDefault(); window.posQuickAddCustomer('${(window as any).esc(val.trim())}')">
+              <i class="fas fa-plus-circle"></i> + Crear cliente rápido
+            </button>
+          </div>
+        `;
       };
 
       input.addEventListener('focus', () => { performSearch(input.value); results.style.display = 'block'; });
@@ -2834,7 +2850,7 @@ window.printArqueoTicket = async function(shiftId: string) {
 
     const [compName, compNit, compAddress, compPhone] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
     ]);
@@ -2974,7 +2990,7 @@ window.printInformeDiarioTicket = async function(shiftId: string) {
 
     const [compName, compNit, compAddress, compPhone, compCity] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_city').catch(() => ''),
@@ -3818,7 +3834,7 @@ window.showThermalTicketReceipt = async function(invoiceId: string, receivedCash
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, compLogo] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),
@@ -4153,7 +4169,7 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry, compLogo] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),
@@ -4436,7 +4452,87 @@ window.printThermalReceipt = async function(invoiceId: string, receivedCash: num
 // Inyecciones globales
 (window as any).renderPOS = renderPOS;
 
-window.posQuickAddCustomer = function() {
+// --- Funciones del Modal Express de Cliente POS ---
+function computeQcDV(nit: string): string {
+  if (!nit || !/^\d+$/.test(nit)) return '';
+  const vpri = [0, 3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+  let x = 0;
+  const z = nit.length;
+  for (let i = 0; i < z; i++) {
+    const y = parseInt(nit.charAt(z - 1 - i), 10);
+    x += y * vpri[i + 1];
+  }
+  const y = x % 11;
+  return (y > 1) ? String(11 - y) : String(y);
+}
+
+window.posQcOnPersonTypeChange = function(ptype: string) {
+  const naturalWrap = document.getElementById('pos-qc-natural-names');
+  const juridicaWrap = document.getElementById('pos-qc-juridica-name');
+  const docTypeSelect = document.getElementById('pos-qc-doc-type') as HTMLSelectElement;
+
+  if (ptype === 'JURIDICA') {
+    if (naturalWrap) naturalWrap.style.display = 'none';
+    if (juridicaWrap) juridicaWrap.style.display = 'block';
+    if (docTypeSelect) docTypeSelect.value = 'NIT';
+  } else {
+    if (naturalWrap) naturalWrap.style.display = 'grid';
+    if (juridicaWrap) juridicaWrap.style.display = 'none';
+    if (docTypeSelect) docTypeSelect.value = 'CC';
+  }
+  (window as any).posQcRecalcDv();
+};
+
+window.posQcRecalcDv = function() {
+  const docNumInput = document.getElementById('pos-qc-doc-num') as HTMLInputElement;
+  const dvInput = document.getElementById('pos-qc-dv') as HTMLInputElement;
+  if (!docNumInput || !dvInput) return;
+  const raw = docNumInput.value.replace(/\D/g, '');
+  dvInput.value = computeQcDV(raw);
+};
+
+window.posQcOnDocInput = function() {
+  const docNumInput = document.getElementById('pos-qc-doc-num') as HTMLInputElement;
+  const warnBox = document.getElementById('pos-qc-dup-warn');
+  const warnName = document.getElementById('pos-qc-dup-name');
+  if (!docNumInput) return;
+
+  (window as any).posQcRecalcDv();
+
+  const cleanNum = docNumInput.value.trim();
+  (window as any).__posQcExistingCustomer = null;
+
+  if (cleanNum && cleanNum.length >= 5 && Array.isArray(posCustomers)) {
+    const matched = posCustomers.find(c => 
+      c.doc_number === cleanNum || c.nit === cleanNum ||
+      c.doc_number === cleanNum.replace(/\D/g, '') || c.nit === cleanNum.replace(/\D/g, '')
+    );
+    if (matched) {
+      (window as any).__posQcExistingCustomer = matched;
+      if (warnBox) warnBox.style.display = 'flex';
+      if (warnName) warnName.textContent = `${matched.name} (${matched.doc_number || matched.nit || ''})`;
+      return;
+    }
+  }
+
+  if (warnBox) warnBox.style.display = 'none';
+};
+
+window.posQcSelectExisting = function() {
+  const existing = (window as any).__posQcExistingCustomer;
+  if (existing) {
+    (window as any).selectPosCustomer(existing.id, `${existing.doc_number || existing.nit || ''} - ${existing.name}`);
+    (window as any).closeModal();
+    (window as any).showToast(`Cliente ${existing.name} seleccionado en la venta.`, 'info');
+    setTimeout(() => {
+      const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (searchInput) searchInput.focus();
+    }, 150);
+  }
+};
+
+window.posQcOpenFullForm = function() {
+  (window as any).closeModal();
   if (typeof (window as any).openTerceroForm === 'function') {
     (window as any).openTerceroForm(null, async (createdRecord: any) => {
       try {
@@ -4455,9 +4551,321 @@ window.posQuickAddCustomer = function() {
         (window as any).showToast('Error al recargar clientes: ' + err.message, 'error');
       }
     });
-  } else {
-    (window as any).showToast('Módulo de terceros no disponible.', 'warning');
   }
+};
+
+window.posQcSaveCustomer = async function() {
+  if ((window as any).__posQcExistingCustomer) {
+    (window as any).posQcSelectExisting();
+    return;
+  }
+
+  const ptypeRadio = document.querySelector('input[name="pos-qc-ptype"]:checked') as HTMLInputElement;
+  const ptype = ptypeRadio ? ptypeRadio.value : 'NATURAL';
+  const isNatural = ptype === 'NATURAL';
+
+  const docTypeSelect = document.getElementById('pos-qc-doc-type') as HTMLSelectElement;
+  const docType = docTypeSelect ? docTypeSelect.value : 'CC';
+
+  const docNumInput = document.getElementById('pos-qc-doc-num') as HTMLInputElement;
+  const docNum = docNumInput ? docNumInput.value.trim() : '';
+
+  const dvInput = document.getElementById('pos-qc-dv') as HTMLInputElement;
+  const dv = dvInput ? dvInput.value.trim() : (computeQcDV(docNum) || '');
+
+  if (!docNum) {
+    (window as any).showToast('Ingresa el número de identificación del cliente.', 'warning');
+    docNumInput?.focus();
+    return;
+  }
+
+  let firstName = '';
+  let lastName = '';
+  let fullName = '';
+
+  if (isNatural) {
+    const fnInput = document.getElementById('pos-qc-first-name') as HTMLInputElement;
+    const lnInput = document.getElementById('pos-qc-last-name') as HTMLInputElement;
+    firstName = fnInput ? fnInput.value.trim() : '';
+    lastName = lnInput ? lnInput.value.trim() : '';
+
+    if (!firstName) {
+      (window as any).showToast('Ingresa el nombre del cliente.', 'warning');
+      fnInput?.focus();
+      return;
+    }
+    fullName = [firstName, lastName].filter(Boolean).join(' ');
+  } else {
+    const bnInput = document.getElementById('pos-qc-biz-name') as HTMLInputElement;
+    const bizName = bnInput ? bnInput.value.trim() : '';
+    if (!bizName) {
+      (window as any).showToast('Ingresa la razón social de la empresa.', 'warning');
+      bnInput?.focus();
+      return;
+    }
+    fullName = bizName;
+  }
+
+  const emailInput = document.getElementById('pos-qc-email') as HTMLInputElement;
+  const email = emailInput ? emailInput.value.trim() : '';
+
+  const phoneInput = document.getElementById('pos-qc-phone') as HTMLInputElement;
+  const phone = phoneInput ? phoneInput.value.trim() : '';
+
+  const addressInput = document.getElementById('pos-qc-address') as HTMLInputElement;
+  const address = addressInput ? addressInput.value.trim() : '';
+
+  const cityInput = document.getElementById('pos-qc-city') as HTMLInputElement;
+  const city = cityInput ? cityInput.value.trim() : 'Bogotá D.C.';
+
+  const saveBtn = document.getElementById('pos-qc-save-btn') as HTMLButtonElement;
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i> Guardando...';
+  }
+
+  try {
+    // 1. Verificar si ya existe en PocketBase por documento
+    const escapedDoc = (window as any).pb.escapeFilterValue(docNum);
+    const existingList = await (window as any).pb.listAll('third_parties', {
+      filter: `doc_number = "${escapedDoc}"`
+    });
+
+    if (existingList && existingList.length > 0) {
+      const existing = existingList[0];
+      if (!posCustomers.some(c => c.id === existing.id)) {
+        posCustomers.unshift(existing);
+      }
+      (window as any).selectPosCustomer(existing.id, `${existing.doc_number || existing.nit || ''} - ${existing.name}`);
+      (window as any).closeModal();
+      (window as any).showToast(`El cliente ya existía (${existing.name}) y fue asignado a la venta.`, 'info');
+      setTimeout(() => {
+        const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+      }, 150);
+      return;
+    }
+
+    // 2. Crear Tercero en PocketBase
+    const newThirdPayload = {
+      person_type: isNatural ? 'NATURAL' : 'JURIDICA',
+      type: 'CLIENTE',
+      doc_type: docType,
+      doc_number: docNum,
+      dv: dv,
+      name: fullName,
+      first_name: firstName,
+      last_name: lastName,
+      business_name: !isNatural ? fullName : '',
+      email: email,
+      phone: phone,
+      address: address || 'Sin dirección',
+      city: city || 'Bogotá D.C.',
+      city_code: '11001',
+      department: 'Bogotá',
+      dept_code: '11',
+      country: 'CO',
+      tax_regime: isNatural ? 'NO_RESP' : 'COMUN',
+      active: true,
+      credit_limit: 0,
+      max_invoices: 1,
+      payment_days: 0,
+      payment_method: '10'
+    };
+
+    const createdRecord = await (window as any).pb.create('third_parties', newThirdPayload);
+
+    // 3. Crear automáticamente Sede Principal para facturación
+    try {
+      await (window as any).pb.create('third_party_branches', {
+        third_party_id: createdRecord.id,
+        code: '001',
+        name: 'Sede Principal',
+        is_main: true,
+        country: 'CO',
+        city: city || 'Bogotá D.C.',
+        city_code: '11001',
+        address: address || 'Sin dirección',
+        phone: phone,
+        email: email
+      });
+    } catch (bErr) {
+      console.warn("Advertencia creando sede principal express:", bErr);
+    }
+
+    // 4. Actualizar lista de clientes en memoria de POS
+    if (Array.isArray(posCustomers)) {
+      posCustomers.unshift(createdRecord);
+    }
+
+    // 5. Asignar cliente a la venta
+    (window as any).selectPosCustomer(createdRecord.id, `${docNum} - ${fullName}`);
+    (window as any).closeModal();
+    (window as any).showToast('Cliente creado y asignado a la venta.', 'success');
+
+    // 6. Foco automático para seguir vendiendo
+    setTimeout(() => {
+      const searchInput = document.getElementById('pos-search-product') as HTMLInputElement;
+      if (searchInput) searchInput.focus();
+    }, 150);
+
+  } catch (err: any) {
+    console.error("Error guardando cliente express:", err);
+    (window as any).showToast('Error al guardar cliente: ' + (err.message || err), 'error');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="fas fa-check mr-1.5"></i> Guardar y Asignar a Venta';
+    }
+  }
+};
+
+window.posQuickAddCustomer = function(initialQuery = '') {
+  (window as any).__posQcExistingCustomer = null;
+  const trimmed = typeof initialQuery === 'string' ? initialQuery.trim() : '';
+  const isDigitsOnly = /^\d+$/.test(trimmed);
+  const initialDoc = isDigitsOnly ? trimmed : '';
+  const initialName = !isDigitsOnly ? trimmed : '';
+  const initialDv = initialDoc ? computeQcDV(initialDoc) : '';
+
+  const bodyHtml = `
+    <div id="pos-qc-container" class="space-y-3.5 text-xs text-slate-800" onkeydown="if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA') window.posQcSaveCustomer()">
+      <!-- Cabecera explicativa con badge de agilidad -->
+      <div class="flex items-center justify-between bg-blue-50/70 p-2.5 rounded-xl border border-blue-200">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-xs">
+            <i class="fas fa-user-check"></i>
+          </div>
+          <div>
+            <h4 class="font-bold text-slate-800 text-xs">Registro Express de Cliente</h4>
+            <p class="text-[11px] text-slate-500">Datos para Factura Electrónica y POS sin frenar la fila.</p>
+          </div>
+        </div>
+        <span class="text-3xs font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+          <i class="fas fa-bolt mr-1"></i> Express POS
+        </span>
+      </div>
+
+      <!-- Tipo de Persona -->
+      <div class="flex items-center gap-4 bg-slate-50 p-2 rounded-xl border border-slate-200">
+        <span class="font-bold text-slate-700 text-xs">Tipo Persona:</span>
+        <label class="inline-flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
+          <input type="radio" name="pos-qc-ptype" value="NATURAL" checked onchange="window.posQcOnPersonTypeChange('NATURAL')" class="accent-blue-600 cursor-pointer">
+          <span>Natural</span>
+        </label>
+        <label class="inline-flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700">
+          <input type="radio" name="pos-qc-ptype" value="JURIDICA" onchange="window.posQcOnPersonTypeChange('JURIDICA')" class="accent-blue-600 cursor-pointer">
+          <span>Jurídica (Empresa)</span>
+        </label>
+      </div>
+
+      <!-- Identificación y DV -->
+      <div class="grid grid-cols-12 gap-2">
+        <div class="col-span-4">
+          <label class="block font-bold text-slate-700 mb-1">Tipo Doc. <span class="text-red-500">*</span></label>
+          <select id="pos-qc-doc-type" class="form-input w-full text-xs font-semibold" style="height:36px" onchange="window.posQcRecalcDv()">
+            <option value="CC" selected>Cédula (CC)</option>
+            <option value="NIT">NIT</option>
+            <option value="CE">Cédula Ext. (CE)</option>
+            <option value="PP">Pasaporte</option>
+            <option value="TI">Tarjeta Identidad</option>
+            <option value="DIE">Doc. Extranjero</option>
+          </select>
+        </div>
+        <div class="col-span-6">
+          <label class="block font-bold text-slate-700 mb-1">Número Documento <span class="text-red-500">*</span></label>
+          <input type="text" id="pos-qc-doc-num" class="form-input w-full text-xs font-mono font-bold" style="height:36px"
+                 placeholder="Ej: 1020304050" value="${(window as any).esc(initialDoc)}" oninput="window.posQcOnDocInput()" autocomplete="off">
+        </div>
+        <div class="col-span-2">
+          <label class="block font-bold text-slate-700 mb-1 text-center" title="Dígito Verificación DIAN">DV</label>
+          <input type="text" id="pos-qc-dv" class="form-input w-full text-xs font-mono font-bold text-center bg-slate-100" style="height:36px"
+                 readonly placeholder="-" value="${(window as any).esc(initialDv)}">
+        </div>
+      </div>
+
+      <!-- Alerta si cliente ya existe -->
+      <div id="pos-qc-dup-warn" class="p-2.5 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs flex items-center justify-between" style="display:none">
+        <div class="flex items-center gap-2">
+          <i class="fas fa-circle-exclamation text-amber-600 text-sm"></i>
+          <span>Ya registrado: <strong id="pos-qc-dup-name">...</strong></span>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary py-0.5 px-2 text-xs font-bold cursor-pointer" onclick="window.posQcSelectExisting()">
+          Seleccionar
+        </button>
+      </div>
+
+      <!-- Nombres / Razón Social -->
+      <div id="pos-qc-natural-names" class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nombres <span class="text-red-500">*</span></label>
+          <input type="text" id="pos-qc-first-name" class="form-input w-full text-xs font-semibold" style="height:36px"
+                 placeholder="Nombres" value="${(window as any).esc(initialName)}">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Apellidos</label>
+          <input type="text" id="pos-qc-last-name" class="form-input w-full text-xs font-semibold" style="height:36px" placeholder="Apellidos">
+        </div>
+      </div>
+
+      <div id="pos-qc-juridica-name" style="display:none">
+        <label class="block font-bold text-slate-700 mb-1">Razón Social <span class="text-red-500">*</span></label>
+        <input type="text" id="pos-qc-biz-name" class="form-input w-full text-xs font-semibold" style="height:36px"
+               placeholder="Nombre de la empresa" value="${(window as any).esc(initialName)}">
+      </div>
+
+      <!-- Correo y Teléfono -->
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Correo Electrónico <span class="text-blue-600 font-normal">(FE / POS)</span></label>
+          <input type="email" id="pos-qc-email" class="form-input w-full text-xs" style="height:36px" placeholder="cliente@correo.com">
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Teléfono / Celular <span class="text-slate-400 font-normal">(Opcional)</span></label>
+          <input type="tel" id="pos-qc-phone" class="form-input w-full text-xs" style="height:36px" placeholder="3001234567">
+        </div>
+      </div>
+
+      <!-- Dirección y Ciudad -->
+      <div class="grid grid-cols-12 gap-2">
+        <div class="col-span-8">
+          <label class="block font-bold text-slate-700 mb-1">Dirección <span class="text-slate-400 font-normal">(Opcional)</span></label>
+          <input type="text" id="pos-qc-address" class="form-input w-full text-xs" style="height:36px" placeholder="Calle, Carrera, Local...">
+        </div>
+        <div class="col-span-4">
+          <label class="block font-bold text-slate-700 mb-1">Ciudad</label>
+          <input type="text" id="pos-qc-city" class="form-input w-full text-xs" style="height:36px" value="Bogotá D.C.">
+        </div>
+      </div>
+
+      <!-- Footer interno con tips y enlace a ficha completa -->
+      <div class="flex justify-between items-center pt-2 text-[11px] text-slate-500 border-t border-slate-100">
+        <span><kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded text-3xs font-mono font-bold">Enter</kbd> para guardar rápido</span>
+        <button type="button" class="text-blue-600 hover:text-blue-800 underline font-semibold cursor-pointer" onclick="window.posQcOpenFullForm()">
+          ¿Ficha completa o RUT? Clic aquí
+        </button>
+      </div>
+    </div>
+  `;
+
+  const footerHtml = `
+    <button class="btn btn-outline cursor-pointer" onclick="closeModal()">Cancelar (Esc)</button>
+    <button class="btn btn-primary cursor-pointer font-bold flex items-center gap-1.5" id="pos-qc-save-btn" onclick="window.posQcSaveCustomer()">
+      <i class="fas fa-check"></i> Guardar y Asignar a Venta
+    </button>
+  `;
+
+  (window as any).openModal('<i class="fas fa-bolt text-amber-500 mr-1.5"></i> Crear Cliente Express POS', bodyHtml, footerHtml, false);
+
+  setTimeout(() => {
+    if (initialDoc) {
+      const nameInput = document.getElementById('pos-qc-first-name') as HTMLInputElement;
+      if (nameInput) nameInput.focus();
+      (window as any).posQcOnDocInput();
+    } else {
+      const docInput = document.getElementById('pos-qc-doc-num') as HTMLInputElement;
+      if (docInput) docInput.focus();
+    }
+  }, 120);
 };
 
 window.posLoadPendingOrderModal = async function() {
@@ -5409,7 +5817,7 @@ window.printCashMovementTicket = async function(txId: string) {
 
     const [compName, compNit, compAddress, compPhone] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
     ]);
@@ -5485,7 +5893,7 @@ window.printCashMovementLetter = async function(txId: string) {
 
     const [compName, compNit, compAddress, compPhone, compEmail, compLegal] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),

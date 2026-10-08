@@ -30,7 +30,21 @@ const pb = {
       return null;
     }
   },
-  set currentUser(v) { this._user = v; if (v) localStorage.setItem('pb_user', JSON.stringify(v)); else localStorage.removeItem('pb_user'); },
+  set currentUser(v) {
+    this._user = v;
+    if (v) {
+      localStorage.setItem('pb_user', JSON.stringify(v));
+      const uLabel = String(v.full_name || v.name || v.username || v.email || '').trim();
+      if (uLabel) {
+        localStorage.setItem('user_name', uLabel);
+        sessionStorage.setItem('user_name', uLabel);
+      }
+    } else {
+      localStorage.removeItem('pb_user');
+      localStorage.removeItem('user_name');
+      sessionStorage.removeItem('user_name');
+    }
+  },
 
   // Escapa valores usados dentro del DSL de filtros de PocketBase.
   escapeFilterValue(v) {
@@ -1087,72 +1101,9 @@ const API = {
         const totalNewQty = currentQty + deltaQty;
 
         if (currentQty < 0) {
-          // OpciÃ³n B: Stock negativo resuelto por compra/entrada positiva
-          const resolvedQty = Math.min(deltaQty, Math.abs(currentQty));
-          const costDiff = newAvgCost - currentCost;
-          const totalAdjustment = Math.round((resolvedQty * costDiff) * 100) / 100;
-
-          // El costo promedio de las unidades restantes es el costo de compra
+          // Stock negativo resuelto por compra/entrada positiva:
+          // El costo promedio de las unidades restantes se fija al costo de adquisición ingresado
           avgCost = newAvgCost;
-
-          if (Math.abs(totalAdjustment) > 0.009) {
-            // Registrar ajuste contable retroactivo (Costo de Ventas vs Inventario)
-            try {
-              // Obtener producto para ver si tiene cuentas configuradas
-              (async () => {
-                const prod = await pb.get('products', productId);
-                const inventoryAcc = prod.inventory_account_id;
-                const costAcc = prod.cost_account_id;
-
-                if (inventoryAcc && costAcc) {
-                  let ajType = await pb.listAll('transaction_types', { filter: 'code="AJ"' });
-                  if (!ajType.length) {
-                    ajType = [await pb.create('transaction_types', {
-                      code: 'AJ',
-                      prefix: 'AJ',
-                      name: 'Ajuste de Inventario',
-                      description: 'Ajustes de costeo por stock negativo',
-                      consecutive: 0,
-                      active: true
-                    })];
-                  }
-                  const txTypeId = ajType[0].id;
-                  const rand = String(Date.now()).slice(-4);
-                  const txNumber = `AJ-${today.replaceAll('-', '')}-${rand}`;
-
-                  const lines = [
-                    {
-                      account_id: costAcc,
-                      debit: totalAdjustment > 0 ? totalAdjustment : 0,
-                      credit: totalAdjustment < 0 ? Math.abs(totalAdjustment) : 0,
-                      description: `Ajuste Costo de Ventas retroactivo por negativo resuelto - Prod ${prod.code}`,
-                      line_order: 1
-                    },
-                    {
-                      account_id: inventoryAcc,
-                      debit: totalAdjustment < 0 ? Math.abs(totalAdjustment) : 0,
-                      credit: totalAdjustment > 0 ? totalAdjustment : 0,
-                      description: `Ajuste Inventario retroactivo por negativo resuelto - Prod ${prod.code}`,
-                      line_order: 2
-                    }
-                  ];
-
-                  await this.createTransaction({
-                    tx_type_id: txTypeId,
-                    number: txNumber,
-                    date: today,
-                    description: `Ajuste automÃ¡tico de costeo por stock negativo resuelto - Prod ${prod.name}`,
-                    status: 'active',
-                    payment_days: 0,
-                    cross_enabled: false,
-                    branch_id: branchId || null,
-                  }, lines);
-                }
-              })();
-            } catch (err: any) {
-              console.error('[GRAVY] Error al generar el ajuste contable retroactivo:', err);
-            }
-          }
         } else {
           if (totalNewQty > 0) {
             avgCost = Math.round((((currentQty * currentCost) + (deltaQty * newAvgCost)) / totalNewQty) * 100) / 100;
@@ -2167,7 +2118,8 @@ const API = {
       };
 
       // 2. Respetar maneja_cruce
-      if (acc.maneja_cruce) {
+      const isAccCruce = Boolean(acc.maneja_cruce === true || acc.maneja_cruce === 1 || acc.maneja_cruce === 'true' || acc.maneja_cruce === '1');
+      if (isAccCruce) {
         let ref = String(crossDocRef || effectiveCrossDoc || '').trim();
         if (!ref) {
           throw new Error(`La cuenta contable ${acc.code} - ${acc.name} requiere documento de cruce.`);
@@ -2918,7 +2870,7 @@ const API = {
       if (acc.requires_third_party && !finalThirdPartyId) {
         finalThirdPartyId = inv.customer_id || null;
       }
-      const line = {
+      const line: any = {
         account_id: acc.id,
         third_party_id: finalThirdPartyId,
         debit: rDec(debit),
@@ -2926,8 +2878,16 @@ const API = {
         description,
         line_order: txLines.length + 1,
       };
-      if (acc.maneja_cruce && String(crossDocRef || '').trim()) {
+      const manejaCruce = Boolean(
+        acc.maneja_cruce === true ||
+        acc.maneja_cruce === 1 ||
+        acc.maneja_cruce === 'true' ||
+        acc.maneja_cruce === '1'
+      );
+      if (manejaCruce && String(crossDocRef || '').trim()) {
         line.cross_doc_ref = String(crossDocRef || '').trim();
+        line.cross_doc_date = inv.date || new Date().toISOString().slice(0, 10);
+        line.due_date = inv.due_date || line.cross_doc_date;
       }
       return line;
     };
@@ -4017,7 +3977,8 @@ const API = {
                 description: `${docLabel} ${inv.number} Pago mixto - ${method}`,
                 line_order: nextLineOrder++,
               };
-              if (acc.maneja_cruce) {
+              const isCruceLine = Boolean(acc.maneja_cruce === true || acc.maneja_cruce === 1 || acc.maneja_cruce === 'true' || acc.maneja_cruce === '1');
+              if (isCruceLine) {
                 line.cross_doc_ref = inv.number;
               }
               await pb.create('tx_lines', line);
@@ -4035,7 +3996,8 @@ const API = {
             description: `${docLabel} ${inv.number} ${newMethod}`,
             line_order: nextLineOrder++,
           };
-          if (acc.maneja_cruce) {
+          const isCruceSingle = Boolean(acc.maneja_cruce === true || acc.maneja_cruce === 1 || acc.maneja_cruce === 'true' || acc.maneja_cruce === '1');
+          if (isCruceSingle) {
             line.cross_doc_ref = inv.number;
           }
           await pb.create('tx_lines', line);
@@ -4973,7 +4935,8 @@ const API = {
         line.third_party_id = thirdPartyId || null;
       }
 
-      if (acc.maneja_cruce) {
+      const isAccCruce = Boolean(acc.maneja_cruce === true || acc.maneja_cruce === 1 || acc.maneja_cruce === 'true' || acc.maneja_cruce === '1');
+      if (isAccCruce) {
         const ref = String(crossDocRef || crossRef || '').trim();
         if (!ref) {
           throw new Error(`La cuenta ${acc.code} - ${acc.name} requiere documento de cruce.`);
@@ -5193,7 +5156,7 @@ const API = {
   },
 
   /** Descarga unificada de todas las facturas o estados de cuenta PH de un período en un solo PDF multipágina */
-  async downloadPhPeriodPdf(period, type = 'invoice') {
+  async downloadPhPeriodPdf(period, type = 'statement') {
     const cleanPeriod = String(period || '').trim();
     if (!cleanPeriod) throw new Error('El período de facturación es requerido (formato YYYY-MM).');
     const res = await fetch(`${pb.baseUrl}/api/ph/download-period-pdf`, {
@@ -5293,34 +5256,41 @@ const API = {
   },
 
   /**
-   * Edita una lÃ­nea manual de factura PH en borrador y recalcula total.
+   * Edita una línea o concepto de factura PH en borrador y recalcula total.
    */
   async updatePhDraftInvoiceLine(lineId, { description = '', amount = 0, account_code = '' } = {}) {
     const line = await pb.get('ph_invoice_lines', lineId);
     const inv = await pb.get('ph_invoices', line.invoice_id);
-    if (inv.status !== 'draft') throw new Error('Solo se pueden editar lÃ­neas de facturas en borrador.');
-    await pb.update('ph_invoice_lines', lineId, {
-      description: String(description || '').trim(),
+    if (inv.status !== 'draft') throw new Error('Solo se pueden editar líneas de facturas en borrador.');
+    const updatePayload: any = {
       amount: Math.round(Number(amount || 0)),
-      account_code: String(account_code || '').trim() || null,
-    });
+    };
+    if (description) updatePayload.description = String(description).trim();
+    if (account_code !== undefined) updatePayload.account_code = String(account_code || '').trim() || null;
+    await pb.update('ph_invoice_lines', lineId, updatePayload);
     const allLines = await this.getPhInvoiceLines(inv.id);
     const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
     await pb.update('ph_invoices', inv.id, { subtotal: newTotal, total: newTotal });
+    try {
+      await this.logAudit('UPDATE_PH_DRAFT_LINE', 'PhInvoice', inv.id, `Modificado concepto en borrador ${inv.number}: "${updatePayload.description || line.description}" a valor $${updatePayload.amount}`);
+    } catch (_) {}
     return { invoiceId: inv.id, total: newTotal };
   },
 
   /**
-   * Elimina una lÃ­nea manual de factura PH en borrador y recalcula total.
+   * Elimina una línea o concepto de factura PH en borrador y recalcula total.
    */
   async deletePhDraftInvoiceLine(lineId) {
     const line = await pb.get('ph_invoice_lines', lineId);
     const inv = await pb.get('ph_invoices', line.invoice_id);
-    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar lÃ­neas de facturas en borrador.');
+    if (inv.status !== 'draft') throw new Error('Solo se pueden eliminar líneas de facturas en borrador.');
     await pb.delete('ph_invoice_lines', lineId);
     const allLines = await this.getPhInvoiceLines(inv.id);
     const newTotal = allLines.reduce((s, l) => s + Number(l.amount || 0), 0);
     await pb.update('ph_invoices', inv.id, { subtotal: newTotal, total: newTotal });
+    try {
+      await this.logAudit('DELETE_PH_DRAFT_LINE', 'PhInvoice', inv.id, `Eliminado concepto en borrador ${inv.number}: "${line.description}" ($${line.amount})`);
+    } catch (_) {}
     return { invoiceId: inv.id, total: newTotal };
   },
 
@@ -5652,6 +5622,85 @@ const API = {
         if (p !== 0) return p;
         return String(a.invoiceNumber || '').localeCompare(String(b.invoiceNumber || ''));
       });
+    return parties;
+  },
+
+  /**
+   * Partidas abiertas de cartera PH filtradas por Tercero / Copropietario (para abonos por concepto).
+   */
+  async getPhCarteraOpenPartiesByThird(thirdId, toPeriod = '', opts: any = {}) {
+    const safeThirdId = String(thirdId || '').trim();
+    if (!safeThirdId) return [];
+
+    // 1. Obtener propiedades vinculadas al propietario
+    let propIds = new Set<string>();
+    try {
+      const props = await pb.listAll('ph_properties', {
+        filter: `owner_id="${pb.escapeFilterValue(safeThirdId)}"`,
+      });
+      (props || []).forEach((p: any) => propIds.add(p.id));
+    } catch (_) {}
+
+    // 2. Obtener dataset de cartera para estas propiedades o por owner_id
+    let allRows: any[] = [];
+    if (propIds.size > 0) {
+      for (const pid of propIds) {
+        try {
+          const { rows } = await this._getPhCarteraDataset(pid, '', toPeriod);
+          if (rows && rows.length) allRows.push(...rows);
+        } catch (_) {}
+      }
+    } else {
+      const { rows } = await this._getPhCarteraDataset('', '', toPeriod);
+      allRows = (rows || []).filter((r: any) => r.ownerId === safeThirdId);
+    }
+
+    const conceptoFilter = String(opts.conceptoId || '').trim();
+    const estadoFilter = String(opts.estado || 'all').trim();
+
+    const parties = allRows
+      .filter((r: any) => !conceptoFilter || String(r.conceptoId) === conceptoFilter)
+      .filter((r: any) => estadoFilter === 'all' || r.estado === estadoFilter)
+      .filter((r: any) => r.estado !== 'cancelado' && r.estado !== 'borrador' && Number(r.amount || 0) > 0.01)
+      .map((r: any) => {
+        const cCode = String(r.line?.expand?.concept_id?.code || '').trim().toUpperCase();
+        const normDesc = String(r.line?.description || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const isMora = cCode === 'MORA' || normDesc.includes('interes') || normDesc.includes('mora');
+        const conceptCode = (cCode || (isMora ? 'MORA' : (normDesc.includes('admin') ? 'ADM' : (normDesc.includes('extra') ? 'EXT' : 'GEN')))).toUpperCase();
+        const specificRef = `${r.invoice.number}-${conceptCode}`;
+
+        return {
+          invoiceId: r.invoice.id,
+          invoiceNumber: r.invoice.number,
+          periodo: r.invoice.period,
+          propertyId: r.propertyId,
+          propertyCode: r.propertyCode,
+          propertyName: r.propertyName,
+          ownerId: r.ownerId,
+          ownerName: r.ownerName,
+          ownerDoc: r.ownerDoc,
+          concepto: r.concepto,
+          conceptoId: r.conceptoId,
+          conceptCode: conceptCode,
+          crossDocRef: specificRef,
+          amount: Number(r.amount || 0),
+          originalAmount: Number(r.originalAmount || 0),
+          abono: Number(r.abono || 0),
+          saldoAnticipo: Number(r.saldoAnticipo || 0),
+          fechaDoc: r.fechaDoc,
+          plazoDias: r.plazoDias,
+          dueDate: r.dueDate,
+          diasMora: r.diasMora,
+          estado: r.estado,
+          lineId: r.line?.id || '',
+        };
+      })
+      .sort((a: any, b: any) => {
+        const p = String(a.periodo || '').localeCompare(String(b.periodo || ''));
+        if (p !== 0) return p;
+        return String(a.invoiceNumber || '').localeCompare(String(b.invoiceNumber || ''));
+      });
+
     return parties;
   },
 

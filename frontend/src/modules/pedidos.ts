@@ -1573,7 +1573,7 @@ window.printOrderCarta = async function (orderId: string) {
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),
@@ -1724,7 +1724,7 @@ window.printOrderTirilla = async function (orderId: string) {
 
     const [compName, compNit, compAddress, compPhone, compEmail, compCity, compCountry] = await Promise.all([
       (window as any).API.getSetting('company_name').catch(() => 'GRAVY S.A.S'),
-      (window as any).API.getSetting('company_nit').catch(() => '901.442.115-3'),
+      (window as any).API.getSetting('company_nit').catch(() => '1130636393-2'),
       (window as any).API.getSetting('company_address').catch(() => ''),
       (window as any).API.getSetting('company_phone').catch(() => ''),
       (window as any).API.getSetting('company_email').catch(() => ''),

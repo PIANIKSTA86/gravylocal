@@ -1385,8 +1385,18 @@ function exportToExcel(data, headers, filename, options?: any) {
   const fnameStr = typeof filename === 'string' ? filename : (typeof options === 'string' ? options : '');
 
   const pbInst = (window as any).pb || (typeof pb !== 'undefined' ? pb : null);
-  const userObj = pbInst?.authStore?.model;
-  const userName = optObj.userName || (userObj ? (userObj.name || userObj.email) : null) || sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || 'Usuario';
+  const userObj = pbInst?.currentUser || (window as any).API?.currentUser || pbInst?.authStore?.model;
+  let resolvedUser = optObj.userName || (userObj ? (userObj.full_name || userObj.name || userObj.username || userObj.email) : null);
+  if (!resolvedUser || String(resolvedUser).toLowerCase() === 'usuario') {
+    try {
+      const stored = JSON.parse(localStorage.getItem('pb_user') || 'null');
+      if (stored) resolvedUser = stored.full_name || stored.name || stored.username || stored.email;
+    } catch (_) {}
+  }
+  if (!resolvedUser || String(resolvedUser).toLowerCase() === 'usuario') {
+    resolvedUser = sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || localStorage.getItem('hub_user_name') || 'Usuario';
+  }
+  const userName = resolvedUser;
   const branchName = optObj.branchName || (typeof (window as any).getScopeBranchNameSync === 'function' ? (window as any).getScopeBranchNameSync(optObj.branchId) : null) || (localStorage.getItem('active_branch_id') === 'TODAS' || !localStorage.getItem('active_branch_id') ? 'Todas las sucursales' : localStorage.getItem('active_branch_id'));
   const costCenterName = optObj.costCenterName || (typeof (window as any).getScopeCostCenterNameSync === 'function' ? (window as any).getScopeCostCenterNameSync(optObj.costCenterId) : null) || (localStorage.getItem('active_cost_center_id') === 'TODOS' || !localStorage.getItem('active_cost_center_id') ? 'Todos los centros de costo' : localStorage.getItem('active_cost_center_id'));
 

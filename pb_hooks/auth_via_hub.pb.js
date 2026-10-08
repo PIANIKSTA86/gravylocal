@@ -53,11 +53,21 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
   // Obtener el puerto desde la cabecera Host del Request (para resolver conflictos de nombre duplicado)
   let companyPort = "";
   try {
-    const host = e.request.Host || "";
-    if (host.indexOf(":") !== -1) {
-      companyPort = host.split(":").pop();
+    if (body.company_port) {
+      companyPort = String(body.company_port).trim();
     }
   } catch (_) {}
+
+  if (!companyPort) {
+    try {
+      const reqInfo = (typeof e.requestInfo === "function" ? e.requestInfo() : null) || (typeof $apis !== "undefined" ? $apis.requestInfo(e) : null);
+      const headers = (reqInfo && reqInfo.headers) || {};
+      const host = headers["x-forwarded-host"] || headers["host"] || headers["Host"] || (e.request && (e.request.Host || e.request.host)) || "";
+      if (host.indexOf(":") !== -1) {
+        companyPort = host.split(":").pop();
+      }
+    } catch (_) {}
+  }
 
   // 2. Comunicarse con el HUB de manera segura back-to-back para verificar acceso
   try {
@@ -83,7 +93,8 @@ routerAdd("POST", "/api/tenant/auth-via-hub", (e) => {
           hub_status: hubRes.statusCode,
           hub_response: hubRes.raw,
           sent_nit: companyNit,
-          sent_name: companyName
+          sent_name: companyName,
+          sent_port: companyPort
         }
       });
       return;

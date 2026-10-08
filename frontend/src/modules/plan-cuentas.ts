@@ -397,7 +397,7 @@ async function openAccountForm(allAccounts: any[] | null, accTypes: any[] | null
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="form-group">
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="ac-cruce" ${row?.maneja_cruce ? 'checked' : ''} class="w-4 h-4" style="accent-color:#1A4B8C">
+          <input type="checkbox" id="ac-cruce" ${(row?.maneja_cruce === true || row?.maneja_cruce === 1 || row?.maneja_cruce === 'true' || row?.maneja_cruce === '1') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#1A4B8C">
           <span class="form-label mb-0">Maneja documento de cruce <span class="text-xs" style="color:#6B7280">(CxP / CxC)</span></span>
         </label>
       </div>

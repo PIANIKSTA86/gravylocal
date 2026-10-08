@@ -932,14 +932,6 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       pb.listAll('users', { sort: 'name' })
     ]);
 
-    const calculateMonthsElapsed = (startDateStr: string) => {
-      if (!startDateStr) return 0;
-      const start = new Date(startDateStr);
-      const end = new Date();
-      const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-      return Math.max(0, months);
-    };
-
     const getAssetDeprInfo = (a: any) => {
       const isDepr = a.is_depreciable !== false;
       const cost = Number(a.cost || 0);
@@ -951,49 +943,90 @@ async function renderSubTabCatalogo(c: HTMLElement) {
           accumNIIF: 0,
           accumFiscal: 0,
           netNIIF: cost,
+          netFiscal: cost,
           variance: 0,
           deprNIIFMonthly: 0,
-          deprFiscalMonthly: 0
+          deprFiscalMonthly: 0,
+          lastPeriod: null,
+          monthsPending: 0,
+          pendingNIIFAmount: 0,
+          status: 'no_depr'
         };
       }
 
       const initNIIF = Number(a.initial_depreciation_niif || 0);
       const initFiscal = Number(a.initial_depreciation_fiscal || 0);
+      const postedNIIF = Number(a.accumulated_depreciation_niif || 0);
+      const postedFiscal = Number(a.accumulated_depreciation_fiscal || 0);
+
       const maxNIIF = Math.max(0, cost - residual);
       const maxFiscal = cost;
-
-      let accumNIIF = 0;
-      let accumFiscal = 0;
 
       const deprNIIFMonthly = (cost - residual) / (a.useful_life_niif || 1);
       const deprFiscalMonthly = cost / (a.useful_life_fiscal || 1);
 
-      if (a.accumulated_depreciation_niif !== undefined && a.accumulated_depreciation_niif !== null && a.accumulated_depreciation_niif > 0) {
-        accumNIIF = Math.min(maxNIIF, initNIIF + Number(a.accumulated_depreciation_niif));
-        accumFiscal = Math.min(maxFiscal, initFiscal + Number(a.accumulated_depreciation_fiscal || a.accumulated_depreciation_niif));
+      // Saldo REAL asentado en libros contables (no proyección en caliente)
+      const accumNIIF = Math.min(maxNIIF, Math.max(initNIIF, postedNIIF));
+      const accumFiscal = Math.min(maxFiscal, Math.max(initFiscal, postedFiscal));
+
+      const netNIIF = Math.max(0, cost - accumNIIF - (a.impairment || 0));
+      const netFiscal = Math.max(0, cost - accumFiscal);
+      const variance = Math.abs(accumNIIF - accumFiscal);
+
+      // Diagnóstico operativo frente a la fecha de consulta
+      const lastPeriod = a.last_depreciation_period || null;
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1; // 1..12
+
+      let monthsPending = 0;
+      if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
+        const [lYr, lMo] = lastPeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
       } else {
-        const months = calculateMonthsElapsed(a.start_service_date || a.purchase_date);
-        accumNIIF = Math.min(maxNIIF, initNIIF + (deprNIIFMonthly * months));
-        accumFiscal = Math.min(maxFiscal, initFiscal + (deprFiscalMonthly * months));
+        const startDateStr = a.start_service_date || a.purchase_date;
+        if (startDateStr) {
+          const start = new Date(startDateStr);
+          if (!isNaN(start.getTime())) {
+            monthsPending = Math.max(0, (currentYear - start.getFullYear()) * 12 + (currentMonth - (start.getMonth() + 1)));
+          }
+        }
       }
 
-      const netNIIF = Math.max(0, cost - accumNIIF);
-      const variance = Math.abs(accumNIIF - accumFiscal);
+      if (accumNIIF >= maxNIIF) {
+        monthsPending = 0;
+      }
+
+      const pendingNIIFAmount = Math.min(Math.max(0, maxNIIF - accumNIIF), monthsPending * deprNIIFMonthly);
+
+      let status = 'up_to_date';
+      if (!lastPeriod && postedNIIF === 0 && initNIIF === 0) {
+        status = 'never_run';
+      } else if (monthsPending > 0) {
+        status = 'pending';
+      }
 
       return {
         isDepreciable: true,
         accumNIIF,
         accumFiscal,
         netNIIF,
+        netFiscal,
         variance,
         deprNIIFMonthly,
-        deprFiscalMonthly
+        deprFiscalMonthly,
+        lastPeriod,
+        monthsPending,
+        pendingNIIFAmount,
+        status
       };
     };
 
     let totalCost = 0;
     let totalDeprNIIF = 0;
     let totalDeprFiscal = 0;
+    let assetsWithPendingDepr = 0;
+    let totalPendingAmount = 0;
 
     assets.forEach(a => {
       if (a.status === 'retired' || a.status === 'sold' || a.status === 'lost') return;
@@ -1001,10 +1034,13 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       const d = getAssetDeprInfo(a);
       totalDeprNIIF += d.accumNIIF;
       totalDeprFiscal += d.accumFiscal;
+      if (d.isDepreciable && d.monthsPending > 0) {
+        assetsWithPendingDepr++;
+        totalPendingAmount += d.pendingNIIFAmount;
+      }
     });
 
     const netBookValueNIIF = totalCost - totalDeprNIIF;
-    const bookVariance = Math.abs(totalDeprNIIF - totalDeprFiscal);
     const formatCOP = (window as any).fmt || ((n: number) => `$ ${n.toLocaleString('es-CO')}`);
 
     c.innerHTML = `
@@ -1024,7 +1060,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
             <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Valor Neto en Libros</span>
             <h3 class="text-lg font-bold text-gray-900">${formatCOP(netBookValueNIIF)}</h3>
           </div>
-          <span class="text-xxs text-gray-500 mt-2">NIIF (Costo - Depreciación)</span>
+          <span class="text-xxs text-gray-500 mt-2">NIIF (Costo - Depr. Asentada)</span>
         </div>
 
         <div class="stat-card orange flex flex-col justify-between">
@@ -1033,16 +1069,18 @@ async function renderSubTabCatalogo(c: HTMLElement) {
             <div class="text-xs font-semibold text-gray-700">NIIF: ${formatCOP(totalDeprNIIF)}</div>
             <div class="text-xs text-gray-500">Fiscal: ${formatCOP(totalDeprFiscal)}</div>
           </div>
-          <span class="text-xxs text-gray-400 mt-1">Comparativo dual acumulado</span>
+          <span class="text-xxs text-emerald-700 font-semibold mt-1"><i class="fas fa-book-bookmark mr-1"></i>Saldos causados en libros</span>
         </div>
 
         <div class="stat-card red flex flex-col justify-between" style="position:relative">
-          <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#F59E0B"></div>
+          <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:${assetsWithPendingDepr > 0 ? '#F59E0B' : '#10B981'}"></div>
           <div>
-            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Diferencia Temporaria</span>
-            <h3 class="text-lg font-bold text-amber-700">${formatCOP(bookVariance)}</h3>
+            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Control de Causación</span>
+            <h3 class="text-lg font-bold ${assetsWithPendingDepr > 0 ? 'text-amber-700' : 'text-emerald-700'}">${assetsWithPendingDepr} con rezago</h3>
           </div>
-          <span class="text-xxs text-amber-600 mt-2"><i class="fas fa-circle-info mr-1"></i>Base para Impuesto Diferido</span>
+          <span class="text-xxs ${assetsWithPendingDepr > 0 ? 'text-amber-600' : 'text-emerald-600'} mt-2">
+            <i class="fas ${assetsWithPendingDepr > 0 ? 'fa-clock' : 'fa-circle-check'} mr-1"></i>${assetsWithPendingDepr > 0 ? `${formatCOP(totalPendingAmount)} pendiente` : 'Todos los activos al día'}
+          </span>
         </div>
       </div>
 
@@ -1059,7 +1097,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
             ` : ''}
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
           <input id="ast-q" class="form-input text-xs" placeholder="Buscar por código, placa, nombre o marca...">
           <select id="ast-filter-cat" class="form-input text-xs">
             <option value="">Todas las Categorías</option>
@@ -1082,6 +1120,12 @@ async function renderSubTabCatalogo(c: HTMLElement) {
             <option value="depreciable">Solo Depreciables</option>
             <option value="no_depreciable">Solo No Depreciables</option>
           </select>
+          <select id="ast-filter-depr-status" class="form-input text-xs">
+            <option value="">Causación (Todos)</option>
+            <option value="up_to_date">Al Día</option>
+            <option value="pending">Con Rezago / Pendiente</option>
+            <option value="never_run">Sin Causar</option>
+          </select>
         </div>
       </div>
 
@@ -1098,6 +1142,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                 <th>V. Residual NIIF</th>
                 <th>Depr. Acum. NIIF</th>
                 <th>V. Neto Libros</th>
+                <th>Causación NIIF</th>
                 <th>Centro Costo</th>
                 <th>Estado</th>
                 <th>Acciones</th>
@@ -1120,8 +1165,38 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                 };
                 const statusHtml = statusLabels[a.status] || `<span class="badge badge-green">${esc(a.status || 'Activo')}</span>`;
 
+                let causacionBadge = '<span class="text-gray-400 text-xxs font-medium">N/A</span>';
+                if (d.isDepreciable) {
+                  if (d.status === 'pending') {
+                    causacionBadge = `
+                      <div class="flex flex-col gap-0.5">
+                        <span class="text-xxs font-bold text-gray-700">${esc(d.lastPeriod || 'Sin causar')}</span>
+                        <span class="badge badge-orange text-[9px] font-bold" title="${d.monthsPending} mes(es) pendientes por causar (estimado pendiente: ${formatCOP(d.pendingNIIFAmount)})">
+                          <i class="fas fa-clock mr-0.5"></i>${d.monthsPending}m pend.
+                        </span>
+                      </div>
+                    `;
+                  } else if (d.status === 'never_run') {
+                    causacionBadge = `
+                      <div class="flex flex-col gap-0.5">
+                        <span class="badge badge-blue text-[9px] font-bold" title="Nunca se ha corrido depreciación para este activo">
+                          <i class="fas fa-circle-exclamation mr-0.5"></i>Sin causar
+                        </span>
+                        ${d.monthsPending > 0 ? `<span class="text-[9px] text-amber-700 font-semibold">${d.monthsPending}m pend.</span>` : ''}
+                      </div>
+                    `;
+                  } else {
+                    causacionBadge = `
+                      <div class="flex flex-col gap-0.5">
+                        <span class="text-xxs font-bold text-emerald-800">${esc(d.lastPeriod || 'Al día')}</span>
+                        <span class="badge badge-green text-[9px] font-bold"><i class="fas fa-check mr-0.5"></i>Al día</span>
+                      </div>
+                    `;
+                  }
+                }
+
                 return `
-                  <tr class="hover:bg-gray-50/50" data-cat="${esc(a.category_id || '')}" data-cc="${esc(a.cost_center_id || '')}" data-status="${esc(a.status || 'active')}" data-depreciable="${a.is_depreciable !== false ? '1' : '0'}" data-search="${esc(a.code.toLowerCase())} ${esc(a.name.toLowerCase())} ${esc(a.brand?.toLowerCase() || '')}">
+                  <tr class="hover:bg-gray-50/50" data-cat="${esc(a.category_id || '')}" data-cc="${esc(a.cost_center_id || '')}" data-status="${esc(a.status || 'active')}" data-depreciable="${a.is_depreciable !== false ? '1' : '0'}" data-deprstatus="${d.status}" data-search="${esc(a.code.toLowerCase())} ${esc(a.name.toLowerCase())} ${esc(a.brand?.toLowerCase() || '')}">
                     <td><strong class="text-indigo-900">${esc(a.code)}</strong></td>
                     <td>
                       <div class="text-xs font-bold text-gray-800">${esc(a.name)}</div>
@@ -1130,8 +1205,9 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                     <td><span class="text-xs text-gray-600 font-semibold">${cat ? esc(cat.name) : '—'}</span></td>
                     <td class="font-semibold text-gray-800">${formatCOP(a.cost)}</td>
                     <td>${d.isDepreciable ? formatCOP(a.residual_value || 0) : '<span class="text-gray-400 text-xxs font-medium">N/A</span>'}</td>
-                    <td class="text-gray-600 font-medium">${formatCOP(d.accumNIIF)}</td>
+                    <td class="text-gray-700 font-semibold">${formatCOP(d.accumNIIF)}</td>
                     <td class="font-bold text-indigo-950">${formatCOP(d.netNIIF)}</td>
+                    <td>${causacionBadge}</td>
                     <td><span class="text-xxs text-gray-500">${cc ? `${esc(cc.code)} - ${esc(cc.name)}` : '—'}</span></td>
                     <td>
                       <div class="flex flex-col gap-1 items-start">
@@ -1155,7 +1231,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
                     </td>
                   </tr>
                 `;
-              }).join('') : '<tr><td colspan="10" class="text-center py-12 text-gray-400"><i class="fas fa-info-circle mr-1.5"></i>No hay activos fijos en el catálogo.</td></tr>'}
+              }).join('') : '<tr><td colspan="11" class="text-center py-12 text-gray-400"><i class="fas fa-info-circle mr-1.5"></i>No hay activos fijos en el catálogo.</td></tr>'}
             </tbody>
           </table>
         </div>
@@ -1169,6 +1245,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
       const cc = ($('#ast-filter-cc') as HTMLSelectElement)?.value || '';
       const status = ($('#ast-filter-status') as HTMLSelectElement)?.value || '';
       const deprFilter = ($('#ast-filter-depreciable') as HTMLSelectElement)?.value || '';
+      const deprStatusFilter = ($('#ast-filter-depr-status') as HTMLSelectElement)?.value || '';
 
       $$('#assets-table tbody tr').forEach((tr: HTMLElement) => {
         const searchVal = tr.dataset.search || '';
@@ -1176,14 +1253,16 @@ async function renderSubTabCatalogo(c: HTMLElement) {
         const trCc = tr.dataset.cc || '';
         const trStatus = tr.dataset.status || 'active';
         const trDepr = tr.dataset.depreciable || '1';
+        const trDeprStatus = tr.dataset.deprstatus || '';
 
         const matchSearch = !q || searchVal.includes(q);
         const matchCat = !cat || trCat === cat;
         const matchCc = !cc || trCc === cc;
         const matchStatus = !status || trStatus === status;
         const matchDepr = !deprFilter || (deprFilter === 'depreciable' ? trDepr === '1' : trDepr === '0');
+        const matchDeprStatus = !deprStatusFilter || trDeprStatus === deprStatusFilter;
 
-        tr.style.display = (matchSearch && matchCat && matchCc && matchStatus && matchDepr) ? '' : 'none';
+        tr.style.display = (matchSearch && matchCat && matchCc && matchStatus && matchDepr && matchDeprStatus) ? '' : 'none';
       });
     };
 
@@ -1192,6 +1271,7 @@ async function renderSubTabCatalogo(c: HTMLElement) {
     $('#ast-filter-cc')?.addEventListener('change', filter);
     $('#ast-filter-status')?.addEventListener('change', filter);
     $('#ast-filter-depreciable')?.addEventListener('change', filter);
+    $('#ast-filter-depr-status')?.addEventListener('change', filter);
 
     $('#btn-new-asset')?.addEventListener('click', () => (window as any).openAssetForm());
     $('#btn-import-excel-assets')?.addEventListener('click', () => {
@@ -1230,6 +1310,9 @@ async function renderSubTabCatalogo(c: HTMLElement) {
           depr_acum_fiscal: d.accumFiscal,
           v_neto_libros: d.netNIIF,
           dif_temporaria: d.variance,
+          ultimo_periodo: d.lastPeriod || (d.isDepreciable ? 'Sin causar' : 'N/A'),
+          meses_pendientes: d.monthsPending,
+          depr_pendiente_niif: d.pendingNIIFAmount,
           centro_costo: cc ? `${cc.code} - ${cc.name}` : '',
           estado: statusMap[a.status] || a.status || 'Activo',
           ubicacion: a.location || '',
@@ -1238,26 +1321,29 @@ async function renderSubTabCatalogo(c: HTMLElement) {
         };
       });
       const headers = [
-        { key: 'placa',            label: 'Placa / Código' },
-        { key: 'nombre',           label: 'Nombre del Activo' },
-        { key: 'marca',            label: 'Marca' },
-        { key: 'modelo',           label: 'Modelo' },
-        { key: 'serial',           label: 'No. Serial' },
-        { key: 'categoria',        label: 'Categoría' },
-        { key: 'es_depreciable',   label: 'Depreciable' },
-        { key: 'costo',            label: 'Costo de Adquisición' },
-        { key: 'v_residual_niif',  label: 'Valor Residual NIIF' },
-        { key: 'v_util_niif',      label: 'Vida Útil NIIF (meses)' },
-        { key: 'v_util_fiscal',    label: 'Vida Útil Fiscal (meses)' },
-        { key: 'depr_acum_niif',   label: 'Depr. Acum. NIIF' },
-        { key: 'depr_acum_fiscal', label: 'Depr. Acum. Fiscal' },
-        { key: 'v_neto_libros',    label: 'Valor Neto en Libros' },
-        { key: 'dif_temporaria',   label: 'Diferencia Temporaria' },
-        { key: 'centro_costo',     label: 'Centro de Costo' },
-        { key: 'estado',           label: 'Estado' },
-        { key: 'ubicacion',        label: 'Ubicación' },
-        { key: 'fecha_compra',     label: 'Fecha de Compra' },
-        { key: 'fecha_servicio',   label: 'Fecha Inicio Servicio' },
+        { key: 'placa',               label: 'Placa / Código' },
+        { key: 'nombre',              label: 'Nombre del Activo' },
+        { key: 'marca',               label: 'Marca' },
+        { key: 'modelo',              label: 'Modelo' },
+        { key: 'serial',              label: 'No. Serial' },
+        { key: 'categoria',           label: 'Categoría' },
+        { key: 'es_depreciable',      label: 'Depreciable' },
+        { key: 'costo',               label: 'Costo de Adquisición' },
+        { key: 'v_residual_niif',     label: 'Valor Residual NIIF' },
+        { key: 'v_util_niif',         label: 'Vida Útil NIIF (meses)' },
+        { key: 'v_util_fiscal',       label: 'Vida Útil Fiscal (meses)' },
+        { key: 'depr_acum_niif',      label: 'Depr. Acum. NIIF (Libros)' },
+        { key: 'depr_acum_fiscal',    label: 'Depr. Acum. Fiscal' },
+        { key: 'v_neto_libros',       label: 'Valor Neto en Libros' },
+        { key: 'ultimo_periodo',      label: 'Último Periodo Causado' },
+        { key: 'meses_pendientes',    label: 'Meses Pendientes' },
+        { key: 'depr_pendiente_niif', label: 'Depr. Pendiente NIIF' },
+        { key: 'dif_temporaria',      label: 'Diferencia Temporaria' },
+        { key: 'centro_costo',        label: 'Centro de Costo' },
+        { key: 'estado',              label: 'Estado' },
+        { key: 'ubicacion',           label: 'Ubicación' },
+        { key: 'fecha_compra',        label: 'Fecha de Compra' },
+        { key: 'fecha_servicio',      label: 'Fecha Inicio Servicio' },
       ];
       (window as any).exportToExcel(rows, headers, `Listado_Activos_Fijos_${(window as any).todayStr()}`);
     });
@@ -1753,11 +1839,16 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
       <!-- Depreciación Acumulada Previa / Saldos Iniciales -->
       <div class="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2 depr-param-field" id="ast-init-depr-panel">
-        <div class="text-xxs font-bold text-gray-700 flex items-center gap-1.5">
-          <i class="fas fa-history text-indigo-500"></i> Depreciación Acumulada Previa / Saldo Inicial (Opcional)
+        <div class="flex items-center justify-between">
+          <div class="text-xxs font-bold text-gray-700 flex items-center gap-1.5">
+            <i class="fas fa-history text-indigo-500"></i> Depreciación Acumulada Previa / Saldo Inicial Individual
+          </div>
+          <button type="button" class="btn btn-outline btn-xs" id="btn-calc-init-depr" style="font-size:10px; padding:2px 8px;">
+            <i class="fas fa-calculator mr-1"></i>Calcular cuotas a la fecha de corte
+          </button>
         </div>
-        <div class="text-xxs text-gray-500">Si este activo fue adquirido antes de usar GRAVY y ya tenía meses depreciados, ingrese los saldos acumulados iniciales.</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+        <div class="text-xxs text-gray-500">Si este activo tenía depreciación acumulada antes del periodo actual (ej. a diciembre 2025), ingrese la porción individual correspondiente a esta placa.</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-1">
           <div class="form-group">
             <label class="form-label text-xxs">Depr. Acumulada Inicial NIIF ($)</label>
             <input id="ast-init-depr-niif" type="number" class="form-input text-xs" placeholder="0" value="${a?.initial_depreciation_niif || ''}">
@@ -1766,6 +1857,14 @@ async function renderSubTabCategorias(c: HTMLElement) {
             <label class="form-label text-xxs">Depr. Acumulada Inicial Fiscal ($)</label>
             <input id="ast-init-depr-fiscal" type="number" class="form-input text-xs" placeholder="0" value="${a?.initial_depreciation_fiscal || ''}">
           </div>
+          <div class="form-group">
+            <label class="form-label text-xxs">Periodo de Corte Saldo Inicial (Cierre)</label>
+            <input id="ast-init-depr-period" type="month" class="form-input text-xs" placeholder="AAAA-MM" value="${a?.last_depreciation_period || '2025-12'}">
+          </div>
+        </div>
+        <div class="text-[10px] text-indigo-700 bg-indigo-50/70 p-2 rounded-lg border border-indigo-100 flex items-start gap-1.5">
+          <i class="fas fa-circle-info mt-0.5 text-indigo-500"></i>
+          <span><strong>Nota Contable:</strong> La cuenta PUC de la categoría (ej. 15923501) puede agrupar varios activos fijos. Ingrese aquí únicamente la alícuota que pertenece a este activo físico individual. El sistema tomará este periodo de corte para calcular con precisión los meses pendientes en el año en curso.</span>
         </div>
       </div>
 
@@ -1923,6 +2022,33 @@ async function renderSubTabCategorias(c: HTMLElement) {
     }
   });
 
+  $('#btn-calc-init-depr')?.addEventListener('click', () => {
+    const cost = Number(getInputVal('ast-cost') || 0);
+    const residual = Number(getInputVal('ast-residual') || 0);
+    const lifeNiif = Number(getInputVal('ast-life-niif') || 0);
+    const purchaseDate = getInputVal('ast-purchase-date') || getInputVal('ast-service-date');
+    const cutoffPeriod = getInputVal('ast-init-depr-period') || '2025-12';
+
+    if (!cost || !lifeNiif || !purchaseDate || !cutoffPeriod) {
+      return showToast('Ingrese costo, vida útil, fecha de compra y periodo de corte para calcular', 'warning');
+    }
+
+    const start = new Date(purchaseDate);
+    const [cutYr, cutMo] = cutoffPeriod.split('-').map(Number);
+    // Meses transcurridos hasta el periodo de corte inclusive
+    const months = Math.max(0, (cutYr - start.getFullYear()) * 12 + (cutMo - (start.getMonth() + 1)) + 1);
+
+    const monthly = (cost - residual) / lifeNiif;
+    const calcInitial = Math.round(monthly * months);
+
+    const initNiifInput = $('#ast-init-depr-niif') as HTMLInputElement | null;
+    const initFiscalInput = $('#ast-init-depr-fiscal') as HTMLInputElement | null;
+    if (initNiifInput) initNiifInput.value = String(calcInitial);
+    if (initFiscalInput) initFiscalInput.value = String(calcInitial);
+
+    showToast(`Cuotas calculadas: ${months} meses hasta ${cutoffPeriod} = $ ${calcInitial.toLocaleString('es-CO')}`, 'info');
+  });
+
   $('#btn-save-asset')?.addEventListener('click', async () => {
     const code = getInputVal('ast-code').toUpperCase().trim();
     const name = getInputVal('ast-name').trim();
@@ -1963,6 +2089,7 @@ async function renderSubTabCategorias(c: HTMLElement) {
       residual_value: is_depreciable ? Number(getInputVal('ast-residual') || 0) : 0,
       initial_depreciation_niif: is_depreciable ? Number(getInputVal('ast-init-depr-niif') || 0) : 0,
       initial_depreciation_fiscal: is_depreciable ? Number(getInputVal('ast-init-depr-fiscal') || 0) : 0,
+      last_depreciation_period: is_depreciable ? (getInputVal('ast-init-depr-period').trim() || a?.last_depreciation_period || null) : null,
       depreciation_method: is_depreciable ? (getSelectVal('ast-method') || 'linea_recta') : 'linea_recta',
       cost_center_id: getSelectVal('ast-cc') || null,
       owner_id: getSelectVal('ast-owner') || null,
@@ -2060,96 +2187,169 @@ async function renderSubTabCategorias(c: HTMLElement) {
 
   const buildFinancialTab = () => {
     const isDepr = a.is_depreciable !== false;
-    const calculateMonthsElapsed = (startDateStr: string) => {
-      if (!startDateStr) return 0;
-      const start = new Date(startDateStr);
-      const end = new Date();
-      const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
-      return Math.max(0, months);
-    };
-
     let deprNIIFMonthly = 0;
     let deprFiscalMonthly = 0;
     let accumNIIF = 0;
     let accumFiscal = 0;
     let netNIIF = (a.cost || 0) - (a.impairment || 0);
     let netFiscal = a.cost || 0;
+    let monthsPending = 0;
+    let pendingNIIFAmount = 0;
+    let status = 'up_to_date';
+    const lastPeriod = a.last_depreciation_period || null;
 
     if (isDepr) {
       const initNIIF = Number(a.initial_depreciation_niif || 0);
       const initFiscal = Number(a.initial_depreciation_fiscal || 0);
+      const postedNIIF = Number(a.accumulated_depreciation_niif || 0);
+      const postedFiscal = Number(a.accumulated_depreciation_fiscal || 0);
+
       const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
       const maxFiscal = a.cost || 0;
 
       deprNIIFMonthly = ((a.cost || 0) - (a.residual_value || 0)) / (a.useful_life_niif || 1);
       deprFiscalMonthly = (a.cost || 0) / (a.useful_life_fiscal || 1);
 
-      if (a.accumulated_depreciation_niif !== undefined && a.accumulated_depreciation_niif !== null && a.accumulated_depreciation_niif > 0) {
-        accumNIIF = Math.min(maxNIIF, initNIIF + Number(a.accumulated_depreciation_niif));
-        accumFiscal = Math.min(maxFiscal, initFiscal + Number(a.accumulated_depreciation_fiscal || a.accumulated_depreciation_niif));
-      } else {
-        const months = calculateMonthsElapsed(a.start_service_date || a.purchase_date);
-        accumNIIF = Math.min(maxNIIF, initNIIF + (deprNIIFMonthly * months));
-        accumFiscal = Math.min(maxFiscal, initFiscal + (deprFiscalMonthly * months));
-      }
+      // Saldo REAL asentado en libros contables (estrictamente lo registrado)
+      accumNIIF = Math.min(maxNIIF, Math.max(initNIIF, postedNIIF));
+      accumFiscal = Math.min(maxFiscal, Math.max(initFiscal, postedFiscal));
 
       netNIIF = Math.max(0, (a.cost || 0) - accumNIIF - (a.impairment || 0));
       netFiscal = Math.max(0, (a.cost || 0) - accumFiscal);
+
+      // Diagnóstico operativo frente a la fecha de consulta
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1; // 1..12
+
+      if (lastPeriod && /^\d{4}-\d{2}$/.test(lastPeriod)) {
+        const [lYr, lMo] = lastPeriod.split('-').map(Number);
+        monthsPending = Math.max(0, (currentYear - lYr) * 12 + (currentMonth - lMo));
+      } else {
+        const startDateStr = a.start_service_date || a.purchase_date;
+        if (startDateStr) {
+          const start = new Date(startDateStr);
+          if (!isNaN(start.getTime())) {
+            monthsPending = Math.max(0, (currentYear - start.getFullYear()) * 12 + (currentMonth - (start.getMonth() + 1)));
+          }
+        }
+      }
+
+      if (accumNIIF >= maxNIIF) {
+        monthsPending = 0;
+      }
+
+      pendingNIIFAmount = Math.min(Math.max(0, maxNIIF - accumNIIF), monthsPending * deprNIIFMonthly);
+
+      if (!lastPeriod && postedNIIF === 0 && initNIIF === 0) {
+        status = 'never_run';
+      } else if (monthsPending > 0) {
+        status = 'pending';
+      } else {
+        status = 'up_to_date';
+      }
     }
 
     return `
       <div class="space-y-4 text-xs">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <!-- Datos Generales -->
-          <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <div class="flex justify-between items-center border-b pb-1.5 mb-2">
-              <h6 class="font-bold text-gray-700 mb-0"><i class="fas fa-circle-info mr-1 text-indigo-500"></i>Especificaciones Generales</h6>
-              ${isDepr 
-                ? '<span class="badge badge-green text-[10px]">Depreciable</span>' 
-                : '<span class="badge badge-blue text-[10px]" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">No Depreciable</span>'}
-            </div>
-            <div class="space-y-1.5">
-              <div><strong class="text-gray-500">Nombre:</strong> <span class="text-gray-800 font-semibold">${esc(a.name)}</span></div>
-              <div><strong class="text-gray-500">Categoría:</strong> <span class="text-gray-800 font-semibold">${cat ? esc(cat.name) : '—'}</span></div>
-              <div><strong class="text-gray-500">Marca/Modelo:</strong> <span class="text-gray-800 font-semibold">${esc(a.brand || '—')} / ${esc(a.model || '—')}</span></div>
-              <div><strong class="text-gray-500">Ubicación:</strong> <span class="text-gray-800 font-semibold">${esc(a.location || '—')}</span></div>
-              <div><strong class="text-gray-500">Centro de Costo:</strong> <span class="text-gray-800 font-semibold">${cc ? `${esc(cc.code)} - ${esc(cc.name)}` : '—'}</span></div>
-              <div><strong class="text-gray-500">Responsable Custodia:</strong> <span class="text-gray-800 font-semibold">${owner ? esc(owner.name) : '—'}</span></div>
-              <div><strong class="text-gray-500">Proveedor:</strong> <span class="text-gray-800 font-semibold">${a.expand?.provider_id ? esc(a.expand.provider_id.name) : '—'}</span></div>
-              <div><strong class="text-gray-500">Factura Compra:</strong> <span class="text-gray-800 font-semibold">${esc(a.invoice_number || '—')} (${esc(a.purchase_date || '—')})</span></div>
-              ${a.last_depreciation_period ? `<div><strong class="text-gray-500">Último periodo contabilizado:</strong> <span class="text-indigo-900 font-bold">${esc(a.last_depreciation_period)}</span></div>` : ''}
+          <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center border-b pb-1.5 mb-2">
+                <h6 class="font-bold text-gray-700 mb-0"><i class="fas fa-circle-info mr-1 text-indigo-500"></i>Especificaciones Generales</h6>
+                ${isDepr 
+                  ? '<span class="badge badge-green text-[10px]">Depreciable</span>' 
+                  : '<span class="badge badge-blue text-[10px]" style="background:#E0E7FF;color:#3730A3;border:1px solid #C7D2FE">No Depreciable</span>'}
+              </div>
+              <div class="space-y-1.5">
+                <div><strong class="text-gray-500">Nombre:</strong> <span class="text-gray-800 font-semibold">${esc(a.name)}</span></div>
+                <div><strong class="text-gray-500">Categoría:</strong> <span class="text-gray-800 font-semibold">${cat ? esc(cat.name) : '—'}</span></div>
+                <div><strong class="text-gray-500">Marca/Modelo:</strong> <span class="text-gray-800 font-semibold">${esc(a.brand || '—')} / ${esc(a.model || '—')}</span></div>
+                <div><strong class="text-gray-500">Ubicación:</strong> <span class="text-gray-800 font-semibold">${esc(a.location || '—')}</span></div>
+                <div><strong class="text-gray-500">Centro de Costo:</strong> <span class="text-gray-800 font-semibold">${cc ? `${esc(cc.code)} - ${esc(cc.name)}` : '—'}</span></div>
+                <div><strong class="text-gray-500">Responsable Custodia:</strong> <span class="text-gray-800 font-semibold">${owner ? esc(owner.name) : '—'}</span></div>
+                <div><strong class="text-gray-500">Proveedor:</strong> <span class="text-gray-800 font-semibold">${a.expand?.provider_id ? esc(a.expand.provider_id.name) : '—'}</span></div>
+                <div><strong class="text-gray-500">Factura Compra:</strong> <span class="text-gray-800 font-semibold">${esc(a.invoice_number || '—')} (${esc(a.purchase_date || '—')})</span></div>
+                ${a.last_depreciation_period ? `<div><strong class="text-gray-500">Último periodo contabilizado:</strong> <span class="text-indigo-900 font-bold">${esc(a.last_depreciation_period)}</span></div>` : ''}
+              </div>
             </div>
           </div>
 
           <!-- Datos Financieros Dual -->
-          <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
-            <h6 class="font-bold text-gray-700 border-b pb-1.5 mb-2"><i class="fas fa-calculator mr-1 text-emerald-500"></i>Cálculos de Depreciación Dual</h6>
-            ${isDepr ? `
-              <table class="w-full text-xxs leading-relaxed">
-                <thead>
-                  <tr class="border-b text-gray-500 text-left">
-                    <th class="pb-1">Concepto</th>
-                    <th class="pb-1 text-right">Libro NIIF</th>
-                    <th class="pb-1 text-right">Libro Fiscal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr class="border-b"><td class="py-1">Costo Original</td><td class="text-right font-semibold">${formatCOP(a.cost)}</td><td class="text-right text-gray-600">${formatCOP(a.cost)}</td></tr>
-                  <tr class="border-b"><td class="py-1">Valor Residual</td><td class="text-right font-semibold">${formatCOP(a.residual_value || 0)}</td><td class="text-right text-gray-400">$ 0</td></tr>
-                  <tr class="border-b"><td class="py-1">Vida Útil</td><td class="text-right font-semibold">${a.useful_life_niif} m</td><td class="text-right text-gray-600">${a.useful_life_fiscal} m</td></tr>
-                  <tr class="border-b"><td class="py-1">Depr. Mensual</td><td class="text-right font-bold text-indigo-900">${formatCOP(deprNIIFMonthly)}</td><td class="text-right text-gray-600">${formatCOP(deprFiscalMonthly)}</td></tr>
-                  <tr class="border-b"><td class="py-1">Depr. Acumulada</td><td class="text-right font-bold text-indigo-900">${formatCOP(accumNIIF)}</td><td class="text-right text-gray-600">${formatCOP(accumFiscal)}</td></tr>
-                  <tr><td class="py-1">Valor en Libros</td><td class="text-right font-bold text-emerald-700">${formatCOP(netNIIF)}</td><td class="text-right text-gray-600">${formatCOP(netFiscal)}</td></tr>
-                </tbody>
-              </table>
-            ` : `
-              <div class="py-6 text-center text-gray-500 space-y-2">
-                <i class="fas fa-ban text-indigo-400 text-2xl"></i>
-                <div class="font-bold text-xs text-gray-700">Activo Catalogado como No Depreciable</div>
-                <p class="text-xxs text-gray-500 leading-normal max-w-xs mx-auto">De conformidad con la NIC 16 (párrafo 58), este bien no genera cuota mensual ni amortización acumulada. Su valor en libros se conserva igual a su costo histórico.</p>
-                <div class="mt-2 font-bold text-sm text-indigo-950">Valor en Libros: ${formatCOP(a.cost)}</div>
+          <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-center border-b pb-1.5 mb-2">
+                <h6 class="font-bold text-gray-700 mb-0"><i class="fas fa-calculator mr-1 text-emerald-500"></i>Saldos en Libros (Contabilizados)</h6>
+                ${isDepr && lastPeriod 
+                  ? `<span class="badge badge-gray text-[10px]" title="Último periodo cerrado en libros contables">Cierre: ${esc(lastPeriod)}</span>` 
+                  : (isDepr ? `<span class="badge badge-orange text-[10px]">Sin Cierre Contable</span>` : '')}
               </div>
-            `}
+              ${isDepr ? `
+                <table class="w-full text-xxs leading-relaxed">
+                  <thead>
+                    <tr class="border-b text-gray-500 text-left">
+                      <th class="pb-1">Concepto</th>
+                      <th class="pb-1 text-right">Libro NIIF</th>
+                      <th class="pb-1 text-right">Libro Fiscal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="border-b"><td class="py-1">Costo Original</td><td class="text-right font-semibold">${formatCOP(a.cost)}</td><td class="text-right text-gray-600">${formatCOP(a.cost)}</td></tr>
+                    <tr class="border-b"><td class="py-1">Valor Residual</td><td class="text-right font-semibold">${formatCOP(a.residual_value || 0)}</td><td class="text-right text-gray-400">$ 0</td></tr>
+                    <tr class="border-b"><td class="py-1">Vida Útil</td><td class="text-right font-semibold">${a.useful_life_niif} m</td><td class="text-right text-gray-600">${a.useful_life_fiscal} m</td></tr>
+                    <tr class="border-b"><td class="py-1">Cuota Mensual Nominal</td><td class="text-right font-bold text-indigo-900">${formatCOP(deprNIIFMonthly)}</td><td class="text-right text-gray-600">${formatCOP(deprFiscalMonthly)}</td></tr>
+                    <tr class="border-b">
+                      <td class="py-1">
+                        <div>Depr. Acumulada en Libros</div>
+                        <div class="text-[9px] text-gray-400 font-normal">${lastPeriod ? `Asentada a ${lastPeriod}` : 'Sin comprobantes causados'}</div>
+                      </td>
+                      <td class="text-right font-bold text-indigo-900">${formatCOP(accumNIIF)}</td>
+                      <td class="text-right text-gray-600">${formatCOP(accumFiscal)}</td>
+                    </tr>
+                    <tr><td class="py-1">Valor Neto en Libros</td><td class="text-right font-bold text-emerald-700">${formatCOP(netNIIF)}</td><td class="text-right text-gray-600">${formatCOP(netFiscal)}</td></tr>
+                  </tbody>
+                </table>
+
+                <!-- Diagnóstico Operativo a la Fecha de Consulta -->
+                ${monthsPending > 0 ? `
+                  <div class="mt-3 p-2.5 rounded-xl border border-amber-200 bg-amber-50/80 text-xs">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="font-bold text-amber-900 text-xxs flex items-center gap-1">
+                        <i class="fas fa-clock text-amber-600"></i> Rezago de Causación Detectado
+                      </span>
+                      <span class="badge badge-orange text-[9px] font-bold">${monthsPending} mes(es) sin causar</span>
+                    </div>
+                    <div class="text-xxs text-amber-800 leading-normal">
+                      A la fecha de consulta no se han contabilizado las cuotas de este periodo.
+                      Depreciación proyectada pendiente por causar: <strong class="text-amber-950 font-bold">${formatCOP(pendingNIIFAmount)}</strong>.
+                    </div>
+                    <div class="mt-2 flex justify-end">
+                      <button class="btn btn-outline btn-xs" style="background:#fff; border-color:#F59E0B; color:#B45309" onclick="closeModal(); if (typeof (window as any).navigate === 'function') (window as any).navigate('fixed-assets-depreciacion');">
+                        <i class="fas fa-calculator mr-1"></i>Ir a Depreciación Mensual
+                      </button>
+                    </div>
+                  </div>
+                ` : (status === 'up_to_date' ? `
+                  <div class="mt-3 p-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xxs text-emerald-800 flex items-center gap-1.5 font-medium">
+                    <i class="fas fa-circle-check text-emerald-600"></i>
+                    <span>Depreciación al día en libros contables (Último cierre: <strong>${esc(lastPeriod || 'Al día')}</strong>).</span>
+                  </div>
+                ` : `
+                  <div class="mt-3 p-2 rounded-xl border border-indigo-200 bg-indigo-50 text-xxs text-indigo-800 flex items-center gap-1.5 font-medium">
+                    <i class="fas fa-info-circle text-indigo-600"></i>
+                    <span>Activo sin registros de depreciación histórica. Listo para comenzar su ciclo contable.</span>
+                  </div>
+                `)}
+              ` : `
+                <div class="py-6 text-center text-gray-500 space-y-2">
+                  <i class="fas fa-ban text-indigo-400 text-2xl"></i>
+                  <div class="font-bold text-xs text-gray-700">Activo Catalogado como No Depreciable</div>
+                  <p class="text-xxs text-gray-500 leading-normal max-w-xs mx-auto">De conformidad con la NIC 16 (párrafo 58), este bien no genera cuota mensual ni amortización acumulada. Su valor en libros se conserva igual a su costo histórico.</p>
+                  <div class="mt-2 font-bold text-sm text-indigo-950">Valor en Libros: ${formatCOP(a.cost)}</div>
+                </div>
+              `}
+            </div>
           </div>
         </div>
 
@@ -2913,8 +3113,19 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
       const alreadyPosted = checkTxItems.length > 0 || checkEventItems.length > 0;
 
       const tableRows = assets.map(a => {
-        const deprNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-        const deprFiscal = a.cost / (a.useful_life_fiscal || 1);
+        const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
+        const maxFiscal = a.cost || 0;
+        const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
+        const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
+
+        const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
+        const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+
+        const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
+        const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
+
+        const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
+        const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
         const diff = deprNIIF - deprFiscal;
         const methodStr = a.depreciation_method === 'linea_recta' ? 'Línea Recta' : esc(a.depreciation_method);
 
@@ -2935,8 +3146,16 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
       let totalNIIF = 0;
       let totalFiscal = 0;
       assets.forEach(a => {
-        totalNIIF += (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-        totalFiscal += a.cost / (a.useful_life_fiscal || 1);
+        const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
+        const maxFiscal = a.cost || 0;
+        const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
+        const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
+        const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
+        const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+        const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
+        const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
+        totalNIIF += Math.min(nominalNIIF, remainingNIIF);
+        totalFiscal += Math.min(nominalFiscal, remainingFiscal);
       });
 
       const stateBadge = alreadyPosted 
@@ -3044,8 +3263,19 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
             unmappedCats.add(`${cat.code} - ${cat.name}`);
           }
 
-          const deprNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-          const deprFiscal = a.cost / (a.useful_life_fiscal || 1);
+          const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
+          const maxFiscal = a.cost || 0;
+          const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
+          const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
+
+          const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
+          const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+
+          const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
+          const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
+
+          const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
+          const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
 
           const assetThirdPartyId = a.provider_id || null;
 
@@ -3134,24 +3364,32 @@ async function renderSubTabDepreciacion(c: HTMLElement) {
         }
 
         for (const a of activeAssetsForDepr) {
-          const deprNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
-          const deprFiscal = a.cost / (a.useful_life_fiscal || 1);
-
-          await pb.create('niif_asset_events', {
-            asset_id: a.id,
-            event_type: 'mejora',
-            date: todayStr(),
-            description: `Depreciación mensual procesada para el periodo ${month}. Cuota NIIF: ${formatCOP(deprNIIF)}.`,
-            amount: deprNIIF,
-            transaction_id: txNIIFId || null
-          });
-
-          // Actualizar acumulados persistentes y último periodo en la ficha del activo
-          const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
-          const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
           const maxNIIF = Math.max(0, (a.cost || 0) - (a.residual_value || 0));
           const maxFiscal = a.cost || 0;
+          const prevAccumNIIF = Number(a.accumulated_depreciation_niif || a.initial_depreciation_niif || 0);
+          const prevAccumFiscal = Number(a.accumulated_depreciation_fiscal || a.initial_depreciation_fiscal || 0);
 
+          const remainingNIIF = Math.max(0, maxNIIF - prevAccumNIIF);
+          const remainingFiscal = Math.max(0, maxFiscal - prevAccumFiscal);
+
+          const nominalNIIF = (a.cost - (a.residual_value || 0)) / (a.useful_life_niif || 1);
+          const nominalFiscal = a.cost / (a.useful_life_fiscal || 1);
+
+          const deprNIIF = Math.min(nominalNIIF, remainingNIIF);
+          const deprFiscal = Math.min(nominalFiscal, remainingFiscal);
+
+          if (deprNIIF > 0 || deprFiscal > 0) {
+            await pb.create('niif_asset_events', {
+              asset_id: a.id,
+              event_type: 'mejora',
+              date: todayStr(),
+              description: `Depreciación mensual procesada para el periodo ${month}. Cuota NIIF: ${formatCOP(deprNIIF)}.`,
+              amount: deprNIIF,
+              transaction_id: txNIIFId || null
+            });
+          }
+
+          // Actualizar acumulados persistentes y último periodo en la ficha del activo
           const newAccumNIIF = Math.min(maxNIIF, prevAccumNIIF + Math.round(deprNIIF));
           const newAccumFiscal = Math.min(maxFiscal, prevAccumFiscal + Math.round(deprFiscal));
 

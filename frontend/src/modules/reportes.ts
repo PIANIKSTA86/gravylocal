@@ -2070,14 +2070,71 @@ async function getPdfHeaderContext(opts?: { branchId?: string; costCenterId?: st
     getScopeCostCenterName(opts?.costCenterId)
   ]);
 
+  // Robust resolve company name
+  let resolvedCompanyName = String(companyName || '').trim();
+  if (!resolvedCompanyName || resolvedCompanyName.toUpperCase() === 'EMPRESA') {
+    try {
+      const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+      if (activeCo.company_name) resolvedCompanyName = String(activeCo.company_name).trim();
+    } catch (_) {}
+  }
+  if (!resolvedCompanyName || resolvedCompanyName.toUpperCase() === 'EMPRESA') {
+    resolvedCompanyName = String(localStorage.getItem('active_company_name') || localStorage.getItem('company_name') || (window as any).COMPANY_NAME_CACHE || 'EMPRESA').trim();
+  }
+
+  // Robust resolve NIT
+  let resolvedNit = String(companyNit || '').trim();
+  if (!resolvedNit || resolvedNit === 'N/A') {
+    try {
+      const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+      if (activeCo.company_nit) resolvedNit = String(activeCo.company_nit).trim();
+    } catch (_) {}
+  }
+  if (!resolvedNit || resolvedNit === 'N/A') {
+    resolvedNit = String(localStorage.getItem('active_company_nit') || localStorage.getItem('company_nit') || (window as any).COMPANY_NIT_CACHE || '').trim();
+  }
+
+  // Robust resolve Address
+  let resolvedAddress = [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ');
+  if (!resolvedAddress) {
+    try {
+      const activeCo = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
+      if (activeCo.company_address) resolvedAddress = String(activeCo.company_address).trim();
+    } catch (_) {}
+  }
+  if (!resolvedAddress) {
+    resolvedAddress = String(localStorage.getItem('active_company_address') || localStorage.getItem('company_address') || (window as any).COMPANY_ADDRESS_CACHE || '').trim();
+  }
+  if (!resolvedAddress) {
+    resolvedAddress = 'Dirección no configurada';
+  }
+
+  // Robust resolve User
   const pbInst = (window as any).pb || (typeof pb !== 'undefined' ? pb : null);
-  const userObj = pbInst?.authStore?.model;
-  const userName = userObj ? (userObj.name || userObj.email || 'Usuario') : String(sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || 'Usuario').trim();
+  const userObj = pbInst?.currentUser || (window as any).API?.currentUser || pbInst?.authStore?.model;
+  let userName = '';
+  if (userObj) {
+    userName = String(userObj.full_name || userObj.name || userObj.username || userObj.email || '').trim();
+  }
+  if (!userName || userName.toLowerCase() === 'usuario') {
+    try {
+      const stored = JSON.parse(localStorage.getItem('pb_user') || 'null');
+      if (stored) {
+        userName = String(stored.full_name || stored.name || stored.username || stored.email || '').trim();
+      }
+    } catch (_) {}
+  }
+  if (!userName || userName.toLowerCase() === 'usuario') {
+    userName = String(sessionStorage.getItem('user_name') || localStorage.getItem('user_name') || localStorage.getItem('hub_user_name') || '').trim();
+  }
+  if (!userName) {
+    userName = 'Usuario';
+  }
 
   return {
-    companyName: String(companyName || 'EMPRESA').trim(),
-    companyNit: String(companyNit || 'N/A').trim(),
-    companyAddress: [companyAddress, companyCity, companyCountry].map(v => String(v || '').trim()).filter(Boolean).join(' / ') || 'Dirección no configurada',
+    companyName: resolvedCompanyName,
+    companyNit: resolvedNit || 'N/A',
+    companyAddress: resolvedAddress,
     softwareName: String(softwareName || 'GRAVY v2.0').trim(),
     userName: userName,
     branchName: branchName,
@@ -2183,7 +2240,8 @@ function drawPdfHeader(doc, headerCtx, cfg) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
-  doc.text(`NIT: ${headerCtx.companyNit}`, left, 30);
+  const nitStr = headerCtx.companyNit ? (String(headerCtx.companyNit).toUpperCase().startsWith('NIT') ? headerCtx.companyNit : `NIT: ${headerCtx.companyNit}`) : 'NIT: N/A';
+  doc.text(nitStr, left, 30);
   doc.text(headerCtx.companyAddress, left, 40);
 
   // Center side: Original Title & Subtitles
@@ -3826,6 +3884,8 @@ async function renderIncomeStatement() {
             rows.push({
               note: showNotes ? getErNoteNum(node.code) : '',
               label: node.name,
+              level: Number(node.level || 2),
+              code: String(node.code || ''),
               now: node.now,
               cmp: node.cmp,
             });
@@ -3851,21 +3911,23 @@ async function renderIncomeStatement() {
       const utilidadCmp = ingresos.totalCmp - totalGastosCmp;
 
       const colCount = showNotes ? 4 : 3;
-      const noteHead = showNotes ? '<th style="width:90px">Nota</th>' : '';
+      const noteHead = showNotes ? '<th style="width:90px" class="text-center">Nota</th>' : '';
       const amountCell = (value, extraClass = '') => {
         const v = fmtPolarityAmount(value);
         return `<td class="text-right ${extraClass}" style="color:${v.color}">${v.text}</td>`;
       };
       const detailRowsHtml = (section) => section.detail.map(r => {
-        const lvl = Number(r.level || 1);
-        const padding = 12 + (lvl - 1) * 12;
-        const isBoldClass = lvl <= 3 ? 'font-bold' : (lvl === 4 ? 'font-semibold' : '');
+        const lvl = Number(r.level || 2);
+        const padding = 12 + Math.max(0, lvl - 2) * 16;
+        const isMajorGroup = lvl <= 2;
+        const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
+        const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
         return `
-        <tr class="${isBoldClass}">
-          <td style="padding-left:${padding}px">${esc(r.label)}</td>
-          ${showNotes ? `<td class="text-center">${esc(r.note)}</td>` : ''}
-          ${amountCell(r.now, isBoldClass)}
-          ${amountCell(r.cmp, isBoldClass)}
+        <tr>
+          <td style="padding-left:${padding}px" class="${titleClass}">${esc(r.label)}</td>
+          ${showNotes ? `<td class="text-center font-normal">${esc(r.note)}</td>` : ''}
+          ${amountCell(r.now, numClass)}
+          ${amountCell(r.cmp, numClass)}
         </tr>`;
       }).join('');
 
@@ -3968,7 +4030,10 @@ async function renderIncomeStatement() {
       const pushSection = (title, section, totalLabel) => {
         lastExportRows.push({ rubro: title, nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
         section.detail.forEach((r) => {
-          lastExportRows.push({ rubro: r.label, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code });
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indent = '  '.repeat(Math.max(0, lvl - 2));
+          lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
         });
         lastExportRows.push({ rubro: totalLabel, nota: '', actual: section.totalNow, comparativo: section.totalCmp, isBold: true, level: 2 });
       };
@@ -4068,8 +4133,31 @@ async function renderIncomeStatement() {
       const pushSection = (sectionTitle, section, totalLabel) => {
         body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
         section.detail.forEach((r) => {
-          if (showNotes) body.push([r.label, r.note || '', fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
-          else body.push([r.label, fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indentSpaces = '   '.repeat(Math.max(0, lvl - 2));
+          const labelContent = `${indentSpaces}${r.label}`;
+          const titleStyles = isMajorGroup
+            ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+            : { fontStyle: 'normal', textColor: [70, 70, 70] };
+          const numStyles = isMajorGroup
+            ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+            : { fontStyle: 'normal', textColor: [70, 70, 70] };
+
+          if (showNotes) {
+            body.push([
+              { content: labelContent, styles: titleStyles },
+              { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
+              { content: fmtPdfSignedNum(r.now), styles: numStyles },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            ]);
+          } else {
+            body.push([
+              { content: labelContent, styles: titleStyles },
+              { content: fmtPdfSignedNum(r.now), styles: numStyles },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            ]);
+          }
         });
         if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
         else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
@@ -4085,8 +4173,17 @@ async function renderIncomeStatement() {
       else body.push(['Resultado neto del periodo', fmtPdfSignedNum(totals.utilidadNow), fmtPdfSignedNum(totals.utilidadCmp)]);
 
       const head = showNotes
-        ? [['Rubro', 'Nota', String(reportDate), String(compareDate)]]
-        : [['Rubro', String(reportDate), String(compareDate)]];
+        ? [[
+            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Nota', styles: { halign: 'center' } },
+            { content: String(reportDate), styles: { halign: 'right' } },
+            { content: String(compareDate), styles: { halign: 'right' } },
+          ]]
+        : [[
+            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: String(reportDate), styles: { halign: 'right' } },
+            { content: String(compareDate), styles: { halign: 'right' } },
+          ]];
 
       doc.autoTable({
         startY: header.startY,
@@ -4098,17 +4195,28 @@ async function renderIncomeStatement() {
         headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 280 },
+            0: { cellWidth: 280, halign: 'left' },
             1: { cellWidth: 54, halign: 'center' },
             2: { cellWidth: 110, halign: 'right' },
             3: { cellWidth: 110, halign: 'right' },
           }
           : {
-            0: { cellWidth: 334 },
+            0: { cellWidth: 334, halign: 'left' },
             1: { cellWidth: 110, halign: 'right' },
             2: { cellWidth: 110, halign: 'right' },
           },
         didParseCell: (data) => {
+          if (data.section === 'head') {
+            if (showNotes) {
+              if (data.column.index === 0) data.cell.styles.halign = 'left';
+              else if (data.column.index === 1) data.cell.styles.halign = 'center';
+              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
+            } else {
+              if (data.column.index === 0) data.cell.styles.halign = 'left';
+              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
+            }
+            return;
+          }
           if (data.section !== 'body') return;
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
@@ -4408,15 +4516,39 @@ async function renderFinancialPosition() {
       const pasNoCorr = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('2') && !['21', '22', '23', '24', '25', '26', '28'].some(prefix => String(a.code || '').startsWith(prefix)), 'liability', showNotes, maxLevel);
       const patrimonio = groupSection(accounts, balNow, balCmp, a => String(a.code || '').startsWith('3'), 'equity', showNotes, maxLevel);
 
+      const accountCodeMap = new Map<string, string>();
+      accounts.forEach(a => accountCodeMap.set(a.id, String(a.code || '')));
+
+      const calcResultadoPeriodo = (balObj: Record<string, number>) => {
+        let res = 0;
+        for (const [accId, balance] of Object.entries(balObj || {})) {
+          const code = accountCodeMap.get(accId);
+          if (code && ['4', '5', '6', '7'].some(p => code.startsWith(p))) {
+            // Saldo en balObj es debito - credito.
+            // Ingresos (4): debito - credito < 0, por lo que -balance suma positivo.
+            // Gastos y costos (5, 6, 7): debito - credito > 0, por lo que -balance resta.
+            res -= Number(balance || 0);
+          }
+        }
+        return res;
+      };
+
+      const resultadoNow = calcResultadoPeriodo(balNow);
+      const resultadoCmp = calcResultadoPeriodo(balCmp);
+
       const totalActivosNow = actCorr.totalNow + actNoCorr.totalNow;
       const totalActivosCmp = actCorr.totalCmp + actNoCorr.totalCmp;
       const totalPasivosNow = pasCorr.totalNow + pasNoCorr.totalNow;
       const totalPasivosCmp = pasCorr.totalCmp + pasNoCorr.totalCmp;
-      const totalPyPNow = totalPasivosNow + patrimonio.totalNow;
-      const totalPyPCmp = totalPasivosCmp + patrimonio.totalCmp;
+      const totalPatrimonioNow = patrimonio.totalNow + resultadoNow;
+      const totalPatrimonioCmp = patrimonio.totalCmp + resultadoCmp;
+      const totalPyPNow = totalPasivosNow + totalPatrimonioNow;
+      const totalPyPCmp = totalPasivosCmp + totalPatrimonioCmp;
+      const resultadoLabel = resultadoNow >= 0 ? 'Resultado del ejercicio (Utilidad neta)' : 'Resultado del ejercicio (Pérdida neta)';
+
 
       const colCount = showNotes ? 4 : 3;
-      const noteHead = showNotes ? '<th style="width:90px">Nota</th>' : '';
+      const noteHead = showNotes ? '<th style="width:90px" class="text-center">Nota</th>' : '';
 
       const amountCell = (value, extraClass = '') => {
         const v = fmtPolarityAmount(value);
@@ -4425,15 +4557,17 @@ async function renderFinancialPosition() {
       };
 
       const detailRowsHtml = (section) => section.detail.map(r => {
-        const lvl = Number(r.level || 1);
-        const padding = 12 + (lvl - 1) * 12;
-        const isBoldClass = lvl <= 3 ? 'font-bold' : (lvl === 4 ? 'font-semibold' : '');
+        const lvl = Number(r.level || 2);
+        const padding = 12 + Math.max(0, lvl - 2) * 16;
+        const isMajorGroup = lvl <= 2;
+        const titleClass = isMajorGroup ? 'font-bold text-gray-900' : 'font-normal text-gray-700';
+        const numClass = isMajorGroup ? 'font-bold' : 'font-normal';
         return `
-        <tr class="${isBoldClass}">
-          <td style="padding-left:${padding}px">${esc(r.label)}</td>
-          ${showNotes ? `<td class="text-center">${esc(r.note)}</td>` : ''}
-          ${amountCell(r.now, isBoldClass)}
-          ${amountCell(r.cmp, isBoldClass)}
+        <tr>
+          <td style="padding-left:${padding}px" class="${titleClass}">${esc(r.label)}</td>
+          ${showNotes ? `<td class="text-center font-normal">${esc(r.note)}</td>` : ''}
+          ${amountCell(r.now, numClass)}
+          ${amountCell(r.cmp, numClass)}
         </tr>`;
       }).join('');
 
@@ -4526,11 +4660,17 @@ async function renderFinancialPosition() {
 
               <tr><td class="font-bold" colspan="${colCount}">Patrimonio</td></tr>
               ${detailRowsHtml(patrimonio)}
+              <tr class="font-semibold">
+                <td style="padding-left:12px">${resultadoLabel}</td>
+                ${showNotes ? '<td class="text-center">3.7</td>' : ''}
+                ${amountCell(resultadoNow, 'font-semibold')}
+                ${amountCell(resultadoCmp, 'font-semibold')}
+              </tr>
               <tr>
                 <td class="font-bold">Total patrimonio</td>
                 ${showNotes ? '<td></td>' : ''}
-                ${amountCell(patrimonio.totalNow, 'font-bold')}
-                ${amountCell(patrimonio.totalCmp, 'font-bold')}
+                ${amountCell(totalPatrimonioNow, 'font-bold')}
+                ${amountCell(totalPatrimonioCmp, 'font-bold')}
               </tr>
 
               <tr>
@@ -4551,7 +4691,10 @@ async function renderFinancialPosition() {
       const pushSection = (title, section, sectionTotalLabel) => {
         lastExportRows.push({ rubro: title, nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
         section.detail.forEach((r) => {
-          lastExportRows.push({ rubro: r.label, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code });
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indent = '  '.repeat(Math.max(0, lvl - 2));
+          lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
         });
         lastExportRows.push({ rubro: sectionTotalLabel, nota: '', actual: section.totalNow, comparativo: section.totalCmp, isBold: true, level: 2 });
       };
@@ -4562,7 +4705,15 @@ async function renderFinancialPosition() {
       pushSection('Pasivos corrientes', pasCorr, 'Total pasivos corrientes');
       pushSection('Pasivos no corrientes', pasNoCorr, 'Total pasivos no corrientes');
       lastExportRows.push({ rubro: 'Total pasivos', nota: '', actual: totalPasivosNow, comparativo: totalPasivosCmp });
-      pushSection('Patrimonio', patrimonio, 'Total patrimonio');
+      lastExportRows.push({ rubro: 'Patrimonio', nota: '', actual: '', comparativo: '', isBold: true, level: 1 });
+      patrimonio.detail.forEach((r) => {
+        const lvl = Number(r.level || 2);
+        const isMajorGroup = lvl <= 2;
+        const indent = '  '.repeat(Math.max(0, lvl - 2));
+        lastExportRows.push({ rubro: `${indent}${r.label}`, nota: r.note || '', actual: r.now, comparativo: r.cmp, level: r.level, code: r.code, isBold: isMajorGroup });
+      });
+      lastExportRows.push({ rubro: resultadoLabel, nota: showNotes ? '3.7' : '', actual: resultadoNow, comparativo: resultadoCmp, level: 2, code: '', isBold: true });
+      lastExportRows.push({ rubro: 'Total patrimonio', nota: '', actual: totalPatrimonioNow, comparativo: totalPatrimonioCmp, isBold: true, level: 2 });
       lastExportRows.push({ rubro: 'Total pasivos más patrimonio', nota: '', actual: totalPyPNow, comparativo: totalPyPCmp });
 
       if (includeSignatures) {
@@ -4616,8 +4767,13 @@ async function renderFinancialPosition() {
           totalActivosCmp,
           totalPasivosNow,
           totalPasivosCmp,
+          totalPatrimonioNow,
+          totalPatrimonioCmp,
           totalPyPNow,
           totalPyPCmp,
+          resultadoNow,
+          resultadoCmp,
+          resultadoLabel,
         },
         accounts,
         balNow,
@@ -4666,8 +4822,31 @@ async function renderFinancialPosition() {
       const pushSection = (sectionTitle, section, totalLabel) => {
         body.push([{ content: sectionTitle, colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
         section.detail.forEach((r) => {
-          if (showNotes) body.push([r.label, r.note || '', fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
-          else body.push([r.label, fmtPdfSignedNum(r.now), fmtPdfSignedNum(r.cmp)]);
+          const lvl = Number(r.level || 2);
+          const isMajorGroup = lvl <= 2;
+          const indentSpaces = '   '.repeat(Math.max(0, lvl - 2));
+          const labelContent = `${indentSpaces}${r.label}`;
+          const titleStyles = isMajorGroup
+            ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+            : { fontStyle: 'normal', textColor: [70, 70, 70] };
+          const numStyles = isMajorGroup
+            ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+            : { fontStyle: 'normal', textColor: [70, 70, 70] };
+
+          if (showNotes) {
+            body.push([
+              { content: labelContent, styles: titleStyles },
+              { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
+              { content: fmtPdfSignedNum(r.now), styles: numStyles },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            ]);
+          } else {
+            body.push([
+              { content: labelContent, styles: titleStyles },
+              { content: fmtPdfSignedNum(r.now), styles: numStyles },
+              { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+            ]);
+          }
         });
         if (showNotes) body.push([totalLabel, '', fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
         else body.push([totalLabel, fmtPdfSignedNum(section.totalNow), fmtPdfSignedNum(section.totalCmp)]);
@@ -4681,13 +4860,56 @@ async function renderFinancialPosition() {
       pushSection('Pasivos no corrientes', sections.pasNoCorr, 'Total pasivos no corrientes');
       if (showNotes) body.push(['Total pasivos', '', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
       else body.push(['Total pasivos', fmtPdfSignedNum(totals.totalPasivosNow), fmtPdfSignedNum(totals.totalPasivosCmp)]);
-      pushSection('Patrimonio', sections.patrimonio, 'Total patrimonio');
+      body.push([{ content: 'Patrimonio', colSpan: showNotes ? 4 : 3, styles: { fontStyle: 'bold', textColor: [13, 33, 55], fillColor: [245, 245, 245] } }]);
+      sections.patrimonio.detail.forEach((r) => {
+        const lvl = Number(r.level || 2);
+        const isMajorGroup = lvl <= 2;
+        const indentSpaces = '   '.repeat(Math.max(0, lvl - 2));
+        const labelContent = `${indentSpaces}${r.label}`;
+        const titleStyles = isMajorGroup
+          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+          : { fontStyle: 'normal', textColor: [70, 70, 70] };
+        const numStyles = isMajorGroup
+          ? { fontStyle: 'bold', textColor: [13, 33, 55] }
+          : { fontStyle: 'normal', textColor: [70, 70, 70] };
+
+        if (showNotes) {
+          body.push([
+            { content: labelContent, styles: titleStyles },
+            { content: r.note || '', styles: { halign: 'center', ...(isMajorGroup ? { fontStyle: 'bold' } : {}) } },
+            { content: fmtPdfSignedNum(r.now), styles: numStyles },
+            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+          ]);
+        } else {
+          body.push([
+            { content: labelContent, styles: titleStyles },
+            { content: fmtPdfSignedNum(r.now), styles: numStyles },
+            { content: fmtPdfSignedNum(r.cmp), styles: numStyles }
+          ]);
+        }
+      });
+      const resPdfLabel = totals.resultadoLabel || 'Resultado del ejercicio';
+      if (showNotes) body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, '3.7', fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
+      else body.push([{ content: resPdfLabel, styles: { fontStyle: 'bold', textColor: [13, 33, 55] } }, fmtPdfSignedNum(totals.resultadoNow), fmtPdfSignedNum(totals.resultadoCmp)]);
+
+      if (showNotes) body.push(['Total patrimonio', '', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
+      else body.push(['Total patrimonio', fmtPdfSignedNum(totals.totalPatrimonioNow), fmtPdfSignedNum(totals.totalPatrimonioCmp)]);
+
       if (showNotes) body.push(['Total pasivos mas patrimonio', '', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
       else body.push(['Total pasivos mas patrimonio', fmtPdfSignedNum(totals.totalPyPNow), fmtPdfSignedNum(totals.totalPyPCmp)]);
 
       const head = showNotes
-        ? [['Rubro', 'Nota', String(reportDate), String(compareDate)]]
-        : [['Rubro', String(reportDate), String(compareDate)]];
+        ? [[
+            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: 'Nota', styles: { halign: 'center' } },
+            { content: String(reportDate), styles: { halign: 'right' } },
+            { content: String(compareDate), styles: { halign: 'right' } },
+          ]]
+        : [[
+            { content: 'Rubro', styles: { halign: 'left' } },
+            { content: String(reportDate), styles: { halign: 'right' } },
+            { content: String(compareDate), styles: { halign: 'right' } },
+          ]];
 
       doc.autoTable({
         startY: header.startY,
@@ -4699,17 +4921,28 @@ async function renderFinancialPosition() {
         headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', lineWidth: { bottom: 0.25 } },
         columnStyles: showNotes
           ? {
-            0: { cellWidth: 280 },
+            0: { cellWidth: 280, halign: 'left' },
             1: { cellWidth: 54, halign: 'center' },
             2: { cellWidth: 110, halign: 'right' },
             3: { cellWidth: 110, halign: 'right' },
           }
           : {
-            0: { cellWidth: 334 },
+            0: { cellWidth: 334, halign: 'left' },
             1: { cellWidth: 110, halign: 'right' },
             2: { cellWidth: 110, halign: 'right' },
           },
         didParseCell: (data) => {
+          if (data.section === 'head') {
+            if (showNotes) {
+              if (data.column.index === 0) data.cell.styles.halign = 'left';
+              else if (data.column.index === 1) data.cell.styles.halign = 'center';
+              else if (data.column.index === 2 || data.column.index === 3) data.cell.styles.halign = 'right';
+            } else {
+              if (data.column.index === 0) data.cell.styles.halign = 'left';
+              else if (data.column.index === 1 || data.column.index === 2) data.cell.styles.halign = 'right';
+            }
+            return;
+          }
           if (data.section !== 'body') return;
           const firstCell = body[data.row.index]?.[0];
           if (typeof firstCell === 'object' && firstCell?.colSpan) return;
@@ -4847,9 +5080,11 @@ async function renderJournalBook() {
         comprobante: r.comprobante || '',
         descripcion: r.descripcion || '',
         tercero: r.tercero || '—',
+        terceroDoc: r.terceroDoc || '',
         cuenta: `${r.accountCode || ''} - ${r.accountName || ''}`.trim(),
         accountCode: r.accountCode || '',
         accountName: r.accountName || '',
+        doc_cruce: r.doc_cruce || '',
         debito: Number(r.debito || 0),
         credito: Number(r.credito || 0),
         typeId: r.typeId,
@@ -4871,6 +5106,7 @@ async function renderJournalBook() {
             fecha: r.fecha,
             descripcion: r.descripcion,
             tercero: r.tercero,
+            terceroDoc: r.terceroDoc,
             lines: [],
             totalDeb: 0,
             totalCre: 0,
@@ -4963,8 +5199,9 @@ async function renderJournalBook() {
                 <td>${showHeader ? esc(line.fecha) : ''}</td>
                 <td>${showHeader ? `<strong>${esc(line.comprobante)}</strong>` : ''}</td>
                 ${showSucursalColumn ? `<td><span class="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-semibold text-[10.5px]">${esc(line.sucursal)}</span></td>` : ''}
-                <td>${showHeader ? esc(line.tercero) : ''}</td>
+                <td>${showHeader ? (line.terceroDoc ? `<div class="font-medium text-slate-800 leading-tight">${esc(line.tercero)}</div><div class="text-[11px] text-slate-500 font-mono mt-0.5"><i class="fas fa-id-card text-slate-400 mr-1 text-[10px]"></i>${esc(line.terceroDoc)}</div>` : esc(line.tercero)) : ''}</td>
                 <td>${esc(line.cuenta)}</td>
+                <td>${line.doc_cruce ? `<span class="badge" style="background:#F3F4F6;color:#374151;font-family:monospace;font-size:11px">${esc(line.doc_cruce)}</span>` : '<span class="text-gray-400">—</span>'}</td>
                 <td class="text-xs text-gray-500">${esc(line.descripcion !== g.descripcion ? line.descripcion : '')}</td>
                 <td class="text-right">${fmt(line.debito)}</td>
                 <td class="text-right">${fmt(line.credito)}</td>
@@ -4972,19 +5209,19 @@ async function renderJournalBook() {
             `;
           }).join('') + `
             <tr class="font-semibold" style="background-color: #F9FAFB; border-bottom: 1.5px solid #E5E7EB;">
-              <td colspan="${showSucursalColumn ? 6 : 5}" class="text-right text-xs" style="color: #4B5563">Subtotal ${esc(g.comprobante)}</td>
+              <td colspan="${showSucursalColumn ? 7 : 6}" class="text-right text-xs" style="color: #4B5563">Subtotal ${esc(g.comprobante)}</td>
               <td class="text-right" style="color: #111827">${fmt(g.totalDeb)}</td>
               <td class="text-right" style="color: #111827">${fmt(g.totalCre)}</td>
             </tr>
           `;
-        }).join('') : `<tr><td colspan="${showSucursalColumn ? 8 : 7}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>`;
+        }).join('') : `<tr><td colspan="${showSucursalColumn ? 9 : 8}" class="text-center py-10" style="color:#9CA3AF">No hay movimientos para reportar.</td></tr>`;
       }
 
       const tableHeaderHtml = format === 'summarized'
         ? `<thead><tr><th>Código Cuenta</th><th>Cuenta</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`
-        : `<thead><tr><th>Fecha</th><th>Comp.</th>${showSucursalColumn ? '<th>Sucursal</th>' : ''}<th>Tercero</th><th>Cuenta</th><th>Descripción</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`;
+        : `<thead><tr><th>Fecha</th><th>Comp.</th>${showSucursalColumn ? '<th>Sucursal</th>' : ''}<th>Tercero</th><th>Cuenta</th><th>Doc. Cruce</th><th>Descripción</th><th class="text-right">Débito</th><th class="text-right">Crédito</th></tr></thead>`;
 
-      const colSpanTotal = format === 'summarized' ? 2 : (showSucursalColumn ? 6 : 5);
+      const colSpanTotal = format === 'summarized' ? 2 : (showSucursalColumn ? 7 : 6);
 
       results.innerHTML = `
         <div class="p-4 border-b" style="border-color:#F3F4F6">
@@ -5107,8 +5344,10 @@ async function renderJournalBook() {
         if (isMultiBranch) {
           item.sucursal = r.sucursal;
         }
+        item.tercero_doc = r.terceroDoc || '';
         item.tercero = r.tercero;
         item.cuenta = r.cuenta;
+        item.doc_cruce = r.doc_cruce || '—';
         item.descripcion = r.descripcion;
         item.debito = r.debito;
         item.credito = r.credito;
@@ -5123,8 +5362,10 @@ async function renderJournalBook() {
       if (isMultiBranch) {
         totalRow.sucursal = '';
       }
+      totalRow.tercero_doc = '';
       totalRow.tercero = '';
       totalRow.cuenta = '';
+      totalRow.doc_cruce = '';
       totalRow.descripcion = '';
       totalRow.debito = lastMeta.totalDeb;
       totalRow.credito = lastMeta.totalCre;
@@ -5139,8 +5380,10 @@ async function renderJournalBook() {
         excelHeaders.push({ key: 'sucursal', label: 'Sucursal' });
       }
       excelHeaders.push(
+        { key: 'tercero_doc', label: 'NIT / Doc.' },
         { key: 'tercero', label: 'Tercero' },
         { key: 'cuenta', label: 'Cuenta' },
+        { key: 'doc_cruce', label: 'Doc. Cruce' },
         { key: 'descripcion', label: 'Descripcion' },
         { key: 'debito', label: 'Debito' },
         { key: 'credito', label: 'Credito' }
@@ -5294,10 +5537,10 @@ async function renderJournalBook() {
         }
 
         const pdfHead = isMultiBranch
-          ? [['Fecha', 'Comp.', 'Sucursal', 'Tercero', 'Cuenta', 'Descripción', 'Débito', 'Crédito']]
-          : [['Fecha', 'Comp.', 'Tercero', 'Cuenta', 'Descripción', 'Débito', 'Crédito']];
+          ? [['Fecha', 'Comp.', 'Sucursal', 'Tercero', 'Cuenta', 'Doc. Cruce', 'Descripción', 'Débito', 'Crédito']]
+          : [['Fecha', 'Comp.', 'Tercero', 'Cuenta', 'Doc. Cruce', 'Descripción', 'Débito', 'Crédito']];
 
-        const textColSpan = isMultiBranch ? 6 : 5;
+        const textColSpan = isMultiBranch ? 7 : 6;
 
         pdfGroups.forEach(g => {
           g.lines.forEach((l, idx) => {
@@ -5308,9 +5551,11 @@ async function renderJournalBook() {
             if (isMultiBranch) {
               rowData.push(l.sucursal);
             }
+            const terceroPdf = idx === 0 ? (l.terceroDoc ? `${l.terceroDoc}\n${l.tercero}` : l.tercero) : '';
             rowData.push(
-              idx === 0 ? l.tercero : '',
+              terceroPdf,
               l.cuenta,
+              l.doc_cruce || '—',
               l.descripcion,
               fmtPdfNum(l.debito),
               fmtPdfNum(l.credito)
@@ -5339,6 +5584,26 @@ async function renderJournalBook() {
           margin: { top: header.startY, left: header.marginLeft, right: 24, bottom: 26 },
           styles: { font: 'helvetica', fontSize: 6.5, textColor: [55, 55, 55], cellPadding: 2.0, lineWidth: 0, overflow: 'linebreak' },
           headStyles: { fillColor: [230, 230, 230], textColor: [13, 33, 55], fontStyle: 'bold', fontSize: 6.7, lineWidth: { bottom: 0.25 } },
+          columnStyles: isMultiBranch ? {
+            0: { cellWidth: 48 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 55 },
+            3: { cellWidth: 95 },
+            4: { cellWidth: 105 },
+            5: { cellWidth: 60 },
+            6: { cellWidth: 191 },
+            7: { cellWidth: 70, halign: 'right' },
+            8: { cellWidth: 70, halign: 'right' },
+          } : {
+            0: { cellWidth: 48 },
+            1: { cellWidth: 50 },
+            2: { cellWidth: 85 },
+            3: { cellWidth: 95 },
+            4: { cellWidth: 56 },
+            5: { cellWidth: 100 },
+            6: { cellWidth: 65, halign: 'right' },
+            7: { cellWidth: 65, halign: 'right' },
+          },
           didParseCell: (data) => {
             if (data.section !== 'body') return;
             if (data.row.index === body.length - 1) {

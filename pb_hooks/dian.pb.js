@@ -2975,18 +2975,27 @@ function sendInvoiceEmailHelper(txId, customEmail) {
       // Determinar endpoint y tipo de documento MATIAS API
       let matiasEndpoint = "/invoice";
       let matiasTypeDocId = 7; // Factura Electrónica estándar
+      let matiasOperationTypeId = mandanteInfo ? 3 : 1;
 
       if (isPOS) {
         matiasTypeDocId = 20; // POS Electrónico
-      } else if (isNC || isNDS) {
+        matiasOperationTypeId = 1;
+      } else if (isNDS) {
+        matiasEndpoint = "/ds/adjustment-note";
+        matiasTypeDocId = 15; // Nota Ajuste Documento Soporte
+        matiasOperationTypeId = 1;
+      } else if (isNC) {
         matiasEndpoint = "/notes/credit";
         matiasTypeDocId = 5; // Nota Crédito
+        matiasOperationTypeId = 20;
       } else if (isND) {
         matiasEndpoint = "/notes/debit";
         matiasTypeDocId = 4; // Nota Débito
+        matiasOperationTypeId = 30;
       } else if (isDS) {
         matiasEndpoint = "/ds/document";
         matiasTypeDocId = 11; // Documento Soporte
+        matiasOperationTypeId = 9;
       }
 
       // Mapear tipo documento identificación del cliente para MATIAS API
@@ -3006,15 +3015,25 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         const itemIvaAmt = parseFloat((itemLineTotal * itemIvaRate / 100).toFixed(2));
         const lineObj = {
           unit_measure_id: 70, // Unidad estándar (94 en DIAN)
+          quantity_units_id: 1093,
           invoiced_quantity: String(it.qty),
           line_extension_amount: itemLineTotal.toFixed(2),
           free_of_charge_indicator: false,
           description: it.desc || "Producto / Servicio",
           code: it.code || String(idx + 1),
           type_item_identification_id: 4, // Estándar de adopción del contribuyente
+          type_item_identifications_id: 4,
+          reference_price_id: 1,
           price_amount: parseFloat(it.unitPrice).toFixed(2),
           base_quantity: String(it.qty)
         };
+
+        if (isDS) {
+          lineObj.invoice_period = {
+            start_date: issueDate,
+            description_code: 1
+          };
+        }
 
         if (itemIvaRate > 0) {
           lineObj.tax_totals = [{
@@ -3035,23 +3054,37 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         resolution_number: String(resNum || "18760000001"),
         prefix: prefix || "",
         document_number: cleanDocNum,
-        operation_type_id: mandanteInfo ? 3 : 1,
+        operation_type_id: matiasOperationTypeId,
         type_document_id: matiasTypeDocId,
         date: issueDate,
         time: issueTime ? issueTime.slice(0, 8) : "12:00:00",
         notes: tx.getString("description") || "Generado por GRAVY ERP",
         customer: {
           identification_number: String(custDocNum || "222222222222"),
+          dni: String(custDocNum || "222222222222"),
           name: custName || "Consumidor Final",
+          company_name: custName || "Consumidor Final",
           email: custEmail || "facturacion@cliente.com",
           phone: custPhone || "555-5555",
+          mobile: custPhone || "555-5555",
           address: custAddress || "Ciudad",
+          postal_code: "661002",
           merchant_registration: "0000000-00",
+          identity_document_id: matiasIdDocType,
           type_document_identification_id: matiasIdDocType,
           type_organization_id: custDIANDocType === "31" ? 1 : 2,
+          tax_regime_id: (customer && (customer.getString("tax_regime") === 'common' || customer.getString("tax_regime") === 'responsable')) ? 1 : 2,
+          tax_level_id: (customer && (customer.getString("tax_regime") === 'common' || customer.getString("tax_regime") === 'responsable')) ? 4 : 5,
           type_liability_id: (customer && (customer.getString("tax_regime") === 'common' || customer.getString("tax_regime") === 'responsable')) ? 116 : 117,
-          municipality_id: 149
+          municipality_id: 149,
+          country_id: 45,
+          city_id: 149
         },
+        payments: [{
+          payment_method_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
+          means_payment_id: parseInt(paymentDianCode || 10, 10),
+          value_paid: parseFloat(total).toFixed(2)
+        }],
         payment_form: {
           payment_form_id: (paymentForm === 'credito' || paymentForm === '2') ? 2 : 1,
           payment_method_id: parseInt(paymentDianCode || 10, 10),
@@ -3076,6 +3109,25 @@ function sendInvoiceEmailHelper(txId, customEmail) {
         }];
       }
 
+      // Extraer datos de Operación DIAN Especial si están presentes en notas
+      let specialOp = { type: 'standard' };
+      const rawNotesForSpecial = (invoice ? invoice.getString("notes") : "") || (tx ? tx.getString("description") : "");
+      const specialOpMatch = rawNotesForSpecial.match(/\[DIAN_SPECIAL_OP:(.*?)\]/);
+      if (specialOpMatch && specialOpMatch[1]) {
+        try {
+          specialOp = JSON.parse(specialOpMatch[1]);
+        } catch (_) {}
+      }
+
+      if (specialOp.type === 'export') {
+        matiasTypeDocId = 8; // Factura de Exportación
+        matiasOperationTypeId = 2; // Exportación en DIAN
+      } else if (specialOp.type === 'contingency') {
+        matiasTypeDocId = 9; // Factura de Contingencia
+      } else if (specialOp.type === 'mandate') {
+        matiasOperationTypeId = 3; // Factura por Mandato
+      }
+
       // Si es POS, MATIAS API requiere point_of_sale
       if (isPOS) {
         matiasPayload.point_of_sale = {
@@ -3083,6 +3135,59 @@ function sendInvoiceEmailHelper(txId, customEmail) {
           type: "POS"
         };
       }
+
+      // Aplicar particularidades de Operación DIAN Especial
+      if (specialOp.type === 'health') {
+        matiasPayload.health = {
+          operation_type: specialOp.operationType || "SS-CUFE",
+          invoice_period: {
+            start_date: specialOp.startDate || issueDate,
+            start_time: "00:00:00",
+            end_date: specialOp.endDate || dueDate || issueDate,
+            end_time: "23:59:59"
+          },
+          users: [{
+            provider_code: specialOp.providerCode || getSetting("company_health_provider_code", "110010000101"),
+            identification_type_id: parseInt(specialOp.patientDocTypeId || 3, 10),
+            identification_number: String(specialOp.patientDocNum || custDocNum || "12345678"),
+            first_name: specialOp.patientFirstName || "Usuario",
+            first_surname: specialOp.patientLastName || "Salud",
+            payment_method_id: parseInt(specialOp.paymentModalityId || 1, 10),
+            coverage_id: parseInt(specialOp.coverageId || 1, 10),
+            authorization_number: specialOp.authNumber || "",
+            prescription_number: specialOp.mipresNumber || "",
+            copayment_amount: parseFloat(specialOp.copayment || 0).toFixed(2)
+          }]
+        };
+      } else if (specialOp.type === 'export') {
+        const trmVal = parseFloat(specialOp.trm || 1).toFixed(2);
+        matiasPayload.payment_exchange_rate = {
+          exchange_rate: trmVal,
+          base_rate: trmVal,
+          currency_id: parseInt(specialOp.currencyId || 169, 10)
+        };
+        if (specialOp.incoterm) {
+          matiasPayload.notes = `[Incoterm: ${specialOp.incoterm}] ` + matiasPayload.notes;
+        }
+        if (specialOp.countryId) {
+          matiasPayload.customer.country_id = parseInt(specialOp.countryId, 10);
+          matiasPayload.customer.identity_document_id = 10; // Tax ID Extranjero
+          matiasPayload.customer.type_document_identification_id = 10;
+        }
+      } else if (specialOp.type === 'mandate') {
+        matiasLines.forEach(l => {
+          l.mandate = {
+            identification_number: String(specialOp.mandanteNit || "900000000"),
+            name: specialOp.mandanteName || "Mandante Comercial",
+            type_document_identification_id: 6
+          };
+        });
+      } else if (specialOp.type === 'contingency' && specialOp.paperNumber) {
+        matiasPayload.notes = `[Contingencia Talonario: ${specialOp.paperNumber}] ` + matiasPayload.notes;
+      }
+
+      // Limpiar tags de metadatos internos de las notas visibles
+      matiasPayload.notes = matiasPayload.notes.replace(/\[DIAN_SPECIAL_OP:.*?\]\s*/g, '').trim() || "Generado por GRAVY ERP";
 
       // Enviar a MATIAS API
       const matiasCaller = globalThis.callMatiasApi;
@@ -4541,7 +4646,7 @@ routerAdd("POST", "/api/dian/pdf-bytes", (e) => {
     }
 
     const companyName = getSetting("company_name", "GRAVY S.A.S");
-    const companyNit = getSetting("company_nit", "901.442.115-3");
+    const companyNit = getSetting("company_nit", "1130636393-2");
     const companyAddress = getSetting("company_address", "");
     const companyPhone = getSetting("company_phone", "");
     const companyEmail = getSetting("company_email", "");
@@ -4880,6 +4985,181 @@ routerAdd('POST', '/api/dian/nomina/emit', (e) => {
         consecutivo: consecutivo,
         prefijo: prefijo,
         transactionID: transId,
+        message: statusMsg
+      });
+      return;
+    }
+
+    if (einvoiceMethod === "matias") {
+      console.log("[GRAVY HOOK] Transmitiendo Nómina Electrónica vía MATIAS API...");
+      
+      const matiasCaller = globalThis.callMatiasApi;
+      if (!matiasCaller) {
+        throw new Error("Módulo de integración MATIAS API no cargado. Verifique radian.pb.js");
+      }
+
+      // Obtener resolución activa para Nómina Electrónica (NE)
+      let neResolution = null;
+      try {
+        neResolution = $app.findFirstRecordByFilter("dian_resolutions", "document_type = 'NE' && active = true");
+      } catch (_) {}
+
+      const resNum = neResolution ? neResolution.getString("resolution_number") : getNominaSetting("dian_resolution_number", "18760000001");
+      const pfx = (neResolution ? neResolution.getString("prefix") : prefijo) || "SNEL";
+
+      // Obtener empleado vinculado si existe
+      let empRec = null;
+      const empId = rec.getString("employee_id");
+      if (empId) {
+        try {
+          empRec = $app.findRecordById("employees", empId);
+        } catch (_) {}
+      }
+
+      // Extraer datos desde xmlContent si está disponible para máxima fidelidad
+      let docNumStr = String(empRec?.getString("document_number") || empRec?.getString("dni") || "1063279307");
+      let empName = empRec?.getString("name") || empRec?.getString("first_name") || "Empleado";
+      let empSurname = empRec?.getString("last_name") || empRec?.getString("first_surname") || "General";
+      let empAddress = empRec?.getString("address") || "Dirección";
+      let workedDays = "30";
+
+      if (xmlContent) {
+        const mDoc = xmlContent.match(/NumeroDocumento="([^"]+)"/);
+        if (mDoc) docNumStr = mDoc[1];
+        const mNom = xmlContent.match(/PrimerNombre="([^"]+)"/);
+        if (mNom) empName = mNom[1];
+        const mApe = xmlContent.match(/PrimerApellido="([^"]+)"/);
+        if (mApe) empSurname = mApe[1];
+        const mDias = xmlContent.match(/DiasTrabajados="([^"]+)"/);
+        if (mDias) workedDays = mDias[1];
+      }
+
+      const totalDev = (rec.getFloat("total_devengos") || 0).toFixed(2);
+      const totalDed = (rec.getFloat("total_deducciones") || 0).toFixed(2);
+      const totalNet = (rec.getFloat("total_neto") || 0).toFixed(2);
+
+      const ano = rec.getInt("ano") || new Date().getFullYear();
+      const mes = String(rec.getInt("mes") || (new Date().getMonth() + 1)).padStart(2, '0');
+      const lastDayOfMonth = new Date(ano, parseInt(mes, 10), 0).getDate();
+      const startDateStr = `${ano}-${mes}-01`;
+      const endDateStr = `${ano}-${mes}-${lastDayOfMonth}`;
+      const nowStr = new Date().toISOString().slice(0, 10);
+      const nowTimeStr = new Date().toTimeString().slice(0, 8);
+
+      const matiasNominaPayload = {
+        resolution_number: String(resNum || "18760000001"),
+        prefix: pfx,
+        document_number: String(consecutivo),
+        generation_city_id: "1006",
+        worker_code: docNumStr,
+        novelty: false,
+        pay_day: endDateStr,
+        period: {
+          date_entry: (empRec?.getString("hire_date") || "2023-01-01").slice(0, 10),
+          departure_date: null,
+          settlement_start_date: startDateStr,
+          settlement_end_date: endDateStr,
+          time_worked: String(workedDays),
+          generation_date: nowStr
+        },
+        general_information: {
+          generation_date: nowStr,
+          generation_time: nowTimeStr,
+          period_id: "5",
+          currency_id: "272",
+          trm: "0"
+        },
+        notes: `Nómina electrónica periodo ${ano}-${mes}`,
+        employee: {
+          worker_type_id: 1,
+          worker_subtype_id: 1,
+          high_risk_pension: "false",
+          identity_document_id: "3",
+          document_number: docNumStr,
+          first_surname: empSurname,
+          second_surname: "",
+          first_name: empName,
+          other_names: "",
+          working_country_id: 45,
+          work_city_id: 1006,
+          work_address: empAddress,
+          integral_salary: "false",
+          contract_type_id: 1,
+          salary: String(totalDev),
+          worker_code: docNumStr
+        },
+        payment: {
+          payment_method_id: "1",
+          means_payment_id: "10",
+          bank: "BANCOLOMBIA",
+          account_type: "AHORROS",
+          account_number: "0"
+        },
+        earn: {
+          basic: {
+            worked_days: String(workedDays),
+            salary_worked: String(totalDev)
+          },
+          transport: {
+            transportation_assistance: "0.00",
+            viatic_maintenance: "0.0",
+            viatic_non_salary_maintenance: "0.0"
+          }
+        },
+        deductions: {
+          health: {
+            percentage: "4",
+            deduction: String((parseFloat(totalDed) / 2).toFixed(2))
+          },
+          pension_fund: {
+            percentage: "4",
+            deduction: String((parseFloat(totalDed) / 2).toFixed(2))
+          }
+        },
+        rounding: "0",
+        total_earned: String(totalDev),
+        deductions_total: String(totalDed),
+        total_voucher: String(totalNet)
+      };
+
+      const matiasRes = matiasCaller("/ep/payroll", "POST", matiasNominaPayload);
+      if (!matiasRes.ok) {
+        const errMsg = matiasRes.data?.message || matiasRes.data?.error || `Error en MATIAS API (${matiasRes.statusCode})`;
+        rec.set("estado_dian", "RECHAZADO");
+        rec.set("dian_response", errMsg + (matiasRes.data?.response?.ErrorMessage?.string ? ": " + JSON.stringify(matiasRes.data.response.ErrorMessage.string) : ""));
+        $app.save(rec);
+        e.json(matiasRes.statusCode || 400, {
+          success: false,
+          status: "RECHAZADO",
+          message: errMsg,
+          details: matiasRes.data,
+          consecutivo,
+          prefijo: pfx
+        });
+        return;
+      }
+
+      const mData = matiasRes.data || {};
+      const xmlDocKey = mData.XmlDocumentKey || mData.cufe || mData.cune || "";
+      const isDianValid = mData.response?.IsValid === "true" || mData.response?.IsValid === true || mData.response?.StatusCode === "00";
+      const statusMsg = mData.response?.StatusMessage || mData.message || "Nómina Electrónica autorizada por la DIAN.";
+
+      rec.set("estado_dian", isDianValid ? "APROBADO" : "RECHAZADO");
+      rec.set("cufe", xmlDocKey);
+      rec.set("dian_response", statusMsg);
+      if (mData.response?.XmlBase64Bytes) {
+        rec.set("xml_generado", mData.response.XmlBase64Bytes);
+      }
+      rec.set("fecha_envio", new Date().toISOString().replace('T', ' ').slice(0, 19));
+      $app.save(rec);
+
+      e.json(200, {
+        success: true,
+        status: isDianValid ? "APROBADO" : "RECHAZADO",
+        cufe: xmlDocKey,
+        consecutivo: consecutivo,
+        prefijo: pfx,
+        transactionID: mData.uuid || "",
         message: statusMsg
       });
       return;
@@ -5228,6 +5508,88 @@ routerAdd('POST', '/api/dian/nomina/download-pdf', (e) => {
 
   } catch (err) {
     return e.json(500, { message: "Error al descargar PDF: " + err.message });
+  }
+});
+
+// Sincronizar resoluciones y prefijos autorizados desde MATIAS API
+routerAdd("POST", "/api/dian/sync-matias-resolutions", (e) => {
+  try {
+    const caller = globalThis.callMatiasApi;
+    if (!caller) {
+      return e.json(400, { success: false, message: "Módulo MATIAS API no disponible." });
+    }
+
+    const res = caller("/resolutions", "GET");
+    if (!res.ok) {
+      return e.json(res.statusCode || 500, { 
+        success: false, 
+        message: "No se pudieron obtener las resoluciones desde MATIAS API: " + (res.data?.message || res.raw) 
+      });
+    }
+
+    const records = res.data?.dataRecords?.data || [];
+    const synced = [];
+
+    const typeMapping = {
+      7: 'FV',
+      5: 'NC',
+      4: 'ND',
+      11: 'DS',
+      15: 'NDS',
+      20: 'POS',
+      13: 'NE',
+      14: 'NAE'
+    };
+
+    const typeCol = $app.findCollectionByNameOrId("dian_resolutions");
+
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      const docType = typeMapping[r.type_document_id];
+      if (!docType) continue;
+
+      let existing = null;
+      try {
+        existing = $app.findFirstRecordByFilter("dian_resolutions", "document_type = '" + docType + "'");
+      } catch (_) {
+        try {
+          existing = $app.findFirstRecordByFilter("dian_resolutions", "prefix = '" + (r.prefix || '').replace(/'/g, "''") + "'");
+        } catch (_2) {}
+      }
+
+      const rec = existing || new Record(typeCol);
+      rec.set("document_type", docType);
+      rec.set("prefix", r.prefix || "");
+      rec.set("resolution_number", String(r.resolution_number || ""));
+      rec.set("number_from", r.range_from || 1);
+      rec.set("number_to", r.range_up || 10000);
+      if (!existing) {
+        rec.set("current_number", r.range_from || 1);
+      }
+      rec.set("active", r.active == 1 || r.state == 1);
+      if (r.date_from) rec.set("resolution_date", r.date_from);
+      if (r.date_up) rec.set("expiration_date", r.date_up);
+      if (r.technical_key) rec.set("technical_key", r.technical_key);
+
+      $app.save(rec);
+      synced.push({
+        type: docType,
+        prefix: r.prefix,
+        resolution: r.resolution_number,
+        from: r.range_from,
+        to: r.range_up
+      });
+    }
+
+    return e.json(200, {
+      success: true,
+      count: synced.length,
+      synced: synced,
+      message: `Se sincronizaron exitosamente ${synced.length} resoluciones desde MATIAS API.`
+    });
+  } catch (err) {
+    console.error("[GRAVY HOOK] Error en /api/dian/sync-matias-resolutions:", err);
+    return e.json(500, { success: false, message: "Error al sincronizar resoluciones: " + err.message });
   }
 });
 

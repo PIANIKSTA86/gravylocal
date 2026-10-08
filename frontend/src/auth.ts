@@ -166,7 +166,7 @@ function applyModuleVisibility(): void {
 
   // Páginas permitidas por rol restringido
   const CAJERO_PAGES = new Set(['pos', 'dashboard']);
-  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'mis-reservas', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
+  const VENDEDOR_PAGES = new Set(['pos', 'ventas', 'pedidos', 'comisiones', 'crm', 'tienda-virtual', 'spa', 'spa-belleza', 'mis-reservas', 'productos', 'mis-rutas', 'rutas-vendedores', 'dashboard']);
   const PROPIETARIO_PAGES = new Set(['copro-reservas', 'copro-pqrs', 'dashboard']);
 
   $$('#nav-menu .nav-item').forEach((item: any) => {
@@ -477,6 +477,14 @@ async function doLogin() {
     const data = await res.json();
     const hubToken = data.token;
     localStorage.setItem('gravy_hub_token', hubToken);
+    if (data.record) {
+      const hubLabel = String(data.record.full_name || data.record.name || data.record.username || data.record.email || '').trim();
+      if (hubLabel) {
+        localStorage.setItem('user_name', hubLabel);
+        sessionStorage.setItem('user_name', hubLabel);
+        localStorage.setItem('hub_user_name', hubLabel);
+      }
+    }
 
     // 2. Obtener empresas asignadas
     const resComp = await fetch(`${HUB_URL}/api/hub/my-companies`, {
@@ -729,6 +737,13 @@ async function selectCompany(co: CompanyAccess) {
     // Guardar la sesión local en el cliente personalizado pb
     pb.authToken = dataSso.token;
     pb.currentUser = dataSso.record;
+    if (dataSso.record) {
+      const uLabel = String(dataSso.record.full_name || dataSso.record.name || dataSso.record.username || dataSso.record.email || '').trim();
+      if (uLabel) {
+        localStorage.setItem('user_name', uLabel);
+        sessionStorage.setItem('user_name', uLabel);
+      }
+    }
     
     // Configurar el contexto local
     ENABLED_MODULES = new Set(['core', ...(co.modules || [])]);

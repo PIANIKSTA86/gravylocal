@@ -275,9 +275,14 @@ async function renderConfiguracion(c) {
               <input id="matias-api-token" type="password" class="form-input font-mono text-xs" value="${esc(byKey['matias_api_token']?.value || '')}" placeholder="Pegue aquí el Bearer Token de MATIAS API" ${canEdit ? '' : 'readonly'}>
               <div class="flex flex-wrap items-center justify-between gap-2 mt-2">
                 <p class="text-xs" style="color:#9CA3AF">Token obtenido en el portal de MATIAS API para emisión de facturas y eventos RADIAN.</p>
-                <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-test-matias">
-                  <i class="fas fa-plug mr-1"></i> Probar Conexión MATIAS API
-                </button>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-test-matias">
+                    <i class="fas fa-plug mr-1"></i> Probar Conexión MATIAS API
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm text-xs" id="btn-sync-resolutions-matias" title="Descarga prefijos y números de resolución de DIAN configurados en Matías API">
+                    <i class="fas fa-sync-alt mr-1"></i> Sincronizar Resoluciones DIAN
+                  </button>
+                </div>
               </div>
               <div id="matias-test-result" class="mt-2 text-xs hidden"></div>
             </div>
@@ -833,6 +838,29 @@ async function renderConfiguracion(c) {
           resDiv.innerHTML = `<span class="text-red-600 font-semibold"><i class="fas fa-circle-xmark mr-1"></i>Error de red: ${e.message}</span>`;
         }
         showToast(`Fallo al contactar MATIAS API: ${e.message}`, 'error');
+      }
+    });
+
+    $('#btn-sync-resolutions-matias')?.addEventListener('click', async () => {
+      const btn = $('#btn-sync-resolutions-matias') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
+      showToast('Sincronizando resoluciones DIAN desde MATIAS API...', 'info');
+      try {
+        const res = await pb.send('/api/dian/sync-matias-resolutions', { method: 'POST' });
+        if (res && res.success) {
+          showToast(res.message || `¡Sincronizadas ${res.count} resoluciones correctamente!`, 'success');
+          const resDiv = $('#matias-test-result');
+          if (resDiv) {
+            resDiv.classList.remove('hidden');
+            resDiv.innerHTML = `<span class="text-green-600 font-semibold"><i class="fas fa-check-double mr-1"></i>Resoluciones sincronizadas con éxito (${res.count} autorizadas). Prefijos actualizados en GRAVY.</span>`;
+          }
+        } else {
+          showToast(res.message || 'No se pudieron sincronizar las resoluciones', 'error');
+        }
+      } catch (err: any) {
+        showToast(err.message || 'Error al sincronizar resoluciones', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
       }
     });
 

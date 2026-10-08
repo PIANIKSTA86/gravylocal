@@ -157,75 +157,145 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
           <!-- Módulos en Cuadrícula Visual -->
           <div class="form-group" style="margin-bottom:20px">
             <label class="form-label" style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:10px">Módulos Iniciales</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-height:260px;overflow-y:auto;padding-right:4px">
               
               <!-- Card Contabilidad -->
-              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="contabilidad" checked style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(36,70,184,0.1);display:flex;align-items:center;justify-content:center;color:#2446B8"><i class="fas fa-calculator"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(36,70,184,0.1);display:flex;align-items:center;justify-content:center;color:#2446B8;flex-shrink:0"><i class="fas fa-calculator"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Contabilidad</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Balances, facturación, DIAN</p>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Contabilidad</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Balances, DIAN, impuestos</p>
                 </div>
               </div>
 
               <!-- Card Comercial -->
-              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="comercial" checked style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(12,114,143,0.1);display:flex;align-items:center;justify-content:center;color:#0C728F"><i class="fas fa-store"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(12,114,143,0.1);display:flex;align-items:center;justify-content:center;color:#0C728F;flex-shrink:0"><i class="fas fa-store"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Comercial</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Ventas, compras, POS</p>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Comercial</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Ventas, facturación, POS</p>
+                </div>
+              </div>
+
+              <!-- Card Inventarios -->
+              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="inventarios" checked style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(16,185,129,0.1);display:flex;align-items:center;justify-content:center;color:#10B981;flex-shrink:0"><i class="fas fa-warehouse"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Inventarios</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Stock, lotes, kardex</p>
+                </div>
+              </div>
+
+              <!-- Card Tesorería -->
+              <div class="sa-module-choice" style="border:2px solid #2446B8;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:#F0F4FF;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="tesoreria" checked style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;color:#F59E0B;flex-shrink:0"><i class="fas fa-landmark"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Tesorería</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Recaudos, egresos, bancos</p>
+                </div>
+              </div>
+
+              <!-- Card Logística -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="logistica" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(59,130,246,0.1);display:flex;align-items:center;justify-content:center;color:#3B82F6;flex-shrink:0"><i class="fas fa-ship"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Logística</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Importaciones, despachos</p>
+                </div>
+              </div>
+
+              <!-- Card CRM (Ventas) [Especial] -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="crm" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(236,72,153,0.1);display:flex;align-items:center;justify-content:center;color:#EC4899;flex-shrink:0"><i class="fas fa-funnel-dollar"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Seguimiento CRM <span style="font-size:9px;color:#EC4899;background:#FDF2F8;padding:1px 4px;border-radius:4px">Especial</span></p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Pipeline comercial dinámico</p>
+                </div>
+              </div>
+
+              <!-- Card Tienda Virtual [Especial] -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="tienda-virtual" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(20,184,166,0.1);display:flex;align-items:center;justify-content:center;color:#14B8A6;flex-shrink:0"><i class="fas fa-basket-shopping"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Tienda Virtual <span style="font-size:9px;color:#EC4899;background:#FDF2F8;padding:1px 4px;border-radius:4px">Especial</span></p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Catálogo web y e-commerce</p>
+                </div>
+              </div>
+
+              <!-- Card Spa Mascotas [Especial] -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="spa" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(244,63,94,0.1);display:flex;align-items:center;justify-content:center;color:#F43F5E;flex-shrink:0"><i class="fas fa-dog"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Spa Mascotas <span style="font-size:9px;color:#EC4899;background:#FDF2F8;padding:1px 4px;border-radius:4px">Especial</span></p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Veterinaria y peluquería</p>
+                </div>
+              </div>
+
+              <!-- Card Spa Belleza [Especial] -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="spa-belleza" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(236,72,153,0.1);display:flex;align-items:center;justify-content:center;color:#EC4899;flex-shrink:0"><i class="fas fa-spa"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Spa Belleza <span style="font-size:9px;color:#EC4899;background:#FDF2F8;padding:1px 4px;border-radius:4px">Especial</span></p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Estética y cosmetología</p>
                 </div>
               </div>
 
               <!-- Card Nómina -->
-              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="nomina" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(127,124,255,0.1);display:flex;align-items:center;justify-content:center;color:#7F7CFF"><i class="fas fa-id-card"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(127,124,255,0.1);display:flex;align-items:center;justify-content:center;color:#7F7CFF;flex-shrink:0"><i class="fas fa-id-card"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Nómina</p>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Nómina</p>
                   <p style="font-size:10px;color:#6B7280;margin:0">Empleados, liquidación</p>
                 </div>
               </div>
 
               <!-- Card Copropiedades -->
-              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="copropiedades" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;color:#F59E0B"><i class="fas fa-city"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;color:#F59E0B;flex-shrink:0"><i class="fas fa-city"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Copropiedades</p>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Copropiedades</p>
                   <p style="font-size:10px;color:#6B7280;margin:0">PH, expensas, cartera</p>
                 </div>
               </div>
 
+              <!-- Card Activos Fijos -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="activos_fijos" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(16,185,129,0.1);display:flex;align-items:center;justify-content:center;color:#10B981;flex-shrink:0"><i class="fas fa-boxes-stacked"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Activos Fijos</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Depreciación, inventario QR</p>
+                </div>
+              </div>
+
+              <!-- Card Conciliación Bancaria -->
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+                <input type="checkbox" class="new-comp-mod" value="conciliacion" style="display:none">
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(99,102,241,0.1);display:flex;align-items:center;justify-content:center;color:#6366F1;flex-shrink:0"><i class="fas fa-scale-balanced"></i></div>
+                <div>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Conciliación</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Cotejo extractos bancarios</p>
+                </div>
+              </div>
+
               <!-- Card NIIF (IFRS) -->
-              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
+              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="niif" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(36,70,184,0.1);display:flex;align-items:center;justify-content:center;color:#2446B8"><i class="fas fa-scale-balanced"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(36,70,184,0.1);display:flex;align-items:center;justify-content:center;color:#2446B8;flex-shrink:0"><i class="fas fa-calculator"></i></div>
                 <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Normas NIIF</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Políticas, Arrendamientos NIIF 16</p>
-                </div>
-              </div>
-
-              <!-- Card Spa Mascotas -->
-              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
-                <input type="checkbox" class="new-comp-mod" value="spa" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(244,63,94,0.1);display:flex;align-items:center;justify-content:center;color:#F43F5E"><i class="fas fa-dog"></i></div>
-                <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Spa Mascotas</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Veterinaria y peluquería</p>
-                </div>
-              </div>
-
-              <!-- Card Spa Belleza -->
-              <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:12px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
-                <input type="checkbox" class="new-comp-mod" value="spa-belleza" style="display:none">
-                <div style="width:32px;height:32px;border-radius:8px;background:rgba(236,72,153,0.1);display:flex;align-items:center;justify-content:center;color:#EC4899"><i class="fas fa-spa"></i></div>
-                <div>
-                  <p style="font-size:13px;font-weight:700;margin:0;color:#111827">Spa Belleza</p>
-                  <p style="font-size:10px;color:#6B7280;margin:0">Estética y cosmetología humana</p>
+                  <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Normas NIIF</p>
+                  <p style="font-size:10px;color:#6B7280;margin:0">Políticas y NIIF 16</p>
                 </div>
               </div>
 
@@ -285,9 +355,22 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
 
       <div id="sa-tab-licencias" class="sa-tab-content" style="display:none">
         <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-            <h3 style="font-size:16px;font-weight:700;color:#111827">Control de Licencias por Módulo</h3>
-            <p style="font-size:13px;color:#6B7280;margin:0">Activa o restringe módulos para esta empresa.</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+            <div>
+              <h3 style="font-size:16px;font-weight:700;color:#111827">Control de Licencias por Módulo</h3>
+              <p style="font-size:13px;color:#6B7280;margin:0">Activa o restringe módulos y reasocia los permisos de acceso para los usuarios.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:6px">
+                <label for="sa-license-company-select" style="font-size:12px;font-weight:700;color:#4B5563">Empresa:</label>
+                <select id="sa-license-company-select" class="form-input" style="padding:6px 12px;font-size:13px;border-radius:8px;font-weight:600;min-width:200px" onchange="(window as any).saOnCompanyLicenseChange(this.value)">
+                  <option value="">Cargando empresas...</option>
+                </select>
+              </div>
+              <button class="btn btn-outline btn-sm" id="btn-sync-user-perms" onclick="(window as any).saSyncUserPermissions()" style="border-radius:8px" title="Sincronizar y reasociar permisos de usuarios con módulos activos">
+                <i class="fas fa-rotate mr-1"></i> Reasociar Permisos
+              </button>
+            </div>
           </div>
           <div id="sa-licenses-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px">
             <div style="font-size:14px;color:#6B7280"><i class="fas fa-spinner fa-spin"></i> Cargando módulos...</div>
@@ -448,35 +531,60 @@ async function _loadSACompany() {
   }
 }
 
-async function _loadSALicenses() {
+async function _loadSALicenses(targetCompanyId?: string) {
   const container = document.getElementById('sa-licenses-grid');
   if (!container) return;
 
-  const MODULE_META: Record<string, { label: string; icon: string; color: string }> = {
-    core:          { label: 'Core (Base)',   icon: 'fa-cube',       color: '#10B981' },
-    contabilidad:  { label: 'Contabilidad',  icon: 'fa-calculator', color: '#2446B8' },
-    comercial:     { label: 'Comercial',     icon: 'fa-store',      color: '#0C728F' },
-    crm:           { label: 'CRM (Ventas)',  icon: 'fa-funnel-dollar', color: '#EC4899' },
-    nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7F7CFF' },
-    copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B' },
-    inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899' },
-    logistica:     { label: 'Logística',     icon: 'fa-ship',       color: '#3B82F6' },
-    inventarios:   { label: 'Inventarios',   icon: 'fa-warehouse',  color: '#10B981' },
-    tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B' },
-    'tienda-virtual': { label: 'Tienda Virtual', icon: 'fa-basket-shopping', color: '#14B8A6' },
-    spa:           { label: 'Spa Mascotas (Veterinaria)', icon: 'fa-dog', color: '#F43F5E' },
-    'spa-belleza': { label: 'Spa Belleza Humana',         icon: 'fa-spa', color: '#EC4899' },
-    conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1' },
-    niif:          { label: 'Gestión NIIF (IFRS)', icon: 'fa-scale-balanced', color: '#2446B8' },
-    activos_fijos: { label: 'Activos Fijos', icon: 'fa-boxes-stacked', color: '#10B981' },
+  const MODULE_META: Record<string, { label: string; icon: string; color: string; isSpecial?: boolean; desc?: string }> = {
+    core:          { label: 'Core (Base)',   icon: 'fa-cube',       color: '#10B981', desc: 'Panel base del sistema' },
+    contabilidad:  { label: 'Contabilidad',  icon: 'fa-calculator', color: '#2446B8', desc: 'Balances, libros y DIAN' },
+    comercial:     { label: 'Comercial',     icon: 'fa-store',      color: '#0C728F', desc: 'Ventas, compras, POS' },
+    inventarios:   { label: 'Inventarios',   icon: 'fa-warehouse',  color: '#10B981', desc: 'Existencias y kardex' },
+    tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B', desc: 'Cajas y bancos' },
+    conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1', desc: 'Cotejo de extractos' },
+    nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7F7CFF', desc: 'Empleados y liquidaciones' },
+    logistica:     { label: 'Logística',     icon: 'fa-ship',       color: '#3B82F6', desc: 'Importaciones y despachos' },
+    copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B', desc: 'Propiedad horizontal' },
+    inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899', desc: 'Contratos y arriendos' },
+    niif:          { label: 'Normas NIIF',   icon: 'fa-scale-balanced', color: '#2446B8', desc: 'Políticas y NIIF 16' },
+    activos_fijos: { label: 'Activos Fijos', icon: 'fa-boxes-stacked', color: '#10B981', desc: 'Depreciación contable' },
+    crm:           { label: 'Seguimiento CRM',  icon: 'fa-funnel-dollar', color: '#EC4899', isSpecial: true, desc: 'Pipeline comercial' },
+    'tienda-virtual': { label: 'Tienda Virtual', icon: 'fa-basket-shopping', color: '#14B8A6', isSpecial: true, desc: 'E-commerce web' },
+    spa:           { label: 'Spa Mascotas (Veterinaria)', icon: 'fa-dog', color: '#F43F5E', isSpecial: true, desc: 'Citas y peluquería canina' },
+    'spa-belleza': { label: 'Spa Belleza Humana',         icon: 'fa-spa', color: '#EC4899', isSpecial: true, desc: 'Estética y ficha clínica' },
   };
 
   try {
     const hubToken = localStorage.getItem('gravy_hub_token');
     const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
-    if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión en el HUB');
+    if (!hubToken) throw new Error('No hay sesión en el HUB');
 
-    const res = await fetch(`${HUB_URL}/api/collections/licenses/records?filter=(company_id='${activeCompany.company_id}')`, {
+    // 1. Obtener lista de empresas del HUB y poblar el selector
+    let companies: any[] = [];
+    try {
+      const resComp = await fetch(`${HUB_URL}/api/hub/my-companies`, {
+        headers: { 'Authorization': `Bearer ${hubToken}` }
+      });
+      if (resComp.ok) {
+        const dComp = await resComp.json();
+        companies = dComp.companies || [];
+      }
+    } catch (_) {}
+
+    const companySelect = document.getElementById('sa-license-company-select') as HTMLSelectElement | null;
+    if (companySelect && companies.length > 0) {
+      const currentSelectedVal = targetCompanyId || companySelect.value || activeCompany.company_id;
+      companySelect.innerHTML = companies.map(c => `
+        <option value="${esc(c.company_id)}" ${c.company_id === currentSelectedVal ? 'selected' : ''}>
+          ${esc(c.company_name)} (${esc(c.company_nit || 'NIT N/A')})
+        </option>
+      `).join('');
+    }
+
+    const effectiveCompanyId = targetCompanyId || companySelect?.value || activeCompany.company_id;
+    if (!effectiveCompanyId) throw new Error('No se ha seleccionado ninguna empresa');
+
+    const res = await fetch(`${HUB_URL}/api/collections/licenses/records?filter=(company_id='${effectiveCompanyId}')`, {
       headers: { 'Authorization': `Bearer ${hubToken}` }
     });
     const data = await res.json();
@@ -485,11 +593,15 @@ async function _loadSALicenses() {
     const licMap: Record<string, any> = {};
     (data.items || []).forEach((m: any) => licMap[m.module_key] = m);
 
-    const ORDER = ['core', 'contabilidad', 'comercial', 'crm', 'nomina', 'copropiedades', 'inmobiliarias', 'logistica', 'inventarios', 'tesoreria', 'tienda-virtual', 'spa', 'spa-belleza', 'conciliacion', 'niif', 'activos_fijos'];
+    const ORDER = [
+      'core', 'contabilidad', 'comercial', 'inventarios', 'tesoreria', 'conciliacion', 'nomina', 'logistica',
+      'activos_fijos', 'niif', 'copropiedades', 'inmobiliarias',
+      'crm', 'tienda-virtual', 'spa', 'spa-belleza'
+    ];
     
     container.innerHTML = ORDER.map(key => {
       const meta = MODULE_META[key];
-      if (!meta) return ''; // guard: skip unknown keys
+      if (!meta) return '';
       const lic = licMap[key] || { enabled: false, plan: 'none', expires_at: null };
       const enabled = lic.enabled;
       const isCore = key === 'core';
@@ -498,18 +610,21 @@ async function _loadSALicenses() {
         <div style="padding:16px;border:1px solid ${enabled ? meta.color+'40' : '#E5E7EB'};border-radius:12px;background:${enabled ? meta.color+'0A' : '#F9FAFB'};display:flex;flex-direction:column;gap:12px">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div style="display:flex;align-items:center;gap:10px">
-              <div style="width:36px;height:36px;border-radius:10px;background:${enabled ? meta.color+'20' : '#E5E7EB'};display:flex;align-items:center;justify-content:center;color:${enabled ? meta.color : '#9CA3AF'}">
+              <div style="width:36px;height:36px;border-radius:10px;background:${enabled ? meta.color+'20' : '#E5E7EB'};display:flex;align-items:center;justify-content:center;color:${enabled ? meta.color : '#9CA3AF'};flex-shrink:0">
                 <i class="fas ${meta.icon}"></i>
               </div>
               <div>
-                <h4 style="font-size:14px;font-weight:700;color:${enabled ? '#111827' : '#6B7280'};margin:0">${esc(meta.label)}</h4>
-                <p style="font-size:11px;color:#6B7280;margin:0">Plan: ${esc(lic.plan ? lic.plan.toUpperCase() : 'PERPETUA')}</p>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <h4 style="font-size:13px;font-weight:700;color:${enabled ? '#111827' : '#6B7280'};margin:0">${esc(meta.label)}</h4>
+                  ${meta.isSpecial ? `<span style="font-size:9px;font-weight:800;color:#EC4899;background:#FDF2F8;border:1px solid #FBCFE8;padding:1px 5px;border-radius:4px">ESPECIAL</span>` : ''}
+                </div>
+                <p style="font-size:11px;color:#6B7280;margin:0">${esc(meta.desc || '')}</p>
               </div>
             </div>
             ${isCore ? 
               `<span style="font-size:11px;font-weight:700;color:#10B981;background:#ECFDF5;padding:4px 8px;border-radius:6px">Obligatorio</span>` :
               `<label style="position:relative;display:inline-block;width:40px;height:22px;cursor:pointer">
-                 <input type="checkbox" id="sa-toggle-${key}" style="opacity:0;width:0;height:0" onchange="saToggleLicense('${key}', this.checked)" ${enabled ? 'checked' : ''}>
+                 <input type="checkbox" id="sa-toggle-${key}" style="opacity:0;width:0;height:0" onchange="(window.saToggleLicense ? window.saToggleLicense('${key}', this.checked, '${effectiveCompanyId}') : null)" ${enabled ? 'checked' : ''}>
                  <span style="position:absolute;inset:0;border-radius:11px;background:${enabled ? meta.color : '#D1D5DB'};transition:.3s"></span>
                  <span style="position:absolute;top:3px;left:${enabled ? '21px' : '3px'};width:16px;height:16px;background:#fff;border-radius:50%;transition:.3s"></span>
                </label>`
@@ -523,14 +638,39 @@ async function _loadSALicenses() {
   }
 }
 
+async function saOnCompanyLicenseChange(companyId: string) {
+  await _loadSALicenses(companyId);
+}
+
+async function saSyncUserPermissions() {
+  const btn = document.getElementById('btn-sync-user-perms') as HTMLButtonElement | null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Reasociando...';
+  }
+  try {
+    if (typeof (window as any).loadLicenses === 'function') {
+      await (window as any).loadLicenses();
+    }
+    if (typeof (window as any).applyModuleVisibility === 'function') {
+      (window as any).applyModuleVisibility();
+    }
+    showToast('Permisos de usuarios y visibilidad de módulos reasociados exitosamente.', 'success');
+  } catch (err: any) {
+    showToast(err.message || 'Error al reasociar permisos', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-rotate mr-1"></i> Reasociar Permisos';
+    }
+  }
+}
 
 async function _loadSADbStats() {
   const container = document.getElementById('sa-db-stats');
   if (!container) return;
 
   try {
-    // This is an approximation since we don't have a direct stats endpoint without admin auth, 
-    // but we can query counts for main collections to show some activity.
     const collections = ['transactions', 'purchase_invoices', 'inventory_movements', 'third_parties'];
     
     let html = `<ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px">`;
@@ -558,17 +698,20 @@ async function _loadSADbStats() {
   }
 }
 
-async function saToggleLicense(moduleKey: string, enabled: boolean) {
+async function saToggleLicense(moduleKey: string, enabled: boolean, targetCompanyId?: string) {
   const toggle = document.getElementById(`sa-toggle-${moduleKey}`) as HTMLInputElement | null;
   if (toggle) {
     toggle.checked = !enabled; // Revertir visualmente mientras confirma el diálogo
   }
 
   const activeCompany = JSON.parse(localStorage.getItem('gravy_active_company') || '{}');
-  const compName = activeCompany.name || activeCompany.company_name || 'la empresa activa';
+  const companySelect = document.getElementById('sa-license-company-select') as HTMLSelectElement | null;
+  const companyId = targetCompanyId || companySelect?.value || activeCompany.company_id;
+  const compName = (companySelect && companySelect.selectedOptions[0]) ? companySelect.selectedOptions[0].text : (activeCompany.name || activeCompany.company_name || 'la empresa seleccionada');
+
   const alertText = enabled
     ? `¿Estás seguro de que deseas <strong>habilitar</strong> el módulo <strong>${moduleKey}</strong> para <strong>${esc(compName)}</strong> en el HUB y en la base de datos local?`
-    : `¿Estás seguro de que deseas <strong>deshabilitar</strong> el módulo <strong>${moduleKey}</strong> para <strong>${esc(compName)}</strong>?<br><br><span style="color:#EF4444;font-weight:700;"><i class="fas fa-triangle-exclamation"></i> ADVERTENCIA:</span> Esto retirará el acceso a este módulo y afectará a todos los usuarios del tenant.`;
+    : `¿Estás seguro de que deseas <strong>deshabilitar</strong> el módulo <strong>${moduleKey}</strong> para <strong>${esc(compName)}</strong>?<br><br><span style="color:#EF4444;font-weight:700;"><i class="fas fa-triangle-exclamation"></i> ADVERTENCIA:</span> Esto retirará el acceso a este módulo y afectará a los permisos de los usuarios del tenant.`;
 
   (window as any).confirmDialog(
     `Confirmar licencia: ${moduleKey.toUpperCase()}`,
@@ -580,74 +723,77 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
       }
       try {
         const hubToken = localStorage.getItem('gravy_hub_token');
-        if (!hubToken || !activeCompany.company_id) throw new Error('No hay sesión activa en el HUB');
+        if (!hubToken || !companyId) throw new Error('No hay sesión activa en el HUB o empresa no definida');
 
         // 1. Guardar en el HUB central
         const resHub = await fetch(`${HUB_URL}/api/hub/toggle-license`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${hubToken}` },
-          body: JSON.stringify({ company_id: activeCompany.company_id, module_key: moduleKey, enabled }),
+          body: JSON.stringify({ company_id: companyId, module_key: moduleKey, enabled }),
         });
         const dataHub = await resHub.json();
         if (!resHub.ok) throw new Error(dataHub.message || 'Error desconocido del HUB');
 
-        // 2. Sincronizar con la base de datos local del tenant
-        try {
-          const resTenant = await fetch(
-            `${(window as any).PB_URL || window.location.origin}/api/gravy/toggle-license`,
-            {
-              method:  'POST',
-              headers: {
-                'Content-Type':  'application/json',
-                'Authorization': `Bearer ${pb.authToken}`,
-              },
-              body: JSON.stringify({ module_key: moduleKey, enabled }),
+        // 2. Si es la empresa activa actual, sincronizar con la base de datos local del tenant y actualizar permisos
+        const isCurrentActive = companyId === activeCompany.company_id;
+        if (isCurrentActive) {
+          try {
+            const resTenant = await fetch(
+              `${(window as any).PB_URL || window.location.origin}/api/gravy/toggle-license`,
+              {
+                method:  'POST',
+                headers: {
+                  'Content-Type':  'application/json',
+                  'Authorization': `Bearer ${pb.authToken}`,
+                },
+                body: JSON.stringify({ module_key: moduleKey, enabled }),
+              }
+            );
+            if (!resTenant.ok) {
+              const errTenant = await resTenant.json();
+              console.warn('[saToggleLicense] Advertencia sincronizando tenant:', errTenant);
             }
-          );
-          if (!resTenant.ok) {
-            const errTenant = await resTenant.json();
-            console.warn('[saToggleLicense] Advertencia sincronizando tenant:', errTenant);
+          } catch (tErr) {
+            console.warn('[saToggleLicense] Error conectando con API local del tenant:', tErr);
           }
-        } catch (tErr) {
-          console.warn('[saToggleLicense] Error conectando con API local del tenant:', tErr);
+
+          // 3. Actualizar memoria y sesión local
+          if (enabled) {
+            if (typeof (window as any).enableModule === 'function') {
+              (window as any).enableModule(moduleKey);
+            } else if (typeof ENABLED_MODULES !== 'undefined') {
+              ENABLED_MODULES.add(moduleKey);
+            }
+            if (!activeCompany.modules) activeCompany.modules = [];
+            if (!activeCompany.modules.includes(moduleKey)) activeCompany.modules.push(moduleKey);
+          } else {
+            if (typeof (window as any).disableModule === 'function') {
+              (window as any).disableModule(moduleKey);
+            } else if (typeof ENABLED_MODULES !== 'undefined') {
+              ENABLED_MODULES.delete(moduleKey);
+            }
+            if (activeCompany.modules) {
+              activeCompany.modules = activeCompany.modules.filter((m: string) => m !== moduleKey);
+            }
+          }
+          
+          localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
+
+          // Reasociar permisos y visibilidad en el sidebar en tiempo real
+          if (typeof applyModuleVisibility === 'function') applyModuleVisibility();
         }
 
-        // 3. Actualizar memoria y sesión local
-        if (enabled) {
-          if (typeof (window as any).enableModule === 'function') {
-            (window as any).enableModule(moduleKey);
-          } else if (typeof ENABLED_MODULES !== 'undefined') {
-            ENABLED_MODULES.add(moduleKey);
-          }
-          if (!activeCompany.modules) activeCompany.modules = [];
-          if (!activeCompany.modules.includes(moduleKey)) activeCompany.modules.push(moduleKey);
-        } else {
-          if (typeof (window as any).disableModule === 'function') {
-            (window as any).disableModule(moduleKey);
-          } else if (typeof ENABLED_MODULES !== 'undefined') {
-            ENABLED_MODULES.delete(moduleKey);
-          }
-          if (activeCompany.modules) {
-            activeCompany.modules = activeCompany.modules.filter((m: string) => m !== moduleKey);
-          }
-        }
-        
-        // Guardar en localStorage para persistencia
-        localStorage.setItem('gravy_active_company', JSON.stringify(activeCompany));
-
-        // Reaplicar visibilidad en la barra lateral
-        if (typeof applyModuleVisibility === 'function') applyModuleVisibility();
-        showToast(`Módulo "${moduleKey}" ${enabled ? 'habilitado' : 'deshabilitado'} exitosamente.`, 'success');
+        showToast(`Módulo "${moduleKey}" ${enabled ? 'habilitado' : 'deshabilitado'} exitosamente. Permisos actualizados.`, 'success');
 
         // Refrescar el grid con los datos confirmados
-        await _loadSALicenses();
+        await _loadSALicenses(companyId);
       } catch (err: any) {
         showToast(err.message || 'Error al actualizar licencia', 'error');
         if (toggle) {
           toggle.checked = !enabled;
           toggle.disabled = false;
         }
-        await _loadSALicenses();
+        await _loadSALicenses(companyId);
       }
     },
     !enabled
@@ -657,6 +803,8 @@ async function saToggleLicense(moduleKey: string, enabled: boolean) {
 // Global Exports
 (window as any).renderSuperadmin = renderSuperadmin;
 (window as any).saToggleLicense = saToggleLicense;
+(window as any).saOnCompanyLicenseChange = saOnCompanyLicenseChange;
+(window as any).saSyncUserPermissions = saSyncUserPermissions;
 
 (window as any).showCreateCompanyModal = function() {
   const modal = document.getElementById('sa-create-company-modal');

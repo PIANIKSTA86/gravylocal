@@ -516,10 +516,10 @@ let LATEST_REPORT_DATA: any[] = [];
     if (kpiWrap) {
       kpiWrap.style.display = 'grid';
       kpiWrap.innerHTML = `
-        ${commKpi('Venta Facturada (Subtotal)', (window as any).fmt(sumVentasHdr), 'fas fa-file-invoice', '#1A4B8C', '#EEF4FF')}
-        ${commKpi('Base Real (Venta ' + (cfg.basis === 'cobrada' ? 'Cobrada' : 'Facturada') + ')', (window as any).fmt(sumVentasReal), 'fas fa-sack-dollar', '#059669', '#ECFDF5')}
-        ${commKpi('Comisiones Acumuladas', (window as any).fmt(sumComisionesTotal), 'fas fa-percent', '#7C3AED', '#F5F3FF')}
-        ${commKpi('Ventas Procesadas', invoices.length, 'fas fa-list-check', '#C46516', '#FFF8F0')}
+        ${commKpi('Venta Facturada (Subtotal)', (window as any).fmt(sumVentasHdr), 'fas fa-file-invoice', '#7C3AED', '#EDE9FE')}
+        ${commKpi('Base Real (Venta ' + (cfg.basis === 'cobrada' ? 'Cobrada' : 'Facturada') + ')', (window as any).fmt(sumVentasReal), 'fas fa-sack-dollar', '#059669', '#DCFCE7')}
+        ${commKpi('Comisiones Acumuladas', (window as any).fmt(sumComisionesTotal), 'fas fa-percent', '#7C3AED', '#EDE9FE')}
+        ${commKpi('Ventas Procesadas', invoices.length, 'fas fa-list-check', '#D97706', '#FEF3C7')}
       `;
     }
 
@@ -527,7 +527,7 @@ let LATEST_REPORT_DATA: any[] = [];
     if (tbody) {
       tbody.innerHTML = reportRows.map((r: any) => `
         <tr>
-          <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(r.number)}</span></td>
+          <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(r.number)}</span></td>
           <td>${r.date}</td>
           <td>${r.seller}</td>
           <td class="font-medium">${(window as any).esc(r.customer)}</td>
@@ -586,16 +586,14 @@ document.getElementById('btn-comm-excel')?.addEventListener('click', () => {
    ═══════════════════════════════════════════════════════════ */
 function commKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card" style="border-left: 4px solid ${color}">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs font-bold text-gray-500 uppercase tracking-wider">${(window as any).esc(title)}</p>
-          <h3 class="text-lg font-extrabold mt-1 text-gray-900">${(window as any).esc(String(value))}</h3>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-base" style="background:${bg};color:${color}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${(window as any).esc(title)}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${(window as any).esc(String(value))}</p>
     </div>
   `;
 }

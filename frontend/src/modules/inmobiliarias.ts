@@ -33,13 +33,15 @@ const INVOICE_STATUS_META = {
 const PROPERTY_TYPES = ['CASA', 'APARTAMENTO', 'LOCAL', 'BODEGA', 'OFICINA', 'LOTE', 'OTRO'];
 
 // Helper local para KPI
-function inmoKpi(label, value, iconClass, color, bg) {
-  return `<div class="rounded-2xl p-4 shadow-sm" style="background:${bg}">
-    <div class="flex items-center gap-2 mb-1">
-      <i class="${iconClass} text-sm" style="color:${color}"></i>
-      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+function inmoKpi(label: string, value: any, iconClass: string, color: string, _bg?: string) {
+  return `<div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:11.5px;font-weight:600;color:#5B21B6;text-transform:uppercase;letter-spacing:0.04em">${label}</span>
+      <div style="width:30px;height:30px;border-radius:8px;background:${color}15;display:flex;align-items:center;justify-content:center">
+        <i class="${iconClass}" style="color:${color};font-size:13px"></i>
+      </div>
     </div>
-    <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
+    <p style="font-size:22px;font-weight:800;color:#2E1065;line-height:1.2;margin:0;font-variant-numeric:tabular-nums">${value}</p>
   </div>`;
 }
 

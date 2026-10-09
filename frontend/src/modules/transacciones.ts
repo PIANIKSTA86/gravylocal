@@ -691,7 +691,7 @@ async function openNuevaTxModal(initialOpts: any = null) {
               <input id="tx-third" type="hidden" value="">
               <div id="tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
             </div>
-            <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
+            <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#7C3AED;color:#7C3AED" disabled>
               <i class="fas fa-file-invoice-dollar"></i> Cartera
             </button>
             <button class="btn btn-outline btn-sm" id="btn-new-third-from-tx" title="Crear nuevo tercero" style="white-space:nowrap;border-color:#16A34A;color:#16A34A">
@@ -1056,7 +1056,7 @@ async function renderNuevaTx(c) {
                 <input id="tx-third" type="hidden" value="">
                 <div id="tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:20"></div>
               </div>
-              <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" disabled>
+              <button class="btn btn-outline btn-sm" id="btn-cartera" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#7C3AED;color:#7C3AED" disabled>
                 <i class="fas fa-file-invoice-dollar"></i> Cartera
               </button>
             </div>
@@ -1389,13 +1389,13 @@ function renderTxLines(repaint = true) {
 
         <div style="display:flex;flex-direction:column;gap:3px">
           <div style="display:flex;align-items:center;gap:6px">
-            <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
-            <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+            <i class="fas fa-link" style="color:#7C3AED;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#7C3AED;white-space:nowrap">Doc. de Cruce</span>
             ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <input id="tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateTxLine(${i}, 'cross_doc_ref', this.value)" onkeydown="if((event.key==='Enter' || event.key==='Tab') && !event.shiftKey){ event.preventDefault(); document.getElementById('tx-line-debit-${i}')?.focus(); }">
-            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
+            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#7C3AED;color:#7C3AED;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'new')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
 
@@ -1861,7 +1861,7 @@ async function showCarteraModal(thirdId, opts = {}) {
     }
 
     openModal(
-      `<i class="fas fa-file-invoice-dollar mr-2" style="color:#1A4B8C"></i>Cartera: ${esc(tercero?.name || thirdId)}`,
+      `<i class="fas fa-file-invoice-dollar mr-2" style="color:#7C3AED"></i>Cartera: ${esc(tercero?.name || thirdId)}`,
       `<div class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Consultando movimientos de cartera...</div>`,
       `<button class="btn btn-outline" onclick="closeCarteraModal()">Cerrar</button>`,
       true
@@ -1982,14 +1982,14 @@ async function showCarteraModal(thirdId, opts = {}) {
 
         return `
         <tr style="${dimmed ? 'opacity:0.45' : ''}">
-          <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(r.ref)}</span></td>
+          <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(r.ref)}</span></td>
           <td class="text-xs" style="color:#6B7280">${esc(r.firstDate)}</td>
           <td class="text-xs">${esc(r.account)}</td>
           <td class="text-right">${fmt(r.debit)}</td>
           <td class="text-right">${fmt(r.credit)}</td>
           <td class="text-right font-bold">${saldoCellHtml}</td>
           <td>
-            ${!r.esCancelado ? `<button class="btn btn-outline btn-sm" style="border-color:#1A4B8C;color:#1A4B8C;font-size:11px" onclick="useCrossDoc('${esc(r.ref)}', ${Number(r.netVal || 0)})">
+            ${!r.esCancelado ? `<button class="btn btn-outline btn-sm" style="border-color:#7C3AED;color:#7C3AED;font-size:11px" onclick="useCrossDoc('${esc(r.ref)}', ${Number(r.netVal || 0)})">
               <i class="fas fa-arrow-down-to-line"></i> Usar
             </button>` : ''}
           </td>
@@ -2155,7 +2155,7 @@ async function showCarteraModal(thirdId, opts = {}) {
         <!-- PANE 2: DOCUMENTOS CONTABLES GENERALES -->
         <div id="cartera-pane-docs" style="display:${!hasPhParties ? 'block' : 'none'}">
           <div class="mb-3 flex items-center gap-4 flex-wrap">
-            <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#1A4B8C">${pendientes.length}</span></span>
+            <span class="text-sm font-semibold" style="color:#0D2137">Documentos pendientes: <span style="color:#7C3AED">${pendientes.length}</span></span>
             <span class="text-sm font-semibold" style="color:#0D2137">Saldo total abierto: <span style="color:${totalColor}">${totalFormatted}</span></span>
           </div>
           <div class="overflow-x-auto rounded-xl border border-slate-200">
@@ -2755,7 +2755,7 @@ async function loadConsultaTxPage() {
               const balanced = diff < Math.pow(10, -decimals);
               return `
               <tr>
-                <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(t.number || '')}</span></td>
+                <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(t.number || '')}</span></td>
                 <td>${esc(t.date)}</td>
                 <td>${esc(t.expand?.third_party_id?.name || '—')}</td>
                 <td class="max-w-xs truncate" title="${esc(t.description || '')}">${esc(t.description || '—')}</td>
@@ -2773,7 +2773,7 @@ async function loadConsultaTxPage() {
                     <button class="btn btn-outline btn-sm" title="Imprimir nota contable" style="border-color:#334155;color:#334155" onclick="printTxNotaContable('${esc(t.id)}')"><i class="fas fa-print"></i></button>
                     ${can('canApprove') && t.status === 'draft' ? `<button class="btn btn-primary btn-sm" title="Aprobar transacción" onclick="approveTx('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-check"></i> Aprobar</button>` : ''}
                     ${requireRole('superadmin', 'administrador', 'admin', 'contador') && t.status === 'active' ? `<button class="btn btn-outline btn-sm" title="Revertir a Borrador" style="border-color:#D97706;color:#D97706" onclick="revertTxToDraft('${esc(t.id)}', '${esc(t.number||'')}')"><i class="fas fa-rotate-left"></i></button>` : ''}
-                    ${can('canWrite') && t.status === 'draft' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
+                    ${can('canWrite') && t.status === 'draft' ? `<button class="btn btn-outline btn-sm" title="Modificar" style="border-color:#7C3AED;color:#7C3AED" onclick="editTx('${esc(t.id)}')"><i class="fas fa-pencil"></i></button>` : ''}
                     ${can('canDelete') && t.status !== 'voided' ? `<button class="btn btn-danger btn-sm" title="Anular" onclick="voidTx('${esc(t.id)}')"><i class="fas fa-ban"></i></button>` : ''}
                     ${requireRole('admin', 'administrador', 'superadmin', 'superadministrador', 'contador') ? `<button class="btn btn-sm" title="Eliminar permanentemente" style="background:#7F1D1D;color:#fff;border-color:#7F1D1D" onclick="deleteTxPhysical('${esc(t.id)}','${esc(t.number||'')}')"><i class="fas fa-trash"></i></button>` : ''}
                   </div>
@@ -2914,7 +2914,7 @@ async function seeTxDetail(id) {
       
       <div class="overflow-x-auto">
         <table class="data-table"><thead><tr><th>Cuenta</th><th>Tercero línea</th><th>Doc. Cruce</th><th>Descripción</th><th>Débito</th><th>Crédito</th></tr></thead>
-          <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
+          <tbody>${lines.map(l => `<tr><td>${esc(l.expand?.account_id?.code || '')} - ${esc(l.expand?.account_id?.name || '')}</td><td>${esc(l.expand?.third_party_id?.name || '\u2014')}</td><td>${l.cross_doc_ref ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>` : '\u2014'}</td><td>${esc(l.description || '\u2014')}</td><td>${fmt(l.debit || 0)}</td><td>${fmt(l.credit || 0)}</td></tr>`).join('')}</tbody>
         </table>
       </div>`,
       `<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>
@@ -3231,7 +3231,7 @@ async function editTx(id) {
       : '';
 
     openModal(
-      `<i class="fas fa-pencil mr-2" style="color:#1A4B8C"></i>Modificar — ${esc(tx.number || '')}`,
+      `<i class="fas fa-pencil mr-2" style="color:#7C3AED"></i>Modificar — ${esc(tx.number || '')}`,
       `${warnHtml}
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
         <div class="form-group">
@@ -3258,7 +3258,7 @@ async function editTx(id) {
               <input id="edit-tx-third" type="hidden" value="${esc(tx.third_party_id || '')}">
               <div id="edit-tx-third-results" style="display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 10px 25px rgba(0,0,0,.12);z-index:30"></div>
             </div>
-            <button id="btn-edit-cartera" class="btn btn-outline btn-sm" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#1A4B8C;color:#1A4B8C" ${tx.third_party_id ? '' : 'disabled'}>
+            <button id="btn-edit-cartera" class="btn btn-outline btn-sm" title="Ver saldo de cartera del tercero" style="white-space:nowrap;border-color:#7C3AED;color:#7C3AED" ${tx.third_party_id ? '' : 'disabled'}>
               <i class="fas fa-file-invoice-dollar"></i> Cartera
             </button>
           </div>
@@ -3539,13 +3539,13 @@ function renderEditTxLines(repaint = true) {
 
         <div style="display:flex;flex-direction:column;gap:3px">
           <div style="display:flex;align-items:center;gap:6px">
-            <i class="fas fa-link" style="color:#1A4B8C;font-size:11px"></i>
-            <span class="text-xs font-semibold" style="color:#1A4B8C;white-space:nowrap">Doc. de Cruce</span>
+            <i class="fas fa-link" style="color:#7C3AED;font-size:11px"></i>
+            <span class="text-xs font-semibold" style="color:#7C3AED;white-space:nowrap">Doc. de Cruce</span>
             ${needsCruce ? '<span class="text-xs font-bold" style="color:#B91C1C">Obligatorio</span>' : ''}
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <input id="edit-tx-line-cruce-${i}" class="form-input" style="font-size:13px;${needsCruce && !line.cross_doc_ref ? 'border-color:#FCA5A5;' : ''}" ${needsCruce ? '' : 'disabled'} placeholder="${needsCruce ? 'N° Doc/Factura *' : 'N° factura'}" value="${esc(line.cross_doc_ref || '')}" oninput="updateEditTxLine(${i}, 'cross_doc_ref', this.value)" onkeydown="if((event.key==='Enter' || event.key==='Tab') && !event.shiftKey){ event.preventDefault(); document.getElementById('edit-tx-line-debit-${i}')?.focus(); }">
-            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#1A4B8C;color:#1A4B8C;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
+            ${needsCruce ? `<button class="btn btn-outline btn-sm" style="padding:3px 8px;font-size:11px;border-color:#7C3AED;color:#7C3AED;flex-shrink:0" title="Consultar cartera de este tercero" onclick="showCarteraForLine(${i}, 'edit')"><i class="fas fa-search"></i></button>` : ''}
           </div>
         </div>
 
@@ -3938,7 +3938,7 @@ async function printTxNotaContable(id) {
     .company-name { font-size: 13pt; font-weight: bold; color: #0D2137; }
     .company-sub { font-size: 8.5pt; color: #444; margin-top: 2px; }
     .doc-block { text-align: right; min-width: 200px; }
-    .doc-number { font-size: 14pt; font-weight: bold; color: #1A4B8C; letter-spacing: 0.5px; }
+    .doc-number { font-size: 14pt; font-weight: bold; color: #7C3AED; letter-spacing: 0.5px; }
     .doc-type { font-size: 8.5pt; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
     .doc-dates-header { font-size: 8.5pt; color: #333; margin-top: 3px; }
     .doc-dates-header div { display: flex; justify-content: flex-end; gap: 4px; }

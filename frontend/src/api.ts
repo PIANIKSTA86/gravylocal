@@ -384,6 +384,12 @@ async function _apiResolvePayableAccountForThirdParty(thirdParty) {
   }
 }
 
+/* -- In-Flight Mutex Maps para Idempotencia Estricta ------------- */
+const _inFlightTransactions = new Map<string, Promise<any>>();
+const _inFlightPostPh = new Map<string, Promise<any>>();
+const _inFlightPostInvoice = new Map<string, Promise<any>>();
+const _inFlightPostPurchase = new Map<string, Promise<any>>();
+
 /* -- Helpers de API con logging de auditoria ---------------- */
 const API = {
 
@@ -612,74 +618,118 @@ const API = {
 
     const txBranchId = txData.branch_id || null;
 
-    // ── Intentar endpoint bulk (recomendado para 5+ líneas) ──────────────────
-    try {
-      const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx`, {
-        method: 'POST',
-        headers: pb.headers(),
-        body: JSON.stringify({
-          txData: {
-            ...txData,
-            number: txData.number || 'AUTO',
-            status: txData.status || 'active',
-            branch_id: txBranchId,
-          },
-          lines: lines.map((line, i) => ({
-            ...line,
-            branch_id: line.branch_id || txBranchId || null,
-            line_order: line.line_order ?? (i + 1),
-          })),
-        }),
+    // Generar o preservar clave de idempotencia determinista
+    const idempotencyKey = txData.idempotency_key || (
+      txData.cross_type && txData.cross_number
+        ? `idemp_${txData.cross_type}_${txData.cross_number}`
+        : (txData.description && txData.date && txData.tx_type_id
+            ? `idemp_${txData.tx_type_id}_${txData.date}_${String(txData.description).replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60)}`
+            : `idemp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`)
+    );
+
+    // Evitar peticiones concurrentes idénticas en vuelo desde el cliente
+    const lockKey = idempotencyKey || (txData.cross_type && txData.cross_number ? `${txData.cross_type}:${txData.cross_number}` : '');
+    if (lockKey && _inFlightTransactions.has(lockKey)) {
+      return await _inFlightTransactions.get(lockKey);
+    }
+
+    const execPromise = (async () => {
+      // ── Intentar endpoint bulk (recomendado para 5+ líneas) ──────────────────
+      try {
+        const res = await fetch(`${pb.baseUrl}/api/gravy/bulk-tx`, {
+          method: 'POST',
+          headers: pb.headers(),
+          body: JSON.stringify({
+            idempotency_key: idempotencyKey,
+            txData: {
+              ...txData,
+              idempotency_key: idempotencyKey,
+              number: txData.number || 'AUTO',
+              status: txData.status || 'active',
+              branch_id: txBranchId,
+            },
+            lines: lines.map((line, i) => ({
+              ...line,
+              branch_id: line.branch_id || txBranchId || null,
+              line_order: line.line_order ?? (i + 1),
+            })),
+          }),
+        });
+
+        if (res.ok) {
+          return await res.json();
+        }
+
+        // Si el servidor devuelve 404, el endpoint no existe — usar fallback
+        if (res.status === 404) {
+          console.warn('[createTransaction] Endpoint bulk-tx no disponible, usando método línea a línea.');
+          // Continúa al fallback abajo
+        } else {
+          // Otro error HTTP: lanzar para que el llamador lo maneje
+          throw await pb._err(res);
+        }
+      } catch (bulkErr) {
+        // Si el error fue un throw nuestro (no 404), re-lanzar
+        if (bulkErr && bulkErr.status !== undefined && bulkErr.status !== 404) {
+          throw bulkErr;
+        }
+        // Si fue un error de red puro (fetch failed), intentar fallback
+        console.warn('[createTransaction] Bulk endpoint falló, usando fallback:', bulkErr?.message || bulkErr);
+      }
+
+      // ── Fallback: si cross_type y cross_number están definidos, verificar si ya existe ──
+      if (txData.cross_type && txData.cross_number && !txData.id) {
+        try {
+          const existingList = await pb.list('transactions', {
+            filter: `cross_type="${pb.escapeFilterValue(txData.cross_type)}" && cross_number="${pb.escapeFilterValue(txData.cross_number)}" && status!="voided"`,
+            perPage: 1
+          });
+          if (existingList.items.length > 0) {
+            return existingList.items[0];
+          }
+        } catch (_) {}
+      }
+
+      // ── Fallback: crear cabecera + líneas una por una (método original) ───────
+      const tx = await pb.create('transactions', {
+        ...txData,
+        number: txData.number || 'AUTO',
+        status: txData.status || 'active',
+        branch_id: txBranchId,
       });
 
-      if (res.ok) {
-        return await res.json();
+      try {
+        for (const line of lines) {
+          await pb.create('tx_lines', {
+            tx_id: tx.id,
+            ...line,
+            branch_id: line.branch_id || txBranchId || null
+          });
+        }
+      } catch (lineErr) {
+        // Evita dejar cabeceras huérfanas si falla la persistencia de una línea.
+        try { await pb.delete('transactions', tx.id); } catch (_) { }
+        throw lineErr;
       }
 
-      // Si el servidor devuelve 404, el endpoint no existe — usar fallback
-      if (res.status === 404) {
-        console.warn('[createTransaction] Endpoint bulk-tx no disponible, usando método línea a línea.');
-        // Continúa al fallback abajo
-      } else {
-        // Otro error HTTP: lanzar para que el llamador lo maneje
-        throw await pb._err(res);
-      }
-    } catch (bulkErr) {
-      // Si el error fue un throw nuestro (no 404), re-lanzar
-      if (bulkErr && bulkErr.status !== undefined && bulkErr.status !== 404) {
-        throw bulkErr;
-      }
-      // Si fue un error de red puro (fetch failed), intentar fallback
-      console.warn('[createTransaction] Bulk endpoint falló, usando fallback:', bulkErr?.message || bulkErr);
-    }
+      try {
+        await this.logAudit('CREATE', 'transactions', tx.id, `Transacción ${tx.number || ''} creada`);
+      } catch (_) {}
 
-    // ── Fallback: crear cabecera + líneas una por una (método original) ───────
-    const tx = await pb.create('transactions', {
-      ...txData,
-      number: txData.number || 'AUTO',
-      status: txData.status || 'active',
-      branch_id: txBranchId,
-    });
+      return tx;
+    })();
 
-    try {
-      for (const line of lines) {
-        await pb.create('tx_lines', {
-          tx_id: tx.id,
-          ...line,
-          branch_id: line.branch_id || txBranchId || null
-        });
-      }
-    } catch (lineErr) {
-      // Evita dejar cabeceras huérfanas si falla la persistencia de una línea.
-      try { await pb.delete('transactions', tx.id); } catch (_) { }
-      throw lineErr;
+    if (lockKey) {
+      _inFlightTransactions.set(lockKey, execPromise);
     }
 
     try {
-      await this.logAudit('CREATE', 'transactions', tx.id, `Transacción ${tx.number || ''} creada`);
-    } catch (_) {}
-
-    return tx;
+      return await execPromise;
+    } finally {
+      if (lockKey) {
+        _inFlightTransactions.delete(lockKey);
+      }
+    }
   },
 
   async getTransactions(opts = {}) {
@@ -1950,6 +2000,30 @@ const API = {
     }
 
     const updatedInv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
+    if (updatedInv.tx_id) {
+      try {
+        const txRec = await pb.get('transactions', updatedInv.tx_id).catch(() => null);
+        if (txRec && txRec.status === 'draft') {
+          const lineDescs = (lines || [])
+            .map((l: any) => String(l.description || '').trim())
+            .filter((d: string) => d.length > 0 && d !== 'Servicio / Gasto');
+          const uNotes = (updatedInv.notes && String(updatedInv.notes).trim() !== 'Documento Soporte a No Obligado a Facturar')
+            ? String(updatedInv.notes).trim()
+            : '';
+          let primaryDesc = '';
+          if (lineDescs.length === 1) {
+            primaryDesc = lineDescs[0];
+          } else if (lineDescs.length > 1) {
+            primaryDesc = lineDescs.slice(0, 2).join(' / ') + (lineDescs.length > 2 ? ' ...' : '');
+          } else if (uNotes) {
+            primaryDesc = uNotes;
+          }
+          if (primaryDesc) {
+            await pb.update('transactions', updatedInv.tx_id, { description: primaryDesc });
+          }
+        }
+      } catch (_) {}
+    }
     await this.logAudit('UPDATE', 'PurchaseInvoice', invoiceId, `Actualizada compra/documento soporte ${updatedInv.number}`);
     return updatedInv;
   },
@@ -1961,6 +2035,10 @@ const API = {
    * 3. Actualiza la factura con tx_id, inv_movement_id, status=posted
    */
   async postPurchaseInvoice(invoiceId) {
+    if (_inFlightPostPurchase.has(invoiceId)) {
+      return _inFlightPostPurchase.get(invoiceId)!;
+    }
+    const exec = async () => {
     let inv = null;
     try {
       inv = await pb.get('purchase_invoices', invoiceId, { expand: 'supplier_id,warehouse_id,tx_type_id' });
@@ -1973,7 +2051,13 @@ const API = {
     if (!inv) throw new Error('No se encontró la factura de compra o documento soporte especificado.');
     invoiceId = inv.id;
 
-    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'posted') {
+      if (inv.tx_id) {
+        const existingTx = await pb.get('transactions', inv.tx_id).catch(() => null);
+        if (existingTx) return { inv, tx: existingTx };
+      }
+      throw new Error('La factura ya fue contabilizada.');
+    }
     if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
     const lines = await this.getPurchaseInvoiceLines(invoiceId);
@@ -2392,15 +2476,39 @@ const API = {
     }
 
     const txStatus = purchaseCfg?.operational?.immediate_posting ? 'active' : 'draft';
+
+    // Glosa contable: Prioridad al concepto digitado en líneas o notas del usuario
+    const lineDescriptions = lines
+      .map((l: any) => String(l.description || '').trim())
+      .filter((d: string) => d.length > 0 && d !== 'Servicio / Gasto');
+
+    const userNotes = (inv.notes && String(inv.notes).trim() !== 'Documento Soporte a No Obligado a Facturar')
+      ? String(inv.notes).trim()
+      : '';
+
+    let primaryDescription = '';
+    if (lineDescriptions.length === 1) {
+      primaryDescription = lineDescriptions[0];
+    } else if (lineDescriptions.length > 1) {
+      primaryDescription = lineDescriptions.slice(0, 2).join(' / ') + (lineDescriptions.length > 2 ? ' ...' : '');
+    } else if (userNotes) {
+      primaryDescription = userNotes;
+    }
+
+    const fallbackDescription = `${docLabel} ${inv.number} - ${inv.expand?.supplier_id?.name || ''}`;
+    const txDescription = (primaryDescription || fallbackDescription).trim();
+
     const tx = await this.createTransaction({
       tx_type_id: effectiveTxTypeId,
       number: effectiveTxNumber,
       date: inv.date,
-      description: `${docLabel} ${inv.number} - ${inv.expand?.supplier_id?.name || ''}`,
+      description: txDescription,
       third_party_id: inv.supplier_id,
       payment_days: isCredit ? creditDays : 0,
       cross_enabled: isCredit,
-      cross_number: isCredit ? effectiveCrossDoc : '',
+      cross_type: 'purchase_invoices',
+      cross_number: isCredit ? effectiveCrossDoc : inv.number,
+      idempotency_key: `idemp_pur_${inv.number || invoiceId}`,
       status: txStatus,
       branch_id: inv.branch_id || null,
     }, txLines);
@@ -2447,6 +2555,15 @@ const API = {
     });
     await this.logAudit('POST', 'PurchaseInvoice', invoiceId, `Contabilizada ${tx.number || inv.number}`);
     return { inv, tx };
+    };
+
+    const p = exec();
+    _inFlightPostPurchase.set(invoiceId, p);
+    try {
+      return await p;
+    } finally {
+      _inFlightPostPurchase.delete(invoiceId);
+    }
   },
 
   async getPurchaseMutationBlocks(invoiceId) {
@@ -2741,8 +2858,18 @@ const API = {
    * 5. Actualiza la factura con tx_id, inv_movement_id, status=posted.
    */
   async postInvoice(invoiceId) {
+    if (_inFlightPostInvoice.has(invoiceId)) {
+      return _inFlightPostInvoice.get(invoiceId)!;
+    }
+    const exec = async () => {
     const inv = await pb.get('invoices', invoiceId, { expand: 'customer_id,warehouse_id,tx_type_id' });
-    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    if (inv.status === 'posted') {
+      if (inv.tx_id) {
+        const existingTx = await pb.get('transactions', inv.tx_id).catch(() => null);
+        if (existingTx) return { inv, tx: existingTx };
+      }
+      throw new Error('La factura ya fue contabilizada.');
+    }
     if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
     const dp = typeof (window as any).getDecimalPlaces === 'function' ? (window as any).getDecimalPlaces() : 2;
@@ -3665,6 +3792,15 @@ const API = {
         await this.releaseReservationsByInvoice(invoiceId, 'Rollback por error de contabilizacion').catch(() => {});
       }
       throw postErr;
+    }
+    };
+
+    const p = exec();
+    _inFlightPostInvoice.set(invoiceId, p);
+    try {
+      return await p;
+    } finally {
+      _inFlightPostInvoice.delete(invoiceId);
     }
   },
 
@@ -4829,14 +4965,38 @@ const API = {
    * Genera un asiento: DÃ©bito CxC propietario / CrÃ©dito ingresos por concepto.
    */
   async postPhInvoice(invoiceId) {
-    const inv = await pb.get('ph_invoices', invoiceId, {
-      expand: 'property_id,property_id.owner_id',
-    });
-    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
-    if (inv.status === 'voided') throw new Error('La factura estÃ¡ anulada.');
+    if (_inFlightPostPh.has(invoiceId)) {
+      return await _inFlightPostPh.get(invoiceId)!;
+    }
+    const execPromise = (async () => {
+      const inv = await pb.get('ph_invoices', invoiceId, {
+        expand: 'property_id,property_id.owner_id',
+      });
+      // Idempotencia: Si ya está contabilizada, retornar el comprobante existente sin duplicar
+      if (inv.status === 'posted' || inv.tx_id) {
+        if (inv.tx_id) {
+          try {
+            const existingTx = await pb.get('transactions', inv.tx_id);
+            return { inv, tx: existingTx, _alreadyPosted: true };
+          } catch (_) {}
+        }
+        return { inv, tx: null, _alreadyPosted: true };
+      }
+      if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
-    const lines = await this.getPhInvoiceLines(invoiceId);
-    if (!lines.length) throw new Error('La factura no tiene lÃ­neas.');
+      // Idempotencia: Verificar si ya existe comprobante asociado por número de documento
+      if (inv.number) {
+        try {
+          const existingTx = await pb.getFirstListItem('transactions', `cross_type="ph_invoices" && cross_number="${pb.escapeFilterValue(inv.number)}" && status!="voided"`);
+          if (existingTx) {
+            await pb.update('ph_invoices', invoiceId, { status: 'posted', tx_id: existingTx.id }).catch(() => {});
+            return { inv, tx: existingTx, _alreadyPosted: true };
+          }
+        } catch (_) {}
+      }
+
+      const lines = await this.getPhInvoiceLines(invoiceId);
+      if (!lines.length) throw new Error('La factura no tiene líneas.');
 
     // Leer configuraciÃ³n contable PH
     let phCfg = {};
@@ -5025,6 +5185,7 @@ const API = {
       cross_number: inv.number,
       cross_amount: inv.total || 0,
       cross_purpose: 'Causar',
+      idempotency_key: `idemp_ph_inv_${inv.number || invoiceId}`,
     };
 
     const tx = await this.createTransaction(txPayload, txLines);
@@ -5086,6 +5247,14 @@ const API = {
     }
 
     return pb.get('ph_invoices', invoiceId, { expand: 'property_id' });
+    })();
+
+    _inFlightPostPh.set(invoiceId, execPromise);
+    try {
+      return await execPromise;
+    } finally {
+      _inFlightPostPh.delete(invoiceId);
+    }
   },
 
   /** Anula una factura PH: revierte el asiento si existe */
@@ -8726,7 +8895,16 @@ const API = {
     const inv = await pb.get('inmo_invoices', invoiceId, {
       expand: 'contract_id,contract_id.property_id,contract_id.property_id.owner_id,contract_id.tenant_id',
     });
-    if (inv.status === 'posted') throw new Error('La factura ya fue contabilizada.');
+    // Idempotencia pura: Si ya está contabilizada, retornar el comprobante existente sin duplicar
+    if (inv.status === 'posted' || inv.tx_id) {
+      if (inv.tx_id) {
+        try {
+          const existingTx = await pb.get('transactions', inv.tx_id);
+          return { inv, tx: existingTx, _alreadyPosted: true };
+        } catch (_) {}
+      }
+      return { inv, tx: null, _alreadyPosted: true };
+    }
     if (inv.status === 'voided') throw new Error('La factura está anulada.');
 
     const lines = await this.getInmoInvoiceLines(invoiceId);
@@ -8917,6 +9095,7 @@ const API = {
       cross_number: inv.number,
       cross_amount: inv.total || 0,
       cross_purpose: 'Causar',
+      idempotency_key: `inmo_post_${inv.id}`,
     };
     if (activeResolutionId) {
       txPayload.dian_resolution_id = activeResolutionId;

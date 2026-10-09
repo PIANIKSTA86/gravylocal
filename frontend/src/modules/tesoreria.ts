@@ -1273,29 +1273,29 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
   const kpiCardsHtml = `
     <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 mb-3 w-full">
       <!-- Card 1: Total Facturas Vivas -->
-      <div class="bg-blue-50/60 p-2.5 rounded-xl border border-blue-200 shadow-2xs flex items-center justify-between">
+      <div class="stat-card p-3 rounded-xl border flex items-center justify-between" style="background:#F5F3FF;border:1px solid #DDD6FE">
         <div>
-          <div class="text-[10px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-            <i class="fas fa-file-invoice text-blue-600"></i> Facturas Vivas (Bruto)
+          <div class="text-[10px] font-bold text-purple-900/80 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fas fa-file-invoice text-purple-600"></i> Facturas Vivas (Bruto)
           </div>
-          <div class="text-base font-black text-blue-950 mt-0.5">${_fmt(totalCartera)}</div>
-          <div class="text-[10px] text-blue-700 font-medium">${_tesoCurrentOpenItems.length} factura(s) pendiente(s)</div>
+          <div class="text-base font-black text-purple-950 mt-0.5">${_fmt(totalCartera)}</div>
+          <div class="text-[10px] text-purple-700/80 font-medium">${_tesoCurrentOpenItems.length} factura(s) pendiente(s)</div>
         </div>
-        <button type="button" class="btn btn-xs bg-white text-blue-700 hover:bg-blue-100 border border-blue-300 font-bold shadow-2xs" onclick="window._setTesoMontoQuick(${totalCartera})" title="Cargar total bruto de facturas">
+        <button type="button" class="btn btn-xs bg-white text-purple-700 hover:bg-purple-50 border border-purple-200 font-bold shadow-2xs" onclick="window._setTesoMontoQuick(${totalCartera})" title="Cargar total bruto de facturas">
           Pagar Bruto
         </button>
       </div>
 
       <!-- Card 2: Saldo a Favor / Anticipo -->
-      <div class="p-2.5 rounded-xl border shadow-2xs flex items-center justify-between ${totalAnticipo > 0.01 ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950' : 'bg-gray-50/60 border-gray-200 text-gray-400'}">
+      <div class="stat-card p-3 rounded-xl border flex items-center justify-between ${totalAnticipo > 0.01 ? 'border-emerald-300 text-emerald-950' : 'border-purple-200 text-gray-400'}" style="background:#F5F3FF;border:1px solid #DDD6FE">
         <div>
-          <div class="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-gray-400'}">
-            <i class="fas fa-piggy-bank ${totalAnticipo > 0.01 ? 'text-emerald-600' : 'text-gray-400'}"></i> Saldo a Favor (Anticipos)
+          <div class="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-purple-900/70'}">
+            <i class="fas fa-piggy-bank ${totalAnticipo > 0.01 ? 'text-emerald-600' : 'text-purple-500'}"></i> Saldo a Favor (Anticipos)
           </div>
-          <div class="text-base font-black ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-gray-400'} mt-0.5">
+          <div class="text-base font-black ${totalAnticipo > 0.01 ? 'text-emerald-800' : 'text-purple-950'} mt-0.5">
             ${_fmt(totalAnticipo)}
           </div>
-          <div class="text-[10px] ${totalAnticipo > 0.01 ? 'text-emerald-700 font-medium' : 'text-gray-400'}">
+          <div class="text-[10px] ${totalAnticipo > 0.01 ? 'text-emerald-700 font-medium' : 'text-purple-700/70'}">
             ${totalAnticipo > 0.01 ? `${_tesoCurrentAnticipos.length} registro(s) disponible(s)` : 'Sin anticipos'}
           </div>
         </div>
@@ -1308,15 +1308,15 @@ function _renderTesoOpenItemsGrid(isRecaudo: boolean) {
       </div>
 
       <!-- Card 3: Saldo Neto Exigible -->
-      <div class="bg-gradient-to-br from-indigo-50 to-purple-50/70 p-2.5 rounded-xl border-2 border-indigo-300 shadow-xs flex items-center justify-between">
+      <div class="stat-card p-3 rounded-xl border flex items-center justify-between" style="background:#F5F3FF;border:1.5px solid #7C3AED">
         <div>
-          <div class="text-[10px] font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
-            <i class="fas fa-scale-balanced text-indigo-600"></i> Saldo Neto Exigible
+          <div class="text-[10px] font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fas fa-scale-balanced text-purple-600"></i> Saldo Neto Exigible
           </div>
-          <div class="text-lg font-black text-indigo-950 mt-0.5">${_fmt(saldoNeto)}</div>
-          <div class="text-[10px] text-indigo-700 font-semibold">Total a recaudar tras deducir anticipo</div>
+          <div class="text-lg font-black text-purple-950 mt-0.5">${_fmt(saldoNeto)}</div>
+          <div class="text-[10px] text-purple-700 font-semibold">Total a recaudar tras deducir anticipo</div>
         </div>
-        <button type="button" class="btn btn-xs bg-indigo-600 text-white hover:bg-indigo-700 font-bold shadow-2xs" onclick="window._setTesoMontoQuick(${saldoNeto})" title="Cargar saldo neto exigible en el monto del recaudo">
+        <button type="button" class="btn btn-xs bg-purple-600 text-white hover:bg-purple-700 font-bold shadow-2xs" style="background:#7C3AED" onclick="window._setTesoMontoQuick(${saldoNeto})" title="Cargar saldo neto exigible en el monto del recaudo">
           <i class="fas fa-bolt mr-1"></i>Aplicar Neto
         </button>
       </div>
@@ -1828,8 +1828,13 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
   }
 
   const btn = document.getElementById('btn-save-teso-tx') as HTMLButtonElement;
+  if (btn?.dataset?.submitting === 'true' || btn?.disabled) return;
   const btnOriginalText = btn?.innerHTML || '';
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...'; }
+  if (btn) {
+    btn.dataset.submitting = 'true';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...';
+  }
 
   const typeCode = isRecaudo ? 'RC' : 'CE';
   try {
@@ -1874,17 +1879,17 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
 
       if (retFuenteAmt > 0 && !retFuenteAccId) {
         _showToast('No se encontró la cuenta contable para Retención en la Fuente (135515/2365)', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        if (btn) { delete btn.dataset.submitting; btn.disabled = false; btn.innerHTML = btnOriginalText; }
         return;
       }
       if (retIcaAmt > 0 && !retIcaAccId) {
         _showToast('No se encontró la cuenta contable para Retención ICA (135518/2368)', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        if (btn) { delete btn.dataset.submitting; btn.disabled = false; btn.innerHTML = btnOriginalText; }
         return;
       }
       if (descuentoAmt > 0 && !descuentoAccId) {
         _showToast('No se encontró la cuenta contable para Descuentos (5305/4210)', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        if (btn) { delete btn.dataset.submitting; btn.disabled = false; btn.innerHTML = btnOriginalText; }
         return;
       }
     }
@@ -1909,7 +1914,7 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
 
       if (ajustePesoAmt > 0 && !ajustePesoAccId) {
         _showToast('Debes configurar las cuentas de Ajuste al Peso en Configuración de Tesorería', 'warning');
-        if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalText; }
+        if (btn) { delete btn.dataset.submitting; btn.disabled = false; btn.innerHTML = btnOriginalText; }
         return;
       }
     }
@@ -2144,6 +2149,10 @@ async function _saveTransaccionTeso(isRecaudo: boolean) {
     const detail = err.data ? JSON.stringify(err.data) : '';
     _showToast(`Error: ${err.message} ${detail}`, 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = `<i class="fas fa-paper-plane mr-2"></i>Registrar ${typeCode}`; }
+  } finally {
+    if (btn) {
+      delete btn.dataset.submitting;
+    }
   }
 }
 

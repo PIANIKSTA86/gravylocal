@@ -354,11 +354,11 @@ function getDsPeriodDates(periodType: string): { from: string; to: string } {
     const kpiWrap = document.getElementById('ds-kpi-container');
     if (kpiWrap) {
       kpiWrap.innerHTML = `
-        ${dsKpiCard('Total Generados', totalCount, 'fas fa-file-contract', '#1E40AF', '#EFF6FF')}
+        ${dsKpiCard('Total Generados', totalCount, 'fas fa-file-contract', '#7C3AED', '#F5F3FF')}
         ${dsKpiCard('Pendientes DIAN', pendingCount, 'fas fa-clock', '#D97706', '#FFFBEB')}
         ${dsKpiCard('Transmitidos / Aceptados', acceptedCount, 'fas fa-circle-check', '#059669', '#ECFDF5')}
         ${dsKpiCard('Rechazados DIAN', rejectedCount, 'fas fa-circle-xmark', '#DC2626', '#FEF2F2')}
-        ${dsKpiCard('Monto Total DS', fmt(totalAmount), 'fas fa-money-bill-wave', '#4F46E5', '#EEF2FF')}
+        ${dsKpiCard('Monto Total DS', fmt(totalAmount), 'fas fa-money-bill-wave', '#7C3AED', '#F5F3FF')}
       `;
     }
   };
@@ -417,12 +417,14 @@ function getDsPeriodDates(periodType: string): { from: string; to: string } {
 
 function dsKpiCard(label: string, val: any, icon: string, color: string, bg: string) {
   return `
-    <div class="rounded-2xl p-4 border" style="background:${bg};border-color:${color}20">
-      <div class="flex items-center gap-2 mb-1">
-        <i class="${icon} text-sm" style="color:${color}"></i>
-        <span class="text-xs font-bold" style="color:${color}">${label}</span>
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
       </div>
-      <p class="text-2xl font-extrabold" style="color:${color}">${val}</p>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${val}</p>
     </div>
   `;
 }

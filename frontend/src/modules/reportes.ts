@@ -166,7 +166,7 @@ async function renderReportes(c) {
 
     <!-- Categoría 1: Financieros & Contables -->
     <div class="mb-6">
-      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
         <i class="fas fa-calculator"></i> Financieros y Contables
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-financial">
@@ -184,7 +184,7 @@ async function renderReportes(c) {
 
     <!-- Categoría 2: Ventas y Cartera -->
     <div class="mb-6">
-      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
         <i class="fas fa-chart-line"></i> Ventas y Cartera
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-sales">
@@ -202,7 +202,7 @@ async function renderReportes(c) {
 
     <!-- Categoría 3: Impuestos y Certificaciones -->
     <div class="mb-6">
-      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
         <i class="fas fa-file-invoice-dollar"></i> Impuestos y Certificaciones
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-taxes">
@@ -215,7 +215,7 @@ async function renderReportes(c) {
 
     <!-- Categoría 4: Auditoría y Gestión -->
     <div class="mb-6">
-      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
         <i class="fas fa-shield-alt"></i> Auditoría y Gestión
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-audit">
@@ -226,7 +226,7 @@ async function renderReportes(c) {
 
     <!-- Categoría 5: Inventarios y Almacén -->
     <div class="mb-6">
-      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#1A4B8C; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
+      <h4 class="text-sm font-semibold mb-3 flex items-center gap-2" style="color:#7C3AED; border-bottom: 2px solid #E5E7EB; padding-bottom: 6px;">
         <i class="fas fa-boxes-stacked"></i> Inventarios y Almacén
       </h4>
       <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="report-cards-inventory">
@@ -1836,7 +1836,7 @@ function getReportViewHost() {
 
 function launchReportModal(title, renderFn) {
   openModal(
-    `<i class="fas fa-chart-column mr-2" style="color:#1A4B8C"></i>${esc(title)}`,
+    `<i class="fas fa-chart-column mr-2" style="color:#7C3AED"></i>${esc(title)}`,
     '<div id="report-view-modal" class="p-6 text-center" style="color:#9CA3AF"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando reporte...</div>',
     '<button class="btn btn-outline" onclick="closeModal()">Cerrar</button>',
     true
@@ -1848,7 +1848,7 @@ function launchReportModal(title, renderFn) {
 
 function reportCard(id, title, subtitle) {
   return `
-    <div class="bg-white rounded-2xl border p-4 hover:shadow-md hover:border-blue-300 transition-all cursor-pointer report-card-item flex flex-col justify-between" data-report-id="${esc(id)}" style="border-color:#E2E8F0">
+    <div class="bg-white rounded-2xl border p-4 hover:shadow-md hover:border-[#DDD6FE] transition-all cursor-pointer report-card-item flex flex-col justify-between" data-report-id="${esc(id)}" style="border-color:#E2E8F0">
       <div>
         <h4 class="font-bold mb-1" style="color:#0D2137">${esc(title)}</h4>
         <p class="text-sm mb-3" style="color:#6B7280">${esc(subtitle)}</p>
@@ -5675,7 +5675,7 @@ async function renderAuxiliaryBook() {
         <!-- Filtro por Unidad Habitacional PH -->
         <div class="mb-3">
           <label class="text-xs font-semibold block mb-1" style="color:#6B7280">
-            <i class="fas fa-building mr-1" style="color:#1A4B8C"></i>
+            <i class="fas fa-building mr-1" style="color:#7C3AED"></i>
             Filtrar por Unidad Habitacional <span class="ml-1 text-xs font-normal" style="color:#9CA3AF">(opcional — solo movimientos vinculados al inmueble)</span>
           </label>
           <select id="aux-property-id" class="form-input" style="max-width:480px">
@@ -7001,7 +7001,7 @@ async function renderPazYSalvoCertificate() {
       ${isPhActive ? `
       <!-- Selector de modo -->
       <div class="flex gap-2 mb-4 p-1 rounded-xl" style="background:#F1F5F9;width:fit-content">
-        <button id="paz-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#1A4B8C;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+        <button id="paz-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#7C3AED;box-shadow:0 1px 4px rgba(0,0,0,.08)">
           <i class="fas fa-user mr-1"></i>General (por Tercero)
         </button>
         <button id="paz-mode-unidad" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:transparent;color:#6B7280">
@@ -7051,7 +7051,7 @@ async function renderPazYSalvoCertificate() {
             <input id="paz-city-ph" class="form-input" value="${esc(companyCity)}">
           </div>
         </div>
-        <div id="paz-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#EEF4FF;border:1px solid #C7D7F5;color:#1A4B8C"></div>
+        <div id="paz-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#F5F3FF;border:1px solid #DDD6FE;color:#7C3AED"></div>
       </div>` : ''}
 
       <div class="form-group">
@@ -7081,10 +7081,10 @@ async function renderPazYSalvoCertificate() {
       pazMode = mode;
       const isTercero = mode === 'tercero';
       btnPazTercero.style.background  = isTercero ? '#fff' : 'transparent';
-      btnPazTercero.style.color       = isTercero ? '#1A4B8C' : '#6B7280';
+      btnPazTercero.style.color       = isTercero ? '#7C3AED' : '#6B7280';
       btnPazTercero.style.boxShadow   = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
       btnPazUnidad.style.background   = !isTercero ? '#fff' : 'transparent';
-      btnPazUnidad.style.color        = !isTercero ? '#1A4B8C' : '#6B7280';
+      btnPazUnidad.style.color        = !isTercero ? '#7C3AED' : '#6B7280';
       btnPazUnidad.style.boxShadow    = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
       if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
       if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
@@ -7618,7 +7618,7 @@ async function renderClientPaymentsHistory() {
           <div class="bg-white p-4 rounded-2xl border flex items-center justify-between shadow-sm" style="border-color:#E5E7EB">
             <div>
               <p class="text-xs font-semibold" style="color:#6B7280">Nº Abonos / Pagos</p>
-              <h4 class="text-lg font-bold mt-1" style="color:#1A4B8C">${fmtN(count)}</h4>
+              <h4 class="text-lg font-bold mt-1" style="color:#7C3AED">${fmtN(count)}</h4>
             </div>
             <div class="w-10 h-10 rounded-full flex items-center justify-center bg-blue-50 text-blue-600">
               <i class="fas fa-receipt"></i>
@@ -13285,7 +13285,7 @@ async function renderFinancialNotesManager(): Promise<void> {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-1" style="color:#0D2137">
-        <i class="fas fa-file-lines mr-2" style="color:#1A4B8C"></i>Notas a los Estados Financieros
+        <i class="fas fa-file-lines mr-2" style="color:#7C3AED"></i>Notas a los Estados Financieros
       </h4>
       <p class="text-xs mb-3" style="color:#6B7280">
         Redacte las revelaciones de cada nota, sincronícelas desde el informe y obtenga sugerencias automáticas basadas en los movimientos contables.
@@ -13413,7 +13413,7 @@ async function renderFinancialNotesManager(): Promise<void> {
 
       return `<div class="border rounded-xl mb-3 overflow-hidden" style="border-color:#E5E7EB" id="fn-card-${idx}">
         <div class="flex items-center gap-3 px-4 py-2 cursor-pointer" style="background:#F9FAFB" onclick="document.getElementById('fn-body-${idx}').classList.toggle('hidden')">
-          <span class="flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm" style="background:#1A4B8C;color:#fff;min-width:2rem">${n.nota_num}</span>
+          <span class="flex items-center justify-center w-8 h-8 rounded-full font-bold text-sm" style="background:#7C3AED;color:#fff;min-width:2rem">${n.nota_num}</span>
           <span class="font-semibold text-sm flex-1" style="color:#0D2137">${esc(n.titulo || 'Sin título')}</span>
           ${badge}
           <i class="fas fa-chevron-down text-xs" style="color:#9CA3AF"></i>
@@ -13939,7 +13939,7 @@ async function renderConsecutiveAuditReport() {
   view.innerHTML = `
     <div class="p-4 border-b" style="border-color:#F3F4F6">
       <h4 class="font-bold mb-1" style="color:#0D2137">
-        <i class="fas fa-list-ol mr-2" style="color:#1A4B8C"></i>
+        <i class="fas fa-list-ol mr-2" style="color:#7C3AED"></i>
         Auditoría de Consecutivos por Comprobante
       </h4>
       <p class="text-sm mb-3" style="color:#6B7280">
@@ -14080,10 +14080,10 @@ async function renderConsecutiveAuditReport() {
     } else if (checkedItems.length <= 3) {
       const prefixes = checkedItems.map(el => el.getAttribute('data-prefix')).join(', ');
       labelEl.textContent = prefixes;
-      labelEl.style.color = '#1A4B8C';
+      labelEl.style.color = '#7C3AED';
     } else {
       labelEl.textContent = `${checkedItems.length} seleccionados`;
-      labelEl.style.color = '#1A4B8C';
+      labelEl.style.color = '#7C3AED';
     }
   }
 
@@ -14564,9 +14564,9 @@ const tabsHtml = `
           <p class="text-xs" style="color:#6B7280">Tipos de comprobante</p>
           <p class="text-2xl font-bold mt-1" style="color:#0D2137">${totalTypes}</p>
         </div>
-        <div class="rounded-xl border p-3 text-center" style="border-color:#E5E7EB;background:#F8FAFC">
-          <p class="text-xs" style="color:#6B7280">Total documentos</p>
-          <p class="text-2xl font-bold mt-1" style="color:#1A4B8C">${totalDocs}</p>
+        <div class="rounded-xl border p-3 text-center" style="border-color:#DDD6FE;background:#F5F3FF">
+          <p class="text-xs" style="color:#5B21B6">Total documentos</p>
+          <p class="text-2xl font-bold mt-1" style="color:#7C3AED">${totalDocs}</p>
         </div>
         <div class="rounded-xl border p-3 text-center" style="border-color:${totalGaps ? '#FED7AA' : '#BBF7D0'};background:${totalGaps ? '#FFF7ED' : '#F0FDF4'}">
           <p class="text-xs" style="color:#6B7280">Faltantes en secuencia</p>
@@ -14654,7 +14654,7 @@ const tabsHtml = `
                   ${actionButton}
                 </div>
               </td>
-              <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(r.number)}</td>
+              <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(r.number)}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="text-sm whitespace-nowrap">${esc(r.date)}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="text-sm" style="color:#6B7280;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.description)}">${esc(r.description || '—')}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="text-right font-mono text-sm">${fmt(r.debit)}</td>
@@ -14694,7 +14694,7 @@ const tabsHtml = `
 
             rowHtmls.push(`<tr style="${rowBgStyle}">
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;"><span class="badge ${badgeClass}" style="font-size:10px">${badgeText}</span></td>
-              <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono font-bold text-xs" style="color:#1A4B8C">${esc(g.prefix)}</td>
+              <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono font-bold text-xs" style="color:#7C3AED">${esc(g.prefix)}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono text-xs">${esc(r.number.replace(g.prefix + '-', ''))}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="font-mono text-xs text-blue-900 font-semibold" style="max-width:95px; overflow:hidden; text-overflow:ellipsis;" title="${esc(r.affects)}">${esc(r.affects || '—')}</td>
               <td style="padding:6px 8px; border-bottom:1px solid #E5E7EB;" class="text-xs font-semibold text-gray-500 truncate" style="max-width:80px" title="${esc(r.extRef)}">${esc(r.extRef || '—')}</td>
@@ -14784,7 +14784,7 @@ const tabsHtml = `
       const tableSection = shouldShowTable
         ? `<div class="mt-2">
             <p class="text-xs font-semibold mb-1" style="color:#374151">
-              <i class="fas fa-list-check mr-1" style="color:#1A4B8C"></i>${showAll ? 'Detalle de comprobantes contables' : 'Detalle de novedades'}
+              <i class="fas fa-list-check mr-1" style="color:#7C3AED"></i>${showAll ? 'Detalle de comprobantes contables' : 'Detalle de novedades'}
             </p>
             <div class="overflow-x-auto rounded-lg border" style="border-color:#E5E7EB">
               <table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -14800,7 +14800,7 @@ const tabsHtml = `
              style="border-color:${gHasNovedad ? (g.imbalanced.length ? '#FECDD3' : '#FED7AA') : '#D1FAE5'};background:#fff">
           <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-mono font-bold text-base" style="color:#1A4B8C">${esc(g.prefix)}</span>
+              <span class="font-mono font-bold text-base" style="color:#7C3AED">${esc(g.prefix)}</span>
               <span class="text-sm font-medium" style="color:#374151">— ${esc(g.name)}</span>
               <i class="fas ${statusIcon}" style="color:${statusColor}"></i>
             </div>
@@ -14817,7 +14817,7 @@ const tabsHtml = `
             </div>
             <div class="rounded-lg p-2" style="background:#F1F5F9">
               <p class="text-xs" style="color:#6B7280">Total Docs</p>
-              <p class="font-bold text-sm" style="color:#1A4B8C">${g.totalDocs}</p>
+              <p class="font-bold text-sm" style="color:#7C3AED">${g.totalDocs}</p>
             </div>
             <div class="rounded-lg p-2" style="background:#F0FDF4">
               <p class="text-xs" style="color:#6B7280">Cuadrados</p>
@@ -15093,7 +15093,7 @@ const tabsHtml = `
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">`;
     html += `<head><meta charset="utf-8"/><style>
       table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10pt; margin-bottom: 20px; }
-      th { background-color: #1A4B8C; color: #FFFFFF; font-weight: bold; border: 0.5pt solid #CCCCCC; padding: 6px; text-align: left; }
+      th { background-color: #7C3AED; color: #FFFFFF; font-weight: bold; border: 0.5pt solid #CCCCCC; padding: 6px; text-align: left; }
       td { border: 0.5pt solid #E5E7EB; padding: 5px; vertical-align: middle; }
       .text-right { text-align: right; }
       .text-center { text-align: center; }
@@ -15107,20 +15107,20 @@ const tabsHtml = `
       html += `<table>`;
       html += `<tr><th colspan="9" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:11pt; font-weight:bold; padding:8px; text-align:center;">RESUMEN DE AUDITORÍA DE CONSECUTIVOS (${dateFrom} al ${dateTo})</th></tr>`;
       html += `<tr>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Prefijo</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Nombre</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">N° Inicial</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">N° Final</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Total Documentos</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Cuadrados</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Descuadrados</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Pendientes</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Faltantes</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Prefijo</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Nombre</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">N° Inicial</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">N° Final</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Total Documentos</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Cuadrados</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Descuadrados</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Pendientes</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Faltantes</th>
       </tr>`;
 
       for (const g of _auditGroups) {
         html += `<tr>
-          <td class="bold" style="color:#1A4B8C;">${esc(g.prefix)}</td>
+          <td class="bold" style="color:#7C3AED;">${esc(g.prefix)}</td>
           <td>${esc(g.name)}</td>
           <td class="text-right">${g.minNum ?? '—'}</td>
           <td class="text-right">${g.maxNum ?? '—'}</td>
@@ -15139,14 +15139,14 @@ const tabsHtml = `
       const detailTitle = showAll ? 'DETALLE COMPLETO DE TRANSACCIONES Y NOVEDADES EN SECUENCIA' : 'DETALLE DE NOVEDADES DETECTADAS (DESCUADRES Y FALTANTES)';
       html += `<tr><th colspan="8" class="header-section" style="background-color:#0D2137; color:#FFFFFF; font-size:11pt; font-weight:bold; padding:8px; text-align:center;">${detailTitle}</th></tr>`;
       html += `<tr>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Prefijo</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Estado</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Comprobante</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Fecha</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF;">Descripción</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Débito</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Crédito</th>
-        <th style="background-color:#1A4B8C; color:#FFFFFF; text-align:right;">Diferencia</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Prefijo</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Estado</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Comprobante</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Fecha</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF;">Descripción</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Débito</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Crédito</th>
+        <th style="background-color:#7C3AED; color:#FFFFFF; text-align:right;">Diferencia</th>
       </tr>`;
 
       let hasDetailRows = false;
@@ -15192,9 +15192,9 @@ const tabsHtml = `
             const rowBg = isImbal ? 'background-color:#FFF1F2;' : (isDraft ? 'background-color:#FFFBEB;' : 'background-color:#F0FDF4;');
             
             html += `<tr style="${rowBg}">
-              <td class="bold" style="color:#1A4B8C">${esc(g.prefix)}</td>
+              <td class="bold" style="color:#7C3AED">${esc(g.prefix)}</td>
               <td style="font-weight:bold; color:${isImbal ? '#DC2626' : '#16A34A'}">${estado}</td>
-              <td class="bold" style="color:#1A4B8C">${esc(r.number)}</td>
+              <td class="bold" style="color:#7C3AED">${esc(r.number)}</td>
               <td>${esc(r.date)}</td>
               <td style="color:#555555">${esc(r.description || '—')}</td>
               <td class="text-right">${r.debit ? r.debit.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0,00'}</td>
@@ -15248,7 +15248,7 @@ const tabsHtml = `
 
       html += `<tr>`;
       for (const h of excelHeaders) {
-        html += `<th style="background-color:#1A4B8C; color:#FFFFFF; border:0.5pt solid #CCCCCC;">${esc(h)}</th>`;
+        html += `<th style="background-color:#7C3AED; color:#FFFFFF; border:0.5pt solid #CCCCCC;">${esc(h)}</th>`;
       }
       html += `</tr>`;
 
@@ -15293,7 +15293,7 @@ const tabsHtml = `
 
             html += `<tr style="${isImbal ? 'background-color:#FFF1F2;' : ''}">
               <td class="text-center font-bold">${stateChar}</td>
-              <td class="bold" style="color:#1A4B8C;">${esc(g.prefix)}</td>
+              <td class="bold" style="color:#7C3AED;">${esc(g.prefix)}</td>
               <td class="bold">${esc(numWithoutPrefix)}</td>
               <td>${esc(r.affects || '')}</td>
               <td>${esc(r.affectedBy || '')}</td>
@@ -15307,7 +15307,7 @@ const tabsHtml = `
               <td class="text-right">${formatVal(r.vrIco)}</td>
               <td class="text-right">${formatVal(r.vrIbua)}</td>
               <td class="text-right">${formatVal(r.vrIcui)}</td>
-              <td class="text-right bold" style="color:#1A4B8C;">${formatVal(r.total)}</td>
+              <td class="text-right bold" style="color:#7C3AED;">${formatVal(r.total)}</td>
               <td class="text-right" style="color:#DC2626;">${formatVal(r.retefuente)}</td>
               <td class="text-right" style="color:#DC2626;">${formatVal(r.reteica)}</td>
               <td class="text-right bold" style="color:#16A34A;">${formatVal(r.neto)}</td>
@@ -15666,7 +15666,7 @@ async function renderAccountStatementReport() {
       <div class="p-4 border-b" style="border-color:#F3F4F6">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h4 class="font-bold text-base flex items-center" style="color:#0D2137"><i class="fas fa-file-invoice mr-2" style="color:#1A4B8C"></i>Estado de Cuenta</h4>
+            <h4 class="font-bold text-base flex items-center" style="color:#0D2137"><i class="fas fa-file-invoice mr-2" style="color:#7C3AED"></i>Estado de Cuenta</h4>
             <p class="text-xs" style="color:#6B7280">Consulta saldos iniciales, débitos, créditos y saldo acumulado de un tercero o unidad habitacional.</p>
           </div>
         </div>
@@ -15674,7 +15674,7 @@ async function renderAccountStatementReport() {
         ${isPhActive ? `
         <!-- Selector de modo -->
         <div class="flex gap-2 mb-4 p-1 rounded-xl" style="background:#F1F5F9;width:fit-content">
-          <button id="stmt-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#1A4B8C;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+          <button id="stmt-mode-tercero" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:#fff;color:#7C3AED;box-shadow:0 1px 4px rgba(0,0,0,.08)">
             <i class="fas fa-user mr-1"></i>Por Tercero
           </button>
           <button id="stmt-mode-unidad" class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all" style="background:transparent;color:#6B7280">
@@ -15721,7 +15721,7 @@ async function renderAccountStatementReport() {
               </select>
             </div>
           </div>
-          <div id="stmt-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#EEF4FF;border:1px solid #C7D7F5;color:#1A4B8C"></div>
+          <div id="stmt-property-info" class="hidden mb-3 p-3 rounded-xl text-xs" style="background:#F5F3FF;border:1px solid #DDD6FE;color:#7C3AED"></div>
         </div>` : ''}
 
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
@@ -15762,10 +15762,10 @@ async function renderAccountStatementReport() {
         stmtMode = mode;
         const isTercero = mode === 'tercero';
         btnModoTercero.style.background = isTercero ? '#fff' : 'transparent';
-        btnModoTercero.style.color = isTercero ? '#1A4B8C' : '#6B7280';
+        btnModoTercero.style.color = isTercero ? '#7C3AED' : '#6B7280';
         btnModoTercero.style.boxShadow = isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
         btnModoUnidad.style.background = !isTercero ? '#fff' : 'transparent';
-        btnModoUnidad.style.color = !isTercero ? '#1A4B8C' : '#6B7280';
+        btnModoUnidad.style.color = !isTercero ? '#7C3AED' : '#6B7280';
         btnModoUnidad.style.boxShadow = !isTercero ? '0 1px 4px rgba(0,0,0,.08)' : 'none';
         if (panelTercero) panelTercero.style.display = isTercero ? '' : 'none';
         if (panelUnidad)  panelUnidad.style.display  = !isTercero ? '' : 'none';
@@ -15975,7 +15975,7 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
             <div class="text-xs font-semibold" style="color:#6B7280">Créditos (Abonos)</div>
             <div class="text-base font-bold mt-1" style="color:#059669">${fmt(totalCredits)}</div>
           </div>
-          <div class="rounded-xl p-3" style="background:#EEF4FF">
+          <div class="rounded-xl p-3 border" style="background:#F5F3FF;border-color:#DDD6FE">
             <div class="text-xs font-semibold" style="color:#6B7280">Saldo Final</div>
             <div class="text-base font-bold mt-1" style="${finalStyle}">${fmt(running)}</div>
           </div>
@@ -16010,7 +16010,7 @@ async function generateAccountStatementByProperty(phProperties: any[]) {
               ${rowsHtml}
             </tbody>
             <tfoot>
-              <tr class="font-bold text-sm" style="background:#EEF4FF">
+              <tr class="font-bold text-sm" style="background:#F5F3FF">
                 <td colspan="5" style="color:#0D2137">SALDO FINAL</td>
                 <td class="text-right font-mono" style="color:#C46516">${fmt(totalDebits)}</td>
                 <td class="text-right font-mono" style="color:#059669">${fmt(totalCredits)}</td>
@@ -16171,8 +16171,8 @@ async function generateAccountStatementRows() {
             <span class="text-xs font-semibold block" style="color:#6B7280">Movimientos Crédito</span>
             <span class="text-sm font-bold block text-rose-700">$ ${fmt(totalCredits)}</span>
           </div>
-          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#1A4B8C; background:#EFF6FF">
-            <span class="text-xs font-semibold block" style="color:#1A4B8C">Saldo Final (Corte)</span>
+          <div class="p-2.5 rounded-xl border bg-white" style="border-color:#DDD6FE; background:#F5F3FF">
+            <span class="text-xs font-semibold block" style="color:#5B21B6">Saldo Final (Corte)</span>
             <span class="text-sm font-bold block" style="color:${finalPolarity.color}">${finalPolarity.text}</span>
           </div>
         </div>
@@ -16206,7 +16206,7 @@ async function generateAccountStatementRows() {
               <tr>
                 <td class="font-mono text-xs">${esc(l.fecha)}</td>
                 <td>
-                  <button type="button" class="hover:underline font-semibold" style="color:#1A4B8C;background:none;border:none;padding:0;cursor:pointer" onclick="openAuxTxDetailInReport('${esc(l.txId)}')">
+                  <button type="button" class="hover:underline font-semibold" style="color:#7C3AED;background:none;border:none;padding:0;cursor:pointer" onclick="openAuxTxDetailInReport('${esc(l.txId)}')">
                     ${esc(l.comprobante)}
                   </button>
                 </td>

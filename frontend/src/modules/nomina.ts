@@ -1184,103 +1184,135 @@ async function buildNominaAccountingLines(period, payLines, config) {
   return txLines;
 }
 
+const _inFlightNominaPeriodPosting = new Map<string, Promise<any>>();
+
 async function postNominaPeriodAccounting(periodId) {
-  const period = await pb.get('payroll_periods', periodId);
-  if (period.tx_id && (Array.isArray(period.tx_id) ? period.tx_id.length > 0 : period.tx_id)) return period.tx_id;
-
-  const payLines = await pb.listAll('payroll_lines', {
-    filter: `period_id="${pb.escapeFilterValue(periodId)}"`,
-    expand: 'employee_id',
-  });
-  if (!payLines.length) throw new Error('El período no tiene liquidaciones para contabilizar.');
-
-  const txTypes = await API.getTxTypes();
-  const txType = txTypes.find((t) => t.code === 'NM') || txTypes.find((t) => (t.name || '').toLowerCase().includes('nomina'));
-  if (!txType) throw new Error('No existe tipo de transacción activo para Nómina (código NM).');
-
-  const { config } = await getNominaConfigWithRow();
-  if (!config.mappings.length) {
-    throw new Error('Primero configura los mapeos contables de nómina (botón de engranaje).');
+  if (_inFlightNominaPeriodPosting.has(periodId)) {
+    return await _inFlightNominaPeriodPosting.get(periodId)!;
   }
 
-  // Prevenir duplicación: Comprobar si ya existen transacciones activas de este período en el libro diario
-  const periodTitle = String(period.name || '').trim();
-  const periodClean = (periodTitle.toLowerCase().startsWith('nómina') || periodTitle.toLowerCase().startsWith('nomina'))
-    ? periodTitle
-    : `Nómina ${periodTitle}`;
+  const execPromise = (async () => {
+    const period = await pb.get('payroll_periods', periodId);
+    if (period.tx_id && (Array.isArray(period.tx_id) ? period.tx_id.length > 0 : period.tx_id)) return period.tx_id;
 
-  const existingTxs = await pb.listAll('transactions', {
-    filter: `tx_type_id="${txType.id}" && description ~ "${pb.escapeFilterValue(periodClean)}" && status="active"`,
-  }).catch(() => []);
-
-  if (existingTxs.length > 0) {
-    console.warn(`[NÓMINA] Ya existen ${existingTxs.length} transacciones NM activas para ${periodClean}. Se vincularán sin duplicar.`);
-    return existingTxs.map((t: any) => t.id);
-  }
-
-  // Group payLines by employee_id
-  const payLinesByEmployee = {};
-  payLines.forEach((line) => {
-    const empId = line.employee_id;
-    if (!empId) return;
-    if (!payLinesByEmployee[empId]) payLinesByEmployee[empId] = [];
-    payLinesByEmployee[empId].push(line);
-  });
-
-  const txsToCreate = [];
-
-  for (const empId of Object.keys(payLinesByEmployee)) {
-    const empPayLines = payLinesByEmployee[empId];
-    const txLines = await buildNominaAccountingLines(period, empPayLines, config);
-    if (!txLines.length) continue;
-
-    // Validar requerimientos de tercero y cruce
-    const uniqueAccountIds = [...new Set(txLines.map((l) => l.account_id).filter(Boolean))];
-    const accountsUsed = await pb.listAll('accounts', {
-      filter: uniqueAccountIds.map((id) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
-    }).catch(() => []);
-    const accountMetaById = {};
-    accountsUsed.forEach((a) => { accountMetaById[a.id] = a; });
-
-    const employeeName = empPayLines[0]?.expand?.employee_id?.name || 'Empleado';
-    const validationErrors = [];
-    txLines.forEach((l) => {
-      const meta = accountMetaById[l.account_id];
-      if (!meta) return;
-      if (meta.requires_third_party && !l.third_party_id) {
-        validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere tercero pero no está asignado.`);
-      }
-      if (meta.maneja_cruce && !l.cross_doc_ref) {
-        validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere cruce pero no tiene referencia.`);
-      }
+    const payLines = await pb.listAll('payroll_lines', {
+      filter: `period_id="${pb.escapeFilterValue(periodId)}"`,
+      expand: 'employee_id',
     });
+    if (!payLines.length) throw new Error('El período no tiene liquidaciones para contabilizar.');
 
-    if (validationErrors.length) {
-      throw new Error(`Errores de validación contable para el empleado ${employeeName}:\n${validationErrors.slice(0, 5).join('\n')}`);
+    const txTypes = await API.getTxTypes();
+    const txType = txTypes.find((t) => t.code === 'NM') || txTypes.find((t) => (t.name || '').toLowerCase().includes('nomina'));
+    if (!txType) throw new Error('No existe tipo de transacción activo para Nómina (código NM).');
+
+    const { config } = await getNominaConfigWithRow();
+    if (!config.mappings.length) {
+      throw new Error('Primero configura los mapeos contables de nómina (botón de engranaje).');
     }
 
-    txsToCreate.push({
-      employeeName,
-      empId,
-      txLines
+    // Prevenir duplicación: Comprobar si ya existen transacciones activas de este período en el libro diario
+    const periodTitle = String(period.name || '').trim();
+    const periodClean = (periodTitle.toLowerCase().startsWith('nómina') || periodTitle.toLowerCase().startsWith('nomina'))
+      ? periodTitle
+      : `Nómina ${periodTitle}`;
+
+    const existingTxs = await pb.listAll('transactions', {
+      filter: `tx_type_id="${txType.id}" && description ~ "${pb.escapeFilterValue(periodClean)}" && status="active"`,
+    }).catch(() => []);
+
+    if (existingTxs.length > 0) {
+      console.warn(`[NÓMINA] Ya existen ${existingTxs.length} transacciones NM activas para ${periodClean}. Se vincularán sin duplicar.`);
+      return existingTxs.map((t: any) => t.id);
+    }
+
+    // Group payLines by employee_id
+    const payLinesByEmployee = {};
+    payLines.forEach((line) => {
+      const empId = line.employee_id;
+      if (!empId) return;
+      if (!payLinesByEmployee[empId]) payLinesByEmployee[empId] = [];
+      payLinesByEmployee[empId].push(line);
     });
+
+    const txsToCreate = [];
+
+    for (const empId of Object.keys(payLinesByEmployee)) {
+      const empPayLines = payLinesByEmployee[empId];
+      const txLines = await buildNominaAccountingLines(period, empPayLines, config);
+      if (!txLines.length) continue;
+
+      // Validar requerimientos de tercero y cruce
+      const uniqueAccountIds = [...new Set(txLines.map((l) => l.account_id).filter(Boolean))];
+      const accountsUsed = await pb.listAll('accounts', {
+        filter: uniqueAccountIds.map((id) => `id="${pb.escapeFilterValue(id)}"`).join('||'),
+      }).catch(() => []);
+      const accountMetaById = {};
+      accountsUsed.forEach((a) => { accountMetaById[a.id] = a; });
+
+      const employeeName = empPayLines[0]?.expand?.employee_id?.name || 'Empleado';
+      const validationErrors = [];
+      txLines.forEach((l) => {
+        const meta = accountMetaById[l.account_id];
+        if (!meta) return;
+        if (meta.requires_third_party && !l.third_party_id) {
+          validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere tercero pero no está asignado.`);
+        }
+        if (meta.maneja_cruce && !l.cross_doc_ref) {
+          validationErrors.push(`Cuenta ${meta.code} - ${meta.name}: requiere cruce pero no tiene referencia.`);
+        }
+      });
+
+      if (validationErrors.length) {
+        throw new Error(`Errores de validación contable para el empleado ${employeeName}:\n${validationErrors.slice(0, 5).join('\n')}`);
+      }
+
+      txsToCreate.push({
+        employeeName,
+        empId,
+        txLines
+      });
+    }
+
+    // Si todas pasaron la validación previa, creamos las transacciones contables en PocketBase de forma segura
+    const txIds = [];
+    for (const item of txsToCreate) {
+      const crossNum = `${period.id}-${item.empId}`;
+
+      // Verificar idempotencia a nivel de transacción individual por empleado
+      const existingEmpTx = await pb.listAll('transactions', {
+        filter: `cross_type="payroll_period" && cross_number="${pb.escapeFilterValue(crossNum)}" && status="active"`,
+        limit: 1,
+      }).catch(() => [] as any[]);
+
+      if (existingEmpTx.length > 0) {
+        txIds.push(existingEmpTx[0].id);
+        continue;
+      }
+
+      const tx = await API.createTransaction({
+        tx_type_id: txType.id,
+        date: period.date_to || todayStr(),
+        description: `${periodClean} - ${item.employeeName}`,
+        third_party_id: item.empId || undefined,
+        branch_id: period.branch_id || null,
+        cross_enabled: true,
+        cross_type: 'payroll_period',
+        cross_number: crossNum,
+        idempotency_key: `idemp_nom_${period.id}_${item.empId}`,
+      }, item.txLines);
+
+      txIds.push(tx.id);
+    }
+
+    return txIds;
+  })();
+
+  _inFlightNominaPeriodPosting.set(periodId, execPromise);
+  try {
+    return await execPromise;
+  } finally {
+    _inFlightNominaPeriodPosting.delete(periodId);
   }
-
-  // Si todas pasaron la validación previa, creamos las transacciones contables en PocketBase de forma segura
-  const txIds = [];
-  for (const item of txsToCreate) {
-    const tx = await API.createTransaction({
-      tx_type_id: txType.id,
-      date: period.date_to || todayStr(),
-      description: `${periodClean} - ${item.employeeName}`,
-      third_party_id: item.empId || undefined,
-      branch_id: period.branch_id || null,
-    }, item.txLines);
-
-    txIds.push(tx.id);
-  }
-
-  return txIds;
 }
 
 async function openNominaAccountingSettings(employees = []) {
@@ -6720,10 +6752,12 @@ function parseNominaXmlConcepts(xmlStr: string) {
     const devNode = doc.querySelector('Devengados');
     if (devNode) {
       // Básico
+      let diasLaboradosDoc = doc.querySelector('Periodo')?.getAttribute('TiempoLaborado') || '30';
       const basico = devNode.querySelector('Basico');
       if (basico) {
         const val = parseFloat(basico.getAttribute('SueldoTrabajado') || basico.textContent || '0');
-        const dias = basico.getAttribute('DiasTrabajados') || '30';
+        const dias = basico.getAttribute('DiasTrabajados') || diasLaboradosDoc || '30';
+        diasLaboradosDoc = dias;
         if (val > 0) devengos.push({ code: '001', name: 'Sueldo Básico', qty: `${dias} días`, value: val });
       }
 
@@ -6731,7 +6765,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
       const transp = devNode.querySelector('Transporte');
       if (transp) {
         const aux = parseFloat(transp.getAttribute('AuxilioTransporte') || '0');
-        if (aux > 0) devengos.push({ code: '040', name: 'Auxilio de Transporte', qty: '30 días', value: aux });
+        if (aux > 0) devengos.push({ code: '040', name: 'Auxilio de Transporte', qty: `${diasLaboradosDoc} días`, value: aux });
         const viatS = parseFloat(transp.getAttribute('ViaticoManuAlojS') || transp.getAttribute('ViaticoManutS') || '0');
         if (viatS > 0) devengos.push({ code: '041', name: 'Viáticos Salariales', qty: '—', value: viatS });
         const viatNS = parseFloat(transp.getAttribute('ViaticoManuAlojNS') || transp.getAttribute('ViaticoManutNS') || '0');
@@ -7169,7 +7203,7 @@ function parseNominaXmlConcepts(xmlStr: string) {
     const cajaLabel = cajaName || (emp.caja_compensacion && emp.caja_compensacion !== 'Caja de Compensación' ? emp.caja_compensacion : 'No asignada');
 
     // Sueldo base real
-    const sueldoBaseVal = parsedConcepts.devengos.find(d => d.code === '001')?.value || empRule?.basic_salary || emp.salary_base || devengosVal;
+    const sueldoBaseVal = empRule?.basic_salary || emp.salary_base || parsedConcepts.devengos.find(d => d.code === '001')?.value || devengosVal;
 
     const bodyHtml = `
       <style>
@@ -7374,7 +7408,9 @@ async function enviarDianNominaElectronica(id) {
 }
 
 
+let _isSettingPeriodStatus = false;
 async function setPeriodStatus(id, newStatus) {
+  if (_isSettingPeriodStatus) return;
   if (!canApproveOrPayPayroll()) {
     return showToast('Acceso restringido: Solo los usuarios SUPERADMINISTRADOR, ADMINISTRADOR y CONTADOR pueden aprobar o cambiar el estado de la nómina.', 'error');
   }
@@ -7383,8 +7419,15 @@ async function setPeriodStatus(id, newStatus) {
   }
   const labels = { approved: 'Aprobar' };
   confirmDialog(`${labels[newStatus] || 'Cambiar estado'}`, `¿Confirmas cambiar el estado del período?`, async () => {
+    if (_isSettingPeriodStatus) return;
+    _isSettingPeriodStatus = true;
     try {
-      const updatePayload = { status: newStatus };
+      const currentPeriod = await pb.get('payroll_periods', id).catch(() => null);
+      if (currentPeriod?.status === newStatus) {
+        showToast(`El período ya se encuentra en estado ${newStatus}.`, 'info');
+        return;
+      }
+      const updatePayload: any = { status: newStatus };
       if (newStatus === 'approved') {
         const txId = await postNominaPeriodAccounting(id);
         if (txId) updatePayload.tx_id = txId;
@@ -7396,7 +7439,10 @@ async function setPeriodStatus(id, newStatus) {
       } else {
         navigate('nomina-periodos', true);
       }
-    } catch (err) { showToast(err.message, 'error'); }
+    } catch (err: any) { showToast(err.message, 'error'); }
+    finally {
+      _isSettingPeriodStatus = false;
+    }
   });
 }
 
@@ -7469,7 +7515,7 @@ async function viewPeriodLines(periodId, periodName, periodStatus = 'draft') {
       `Liquidaciones — ${esc(periodName)}`,
       `<div class="space-y-4">
         <div class="grid grid-cols-4 gap-3">
-          <div class="rounded-xl p-3 text-center" style="background:#F0F7FF"><div class="text-xs" style="color:#6B7280">Total Devengado</div><div class="font-bold text-sm" style="color:#1A4B8C">${fmt(totDev)}</div></div>
+          <div class="rounded-xl p-3 text-center" style="background:#F5F3FF;border:1px solid #DDD6FE"><div class="text-xs" style="color:#5B21B6">Total Devengado</div><div class="font-bold text-sm" style="color:#7C3AED">${fmt(totDev)}</div></div>
           <div class="rounded-xl p-3 text-center" style="background:#F0FFF4"><div class="text-xs" style="color:#6B7280">Total Neto</div><div class="font-bold text-sm" style="color:#15803D">${fmt(totNeto)}</div></div>
           <div class="rounded-xl p-3 text-center" style="background:#FFF8F0"><div class="text-xs" style="color:#6B7280">Parafiscales</div><div class="font-bold text-sm" style="color:#C46516">${fmt(totPara)}</div></div>
           <div class="rounded-xl p-3 text-center" style="background:#FEF2F2"><div class="text-xs" style="color:#6B7280">Provisiones</div><div class="font-bold text-sm" style="color:#B91C1C">${fmt(totProv)}</div></div>
@@ -7703,7 +7749,7 @@ async function printPayrollSlip(id) {
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0D2137; padding-bottom: 10px; margin-bottom: 12px; }
     .company-name { font-size: 16px; font-weight: 700; color: #0D2137; }
     .company-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
-    .slip-title { font-size: 14px; font-weight: 700; color: #1A4B8C; text-align: right; }
+    .slip-title { font-size: 14px; font-weight: 700; color: #7C3AED; text-align: right; }
     .slip-period { font-size: 11px; color: #6B7280; text-align: right; margin-top: 2px; }
     .slip-doc-info { font-size: 11px; text-align: right; margin-top: 4px; font-weight: 700; }
     .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 24px; flex-wrap: wrap; }
@@ -7739,7 +7785,7 @@ async function printPayrollSlip(id) {
       <div class="slip-title">VOLANTE DE PAGO DE NÓMINA</div>
       <div class="slip-period">${period}${dateFrom ? ' &nbsp;·&nbsp; Del ' + dateFrom : ''}${dateTo ? ' al ' + dateTo : ''}</div>
       <div class="slip-doc-info">
-        <span style="color:#1A4B8C">Liquidación: ${lqdNumber}</span>
+        <span style="color:#7C3AED">Liquidación: ${lqdNumber}</span>
         ${txNumber ? `<span style="margin-left:8px;padding:2px 6px;background:#EFF6FF;color:#1D4ED8;border-radius:4px;border:1px solid #BFDBFE">Comprobante: ${txNumber}</span>` : '<span style="margin-left:8px;color:#9CA3AF;font-weight:normal">(Sin causar)</span>'}
       </div>
     </div>
@@ -7930,7 +7976,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
               <div class="slip-title">VOLANTE DE PAGO DE NÓMINA</div>
               <div class="slip-period">${period}${dateFrom ? ' &nbsp;·&nbsp; Del ' + dateFrom : ''}${dateTo ? ' al ' + dateTo : ''}</div>
               <div class="slip-doc-info">
-                <span style="color:#1A4B8C">Liquidación: ${lqdNumber}</span>
+                <span style="color:#7C3AED">Liquidación: ${lqdNumber}</span>
                 ${txNumber ? `<span style="margin-left:8px;padding:2px 6px;background:#EFF6FF;color:#1D4ED8;border-radius:4px;border:1px solid #BFDBFE">Comprobante: ${txNumber}</span>` : '<span style="margin-left:8px;color:#9CA3AF;font-weight:normal">(Sin causar)</span>'}
               </div>
             </div>
@@ -8023,7 +8069,7 @@ async function printConsolidatedPayrollSlips(periodId: string) {
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0D2137; padding-bottom: 10px; margin-bottom: 12px; }
     .company-name { font-size: 16px; font-weight: 700; color: #0D2137; }
     .company-sub { font-size: 11px; color: #6B7280; margin-top: 2px; }
-    .slip-title { font-size: 14px; font-weight: 700; color: #1A4B8C; text-align: right; }
+    .slip-title { font-size: 14px; font-weight: 700; color: #7C3AED; text-align: right; }
     .slip-period { font-size: 11px; color: #6B7280; text-align: right; margin-top: 2px; }
     .slip-doc-info { font-size: 11px; text-align: right; margin-top: 4px; font-weight: 700; }
     .emp-card { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 8px 12px; margin-bottom: 14px; display: flex; gap: 24px; flex-wrap: wrap; }
@@ -8822,7 +8868,7 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
     preview.style.display = '';
     preview.innerHTML = `
       <div class="grid grid-cols-3 gap-3 text-center">
-        <div><div class="text-xs" style="color:#6B7280">Devengado</div><div class="font-bold" style="color:#1A4B8C">${fmt(devengado)}</div></div>
+        <div><div class="text-xs" style="color:#6B7280">Devengado</div><div class="font-bold" style="color:#7C3AED">${fmt(devengado)}</div></div>
         <div><div class="text-xs" style="color:#6B7280">Deducciones</div><div class="font-bold" style="color:#B91C1C">${fmt(dedTotal)}</div></div>
         <div><div class="text-xs" style="color:#6B7280">Neto a Pagar</div><div class="font-bold" style="color:#15803D">${fmt(neto)}</div></div>
         <div><div class="text-xs" style="color:#6B7280">Parafiscales</div><div class="font-medium" style="color:#C46516">${fmt(para)}</div></div>
@@ -9043,8 +9089,10 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
   calcPreview();
 
   $('#btn-save-pl')?.addEventListener('click', async () => {
-    const btn = $('#btn-save-pl');
+    const btn = $('#btn-save-pl') as HTMLButtonElement;
+    if (btn?.dataset?.submitting === 'true' || btn?.disabled) return;
     if (btn) {
+      btn.dataset.submitting = 'true';
       btn.disabled = true;
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando...';
     }
@@ -9274,8 +9322,18 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
         await pb.update('payroll_lines', lineToEdit.id, payload);
         showToast('Liquidación actualizada', 'success');
       } else {
-        await pb.create('payroll_lines', payload);
-        showToast('Liquidación registrada', 'success');
+        // Idempotencia: Verificar doble si ya existe una liquidación para este empleado en este período
+        const doubleCheck = await pb.listAll('payroll_lines', {
+          filter: `period_id="${pb.escapeFilterValue(periodId)}" && employee_id="${pb.escapeFilterValue(employeeId)}"`,
+          limit: 1,
+        }).catch(() => [] as any[]);
+        if (doubleCheck.length > 0) {
+          await pb.update('payroll_lines', doubleCheck[0].id, payload);
+          showToast('Liquidación actualizada sin duplicar', 'info');
+        } else {
+          await pb.create('payroll_lines', payload);
+          showToast('Liquidación registrada', 'success');
+        }
       }
       closeModal();
       if (typeof (window as any).reloadTab === 'function') {
@@ -9283,13 +9341,14 @@ async function openPayrollLineForm(periods, employees, lineToEdit = null) {
       } else {
         navigate((window as any).currentPage || 'nomina-liquidacion', true);
       }
-    } catch (err) {
+    } catch (err: any) {
       const details = err?.data?.data
-        ? Object.values(err.data.data).map((v) => v?.message).filter(Boolean).join(' | ')
+        ? Object.values(err.data.data).map((v) => (v as any)?.message).filter(Boolean).join(' | ')
         : '';
       showToast(details || err.message || 'No se pudo registrar la Liquidacion', 'error');
     } finally {
       if (btn) {
+        btn.dataset.submitting = 'false';
         btn.disabled = false;
         btn.innerHTML = 'Guardar';
       }
@@ -9567,12 +9626,21 @@ async function savePayPayroll() {
   if (!data) return;
 
   const btn = $('#btn-confirm-pay-payroll') as HTMLButtonElement;
+  if (btn?.dataset?.submitting === 'true' || btn?.disabled) return;
   if (btn) {
+    btn.dataset.submitting = 'true';
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
   }
 
   try {
+    const currentPeriod = await pb.get('payroll_periods', data.periodId).catch(() => null);
+    if (currentPeriod?.status === 'paid') {
+      closeModal();
+      showToast('Este período de nómina ya fue registrado como pagado.', 'info');
+      return;
+    }
+
     const typeRes = await pb.listAll('transaction_types', { filter: 'code="CE"' });
     if (!typeRes.length) throw new Error('No se encontró el tipo de transacción CE.');
     const txTypeId = typeRes[0].id;
@@ -9647,6 +9715,9 @@ async function savePayPayroll() {
       description: obs || `Pago Nómina período ${data.periodName}`,
       status: 'active',
       branch_id: payrollBranchId || null,
+      cross_type: 'payroll_payment',
+      cross_number: data.periodId,
+      idempotency_key: `idemp_pay_payroll_${data.periodId}`,
     }, txLines);
 
     await pb.update('payroll_periods', data.periodId, { status: 'paid' });
@@ -9660,7 +9731,9 @@ async function savePayPayroll() {
     }
   } catch (err: any) {
     showToast(`Error al registrar pago: ${err.message}`, 'error');
+  } finally {
     if (btn) {
+      delete btn.dataset.submitting;
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
     }
@@ -9794,7 +9867,9 @@ async function savePayPlanilla() {
   if (!data) return;
 
   const btn = $('#btn-confirm-pay-planilla') as HTMLButtonElement;
+  if (btn?.dataset?.submitting === 'true' || btn?.disabled) return;
   if (btn) {
+    btn.dataset.submitting = 'true';
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registrando...';
   }
@@ -9853,6 +9928,9 @@ async function savePayPlanilla() {
       description: obs || `Pago Planilla Aportes Nómina período ${data.periodName}`,
       status: 'active',
       branch_id: planillaBranchId || null,
+      cross_type: 'payroll_pila',
+      cross_number: data.periodId,
+      idempotency_key: `idemp_pay_pila_${data.periodId}`,
     }, txLines);
 
     closeModal();
@@ -9864,7 +9942,9 @@ async function savePayPlanilla() {
     }
   } catch (err: any) {
     showToast(`Error al registrar pago: ${err.message}`, 'error');
+  } finally {
     if (btn) {
+      delete btn.dataset.submitting;
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-check mr-2"></i>Registrar Pago';
     }
@@ -11153,7 +11233,7 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
                           <td class="p-2 text-gray-700 font-sans">${esc(l.description)}</td>
                           <td class="p-2 font-mono">
                             ${l.cross_doc_ref
-                              ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+                              ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
                               : '<span class="text-gray-300">—</span>'}
                           </td>
                           <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-900' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
@@ -11187,6 +11267,8 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
         // ── Guardar y Contabilizar ──────────────────────────────────────
         document.getElementById('sld-btn-save')?.addEventListener('click', async () => {
           const btn = document.getElementById('sld-btn-save') as HTMLButtonElement;
+          if (btn?.dataset?.submitting === 'true' || btn?.disabled) return;
+          btn.dataset.submitting = 'true';
           btn.disabled = true;
           btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Procesando...';
           try {
@@ -11238,6 +11320,9 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
               date: settlementDate,
               description: `Liquidación Definitiva — ${emp?.name || ''} — ${settlementDate}`,
               third_party_id: empId,
+              cross_type: 'payroll_settlement',
+              cross_number: `${empId}-${settlementDate}`,
+              idempotency_key: `idemp_liq_def_${empId}_${settlementDate}`,
             }, cleanLines);
 
             // 2. Guardar en payroll_settlements como 'approved' con tx_id enlazado
@@ -11280,8 +11365,12 @@ async function renderNominaLiquidacionDefinitivaPage(c: HTMLElement) {
             (window as any).renderNominaLiquidacionDefinitivaPage(c);
           } catch (err: any) {
             showToast(`Error: ${err.message}`, 'error');
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar y Contabilizar';
+          } finally {
+            if (btn) {
+              delete btn.dataset.submitting;
+              btn.disabled = false;
+              btn.innerHTML = '<i class="fas fa-save mr-2"></i>Guardar y Contabilizar';
+            }
           }
         });
 
@@ -11497,7 +11586,7 @@ async function loadSettlementHistory() {
                 <td class="p-2 text-gray-600 font-sans" style="font-size:10px;max-width:180px">${esc(l.description || '—')}</td>
                 <td class="p-2 font-mono">
                   ${l.cross_doc_ref
-                    ? `<span class="badge" style="background:#EFF6FF;color:#1A4B8C;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
+                    ? `<span class="badge" style="background:#EDE9FE;color:#7C3AED;font-size:10px"><i class="fas fa-link mr-1"></i>${esc(l.cross_doc_ref)}</span>`
                     : '<span class="text-gray-300">—</span>'}
                 </td>
                 <td class="p-2 text-right ${l.debit > 0 ? 'font-bold text-blue-800' : 'text-gray-300'}">${l.debit > 0 ? fmt(l.debit) : '—'}</td>
@@ -11622,6 +11711,7 @@ async function loadSettlementHistory() {
     if (isDraft) {
       document.getElementById('modal-btn-post-draft')?.addEventListener('click', async () => {
         const postBtn = document.getElementById('modal-btn-post-draft') as HTMLButtonElement;
+        if (postBtn?.dataset?.submitting === 'true' || postBtn?.disabled) return;
         if (!balanced || !txLines.length) {
           return showToast('El asiento contable no está cuadrado o no tiene líneas válidas.', 'error');
         }
@@ -11637,6 +11727,7 @@ async function loadSettlementHistory() {
         }
 
         try {
+          postBtn.dataset.submitting = 'true';
           postBtn.disabled = true;
           postBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Contabilizando...';
           const txTypes = await API.getTxTypes();
@@ -11664,6 +11755,9 @@ async function loadSettlementHistory() {
             date: rec.settlement_date,
             description: `Liquidación Definitiva — ${empName} — ${rec.settlement_date}`,
             third_party_id: rec.employee_id,
+            cross_type: 'payroll_settlement',
+            cross_number: `${rec.employee_id}-${rec.settlement_date}`,
+            idempotency_key: `idemp_liq_def_${rec.employee_id}_${rec.settlement_date}`,
           }, cleanLines);
 
           await pb.update('payroll_settlements', rec.id, { tx_id: tx.id, status: 'approved' });
@@ -11674,8 +11768,12 @@ async function loadSettlementHistory() {
           await loadSettlementHistory();
         } catch (err: any) {
           showToast(`Error al contabilizar: ${err.message}`, 'error');
-          postBtn.disabled = false;
-          postBtn.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Contabilizar este Borrador Ahora';
+        } finally {
+          if (postBtn) {
+            delete postBtn.dataset.submitting;
+            postBtn.disabled = false;
+            postBtn.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Contabilizar este Borrador Ahora';
+          }
         }
       });
 

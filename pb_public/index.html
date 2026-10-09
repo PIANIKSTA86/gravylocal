@@ -15,7 +15,9 @@
   <!-- Tipografía Editorial y Funcional: Fraunces (Serif con personalidad) + Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
 
   <!-- Activos locales — sin CDN externo -->
   <link rel="stylesheet" href="/assets/fonts/fonts.css">
@@ -31,53 +33,51 @@
       --sidebar-w: 270px;
       --sidebar-w-collapsed: 68px;
       --topbar-h: 64px;
-      --bg-deep: #F8F9FA;
+      --bg-deep: #F8FAFC;
       --bg-elev: #FFFFFF;
-      --bg-panel: #F8F9FA;
-      --bg-soft: #F4E9FE;
-      --bg-soft-2: #EAF6F0;
-      --text-strong: #1E1E1E;
-      --text-muted: #5D5D5D;
-      --text-tertiary: #888888;
-      --border-soft: #EAEAEA;
-      --border-strong: #D5D7DA;
+      --bg-panel: #FFFFFF;
+      --bg-soft: #F5F3FF;
+      --bg-soft-2: #ECFDF5;
+      --text-strong: #0F172A;
+      --text-muted: #475569;
+      --text-tertiary: #94A3B8;
+      --border-soft: #E2E8F0;
+      --border-strong: #CBD5E1;
 
-      /* Identidad Editorial Inspirada en Aleluya */
-      --color-purple-600: #9A3DE0;
-      --color-purple-500: #B972F0;
-      --color-purple-200: #EBD7FD;
-      --color-purple-100: #F4E9FE;
-      --color-purple-soft: #FAF5FE;
+      /* Identidad Contable Enterprise — Violeta */
+      --color-purple-700: #6D28D9;
+      --color-purple-600: #7C3AED;
+      --color-purple-500: #8B5CF6;
+      --color-purple-200: #DDD6FE;
+      --color-purple-100: #EDE9FE;
+      --color-purple-soft: #F5F3FF;
 
-      /* Acentos sutiles de autor (Aleluya) */
-      --color-accent-coral: #F46532;
-      --color-accent-yellow: #FBE149;
+      /* Acentos */
+      --accent-lavender: #7C3AED;
+      --accent-lavender-hover: #6D28D9;
+      --accent-lavender-subtle: #EDE9FE;
+      --accent-lavender-soft: #F5F3FF;
 
-      --accent-lavender: #9A3DE0;
-      --accent-lavender-hover: #8325CA;
-      --accent-lavender-subtle: #F4E9FE;
-      --accent-lavender-soft: #FAF5FE;
+      --accent-sky: #2563EB;
+      --accent-sky-hover: #1D4ED8;
+      --accent-sky-subtle: #EFF6FF;
+      --accent-sky-soft: #F8FAFC;
 
-      --accent-sky: #3A70E2;
-      --accent-sky-hover: #2B5DC2;
-      --accent-sky-subtle: #E9F4FF;
-      --accent-sky-soft: #F1F8FF;
-
-      /* Semánticos relajados (estilo Aleluya) */
-      --color-success: #0C9D61;
-      --color-success-bg: #EAF6F0;
-      --color-warning: #EC8314;
-      --color-warning-bg: #FEF9EC;
-      --color-danger: #EC2D30;
-      --color-danger-bg: #FDEAEA;
+      /* Semánticos Contables Limpios */
+      --color-success: #059669;
+      --color-success-bg: #ECFDF5;
+      --color-warning: #D97706;
+      --color-warning-bg: #FFFBEB;
+      --color-danger: #DC2626;
+      --color-danger-bg: #FEF2F2;
 
       /* Aliases para máxima compatibilidad con código existente */
-      --accent-cyan: #1CE5C2;
-      --accent-cyan-strong: #0C9D61;
-      --accent-violet: #9A3DE0;
-      --accent-violet-strong: #8325CA;
-      --accent-soft: #F4E9FE;
-      --accent-glow: rgba(154, 61, 224, 0.08);
+      --accent-cyan: #7C3AED;
+      --accent-cyan-strong: #6D28D9;
+      --accent-violet: #7C3AED;
+      --accent-violet-strong: #6D28D9;
+      --accent-soft: #F5F3FF;
+      --accent-glow: rgba(124, 58, 237, 0.12);
     }
 
     .font-serif-editorial {
@@ -245,16 +245,16 @@
 
     .nav-item:hover {
       color: var(--text-strong);
-      background: var(--accent-lavender-soft, #FAF9FF);
+      background: var(--accent-lavender-soft, #F5F3FF);
       transform: translateX(2px);
     }
 
     .nav-item.active {
-      color: #543DC2;
-      background: var(--accent-lavender-subtle, #F1EFFE);
-      border-left-color: var(--accent-lavender, #7C66F0);
+      color: #6D28D9;
+      background: var(--accent-lavender-subtle, #EDE9FE);
+      border-left-color: var(--accent-lavender, #7C3AED);
       font-weight: 600;
-      box-shadow: 0 1px 3px rgba(124, 102, 240, 0.08);
+      box-shadow: 0 1px 2px rgba(124, 58, 237, 0.06);
     }
 
     .nav-item i {
@@ -262,11 +262,11 @@
       text-align: center;
       font-size: 14px;
       flex-shrink: 0;
-      color: #8A97A8;
+      color: #64748B;
     }
 
     .nav-item.active i {
-      color: var(--accent-lavender, #7C66F0);
+      color: var(--accent-lavender, #7C3AED);
     }
 
     .nav-item .nav-label {
@@ -276,12 +276,12 @@
     }
 
     .nav-section {
-      padding: 4px 16px;
-      margin-top: 4px;
-      font-size: 10px;
+      padding: 8px 16px 4px;
+      margin-top: 8px;
+      font-size: 10.5px;
       font-weight: 700;
-      color: rgba(255, 255, 255, .25);
-      letter-spacing: 1px;
+      color: #94A3B8;
+      letter-spacing: 0.8px;
       text-transform: uppercase;
       max-height: 40px;
       overflow: hidden;
@@ -510,20 +510,20 @@
 
     /* Cards KPI */
     .stat-card {
-      background: #FFFFFF;
+      background: #F5F3FF;
       border-radius: 14px;
       padding: 20px 22px;
       position: relative;
       overflow: hidden;
-      transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .2s;
-      border: 1px solid var(--border-soft);
-      box-shadow: 0 2px 8px rgba(25, 33, 61, 0.04);
+      transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow .2s, border-color .2s;
+      border: 1px solid #DDD6FE;
+      box-shadow: 0 1px 3px rgba(124, 58, 237, 0.04);
     }
 
     .stat-card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 10px 24px rgba(25, 33, 61, 0.07);
-      border-color: var(--border-strong);
+      box-shadow: 0 8px 20px rgba(124, 58, 237, 0.08);
+      border-color: #C4B5FD;
     }
 
     .stat-card::before {
@@ -556,9 +556,10 @@
     .btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       padding: 8px 16px;
-      border-radius: 10px;
+      border-radius: 9px;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
@@ -572,14 +573,15 @@
     }
 
     .btn-primary {
-      background: var(--accent-lavender, #7C66F0);
+      background: var(--accent-lavender, #7C3AED);
       color: #fff;
-      box-shadow: 0 4px 14px rgba(124, 102, 240, .22);
+      border-color: transparent;
+      box-shadow: 0 2px 6px rgba(124, 58, 237, .24);
     }
 
     .btn-primary:hover {
-      background: var(--accent-lavender-hover, #6850E2);
-      box-shadow: 0 6px 20px rgba(124, 102, 240, .32);
+      background: var(--accent-lavender-hover, #6D28D9);
+      box-shadow: 0 4px 14px rgba(124, 58, 237, .32);
       transform: translateY(-1px);
     }
 
@@ -587,61 +589,18 @@
       background: #FFFFFF;
       color: var(--text-strong);
       border: 1px solid var(--border-strong);
-      box-shadow: 0 1px 3px rgba(25, 33, 61, .04);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
     }
 
     .btn-secondary:hover {
-      background: var(--bg-soft);
-      border-color: #CBD5E1;
-      color: var(--text-strong);
+      background: var(--bg-deep);
+      border-color: #94A3B8;
+      color: #0F172A;
       transform: translateY(-1px);
-    }
-
-    .btn-orange, .btn-amber {
-      background: #FEF6E9;
-      color: var(--color-warning) !important;
-      border: 1px solid #FCE1B6;
-    }
-
-    .btn-orange:hover, .btn-amber:hover {
-      background: #FDF0D5;
-      border-color: #F8D194;
-      transform: translateY(-1px);
-    }
-
-    .btn-orange-subtle {
-      background: #FEF6E9;
-      color: var(--color-warning) !important;
-      border: 1px solid #FCE1B6;
-    }
-
-    .btn-orange-subtle:hover {
-      background: #FDF0D5;
-    }
-
-    .btn-green, .btn-emerald, .btn-success {
-      background: #E8F8F0;
-      color: var(--color-success) !important;
-      border: 1px solid #C1ECD4;
-    }
-
-    .btn-green:hover, .btn-emerald:hover, .btn-success:hover {
-      background: #D3F3E2;
-      transform: translateY(-1px);
-    }
-
-    .btn-green-subtle, .btn-emerald-subtle {
-      background: #E8F8F0;
-      color: var(--color-success) !important;
-      border: 1px solid #C1ECD4;
-    }
-
-    .btn-green-subtle:hover, .btn-emerald-subtle:hover {
-      background: #D3F3E2;
     }
 
     .btn-outline {
-      background: transparent;
+      background: #FFFFFF;
       border: 1px solid var(--border-strong);
       color: var(--text-muted);
     }
@@ -649,28 +608,83 @@
     .btn-outline:hover {
       border-color: var(--accent-lavender);
       color: var(--accent-lavender);
-      background: var(--accent-lavender-subtle);
+      background: var(--accent-lavender-soft);
     }
 
     .btn-danger {
       background: var(--color-danger);
       color: #fff;
+      border-color: transparent;
     }
 
     .btn-danger:hover {
-      background: #B92D2D;
+      background: #B91C1C;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+    }
+
+    .btn-green,
+    .btn-emerald,
+    .btn-success {
+      background: var(--color-success);
+      color: #fff !important;
+      border: 1px solid transparent;
+    }
+
+    .btn-green:hover,
+    .btn-emerald:hover,
+    .btn-success:hover {
+      background: #047857;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+    }
+
+    .btn-green-subtle,
+    .btn-emerald-subtle {
+      background: var(--color-success-bg);
+      color: var(--color-success) !important;
+      border: 1px solid #A7F3D0;
+    }
+
+    .btn-green-subtle:hover,
+    .btn-emerald-subtle:hover {
+      background: #D1FAE5;
+    }
+
+    .btn-orange,
+    .btn-amber {
+      background: var(--color-warning-bg);
+      color: var(--color-warning) !important;
+      border: 1px solid #FDE68A;
+    }
+
+    .btn-orange:hover,
+    .btn-amber:hover {
+      background: #FEF3C7;
+      transform: translateY(-1px);
+    }
+
+    .btn-orange-subtle {
+      background: var(--color-warning-bg);
+      color: var(--color-warning) !important;
+      border: 1px solid #FDE68A;
+    }
+
+    .btn-orange-subtle:hover {
+      background: #FEF3C7;
     }
 
     .btn-sm {
       padding: 6px 12px;
       font-size: 12px;
-      border-radius: 8px;
+      border-radius: 7px;
     }
 
     .btn:disabled {
       opacity: .5;
       cursor: not-allowed;
       transform: none !important;
+      box-shadow: none !important;
     }
 
     /* Tabla Contable Minimalista */
@@ -681,7 +695,7 @@
     }
 
     .data-table thead th {
-      background: #FAFBFD;
+      background: #F8FAFC;
       padding: 11px 16px;
       font-size: 11.5px;
       font-weight: 700;
@@ -698,9 +712,10 @@
     .data-table tbody td {
       padding: 12px 16px;
       font-size: 13px;
-      border-bottom: 1px solid #F0F4FA;
+      border-bottom: 1px solid #F1F5F9;
       vertical-align: middle;
       font-variant-numeric: tabular-nums;
+      color: #1E293B;
     }
 
     .data-table tbody tr {
@@ -708,7 +723,7 @@
     }
 
     .data-table tbody tr:hover {
-      background: var(--accent-lavender-soft, #FAF9FF);
+      background: var(--accent-lavender-soft, #F5F3FF);
     }
 
     /* Badges Calmos */
@@ -726,29 +741,29 @@
     .badge-orange {
       background: var(--color-warning-bg);
       color: var(--color-warning);
-      border-color: #FCE1B6;
+      border-color: #FDE68A;
     }
 
     .badge-blue {
       background: var(--accent-sky-subtle);
       color: var(--accent-sky-hover);
-      border-color: #CDE6FB;
+      border-color: #BFDBFE;
     }
 
     .badge-green {
       background: var(--color-success-bg);
       color: var(--color-success);
-      border-color: #C1ECD4;
+      border-color: #A7F3D0;
     }
 
     .badge-red {
       background: var(--color-danger-bg);
       color: var(--color-danger);
-      border-color: #FACACA;
+      border-color: #FECACA;
     }
 
     .badge-gray {
-      background: var(--bg-panel);
+      background: #F1F5F9;
       color: var(--text-muted);
       border-color: var(--border-soft);
     }
@@ -756,13 +771,13 @@
     .badge-purple {
       background: var(--accent-lavender-subtle);
       color: var(--accent-lavender-hover);
-      border-color: #E2DEFD;
+      border-color: #DDD6FE;
     }
 
     .badge-teal {
-      background: #EBF8FF;
-      color: #0C728F;
-      border-color: #BAE6FD;
+      background: #ECFEFF;
+      color: #0E7490;
+      border-color: #A5F3FC;
     }
 
     .badge-pink {
@@ -930,10 +945,12 @@
       pointer-events: none;
       transition: opacity .25s ease;
     }
+
     .drawer-backdrop.open {
       opacity: 1;
       pointer-events: auto;
     }
+
     .drawer-container {
       position: fixed;
       top: 0;
@@ -950,6 +967,7 @@
       transition: transform .32s cubic-bezier(0.16, 1, 0.3, 1);
       border-left: 1px solid var(--border-soft);
     }
+
     .drawer-backdrop.open .drawer-container {
       transform: translateX(0);
     }
@@ -1152,6 +1170,7 @@
       flex: 1;
       padding-bottom: 0px;
     }
+
     .gravy-tabs-scroll-container::-webkit-scrollbar {
       display: none;
     }
@@ -1181,10 +1200,10 @@
 
     .gravy-tab-pill.active {
       background: #FFFFFF;
-      color: var(--accent-lavender, #7C66F0);
+      color: var(--accent-lavender, #7C3AED);
       font-weight: 700;
-      border-color: #E2DEFD;
-      box-shadow: 0 1px 3px rgba(25, 33, 61, 0.04);
+      border-color: #DDD6FE;
+      box-shadow: 0 1px 3px rgba(124, 58, 237, 0.05);
     }
 
     .gravy-tab-pill.active::after {
@@ -1195,7 +1214,7 @@
       right: 12px;
       height: 2.5px;
       border-radius: 3px 3px 0 0;
-      background: var(--accent-lavender, #7C66F0);
+      background: var(--accent-lavender, #7C3AED);
     }
 
     .gravy-tab-close {
@@ -1205,14 +1224,14 @@
       width: 16px;
       height: 16px;
       border-radius: 50%;
-      color: var(--text-tertiary, #9AA6B8);
+      color: var(--text-tertiary);
       font-size: 9px;
       transition: all 0.15s;
     }
 
     .gravy-tab-close:hover {
-      background: var(--color-danger-bg, #FDF0F0);
-      color: var(--color-danger, #D33D3D);
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
     }
 
     .gravy-tabs-counter {
@@ -1220,8 +1239,8 @@
       font-weight: 700;
       padding: 3px 9px;
       border-radius: 12px;
-      background: #EEF4FF;
-      color: #2446B8;
+      background: var(--accent-lavender-subtle, #EDE9FE);
+      color: #6D28D9;
       white-space: nowrap;
     }
 
@@ -1309,7 +1328,7 @@
       }
 
       .sidebar.collapsed .nav-item.active {
-        border-left-color: var(--accent-cyan) !important;
+        border-left-color: var(--accent-lavender) !important;
         border-right: none;
       }
 
@@ -1483,8 +1502,8 @@
 
     .user-menu-btn:hover {
       background: #fff;
-      border-color: var(--accent-cyan-strong);
-      box-shadow: 0 4px 12px rgba(100, 225, 255, 0.15);
+      border-color: var(--accent-lavender);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.12);
     }
 
     .user-menu-avatar {
@@ -1669,9 +1688,9 @@
       font-size: 10px;
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CsxF8Zbq.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/style-EEDvA9n0.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-CPAJqc4c.css">
+  <script type="module" crossorigin src="/assets/main-DRxSPEV-.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/style-Nb3BfCjV.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-B7uh32ku.css">
   <link rel="stylesheet" crossorigin href="/assets/main-Dgihpmma.css">
 </head>
 
@@ -1680,10 +1699,12 @@
   <!-- ─── Pantalla de carga ─────────────────────── -->
   <div id="screen-loading">
     <div class="login-brand-capsule mb-4">
-      <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-8 h-8 object-contain" onerror="this.src='/gravy-Icono.ico'">
+      <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-8 h-8 object-contain"
+        onerror="this.src='/gravy-Icono.ico'">
     </div>
     <div class="loader-ring mb-3"></div>
-    <p style="color:#5D5D5D;font-size:13px;font-weight:600;letter-spacing:-0.1px" id="loading-msg">Conectando con el servidor...</p>
+    <p style="color:#5D5D5D;font-size:13px;font-weight:600;letter-spacing:-0.1px" id="loading-msg">Conectando con el
+      servidor...</p>
   </div>
 
   <!-- ─── Login Vivo Estilo Aleluya (Aqua + Púrpura) ────────────────── -->
@@ -1696,11 +1717,14 @@
           <div class="w-full flex items-center justify-between">
             <div class="flex items-center gap-2.5">
               <div class="w-9 h-9 rounded-xl bg-white/90 p-1.5 flex items-center justify-center shadow-sm">
-                <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-6 h-6 object-contain" onerror="this.src='/gravy-Icono.ico'">
+                <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-6 h-6 object-contain"
+                  onerror="this.src='/gravy-Icono.ico'">
               </div>
               <span class="text-xl font-black tracking-tight text-gray-950">GRAVY</span>
             </div>
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-gray-900 text-xs font-bold tracking-wide" style="background:rgba(0,0,0,0.08)">
+            <span
+              class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-gray-900 text-xs font-bold tracking-wide"
+              style="background:rgba(0,0,0,0.08)">
               <span class="w-2 h-2 rounded-full bg-emerald-800"></span>
               Core v2.0 Enterprise
             </span>
@@ -1712,7 +1736,9 @@
               Gestión contable inteligente a la velocidad de tu negocio
             </h2>
             <p class="text-sm font-medium leading-relaxed text-gray-800 max-w-lg mx-auto" style="line-height:1.65">
-              Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la nube.
+              Unifica contabilidad automatizada, facturación electrónica DIAN, conciliación bancaria y control
+              multi-empresa en una plataforma de alto rendimiento, diseñada para operar tanto en red local como en la
+              nube.
             </p>
           </div>
 
@@ -1738,7 +1764,8 @@
           </div>
 
           <!-- Pie de Seguridad Izquierdo Original -->
-          <div class="w-full pt-4 mt-4 border-t flex items-center justify-between text-xs font-semibold text-gray-800" style="border-color:rgba(0,0,0,0.08)">
+          <div class="w-full pt-4 mt-4 border-t flex items-center justify-between text-xs font-semibold text-gray-800"
+            style="border-color:rgba(0,0,0,0.08)">
             <span class="inline-flex items-center gap-1.5">
               <i class="fas fa-lock text-[11px]"></i> Cifrado de grado financiero
             </span>
@@ -1752,17 +1779,22 @@
         <div class="login-form-box">
           <!-- Logo de GRAVY centrado -->
           <div class="flex flex-col items-center mb-3">
-            <div class="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 p-2 flex items-center justify-center mb-1 shadow-sm">
-              <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-10 h-10 object-contain" onerror="this.src='/gravy-Icono.ico'">
+            <div
+              class="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 p-2 flex items-center justify-center mb-1 shadow-sm">
+              <img src="/assets/gravy-logo.png" alt="GRAVY" class="w-10 h-10 object-contain"
+                onerror="this.src='/gravy-Icono.ico'">
             </div>
-            <h1 class="text-3xl font-black tracking-tight text-gray-900 lowercase" style="letter-spacing:-1px">gravy</h1>
-            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">Accounting Intelligence Platform</p>
+            <h1 class="text-3xl font-black tracking-tight text-gray-900 lowercase" style="letter-spacing:-1px">gravy
+            </h1>
+            <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mt-0.5">Plataforma de Servicios
+              Contables</p>
           </div>
 
           <!-- Mensaje de bienvenida original -->
           <div class="text-center mb-5">
             <h3 id="login-greeting-title" class="text-lg font-extrabold text-gray-900">Acceso al Sistema</h3>
-            <p id="login-greeting-subtitle" class="text-xs text-gray-500 mt-1">Ingresa tus credenciales de usuario para continuar</p>
+            <p id="login-greeting-subtitle" class="text-xs text-gray-500 mt-1">Ingresa tus credenciales de usuario para
+              continuar</p>
           </div>
 
           <!-- Separador fino con circulito central (como en la imagen de Aleluya) -->
@@ -1773,7 +1805,8 @@
           </div>
 
           <!-- Alerta de Error -->
-          <div id="login-error" role="alert" aria-live="assertive" class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
+          <div id="login-error" role="alert" aria-live="assertive"
+            class="hidden mb-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2.5"
             style="background:#FDEAEA;color:#EC2D30;border:1px solid #F6BECB">
             <i class="fas fa-circle-exclamation text-sm flex-shrink-0"></i>
             <span id="login-error-text"></span>
@@ -1785,8 +1818,8 @@
               <label class="block text-xs font-bold text-gray-800 mb-1.5" for="login-email">
                 Correo Electrónico o Usuario <span class="text-red-500">*</span>
               </label>
-              <input id="login-email" type="email" class="login-modern-input"
-                placeholder="nombre@empresa.com" autocomplete="username" spellcheck="false" required>
+              <input id="login-email" type="email" class="login-modern-input" placeholder="nombre@empresa.com"
+                autocomplete="username" spellcheck="false" required>
             </div>
 
             <div class="form-group mb-3">
@@ -1810,8 +1843,10 @@
 
             <!-- Recordar usuario original -->
             <div class="flex items-center justify-between my-4 text-xs">
-              <label class="flex items-center gap-2 cursor-pointer select-none font-medium text-gray-600" for="login-remember">
-                <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-gray-300" style="accent-color:#9333EA">
+              <label class="flex items-center gap-2 cursor-pointer select-none font-medium text-gray-600"
+                for="login-remember">
+                <input type="checkbox" id="login-remember" class="w-4 h-4 rounded border-gray-300"
+                  style="accent-color:#9333EA">
                 <span>Recordar correo en este equipo</span>
               </label>
             </div>
@@ -1824,7 +1859,9 @@
 
             <!-- Enlace de asistencia o soporte original -->
             <div class="text-center mt-4">
-              <button type="button" id="btn-login-help" class="text-xs font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0" style="color:#9333EA">
+              <button type="button" id="btn-login-help"
+                class="text-xs font-semibold hover:underline bg-transparent border-0 cursor-pointer p-0"
+                style="color:#9333EA">
                 <i class="fas fa-circle-question mr-1"></i> ¿Problemas para acceder? Mesa de ayuda
               </button>
             </div>
@@ -1836,7 +1873,8 @@
               <span class="status-pulse-dot" aria-hidden="true"></span>
               <span class="text-[11px] font-medium" id="login-conn-indicator">Detectando conexión...</span>
             </div>
-            <span class="text-[11px] font-mono px-2 py-0.5 rounded border border-gray-200 bg-gray-50" id="login-server-url"></span>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded border border-gray-200 bg-gray-50"
+              id="login-server-url"></span>
           </div>
         </div>
       </div>
@@ -1892,7 +1930,8 @@
         <div class="nav-item" data-page="documentos-electronicos" data-label="Buzón RADIAN" data-module="contabilidad">
           <i class="fas fa-inbox"></i><span class="nav-label">Buzón RADIAN</span>
         </div>
-        <div class="nav-item" data-page="doc-soporte" data-label="Documento Soporte Electrónico" data-module="contabilidad">
+        <div class="nav-item" data-page="doc-soporte" data-label="Documento Soporte Electrónico"
+          data-module="contabilidad">
           <i class="fas fa-file-signature"></i><span class="nav-label">Documento Soporte Electrónico</span>
         </div>
         <div class="nav-item" data-page="cierre" data-label="Periodos" data-module="contabilidad">
@@ -1922,7 +1961,8 @@
         <div class="nav-item" data-page="inventario-bodegas" data-label="Bodegas" data-module="inventarios">
           <i class="fas fa-warehouse"></i><span class="nav-label">Bodegas y Almacenes</span>
         </div>
-        <div class="nav-item" data-page="inventario-consignaciones" data-label="Consignaciones" data-module="inventarios">
+        <div class="nav-item" data-page="inventario-consignaciones" data-label="Consignaciones"
+          data-module="inventarios">
           <i class="fas fa-handshake"></i><span class="nav-label">Consignaciones</span>
         </div>
         <div class="nav-section" data-section="compras"><span>Gestión de Compras</span><i
@@ -2024,7 +2064,8 @@
         <div class="nav-item" data-page="importaciones" data-label="Importaciones" data-module="logistica">
           <i class="fas fa-ship"></i><span class="nav-label">Importaciones</span>
         </div>
-        <div class="nav-item" data-page="preliquidaciones" data-label="Preliquidación & Viabilidad" data-module="logistica">
+        <div class="nav-item" data-page="preliquidaciones" data-label="Preliquidación & Viabilidad"
+          data-module="logistica">
           <i class="fas fa-calculator"></i><span class="nav-label">Preliquidación & Viabilidad</span>
         </div>
         <div class="nav-item" data-page="reservas-logistica" data-label="Reservas Importación" data-module="logistica">
@@ -2039,7 +2080,8 @@
         <div class="nav-item" data-page="mis-rutas" data-label="Mi Agenda de Rutas" data-module="logistica">
           <i class="fas fa-route"></i><span class="nav-label">Mi Agenda de Rutas</span>
         </div>
-        <div class="nav-item" data-page="rutas-gestion" data-label="Control y Planificación" data-module="logistica" id="nav-rutas-gestion">
+        <div class="nav-item" data-page="rutas-gestion" data-label="Control y Planificación" data-module="logistica"
+          id="nav-rutas-gestion">
           <i class="fas fa-calendar-check"></i><span class="nav-label">Control de Rutas (Admin)</span>
         </div>
 
@@ -2057,13 +2099,15 @@
         <div class="nav-item" data-page="nomina-novedades" data-label="Novedades" data-module="nomina">
           <i class="fas fa-notes-medical"></i><span class="nav-label">Novedades</span>
         </div>
-        <div class="nav-item" data-page="nomina-distribucion-dotacion" data-label="Distribución Dotación" data-module="nomina">
+        <div class="nav-item" data-page="nomina-distribucion-dotacion" data-label="Distribución Dotación"
+          data-module="nomina">
           <i class="fas fa-shirt"></i><span class="nav-label">Distribución Dotación</span>
         </div>
         <div class="nav-item" data-page="nomina-liquidacion" data-label="Liquidación" data-module="nomina">
           <i class="fas fa-calculator"></i><span class="nav-label">Liquidación</span>
         </div>
-        <div class="nav-item" data-page="nomina-liquidacion-definitiva" data-label="Liquidación Definitiva" data-module="nomina">
+        <div class="nav-item" data-page="nomina-liquidacion-definitiva" data-label="Liquidación Definitiva"
+          data-module="nomina">
           <i class="fas fa-user-slash"></i><span class="nav-label">Liquidación Definitiva</span>
         </div>
         <div class="nav-item" data-page="nomina-electronica-p" data-label="Nómina Electrónica" data-module="nomina">
@@ -2093,16 +2137,20 @@
 
         <div class="nav-section" data-section="activos_fijos" data-module="activos_fijos"><span>Activos Fijos</span><i
             class="fas fa-chevron-down text-[10px] transition-transform duration-200"></i></div>
-        <div class="nav-item" data-page="fixed-assets-catalogo" data-label="Catálogo de Activos" data-module="activos_fijos">
+        <div class="nav-item" data-page="fixed-assets-catalogo" data-label="Catálogo de Activos"
+          data-module="activos_fijos">
           <i class="fas fa-list-check"></i><span class="nav-label">Catálogo de Activos</span>
         </div>
-        <div class="nav-item" data-page="fixed-assets-categorias" data-label="Categorías y Mapeo" data-module="activos_fijos">
+        <div class="nav-item" data-page="fixed-assets-categorias" data-label="Categorías y Mapeo"
+          data-module="activos_fijos">
           <i class="fas fa-folder-tree"></i><span class="nav-label">Categorías y Mapeo</span>
         </div>
-        <div class="nav-item" data-page="fixed-assets-depreciacion" data-label="Depreciación Mensual" data-module="activos_fijos">
+        <div class="nav-item" data-page="fixed-assets-depreciacion" data-label="Depreciación Mensual"
+          data-module="activos_fijos">
           <i class="fas fa-calculator"></i><span class="nav-label">Depreciación Mensual</span>
         </div>
-        <div class="nav-item" data-page="fixed-assets-inventario" data-label="Inventario QR" data-module="activos_fijos">
+        <div class="nav-item" data-page="fixed-assets-inventario" data-label="Inventario QR"
+          data-module="activos_fijos">
           <i class="fas fa-qrcode"></i><span class="nav-label">Inventario QR</span>
         </div>
 
@@ -2140,19 +2188,29 @@
           <h2 class="text-lg font-bold" style="color:var(--text-strong)" id="page-title">Dashboard</h2>
 
           <!-- Buscador omnidireccional: Solo icono de Lupa (Ctrl + K) -->
-          <button id="btn-omni-search" class="flex items-center justify-center cursor-pointer ml-1 sm:ml-2 rounded-lg transition-all flex-shrink-0 hover:bg-indigo-50" style="width:34px; height:34px; background:var(--bg-panel, #F5F7FA); border:1px solid var(--border-soft)" title="Búsqueda rápida en GRAVY (Ctrl + K)" aria-label="Búsqueda rápida (Ctrl + K)">
-            <i class="fas fa-magnifying-glass" style="font-size:13px; color:var(--accent-lavender, #7C66F0)"></i>
+          <button id="btn-omni-search"
+            class="flex items-center justify-center cursor-pointer ml-1 sm:ml-2 rounded-lg transition-all flex-shrink-0 hover:bg-purple-50"
+            style="width:34px; height:34px; background:var(--bg-panel, #FFFFFF); border:1px solid var(--border-soft)"
+            title="Búsqueda rápida en GRAVY (Ctrl + K)" aria-label="Búsqueda rápida (Ctrl + K)">
+            <i class="fas fa-magnifying-glass" style="font-size:13px; color:var(--accent-lavender, #7C3AED)"></i>
           </button>
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-          <select id="global-branch-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[125px] sm:max-w-[145px] truncate" style="display: none; height:32px">
+          <select id="global-branch-selector"
+            class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[125px] sm:max-w-[145px] truncate"
+            style="display: none; height:32px">
             <option value="TODAS">TODAS LAS SUCURSALES</option>
           </select>
-          <select id="global-cost-center-selector" class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[130px] sm:max-w-[155px] truncate" style="display: none; height:32px">
+          <select id="global-cost-center-selector"
+            class="text-xs font-semibold rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-2 py-1 focus:outline-none cursor-pointer shadow-sm hover:bg-gray-50 transition-all max-w-[130px] sm:max-w-[155px] truncate"
+            style="display: none; height:32px">
             <option value="TODOS">TODOS LOS CENTROS DE COSTO</option>
           </select>
-          <!-- Indicador de Empresa Activa (Estilo Alegra) -->
-          <div class="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-semibold max-w-[140px] sm:max-w-[160px] flex-shrink-0" style="background:var(--accent-lavender-subtle, #F1EFFE); border:1px solid #DCD6FA; color:var(--accent-lavender, #7C66F0); height:30px" title="Empresa Activa">
+          <!-- Indicador de Empresa Activa (Estilo Elegante) -->
+          <div
+            class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold max-w-[140px] sm:max-w-[160px] flex-shrink-0"
+            style="background:var(--accent-lavender-subtle, #EDE9FE); border:1px solid #DDD6FE; color:var(--accent-lavender, #7C3AED); height:30px"
+            title="Empresa Activa">
             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0"></span>
             <span id="topbar-company" class="truncate"></span>
           </div>
@@ -2161,16 +2219,22 @@
 
           <!-- Campana de Notificaciones -->
           <div style="position:relative; flex-shrink:0" id="notif-container">
-            <button id="btn-notifications" style="background:none; border:1px solid var(--border-soft); color:var(--text-muted); cursor:pointer; font-size:14px; position:relative; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; transition:all 0.2s" aria-label="Notificaciones">
+            <button id="btn-notifications"
+              style="background:none; border:1px solid var(--border-soft); color:var(--text-muted); cursor:pointer; font-size:14px; position:relative; width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; transition:all 0.2s"
+              aria-label="Notificaciones">
               <i class="fas fa-bell"></i>
-              <span id="notif-badge" style="display:none; position:absolute; top:4px; right:4px; width:7px; height:7px; border-radius:50%; background:#EF4444"></span>
+              <span id="notif-badge"
+                style="display:none; position:absolute; top:4px; right:4px; width:7px; height:7px; border-radius:50%; background:#EF4444"></span>
             </button>
-            <div id="notif-dropdown" style="display:none; position:absolute; right:0; top:100%; margin-top:8px; width:290px; background:#fff; border-radius:14px; border:1px solid var(--border-soft); box-shadow:0 10px 30px rgba(12,21,48,0.12); z-index:100; padding:12px; animation:fadeIn 0.2s ease">
-              <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-soft); padding-bottom:8px; margin-bottom:8px">
+            <div id="notif-dropdown"
+              style="display:none; position:absolute; right:0; top:100%; margin-top:8px; width:290px; background:#fff; border-radius:14px; border:1px solid var(--border-soft); box-shadow:0 10px 30px rgba(12,21,48,0.12); z-index:100; padding:12px; animation:fadeIn 0.2s ease">
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-soft); padding-bottom:8px; margin-bottom:8px">
                 <strong style="font-size:12px; color:var(--text-strong)">Vencimientos Próximos</strong>
                 <span style="font-size:10px; color:#EF4444; font-weight:700" id="notif-critical-count">0 Alertas</span>
               </div>
-              <div id="notif-list" style="display:flex; flex-direction:column; gap:8px; max-height:240px; overflow-y:auto; font-size:11px">
+              <div id="notif-list"
+                style="display:flex; flex-direction:column; gap:8px; max-height:240px; overflow-y:auto; font-size:11px">
                 <p style="color:var(--text-muted); text-align:center; padding:12px">Cargando alertas...</p>
               </div>
             </div>
@@ -2229,14 +2293,19 @@
         <div class="flex items-center gap-2 flex-shrink-0">
           <span id="gravy-tabs-counter" class="gravy-tabs-counter">1 / 8 Tabs</span>
           <div class="relative">
-            <button type="button" id="gravy-tabs-menu-btn" onclick="toggleTabsOptionsMenu(event)" class="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-xs text-gray-500 hover:bg-gray-100 transition-all cursor-pointer" title="Opciones de Pestañas">
+            <button type="button" id="gravy-tabs-menu-btn" onclick="toggleTabsOptionsMenu(event)"
+              class="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-xs text-gray-500 hover:bg-gray-100 transition-all cursor-pointer"
+              title="Opciones de Pestañas">
               <i class="fas fa-ellipsis-vertical"></i>
             </button>
-            <div id="gravy-tabs-menu" class="hidden absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-1.5 z-50 text-xs">
-              <button type="button" onclick="closeOtherTabs(); hideTabsOptionsMenu();" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 cursor-pointer">
+            <div id="gravy-tabs-menu"
+              class="hidden absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 py-1.5 z-50 text-xs">
+              <button type="button" onclick="closeOtherTabs(); hideTabsOptionsMenu();"
+                class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 flex items-center gap-2 cursor-pointer">
                 <i class="fas fa-filter text-indigo-500"></i> Cerrar otras pestañas
               </button>
-              <button type="button" onclick="closeAllTabs(); hideTabsOptionsMenu();" class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 flex items-center gap-2 cursor-pointer">
+              <button type="button" onclick="closeAllTabs(); hideTabsOptionsMenu();"
+                class="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-red-600 flex items-center gap-2 cursor-pointer">
                 <i class="fas fa-trash-can text-red-500"></i> Cerrar todas
               </button>
             </div>
@@ -2250,8 +2319,10 @@
 
   <!-- ─── Modal genérico ────────────────────────── -->
   <!-- Mini-overlay para diálogos de confirmación breve -->
-  <div id="confirm-dialog-overlay" style="display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:250;align-items:center;justify-content:center;padding:16px">
-    <div style="background:#fff;border-radius:16px;width:100%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden;padding:24px">
+  <div id="confirm-dialog-overlay"
+    style="display:none;position:fixed;inset:0;background:rgba(5,8,20,.6);backdrop-filter:blur(4px);z-index:250;align-items:center;justify-content:center;padding:16px">
+    <div
+      style="background:#fff;border-radius:16px;width:100%;max-width:440px;box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden;padding:24px">
       <h4 id="confirm-dialog-title" style="font-weight:700;color:#0D2137;font-size:16px;margin-bottom:10px"></h4>
       <div id="confirm-dialog-body" style="font-size:13px;color:#4B5563;margin-bottom:20px"></div>
       <div style="display:flex;justify-content:flex-end;gap:10px">
@@ -2269,7 +2340,7 @@
       <div
         style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F0F0F0">
         <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-comment-dots mr-2"
-            style="color:#1A4B8C"></i>Comentario de línea</h4>
+            style="color:#7C3AED"></i>Comentario de línea</h4>
         <button onclick="closeLineComment()"
           style="background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer"><i
             class="fas fa-xmark"></i></button>
@@ -2287,14 +2358,21 @@
   </div>
 
   <!-- ─── Paleta de Comandos Global (Ctrl + K) ────────────────────────── -->
-  <div id="omni-command-palette" style="display:none;position:fixed;inset:0;background:rgba(25,33,61,0.4);backdrop-filter:blur(6px);z-index:290;align-items:flex-start;justify-content:center;padding-top:10vh">
-    <div style="width:580px;max-width:92vw;background:#fff;border-radius:16px;box-shadow:0 20px 40px -8px rgba(25,33,61,0.2);overflow:hidden;border:1px solid var(--border-soft);animation:fadeIn .2s ease">
-      <div style="display:flex;align-items:center;padding:14px 18px;gap:12px;border-bottom:1px solid var(--border-soft)">
+  <div id="omni-command-palette"
+    style="display:none;position:fixed;inset:0;background:rgba(25,33,61,0.4);backdrop-filter:blur(6px);z-index:290;align-items:flex-start;justify-content:center;padding-top:10vh">
+    <div
+      style="width:580px;max-width:92vw;background:#fff;border-radius:16px;box-shadow:0 20px 40px -8px rgba(25,33,61,0.2);overflow:hidden;border:1px solid var(--border-soft);animation:fadeIn .2s ease">
+      <div
+        style="display:flex;align-items:center;padding:14px 18px;gap:12px;border-bottom:1px solid var(--border-soft)">
         <i class="fas fa-magnifying-glass" style="color:var(--accent-lavender, #7C66F0);font-size:15px"></i>
-        <input type="text" id="omni-command-input" placeholder="Buscar módulos, terceros, facturas o cuentas (ej: ventas, compras, nomina)..." style="flex:1;border:none;outline:none;font-size:14px;color:var(--text-strong);font-family:inherit" />
-        <span style="font-size:10px;font-family:monospace;background:#EAEFF5;padding:2px 6px;border-radius:4px;color:#5E6D82">ESC</span>
+        <input type="text" id="omni-command-input"
+          placeholder="Buscar módulos, terceros, facturas o cuentas (ej: ventas, compras, nomina)..."
+          style="flex:1;border:none;outline:none;font-size:14px;color:var(--text-strong);font-family:inherit" />
+        <span
+          style="font-size:10px;font-family:monospace;background:#EAEFF5;padding:2px 6px;border-radius:4px;color:#5E6D82">ESC</span>
       </div>
-      <div id="omni-command-results" style="padding:8px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
+      <div id="omni-command-results"
+        style="padding:8px;max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
       </div>
     </div>
   </div>
@@ -2302,21 +2380,26 @@
   <!-- ─── Slide-Over Drawer Global (Estilo Alegra) ────────────────── -->
   <div id="global-drawer-backdrop" class="drawer-backdrop">
     <div class="drawer-container">
-      <div style="padding:18px 24px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;background:#FFFFFF">
+      <div
+        style="padding:18px 24px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;background:#FFFFFF">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:32px;height:32px;border-radius:8px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender, #7C66F0);display:flex;align-items:center;justify-content:center;font-size:14px">
+          <div
+            style="width:32px;height:32px;border-radius:8px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender, #7C66F0);display:flex;align-items:center;justify-content:center;font-size:14px">
             <i id="drawer-icon" class="fas fa-bolt"></i>
           </div>
-          <h3 id="drawer-title" style="margin:0;font-size:16px;font-weight:700;color:var(--text-strong)">Acción Rápida</h3>
+          <h3 id="drawer-title" style="margin:0;font-size:16px;font-weight:700;color:var(--text-strong)">Acción Rápida
+          </h3>
         </div>
-        <button id="btn-close-drawer" style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background 0.15s">
+        <button id="btn-close-drawer"
+          style="background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background 0.15s">
           <i class="fas fa-xmark"></i>
         </button>
       </div>
       <div id="drawer-body" style="flex:1;overflow-y:auto;padding:24px;background:#F8FAFD">
         <!-- Contenido dinámico -->
       </div>
-      <div id="drawer-footer" style="padding:14px 24px;border-top:1px solid var(--border-soft);background:#FFFFFF;display:flex;justify-content:flex-end;gap:10px">
+      <div id="drawer-footer"
+        style="padding:14px 24px;border-top:1px solid var(--border-soft);background:#FFFFFF;display:flex;justify-content:flex-end;gap:10px">
         <button id="btn-drawer-cancel" class="btn btn-secondary" style="font-size:13px">Cerrar</button>
       </div>
     </div>

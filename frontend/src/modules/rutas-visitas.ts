@@ -1509,29 +1509,29 @@ function _renderAdminTrackerTab(container: HTMLElement, visits: VendorVisit[], s
     const kpiEl = contentEl.querySelector('#admin-kpi-container');
     if (kpiEl) {
       kpiEl.innerHTML = `
-        <div class="bg-white p-3 rounded-xl border border-gray-200">
-          <p class="text-[10px] font-bold text-gray-500 uppercase">Total</p>
-          <p class="text-xl font-extrabold text-gray-900">${total}</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">Total</p>
+          <p class="text-xl font-extrabold text-purple-950 mt-1">${total}</p>
         </div>
-        <div class="bg-white p-3 rounded-xl border border-blue-200 bg-blue-50/30">
-          <p class="text-[10px] font-bold text-blue-700 uppercase">En Curso</p>
-          <p class="text-xl font-extrabold text-blue-700">${inProgress}</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">En Curso</p>
+          <p class="text-xl font-extrabold text-purple-700 mt-1">${inProgress}</p>
         </div>
-        <div class="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
-          <p class="text-[10px] font-bold text-emerald-700 uppercase">Ventas</p>
-          <p class="text-xl font-extrabold text-emerald-700">${salesOk}</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">Ventas</p>
+          <p class="text-xl font-extrabold text-emerald-700 mt-1">${salesOk}</p>
         </div>
-        <div class="bg-white p-3 rounded-xl border border-teal-200 bg-teal-50/30">
-          <p class="text-[10px] font-bold text-teal-700 uppercase">Recaudos</p>
-          <p class="text-xl font-extrabold text-teal-700">${paymentsOk}</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-purple-900/75 uppercase tracking-wider">Recaudos</p>
+          <p class="text-xl font-extrabold text-purple-900 mt-1">${paymentsOk}</p>
         </div>
-        <div class="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/30">
-          <p class="text-[10px] font-bold text-amber-700 uppercase">No Efectivas</p>
-          <p class="text-xl font-extrabold text-amber-700">${notEff}</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">No Efectivas</p>
+          <p class="text-xl font-extrabold text-amber-700 mt-1">${notEff}</p>
         </div>
-        <div class="bg-white p-3 rounded-xl border border-teal-300 bg-teal-50/60">
-          <p class="text-[10px] font-bold text-teal-800 uppercase">% Efectividad</p>
-          <p class="text-xl font-extrabold text-teal-900">${effPct}%</p>
+        <div class="stat-card" style="background:#F5F3FF;border:1.5px solid #7C3AED;border-radius:14px;padding:12px 14px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <p class="text-[10px] font-bold text-purple-900 uppercase tracking-wider">% Efectividad</p>
+          <p class="text-xl font-extrabold text-purple-950 mt-1">${effPct}%</p>
         </div>
       `;
     }

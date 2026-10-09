@@ -174,10 +174,10 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
     </style>
 
     <div class="anim-fade">
-      <!-- Hero skeleton -->
-      <div style="background:linear-gradient(135deg,rgba(124,102,240,.06),rgba(56,157,242,.05));border:1px solid rgba(124,102,240,.14);border-radius:18px;padding:26px 32px;margin-bottom:22px">
-        <div class="dash-skeleton" style="height:22px;width:230px;margin-bottom:10px"></div>
-        <div class="dash-skeleton" style="height:14px;width:160px"></div>
+      <!-- Hero skeleton compacto -->
+      <div style="background:linear-gradient(135deg,rgba(124,102,240,.06),rgba(56,157,242,.05));border:1px solid rgba(124,102,240,.14);border-radius:14px;padding:12px 20px;margin-bottom:14px">
+        <div class="dash-skeleton" style="height:18px;width:200px;margin-bottom:6px"></div>
+        <div class="dash-skeleton" style="height:12px;width:140px"></div>
       </div>
       <!-- KPI skeletons -->
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
@@ -215,8 +215,11 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
     // ── Cargar datos del backend
     const summary = await (API as any).getDashboardSummary(branchId, advisorId);
 
-    // ── Extraer datos auxiliares
+    // ── Extraer datos auxiliares y adjuntar estado de asesor
     const sellers: any[] = summary.sellers || [];
+    summary.sellers = sellers;
+    summary.advisorId = advisorId;
+    summary.currentAdvisorId = advisorId;
 
     // ── Configuración de widgets activos del usuario
     const storageKey = `gravy_dash_widgets_${userId || 'default'}`;
@@ -243,76 +246,55 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
       ? (window as any).esc(s) : String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     // ════════════════════════════════════════════════════
-    //  RENDER ESTRUCTURAL
+    //  RENDER ESTRUCTURAL (HERO COMPACTO Y LIMPIO)
     // ════════════════════════════════════════════════════
     c.innerHTML = `
 
-    <!-- ████  HERO  ████ -->
+    <!-- ████  HERO COMPACTO  ████ -->
     <div class="anim-slide-up" style="
       background: linear-gradient(135deg,rgba(124,102,240,.07) 0%,rgba(56,157,242,.05) 60%,rgba(23,135,84,.04) 100%);
       border: 1px solid rgba(124,102,240,.14);
-      border-radius: 18px;
-      padding: 22px 28px;
-      margin-bottom: 22px;
+      border-radius: 14px;
+      padding: 12px 20px;
+      margin-bottom: 14px;
       display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 14px;
+      flex-wrap: wrap; gap: 10px;
       position: relative; overflow: hidden;
     ">
-      <div style="position:absolute;right:-50px;top:-50px;width:220px;height:220px;border-radius:50%;
-        background:radial-gradient(circle,rgba(124,102,240,.08),transparent 70%);pointer-events:none"></div>
-      <div style="position:absolute;left:40%;bottom:-70px;width:180px;height:180px;border-radius:50%;
-        background:radial-gradient(circle,rgba(56,157,242,.06),transparent 70%);pointer-events:none"></div>
+      <div style="position:absolute;right:-40px;top:-40px;width:180px;height:180px;border-radius:50%;
+        background:radial-gradient(circle,rgba(124,102,240,.07),transparent 70%);pointer-events:none"></div>
+      <div style="position:absolute;left:40%;bottom:-50px;width:140px;height:140px;border-radius:50%;
+        background:radial-gradient(circle,rgba(56,157,242,.05),transparent 70%);pointer-events:none"></div>
 
       <div style="position:relative">
-        <h1 style="font-size:21px;font-weight:800;color:var(--text-strong, #19213D);margin:0 0 5px;letter-spacing:-.3px">
+        <h1 style="font-size:17px;font-weight:800;color:var(--text-strong, #19213D);margin:0 0 2px;letter-spacing:-.2px;line-height:1.2">
           ${greeting}, ${_esc(userName)} 👋
         </h1>
-        <p style="font-size:13px;color:var(--text-muted, #5E6D82);margin:0;font-weight:500;display:flex;align-items:center;gap:6px">
-          <i class="fas fa-calendar-days" style="color:var(--accent-lavender, #7C66F0);font-size:11px"></i>
+        <p style="font-size:11.5px;color:var(--text-muted, #5E6D82);margin:0;font-weight:500;display:flex;align-items:center;gap:6px">
+          <i class="fas fa-calendar-days" style="color:var(--accent-lavender, #7C66F0);font-size:10px"></i>
           ${dateLabel}
-          <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender-hover, #6850E2);margin-left:6px;text-transform:uppercase">
+          <span style="font-size:9.5px;font-weight:700;padding:1px 7px;border-radius:10px;background:var(--accent-lavender-subtle, #F1EFFE);color:var(--accent-lavender-hover, #6850E2);margin-left:4px;text-transform:uppercase">
             Perfil: ${_esc(userRole)}
           </span>
         </p>
       </div>
 
-      <!-- Barra de herramientas: Biblioteca de Indicadores y Filtros -->
+      <!-- Barra de herramientas limpia: Biblioteca y Estado del Sistema -->
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <button id="btn-open-widget-catalog" style="
-          display:flex;align-items:center;gap:7px;padding:9px 16px;
-          background:var(--accent-lavender, #7C66F0);color:#fff;border-radius:12px;
-          font-size:12px;font-weight:700;box-shadow:0 4px 14px rgba(124,102,240,.24);border:none;cursor:pointer;
+          display:flex;align-items:center;gap:6px;padding:7px 14px;
+          background:var(--accent-lavender, #7C66F0);color:#fff;border-radius:10px;
+          font-size:11.5px;font-weight:700;box-shadow:0 3px 10px rgba(124,102,240,.22);border:none;cursor:pointer;
           transition:all .18s;font-family:inherit
         " onmouseover="this.style.background='var(--accent-lavender-hover, #6850E2)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='var(--accent-lavender, #7C66F0)';this.style.transform='none'">
-          <i class="fas fa-shapes"></i>
+          <i class="fas fa-shapes" style="font-size:11px"></i>
           <span>Biblioteca de Indicadores</span>
         </button>
 
-        <button id="btn-reset-to-profile-preset" style="
-          display:flex;align-items:center;gap:6px;padding:8px 14px;
-          background:#fff;border:1px solid #CBD5E1;color:#475569;border-radius:12px;
-          font-size:12px;font-weight:700;cursor:pointer;transition:background .15s;font-family:inherit
-        " onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='#fff'" title="Restablecer indicadores recomendados para tu perfil">
-          <i class="fas fa-rotate-left"></i>
-          <span>Plantilla (${_esc(userRole)})</span>
-        </button>
-
-        ${sellers.length > 0 ? `
-          <select id="dash-seller-filter" style="
-            font-size:11px;font-weight:600;color:#475569;border:1px solid #E2E8F0;
-            background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer;outline:none;font-family:inherit
-          ">
-            <option value="">Todos los Asesores</option>
-            ${sellers.map((s: any) => `
-              <option value="${_esc(s.id)}" ${s.id === advisorId ? 'selected' : ''}>
-                ${_esc(s.name)}
-              </option>`).join('')}
-          </select>` : ''}
-
-        <div style="display:flex;align-items:center;gap:7px;padding:7px 14px;
-          background:rgba(16,185,129,.09);border:1px solid rgba(16,185,129,.2);border-radius:20px">
-          <span class="dash-live-dot" style="background:#10B981;--ring-color:rgba(16,185,129,.5)"></span>
-          <span style="font-size:11px;font-weight:700;color:#059669">Sistema activo</span>
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;
+          background:rgba(16,185,129,.09);border:1px solid rgba(16,185,129,.2);border-radius:16px">
+          <span class="dash-live-dot" style="background:#10B981;--ring-color:rgba(16,185,129,.5);width:7px;height:7px"></span>
+          <span style="font-size:10.5px;font-weight:700;color:#059669">Sistema activo</span>
         </div>
       </div>
     </div>
@@ -439,17 +421,11 @@ async function renderDashboard(c: HTMLElement, advisorId: string = ''): Promise<
       });
     });
 
-    document.getElementById('btn-reset-to-profile-preset')?.addEventListener('click', () => {
-      const defaults = getDefaultWidgetsForRole(userRole);
-      localStorage.setItem(storageKey, JSON.stringify(defaults));
-      if (typeof (window as any).showToast === 'function') {
-        (window as any).showToast(`Restablecida plantilla predeterminada de ${userRole}`, 'info');
-      }
-      renderDashboard(c, advisorId);
-    });
-
-    document.getElementById('dash-seller-filter')?.addEventListener('change', (ev: any) => {
-      renderDashboard(c, ev.target.value);
+    // ── Conectar selector de asesor integrado en los KPIs de ventas
+    gridEl?.querySelectorAll('.dash-kpi-seller-select').forEach((sel: any) => {
+      sel.addEventListener('change', (ev: any) => {
+        renderDashboard(c, ev.target.value);
+      });
     });
 
   } catch (err: any) {
@@ -636,58 +612,58 @@ async function renderVendedorDashboard(c: HTMLElement): Promise<void> {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           
           <!-- KPI 1: Ventas Mes -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all">
+          <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Ventas del Mes</span>
-              <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-black">
+              <span class="text-[11px] font-bold uppercase text-purple-900/75 tracking-wider">Ventas del Mes</span>
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold">
                 <i class="fas fa-receipt"></i>
               </div>
             </div>
-            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${fmt(totalSalesMonth)}</div>
-            <div class="text-[11px] text-emerald-600 font-bold mt-1 flex items-center gap-1">
+            <div class="text-lg sm:text-xl font-extrabold text-purple-950 font-mono">${fmt(totalSalesMonth)}</div>
+            <div class="text-[11px] text-emerald-700 font-bold mt-1 flex items-center gap-1">
               <i class="fas fa-check-circle text-xs"></i>
               <span>${monthlyInvoices.length} facturas emitidas</span>
             </div>
           </div>
 
           <!-- KPI 2: Pedidos Activos -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('pedidos')">
+          <div class="stat-card cursor-pointer" onclick="navigate('pedidos')" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Pedidos en Curso</span>
-              <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm font-black">
+              <span class="text-[11px] font-bold uppercase text-purple-900/75 tracking-wider">Pedidos en Curso</span>
+              <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
                 <i class="fas fa-file-signature"></i>
               </div>
             </div>
-            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${pendingOrders.length}</div>
-            <div class="text-[11px] text-blue-600 font-bold mt-1 truncate">
+            <div class="text-lg sm:text-xl font-extrabold text-purple-950 font-mono">${pendingOrders.length}</div>
+            <div class="text-[11px] text-purple-700 font-bold mt-1 truncate">
               <span>${fmt(pendingOrdersVal)} por facturar</span>
             </div>
           </div>
 
           <!-- KPI 3: Reservas en Preventa -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('mis-reservas')">
+          <div class="stat-card cursor-pointer" onclick="navigate('mis-reservas')" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Reservas Tránsito</span>
-              <div class="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center text-sm font-black">
+              <span class="text-[11px] font-bold uppercase text-purple-900/75 tracking-wider">Reservas Tránsito</span>
+              <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
                 <i class="fas fa-boxes-packing"></i>
               </div>
             </div>
-            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${activeReservations.length}</div>
-            <div class="text-[11px] text-teal-700 font-bold mt-1 truncate">
+            <div class="text-lg sm:text-xl font-extrabold text-purple-950 font-mono">${activeReservations.length}</div>
+            <div class="text-[11px] text-purple-700 font-bold mt-1 truncate">
               <span>${fmt(reservasVal)} apartado</span>
             </div>
           </div>
 
           <!-- KPI 4: Visitas de Hoy -->
-          <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer" onclick="navigate('mis-rutas')">
+          <div class="stat-card cursor-pointer" onclick="navigate('mis-rutas')" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">Visitas de Hoy</span>
-              <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-black">
+              <span class="text-[11px] font-bold uppercase text-purple-900/75 tracking-wider">Visitas de Hoy</span>
+              <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs font-bold">
                 <i class="fas fa-route"></i>
               </div>
             </div>
-            <div class="text-lg sm:text-xl font-black text-slate-900 font-mono">${completedVisits.length} / ${todayVisits.length}</div>
-            <div class="text-[11px] text-indigo-600 font-bold mt-1">
+            <div class="text-lg sm:text-xl font-extrabold text-purple-950 font-mono">${completedVisits.length} / ${todayVisits.length}</div>
+            <div class="text-[11px] text-purple-700 font-bold mt-1">
               <span>${todayVisits.length - completedVisits.length} visitas pendientes</span>
             </div>
           </div>

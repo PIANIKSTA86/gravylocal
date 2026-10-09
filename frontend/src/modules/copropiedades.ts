@@ -47,13 +47,17 @@ const PH_UNIT_TYPES = [
 const _fmt = (v: any) => typeof (window as any).fmt === 'function' ? (window as any).fmt(v) : (typeof fmt === 'function' ? fmt(v) : `$${Number(v || 0).toLocaleString('es-CO')}`);
 
 function phKpi(label, value, iconClass, color, bg) {
-  return `<div class="rounded-2xl p-4" style="background:${bg}">
-    <div class="flex items-center gap-2 mb-1">
-      <i class="${iconClass} text-sm" style="color:${color}"></i>
-      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+  return `
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${iconClass}"></i>
+        </div>
+      </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
-    <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
-  </div>`;
+  `;
 }
 
 // Obtiene el período actual en formato YYYY-MM
@@ -93,7 +97,7 @@ function _renderPhPage(c, activeTab) {
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-city mr-2" style="color:#7F7CFF"></i>Copropiedades
+          <i class="fas fa-city mr-2" style="color:#7C3AED"></i>Copropiedades
         </h3>
         <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Gestión integral de conjuntos residenciales y comerciales.</p>
       </div>
@@ -146,10 +150,10 @@ async function renderPhFacturacion(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        ${phKpi('Facturas del mes', invoices.length,       'fas fa-file-invoice', '#7F7CFF', '#F5F3FF')}
-        ${phKpi('Borradores',       draft,                  'fas fa-pen-to-square','#C46516', '#FFF8F0')}
-        ${phKpi('Contabilizadas',   posted,                 'fas fa-check-circle', '#059669', '#ECFDF5')}
-        ${phKpi('Valor del mes',    fmt(totalMonth),        'fas fa-coins',        '#1A4B8C', '#EEF4FF')}
+        ${phKpi('Facturas del mes', invoices.length,       'fas fa-file-invoice', '#7C3AED', '#EDE9FE')}
+        ${phKpi('Borradores',       draft,                  'fas fa-pen-to-square','#D97706', '#FEF3C7')}
+        ${phKpi('Contabilizadas',   posted,                 'fas fa-check-circle', '#059669', '#DCFCE7')}
+        ${phKpi('Valor del mes',    fmt(totalMonth),        'fas fa-coins',        '#7C3AED', '#EDE9FE')}
       </div>
 
       <!-- Barra de acciones -->
@@ -165,7 +169,7 @@ async function renderPhFacturacion(c) {
             <i class="fas fa-layer-group"></i> Contabilizar período
           </button>
           <button class="btn btn-outline" id="ph-unpost-period-btn" title="Descontabilizar liquidación del período"
-            style="color:#1A4B8C;border-color:#93C5FD">
+            style="color:#7C3AED;border-color:#DDD6FE">
             <i class="fas fa-rotate-left"></i> Descontabilizar período
           </button>
           <button class="btn btn-outline" id="ph-delete-period-btn" title="Eliminar liquidación del período"
@@ -173,13 +177,13 @@ async function renderPhFacturacion(c) {
             <i class="fas fa-trash"></i> Eliminar período
           </button>` : ''}
         ${can('canWrite') ? `
-          <button class="btn btn-outline" id="ph-config-btn" title="Configuración Copropiedades" style="color:#7F7CFF;border-color:#7F7CFF">
+          <button class="btn btn-outline" id="ph-config-btn" title="Configuración Copropiedades" style="color:#7C3AED;border-color:#DDD6FE">
             <i class="fas fa-cog"></i>
           </button>
           <button class="btn btn-outline" id="ph-bulk-pdf-btn" title="Descargar PDF unificado con todas las facturas del período para impresión masiva" style="color:#1D4ED8;border-color:#93C5FD">
             <i class="fas fa-file-pdf"></i> Imprimir período (PDF)
           </button>
-          <button class="btn btn-outline" id="ph-bulk-email-btn" title="Enviar masivo de facturas o estados de cuenta por correo" style="color:#7F7CFF;border-color:#C4B5FD">
+          <button class="btn btn-outline" id="ph-bulk-email-btn" title="Enviar masivo de facturas o estados de cuenta por correo" style="color:#7C3AED;border-color:#C4B5FD">
             <i class="fas fa-mail-bulk"></i> Enviar masivo
           </button>
           <button class="btn btn-primary" id="ph-gen-btn">
@@ -303,7 +307,7 @@ function renderPhInvRows(invoices) {
               <i class="fas fa-pen-to-square"></i>
             </button>
             <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(inv.id)}" title="Añadir concepto individual"
-              style="color:#7F7CFF;border-color:#C4B5FD">
+              style="color:#7C3AED;border-color:#C4B5FD">
               <i class="fas fa-plus-circle"></i>
             </button>
             <button class="btn btn-sm ph-inv-post" data-id="${esc(inv.id)}" title="Contabilizar"
@@ -312,12 +316,12 @@ function renderPhInvRows(invoices) {
             </button>` : ''}
           ${inv.status === 'posted' ? `
             <button class="btn btn-sm ph-inv-paid" data-id="${esc(inv.id)}" title="Marcar pagada"
-              style="background:#EEF4FF;color:#2446B8;border:1.5px solid #93C5FD">
+              style="background:#EDE9FE;color:#7C3AED;border:1.5px solid #DDD6FE">
               <i class="fas fa-coins"></i>
             </button>` : ''}
           ${(can('canApprove') && (inv.status === 'posted' || inv.status === 'paid')) ? `
             <button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(inv.id)}" title="Descontabilizar factura"
-              style="color:#1A4B8C;border-color:#93C5FD">
+              style="color:#7C3AED;border-color:#DDD6FE">
               <i class="fas fa-rotate-left"></i>
             </button>` : ''}
           ${(inv.status === 'draft' || inv.status === 'posted') ? `
@@ -332,33 +336,26 @@ function renderPhInvRows(invoices) {
 }
 
 function attachPhInvActions() {
-  document.querySelectorAll('.ph-inv-view').forEach(btn => {
-    btn.addEventListener('click', () => openPhInvoiceDetail((btn as HTMLElement).dataset.id!));
-  });
-  document.querySelectorAll('.ph-inv-edit-draft').forEach(btn => {
-    btn.addEventListener('click', () => openPhInvoiceDetail((btn as HTMLElement).dataset.id!));
-  });
-  document.querySelectorAll('.ph-inv-download-pdf').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openPhDownloadPdfModal((btn as HTMLElement).dataset.id!);
+  const bindOnce = (selector: string, handler: (btn: HTMLElement, e: Event) => void) => {
+    document.querySelectorAll(selector).forEach(el => {
+      const btn = el as HTMLElement;
+      if (btn.dataset.bound === 'true') return;
+      btn.dataset.bound = 'true';
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handler(btn, e);
+      });
     });
-  });
-  document.querySelectorAll('.ph-inv-add-individual').forEach(btn => {
-    btn.addEventListener('click', () => openPhAddIndividualLinesModal(btn.dataset.id));
-  });
-  document.querySelectorAll('.ph-inv-post').forEach(btn => {
-    btn.addEventListener('click', () => postPhInvoiceConfirm(btn.dataset.id, btn));
-  });
-  document.querySelectorAll('.ph-inv-paid').forEach(btn => {
-    btn.addEventListener('click', () => markPhPaidConfirm(btn.dataset.id, btn));
-  });
-  document.querySelectorAll('.ph-inv-unpost').forEach(btn => {
-    btn.addEventListener('click', () => unpostPhInvoiceConfirm(btn.dataset.id, btn));
-  });
-  document.querySelectorAll('.ph-inv-void').forEach(btn => {
-    btn.addEventListener('click', () => voidPhInvoiceModal(btn.dataset.id));
-  });
+  };
+
+  bindOnce('.ph-inv-view', (btn) => openPhInvoiceDetail(btn.dataset.id!));
+  bindOnce('.ph-inv-edit-draft', (btn) => openPhInvoiceDetail(btn.dataset.id!));
+  bindOnce('.ph-inv-download-pdf', (btn) => openPhDownloadPdfModal(btn.dataset.id!));
+  bindOnce('.ph-inv-add-individual', (btn) => openPhAddIndividualLinesModal(btn.dataset.id));
+  bindOnce('.ph-inv-post', (btn) => postPhInvoiceConfirm(btn.dataset.id, btn as HTMLButtonElement));
+  bindOnce('.ph-inv-paid', (btn) => markPhPaidConfirm(btn.dataset.id, btn as HTMLButtonElement));
+  bindOnce('.ph-inv-unpost', (btn) => unpostPhInvoiceConfirm(btn.dataset.id, btn as HTMLButtonElement));
+  bindOnce('.ph-inv-void', (btn) => voidPhInvoiceModal(btn.dataset.id));
 }
 
 function openPhPostPeriodModal(container) {
@@ -389,16 +386,25 @@ function openPhPostPeriodModal(container) {
         showToast(`Debes escribir exactamente ${period}.`, 'warning');
         return;
       }
-      const btn = document.getElementById('ph-post-period-confirm-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+      const btn = document.getElementById('ph-post-period-confirm-btn') as HTMLButtonElement;
+      if (btn?.dataset.submitting === 'true' || btn?.disabled) return;
+      if (btn) {
+        btn.dataset.submitting = 'true';
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+      }
       try {
         const r = await API.postPhInvoicesByPeriod(period);
         showToast(`Período ${period}: ${r.posted} contabilizadas, ${r.skipped} omitidas, ${r.failed} fallidas.`, r.failed ? 'warning' : 'success');
         closeModal();
         renderPhFacturacion(container);
-      } catch (err) {
+      } catch (err: any) {
         showToast(err.message || 'Error al contabilizar período.', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-layer-group mr-1"></i>Contabilizar'; }
+        if (btn) {
+          btn.dataset.submitting = 'false';
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-layer-group mr-1"></i>Contabilizar';
+        }
       }
     }, { once: true });
   }, 50);
@@ -432,16 +438,25 @@ function openPhUnpostPeriodModal(container) {
         showToast(`Debes escribir exactamente ${period}.`, 'warning');
         return;
       }
-      const btn = document.getElementById('ph-unpost-period-confirm-btn');
-      if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
+      const btn = document.getElementById('ph-unpost-period-confirm-btn') as HTMLButtonElement;
+      if (btn?.dataset.submitting === 'true' || btn?.disabled) return;
+      if (btn) {
+        btn.dataset.submitting = 'true';
+        btn.disabled = true;
+        btn.textContent = 'Procesando...';
+      }
       try {
         const r = await API.unpostPhInvoicesByPeriod(period);
         showToast(`Período ${period}: ${r.reverted} facturas descontabilizadas.`, 'success');
         closeModal();
         renderPhFacturacion(container);
-      } catch (err) {
+      } catch (err: any) {
         showToast(err.message || 'Error al descontabilizar período.', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left mr-1"></i>Descontabilizar'; }
+        if (btn) {
+          btn.dataset.submitting = 'false';
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-rotate-left mr-1"></i>Descontabilizar';
+        }
       }
     }, { once: true });
   }, 50);
@@ -606,7 +621,7 @@ async function openPhInvoiceDetail(invoiceId) {
               <i class="fas fa-pen-to-square text-amber-600 text-sm"></i>
               <span>Factura en <strong>Borrador</strong>: Puedes editar valores o eliminar conceptos antes de contabilizar. El total se recalculará automáticamente.</span>
             </div>
-            <button class="btn btn-outline btn-xs flex-shrink-0 ph-inv-detail-add-concept" data-id="${esc(inv.id)}" style="color:#7F7CFF;border-color:#C4B5FD">
+            <button class="btn btn-outline btn-xs flex-shrink-0 ph-inv-detail-add-concept" data-id="${esc(inv.id)}" style="color:#7C3AED;border-color:#C4B5FD">
               <i class="fas fa-plus-circle mr-1"></i>Añadir concepto
             </button>
           </div>
@@ -776,8 +791,13 @@ async function removePhDraftLineConfirm(lineId, invoiceId, lineDesc = '') {
 }
 
 async function postPhInvoiceConfirm(invoiceId, btn) {
+  if (btn && (btn.dataset.submitting === 'true' || btn.disabled)) return;
   if (!confirm('¿Contabilizar esta factura? Se generará el asiento contable correspondiente.')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  if (btn) {
+    btn.dataset.submitting = 'true';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  }
   try {
     await API.postPhInvoice(invoiceId);
     showToast('Factura contabilizada correctamente.', 'success');
@@ -792,23 +812,31 @@ async function postPhInvoiceConfirm(invoiceId, btn) {
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(inv.id)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(inv.id)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
           <button class="btn btn-sm ph-inv-paid" data-id="${esc(inv.id)}" title="Marcar pagada"
-            style="background:#EEF4FF;color:#2446B8;border:1.5px solid #93C5FD"><i class="fas fa-coins"></i></button>
+            style="background:#EDE9FE;color:#7C3AED;border:1.5px solid #DDD6FE"><i class="fas fa-coins"></i></button>
           ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(inv.id)}" title="Descontabilizar factura"
-            style="color:#1A4B8C;border-color:#93C5FD"><i class="fas fa-rotate-left"></i></button>` : ''}
+            style="color:#7C3AED;border-color:#DDD6FE"><i class="fas fa-rotate-left"></i></button>` : ''}
           <button class="btn btn-outline btn-sm ph-inv-void" data-id="${esc(inv.id)}" title="Anular"
             style="color:#DC2626;border-color:#FECACA"><i class="fas fa-ban"></i></button>
         </div>`;
       attachPhInvActions();
     }
-  } catch (err) {
+  } catch (err: any) {
     showToast(err.message || 'Error al contabilizar.', 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-check"></i>'; }
+    if (btn) {
+      btn.dataset.submitting = 'false';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check"></i>';
+    }
   }
 }
 
 async function markPhPaidConfirm(invoiceId, btn) {
+  if (btn && (btn.dataset.submitting === 'true' || btn.disabled)) return;
   if (!confirm('¿Marcar esta factura como pagada?')) return;
-  if (btn) { btn.disabled = true; }
+  if (btn) {
+    btn.dataset.submitting = 'true';
+    btn.disabled = true;
+  }
   try {
     await API.markPhInvoicePaid(invoiceId);
     showToast('Factura marcada como pagada.', 'success');
@@ -820,19 +848,27 @@ async function markPhPaidConfirm(invoiceId, btn) {
           <button class="btn btn-outline btn-sm ph-inv-view" data-id="${esc(invoiceId)}" title="Ver detalle"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-download-pdf" data-id="${esc(invoiceId)}" title="Descargar PDF" style="color:#DC2626;border-color:#FCA5A5"><i class="fas fa-file-pdf"></i></button>
           ${can('canApprove') ? `<button class="btn btn-outline btn-sm ph-inv-unpost" data-id="${esc(invoiceId)}" title="Descontabilizar factura"
-            style="color:#1A4B8C;border-color:#93C5FD"><i class="fas fa-rotate-left"></i></button>` : ''}
+            style="color:#7C3AED;border-color:#DDD6FE"><i class="fas fa-rotate-left"></i></button>` : ''}
         </div>`;
       attachPhInvActions();
     }
   } catch (err) {
     showToast(err.message || 'Error.', 'error');
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.dataset.submitting = 'false';
+      btn.disabled = false;
+    }
   }
 }
 
 async function unpostPhInvoiceConfirm(invoiceId, btn) {
+  if (btn && (btn.dataset.submitting === 'true' || btn.disabled)) return;
   if (!confirm('¿Descontabilizar esta factura? Volverá a estado Borrador y se eliminará su comprobante contable.')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>'; }
+  if (btn) {
+    btn.dataset.submitting = 'true';
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+  }
   try {
     await API.unpostPhInvoice(invoiceId);
     showToast('Factura descontabilizada correctamente.', 'success');
@@ -848,7 +884,7 @@ async function unpostPhInvoiceConfirm(invoiceId, btn) {
           <button class="btn btn-outline btn-sm ph-inv-edit-draft" data-id="${esc(invoiceId)}" title="Editar factura borrador (conceptos y valores)"
             style="color:#D97706;border-color:#FDE68A"><i class="fas fa-pen-to-square"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-add-individual" data-id="${esc(invoiceId)}" title="Añadir concepto individual"
-            style="color:#7F7CFF;border-color:#C4B5FD"><i class="fas fa-plus-circle"></i></button>
+            style="color:#7C3AED;border-color:#C4B5FD"><i class="fas fa-plus-circle"></i></button>
           <button class="btn btn-sm ph-inv-post" data-id="${esc(invoiceId)}" title="Contabilizar"
             style="background:#ECFDF5;color:#059669;border:1.5px solid #6EE7B7"><i class="fas fa-check"></i></button>
           <button class="btn btn-outline btn-sm ph-inv-void" data-id="${esc(invoiceId)}" title="Anular"
@@ -856,9 +892,13 @@ async function unpostPhInvoiceConfirm(invoiceId, btn) {
         </div>`;
       attachPhInvActions();
     }
-  } catch (err) {
+  } catch (err: any) {
     showToast(err.message || 'Error al descontabilizar factura.', 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i>'; }
+    if (btn) {
+      btn.dataset.submitting = 'false';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-rotate-left"></i>';
+    }
   }
 }
 
@@ -1692,7 +1732,7 @@ async function renderPhUnidades(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
-        ${phKpi('Total unidades',  properties.length, 'fas fa-building',    '#7F7CFF', '#F5F3FF')}
+        ${phKpi('Total unidades',  properties.length, 'fas fa-building',    '#7C3AED', '#F5F3FF')}
         ${phKpi('Activas',         active,             'fas fa-check-circle','#059669', '#ECFDF5')}
         ${phKpi('Inactivas',       inactive,           'fas fa-pause-circle','#C46516', '#FFF8F0')}
       </div>
@@ -1983,10 +2023,10 @@ async function renderPhReservas(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
-        ${phKpi('Zonas comunes',    areas.length,       'fas fa-map-marked-alt','#1A4B8C','#EEF4FF')}
-        ${phKpi('Próximas reservas',reservations.length,'fas fa-calendar-check','#059669','#ECFDF5')}
+        ${phKpi('Zonas comunes',    areas.length,       'fas fa-map-marked-alt','#7C3AED','#EDE9FE')}
+        ${phKpi('Próximas reservas',reservations.length,'fas fa-calendar-check','#059669','#DCFCE7')}
         ${phKpi('Confirmadas',      reservations.filter(r => r.status === 'confirmed').length,
-                                    'fas fa-circle-check','#7F7CFF','#F5F3FF')}
+                                    'fas fa-circle-check','#7C3AED','#EDE9FE')}
       </div>
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div class="px-5 py-3 border-b flex items-center justify-between" style="border-color:#F0F0F0">
@@ -2205,10 +2245,10 @@ async function renderPhPqrs(c) {
 
     c.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        ${phKpi('Abiertas',     open,        'fas fa-inbox',            '#C46516','#FFF8F0')}
-        ${phKpi('En proceso',   inProc,      'fas fa-arrows-spin',      '#1A4B8C','#EEF4FF')}
-        ${phKpi('Prioridad Alta',alta,        'fas fa-triangle-exclamation','#DC2626','#FEF2F2')}
-        ${phKpi('Total activas',pqrs.length, 'fas fa-comments',         '#7F7CFF','#F5F3FF')}
+        ${phKpi('Abiertas',     open,        'fas fa-inbox',            '#D97706','#FEF3C7')}
+        ${phKpi('En proceso',   inProc,      'fas fa-arrows-spin',      '#7C3AED','#EDE9FE')}
+        ${phKpi('Prioridad Alta',alta,        'fas fa-triangle-exclamation','#DC2626','#FEE2E2')}
+        ${phKpi('Total activas',pqrs.length, 'fas fa-comments',         '#7C3AED','#EDE9FE')}
       </div>
       <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
         <div class="px-5 py-3 border-b flex items-center justify-between flex-wrap gap-2" style="border-color:#F0F0F0">
@@ -2507,7 +2547,7 @@ async function renderPhConfig(c) {
           <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div>
               <h4 class="font-bold text-base" style="color:#0D2137">
-                <i class="fas fa-envelope-open-text mr-2" style="color:#7F7CFF"></i>Plantilla de Correo y Avisos para Facturación PH
+                <i class="fas fa-envelope-open-text mr-2" style="color:#7C3AED"></i>Plantilla de Correo y Avisos para Facturación PH
               </h4>
               <p class="text-xs text-gray-500">
                 Personaliza el asunto predeterminado, el cuerpo del correo y los avisos o circulares (ej: convocatorias a asamblea) que recibirán los copropietarios.
@@ -2565,7 +2605,7 @@ async function renderPhConfig(c) {
         <!-- Parámetros de Facturación y Pie de Factura -->
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
           <h4 class="font-bold mb-4" style="color:#0D2137">
-            <i class="fas fa-file-invoice-dollar mr-2" style="color:#7F7CFF"></i>Parámetros de Facturación y Pie de Factura
+            <i class="fas fa-file-invoice-dollar mr-2" style="color:#7C3AED"></i>Parámetros de Facturación y Pie de Factura
           </h4>
           <p class="text-sm mb-4" style="color:#6B7280">
             Define el comentario, instrucciones de consignación y cuentas bancarias oficiales que se imprimirán al pie de las facturas y cuentas de cobro de esta copropiedad.
@@ -2586,7 +2626,7 @@ async function renderPhConfig(c) {
         <!-- Configuración Contable -->
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
           <h4 class="font-bold mb-4" style="color:#0D2137">
-            <i class="fas fa-calculator mr-2" style="color:#7F7CFF"></i>Cuentas Contables PH
+            <i class="fas fa-calculator mr-2" style="color:#7C3AED"></i>Cuentas Contables PH
           </h4>
           <p class="text-sm mb-4" style="color:#6B7280">
             Cuentas utilizadas al contabilizar facturas de copropiedad.
@@ -2644,7 +2684,7 @@ async function renderPhConfig(c) {
         <div class="bg-white rounded-2xl border p-5" style="border-color:#F0F0F0">
           <div class="flex items-center justify-between mb-4">
             <h4 class="font-bold" style="color:#0D2137">
-              <i class="fas fa-map-marked-alt mr-2" style="color:#1A4B8C"></i>Zonas Comunes
+              <i class="fas fa-map-marked-alt mr-2" style="color:#7C3AED"></i>Zonas Comunes
             </h4>
             <button class="btn btn-primary btn-sm" id="ph-area-add-btn">
               <i class="fas fa-plus mr-1"></i>Nueva zona
@@ -2719,7 +2759,7 @@ async function renderPhConfig(c) {
         <div class="bg-white rounded-2xl border p-5 lg:col-span-2" style="border-color:#F0F0F0">
           <div class="flex items-center justify-between mb-4">
             <h4 class="font-bold" style="color:#0D2137">
-              <i class="fas fa-receipt mr-2" style="color:#7F7CFF"></i>Conceptos Individuales
+              <i class="fas fa-receipt mr-2" style="color:#7C3AED"></i>Conceptos Individuales
             </h4>
             <button class="btn btn-primary btn-sm" id="ph-individual-concept-add-btn">
               <i class="fas fa-plus mr-1"></i>Nuevo concepto individual
@@ -3413,7 +3453,7 @@ async function renderPhFacturacionPage(c) {
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-file-invoice-dollar mr-2" style="color:#7F7CFF"></i>Facturación PH
+          <i class="fas fa-file-invoice-dollar mr-2" style="color:#7C3AED"></i>Facturación PH
         </h3>
         <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Gestión y generación de facturas mensuales por unidad.</p>
       </div>
@@ -3427,7 +3467,7 @@ async function renderPhCarteraPage(c) {
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-wallet mr-2" style="color:#1A4B8C"></i>Cartera PH
+          <i class="fas fa-wallet mr-2" style="color:#7C3AED"></i>Cartera PH
         </h3>
         <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Control de cartera, saldos por concepto y edades.</p>
       </div>
@@ -3455,7 +3495,7 @@ async function renderPhUnidadesPage(c) {
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-building mr-2" style="color:#7F7CFF"></i>Unidades PH
+          <i class="fas fa-building mr-2" style="color:#7C3AED"></i>Unidades PH
         </h3>
         <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Administración de unidades habitacionales y coeficientes.</p>
       </div>
@@ -3469,7 +3509,7 @@ async function renderPhReservasPage(c) {
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <h3 class="text-lg font-bold" style="color:#0D2137">
-          <i class="fas fa-calendar-days mr-2" style="color:#1A4B8C"></i>Reservas PH
+          <i class="fas fa-calendar-days mr-2" style="color:#7C3AED"></i>Reservas PH
         </h3>
         <p class="text-sm" style="color:#6B7280">Propiedad Horizontal — Reservación de zonas comunes y control de depósitos.</p>
       </div>

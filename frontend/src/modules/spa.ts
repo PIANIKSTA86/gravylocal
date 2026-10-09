@@ -390,7 +390,7 @@ async function renderSpaAgenda(container: HTMLElement) {
               </div>
 
               <div class="flex items-start gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background:#EEF4FF; color:#1A4B8C">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style="background:#F5F3FF; color:#7C3AED">
                   <i class="fas ${speciesIcon}"></i>
                 </div>
                 <div>
@@ -534,7 +534,7 @@ async function renderSpaPets(container: HTMLElement) {
           <div class="p-4 bg-white rounded-2xl border shadow-sm flex flex-col justify-between" style="border-color:#E5E7EB">
             <div>
               <div class="flex items-center gap-3 mb-3">
-                <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style="background:#EEF4FF; color:#1A4B8C">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style="background:#F5F3FF; color:#7C3AED">
                   <i class="fas ${speciesIcon}"></i>
                 </div>
                 <div>
@@ -605,7 +605,7 @@ async function renderSpaPets(container: HTMLElement) {
     const detailHtml = `
       <div class="space-y-6 text-sm" style="color:#374151">
         <div class="flex items-start gap-4 p-4 rounded-xl border" style="background:#F9FAFB; border-color:#E5E7EB">
-          <div class="w-16 h-16 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style="background:#EEF4FF; color:#1A4B8C">
+          <div class="w-16 h-16 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style="background:#F5F3FF; color:#7C3AED">
             <i class="fas ${speciesIcon}"></i>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 flex-1">

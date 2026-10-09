@@ -474,10 +474,10 @@ async function _loadComprasPage(c: HTMLElement) {
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${poKpi('Total facturas',      total,                         'fas fa-file-invoice-dollar', '#1A4B8C', '#EEF4FF')}
-      ${poKpi('Borradores',          draft,                         'fas fa-pencil',              '#C46516', '#FFF8F0')}
-      ${poKpi('Contabilizadas',      posted,                        'fas fa-check-circle',        '#059669', '#ECFDF5')}
-      ${poKpi('Valor total compras', (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#F5F3FF')}
+      ${poKpi('Total facturas',      total,                         'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
+      ${poKpi('Borradores',          draft,                         'fas fa-pencil',              '#D97706', '#FEF3C7')}
+      ${poKpi('Contabilizadas',      posted,                        'fas fa-check-circle',        '#059669', '#DCFCE7')}
+      ${poKpi('Valor total compras', (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros -->
@@ -553,7 +553,7 @@ function renderPoRow(inv: any) {
   const prefix = num.includes('-') ? num.split('-')[0].toUpperCase() : 'SIN_PREFIJO';
   return `
     <tr data-poid="${(window as any).esc(inv.id)}" data-postatus="${(window as any).esc(inv.status)}" data-podate="${(window as any).esc(inv.date)}" data-poprefix="${(window as any).esc(prefix)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(inv.number)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(inv.number)}</span></td>
       <td>${(window as any).esc(inv.date)}</td>
       <td class="font-medium">${sup ? (window as any).esc(sup.name) : '—'}</td>
       <td class="text-sm" style="color:#6B7280">${(window as any).esc(inv.supplier_ref || '—')}</td>
@@ -566,7 +566,7 @@ function renderPoRow(inv: any) {
         <div class="flex gap-1">
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewPurchaseDetail('${(window as any).esc(inv.id)}')"><i class="fas fa-eye"></i></button>
           ${inv.status === 'draft' && (window as any).can('canWrite') ? `
-            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editPurchase('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editPurchase('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
             <button class="btn btn-primary btn-sm" title="Contabilizar" onclick="window.contabilizarCompra('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-check"></i> Contabilizar</button>
             <button class="btn btn-danger btn-sm" title="Anular" onclick="window.voidPurchase('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}', 'draft')"><i class="fas fa-ban"></i></button>
           ` : ''}
@@ -903,7 +903,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     <div class="space-y-4 text-sm" style="color:#374151">
 
       <!-- Banner de restauración temporal -->
-      <div id="po-restore-alert" class="rounded-xl p-3 mb-2 flex items-center justify-between gap-3" style="display:none;background:#EEF4FF;border:1px solid #D2E3FC;color:#1A4B8C">
+      <div id="po-restore-alert" class="rounded-xl p-3 mb-2 flex items-center justify-between gap-3" style="display:none;background:#F5F3FF;border:1px solid #DDD6FE;color:#5B21B6">
         <div class="flex items-center gap-2">
           <i class="fas fa-history text-lg"></i>
           <span>Se encontró una compra anterior sin guardar. ¿Deseas recuperar los datos?</span>
@@ -1045,10 +1045,10 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#FFF8F0;border-bottom:1px solid #E5E7EB">
           <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios Comprados <span id="po-items-counter" style="margin-left:6px;font-size:11px;font-weight:700;color:#9A3412;background:#FFEEDD;border-radius:999px;padding:2px 9px">0 líneas · 0 unds</span></span>
           <label class="flex items-center gap-2 cursor-pointer select-none" style="font-size:12px;font-weight:600;color:#374151" title="Modo de captura de retenciones">
-            <span id="po-ret-mode-lbl-hdr" style="color:#1A4B8C">Global</span>
+            <span id="po-ret-mode-lbl-hdr" style="color:#7C3AED">Global</span>
             <div style="position:relative;display:inline-block;width:38px;height:20px">
               <input type="checkbox" id="po-ret-mode-switch" style="opacity:0;width:0;height:0;position:absolute" onchange="window.poSetRetMode(this.checked)">
-              <span id="po-ret-mode-track" onclick="var sw=document.getElementById('po-ret-mode-switch');sw.checked=!sw.checked;window.poSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#1A4B8C;border-radius:10px;cursor:pointer;transition:background .2s"></span>
+              <span id="po-ret-mode-track" onclick="var sw=document.getElementById('po-ret-mode-switch');sw.checked=!sw.checked;window.poSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#7C3AED;border-radius:10px;cursor:pointer;transition:background .2s"></span>
               <span id="po-ret-mode-knob" style="position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
             </div>
             <span id="po-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
@@ -1677,7 +1677,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
         </select>
       </td>
       <td class="po-ret-col text-right text-orange-600 font-bold" style="display:none" id="pol-ret-val-${idx}">$ 0</td>
-      <td class="text-right font-extrabold" style="color:#1A4B8C;font-size:13px" id="pol-total-${idx}">$ 0</td>
+      <td class="text-right font-extrabold" style="color:#7C3AED;font-size:13px" id="pol-total-${idx}">$ 0</td>
       <td>
         <div class="flex items-center gap-1 justify-center">
           <button type="button" class="btn btn-outline btn-sm" id="pol-comment-btn-${idx}" onclick="window.poEditLineComment(${idx})"><i class="fas fa-comment"></i></button>
@@ -1704,8 +1704,8 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
     const btn = document.getElementById(`pol-comment-btn-${idx}`);
     if (!row || !btn) return;
     const has = !!String(row.dataset.comment || '').trim();
-    btn.style.borderColor = has ? '#1A4B8C' : '#D1D5DB';
-    btn.style.color = has ? '#1A4B8C' : '#6B7280';
+    btn.style.borderColor = has ? '#7C3AED' : '#D1D5DB';
+    btn.style.color = has ? '#7C3AED' : '#6B7280';
     btn.style.background = has ? '#EEF4FF' : '#fff';
     btn.title = has ? 'Editar comentario' : 'Agregar comentario';
   }
@@ -1723,7 +1723,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
       overlay.innerHTML = `
         <div style="background:#fff;border-radius:16px;width:100%;max-width:460px;box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #F0F0F0">
-            <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-comment-dots mr-2" style="color:#1A4B8C"></i>Comentario de línea</h4>
+            <h4 style="font-weight:700;color:#0D2137;font-size:15px"><i class="fas fa-comment-dots mr-2" style="color:#7C3AED"></i>Comentario de línea</h4>
             <button type="button" id="po-line-comment-close" style="background:none;border:none;font-size:18px;color:#9CA3AF;cursor:pointer"><i class="fas fa-xmark"></i></button>
           </div>
           <div style="padding:20px">
@@ -1794,7 +1794,7 @@ async function openPurchaseForm(invoiceId: string | null = null, onDone: any = n
               <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0 text-right">
-              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 0}%</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EDE9FE;color:#7C3AED">IVA ${p.iva_rate ?? 0}%</span>
               <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.cost_price || 0)}</span>
             </div>
           </div>
@@ -2270,7 +2270,7 @@ async function viewPurchaseDetail(id: string) {
               ${history.map((h: any) => `
                 <div class="rounded-lg border px-3 py-2" style="border-color:#E5E7EB;background:#fff">
                   <div class="flex items-center justify-between gap-2">
-                    <span class="text-xs font-semibold" style="color:#1A4B8C">${(window as any).esc(h.action || 'EVENTO')}</span>
+                    <span class="text-xs font-semibold" style="color:#7C3AED">${(window as any).esc(h.action || 'EVENTO')}</span>
                     <span class="text-xs" style="color:#6B7280">${(window as any).esc(fmtPurchaseAuditDate(h.created || h.createdAt || h.date || ''))}</span>
                   </div>
                   <p class="text-sm mt-1" style="color:#374151">${(window as any).esc(h.description || h.notes || 'Sin detalle')}</p>
@@ -2327,7 +2327,7 @@ async function viewPurchaseDetail(id: string) {
           <div class="flex justify-between gap-8 border-t pt-2 text-base" style="border-color:#E5E7EB"><span class="font-bold text-gray-800">TOTAL CxP:</span><span class="font-bold text-orange-700 font-mono">${(window as any).fmt(inv.payable_total || inv.total || 0)}</span></div>
         </div>
       </div>
-      ${inv.tx_id ? `<div class="mt-4 p-3 rounded-xl text-sm" style="background:#EEF4FF;color:#2446B8"><i class="fas fa-book-open mr-2"></i>Asiento contable generado: <button class="font-semibold underline cursor-pointer" onclick="closeModal(); setTimeout(() => window.seeTxDetail('${(window as any).esc(inv.tx_id)}'), 300)">Ver asiento</button></div>` : ''}
+      ${inv.tx_id ? `<div class="mt-4 p-3 rounded-xl text-sm border" style="background:#EDE9FE;color:#6D28D9;border-color:#DDD6FE"><i class="fas fa-book-open mr-2"></i>Asiento contable generado: <button class="font-semibold underline cursor-pointer" onclick="closeModal(); setTimeout(() => window.seeTxDetail('${(window as any).esc(inv.tx_id)}'), 300)">Ver asiento</button></div>` : ''}
       ${blockerHtml}
       ${historyHtml}
     `;
@@ -2352,7 +2352,9 @@ function editPurchase(id: string) {
   });
 }
 
+let _isPostingPurchase = false;
 function contabilizarCompra(id: string, number: string) {
+  if (_isPostingPurchase) return;
   if (!(window as any).can('canApprove')) return (window as any).showToast('Solo el contador o administrador pueden contabilizar.', 'error');
   (window as any).confirmDialog(
     'Contabilizar Factura de Compra',
@@ -2361,6 +2363,8 @@ function contabilizarCompra(id: string, number: string) {
      • Un asiento contable en estado <em>Borrador</em> para su revisión/aprobación<br>
      • Un movimiento de inventario <em>ENTRADA</em> para los bienes físicos`,
     async () => {
+      if (_isPostingPurchase) return;
+      _isPostingPurchase = true;
       try {
         const isReadyToPost = await validatePurchasePostingAccounts(id, number);
         if (!isReadyToPost) return;
@@ -2370,6 +2374,8 @@ function contabilizarCompra(id: string, number: string) {
         else renderCompras();
       } catch (err: any) {
         (window as any).showToast(err.response?.message || err.message, 'error');
+      } finally {
+        _isPostingPurchase = false;
       }
     }
   );
@@ -2423,13 +2429,17 @@ function voidPurchase(id: string, number: string, status = 'draft') {
 
 // ── KPI helper ────────────────────────────────────────────────────────────────
 function poKpi(label: string, value: any, icon: string, color: string, bg: string) {
-  return `<div class="rounded-2xl p-4" style="background:${bg}">
-    <div class="flex items-center gap-2 mb-1">
-      <i class="${icon} text-sm" style="color:${color}"></i>
-      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+  return `
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
+      </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
-    <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
-  </div>`;
+  `;
 }
 
 // ── Notas de Ajuste en Compras ────────────────────────────────────────────────
@@ -2849,11 +2859,11 @@ function poSetRetMode(isPerLine: boolean) {
   const knob  = document.getElementById('po-ret-mode-knob');
   if (knob)  knob.style.transform = isPerLine ? 'translateX(18px)' : '';
   const track = document.getElementById('po-ret-mode-track');
-  if (track) track.style.background = isPerLine ? '#6B7280' : '#1A4B8C';
+  if (track) track.style.background = isPerLine ? '#6B7280' : '#7C3AED';
   const lblHdr  = document.getElementById('po-ret-mode-lbl-hdr');
-  if (lblHdr)  lblHdr.style.color  = isPerLine ? '#9CA3AF' : '#1A4B8C';
+  if (lblHdr)  lblHdr.style.color  = isPerLine ? '#9CA3AF' : '#7C3AED';
   const lblLine = document.getElementById('po-ret-mode-lbl-line');
-  if (lblLine) lblLine.style.color = isPerLine ? '#1A4B8C' : '#9CA3AF';
+  if (lblLine) lblLine.style.color = isPerLine ? '#7C3AED' : '#9CA3AF';
   
   (window as any).poRecalcLine(0);
 }

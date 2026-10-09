@@ -303,10 +303,10 @@ async function _loadImportacionesPage(c: HTMLElement) {
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${importKpi('Total importaciones', total, 'fas fa-ship', '#1A4B8C', '#EEF4FF')}
+      ${importKpi('Total importaciones', total, 'fas fa-ship', '#7C3AED', '#EDE9FE')}
       ${importKpi('En Tránsito (Logística)', transit, 'fas fa-truck-ramp-box', '#0284C7', '#E0F2FE')}
       ${importKpi('Nacionalización (DIAN)', nationalization, 'fas fa-scale-balanced', '#D97706', '#FEF3C7')}
-      ${importKpi('Valor FOB Activo (USD)', (window as any).fmt(totalFOB).replace('COP', 'USD'), 'fas fa-circle-dollar-to-slot', '#7C3AED', '#F5F3FF')}
+      ${importKpi('Valor FOB Activo (USD)', (window as any).fmt(totalFOB).replace('COP', 'USD'), 'fas fa-circle-dollar-to-slot', '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros -->
@@ -367,16 +367,14 @@ async function _loadImportacionesPage(c: HTMLElement) {
 
 function importKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card blue" style="background:#fff;border-color:#E5E7EB">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-2xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color};background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -401,7 +399,7 @@ function renderImportRow(imp: any) {
 
   return `
     <tr data-impid="${(window as any).esc(imp.id)}" data-impstatus="${(window as any).esc(imp.status)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(imp.number)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(imp.number)}</span></td>
       <td>${(window as any).esc(imp.date_created)}</td>
       <td class="font-medium">${supplierHtml}</td>
       <td class="font-mono text-sm">${(window as any).esc(imp.bl_awb || '—')}</td>
@@ -4630,7 +4628,7 @@ async function openImportForm(importId: string | null = null, onDone: any = null
               <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
             </div>
             <div class="flex items-center gap-3 flex-shrink-0 text-right">
-              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EDE9FE;color:#7C3AED">IVA ${p.iva_rate ?? 19}%</span>
               <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.cost_price || 0)}</span>
             </div>
           </div>
@@ -7708,23 +7706,23 @@ async function buildTraceabilityPrintHTML(data: any) {
       <title>Trazabilidad Importación ${imp.number}</title>
       <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; color: #1F2937; padding: 20px; line-height: 1.4; }
-        .header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #1A4B8C; padding-bottom: 10px; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #7C3AED; padding-bottom: 10px; }
         .company-info h1 { font-size: 18px; margin: 0; color: #0D2137; }
         .company-info p { font-size: 11px; color: #6B7280; margin: 2px 0; }
         .doc-title { text-align: right; }
-        .doc-title h2 { font-size: 20px; color: #1A4B8C; margin: 0; }
+        .doc-title h2 { font-size: 20px; color: #7C3AED; margin: 0; }
         .doc-title p { font-size: 12px; margin: 2px 0; font-weight: bold; }
         .summary-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; background: #F3F4F6; border-radius: 8px; padding: 12px; margin-bottom: 20px; }
         .summary-card { font-size: 11px; }
         .summary-card span { display: block; color: #6B7280; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
         .summary-card strong { font-size: 13px; color: #111827; }
-        .section-title { font-size: 13px; font-weight: bold; color: #0D2137; margin: 15px 0 6px; text-transform: uppercase; border-left: 3px solid #1A4B8C; padding-left: 8px; }
+        .section-title { font-size: 13px; font-weight: bold; color: #0D2137; margin: 15px 0 6px; text-transform: uppercase; border-left: 3px solid #7C3AED; padding-left: 8px; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
         th { background: #F9FAFB; padding: 6px; text-align: left; font-size: 11px; color: #4B5563; border-bottom: 1px solid #E5E7EB; }
         td { padding: 6px; font-size: 11px; border-bottom: 1px solid #F3F4F6; }
         .text-right { text-align: right; }
         .no-print { text-align: center; margin-top: 30px; }
-        .btn-print { padding: 8px 20px; background: #1A4B8C; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-print { padding: 8px 20px; background: #7C3AED; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         @media print { .no-print { display: none; } }
       </style>
     </head>

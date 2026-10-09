@@ -698,9 +698,9 @@ async function renderProductos(c) {
 
       <!-- KPIs -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        ${kpiCard('Total catálogo', products.length, 'fas fa-box-open', '#1A4B8C', '#EEF4FF')}
+        ${kpiCard('Total catálogo', products.length, 'fas fa-box-open', '#7C3AED', '#F5F3FF')}
         ${kpiCard('Activos', activeCount, 'fas fa-circle-check', '#059669', '#ECFDF5')}
-        ${kpiCard('Bienes (Físicos)', bienesCount, 'fas fa-boxes-stacked', '#C46516', '#FFF8F0')}
+        ${kpiCard('Bienes (Físicos)', bienesCount, 'fas fa-boxes-stacked', '#D97706', '#FFFBEB')}
         ${kpiCard('Servicios', serviciosCount, 'fas fa-handshake', '#7C3AED', '#F5F3FF')}
       </div>
 
@@ -1600,13 +1600,17 @@ async function openCheckoutDrawer(onDone: any = null) {
 
 // ── Helpers de renderizado ────────────────────────────────────────────────────
 function kpiCard(label, value, icon, color, bg) {
-  return `<div class="rounded-2xl p-4" style="background:${bg};border:1px solid ${bg}">
-    <div class="flex items-center gap-2 mb-1">
-      <i class="${icon} text-sm" style="color:${color}"></i>
-      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+  return `
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
+      </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${fmtN(value)}</p>
     </div>
-    <p class="text-2xl font-extrabold" style="color:${color}">${fmtN(value)}</p>
-  </div>`;
+  `;
 }
 
 function renderProductRows(products, stockMap = {}, incomingMap = {}) {
@@ -1621,7 +1625,7 @@ function renderProductRows(products, stockMap = {}, incomingMap = {}) {
     const incoming = incomingMap[p.id];
 
     return `<tr data-type="${esc(p.type)}" data-iva="${p.iva_rate ?? ''}" data-active="${p.active}" data-categoria="${esc(p.categoria || '')}" data-linea="${esc(p.linea || '')}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(p.code)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(p.code)}</span></td>
       <td class="font-medium">
         <div>${esc(p.name)}</div>
         <div class="flex items-center gap-1 mt-0.5">
@@ -1735,10 +1739,10 @@ async function viewProductDetail(id) {
       `Producto — ${esc(p.code)}`,
       `<div class="grid grid-cols-1 md:grid-cols-4 gap-6 text-sm">
         <div class="md:col-span-3 grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div><span class="form-label">Código</span><p class="font-mono font-semibold" style="color:#1A4B8C">${esc(p.code)}</p></div>
+          <div><span class="form-label">Código</span><p class="font-mono font-semibold" style="color:#7C3AED">${esc(p.code)}</p></div>
           <div class="md:col-span-2"><span class="form-label">Nombre</span><p class="font-semibold">${esc(p.name)}</p></div>
           <div><span class="form-label">Tipo</span><p>${esc(typeLabel)}</p></div>
-          <div><span class="form-label">Unidad de medida (DIAN)</span><p class="font-mono" style="color:#1A4B8C">${esc(p.unit || '—')}<span class="font-sans font-normal text-xs ml-1" style="color:#6B7280">${p.unit ? '— ' + esc(getUnitName(p.unit)) : ''}</span></p></div>
+          <div><span class="form-label">Unidad de medida (DIAN)</span><p class="font-mono" style="color:#7C3AED">${esc(p.unit || '—')}<span class="font-sans font-normal text-xs ml-1" style="color:#6B7280">${p.unit ? '— ' + esc(getUnitName(p.unit)) : ''}</span></p></div>
           <div><span class="form-label">Presentacion</span><p>${esc(p.presentacion || '—')}</p></div>
           <div><span class="form-label">Categoria</span><p>${esc(p.categoria || '—')}</p></div>
           <div><span class="form-label">Linea</span><p>${esc(p.linea || '—')}</p></div>

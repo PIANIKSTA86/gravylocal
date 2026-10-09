@@ -91,7 +91,7 @@ export async function renderResoluciones(container: HTMLElement) {
         ${kpiCard('Resoluciones Activas', activeResCount, 'fas fa-file-signature', '#7C3AED', '#F5F3FF')}
         ${kpiCard('Vencimiento Cercano', expAlerts, 'fas fa-calendar-warning', expAlerts > 0 ? '#DC2626' : '#059669', expAlerts > 0 ? '#FEF2F2' : '#ECFDF5')}
         ${kpiCard('Agotamiento Rangos', rangeAlerts, 'fas fa-gauge-high', rangeAlerts > 0 ? '#D97706' : '#059669', rangeAlerts > 0 ? '#FFFBEB' : '#ECFDF5')}
-        ${kpiCard('Cajas / Terminales', registersCount, 'fas fa-desktop', '#1A4B8C', '#EEF4FF')}
+        ${kpiCard('Cajas / Terminales', registersCount, 'fas fa-desktop', '#7C3AED', '#F5F3FF')}
       </div>
 
       <!-- Sección Principal -->
@@ -134,12 +134,14 @@ export async function renderResoluciones(container: HTMLElement) {
 
 function kpiCard(label: string, value: number, icon: string, color: string, bg: string) {
   return `
-    <div class="rounded-2xl p-4 border" style="background:${bg};border-color:rgba(0,0,0,0.02)">
-      <div class="flex items-center gap-2 mb-1">
-        <i class="${icon} text-sm" style="color:${color}"></i>
-        <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
       </div>
-      <p class="text-2xl font-extrabold" style="color:${color}">${(window as any).fmtN(value)}</p>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${(window as any).fmtN(value)}</p>
     </div>
   `;
 }

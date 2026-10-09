@@ -96,13 +96,23 @@ export function openWidgetCatalogModal(options: CatalogModalOptions): void {
 
           <!-- BUSCADOR & FILTROS -->
           <div style="padding: 16px 24px 12px; border-bottom: 1px solid #F1F5F9; background: #fff">
-            <!-- Buscador -->
-            <div style="position: relative; margin-bottom: 14px">
-              <i class="fas fa-magnifying-glass" style="position: absolute; left: 14px; top: 12px; color: #94A3B8; font-size: 13px"></i>
-              <input id="widget-search-input" type="text" placeholder="Buscar indicador por nombre o función..." value="${searchQuery}" style="
-                width: 100%; padding: 9px 14px 9px 38px; border-radius: 10px; border: 1px solid #CBD5E1;
-                font-size: 13px; color: #1E293B; outline: none; transition: border-color .15s;
-              " onfocus="this.style.borderColor='#6366F1'" onblur="this.style.borderColor='#CBD5E1'" />
+            <!-- Buscador y Botón de Plantilla Reubicado -->
+            <div style="display: flex; gap: 10px; margin-bottom: 12px; align-items: center; flex-wrap: wrap">
+              <div style="position: relative; flex: 1; min-width: 220px">
+                <i class="fas fa-magnifying-glass" style="position: absolute; left: 14px; top: 11px; color: #94A3B8; font-size: 13px"></i>
+                <input id="widget-search-input" type="text" placeholder="Buscar indicador por nombre o función..." value="${searchQuery}" style="
+                  width: 100%; padding: 8px 14px 8px 38px; border-radius: 10px; border: 1px solid #CBD5E1;
+                  font-size: 12.5px; color: #1E293B; outline: none; transition: border-color .15s;
+                " onfocus="this.style.borderColor='#6366F1'" onblur="this.style.borderColor='#CBD5E1'" />
+              </div>
+              <button id="btn-top-reset-role" style="
+                display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
+                background: #EEF2FF; border: 1px solid #C7D2FE; color: #4338CA;
+                font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .15s;
+              " onmouseover="this.style.background='#E0E7FF'" onmouseout="this.style.background='#EEF2FF'" title="Restablecer indicadores recomendados para tu perfil (${userRole})">
+                <i class="fas fa-rotate-left" style="font-size: 11px"></i>
+                <span>Plantilla (${userRole})</span>
+              </button>
             </div>
 
             <!-- Pestañas de categorías -->
@@ -274,13 +284,15 @@ export function openWidgetCatalogModal(options: CatalogModalOptions): void {
     });
 
     // Resetear a plantilla de rol
-    document.getElementById('btn-reset-role')?.addEventListener('click', () => {
+    const handleResetRolePreset = () => {
       selectedSet = new Set(getDefaultWidgetsForRole(userRole));
       renderModalContent();
       if (typeof (window as any).showToast === 'function') {
-        (window as any).showToast('Plantilla por defecto cargada', 'info');
+        (window as any).showToast(`Plantilla recomendada para ${userRole} cargada`, 'info');
       }
-    });
+    };
+    document.getElementById('btn-reset-role')?.addEventListener('click', handleResetRolePreset);
+    document.getElementById('btn-top-reset-role')?.addEventListener('click', handleResetRolePreset);
 
     // Guardar
     document.getElementById('btn-save-widgets')?.addEventListener('click', () => {

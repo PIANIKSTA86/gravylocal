@@ -116,7 +116,7 @@ async function renderConfiguracion(c) {
           <h4 class="font-bold mb-4" style="color:#0D2137">Datos generales</h4>
           
           <div class="form-group mb-4">
-            <label class="form-label font-semibold" style="color:#1A4B8C"><i class="fas fa-link mr-1"></i> Vincular a un Tercero de la Base de Datos</label>
+            <label class="form-label font-semibold" style="color:#7C3AED"><i class="fas fa-link mr-1"></i> Vincular a un Tercero de la Base de Datos</label>
             <div id="cfg-third-search-wrap" class="relative">
               <input
                 id="cfg-third-search"
@@ -143,7 +143,7 @@ async function renderConfiguracion(c) {
                   ${canEdit ? '' : 'readonly'}>
               </div>`).join('')}
             <div class="form-group md:col-span-2">
-              <label class="form-label font-semibold" style="color:#0D2137"><i class="fas fa-calculator mr-1" style="color:#1A4B8C"></i> Cantidad de Decimales</label>
+              <label class="form-label font-semibold" style="color:#0D2137"><i class="fas fa-calculator mr-1" style="color:#7C3AED"></i> Cantidad de Decimales</label>
               <select id="cfg-decimal_places" class="form-input" ${canEdit ? '' : 'disabled'}>
                 <option value="0" ${String(byKey['decimal_places']?.value || '2') === '0' ? 'selected' : ''}>0 decimales (ej: $ 1.000)</option>
                 <option value="1" ${String(byKey['decimal_places']?.value || '2') === '1' ? 'selected' : ''}>1 decimal (ej: $ 1.000,5)</option>
@@ -380,7 +380,7 @@ async function renderConfiguracion(c) {
       <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-envelope mr-2" style="color:#7F7CFF"></i>Servidor de Correo (SMTP)</h4>
+            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-envelope mr-2" style="color:#7C3AED"></i>Servidor de Correo (SMTP)</h4>
             <p class="text-sm" style="color:#6B7280">Configura las credenciales de correo de la empresa para el envío de notificaciones y facturación.</p>
           </div>
           ${canEdit ? '<button class="btn btn-secondary btn-sm" id="btn-save-smtp"><i class="fas fa-floppy-disk mr-1"></i> Guardar configuración SMTP</button>' : ''}
@@ -428,7 +428,7 @@ async function renderConfiguracion(c) {
           <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 border-t pt-4" style="border-color:#F0F0F0">
             <div class="md:col-span-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h5 class="font-bold text-sm" style="color:#0D2137"><i class="fas fa-inbox mr-1.5" style="color:#1A4B8C"></i> Buzón de Recepción de Facturas (IMAP - RADIAN)</h5>
+                <h5 class="font-bold text-sm" style="color:#0D2137"><i class="fas fa-inbox mr-1.5" style="color:#7C3AED"></i> Buzón de Recepción de Facturas (IMAP - RADIAN)</h5>
                 <p class="text-xs" style="color:#6B7280">Configura la lectura del correo registrado en el RUT para sincronizar automáticamente facturas de proveedores.</p>
               </div>
               <button type="button" class="btn btn-outline btn-sm text-xs" id="btn-copy-smtp-to-imap" title="Copia el host, usuario y clave desde la configuración SMTP si son el mismo correo">
@@ -612,7 +612,7 @@ async function renderConfiguracion(c) {
       <div class="bg-white rounded-2xl border p-5 mb-4" style="border-color:#F0F0F0">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-building-user mr-2" style="color:#1A4B8C"></i>Sucursales y Centros de Costo</h4>
+            <h4 class="font-bold" style="color:#0D2137"><i class="fas fa-building-user mr-2" style="color:#7C3AED"></i>Sucursales y Centros de Costo</h4>
             <p class="text-sm" style="color:#6B7280">Administra las sucursales del sistema para segmentación de contabilidad e inventarios.</p>
           </div>
           ${canEdit ? '<button type="button" class="btn btn-primary btn-sm" id="btn-cfg-new-branch"><i class="fas fa-plus mr-1"></i> Nueva Sucursal</button>' : ''}
@@ -658,7 +658,7 @@ async function renderConfiguracion(c) {
     if (bTbody) {
       bTbody.innerHTML = branches.length ? branches.map(b => `
         <tr>
-          <td><span class="font-mono font-semibold" style="color:#1A4B8C">${esc(b.code)}</span></td>
+          <td><span class="font-mono font-semibold" style="color:#7C3AED">${esc(b.code)}</span></td>
           <td class="font-medium">${esc(b.name)}</td>
           <td>${b.active ? '<span class="badge badge-green">Activo</span>' : '<span class="badge badge-gray">Inactivo</span>'}</td>
           ${canEdit ? `

@@ -227,10 +227,10 @@ async function _loadPedidosPage(c: HTMLElement) {
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${orderKpi('Total pedidos', total, 'fas fa-file-signature', '#1A4B8C', '#EEF4FF')}
-      ${orderKpi('Pendientes', pending, 'fas fa-clock', '#C46516', '#FFF8F0')}
-      ${orderKpi('Facturados', invoiced, 'fas fa-check-double', '#059669', '#ECFDF5')}
-      ${orderKpi('Valor total activos', (window as any).fmt(totalVal), 'fas fa-coins', '#7C3AED', '#F5F3FF')}
+      ${orderKpi('Total pedidos', total, 'fas fa-file-signature', '#7C3AED', '#EDE9FE')}
+      ${orderKpi('Pendientes', pending, 'fas fa-clock', '#D97706', '#FEF3C7')}
+      ${orderKpi('Facturados', invoiced, 'fas fa-check-double', '#059669', '#DCFCE7')}
+      ${orderKpi('Valor total activos', (window as any).fmt(totalVal), 'fas fa-coins', '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros -->
@@ -292,16 +292,14 @@ async function _loadPedidosPage(c: HTMLElement) {
 
 function orderKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card blue" style="background:#fff;border-color:#E5E7EB">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-2xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color};background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -316,7 +314,7 @@ function renderOrderRow(ord: any) {
 
   return `
     <tr data-ordid="${(window as any).esc(ord.id)}" data-ordstatus="${(window as any).esc(ord.status)}" data-orddate="${(window as any).esc(ord.date)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(ord.number)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(ord.number)}</span></td>
       <td>${(window as any).esc(ord.date)}</td>
       <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
       <td class="text-sm">${wh ? (window as any).esc(wh.name) : '—'}</td>
@@ -336,7 +334,7 @@ function renderOrderRow(ord: any) {
           <button class="btn btn-outline btn-sm text-blue-600" style="border-color:#3b82f6" title="Imprimir Carta" onclick="window.printOrderCarta('${(window as any).esc(ord.id)}')"><i class="fas fa-print"></i></button>
           <button class="btn btn-outline btn-sm text-orange-600" style="border-color:#f97316" title="Imprimir Tirilla" onclick="window.printOrderTirilla('${(window as any).esc(ord.id)}')"><i class="fas fa-receipt"></i></button>
           ${ord.status === 'pending' ? `
-            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editSalesOrder('${(window as any).esc(ord.id)}')"><i class="fas fa-pen"></i></button>
             ${!isEnDespacho && !isEntregado ? `
               <button class="btn btn-outline btn-sm text-purple-700" style="border-color:#7C3AED; background:#F5F3FF" title="Despachar a Logística" onclick="window.dispatchSalesOrderDirect('${(window as any).esc(ord.id)}')"><i class="fas fa-truck"></i> Despachar</button>
             ` : ''}
@@ -805,7 +803,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
         <div class="flex flex-col gap-1">
           <input type="number" id="ordl-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:12px" min="0.001" step="0.001" value="${displayQty}" oninput="window.ordRecalcLine(${idx})">
           ${isMultiUnitEnabled && hasConversions ? `
-            <select id="ordl-unit-${idx}" class="form-input text-right w-full py-0.5 text-xs font-semibold" style="height:24px; color:#1A4B8C; padding: 2px 2px 2px 4px;">
+            <select id="ordl-unit-${idx}" class="form-input text-right w-full py-0.5 text-xs font-semibold" style="height:24px; color:#7C3AED; padding: 2px 2px 2px 4px;">
               <option value="M2" ${salesUnit === 'M2' ? 'selected' : ''}>M² (Área)</option>
               <option value="CJ" ${salesUnit === 'CJ' ? 'selected' : ''}>CJ (Cajas)</option>
               <option value="UND" ${salesUnit === 'UND' ? 'selected' : ''}>UND (Fichas)</option>
@@ -950,7 +948,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
                 </div>
               </div>
               <div class="flex items-center justify-between gap-3 flex-shrink-0 text-right">
-                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EDE9FE;color:#7C3AED">IVA ${p.iva_rate ?? 19}%</span>
                 <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(displayCatalogPrice)}${pricesIncludeIva ? ' <span class="text-[9px] text-gray-500 font-normal">(IVA inc.)</span>' : ''}</span>
               </div>
             </div>
@@ -1337,7 +1335,7 @@ async function openOrderForm(orderId: string | null = null, onDone: any = null, 
       <div class="space-y-6 text-sm" style="color:#374151">
         <!-- Grid de Información -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
-          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Número de Pedido</span><span class="font-semibold font-mono text-sm" style="color:#1A4B8C">${(window as any).esc(ord.number)}</span></div>
+          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Número de Pedido</span><span class="font-semibold font-mono text-sm" style="color:#7C3AED">${(window as any).esc(ord.number)}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Fecha Registro</span><span class="font-semibold">${(window as any).esc(ord.date)}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Fecha Estimada Despacho</span><span class="font-semibold">${(window as any).esc(ord.due_date || '—')}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Estado Pedido</span><span class="badge ${meta.badge} mt-1">${meta.label}</span></div>

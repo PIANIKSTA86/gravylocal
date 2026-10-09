@@ -565,13 +565,48 @@ function confirmDialog(title: string, message: string, onConfirm: () => void, da
 
     const close = () => { overlay.style.display = 'none'; };
     btnCancel.onclick = close;
-    btnOk.onclick = () => { close(); onConfirm(); };
+    btnOk.onclick = async () => {
+      const btn = btnOk as HTMLButtonElement;
+      if (btn.dataset.submitting === 'true' || btn.disabled) return;
+      btn.dataset.submitting = 'true';
+      btn.disabled = true;
+      close();
+      try {
+        await onConfirm();
+      } finally {
+        btn.dataset.submitting = 'false';
+        btn.disabled = false;
+      }
+    };
   } else {
     if (window.confirm(`${title}\n\n${message}`)) {
       onConfirm();
     }
   }
 }
+
+/**
+ * Helper global para envolver acciones de botones de forma estrictamente idempotente:
+ * Deshabilita el botón de inmediato, previene doble clic concurrente y muestra spinner si se desea.
+ */
+function lockActionBtn(btn: HTMLButtonElement | HTMLElement | null | undefined, actionFn: () => Promise<any> | any) {
+  if (!btn) return actionFn();
+  const el = btn as HTMLButtonElement;
+  if (el.dataset.submitting === 'true' || el.disabled) return Promise.resolve();
+  el.dataset.submitting = 'true';
+  el.disabled = true;
+  const originalHtml = el.innerHTML;
+  return Promise.resolve()
+    .then(() => actionFn())
+    .finally(() => {
+      el.dataset.submitting = 'false';
+      el.disabled = false;
+      if (el.innerHTML !== originalHtml && !el.dataset.keepHtml) {
+        el.innerHTML = originalHtml;
+      }
+    });
+}
+(window as any).lockActionBtn = lockActionBtn;
 
 /* ── Tabla filtrable ──────────────────────────────────────── */
 function filterTable(tableId, query, filterField = null, filterValue = '') {
@@ -1643,7 +1678,7 @@ async function showStockBreakdownModal(productId: string, productName: string) {
     overlay.innerHTML = `
       <div class="anim-slide-up" style="background:#fff;border-radius:20px;width:100%;max-width:680px;box-shadow:0 25px 60px rgba(0,0,0,.22);overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #F0F0F0">
-          <h4 style="font-weight:800;color:#0D2137;font-size:15px;margin:0"><i class="fas fa-boxes-stacked mr-2" style="color:#1A4B8C"></i>Existencias detalladas: ${(window as any).esc(productName)}</h4>
+          <h4 style="font-weight:800;color:#0D2137;font-size:15px;margin:0"><i class="fas fa-boxes-stacked mr-2" style="color:#7C3AED"></i>Existencias detalladas: ${(window as any).esc(productName)}</h4>
           <button onclick="document.getElementById('stock-details-overlay').style.display='none'" style="background:none;border:none;font-size:20px;color:#9CA3AF;cursor:pointer"><i class="fas fa-xmark"></i></button>
         </div>
         <div style="padding:24px;max-height:70vh;overflow-y:auto">

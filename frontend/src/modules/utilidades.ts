@@ -302,7 +302,7 @@ async function _openMassProductsImportModal() {
       </div>
       <div id="mass-products-progress-wrap" class="hidden mt-4">
         <div class="w-full rounded-full h-2" style="background:#E5E7EB">
-          <div id="mass-products-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#CA8A04,#1A4B8C);width:0%"></div>
+          <div id="mass-products-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#CA8A04,#7C3AED);width:0%"></div>
         </div>
         <p id="mass-products-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
       </div>
@@ -1343,8 +1343,8 @@ async function renderUtilidades(container) {
           <div class="flex items-start justify-between mb-4">
             <div class="flex items-center gap-3">
               <div class="w-10 h-10 rounded-xl flex items-center justify-center"
-                   style="background:rgba(46,107,166,.12)">
-                <i class="fas fa-database" style="color:#1A4B8C;font-size:18px"></i>
+                   style="background:rgba(124,58,237,.12)">
+                <i class="fas fa-database" style="color:#7C3AED;font-size:18px"></i>
               </div>
               <div>
                 <h3 class="font-bold text-base" style="color:#0D2137">Respaldo de datos</h3>
@@ -1382,7 +1382,7 @@ async function renderUtilidades(container) {
               <i class="fas fa-download"></i> Crear respaldo completo
             </button>
             ${isSuperAdmin ? `
-              <button id="btn-backup-config-only" class="btn btn-primary btn-sm" style="background:#1A4B8C;border-color:#1A4B8C">
+              <button id="btn-backup-config-only" class="btn btn-primary btn-sm" style="background:#7C3AED;border-color:#7C3AED">
                 <i class="fas fa-screwdriver-wrench"></i> Respaldo de parametrización (Plantilla)
               </button>
             ` : ''}
@@ -2178,7 +2178,7 @@ async function _handleRestoreFileSelected(e) {
                ${collectionsSummary.map(c => `
                  <tr style="border-bottom:1px solid #F9FAFB">
                    <td class="py-1" style="color:#1F2937">${esc(c.label)} <span style="color:#9CA3AF;font-size:10px">(${esc(c.name)})</span></td>
-                   <td class="py-1 text-right font-bold" style="color:#1A4B8C">${c.count.toLocaleString('es-CO')}</td>
+                   <td class="py-1 text-right font-bold" style="color:#7C3AED">${c.count.toLocaleString('es-CO')}</td>
                  </tr>
                `).join('')}
              </tbody>
@@ -2653,15 +2653,15 @@ async function _openMassTxImportModal() {
   ).join('');
 
   const branchSelector = allowedBranches.length
-    ? `<div class="rounded-xl p-3 mb-3 flex items-center gap-3" style="background:#EFF6FF;border:1px solid #BFDBFE">
-        <i class="fas fa-building-user" style="color:#1A4B8C;font-size:1.1rem"></i>
+    ? `<div class="rounded-xl p-3 mb-3 flex items-center gap-3" style="background:#F5F3FF;border:1px solid #DDD6FE">
+        <i class="fas fa-building-user" style="color:#7C3AED;font-size:1.1rem"></i>
         <div style="flex:1">
-          <label class="text-xs font-semibold block mb-1" style="color:#1E40AF;text-transform:uppercase;letter-spacing:.05em">Sucursal destino</label>
+          <label class="text-xs font-semibold block mb-1" style="color:#5B21B6;text-transform:uppercase;letter-spacing:.05em">Sucursal destino</label>
           <select id="mass-tx-branch" class="form-input" style="font-size:13px;padding:5px 10px">
             ${branchOptions}
           </select>
         </div>
-        <p class="text-xs" style="color:#3B82F6;max-width:200px">Aplica a todos los comprobantes sin sucursal propia en el archivo.</p>
+        <p class="text-xs" style="color:#7C3AED;max-width:200px">Aplica a todos los comprobantes sin sucursal propia en el archivo.</p>
       </div>`
     : `<div class="rounded-xl p-3 mb-3" style="background:#FEF9C3;border:1px solid #FDE68A">
         <p class="text-xs" style="color:#92400E"><i class="fas fa-triangle-exclamation mr-1"></i>No hay sucursales activas configuradas. Los comprobantes se crearán sin sucursal.</p>
@@ -2689,14 +2689,14 @@ async function _openMassTxImportModal() {
 
       <div id="mass-tx-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
         <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
-        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#1A4B8C;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#7C3AED;text-decoration:underline">haz clic para seleccionar</span></p>
         <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
         <input type="file" id="mass-tx-file-input" accept=".csv,.xlsx,.xls" class="hidden">
       </div>
 
       <div id="mass-tx-progress-wrap" class="hidden mt-4">
         <div class="w-full rounded-full h-2" style="background:#E5E7EB">
-          <div id="mass-tx-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#059669,#1A4B8C);width:0%"></div>
+          <div id="mass-tx-progress-bar" class="h-2 rounded-full transition-all" style="background:linear-gradient(90deg,#059669,#7C3AED);width:0%"></div>
         </div>
         <p id="mass-tx-progress-text" class="text-xs mt-2" style="color:#6B7280">Preparando...</p>
       </div>
@@ -2759,8 +2759,8 @@ async function _openMassTxImportModal() {
   dropZone?.addEventListener('dragover', e => {
     e.preventDefault();
     if (!dropZone) return;
-    dropZone.style.borderColor = '#1A4B8C';
-    dropZone.style.background = '#EFF6FF';
+    dropZone.style.borderColor = '#7C3AED';
+    dropZone.style.background = '#F5F3FF';
   });
   dropZone?.addEventListener('dragleave', () => setDropDefault());
   dropZone?.addEventListener('drop', e => {
@@ -3638,7 +3638,7 @@ async function _openMassTpImportModal() {
 
       <div id="mass-tp-drop-zone" class="rounded-2xl border-2 border-dashed flex flex-col items-center justify-center py-10 cursor-pointer transition-all" style="border-color:#D1D5DB;background:#FAFAFA">
         <i class="fas fa-cloud-arrow-up text-3xl mb-3" style="color:#9CA3AF"></i>
-        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#1A4B8C;text-decoration:underline">haz clic para seleccionar</span></p>
+        <p class="text-sm font-medium" style="color:#374151">Arrastra tu archivo aquí o <span style="color:#7C3AED;text-decoration:underline">haz clic para seleccionar</span></p>
         <p class="text-xs mt-1" style="color:#9CA3AF">CSV · XLSX · XLS — máx. 8 MB</p>
         <input type="file" id="mass-tp-file-input" accept=".csv,.xlsx,.xls" class="hidden">
       </div>

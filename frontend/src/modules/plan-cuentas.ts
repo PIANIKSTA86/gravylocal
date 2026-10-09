@@ -244,7 +244,7 @@ async function renderPlanCuentas(c) {
 
             return `
             <tr>
-              <td><span class="font-semibold" style="color:#1A4B8C">${esc(a.code)}</span></td>
+              <td><span class="font-semibold" style="color:#7C3AED">${esc(a.code)}</span></td>
               <td>${esc(a.name)}</td>
               <td>${esc(t?.name ?? '?')}</td>
               <td>${reqTercero}</td>
@@ -359,7 +359,7 @@ async function openAccountForm(allAccounts: any[] | null, accTypes: any[] | null
     }
     return `
       <div class="flex flex-wrap gap-3">
-        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#EEF4FF;color:#2446B8;font-size:12px;font-weight:700">
+        <span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#EDE9FE;color:#7C3AED;font-size:12px;font-weight:700">
           <i class="fas fa-layer-group" style="font-size:10px"></i> Nivel ${meta.level ?? '?'}
         </span>
         ${meta.parentCode ? `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;background:#F0FFF4;color:#059669;font-size:12px;font-weight:700">
@@ -397,7 +397,7 @@ async function openAccountForm(allAccounts: any[] | null, accTypes: any[] | null
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="form-group">
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" id="ac-cruce" ${(row?.maneja_cruce === true || row?.maneja_cruce === 1 || row?.maneja_cruce === 'true' || row?.maneja_cruce === '1') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#1A4B8C">
+          <input type="checkbox" id="ac-cruce" ${(row?.maneja_cruce === true || row?.maneja_cruce === 1 || row?.maneja_cruce === 'true' || row?.maneja_cruce === '1') ? 'checked' : ''} class="w-4 h-4" style="accent-color:#7C3AED">
           <span class="form-label mb-0">Maneja documento de cruce <span class="text-xs" style="color:#6B7280">(CxP / CxC)</span></span>
         </label>
       </div>
@@ -733,7 +733,7 @@ function exportPlanCuentasExcel(accounts: any[], accTypes: any[]) {
   /* Estilo de cabecera (fila 1 = índice 0, celdas A1:R1) */
   const headerStyle = {
     font:      { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-    fill:      { fgColor: { rgb: '1A4B8C' } },
+    fill:      { fgColor: { rgb: '7C3AED' } },
     alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
     border:    {
       bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },

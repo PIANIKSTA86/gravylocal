@@ -52,7 +52,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;background:#1e1e2d;color:white;padding:24px;border-radius:16px;">
         <div style="display:flex;align-items:center;gap:16px">
-          <div style="width:50px;height:50px;border-radius:12px;background:linear-gradient(135deg,#7F7CFF,#2446B8);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 16px rgba(36,70,184,0.3)">
+          <div style="width:50px;height:50px;border-radius:12px;background:linear-gradient(135deg,#7C3AED,#2446B8);display:flex;align-items:center;justify-content:center;box-shadow:0 8px 16px rgba(36,70,184,0.3)">
             <i class="fas fa-crown" style="font-size:24px;color:white"></i>
           </div>
           <div>
@@ -107,7 +107,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
           
           <!-- Header -->
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;border-bottom:1px solid #F3F4F6;padding-bottom:16px">
-            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7F7CFF,#2446B8);display:flex;align-items:center;justify-content:center;color:white;box-shadow:0 4px 10px rgba(36,70,184,0.2)">
+            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#7C3AED,#2446B8);display:flex;align-items:center;justify-content:center;color:white;box-shadow:0 4px 10px rgba(36,70,184,0.2)">
               <i class="fas fa-building" style="font-size:18px"></i>
             </div>
             <div>
@@ -252,7 +252,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
               <!-- Card Nómina -->
               <div class="sa-module-choice" style="border:2px solid #E5E7EB;border-radius:12px;padding:10px;cursor:pointer;display:flex;align-items:center;gap:10px;background:white;transition:all 0.2s" onclick="const cb = this.querySelector('input'); cb.checked = !cb.checked; this.style.borderColor = cb.checked ? '#2446B8' : '#E5E7EB'; this.style.backgroundColor = cb.checked ? '#F0F4FF' : 'white';">
                 <input type="checkbox" class="new-comp-mod" value="nomina" style="display:none">
-                <div style="width:30px;height:30px;border-radius:8px;background:rgba(127,124,255,0.1);display:flex;align-items:center;justify-content:center;color:#7F7CFF;flex-shrink:0"><i class="fas fa-id-card"></i></div>
+                <div style="width:30px;height:30px;border-radius:8px;background:rgba(127,124,255,0.1);display:flex;align-items:center;justify-content:center;color:#7C3AED;flex-shrink:0"><i class="fas fa-id-card"></i></div>
                 <div>
                   <p style="font-size:12px;font-weight:700;margin:0;color:#111827">Nómina</p>
                   <p style="font-size:10px;color:#6B7280;margin:0">Empleados, liquidación</p>
@@ -381,7 +381,7 @@ async function renderSuperadmin(container: HTMLElement): Promise<void> {
       <div id="sa-tab-sistema" class="sa-tab-content" style="display:none">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
           <div style="background:white;border:1px solid #E5E7EB;border-radius:16px;padding:24px">
-            <h3 style="font-size:16px;font-weight:700;color:#111827;margin-bottom:20px"><i class="fas fa-server mr-2" style="color:#7F7CFF"></i>Entorno de Ejecución</h3>
+            <h3 style="font-size:16px;font-weight:700;color:#111827;margin-bottom:20px"><i class="fas fa-server mr-2" style="color:#7C3AED"></i>Entorno de Ejecución</h3>
             <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:12px;font-size:13px">
               <li style="display:flex;justify-content:space-between;padding-bottom:12px;border-bottom:1px solid #F3F4F6">
                 <span style="color:#6B7280">Versión de GRAVY</span>
@@ -542,7 +542,7 @@ async function _loadSALicenses(targetCompanyId?: string) {
     inventarios:   { label: 'Inventarios',   icon: 'fa-warehouse',  color: '#10B981', desc: 'Existencias y kardex' },
     tesoreria:     { label: 'Tesorería',     icon: 'fa-landmark',   color: '#F59E0B', desc: 'Cajas y bancos' },
     conciliacion:  { label: 'Conciliación Bancaria', icon: 'fa-scale-balanced', color: '#6366F1', desc: 'Cotejo de extractos' },
-    nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7F7CFF', desc: 'Empleados y liquidaciones' },
+    nomina:        { label: 'Nómina',        icon: 'fa-id-card',    color: '#7C3AED', desc: 'Empleados y liquidaciones' },
     logistica:     { label: 'Logística',     icon: 'fa-ship',       color: '#3B82F6', desc: 'Importaciones y despachos' },
     copropiedades: { label: 'Copropiedades', icon: 'fa-city',       color: '#F59E0B', desc: 'Propiedad horizontal' },
     inmobiliarias: { label: 'Inmobiliaria',  icon: 'fa-house-chimney-window', color: '#EC4899', desc: 'Contratos y arriendos' },

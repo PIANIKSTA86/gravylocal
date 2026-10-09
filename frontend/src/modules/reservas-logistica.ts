@@ -92,10 +92,10 @@ async function renderReservasDashboardTab(c: HTMLElement, parentContainer: HTMLE
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${resKpi('Total reservas', total, 'fas fa-clipboard-list', '#1A4B8C', '#EEF4FF')}
-      ${resKpi('Activas', active, 'fas fa-hourglass-half', '#C46516', '#FFF8F0')}
-      ${resKpi('Convertidas a factura', converted, 'fas fa-file-invoice', '#059669', '#ECFDF5')}
-      ${resKpi('Sin facturar', Math.max(0, total - converted), 'fas fa-truck-loading', '#7C3AED', '#F5F3FF')}
+      ${resKpi('Total reservas', total, 'fas fa-clipboard-list', '#7C3AED', '#EDE9FE')}
+      ${resKpi('Activas', active, 'fas fa-hourglass-half', '#D97706', '#FEF3C7')}
+      ${resKpi('Convertidas a factura', converted, 'fas fa-file-invoice', '#059669', '#DCFCE7')}
+      ${resKpi('Sin facturar', Math.max(0, total - converted), 'fas fa-truck-loading', '#7C3AED', '#EDE9FE')}
     </div>
 
     <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center" style="border-color:#F0F0F0">
@@ -144,16 +144,14 @@ async function renderReservasDashboardTab(c: HTMLElement, parentContainer: HTMLE
 
 function resKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card blue" style="background:#fff;border-color:#E5E7EB">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-2xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color};background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -171,7 +169,7 @@ function renderReservationRow(r: any) {
 
   return `
     <tr data-resid="${(window as any).esc(r.id)}" data-resstatus="${(window as any).esc(r.status)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(r.number || 'S/N')}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(r.number || 'S/N')}</span></td>
       <td>${(window as any).esc((r.created || '').slice(0, 10))}</td>
       <td class="font-medium">${customer ? (window as any).esc(customer.name) : '—'}</td>
       <td>${order ? `<span class="font-mono" style="color:#2563EB">${(window as any).esc(order.number || 'PED')}</span>` : '<span class="text-xs text-amber-600 font-semibold"><i class="fas fa-clock mr-1"></i>Sin Pedido</span>'}</td>
@@ -609,7 +607,7 @@ async function openReservationForm(reservationId: any = null, onDone: any = null
             <span class="font-semibold text-gray-800 truncate">${(window as any).esc(p.name)}</span>
           </div>
           <div class="flex items-center gap-3 flex-shrink-0 text-right">
-            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EDE9FE;color:#7C3AED">IVA ${p.iva_rate ?? 19}%</span>
             <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(Number(p.base_price || 0))}</span>
           </div>
         </div>
@@ -987,7 +985,7 @@ async function openReservationForm(reservationId: any = null, onDone: any = null
     const html = `
       <div class="space-y-5 text-sm" style="color:#374151">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 rounded-xl border" style="background:#F9FAFB;border-color:#E5E7EB">
-          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Reserva</span><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(res.number || 'S/N')}</span></div>
+          <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Reserva</span><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(res.number || 'S/N')}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Cliente</span><span class="font-semibold">${(window as any).esc(res.expand?.customer_id?.name || '—')}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Estado</span><span class="badge ${status.badge}">${status.label}</span></div>
           <div><span class="text-[10px] uppercase font-bold block" style="color:#6B7280">Pedido</span><span class="font-mono">${(window as any).esc(res.expand?.sales_order_id?.number || '—')}</span></div>
@@ -1525,10 +1523,10 @@ export async function renderTransitInventoryReport(container: HTMLElement) {
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        ${resKpi('Referencias en Tránsito', totalRefs, 'fas fa-boxes-stacked', '#1A4B8C', '#EEF4FF')}
-        ${resKpi('Total Unidades Importación', (window as any).fmtN(totalTransitUnits), 'fas fa-truck-ramp-box', '#374151', '#F3F4F6')}
+        ${resKpi('Referencias en Tránsito', totalRefs, 'fas fa-boxes-stacked', '#7C3AED', '#EDE9FE')}
+        ${resKpi('Total Unidades Importación', (window as any).fmtN(totalTransitUnits), 'fas fa-truck-ramp-box', '#6D28D9', '#EDE9FE')}
         ${resKpi('Unidades Reservadas', (window as any).fmtN(totalReservedUnits), 'fas fa-lock', '#D97706', '#FEF3C7')}
-        ${resKpi('Disponibles para Vender', (window as any).fmtN(totalAvailableUnits), 'fas fa-circle-check', '#059669', '#D1FAE5')}
+        ${resKpi('Disponibles para Vender', (window as any).fmtN(totalAvailableUnits), 'fas fa-circle-check', '#059669', '#DCFCE7')}
       </div>
 
       <div class="bg-white rounded-2xl border p-3 mb-4 flex flex-wrap gap-3 items-center justify-between" style="border-color:#F0F0F0">
@@ -1609,7 +1607,7 @@ function renderTransitReportSummaryTable(rows: any[]) {
 
             return `
               <tr>
-                <td class="font-mono font-bold text-xs" style="color:#1A4B8C">${(window as any).esc(r.code)}</td>
+                <td class="font-mono font-bold text-xs" style="color:#7C3AED">${(window as any).esc(r.code)}</td>
                 <td class="font-semibold text-gray-800">${(window as any).esc(r.name)}</td>
                 <td class="text-center"><span class="badge badge-gray">${r.imports_count} ord.</span></td>
                 <td class="text-right font-mono font-bold">${(window as any).fmtN(r.total_qty)} ${r.unit_measure}</td>
@@ -1663,7 +1661,7 @@ function renderTransitReportDetailedTable(rows: any[]) {
 
             return `
               <tr>
-                <td><span class="font-mono font-bold text-xs" style="color:#1A4B8C">${(window as any).esc(r.import_number)}</span></td>
+                <td><span class="font-mono font-bold text-xs" style="color:#7C3AED">${(window as any).esc(r.import_number)}</span></td>
                 <td class="text-xs text-gray-600">${(window as any).esc(r.supplier_name)}</td>
                 <td class="text-xs font-semibold" style="color:#D97706"><i class="fas fa-calendar-day mr-1"></i>${(window as any).esc(r.estimated_arrival)}</td>
                 <td class="font-mono text-xs text-gray-700">${(window as any).esc(r.code)}</td>

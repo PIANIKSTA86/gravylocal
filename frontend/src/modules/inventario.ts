@@ -11,7 +11,7 @@ const _pb = (): any => (window as any).pb;
 const INV_MOV_TYPES = [
   { value: 'ENTRADA',         label: 'Entrada',          icon: 'fa-arrow-down',  color: '#059669' },
   { value: 'SALIDA',          label: 'Salida',           icon: 'fa-arrow-up',    color: '#DC2626' },
-  { value: 'TRASLADO',        label: 'Traslado',         icon: 'fa-right-left',  color: '#1A4B8C' },
+  { value: 'TRASLADO',        label: 'Traslado',         icon: 'fa-right-left',  color: '#7C3AED' },
   { value: 'AJUSTE_POSITIVO', label: 'Ajuste +',         icon: 'fa-plus-circle', color: '#059669' },
   { value: 'AJUSTE_NEGATIVO', label: 'Ajuste −',         icon: 'fa-minus-circle',color: '#C46516' },
 ];
@@ -43,7 +43,7 @@ async function renderInventarioSection(c: any, sectionId = 'stock', ctx: any = {
   c.innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5 w-full">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#EEF4FF;color:#1A4B8C">
+        <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background:#EDE9FE;color:#7C3AED">
           <i class="fas ${meta.icon} text-lg"></i>
         </div>
         <div>
@@ -100,10 +100,10 @@ async function renderStockTab(c, ctx = {}) {
 
     c.innerHTML = `
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        ${invKpi('SKUs en inventario', totalSkus,          'fas fa-box',          '#1A4B8C','#EEF4FF')}
-        ${invKpi('Unidades totales',   fmtN(totalUnits),   'fas fa-cubes',        '#059669','#ECFDF5')}
-        ${invKpi('Sin stock',          lowStock,           'fas fa-triangle-exclamation','#C46516','#FFF8F0')}
-        ${invKpi('Valor estimado',     fmt(totalValue),    'fas fa-coins',        '#7C3AED','#F5F3FF')}
+        ${invKpi('SKUs en inventario', totalSkus,          'fas fa-box',          '#7C3AED','#EDE9FE')}
+        ${invKpi('Unidades totales',   fmtN(totalUnits),   'fas fa-cubes',        '#059669','#DCFCE7')}
+        ${invKpi('Sin stock',          lowStock,           'fas fa-triangle-exclamation','#D97706','#FEF3C7')}
+        ${invKpi('Valor estimado',     fmt(totalValue),    'fas fa-coins',        '#7C3AED','#EDE9FE')}
       </div>
 
       <!-- Filtros -->
@@ -244,7 +244,7 @@ function renderStockRows(stock) {
 
     return `<tr data-whid="${esc(s.warehouse_id)}" data-qty="${qty}">
       <td class="font-medium">${prod ? esc(prod.name) : '<span style="color:#9CA3AF">—</span>'}</td>
-      <td><span class="font-mono text-xs" style="color:#1A4B8C">${prod ? esc(prod.code) : '—'}</span></td>
+      <td><span class="font-mono text-xs" style="color:#7C3AED">${prod ? esc(prod.code) : '—'}</span></td>
       <td>${wh ? esc(wh.name) : '—'}</td>
       <td class="text-right">${minVal}</td>
       <td class="text-right">${maxVal}</td>
@@ -348,9 +348,9 @@ async function renderMovimientosTab(c: any, ctx: any = {}) {
     c.innerHTML = `
       <!-- Tarjetas Resumen (KPIs UX/UI) -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4" id="mov-kpi-container">
-        ${invKpi('Movimientos Registrados', '...', 'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
-        ${invKpi('Total Unidades Movidas',  '...', 'fa-cubes',         '#059669', '#ECFDF5')}
-        ${invKpi('Valor Total en Movs.',    '...', 'fa-coins',         '#7C3AED', '#F5F3FF')}
+        ${invKpi('Movimientos Registrados', '...', 'fa-arrows-rotate', '#7C3AED', '#EDE9FE')}
+        ${invKpi('Total Unidades Movidas',  '...', 'fa-cubes',         '#059669', '#DCFCE7')}
+        ${invKpi('Valor Total en Movs.',    '...', 'fa-coins',         '#7C3AED', '#EDE9FE')}
       </div>
 
       <!-- Barra de Filtros Avanzada por Período y Estado -->
@@ -550,9 +550,9 @@ async function renderMovimientosTab(c: any, ctx: any = {}) {
             : formatInvPeriodLabel(INV_MOV_STATE.period);
 
           kpiWrap.innerHTML = `
-            ${invKpi('Movimientos del Período', fmtN(totalItems), 'fa-arrows-rotate', '#1A4B8C', '#EEF4FF')}
-            ${invKpi('Unidades (Pág. ' + currentPage + ')', fmtN(pageUnits), 'fa-cubes', '#059669', '#ECFDF5')}
-            ${invKpi('Valor Total (Pág. ' + currentPage + ')', fmt(pageCost), 'fa-coins', '#7C3AED', '#F5F3FF')}
+            ${invKpi('Movimientos del Período', fmtN(totalItems), 'fa-arrows-rotate', '#7C3AED', '#EDE9FE')}
+            ${invKpi('Unidades (Pág. ' + currentPage + ')', fmtN(pageUnits), 'fa-cubes', '#059669', '#DCFCE7')}
+            ${invKpi('Valor Total (Pág. ' + currentPage + ')', fmt(pageCost), 'fa-coins', '#7C3AED', '#EDE9FE')}
           `;
         }
 
@@ -767,7 +767,7 @@ function renderMovRows(movs, salesMap = new Map(), purchaseMap = new Map()) {
       : '<span class="text-gray-300">—</span>';
 
     return `<tr data-movid="${esc(m.id)}" data-movtype="${esc(m.mov_type)}" data-movstatus="${esc(m.status)}" data-totalqty="${totalQty}" data-totalcost="${totalCost}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${esc(m.number)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${esc(m.number)}</span></td>
       <td><span style="color:${tm?.color || '#6B7280'}"><i class="fas ${tm?.icon || 'fa-box'} mr-1"></i>${esc(tm?.label || m.mov_type)}</span></td>
       <td>${conceptBadge}</td>
       <td class="whitespace-nowrap text-xs text-gray-600">${esc(m.date)}</td>
@@ -998,7 +998,7 @@ async function viewMovDetail(id) {
     openModal(
       `Movimiento — ${esc(mov.number)}`,
       `<div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4 bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-        <div><span class="form-label text-xs">Número</span><p class="font-mono font-semibold" style="color:#1A4B8C">${esc(mov.number)}</p></div>
+        <div><span class="form-label text-xs">Número</span><p class="font-mono font-semibold" style="color:#7C3AED">${esc(mov.number)}</p></div>
         <div><span class="form-label text-xs">Tipo</span><p class="font-medium" style="color:${tm?.color}">${esc(tm?.label || mov.mov_type)}</p></div>
         <div><span class="form-label text-xs">Fecha</span><p class="font-medium">${esc(mov.date)}</p></div>
         <div><span class="form-label text-xs">Estado</span><p><span class="badge ${meta.badge}">${meta.label}</span></p></div>
@@ -1085,9 +1085,9 @@ async function printInventoryMovement(id: string) {
     // Determinar título y colores institucionales según el tipo de movimiento
     let docTitle = 'COMPROBANTE DE MOVIMIENTO DE INVENTARIO';
     let docTypeLabel = tm?.label || mov.mov_type || 'MOVIMIENTO';
-    let headerAccentColor = '#1A4B8C';
-    let badgeBg = '#EEF4FF';
-    let badgeColor = '#1A4B8C';
+    let headerAccentColor = '#7C3AED';
+    let badgeBg = '#EDE9FE';
+    let badgeColor = '#7C3AED';
 
     if (mov.mov_type === 'ENTRADA') {
       docTitle = 'COMPROBANTE DE ENTRADA DE ALMACÉN';
@@ -2427,7 +2427,7 @@ function whCard(w, branches = []) {
     <div>
       <div class="flex items-start justify-between mb-2">
         <div>
-          <p class="font-mono text-xs font-semibold mb-1" style="color:#1A4B8C">${esc(w.code)}</p>
+          <p class="font-mono text-xs font-semibold mb-1" style="color:#7C3AED">${esc(w.code)}</p>
           <h4 class="font-bold text-sm" style="color:#0D2137">${esc(w.name)}</h4>
         </div>
         ${w.active ? '<span class="badge badge-green">Activa</span>' : '<span class="badge badge-gray">Inactiva</span>'}
@@ -2606,13 +2606,17 @@ async function openWarehouseForm(row = null, onDone = null) {
 
 // ── KPI helper ────────────────────────────────────────────────────────────────
 function invKpi(label, value, icon, color, bg) {
-  return `<div class="rounded-2xl p-4" style="background:${bg}">
-    <div class="flex items-center gap-2 mb-1">
-      <i class="${icon} text-sm" style="color:${color}"></i>
-      <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+  return `
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
+      </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
-    <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
-  </div>`;
+  `;
 }
 
 // ── TAB: KARDEX CARD ──────────────────────────────────────────────────────────
@@ -2628,7 +2632,7 @@ async function renderKardexTab(c, ctx = {}) {
 
     c.innerHTML = `
       <div class="bg-white rounded-2xl border p-4 mb-4" style="border-color:#F0F0F0">
-        <h4 class="text-sm font-bold mb-3" style="color:#0D2137"><i class="fas fa-filter mr-2" style="color:#1A4B8C"></i>Consultar Kardex de Referencia</h4>
+        <h4 class="text-sm font-bold mb-3" style="color:#0D2137"><i class="fas fa-filter mr-2" style="color:#7C3AED"></i>Consultar Kardex de Referencia</h4>
         <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
           <div class="form-group md:col-span-2 relative">
             <label class="form-label font-bold text-xs">Producto / Referencia <span style="color:#EF4444">*</span></label>
@@ -3069,7 +3073,7 @@ async function renderKardexTab(c, ctx = {}) {
                             ${row.movId ? `
                               <a href="#" onclick="event.preventDefault(); window.viewMovDetail('${esc(row.movId)}');" 
                                  class="hover:text-blue-800 hover:underline inline-flex items-center gap-1" 
-                                 style="color:#1A4B8C; font-weight:700;"
+                                 style="color:#7C3AED; font-weight:700;"
                                  title="Ver detalle del movimiento de inventario">
                                 <i class="fas fa-box text-[10px] opacity-75"></i>
                                 ${esc(row.docNumber)}
@@ -4835,8 +4839,8 @@ function _printHTMLReport(title: string, htmlContent: string) {
       th { background-color: #f7fafc; color: #2d3748; font-weight: bold; }
       tfoot tr td { background-color: #edf2f7; color: #2d3748; }
       .text-right { text-align: right; }
-      .no-print { display: inline-block; padding: 8px 18px; background: #1a4b8c; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-bottom: 20px; transition: background 0.2s; }
-      .no-print:hover { background: #12335f; }
+      .no-print { display: inline-block; padding: 8px 18px; background: #7c3aed; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: 600; margin-bottom: 20px; transition: background 0.2s; }
+      .no-print:hover { background: #6d28d9; }
       h2 { color: #0d2137; font-size: 20px; margin-bottom: 4px; }
       p { margin: 2px 0; color: #718096; }
       @media print { .no-print { display: none; } body { padding: 0; } }
@@ -6803,7 +6807,7 @@ async function renderConsignacionesTab(c, ctx = {}) {
 
                 return `
                   <tr>
-                    <td><span class="font-mono font-semibold" style="color:#1A4B8C">${esc(s.number)}</span></td>
+                    <td><span class="font-mono font-semibold" style="color:#7C3AED">${esc(s.number)}</span></td>
                     <td>${typeLabel}</td>
                     <td>${esc(s.expand?.third_party_id?.name || '—')}</td>
                     <td>${esc(s.expand?.warehouse_id?.name || '—')}</td>
@@ -7240,7 +7244,7 @@ async function viewConsignmentSettlementDetail(id) {
       `Liquidación — ${esc(settle.number)}`,
       `
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs mb-4">
-        <div><span class="form-label">Número</span><p class="font-mono font-semibold" style="color:#1A4B8C">${esc(settle.number)}</p></div>
+        <div><span class="form-label">Número</span><p class="font-mono font-semibold" style="color:#7C3AED">${esc(settle.number)}</p></div>
         <div><span class="form-label">Tipo</span><p class="font-semibold text-gray-800">${typeLabel}</p></div>
         <div><span class="form-label">Fecha</span><p>${esc(settle.date)}</p></div>
         <div><span class="form-label">Bodega Consignación</span><p>${esc(settle.expand?.warehouse_id?.name || '—')}</p></div>
@@ -7387,11 +7391,11 @@ async function renderLotesTab(c: any, ctx: any = {}) {
     container.innerHTML = `
       <!-- KPIs -->
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        ${invKpi('Lotes con Stock', fmtN(lotsWithStock.length), 'fas fa-barcode', '#1A4B8C', '#EEF4FF')}
-        ${invKpi('Unidades en Lotes', fmtN(totalUnitsInLots), 'fas fa-cubes', '#059669', '#ECFDF5')}
-        ${invKpi('Por Vencer (<60d)', expiringSoonLots.length, 'fas fa-clock', '#C46516', '#FFF8F0')}
-        ${invKpi('Lotes Vencidos', expiredLots.length, 'fas fa-triangle-exclamation', '#DC2626', '#FEF2F2')}
-        ${invKpi('Valor Total en Lotes', fmt(totalLotValue), 'fas fa-coins', '#7C3AED', '#F5F3FF')}
+        ${invKpi('Lotes con Stock', fmtN(lotsWithStock.length), 'fas fa-barcode', '#7C3AED', '#EDE9FE')}
+        ${invKpi('Unidades en Lotes', fmtN(totalUnitsInLots), 'fas fa-cubes', '#059669', '#DCFCE7')}
+        ${invKpi('Por Vencer (<60d)', expiringSoonLots.length, 'fas fa-clock', '#D97706', '#FEF3C7')}
+        ${invKpi('Lotes Vencidos', expiredLots.length, 'fas fa-triangle-exclamation', '#DC2626', '#FEE2E2')}
+        ${invKpi('Valor Total en Lotes', fmt(totalLotValue), 'fas fa-coins', '#7C3AED', '#EDE9FE')}
       </div>
 
       <!-- Filtros -->
@@ -7628,10 +7632,10 @@ async function renderPalletsTab(c: any, ctx: any = {}) {
     container.innerHTML = `
       <!-- KPIs -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        ${invKpi('Estibas Disponibles', fmtN(totalPalletsCount), 'fas fa-pallet', '#1A4B8C', '#EEF4FF')}
-        ${invKpi('Referencias Estibadas', distinctSkusCount, 'fas fa-boxes-stacked', '#059669', '#ECFDF5')}
-        ${invKpi('Cajas en Estibas', fmtN(totalBoxesCount), 'fas fa-box', '#7C3AED', '#F5F3FF')}
-        ${invKpi('Unidades en Estibas', fmtN(totalUnitsCount), 'fas fa-cubes', '#C46516', '#FFF8F0')}
+        ${invKpi('Estibas Disponibles', fmtN(totalPalletsCount), 'fas fa-pallet', '#7C3AED', '#EDE9FE')}
+        ${invKpi('Referencias Estibadas', distinctSkusCount, 'fas fa-boxes-stacked', '#059669', '#DCFCE7')}
+        ${invKpi('Cajas en Estibas', fmtN(totalBoxesCount), 'fas fa-box', '#7C3AED', '#EDE9FE')}
+        ${invKpi('Unidades en Estibas', fmtN(totalUnitsCount), 'fas fa-cubes', '#D97706', '#FEF3C7')}
       </div>
 
       <!-- Filtros y Selector de Modo de Vista -->

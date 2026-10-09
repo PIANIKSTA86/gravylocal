@@ -57,6 +57,9 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
       const kpis = data.kpis || {};
       const cur = kpis.ventasMes || 0;
       const prev = kpis.ventasMesPrev || 0;
+      const sellers: any[] = data.sellers || [];
+      const currentAdvisorId: string = data.advisorId || '';
+
       let trendHTML = '';
       if (prev > 0) {
         const pct = ((cur - prev) / prev) * 100;
@@ -70,19 +73,43 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
           </div>`;
       }
       c.innerHTML = `
-        <div class="dash-kpi-card anim-slide-up">
-          <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#10B981,#059669)"></div>
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px">
-            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#10B981,#059669);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(16,185,129,.3)">
-              <i class="fas fa-hand-holding-dollar" style="font-size:16px;color:#fff"></i>
+        <div class="dash-kpi-card anim-slide-up" style="display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <div class="dash-kpi-accent" style="background:linear-gradient(90deg,#10B981,#059669)"></div>
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+              <div style="width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,#10B981,#059669);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(16,185,129,.25)">
+                <i class="fas fa-hand-holding-dollar" style="font-size:16px;color:#fff"></i>
+              </div>
+              ${trendHTML}
             </div>
-            ${trendHTML}
+            <div id="val-${c.id}" style="font-size:24px;font-weight:900;color:#064E3B;letter-spacing:-0.8px;line-height:1.1;margin-bottom:4px">
+              ${h.fmt(cur)}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+              <p style="font-size:12px;font-weight:700;color:#047857;margin:0">Ventas del Mes</p>
+              ${prev > 0 ? `<span style="font-size:10px;color:#94A3B8;white-space:nowrap">Ant: ${h.fmt(prev)}</span>` : ''}
+            </div>
           </div>
-          <div id="val-${c.id}" style="font-size:26px;font-weight:900;color:#064E3B;letter-spacing:-1px;line-height:1;margin-bottom:6px">
-            ${h.fmt(cur)}
-          </div>
-          <p style="font-size:12px;font-weight:700;color:#047857;margin:0 0 2px">Ventas del Mes</p>
-          <p style="font-size:11px;color:#94A3B8;margin:0">${prev > 0 ? `Ant: ${h.fmt(prev)}` : 'Mes en curso'}</p>
+
+          ${sellers.length > 0 ? `
+            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed rgba(16,185,129,.25);display:flex;align-items:center;gap:6px">
+              <i class="fas fa-user-tie" style="font-size:11px;color:#10B981;flex-shrink:0" title="Filtrar por asesor comercial"></i>
+              <select class="dash-kpi-seller-select" title="Seleccionar asesor comercial" style="
+                width:100%;font-size:11px;font-weight:600;color:#334155;background:#F8FAFC;
+                border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;cursor:pointer;outline:none;
+                font-family:inherit;transition:all .15s;text-overflow:ellipsis
+              " onfocus="this.style.borderColor='#10B981'" onblur="this.style.borderColor='#CBD5E1'">
+                <option value="">Todos los Asesores</option>
+                ${sellers.map((s: any) => `
+                  <option value="${h.esc(s.id)}" ${s.id === currentAdvisorId ? 'selected' : ''}>
+                    ${h.esc(s.name)}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          ` : `
+            <p style="font-size:11px;color:#94A3B8;margin:6px 0 0">${prev > 0 ? '' : 'Mes en curso'}</p>
+          `}
         </div>`;
     }
   },
@@ -207,6 +234,9 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
     roles: ['superadmin', 'admin', 'contador'],
     render: (c, data, h) => {
       const canvasId = `chart-vg-${Math.random().toString(36).substring(2, 7)}`;
+      const sellers: any[] = data.sellers || [];
+      const currentAdvisorId: string = data.advisorId || '';
+
       c.innerHTML = `
         <div class="dash-chart-panel anim-slide-up" style="min-height:300px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
@@ -217,6 +247,22 @@ export const WIDGET_REGISTRY: Record<string, DashboardWidget> = {
               </h3>
               <p style="font-size:12px;color:#94A3B8;margin:0">Comparativa mensual de ingresos contra egresos</p>
             </div>
+            ${sellers.length > 0 ? `
+              <div style="display:flex;align-items:center;gap:6px">
+                <i class="fas fa-user-tie" style="font-size:11px;color:#64748B" title="Filtrar por asesor"></i>
+                <select class="dash-kpi-seller-select" title="Filtrar ventas por asesor comercial" style="
+                  font-size:11px;font-weight:600;color:#334155;background:#F8FAFC;
+                  border:1px solid #CBD5E1;border-radius:8px;padding:4px 8px;cursor:pointer;outline:none;
+                  font-family:inherit;transition:all .15s;max-width:170px;text-overflow:ellipsis
+                " onfocus="this.style.borderColor='#10B981'" onblur="this.style.borderColor='#CBD5E1'">
+                  <option value="">Todos los Asesores</option>
+                  ${sellers.map((s: any) => `
+                    <option value="${h.esc(s.id)}" ${s.id === currentAdvisorId ? 'selected' : ''}>
+                      ${h.esc(s.name)}
+                    </option>`).join('')}
+                </select>
+              </div>
+            ` : ''}
           </div>
           <div style="flex:1;min-height:220px;position:relative">
             <canvas id="${canvasId}"></canvas>

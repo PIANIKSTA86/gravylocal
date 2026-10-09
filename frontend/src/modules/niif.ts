@@ -742,7 +742,7 @@ async function renderTabMapeo(c: HTMLElement) {
         const natureBadge = a.nature === 'debit' ? '<span class="badge badge-blue">D</span>' : '<span class="badge badge-orange">C</span>';
         return `
           <tr data-id="${esc(a.id)}" class="hover:bg-gray-50/50">
-            <td><strong style="color:#1A4B8C">${esc(a.code)}</strong></td>
+            <td><strong style="color:#7C3AED">${esc(a.code)}</strong></td>
             <td><span class="text-xs font-semibold text-gray-800">${esc(a.name)}</span></td>
             <td class="text-center">${natureBadge}</td>
             <td>
@@ -1046,39 +1046,37 @@ async function renderSubTabCatalogo(c: HTMLElement) {
     c.innerHTML = `
       <!-- Panel de Indicadores Premium -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div class="stat-card blue flex flex-col justify-between">
+        <div class="stat-card flex flex-col justify-between" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
           <div>
-            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Costo Histórico PPE</span>
-            <h3 class="text-lg font-bold text-gray-900">${formatCOP(totalCost)}</h3>
+            <span class="text-[11px] font-bold text-purple-900/75 uppercase tracking-wider block mb-1">Costo Histórico PPE</span>
+            <h3 class="text-xl font-extrabold text-purple-950">${formatCOP(totalCost)}</h3>
           </div>
-          <span class="text-xxs text-emerald-600 font-semibold mt-2"><i class="fas fa-arrow-trend-up mr-1"></i>Activos capitalizados</span>
+          <span class="text-[11px] text-emerald-700 font-semibold mt-2"><i class="fas fa-arrow-trend-up mr-1"></i>Activos capitalizados</span>
         </div>
 
-        <div class="stat-card green flex flex-col justify-between" style="position:relative">
-          <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:#10B981"></div>
+        <div class="stat-card flex flex-col justify-between" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
           <div>
-            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Valor Neto en Libros</span>
-            <h3 class="text-lg font-bold text-gray-900">${formatCOP(netBookValueNIIF)}</h3>
+            <span class="text-[11px] font-bold text-purple-900/75 uppercase tracking-wider block mb-1">Valor Neto en Libros</span>
+            <h3 class="text-xl font-extrabold text-purple-950">${formatCOP(netBookValueNIIF)}</h3>
           </div>
-          <span class="text-xxs text-gray-500 mt-2">NIIF (Costo - Depr. Asentada)</span>
+          <span class="text-[11px] text-purple-700/80 mt-2 font-medium">NIIF (Costo - Depr. Asentada)</span>
         </div>
 
-        <div class="stat-card orange flex flex-col justify-between">
+        <div class="stat-card flex flex-col justify-between" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
           <div>
-            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Depreciación Acumulada</span>
-            <div class="text-xs font-semibold text-gray-700">NIIF: ${formatCOP(totalDeprNIIF)}</div>
-            <div class="text-xs text-gray-500">Fiscal: ${formatCOP(totalDeprFiscal)}</div>
+            <span class="text-[11px] font-bold text-purple-900/75 uppercase tracking-wider block mb-1">Depreciación Acumulada</span>
+            <div class="text-xs font-semibold text-purple-950">NIIF: ${formatCOP(totalDeprNIIF)}</div>
+            <div class="text-xs text-purple-800/80">Fiscal: ${formatCOP(totalDeprFiscal)}</div>
           </div>
-          <span class="text-xxs text-emerald-700 font-semibold mt-1"><i class="fas fa-book-bookmark mr-1"></i>Saldos causados en libros</span>
+          <span class="text-[11px] text-emerald-700 font-semibold mt-1"><i class="fas fa-book-bookmark mr-1"></i>Saldos causados en libros</span>
         </div>
 
-        <div class="stat-card red flex flex-col justify-between" style="position:relative">
-          <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:${assetsWithPendingDepr > 0 ? '#F59E0B' : '#10B981'}"></div>
+        <div class="stat-card flex flex-col justify-between" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
           <div>
-            <span class="text-xxs font-bold text-gray-400 uppercase tracking-wider block mb-1">Control de Causación</span>
-            <h3 class="text-lg font-bold ${assetsWithPendingDepr > 0 ? 'text-amber-700' : 'text-emerald-700'}">${assetsWithPendingDepr} con rezago</h3>
+            <span class="text-[11px] font-bold text-purple-900/75 uppercase tracking-wider block mb-1">Control de Causación</span>
+            <h3 class="text-xl font-extrabold ${assetsWithPendingDepr > 0 ? 'text-amber-700' : 'text-emerald-700'}">${assetsWithPendingDepr} con rezago</h3>
           </div>
-          <span class="text-xxs ${assetsWithPendingDepr > 0 ? 'text-amber-600' : 'text-emerald-600'} mt-2">
+          <span class="text-[11px] ${assetsWithPendingDepr > 0 ? 'text-amber-600' : 'text-emerald-600'} font-semibold mt-2">
             <i class="fas ${assetsWithPendingDepr > 0 ? 'fa-clock' : 'fa-circle-check'} mr-1"></i>${assetsWithPendingDepr > 0 ? `${formatCOP(totalPendingAmount)} pendiente` : 'Todos los activos al día'}
           </span>
         </div>

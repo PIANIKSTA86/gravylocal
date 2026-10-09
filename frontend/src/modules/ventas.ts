@@ -669,10 +669,10 @@ async function _loadVentasPage(c: HTMLElement) {
     </div>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${salesKpi('Total facturas',      total,                     'fas fa-file-invoice-dollar', '#1A4B8C', '#EEF4FF')}
-      ${salesKpi('Borradores',          draft,                     'fas fa-pencil',              '#C46516', '#FFF8F0')}
-      ${salesKpi('Contabilizadas',      posted,                    'fas fa-check-circle',        '#059669', '#ECFDF5')}
-      ${salesKpi('Valor total ventas',  (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#F5F3FF')}
+      ${salesKpi('Total facturas',      total,                     'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
+      ${salesKpi('Borradores',          draft,                     'fas fa-pencil',              '#D97706', '#FEF3C7')}
+      ${salesKpi('Contabilizadas',      posted,                    'fas fa-check-circle',        '#059669', '#DCFCE7')}
+      ${salesKpi('Valor total ventas',  (window as any).fmt(totalVal), 'fas fa-coins',               '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros -->
@@ -751,7 +751,7 @@ function renderSoRow(inv: any) {
 
   return `
     <tr data-soid="${(window as any).esc(inv.id)}" data-sostatus="${(window as any).esc(inv.status)}" data-sodate="${(window as any).esc(inv.date)}" data-soprefix="${(window as any).esc(prefix)}">
-      <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(inv.number)}</span></td>
+      <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(inv.number)}</span></td>
       <td>${(window as any).esc(inv.date)}</td>
       <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
       <td class="text-sm" style="color:#6B7280">${(window as any).esc(inv.payment_method)}</td>
@@ -771,7 +771,7 @@ function renderSoRow(inv: any) {
           <button class="btn btn-outline btn-sm" title="Ver detalle" onclick="window.viewSalesInvoiceDetail('${(window as any).esc(inv.id)}')"><i class="fas fa-eye"></i></button>
           <button class="btn btn-outline btn-sm text-teal-600" title="Duplicar Factura (Crear borrador)" onclick="window.duplicateSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-clone"></i></button>
           ${inv.status === 'draft' ? `
-            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#1A4B8C;color:#1A4B8C" onclick="window.editSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-outline btn-sm" title="Editar" style="border-color:#7C3AED;color:#7C3AED" onclick="window.editSalesInvoice('${(window as any).esc(inv.id)}')"><i class="fas fa-pen"></i></button>
             <button class="btn btn-primary btn-sm" title="${isFirmar ? 'Firmar y Contabilizar' : 'Contabilizar'}" onclick="window.contabilizarVenta('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}', ${isFirmar})"><i class="${isFirmar ? 'fas fa-paper-plane' : 'fas fa-check'}"></i> ${isFirmar ? 'Firmar y Contabilizar' : 'Contabilizar'}</button>
             <button class="btn btn-danger btn-sm" title="Eliminar Borrador" onclick="window.deleteSalesInvoiceDraft('${(window as any).esc(inv.id)}', '${(window as any).esc(inv.number)}')"><i class="fas fa-trash"></i></button>
           ` : ''}
@@ -1510,13 +1510,13 @@ window.soSetRetMode = function(isPerLine: boolean) {
   if (knob) knob.style.transform = isPerLine ? 'translateX(18px)' : '';
 
   const track = document.getElementById('so-ret-mode-track');
-  if (track) track.style.background = isPerLine ? '#6B7280' : '#1A4B8C';
+  if (track) track.style.background = isPerLine ? '#6B7280' : '#7C3AED';
 
   const lblHdr = document.getElementById('so-ret-mode-lbl-hdr');
-  if (lblHdr) lblHdr.style.color = isPerLine ? '#9CA3AF' : '#1A4B8C';
+  if (lblHdr) lblHdr.style.color = isPerLine ? '#9CA3AF' : '#7C3AED';
 
   const lblLine = document.getElementById('so-ret-mode-lbl-line');
-  if (lblLine) lblLine.style.color = isPerLine ? '#1A4B8C' : '#9CA3AF';
+  if (lblLine) lblLine.style.color = isPerLine ? '#7C3AED' : '#9CA3AF';
 
   window.soRecalcLine(0);
 };
@@ -2132,7 +2132,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           <!-- Bodega -->
           <div>
             <div class="flex items-center justify-between">
-              <label class="so-hdr-label">Bodega ${isMultiWhEnabled ? '<span style="font-size:10px;color:#1A4B8C;font-weight:700">(Predeterminada)</span>' : ''}</label>
+              <label class="so-hdr-label">Bodega ${isMultiWhEnabled ? '<span style="font-size:10px;color:#7C3AED;font-weight:700">(Predeterminada)</span>' : ''}</label>
               ${isMultiWhEnabled ? `<button type="button" class="text-[10px] text-blue-600 hover:underline font-semibold cursor-pointer" onclick="window.soApplyHeaderWarehouseToAllLines()" title="Asignar esta bodega a todas las líneas actuales">Aplicar a todas</button>` : ''}
             </div>
             <select id="so-warehouse" class="form-input so-compact-inp" onchange="window.soRecalcLine(0)">
@@ -2153,7 +2153,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <label class="so-hdr-label">Orden de Compra</label>
             <div class="flex gap-1 items-center">
               <input id="so-po-number" class="form-input so-compact-inp flex-1" placeholder="N.º orden" value="${(window as any).esc(inv?.po_number || '')}">
-              <button type="button" class="btn btn-outline so-icon-btn" onclick="window.soLoadPendingOrderModal()" title="Cargar Pedido" style="color:#1A4B8C">
+              <button type="button" class="btn btn-outline so-icon-btn" onclick="window.soLoadPendingOrderModal()" title="Cargar Pedido" style="color:#7C3AED">
                 <i class="fas fa-file-import" style="font-size:11px"></i>
               </button>
             </div>
@@ -2181,7 +2181,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             ${soConfig.operational.dian_dependent_posting ? `
             <div>
               <label class="so-hdr-label" style="visibility:hidden">&nbsp;</label>
-              <label class="inline-flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap so-compact-inp" style="font-size:11px;font-weight:700;color:#1A4B8C;height:30px" title="Marcar si esta factura se enviará electrónicamente a la DIAN.">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer select-none whitespace-nowrap so-compact-inp" style="font-size:11px;font-weight:700;color:#7C3AED;height:30px" title="Marcar si esta factura se enviará electrónicamente a la DIAN.">
                 <input id="so-is-electronic" type="checkbox" ${(!inv || inv.is_electronic !== false) ? 'checked' : ''} onchange="window.soUpdateSaveButton()">
                 Emitir Factura Electrónica
               </label>
@@ -2464,8 +2464,8 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
                style="display:none;position:absolute;left:0;right:0;top:calc(100% + 3px);max-height:300px;overflow:auto;background:#fff;border:1.5px solid #DCE6F8;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.14);z-index:50">
           </div>
         </div>
-        <button type="button" class="btn btn-outline flex items-center gap-1.5 whitespace-nowrap shadow-xs" onclick="window.soShowActiveInventoryModal()" style="color:#1A4B8C; border-color:#BFDBFE; background:#EFF6FF; height:42px; font-weight:700; font-size:12px; border-radius:10px" title="Consultar todo el inventario activo con existencias por bodega">
-          <i class="fas fa-boxes-stacked text-blue-600"></i> Consultar Inventario
+        <button type="button" class="btn btn-outline flex items-center gap-1.5 whitespace-nowrap shadow-xs" onclick="window.soShowActiveInventoryModal()" style="color:#7C3AED; border-color:#DDD6FE; background:#F5F3FF; height:42px; font-weight:700; font-size:12px; border-radius:10px" title="Consultar todo el inventario activo con existencias por bodega">
+          <i class="fas fa-boxes-stacked text-purple-600"></i> Consultar Inventario
         </button>
       </div>
 
@@ -2473,7 +2473,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       <div class="border rounded-xl overflow-hidden" style="border-color:#E5E7EB">
         <!-- Barra superior con toggle retención -->
         <div class="flex items-center justify-between px-4 py-2 flex-wrap gap-2" style="background:#F4F8FF;border-bottom:1px solid #E5E7EB">
-          <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios <span id="so-items-counter" style="margin-left:6px;font-size:11px;font-weight:700;color:#1A4B8C;background:#EEF4FF;border-radius:999px;padding:2px 9px">0 líneas · 0 unds</span></span>
+          <span class="text-sm font-semibold" style="color:#0D2137"><i class="fas fa-boxes mr-1"></i> Artículos / Servicios <span id="so-items-counter" style="margin-left:6px;font-size:11px;font-weight:700;color:#7C3AED;background:#EDE9FE;border-radius:999px;padding:2px 9px">0 líneas · 0 unds</span></span>
           <div class="flex items-center gap-3">
             <div id="so-loss-bulk-wrap" class="items-center gap-2 cursor-pointer select-none" style="display:none;font-size:12px;font-weight:600;color:#991B1B" title="Marcar/desmarcar todos los productos como pérdida o gasto">
               <label class="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-900 px-2.5 py-1 rounded-lg border border-red-300 cursor-pointer">
@@ -2482,10 +2482,10 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
               </label>
             </div>
             <label class="flex items-center gap-2 cursor-pointer select-none" style="font-size:12px;font-weight:600;color:#374151" title="Modo de captura de retenciones">
-              <span id="so-ret-mode-lbl-hdr" style="color:#1A4B8C">Global</span>
+              <span id="so-ret-mode-lbl-hdr" style="color:#7C3AED">Global</span>
               <div style="position:relative;display:inline-block;width:38px;height:20px">
                 <input type="checkbox" id="so-ret-mode-switch" style="opacity:0;width:0;height:0;position:absolute" onchange="window.soSetRetMode(this.checked)">
-                <span id="so-ret-mode-track" onclick="var sw=document.getElementById('so-ret-mode-switch');sw.checked=!sw.checked;window.soSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#1A4B8C;border-radius:10px;cursor:pointer;transition:background .2s"></span>
+                <span id="so-ret-mode-track" onclick="var sw=document.getElementById('so-ret-mode-switch');sw.checked=!sw.checked;window.soSetRetMode(sw.checked)" style="position:absolute;inset:0;background:#7C3AED;border-radius:10px;cursor:pointer;transition:background .2s"></span>
                 <span id="so-ret-mode-knob" style="position:absolute;height:14px;width:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)"></span>
               </div>
               <span id="so-ret-mode-lbl-line" style="color:#9CA3AF">Por línea</span>
@@ -2572,9 +2572,9 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
 
             <!-- Col 3: TOTAL NETO destacado -->
             <div class="flex flex-col justify-end">
-              <div class="rounded-xl p-3 text-right" style="background:linear-gradient(135deg,#EEF4FF,#F0FBFF);border:1.5px solid #DCE6F8">
-                <p class="text-xs font-bold uppercase tracking-wide mb-1" style="color:#6B7280">Total Neto (CxC)</p>
-                <p id="so-total-net" class="text-2xl font-extrabold" style="color:#1A4B8C">$ 0</p>
+              <div class="rounded-xl p-3 text-right" style="background:#F5F3FF;border:1.5px solid #DDD6FE">
+                <p class="text-xs font-bold uppercase tracking-wide mb-1" style="color:#5B21B6">Total Neto (CxC)</p>
+                <p id="so-total-net" class="text-2xl font-extrabold" style="color:#7C3AED">$ 0</p>
               </div>
             </div>
 
@@ -3396,7 +3396,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
       <td>
         <div class="flex flex-col">
           <div class="flex items-center gap-1.5">
-            <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#1A4B8C;background:#EEF4FF;border-radius:4px;padding:1px 6px">${(window as any).esc(productCode || 'S/C')}</span>
+            <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:1px 6px">${(window as any).esc(productCode || 'S/C')}</span>
             <span class="text-[11px] text-gray-600 truncate" title="${(window as any).esc(productName)}">${(window as any).esc(productName)}</span>
           </div>
           <input type="hidden" id="sol-prod-id-${idx}" value="${(window as any).esc(productId)}">
@@ -3438,7 +3438,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
         <div class="flex flex-col gap-1">
           <input type="number" id="sol-qty-${idx}" class="form-input text-right w-full font-bold" style="font-size:13px" min="0.001" step="0.001" value="${displayQty}" oninput="window.soRecalcLine(${idx})">
           ${isMultiUnitEnabled && hasConversions ? `
-            <select id="sol-unit-${idx}" class="form-input text-right w-full py-0.5 text-xs font-semibold" style="height:24px; color:#1A4B8C; padding: 2px 2px 2px 4px;">
+            <select id="sol-unit-${idx}" class="form-input text-right w-full py-0.5 text-xs font-semibold" style="height:24px; color:#7C3AED; padding: 2px 2px 2px 4px;">
               <option value="M2" ${salesUnit === 'M2' ? 'selected' : ''}>M² (Área)</option>
               <option value="CJ" ${salesUnit === 'CJ' ? 'selected' : ''}>CJ (Cajas)</option>
               <option value="UND" ${salesUnit === 'UND' ? 'selected' : ''}>UND (Fichas)</option>
@@ -3471,7 +3471,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
           </label>
         </div>
       </td>
-      <td class="text-right font-extrabold" style="color:#1A4B8C;font-size:13px" id="sol-total-${idx}">$ 0</td>
+      <td class="text-right font-extrabold" style="color:#7C3AED;font-size:13px" id="sol-total-${idx}">$ 0</td>
       <td class="text-center">
         <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('so-row-${idx}').remove(); window.soRecalcLine(0)"><i class="fas fa-trash"></i></button>
       </td>
@@ -3593,7 +3593,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
             <div class="flex items-center justify-between gap-3">
               <div class="flex flex-col min-w-0">
                 <div class="flex items-center gap-2">
-                  <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#1A4B8C;background:#EEF4FF;border-radius:4px;padding:1px 6px">${(window as any).esc(p.code || 'S/C')}</span>
+                  <span class="text-[11px] font-extrabold flex-shrink-0" style="color:#7C3AED;background:#EDE9FE;border-radius:4px;padding:1px 6px">${(window as any).esc(p.code || 'S/C')}</span>
                   <span class="text-gray-700 truncate">${(window as any).esc(p.name)}</span>
                 </div>
                 <div class="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5">
@@ -3601,7 +3601,7 @@ async function openSalesForm(invoiceId: string | null = null, onDone: any = null
                 </div>
               </div>
               <div class="flex items-center gap-3 flex-shrink-0 text-right">
-                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EEF4FF;color:#1A4B8C">IVA ${p.iva_rate ?? 19}%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" style="background:#EDE9FE;color:#7C3AED">IVA ${p.iva_rate ?? 19}%</span>
                 <span class="font-extrabold text-blue-600 text-xs">${(window as any).fmt(p.sales_price || p.base_price || 0)}</span>
               </div>
             </div>
@@ -5875,7 +5875,9 @@ window.duplicateSalesInvoice = async function(id: string) {
   }
 };
 
+let _isPostingSalesInvoice = false;
 window.contabilizarVenta = function(id: string, number: string, isElectronic: boolean = false) {
+  if (_isPostingSalesInvoice) return;
   const title = isElectronic ? 'Firmar y Contabilizar Factura' : 'Contabilizar Factura de Venta';
   const body = isElectronic
     ? `¿Confirmas la firma y contabilización de la factura de venta <strong>${number}</strong>?<br><br>
@@ -5892,6 +5894,8 @@ window.contabilizarVenta = function(id: string, number: string, isElectronic: bo
     title,
     body,
     async () => {
+      if (_isPostingSalesInvoice) return;
+      _isPostingSalesInvoice = true;
       try {
         const isDianDep = !!(window as any).__soConfig?.operational?.dian_dependent_posting;
         if (isElectronic && isDianDep) {
@@ -5937,6 +5941,8 @@ window.contabilizarVenta = function(id: string, number: string, isElectronic: bo
         }
       } catch (err: any) {
         (window as any).showToast(err.message || 'Error al contabilizar', 'error');
+      } finally {
+        _isPostingSalesInvoice = false;
       }
     }
   );
@@ -6230,12 +6236,14 @@ window.seeSalesTxDetail = function(txId: string) {
 // --- KPI Helper ---
 function salesKpi(label: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="rounded-2xl p-4" style="background:${bg}">
-      <div class="flex items-center gap-2 mb-1">
-        <i class="${icon} text-sm" style="color:${color}"></i>
-        <span class="text-xs font-semibold" style="color:${color}">${label}</span>
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${label}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
+          <i class="${icon}"></i>
+        </div>
       </div>
-      <p class="text-2xl font-extrabold" style="color:${color}">${value}</p>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -6277,13 +6285,13 @@ function salesKpi(label: string, value: any, icon: string, color: string, bg: st
       <div class="anim-slide-up" style="background:#fff;border-radius:20px;width:100%;max-width:1150px;box-shadow:0 25px 60px rgba(0,0,0,.25);overflow:hidden;display:flex;flex-direction:column;max-height:90vh">
         <div class="flex items-center justify-between px-6 py-4 border-b" style="background:#F8FAFC;border-color:#E2E8F0">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-blue-700 font-bold" style="background:#EEF4FF">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-purple-700 font-bold" style="background:#EDE9FE">
               <i class="fas fa-boxes-stacked text-lg"></i>
             </div>
             <div>
               <h3 class="font-extrabold text-gray-800 text-base m-0 flex items-center gap-2">
                 Consulta de Inventario Activo por Bodegas
-                <span class="badge badge-blue text-[10px] px-2 py-0.5 rounded-full font-extrabold">${products.length} Productos</span>
+                <span class="badge badge-purple text-[10px] px-2 py-0.5 rounded-full font-extrabold">${products.length} Productos</span>
               </h3>
               <p class="text-xs text-gray-500 m-0">Existencias físicas cruzadas y disponibilidad en tiempo real por cada bodega</p>
             </div>

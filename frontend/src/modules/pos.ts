@@ -251,7 +251,7 @@ async function openPromotionFormModal(promoIdx: number | null = null) {
 
         <div class="form-group flex items-end">
           <label class="inline-flex items-center gap-2 cursor-pointer font-bold mt-3">
-            <input type="checkbox" id="promo-active-inp" class="rounded text-[#7F7CFF] focus:ring-[#7F7CFF]" ${promo.active ? 'checked' : ''}>
+            <input type="checkbox" id="promo-active-inp" class="rounded text-[#7C3AED] focus:ring-[#7C3AED]" ${promo.active ? 'checked' : ''}>
             <span>Promoción Activa</span>
           </label>
         </div>
@@ -925,13 +925,13 @@ export async function renderPOS(container: HTMLElement) {
         <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Promociones y Ofertas" onclick="window.openPOSPromotionsModal()" style="color:#10B981;border-color:#10B981">
           <i class="fas fa-tags mr-1"></i> Promociones
         </button>
-        <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal()" style="color:#7F7CFF;border-color:#7F7CFF">
+        <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal()" style="color:#7C3AED;border-color:#DDD6FE">
           <i class="fas fa-cog mr-1"></i> Config. POS
         </button>
       </div>` : ''}
       <div id="pos-shift-container" class="flex-grow flex flex-col justify-center items-center py-12">
         <div class="text-center" style="color:#374151">
-          <i class="fas fa-spinner fa-spin text-4xl mb-4" style="color:#7F7CFF"></i>
+          <i class="fas fa-spinner fa-spin text-4xl mb-4" style="color:#7C3AED"></i>
           <p class="text-sm" style="color:#6B7280">Verificando estado del turno de caja...</p>
         </div>
       </div>
@@ -1373,14 +1373,14 @@ window.loadPOSInterface = async function() {
                 <i class="fas fa-pause"></i>Espera <kbd class="bg-emerald-100 text-emerald-800 text-[8px] font-mono px-1 rounded">F8</kbd>
                 <span id="pos-held-count-badge" class="px-1.5 py-0.2 text-[9px] bg-emerald-600 text-white rounded-full font-extrabold">${getPOSHeldCarts().length}</span>
               </button>
-              <button class="btn btn-outline btn-sm" onclick="window.posLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#7F7CFF; color:#7F7CFF">
+              <button class="btn btn-outline btn-sm" onclick="window.posLoadPendingOrderModal()" title="Cargar Pedido de Venta" style="border-color:#DDD6FE; color:#7C3AED">
                 <i class="fas fa-file-import mr-1"></i>Pedido
               </button>
               ${['admin','administrador','contador','superadmin'].includes((window as any).pb.currentUser?.role) ? `
               <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Promociones y Ofertas" onclick="window.openPOSPromotionsModal()" style="color:#10B981;border-color:#10B981">
                 <i class="fas fa-tags"></i>
               </button>
-              <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7F7CFF;border-color:#7F7CFF">
+              <button class="btn btn-outline btn-sm cursor-pointer rounded-lg" title="Configuración POS" onclick="window.openPOSSettingsModal(window.loadPOSInterface)" style="color:#7C3AED;border-color:#DDD6FE">
                 <i class="fas fa-cog"></i>
               </button>` : ''}
 
@@ -3438,8 +3438,8 @@ window.selectPosPayMethod = function(method: string) {
   btns.forEach(btn => {
     const active = btn.getAttribute('data-pos-method') === method;
     btn.classList.toggle('active', active);
-    (btn as HTMLButtonElement).style.borderColor = active ? '#1A4B8C' : '#E5E7EB';
-    (btn as HTMLButtonElement).style.background = active ? '#EEF4FF' : '#fff';
+    (btn as HTMLButtonElement).style.borderColor = active ? '#7C3AED' : '#E5E7EB';
+    (btn as HTMLButtonElement).style.background = active ? '#F5F3FF' : '#fff';
   });
 
   const cashSec = document.getElementById('pos-pay-cash-sec');

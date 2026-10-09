@@ -187,5 +187,39 @@ onBootstrap((e) => {
     console.log('[GRAVY-PATCH] Aviso al actualizar reglas de audit_log: ' + err);
   }
 
+  // Parche para reglas de visibilidad por sede (permitir registros transversales sin sede / corporativos como ajustes bancarios)
+  const branchScopedReadRule = "(@request.auth.id != '') && (@request.auth.allowed_branches.id = '' || @request.auth.allowed_branches.id ?= branch_id || branch_id = '' || branch_id = null)";
+  const branchCollections = [
+    'transactions',
+    'tx_lines',
+    'invoices',
+    'purchase_invoices',
+    'inventory_movements',
+    'payroll_periods',
+    'pos_registers',
+    'pos_shifts',
+    'sales_orders'
+  ];
+  for (const colName of branchCollections) {
+    try {
+      const col = $app.findCollectionByNameOrId(colName);
+      let changed = false;
+      if (col.listRule !== branchScopedReadRule) {
+        col.listRule = branchScopedReadRule;
+        changed = true;
+      }
+      if (col.viewRule !== branchScopedReadRule) {
+        col.viewRule = branchScopedReadRule;
+        changed = true;
+      }
+      if (changed) {
+        $app.save(col);
+        console.log('[GRAVY-PATCH] Reglas de visibilidad por sede actualizadas para: ' + colName);
+      }
+    } catch (err) {
+      console.log('[GRAVY-PATCH] Aviso visibilidad sede (' + colName + '): ' + err);
+    }
+  }
+
   console.log('[GRAVY-PATCH] patch_collection_rules completado.');
 });

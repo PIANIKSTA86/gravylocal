@@ -85,10 +85,10 @@ function _repaintCrmScreen(c: HTMLElement, deals: Deal[], clients: any[]) {
 
     <!-- KPIs -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${_crmKpi('Valor del Pipeline',   (window as any).fmt(totalValue), 'fas fa-funnel-dollar', '#1A4B8C', '#EEF4FF')}
-      ${_crmKpi('Oportunidades Activas', activeCount,                   'fas fa-clock',         '#C46516', '#FFF8F0')}
-      ${_crmKpi('Cierres Exitosos',     (window as any).fmt(wonValue),   'fas fa-coins',         '#059669', '#ECFDF5')}
-      ${_crmKpi('Tasa de Conversión',   `${conversionRate}%`,            'fas fa-chart-line',    '#7C3AED', '#F5F3FF')}
+      ${_crmKpi('Valor del Pipeline',   (window as any).fmt(totalValue), 'fas fa-funnel-dollar', '#7C3AED', '#EDE9FE')}
+      ${_crmKpi('Oportunidades Activas', activeCount,                   'fas fa-clock',         '#D97706', '#FEF3C7')}
+      ${_crmKpi('Cierres Exitosos',     (window as any).fmt(wonValue),   'fas fa-coins',         '#059669', '#DCFCE7')}
+      ${_crmKpi('Tasa de Conversión',   `${conversionRate}%`,            'fas fa-chart-line',    '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros -->
@@ -186,16 +186,14 @@ function _repaintCrmScreen(c: HTMLElement, deals: Deal[], clients: any[]) {
 
 function _crmKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card" style="background:#fff; border: 1.5px solid #E5E7EB; border-radius:18px; padding: 16px;">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color}; background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }

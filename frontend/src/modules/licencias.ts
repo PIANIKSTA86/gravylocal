@@ -28,7 +28,7 @@ async function renderLicencias(container: HTMLElement): Promise<void> {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
       <div>
         <h2 style="font-size:20px;font-weight:800;color:#0B1635;margin-bottom:4px">
-          <i class="fas fa-key mr-2" style="color:#7F7CFF"></i>Licencias y Módulos
+          <i class="fas fa-key mr-2" style="color:#7C3AED"></i>Licencias y Módulos
         </h2>
         <p style="font-size:13px;color:#61708F">
           Activa o desactiva los módulos disponibles en esta instalación de GRAVY.
@@ -106,7 +106,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     nomina: {
       label:       'Nómina',
       icon:        'fa-id-card',
-      color:       '#7F7CFF',
+      color:       '#7C3AED',
       description: 'Liquidación de nómina, prestaciones sociales, aportes parafiscales.',
       pages:       ['Nómina', 'Liquidaciones', 'Nómina Electrónica'],
     },
@@ -176,7 +176,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
     niif: {
       label:       'Normas Internacionales NIIF',
       icon:        'fa-calculator',
-      color:       '#7F7CFF',
+      color:       '#7C3AED',
       description: 'Gestión NIIF: políticas contables, arrendamientos NIIF 16 y estados financieros comparativos.',
       pages:       ['Gestión NIIF (IFRS)'],
     },
@@ -235,7 +235,7 @@ async function _loadLicenciasData(container: HTMLElement): Promise<void> {
       const expires = lic?.expires_at || null;
 
       const planColors: Record<string, string> = {
-        trial: '#F59E0B', mensual: '#2446B8', anual: '#10B981', perpetua: '#7F7CFF',
+        trial: '#F59E0B', mensual: '#2446B8', anual: '#10B981', perpetua: '#7C3AED',
       };
 
       return `

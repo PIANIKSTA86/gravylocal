@@ -491,10 +491,10 @@ function _loadPreliquidacionesView(container: HTMLElement, sims: any[]) {
 
     <!-- KPIs de Simulaciones -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${_renderKpi('Total Simulaciones', totalSims, 'fas fa-folder-open', '#1E40AF', '#EFF6FF')}
+      ${_renderKpi('Total Simulaciones', totalSims, 'fas fa-folder-open', '#7C3AED', '#EDE9FE')}
       ${_renderKpi('En Estudio', studySims, 'fas fa-chart-pie', '#D97706', '#FEF3C7')}
-      ${_renderKpi('Aprobadas / Viables', approvedSims, 'fas fa-circle-check', '#059669', '#ECFDF5')}
-      ${_renderKpi('Modelo de Referencia', 'muestra_preliq.xlsx', 'fas fa-file-invoice-dollar', '#7C3AED', '#F5F3FF')}
+      ${_renderKpi('Aprobadas / Viables', approvedSims, 'fas fa-circle-check', '#059669', '#DCFCE7')}
+      ${_renderKpi('Modelo de Referencia', 'muestra_preliq.xlsx', 'fas fa-file-invoice-dollar', '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Filtros de Búsqueda -->
@@ -577,16 +577,14 @@ function _loadPreliquidacionesView(container: HTMLElement, sims: any[]) {
 
 function _renderKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card" style="background:#fff;border-color:#E2E8F0">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-[11px] uppercase font-bold tracking-wider text-slate-500">${title}</span>
-          <h4 class="text-xl font-extrabold mt-0.5 text-slate-900">${value}</h4>
-        </div>
-        <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm" style="color:${color};background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }

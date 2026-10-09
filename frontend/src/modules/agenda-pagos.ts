@@ -121,30 +121,30 @@ interface AgendaRecord {
 
           <!-- Tarjetas KPI -->
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px">
-            <div class="stat-card blue" style="border-left: 4px solid #10B981">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Cobros Proyectados (CXC)</div>
+            <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Cobros Proyectados (CXC)</div>
               <div id="kpi-total-cxc" style="font-size:22px; font-weight:800; color:#059669; margin-top:6px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Cartera de clientes por recaudar</p>
+              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Cartera de clientes por recaudar</p>
             </div>
-            <div class="stat-card orange" style="border-left: 4px solid #F97316">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">CXP Proveedores</div>
+            <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">CXP Proveedores</div>
               <div id="kpi-total-cxp" style="font-size:22px; font-weight:800; color:#EA580C; margin-top:6px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Locales e Importaciones</p>
+              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Locales e Importaciones</p>
             </div>
-            <div class="stat-card purple" style="border-left: 4px solid #8B5CF6">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Impuestos & DIAN</div>
+            <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Impuestos & DIAN</div>
               <div id="kpi-total-dian" style="font-size:22px; font-weight:800; color:#7C3AED; margin-top:6px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Compromisos fiscales</p>
+              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Compromisos fiscales</p>
             </div>
-            <div class="stat-card red" style="border-left: 4px solid #EF4444">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Total Vencido</div>
+            <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Total Vencido</div>
               <div id="kpi-total-vencido" style="font-size:22px; font-weight:800; color:#DC2626; margin-top:6px">$0</div>
               <p style="color:#DC2626; font-size:11px; margin-top:4px">Obligaciones fuera de plazo</p>
             </div>
-            <div class="stat-card green" style="border-left: 4px solid #2563EB">
-              <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Flujo Neto Estimado</div>
-              <div id="kpi-total-neto" style="font-size:22px; font-weight:800; color:#1D4ED8; margin-top:6px">$0</div>
-              <p style="color:var(--text-muted); font-size:11px; margin-top:4px">Ingresos (CXC) - Egresos (CXP)</p>
+            <div class="stat-card" style="background:#F5F3FF;border:1.5px solid #7C3AED;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+              <div style="color:#5B21B6; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px">Flujo Neto Estimado</div>
+              <div id="kpi-total-neto" style="font-size:22px; font-weight:800; color:#1E1B4B; margin-top:6px">$0</div>
+              <p style="color:#6D28D9; font-size:11px; margin-top:4px; opacity:0.8">Ingresos (CXC) - Egresos (CXP)</p>
             </div>
           </div>
 

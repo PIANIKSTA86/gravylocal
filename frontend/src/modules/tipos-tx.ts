@@ -27,8 +27,8 @@ async function renderTiposTx(c) {
           <tr>
             ${idx === 0
               ? `<td rowspan="${series.length}" style="vertical-align:middle;background:#F8FAFC">
-                   <span class="font-bold" style="color:#1A4B8C">${esc(code)}</span>
-                   ${multiSerie ? `<span class="badge ml-1" style="background:#EFF6FF;color:#1A4B8C;font-size:10px">${series.length} series</span>` : ''}
+                   <span class="font-bold" style="color:#7C3AED">${esc(code)}</span>
+                   ${multiSerie ? `<span class="badge ml-1" style="background:#EDE9FE;color:#7C3AED;font-size:10px">${series.length} series</span>` : ''}
                  </td>`
               : ''}
             <td>
@@ -41,7 +41,7 @@ async function renderTiposTx(c) {
             <td>
               <div class="flex gap-2">
                 ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Editar serie" onclick="editTxType('${esc(r.id)}')"><i class="fas fa-pen"></i></button>` : ''}
-                ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Nueva serie con mismo código" style="border-color:#1A4B8C;color:#1A4B8C" onclick="openTxTypeForm(null,'${esc(code)}')"><i class="fas fa-code-branch"></i></button>` : ''}
+                ${can('canWrite') ? `<button class="btn btn-outline btn-sm" title="Nueva serie con mismo código" style="border-color:#7C3AED;color:#7C3AED" onclick="openTxTypeForm(null,'${esc(code)}')"><i class="fas fa-code-branch"></i></button>` : ''}
                 ${can('canDelete') ? `<button class="btn btn-danger btn-sm" title="${r.active ? 'Inactivar' : 'Reactivar'}" onclick="toggleTxType('${esc(r.id)}', ${r.active ? 'false' : 'true'})"><i class="fas ${r.active ? 'fa-ban' : 'fa-rotate-left'}"></i></button>` : ''}
                 ${['superadmin', 'admin', 'administrador'].includes(pb.currentUser?.role || '') ? `<button class="btn btn-danger btn-sm bg-red-600 hover:bg-red-700 text-white" title="Eliminar definitivamente" onclick="deleteTxType('${esc(r.id)}')"><i class="fas fa-trash"></i></button>` : ''}
               </div>

@@ -344,7 +344,7 @@ async function openUserForm(row = null) {
       <!-- PERMISOS AVANZADOS -->
       <div class="form-group md:col-span-2">
         <div class="rounded-xl border p-4" style="background:#F8FAFC;border-color:#E5E7EB">
-          <p class="text-xs font-bold mb-3 uppercase tracking-wide" style="color:#6B7280;"><i class="fas fa-shield-halved mr-1.5" style="color:#7F7CFF"></i>Permisos Avanzados</p>
+          <p class="text-xs font-bold mb-3 uppercase tracking-wide" style="color:#6B7280;"><i class="fas fa-shield-halved mr-1.5" style="color:#7C3AED"></i>Permisos Avanzados</p>
           <div class="flex flex-col gap-2">
             <label class="inline-flex items-center gap-2.5 text-sm cursor-pointer select-none" style="color:#374151">
               <input type="checkbox" id="uf-can-edit-docs" class="w-4 h-4 rounded" ${(row?.can_edit_docs === true || (row?.can_edit_docs === undefined && ['superadmin','admin','contador'].includes(row?.role || 'viewer'))) ? 'checked' : ''}>

@@ -262,6 +262,9 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
     } catch (_) {}
 
     // 5. Flujos mensuales Ingresos (Clase 4) y Gastos/Costos (Clases 5, 6, 7) — últimos 12 meses
+    const bAdvisorJoin = advisorId ? " LEFT JOIN third_parties tp_adv ON tp_adv.id = COALESCE(NULLIF(TRIM(l.third_party_id), ''), t.third_party_id) " : "";
+    const bAdvisorWhere = advisorId ? " AND (tp_adv.advisor = {:advisorId} OR t.third_party_id = {:advisorId} OR l.third_party_id = {:advisorId}) " : "";
+
     const monthlySql = `
       SELECT
         strftime('%Y-%m', t.date) AS month,
@@ -270,13 +273,15 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
                  THEN (l.debit - l.credit) ELSE 0 END) AS expense
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
-      INNER JOIN transactions t ON t.id = l.tx_id
-      WHERE t.status = 'active' AND t.date >= {:startDate} AND t.date <= {:endDate}` + bBranch + `
+      INNER JOIN transactions t ON t.id = l.tx_id `
+      + bAdvisorJoin + `
+      WHERE t.status = 'active' AND t.date >= {:startDate} AND t.date <= {:endDate}` + bBranch + bAdvisorWhere + `
       GROUP BY strftime('%Y-%m', t.date)
     `;
     const monthlyQuery = $app.db().newQuery(monthlySql);
     const bindMonthly = { startDate: startDate12, endDate };
     if (branchId) bindMonthly.branchId = branchId;
+    if (advisorId) bindMonthly.advisorId = advisorId;
     const monthlyData = arrayOf(new DynamicModel({ month: "", revenue: -0, expense: -0 }));
     monthlyQuery.bind(bindMonthly).all(monthlyData);
 
@@ -313,13 +318,15 @@ routerAdd("GET", "/api/gravy/dashboard-summary", (e) => {
                  THEN (l.debit - l.credit) ELSE 0 END) AS expense
       FROM tx_lines l
       INNER JOIN accounts a ON a.id = l.account_id
-      INNER JOIN transactions t ON t.id = l.tx_id
-      WHERE t.status = 'active' AND t.date >= {:start} AND t.date <= {:end}` + bBranch + `
+      INNER JOIN transactions t ON t.id = l.tx_id `
+      + bAdvisorJoin + `
+      WHERE t.status = 'active' AND t.date >= {:start} AND t.date <= {:end}` + bBranch + bAdvisorWhere + `
       GROUP BY strftime('%d', t.date)
     `;
     const dailyQuery = $app.db().newQuery(dailySql);
     const bindDaily = { start: currentMonthStart, end: currentMonthEnd };
     if (branchId) bindDaily.branchId = branchId;
+    if (advisorId) bindDaily.advisorId = advisorId;
     const dailyData = arrayOf(new DynamicModel({ day: "", revenue: -0, expense: -0 }));
     dailyQuery.bind(bindDaily).all(dailyData);
 

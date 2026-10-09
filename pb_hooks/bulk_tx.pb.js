@@ -94,9 +94,101 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
     return e.json(400, { message: "Se requieren al menos 2 líneas contables en 'lines'." });
   }
 
+  // ─── 3b. IDEMPOTENCIA PURA: Verificación de clave de idempotencia ──────────
+  const idempotencyKey = String(body.idempotency_key || txData.idempotency_key || "").trim();
+  if (idempotencyKey) {
+    globalThis.__txIdempotencyStore = globalThis.__txIdempotencyStore || {};
+    const now = Date.now();
+    // Limpiar claves antiguas (> 15 minutos)
+    for (const k in globalThis.__txIdempotencyStore) {
+      if (now - (globalThis.__txIdempotencyStore[k].time || 0) > 15 * 60 * 1000) {
+        delete globalThis.__txIdempotencyStore[k];
+      }
+    }
+    const cached = globalThis.__txIdempotencyStore[idempotencyKey];
+    if (cached && cached.data) {
+      return e.json(200, Object.assign({}, cached.data, { _idempotent: true }));
+    }
+  }
+
+  // ─── 3c. IDEMPOTENCIA POR DOCUMENTO DE CRUCE: Prevenir duplicados de factura ──
+  const crossType = String(txData.cross_type || "").trim();
+  const crossNum = String(txData.cross_number || "").trim();
+  const explicitTxId = String(txData.id || "").trim();
+
+  if (crossType && crossNum && !explicitTxId) {
+    try {
+      const existingCross = $app.findFirstRecordByFilter(
+        "transactions",
+        "cross_type = '" + crossType.replace(/'/g, "''") + "' && cross_number = '" + crossNum.replace(/'/g, "''") + "' && status != 'voided'"
+      );
+      if (existingCross) {
+        const existingResult = {
+          id: existingCross.id,
+          number: existingCross.getString("number"),
+          date: existingCross.getString("date"),
+          description: existingCross.getString("description"),
+          status: existingCross.getString("status"),
+          tx_type_id: existingCross.getString("tx_type_id"),
+          branch_id: existingCross.getString("branch_id") || null,
+          lines_count: lines.length,
+          _idempotent: true,
+          _cross_matched: true
+        };
+        if (idempotencyKey) {
+          globalThis.__txIdempotencyStore[idempotencyKey] = { time: Date.now(), data: existingResult };
+        }
+        return e.json(200, existingResult);
+      }
+    } catch (_) {}
+  }
+
+  // ─── 3d. IN-FLIGHT MUTEX: Evitar duplicados por doble clic simultáneo ────────
+  const inFlightLockKey = idempotencyKey || (crossType && crossNum ? (crossType + "::" + crossNum) : "");
+  if (inFlightLockKey) {
+    globalThis.__txInFlight = globalThis.__txInFlight || {};
+    let waitLoops = 0;
+    while (globalThis.__txInFlight[inFlightLockKey] && waitLoops < 30) {
+      if (typeof sleep === "function") {
+        sleep(150);
+      }
+      waitLoops++;
+      if (idempotencyKey && globalThis.__txIdempotencyStore && globalThis.__txIdempotencyStore[idempotencyKey]?.data) {
+        return e.json(200, Object.assign({}, globalThis.__txIdempotencyStore[idempotencyKey].data, { _idempotent: true }));
+      }
+      if (crossType && crossNum && !explicitTxId) {
+        try {
+          const found = $app.findFirstRecordByFilter(
+            "transactions",
+            "cross_type = '" + crossType.replace(/'/g, "''") + "' && cross_number = '" + crossNum.replace(/'/g, "''") + "' && status != 'voided'"
+          );
+          if (found) {
+            const foundResult = {
+              id: found.id,
+              number: found.getString("number"),
+              date: found.getString("date"),
+              description: found.getString("description"),
+              status: found.getString("status"),
+              tx_type_id: found.getString("tx_type_id"),
+              branch_id: found.getString("branch_id") || null,
+              lines_count: lines.length,
+              _idempotent: true,
+              _cross_matched: true
+            };
+            if (idempotencyKey) {
+              globalThis.__txIdempotencyStore = globalThis.__txIdempotencyStore || {};
+              globalThis.__txIdempotencyStore[idempotencyKey] = { time: Date.now(), data: foundResult };
+            }
+            return e.json(200, foundResult);
+          }
+        } catch (_) {}
+      }
+    }
+    globalThis.__txInFlight[inFlightLockKey] = Date.now();
+  }
+
   // ─── 4. Validaciones básicas de txData ─────────────────────────────────────
   let txRecPre = null;
-  const explicitTxId = String(txData.id || "").trim();
   if (explicitTxId) {
     try {
       txRecPre = $app.findRecordById("transactions", explicitTxId);
@@ -445,8 +537,20 @@ routerAdd("POST", "/api/gravy/bulk-tx", (e) => {
     return e.json(isValidationError ? 400 : 500, {
       message: "Error al crear la transacción: " + msg,
     });
+  } finally {
+    if (inFlightLockKey && globalThis.__txInFlight) {
+      delete globalThis.__txInFlight[inFlightLockKey];
+    }
   }
 
-  // ─── 7. Respuesta exitosa ───────────────────────────────────────────────────
+  // ─── 7. Respuesta exitosa con Idempotencia ────────────────────────────────
+  if (idempotencyKey && createdTx) {
+    globalThis.__txIdempotencyStore = globalThis.__txIdempotencyStore || {};
+    globalThis.__txIdempotencyStore[idempotencyKey] = {
+      time: Date.now(),
+      data: createdTx
+    };
+  }
+
   return e.json(200, createdTx);
 });

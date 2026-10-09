@@ -502,7 +502,7 @@ function showLockedModulePage(page: string, requiredModule: string, container?: 
         display:flex;align-items:center;justify-content:center;
         box-shadow:0 0 40px rgba(127,124,255,.15);
         animation:fadeIn .5s ease">
-        <i class="fas fa-lock" style="font-size:34px;color:#7F7CFF"></i>
+        <i class="fas fa-lock" style="font-size:34px;color:#7C3AED"></i>
       </div>
       <div style="max-width:440px">
         <h2 style="font-size:22px;font-weight:800;color:#0B1635;margin-bottom:10px">
@@ -512,7 +512,7 @@ function showLockedModulePage(page: string, requiredModule: string, container?: 
           <strong style="color:#374151">${esc(pageTitle)}</strong> requiere el módulo
           <span style="
             display:inline-block;padding:2px 12px;border-radius:20px;
-            background:#EEF4FF;color:#2446B8;font-weight:700;font-size:12px;
+            background:#EDE9FE;color:#7C3AED;font-weight:700;font-size:12px;
             margin:0 4px">${esc(moduleLabel)}</span>
           que no está habilitado en tu licencia actual.
         </p>

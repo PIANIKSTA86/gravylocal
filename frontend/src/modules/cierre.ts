@@ -72,22 +72,25 @@ async function renderCierre(c) {
 
       <!-- Resumen del Periodo actual -->
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-        <div class="rounded-2xl p-4 border" style="background:#F0F7FF;border-color:#BFDBFE">
-          <div class="text-xs font-medium mb-1" style="color:#1D4ED8">Periodo Actual</div>
-          <div class="text-lg font-bold" style="color:#1A4B8C">${currentKey}</div>
-          <div class="mt-1">${statusBadge(isCurrentClosed)}</div>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <div class="text-[11px] font-bold uppercase tracking-wider mb-1" style="color:#5B21B6">Periodo Actual</div>
+          <div class="text-xl font-extrabold text-purple-950">${currentKey}</div>
+          <div class="mt-2">${statusBadge(isCurrentClosed)}</div>
         </div>
-        <div class="rounded-2xl p-4 border" style="background:#F0FFF4;border-color:#BBF7D0">
-          <div class="text-xs font-medium mb-1" style="color:#15803D">Total Ingresos (Cl.4)</div>
-          <div class="text-lg font-bold" style="color:#15803D">${fmt(ingresos)}</div>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <div class="text-[11px] font-bold uppercase tracking-wider mb-1" style="color:#5B21B6">Total Ingresos (Cl.4)</div>
+          <div class="text-xl font-extrabold text-emerald-700">${fmt(ingresos)}</div>
+          <div class="text-[11px] text-emerald-600 mt-2 font-medium">Clase 4 facturada</div>
         </div>
-        <div class="rounded-2xl p-4 border" style="background:#FEF2F2;border-color:#FECACA">
-          <div class="text-xs font-medium mb-1" style="color:#B91C1C">Total Gastos (Cl.5/6/7)</div>
-          <div class="text-lg font-bold" style="color:#B91C1C">${fmt(gastos)}</div>
+        <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <div class="text-[11px] font-bold uppercase tracking-wider mb-1" style="color:#5B21B6">Total Gastos (Cl.5/6/7)</div>
+          <div class="text-xl font-extrabold text-red-600">${fmt(gastos)}</div>
+          <div class="text-[11px] text-red-500 mt-2 font-medium">Costos y egresos causados</div>
         </div>
-        <div class="rounded-2xl p-4 border" style="${utilidad >= 0 ? 'background:#F0FFF4;border-color:#BBF7D0' : 'background:#FEF2F2;border-color:#FECACA'}">
-          <div class="text-xs font-medium mb-1" style="color:${utilidad >= 0 ? '#15803D' : '#B91C1C'}">${utilidad >= 0 ? 'Utilidad' : 'Perdida'} del Periodo</div>
-          <div class="text-lg font-bold" style="color:${utilidad >= 0 ? '#15803D' : '#B91C1C'}">${fmt(Math.abs(utilidad))}</div>
+        <div class="stat-card" style="background:#F5F3FF;border:1.5px solid ${utilidad >= 0 ? '#7C3AED' : '#DC2626'};border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04)">
+          <div class="text-[11px] font-bold uppercase tracking-wider mb-1" style="color:#5B21B6">${utilidad >= 0 ? 'Utilidad' : 'Pérdida'} del Periodo</div>
+          <div class="text-xl font-extrabold ${utilidad >= 0 ? 'text-purple-950' : 'text-red-600'}">${fmt(Math.abs(utilidad))}</div>
+          <div class="text-[11px] ${utilidad >= 0 ? 'text-purple-700' : 'text-red-500'} mt-2 font-bold">${utilidad >= 0 ? 'Resultado positivo' : 'Déficit del período'}</div>
         </div>
       </div>
 
@@ -482,10 +485,10 @@ function openEnablePeriodForm(periodos) {
   const now = new Date();
   const defaultKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,'0')}`;
   openModal(
-    '<i class="fas fa-calendar-plus mr-2" style="color:#1A4B8C"></i>Habilitar Período',
+    '<i class="fas fa-calendar-plus mr-2" style="color:#7C3AED"></i>Habilitar Período',
     `<div class="space-y-4">
-      <div class="p-4 rounded-xl border" style="background:#EFF6FF;border-color:#BFDBFE">
-        <p class="text-sm font-semibold" style="color:#1D4ED8"><i class="fas fa-info-circle mr-2"></i>¿Qué significa habilitar un período?</p>
+      <div class="p-4 rounded-xl border" style="background:#F5F3FF;border-color:#DDD6FE">
+        <p class="text-sm font-semibold" style="color:#5B21B6"><i class="fas fa-info-circle mr-2"></i>¿Qué significa habilitar un período?</p>
         <p class="text-sm mt-1" style="color:#374151">Solo los períodos habilitados permiten registrar transacciones. Esto evita digitaciones accidentales en fechas pasadas o futuras no autorizadas.</p>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

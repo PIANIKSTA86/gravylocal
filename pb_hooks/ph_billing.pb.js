@@ -705,60 +705,89 @@ routerAdd("POST", "/api/ph/post-period", (e) => {
           continue;
         }
 
-        // Crear Comprobante Contable CF
-        const txRec = new Record(txCollection);
-        txRec.set("tx_type_id", cfType.id);
-        txRec.set("number", invNumber);
-        txRec.set("date", invDate);
-        txRec.set("description", `Causación cuota de administración ${period} - Unidad ${propInfo.code || ""} (${propInfo.name || ""})`);
-        txRec.set("third_party_id", ownerId);
-        txRec.set("status", "active");
-        txApp.save(txRec);
-
-        // Líneas Débito a Cartera por Concepto (CxC 13)
-        for (const ln of invLines) {
-          const lnAmt = Number(ln.amount || 0);
-          if (lnAmt <= 0) continue;
-          const cCode = resolveLineConceptCode(ln);
-          const refConcepto = `${invNumber}-${cCode}`;
-
-          const debitLine = new Record(txLinesCollection);
-          debitLine.set("tx_id", txRec.id);
-          debitLine.set("account_id", cxcAcc.id);
-          debitLine.set("third_party_id", ownerId);
-          debitLine.set("description", `Factura ${invNumber} [${cCode}] - ${period} - Unidad ${propInfo.code || ""}`);
-          debitLine.set("debit", lnAmt);
-          debitLine.set("credit", 0);
-          debitLine.set("cross_doc_ref", refConcepto);
-          txApp.save(debitLine);
+        // IDEMPOTENCIA PURA: Verificar si la factura ya tiene un comprobante existente o ya está contabilizada
+        let txRec = null;
+        const existingTxId = inv.getString("tx_id");
+        if (existingTxId) {
+          try { txRec = txApp.findRecordById("transactions", existingTxId); } catch (_) {}
+        }
+        if (!txRec) {
+          try {
+            txRec = txApp.findFirstRecordByFilter(
+              "transactions",
+              "tx_type_id = '" + cfType.id + "' && number = '" + invNumber.replace(/'/g, "''") + "' && status != 'voided'"
+            );
+          } catch (_) {}
+        }
+        if (!txRec) {
+          try {
+            txRec = txApp.findFirstRecordByFilter(
+              "transactions",
+              "cross_type = 'ph_invoices' && cross_number = '" + invNumber.replace(/'/g, "''") + "' && status != 'voided'"
+            );
+          } catch (_) {}
         }
 
-        // Líneas Crédito por Concepto (Ingreso 4)
-        for (const ln of invLines) {
-          const lnAmt = Number(ln.amount || 0);
-          if (lnAmt <= 0) continue;
+        if (!txRec) {
+          // Crear Comprobante Contable CF solo si no existe previamente
+          txRec = new Record(txCollection);
+          txRec.set("tx_type_id", cfType.id);
+          txRec.set("number", invNumber);
+          txRec.set("date", invDate);
+          txRec.set("description", `Causación cuota de administración ${period} - Unidad ${propInfo.code || ""} (${propInfo.name || ""})`);
+          txRec.set("third_party_id", ownerId);
+          txRec.set("status", "active");
+          txRec.set("cross_enabled", true);
+          txRec.set("cross_type", "ph_invoices");
+          txRec.set("cross_number", invNumber);
+          txRec.set("cross_amount", invTotal);
+          txApp.save(txRec);
 
-          let targetAccId = "";
-          if (ln.concept_id && conceptAccIdMap[ln.concept_id]) {
-            targetAccId = conceptAccIdMap[ln.concept_id];
+          // Líneas Débito a Cartera por Concepto (CxC 13)
+          for (const ln of invLines) {
+            const lnAmt = Number(ln.amount || 0);
+            if (lnAmt <= 0) continue;
+            const cCode = resolveLineConceptCode(ln);
+            const refConcepto = `${invNumber}-${cCode}`;
+
+            const debitLine = new Record(txLinesCollection);
+            debitLine.set("tx_id", txRec.id);
+            debitLine.set("account_id", cxcAcc.id);
+            debitLine.set("third_party_id", ownerId);
+            debitLine.set("description", `Factura ${invNumber} [${cCode}] - ${period} - Unidad ${propInfo.code || ""}`);
+            debitLine.set("debit", lnAmt);
+            debitLine.set("credit", 0);
+            debitLine.set("cross_doc_ref", refConcepto);
+            txApp.save(debitLine);
           }
-          if (!targetAccId) {
-            const isMora = String(ln.description || "").toLowerCase().includes("mora");
-            targetAccId = isMora && lateFeeIncomeAcc ? lateFeeIncomeAcc.id : (defaultIncomeAcc ? defaultIncomeAcc.id : cxcAcc.id);
+
+          // Líneas Crédito por Concepto (Ingreso 4)
+          for (const ln of invLines) {
+            const lnAmt = Number(ln.amount || 0);
+            if (lnAmt <= 0) continue;
+
+            let targetAccId = "";
+            if (ln.concept_id && conceptAccIdMap[ln.concept_id]) {
+              targetAccId = conceptAccIdMap[ln.concept_id];
+            }
+            if (!targetAccId) {
+              const isMora = String(ln.description || "").toLowerCase().includes("mora");
+              targetAccId = isMora && lateFeeIncomeAcc ? lateFeeIncomeAcc.id : (defaultIncomeAcc ? defaultIncomeAcc.id : cxcAcc.id);
+            }
+
+            const cCode = resolveLineConceptCode(ln);
+            const refConcepto = `${invNumber}-${cCode}`;
+
+            const creditLine = new Record(txLinesCollection);
+            creditLine.set("tx_id", txRec.id);
+            creditLine.set("account_id", targetAccId);
+            creditLine.set("third_party_id", ownerId);
+            creditLine.set("description", `${ln.description || "Cuota administración"} - Factura ${invNumber}`);
+            creditLine.set("debit", 0);
+            creditLine.set("credit", lnAmt);
+            creditLine.set("cross_doc_ref", refConcepto);
+            txApp.save(creditLine);
           }
-
-          const cCode = resolveLineConceptCode(ln);
-          const refConcepto = `${invNumber}-${cCode}`;
-
-          const creditLine = new Record(txLinesCollection);
-          creditLine.set("tx_id", txRec.id);
-          creditLine.set("account_id", targetAccId);
-          creditLine.set("third_party_id", ownerId);
-          creditLine.set("description", `${ln.description || "Cuota administración"} - Factura ${invNumber}`);
-          creditLine.set("debit", 0);
-          creditLine.set("credit", lnAmt);
-          creditLine.set("cross_doc_ref", refConcepto);
-          txApp.save(creditLine);
         }
 
         // Actualizar estado de la factura a 'posted' y vincular tx_id

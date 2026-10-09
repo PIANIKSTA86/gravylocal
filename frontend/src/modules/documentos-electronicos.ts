@@ -99,12 +99,12 @@ async function loadCdePage(c: HTMLElement) {
 
     <!-- KPIs -->
     <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
-      ${cdeKpi('Total Documentos', totalCount, 'fas fa-file-invoice', '#1A4B8C', '#EEF4FF')}
+      ${cdeKpi('Total Documentos', totalCount, 'fas fa-file-invoice', '#7C3AED', '#EDE9FE')}
       ${cdeKpi('Pendientes ERP', pendingCount, 'fas fa-clock', '#D97706', '#FEF3C7')}
       ${cdeKpi('Acuse DIAN (030)', rad030Count, 'fas fa-envelope-circle-check', '#0284C7', '#E0F2FE')}
-      ${cdeKpi('Recibo Bien (032)', rad032Count, 'fas fa-box-open', '#6366F1', '#EEF2FF')}
-      ${cdeKpi('Título Valor (033)', rad033Count, 'fas fa-award', '#059669', '#ECFDF5')}
-      ${cdeKpi('Contabilizados', postedCount, 'fas fa-circle-check', '#10B981', '#D1FAE5')}
+      ${cdeKpi('Recibo Bien (032)', rad032Count, 'fas fa-box-open', '#7C3AED', '#EDE9FE')}
+      ${cdeKpi('Título Valor (033)', rad033Count, 'fas fa-award', '#059669', '#DCFCE7')}
+      ${cdeKpi('Contabilizados', postedCount, 'fas fa-circle-check', '#059669', '#DCFCE7')}
     </div>
 
     <!-- Drag & Drop Zone -->
@@ -120,7 +120,7 @@ async function loadCdePage(c: HTMLElement) {
     <div id="cde-progress-container" class="hidden bg-white border rounded-2xl p-4 mb-5" style="border-color: #F0F0F0;">
       <div class="flex items-center justify-between mb-2">
         <span id="cde-progress-label" class="text-xs font-semibold" style="color: #475569;">Procesando archivos...</span>
-        <span id="cde-progress-percent" class="text-xs font-bold" style="color: #1A4B8C;">0%</span>
+        <span id="cde-progress-percent" class="text-xs font-bold" style="color: #7C3AED;">0%</span>
       </div>
       <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
         <div id="cde-progress-bar" class="bg-gradient-to-r from-cyan-400 to-indigo-500 h-full w-0 transition-all duration-300"></div>
@@ -249,16 +249,14 @@ async function loadCdePage(c: HTMLElement) {
 
 function cdeKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card blue" style="background:#fff;border-color:#E5E7EB">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-2xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color};background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -387,7 +385,7 @@ function renderDocRow(d: ElecDoc) {
       <td><span class="text-xs">${(window as any).esc(d.issue_date)}</span></td>
       <td class="text-right font-mono text-xs">${(window as any).fmt(d.subtotal)}</td>
       <td class="text-right font-mono text-xs">${(window as any).fmt(d.tax_amount)}</td>
-      <td class="text-right font-mono text-xs font-bold" style="color: #1A4B8C;">${(window as any).fmt(d.total)}</td>
+      <td class="text-right font-mono text-xs font-bold" style="color: #7C3AED;">${(window as any).fmt(d.total)}</td>
       <td>
         <span class="badge ${statusBadges[d.status] || 'badge-gray'} text-xs capitalize">${d.status}</span>
       </td>
@@ -909,7 +907,7 @@ async function viewDocXmlDetails(id: string) {
           <div class="flex flex-col justify-end items-end space-y-1 text-xs">
             <div>Subtotal: <span class="font-mono font-semibold">${(window as any).fmt(d.subtotal)}</span></div>
             <div>Impuestos: <span class="font-mono font-semibold">${(window as any).fmt(d.tax_amount)}</span></div>
-            <div class="text-sm font-bold" style="color: #1A4B8C;">Total: <span class="font-mono">${(window as any).fmt(d.total)}</span></div>
+            <div class="text-sm font-bold" style="color: #7C3AED;">Total: <span class="font-mono">${(window as any).fmt(d.total)}</span></div>
           </div>
         </div>
       </div>
@@ -1048,7 +1046,7 @@ async function openDocHomologationModal(id: string) {
           <div><span class="text-slate-400 block text-[10px]">PROVEEDOR</span> <strong>${(window as any).esc(d.supplier_name)}</strong> (NIT: ${(window as any).esc(d.supplier_nit)})</div>
           <div><span class="text-slate-400 block text-[10px]">DOCUMENTO NRO</span> <strong class="font-mono">${(window as any).esc(d.number)}</strong></div>
           <div><span class="text-slate-400 block text-[10px]">FECHA EMISIÓN</span> ${d.issue_date}</div>
-          <div><span class="text-slate-400 block text-[10px]">VALOR TOTAL</span> <strong class="text-sm font-mono" style="color: #1A4B8C;">${(window as any).fmt(d.total)}</strong></div>
+          <div><span class="text-slate-400 block text-[10px]">VALOR TOTAL</span> <strong class="text-sm font-mono" style="color: #7C3AED;">${(window as any).fmt(d.total)}</strong></div>
         </div>
 
         <!-- Alerta de Tercero y Perfil Fiscal -->
@@ -2528,7 +2526,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
     const htmlBody = `
       <div class="space-y-4 text-xs">
         <div class="flex border-b" style="border-color: #E2E8F0;">
-          <button class="px-4 py-2 font-bold border-b-2" id="tab-cde-defaults" style="border-color: #1A4B8C; color: #1A4B8C;" onclick="window._cdeSwitchTab(0)">Cuentas por Defecto</button>
+          <button class="px-4 py-2 font-bold border-b-2" id="tab-cde-defaults" style="border-color: #7C3AED; color: #7C3AED;" onclick="window._cdeSwitchTab(0)">Cuentas por Defecto</button>
           <button class="px-4 py-2 font-bold border-b-2 border-transparent text-slate-500" id="tab-cde-rules" onclick="window._cdeSwitchTab(1)">Reglas Guardadas (${rules.length})</button>
         </div>
 
@@ -2654,7 +2652,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       if (tabIdx === 0) {
         defTab?.classList.add('border-b-2');
         defTab?.classList.remove('border-transparent', 'text-slate-500');
-        defTab?.setAttribute('style', 'border-color: #1A4B8C; color: #1A4B8C;');
+        defTab?.setAttribute('style', 'border-color: #7C3AED; color: #7C3AED;');
 
         rulesTab?.classList.remove('border-b-2');
         rulesTab?.classList.add('border-transparent', 'text-slate-500');
@@ -2665,7 +2663,7 @@ async function openCdeSettingsModal(parentContainer: HTMLElement) {
       } else {
         rulesTab?.classList.add('border-b-2');
         rulesTab?.classList.remove('border-transparent', 'text-slate-500');
-        rulesTab?.setAttribute('style', 'border-color: #1A4B8C; color: #1A4B8C;');
+        rulesTab?.setAttribute('style', 'border-color: #7C3AED; color: #7C3AED;');
 
         defTab?.classList.remove('border-b-2');
         defTab?.classList.add('border-transparent', 'text-slate-500');

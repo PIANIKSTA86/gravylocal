@@ -159,10 +159,10 @@ function _repaintDespachosScreen(c: HTMLElement, deliveries: Delivery[], vehicle
 
     <!-- KPIs -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-      ${_despKpi('Vehículos Disponibles', activeVehicles,                     'fas fa-truck',       '#059669', '#ECFDF5')}
-      ${_despKpi('Entregas Activas',       pendingDeliveries,                  'fas fa-clock',       '#C46516', '#FFF8F0')}
-      ${_despKpi('Entregas Realizadas',    completedDeliveries,                'fas fa-circle-check','#1A4B8C', '#EEF4FF')}
-      ${_despKpi('Peso Despachado',        `${(window as any).fmtN(totalWeight)} Kg`, 'fas fa-weight-hanging', '#7C3AED', '#F5F3FF')}
+      ${_despKpi('Vehículos Disponibles', activeVehicles,                     'fas fa-truck',       '#059669', '#DCFCE7')}
+      ${_despKpi('Entregas Activas',       pendingDeliveries,                  'fas fa-clock',       '#D97706', '#FEF3C7')}
+      ${_despKpi('Entregas Realizadas',    completedDeliveries,                'fas fa-circle-check','#7C3AED', '#EDE9FE')}
+      ${_despKpi('Peso Despachado',        `${(window as any).fmtN(totalWeight)} Kg`, 'fas fa-weight-hanging', '#7C3AED', '#EDE9FE')}
     </div>
 
     <!-- Tabs Selector -->
@@ -228,16 +228,14 @@ function _repaintDespachosScreen(c: HTMLElement, deliveries: Delivery[], vehicle
 
 function _despKpi(title: string, value: any, icon: string, color: string, bg: string) {
   return `
-    <div class="stat-card" style="background:#fff; border: 1.5px solid #E5E7EB; border-radius:18px; padding: 16px;">
-      <div class="flex items-center justify-between">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider" style="color:#6B7280">${title}</span>
-          <h4 class="text-xl font-extrabold mt-1" style="color:#0D2137">${value}</h4>
-        </div>
-        <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="color:${color}; background:${bg}">
+    <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+      <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">${title}</span>
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs flex-shrink-0" style="color:${color};background:${bg}">
           <i class="${icon}"></i>
         </div>
       </div>
+      <p class="text-2xl font-extrabold tracking-tight text-purple-950">${value}</p>
     </div>
   `;
 }
@@ -280,7 +278,7 @@ function _renderDeliveriesTab(deliveries: Delivery[], vehicles: Vehicle[]) {
               const veh = d.expand?.vehicle_id;
               return `
                 <tr data-delid="${(window as any).esc(d.id)}" data-status="${(window as any).esc(d.status)}" data-vehicle="${(window as any).esc(d.vehicle_id || '')}">
-                  <td><span class="font-mono font-semibold text-sm" style="color:#1A4B8C">${(window as any).esc(d.number)}</span></td>
+                  <td><span class="font-mono font-semibold text-sm" style="color:#7C3AED">${(window as any).esc(d.number)}</span></td>
                   <td>${(window as any).esc(d.date)}</td>
                   <td class="font-medium">${client ? (window as any).esc(client.name) : '—'}</td>
                   <td>${veh ? `<span class="font-semibold text-xs text-gray-700">${(window as any).esc(veh.plate)}</span> <span class="text-[10px] text-gray-500">(${(window as any).esc(veh.expand?.transportista_id?.name || veh.driver)})</span>` : '<span class="text-orange-600 font-semibold italic text-xs">Sin asignar</span>'}</td>

@@ -219,14 +219,19 @@ async function renderFacturacionDIAN(c: HTMLElement) {
       const kpisContainer = $('#dian-kpis-container');
       if (kpisContainer) {
         kpisContainer.innerHTML = [
-          ['pendiente', '#FFF8F0', '#C46516', counts.pendiente],
-          ['enviada', '#EFF6FF', '#1D4ED8', counts.enviada],
-          ['aceptada', '#F0FFF4', '#15803D', counts.aceptada],
-          ['rechazada', '#FEF2F2', '#B91C1C', counts.rechazada]
-        ].map(([s, bg, color, val]) => `
-          <div class="rounded-2xl p-4 cursor-pointer dian-kpi" data-status="${s}" onclick="window.filterDianByStatus('${s}')" style="background:${bg};border:2px solid ${status === s ? '#E87D1E' : 'transparent'}">
-            <div class="text-xs font-medium mb-1" style="color:${color}">${si(String(s)).label}</div>
-            <div class="text-2xl font-bold" style="color:${color}">${val}</div>
+          ['pendiente', '#D97706', 'fas fa-clock', counts.pendiente],
+          ['enviada', '#2563EB', 'fas fa-paper-plane', counts.enviada],
+          ['aceptada', '#059669', 'fas fa-check-circle', counts.aceptada],
+          ['rechazada', '#DC2626', 'fas fa-times-circle', counts.rechazada]
+        ].map(([s, color, icon, val]) => `
+          <div class="stat-card cursor-pointer dian-kpi" data-status="${s}" onclick="window.filterDianByStatus('${s}')" style="background:#F5F3FF;border:1.5px solid ${status === s ? '#7C3AED' : '#DDD6FE'};border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <span style="font-size:11.5px;font-weight:600;color:#5B21B6;text-transform:uppercase;letter-spacing:0.04em">${si(String(s)).label}</span>
+              <div style="width:30px;height:30px;border-radius:8px;background:${color}15;display:flex;align-items:center;justify-content:center">
+                <i class="${icon}" style="color:${color};font-size:13px"></i>
+              </div>
+            </div>
+            <div style="font-size:22px;font-weight:800;color:#2E1065;line-height:1.2;margin:0;font-variant-numeric:tabular-nums">${val}</div>
           </div>
         `).join('');
       }
@@ -250,7 +255,7 @@ async function renderFacturacionDIAN(c: HTMLElement) {
             return `
               <tr data-status="${item.status}">
                 <td>
-                  <span class="font-mono font-semibold text-sm block" style="color:#1A4B8C">${esc(item.number)}</span>
+                  <span class="font-mono font-semibold text-sm block" style="color:#7C3AED">${esc(item.number)}</span>
                   <span class="text-[10px] text-gray-400 font-medium tracking-wider uppercase block mt-0.5">${esc(item.prefix || 'DOC')}</span>
                 </td>
                 <td class="text-sm">${esc(item.date)}</td>

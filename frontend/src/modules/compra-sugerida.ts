@@ -122,44 +122,44 @@
 
         <!-- KPI Cards Resumen -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div class="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between">
-            <div>
-              <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">SKUs a Comprar</div>
-              <div class="text-2xl font-black text-slate-800" id="kpi-skus-to-buy">0 <span class="text-xs font-medium text-slate-400">/ ${physicalProducts.length}</span></div>
+          <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">SKUs a Comprar</span>
+              <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs flex-shrink-0">
+                <i class="fas fa-boxes-stacked"></i>
+              </div>
             </div>
-            <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">
-              <i class="fas fa-boxes-stacked"></i>
-            </div>
+            <div class="text-2xl font-extrabold tracking-tight text-purple-950" id="kpi-skus-to-buy">0 <span class="text-xs font-medium text-slate-400">/ ${physicalProducts.length}</span></div>
           </div>
 
-          <div class="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between">
-            <div>
-              <div class="text-[11px] font-bold text-amber-600 uppercase tracking-wider mb-1">Bajo Stock Mínimo</div>
-              <div class="text-2xl font-black text-amber-600" id="kpi-under-min">0</div>
+          <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">Bajo Stock Mínimo</span>
+              <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-xs flex-shrink-0">
+                <i class="fas fa-triangle-exclamation"></i>
+              </div>
             </div>
-            <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
-              <i class="fas fa-triangle-exclamation"></i>
-            </div>
+            <div class="text-2xl font-extrabold tracking-tight text-amber-600" id="kpi-under-min">0</div>
           </div>
 
-          <div class="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between">
-            <div>
-              <div class="text-[11px] font-bold text-indigo-600 uppercase tracking-wider mb-1">Pedidos Comprometidos</div>
-              <div class="text-2xl font-black text-indigo-900" id="kpi-committed">0 <span class="text-xs font-normal text-slate-400">und</span></div>
+          <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">Pedidos Comprometidos</span>
+              <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-xs flex-shrink-0">
+                <i class="fas fa-cart-shopping"></i>
+              </div>
             </div>
-            <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">
-              <i class="fas fa-cart-shopping"></i>
-            </div>
+            <div class="text-2xl font-extrabold tracking-tight text-purple-950" id="kpi-committed">0 <span class="text-xs font-normal text-slate-400">und</span></div>
           </div>
 
-          <div class="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex items-center justify-between">
-            <div>
-              <div class="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Inversión Estimada</div>
-              <div class="text-2xl font-black text-emerald-600" id="kpi-investment">$0</div>
+          <div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-purple-900/75">Inversión Estimada</span>
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs flex-shrink-0">
+                <i class="fas fa-sack-dollar"></i>
+              </div>
             </div>
-            <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg">
-              <i class="fas fa-sack-dollar"></i>
-            </div>
+            <div class="text-2xl font-extrabold tracking-tight text-emerald-700" id="kpi-investment">$0</div>
           </div>
         </div>
 

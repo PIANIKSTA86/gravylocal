@@ -135,6 +135,8 @@ function applyModuleVisibility(): void {
     'reservas-logistica':'logistica',
     'inmobiliarias':    'inmobiliarias',
     'inmo-contratos':   'inmobiliarias',
+    'inmo-mantenimientos': 'inmobiliarias',
+    'inmo-expedientes':  'inmobiliarias',
     'inmo-liquidacion':  'inmobiliarias',
     'tienda-virtual':   'tienda-virtual',
     'crm':              'crm',

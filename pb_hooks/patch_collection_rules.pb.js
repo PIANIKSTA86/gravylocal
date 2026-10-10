@@ -70,6 +70,8 @@ onBootstrap((e) => {
     "inmo_invoices",
     "inmo_invoice_lines",
     "inmo_property_history",
+    "inmo_maintenance",
+    "inmo_documents",
   ];
 
   const lineCollections = new Set([

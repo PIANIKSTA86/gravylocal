@@ -32,6 +32,33 @@ const INVOICE_STATUS_META = {
 
 const PROPERTY_TYPES = ['CASA', 'APARTAMENTO', 'LOCAL', 'BODEGA', 'OFICINA', 'LOTE', 'OTRO'];
 
+const MAINTENANCE_STATUS: Record<string, { label: string; badge: string }> = {
+  PROGRAMADO:    { label: 'Programado',    badge: 'badge-purple' },
+  EN_COTIZACION: { label: 'En Cotización', badge: 'badge-blue'   },
+  EN_EJECUCION:  { label: 'En Ejecución',  badge: 'badge-orange' },
+  COMPLETADO:    { label: 'Completado',    badge: 'badge-green'  },
+  CANCELADO:     { label: 'Cancelado',     badge: 'badge-gray'   },
+};
+
+const MAINTENANCE_TYPES: Record<string, { label: string; icon: string }> = {
+  PREVENTIVO:       { label: 'Preventivo',        icon: 'fa-shield-halved' },
+  CORRECTIVO:       { label: 'Correctivo',        icon: 'fa-wrench' },
+  LOCATIVO:         { label: 'Locativo / Pintura',icon: 'fa-paint-roller' },
+  ENTREGA_DESALOJO: { label: 'Entrega / Desalojo',icon: 'fa-door-open' },
+};
+
+const DOCUMENT_CATEGORIES: Record<string, { label: string; icon: string; badge: string }> = {
+  CERT_TRADICION:   { label: 'Certificado Tradición y Libertad', icon: 'fa-certificate', badge: 'badge-blue'   },
+  ESCRITURA:        { label: 'Escritura Pública',               icon: 'fa-landmark',    badge: 'badge-purple' },
+  CONTRATO_FIRMADO: { label: 'Contrato de Arriendo Firmado',     icon: 'fa-file-signature', badge: 'badge-green' },
+  POLIZA_SEGURO:    { label: 'Póliza de Arrendamiento / Fianza', icon: 'fa-shield-heart', badge: 'badge-pink'  },
+  PAZ_Y_SALVO:      { label: 'Paz y Salvo de Administración',   icon: 'fa-circle-check', badge: 'badge-teal'  },
+  RUT_CEDULA:       { label: 'Documentos Identidad / RUT',      icon: 'fa-id-card',     badge: 'badge-gray'   },
+  ACTA_ENTREGA:     { label: 'Acta de Inventario y Entrega',    icon: 'fa-clipboard-list', badge: 'badge-orange' },
+  RECIBO_SERVICIO:  { label: 'Recibo Servicios Públicos',       icon: 'fa-bolt',        badge: 'badge-yellow' },
+  OTRO:             { label: 'Otro Soporte',                    icon: 'fa-file-lines',  badge: 'badge-gray'   },
+};
+
 // Helper local para KPI
 function inmoKpi(label: string, value: any, iconClass: string, color: string, _bg?: string) {
   return `<div class="stat-card" style="background:#F5F3FF;border:1px solid #DDD6FE;border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(124,58,237,0.04);transition:all .2s ease">
@@ -163,8 +190,16 @@ async function renderInmobiliarias(c: HTMLElement) {
         </h3>
         <p class="text-sm" style="color:#6B7280">Administración de inmuebles, registros de características y ficha técnica.</p>
       </div>
+      <div>
+        <button class="btn btn-outline" id="btn-inmo-config-header" title="Configuración del Módulo Inmobiliario">
+          <i class="fas fa-cog text-base mr-1.5"></i>Configuración
+        </button>
+      </div>
     </div>
     <div id="inmo-inmuebles-content"></div>`;
+
+  c.querySelector('#btn-inmo-config-header')?.addEventListener('click', () => (window as any).openInmoConfigModal());
+
   const content = c.querySelector('#inmo-inmuebles-content') as HTMLElement;
   await renderInmoInmuebles(content);
 }
@@ -182,6 +217,38 @@ async function renderInmoContratosPage(c: HTMLElement) {
     <div id="inmo-contratos-content"></div>`;
   const content = c.querySelector('#inmo-contratos-content') as HTMLElement;
   await renderInmoContratos(content);
+}
+
+async function renderInmoMantenimientosPage(c: HTMLElement) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-screwdriver-wrench mr-2" style="color:#EC4899"></i>Mantenimientos de Inmuebles
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Programación, control operativo y asignación de costos de mantenimiento.</p>
+      </div>
+    </div>
+    <div id="inmo-mantenimientos-content"></div>`;
+
+  const content = c.querySelector('#inmo-mantenimientos-content') as HTMLElement;
+  await renderInmoMantenimientos(content);
+}
+
+async function renderInmoExpedientesPage(c: HTMLElement) {
+  c.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <h3 class="text-lg font-bold" style="color:#0D2137">
+          <i class="fas fa-folder-open mr-2" style="color:#EC4899"></i>Expedientes y Documentación
+        </h3>
+        <p class="text-sm" style="color:#6B7280">Gestión documental centralizada de inmuebles y contratos con control de vigencias.</p>
+      </div>
+    </div>
+    <div id="inmo-expedientes-content"></div>`;
+
+  const content = c.querySelector('#inmo-expedientes-content') as HTMLElement;
+  await renderInmoExpedientes(content);
 }
 
 async function renderInmoLiquidacionPage(c: HTMLElement) {
@@ -205,6 +272,657 @@ async function renderInmoLiquidacionPage(c: HTMLElement) {
 
   const content = c.querySelector('#inmo-liquidacion-content') as HTMLElement;
   await renderInmoLiquidacion(content);
+}
+
+async function renderInmoMantenimientos(c: HTMLElement) {
+  c.innerHTML = `<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando mantenimientos...</div>`;
+  try {
+    const maintenances = await (window as any).API.getInmoMaintenances();
+
+    const totalCount = maintenances.length;
+    const activeCount = maintenances.filter((m: any) => m.status === 'PROGRAMADO' || m.status === 'EN_COTIZACION' || m.status === 'EN_EJECUCION').length;
+    const completedCount = maintenances.filter((m: any) => m.status === 'COMPLETADO').length;
+    const totalCost = maintenances.reduce((acc: number, m: any) => acc + (m.actual_cost || m.estimated_cost || 0), 0);
+
+    c.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        ${inmoKpi('Total Mantenimientos', totalCount, 'fas fa-screwdriver-wrench', '#3B82F6', '#EFF6FF')}
+        ${inmoKpi('En Curso / Programados', activeCount, 'fas fa-clock', '#F59E0B', '#FFFBEB')}
+        ${inmoKpi('Completados', completedCount, 'fas fa-check-double', '#10B981', '#ECFDF5')}
+        ${inmoKpi('Costo Total', (window as any).fmt(totalCost), 'fas fa-receipt', '#EC4899', '#FDF2F8')}
+      </div>
+
+      <div class="bg-white rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3 justify-between" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center gap-2 flex-1">
+          <input id="mnt-search" class="form-input text-sm" placeholder="Buscar por código, título o inmueble..." style="max-width:280px">
+          <select id="mnt-filter-status" class="form-input text-sm" style="max-width:180px">
+            <option value="">Todos los Estados</option>
+            ${Object.keys(MAINTENANCE_STATUS).map(k => `<option value="${k}">${MAINTENANCE_STATUS[k].label}</option>`).join('')}
+          </select>
+          <select id="mnt-filter-charged" class="form-input text-sm" style="max-width:180px">
+            <option value="">A cargo de: Todos</option>
+            <option value="PROPIETARIO">Propietario</option>
+            <option value="INQUILINO">Inquilino</option>
+            <option value="INMOBILIARIA">Inmobiliaria</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btn-add-mnt-inline">
+          <i class="fas fa-plus mr-1"></i>Nuevo Mantenimiento
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+        <div class="overflow-x-auto">
+          <table class="data-table" id="table-mantenimientos">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Inmueble</th>
+                <th>Título / Tipo</th>
+                <th>Fecha Programada</th>
+                <th>Técnico / Proveedor</th>
+                <th class="text-right">Costo Est. / Real</th>
+                <th>A Cargo De</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${maintenances.map((m: any) => {
+                const prop = m.expand?.property_id;
+                const prov = m.expand?.provider_id;
+                const statusMeta = MAINTENANCE_STATUS[m.status] || { label: m.status, badge: 'badge-gray' };
+                const typeMeta = MAINTENANCE_TYPES[m.type] || { label: m.type, icon: 'fa-wrench' };
+                const chargedBadge = m.charged_to === 'PROPIETARIO' ? 'badge-pink' : (m.charged_to === 'INQUILINO' ? 'badge-blue' : 'badge-purple');
+                return `<tr data-id="${m.id}" data-status="${m.status}" data-charged="${m.charged_to}">
+                  <td class="font-mono text-xs font-bold text-pink-600">${(window as any).esc(m.code)}</td>
+                  <td>
+                    <span class="font-semibold text-gray-800">${(window as any).esc(prop?.title || '—')}</span>
+                    ${prop ? `<br><span class="text-xs text-gray-400 font-mono">${(window as any).esc(prop.code)}</span>` : ''}
+                  </td>
+                  <td>
+                    <span class="font-medium text-gray-800">${(window as any).esc(m.title)}</span>
+                    <br><span class="text-[11px] text-gray-500"><i class="fas ${typeMeta.icon} mr-1 text-purple-600"></i>${typeMeta.label}</span>
+                  </td>
+                  <td>${m.scheduled_date ? `<span class="text-xs font-mono font-medium">${m.scheduled_date}</span>` : '<span class="text-gray-400 text-xs">Sin fecha</span>'}</td>
+                  <td class="text-xs">${(window as any).esc(prov?.name || 'No asignado')}</td>
+                  <td class="text-right">
+                    <span class="font-bold text-gray-800">${(window as any).fmt(m.actual_cost || m.estimated_cost || 0)}</span>
+                    ${m.actual_cost > 0 && m.estimated_cost > 0 ? `<br><span class="text-[10px] text-gray-400">Est: ${(window as any).fmt(m.estimated_cost)}</span>` : ''}
+                  </td>
+                  <td><span class="badge ${chargedBadge} text-[10px] uppercase font-bold">${m.charged_to}</span></td>
+                  <td><span class="badge ${statusMeta.badge}">${statusMeta.label}</span></td>
+                  <td>
+                    <div class="flex items-center gap-1">
+                      <button class="btn btn-outline btn-sm inmo-mnt-edit" data-id="${m.id}" title="Editar Mantenimiento"><i class="fas fa-pen text-xs"></i></button>
+                      <button class="btn btn-outline btn-sm inmo-mnt-del text-red-500 hover:bg-red-50 border-red-200" data-id="${m.id}" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+              ${!maintenances.length ? '<tr><td colspan="9" class="text-center py-8 text-gray-400">No hay órdenes de mantenimiento registradas</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const filterFn = () => {
+      const q = (document.getElementById('mnt-search') as HTMLInputElement)?.value.toLowerCase() || '';
+      const st = (document.getElementById('mnt-filter-status') as HTMLSelectElement)?.value || '';
+      const ch = (document.getElementById('mnt-filter-charged') as HTMLSelectElement)?.value || '';
+
+      document.querySelectorAll('#table-mantenimientos tbody tr').forEach(row => {
+        const text = row.textContent?.toLowerCase() || '';
+        const rowSt = (row as HTMLElement).dataset.status || '';
+        const rowCh = (row as HTMLElement).dataset.charged || '';
+        const matchQ = text.includes(q);
+        const matchSt = !st || rowSt === st;
+        const matchCh = !ch || rowCh === ch;
+        (row as HTMLElement).style.display = (matchQ && matchSt && matchCh) ? '' : 'none';
+      });
+    };
+
+    document.getElementById('mnt-search')?.addEventListener('input', filterFn);
+    document.getElementById('mnt-filter-status')?.addEventListener('change', filterFn);
+    document.getElementById('mnt-filter-charged')?.addEventListener('change', filterFn);
+    document.getElementById('btn-add-mnt-inline')?.addEventListener('click', () => openMaintenanceModal());
+
+    document.querySelectorAll('.inmo-mnt-edit').forEach(btn => {
+      btn.addEventListener('click', () => openMaintenanceModal((btn as HTMLElement).dataset.id));
+    });
+
+    document.querySelectorAll('.inmo-mnt-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id || '';
+        if (!confirm('¿Deseas eliminar este registro de mantenimiento?')) return;
+        try {
+          await (window as any).pb.delete('inmo_maintenance', id);
+          (window as any).showToast('Mantenimiento eliminado.', 'success');
+          renderInmoMantenimientos(c);
+        } catch (err: any) {
+          (window as any).showToast('Error al eliminar: ' + err.message, 'error');
+        }
+      });
+    });
+
+    const tbl = document.getElementById('table-mantenimientos') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
+
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-6 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+  }
+}
+
+async function openMaintenanceModal(id = '') {
+  let record: any = {
+    code: `MNT-${String(Date.now()).slice(-5)}`,
+    property_id: '',
+    contract_id: '',
+    provider_id: '',
+    title: '',
+    type: 'CORRECTIVO',
+    status: 'PROGRAMADO',
+    scheduled_date: (window as any).todayStr(),
+    completed_date: '',
+    estimated_cost: 0,
+    actual_cost: 0,
+    charged_to: 'PROPIETARIO',
+    is_deducted: false,
+    description: '',
+    attachments: []
+  };
+  let providerName = '';
+
+  let props: any[] = [];
+  let contracts: any[] = [];
+  try {
+    [props, contracts] = await Promise.all([
+      (window as any).API.getInmoProperties(false),
+      (window as any).API.getInmoContracts(false, 'ALL')
+    ]);
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (id) {
+    try {
+      const m = await (window as any).pb.get('inmo_maintenance', id, { expand: 'provider_id,property_id' });
+      record = { ...record, ...m };
+      providerName = m.expand?.provider_id?.name || '';
+    } catch (err: any) {
+      (window as any).showToast('Error al cargar mantenimiento: ' + err.message, 'error');
+      return;
+    }
+  }
+
+  (window as any).openModal(
+    id ? 'Editar Mantenimiento' : 'Programar Mantenimiento',
+    `<div class="space-y-4 text-sm" style="text-align: left; max-height: 75vh; overflow-y: auto; padding-right: 4px;">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Código Único <span class="text-red-500">*</span></label>
+          <input id="mnt-code" class="form-input" value="${(window as any).esc(record.code)}" ${id ? 'disabled' : ''}>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Inmueble <span class="text-red-500">*</span></label>
+          <select id="mnt-property" class="form-input">
+            <option value="">Selecciona inmueble...</option>
+            ${props.map((p: any) => `<option value="${p.id}" ${record.property_id === p.id ? 'selected' : ''}>${p.code} - ${(window as any).esc(p.title)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Título del Trabajo <span class="text-red-500">*</span></label>
+          <input id="mnt-title" class="form-input" placeholder="Ej: Reparación fuga de tubería en cocina" value="${(window as any).esc(record.title)}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Tipo de Mantenimiento</label>
+          <select id="mnt-type" class="form-input">
+            ${Object.keys(MAINTENANCE_TYPES).map(k => `<option value="${k}" ${record.type === k ? 'selected' : ''}>${MAINTENANCE_TYPES[k].label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Estado</label>
+          <select id="mnt-status" class="form-input">
+            ${Object.keys(MAINTENANCE_STATUS).map(k => `<option value="${k}" ${record.status === k ? 'selected' : ''}>${MAINTENANCE_STATUS[k].label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">A Cargo De <span class="text-red-500">*</span></label>
+          <select id="mnt-charged" class="form-input">
+            <option value="PROPIETARIO" ${record.charged_to === 'PROPIETARIO' ? 'selected' : ''}>Propietario (Deducir de arriendo)</option>
+            <option value="INQUILINO" ${record.charged_to === 'INQUILINO' ? 'selected' : ''}>Inquilino (Cobro en factura)</option>
+            <option value="INMOBILIARIA" ${record.charged_to === 'INMOBILIARIA' ? 'selected' : ''}>Inmobiliaria (Gasto propio)</option>
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Contrato Asociado</label>
+          <select id="mnt-contract" class="form-input">
+            <option value="">(Ninguno / Desocupado)</option>
+            ${contracts.map((c: any) => `<option value="${c.id}" ${record.contract_id === c.id ? 'selected' : ''}>${c.number} (${(window as any).esc(c.expand?.tenant_id?.name || 'Inquilino')})</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Fecha Programada</label>
+          <input id="mnt-sched-date" type="date" class="form-input" value="${record.scheduled_date || ''}">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Fecha Culminación</label>
+          <input id="mnt-comp-date" type="date" class="form-input" value="${record.completed_date || ''}">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Presupuesto Estimado ($)</label>
+          <input id="mnt-est-cost" type="number" class="form-input" value="${record.estimated_cost || 0}" min="0">
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Costo Real Final ($)</label>
+          <input id="mnt-act-cost" type="number" class="form-input" value="${record.actual_cost || 0}" min="0">
+        </div>
+      </div>
+
+      <div class="form-group mb-0 relative">
+        <label class="form-label">Técnico / Proveedor Contratista</label>
+        <input id="mnt-provider-search" class="form-input" autocomplete="off" placeholder="Buscar por NIT o nombre del técnico/proveedor..." value="${(window as any).esc(providerName)}">
+        <input id="mnt-provider-id" type="hidden" value="${(window as any).esc(record.provider_id || '')}">
+        <div id="mnt-provider-results" class="absolute left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-40 overflow-y-auto hidden z-50"></div>
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label">Descripción de Trabajos y Novedades</label>
+        <textarea id="mnt-desc" class="form-input" rows="3" placeholder="Detalles de la falla, materiales requeridos, alcance...">${(window as any).esc(record.description || '')}</textarea>
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label">Adjuntar Evidencias / Cotización (Fotos, Facturas, PDF)</label>
+        <input id="mnt-file-input" type="file" multiple class="form-input text-xs" accept="image/*,.pdf">
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="mnt-save-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+  );
+
+  setupThirdPartyAutocomplete('mnt-provider-search', 'mnt-provider-id', 'mnt-provider-results', 'PROVEEDOR');
+
+  document.getElementById('mnt-save-btn')?.addEventListener('click', async () => {
+    const code = (document.getElementById('mnt-code') as HTMLInputElement).value.trim();
+    const property_id = (document.getElementById('mnt-property') as HTMLSelectElement).value;
+    const title = (document.getElementById('mnt-title') as HTMLInputElement).value.trim();
+    const type = (document.getElementById('mnt-type') as HTMLSelectElement).value;
+    const status = (document.getElementById('mnt-status') as HTMLSelectElement).value;
+    const charged_to = (document.getElementById('mnt-charged') as HTMLSelectElement).value;
+    const contract_id = (document.getElementById('mnt-contract') as HTMLSelectElement).value || null;
+    const scheduled_date = (document.getElementById('mnt-sched-date') as HTMLInputElement).value;
+    const completed_date = (document.getElementById('mnt-comp-date') as HTMLInputElement).value;
+    const estimated_cost = parseFloat((document.getElementById('mnt-est-cost') as HTMLInputElement).value) || 0;
+    const actual_cost = parseFloat((document.getElementById('mnt-act-cost') as HTMLInputElement).value) || 0;
+    const provider_id = (document.getElementById('mnt-provider-id') as HTMLInputElement).value || null;
+    const description = (document.getElementById('mnt-desc') as HTMLTextAreaElement).value.trim();
+    const fileInput = document.getElementById('mnt-file-input') as HTMLInputElement;
+
+    if (!code || !property_id || !title) {
+      (window as any).showToast('Código, inmueble y título son obligatorios.', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById('mnt-save-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+
+    try {
+      const fd = new FormData();
+      fd.append('code', code);
+      fd.append('property_id', property_id);
+      fd.append('title', title);
+      fd.append('type', type);
+      fd.append('status', status);
+      fd.append('charged_to', charged_to);
+      if (contract_id) fd.append('contract_id', contract_id);
+      if (scheduled_date) fd.append('scheduled_date', scheduled_date);
+      if (completed_date) fd.append('completed_date', completed_date);
+      fd.append('estimated_cost', String(estimated_cost));
+      fd.append('actual_cost', String(actual_cost));
+      if (provider_id) fd.append('provider_id', provider_id);
+      fd.append('description', description);
+
+      if (fileInput?.files?.length) {
+        for (let i = 0; i < fileInput.files.length; i++) {
+          fd.append('attachments', fileInput.files[i]);
+        }
+      }
+
+      if (id) {
+        await (window as any).pb.update('inmo_maintenance', id, fd);
+        (window as any).showToast('Mantenimiento actualizado.', 'success');
+      } else {
+        await (window as any).pb.create('inmo_maintenance', fd);
+        (window as any).showToast('Mantenimiento programado exitosamente.', 'success');
+      }
+
+      (window as any).closeModal();
+      const content = document.getElementById('inmo-mantenimientos-content') || ((window as any).getActivePane ? (window as any).getActivePane() : null);
+      if (content) renderInmoMantenimientos(content);
+    } catch (err: any) {
+      console.error(err);
+      (window as any).showToast(formatPbError(err), 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar';
+    }
+  });
+}
+
+async function renderInmoExpedientes(c: HTMLElement) {
+  c.innerHTML = `<div class="p-6 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando expedientes...</div>`;
+  try {
+    const [docs, props] = await Promise.all([
+      (window as any).API.getInmoDocuments(),
+      (window as any).API.getInmoProperties(false)
+    ]);
+
+    const today = (window as any).todayStr();
+    const totalDocs = docs.length;
+    const policiesCount = docs.filter((d: any) => d.category === 'POLIZA_SEGURO').length;
+    const deedsCount = docs.filter((d: any) => d.category === 'CERT_TRADICION' || d.category === 'ESCRITURA').length;
+
+    const alertDocs = docs.filter((d: any) => {
+      if (!d.expiration_date) return false;
+      const diffDays = Math.ceil((new Date(d.expiration_date).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 30;
+    }).length;
+
+    c.innerHTML = `
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        ${inmoKpi('Total Expedientes', totalDocs, 'fas fa-folder-open', '#3B82F6', '#EFF6FF')}
+        ${inmoKpi('Pólizas & Seguros', policiesCount, 'fas fa-shield-heart', '#EC4899', '#FDF2F8')}
+        ${inmoKpi('Títulos & Certificados', deedsCount, 'fas fa-certificate', '#8B5CF6', '#F5F3FF')}
+        ${inmoKpi('Por Vencer / Vencidos', alertDocs, 'fas fa-triangle-exclamation', alertDocs > 0 ? '#EF4444' : '#10B981', alertDocs > 0 ? '#FEF2F2' : '#ECFDF5')}
+      </div>
+
+      <div class="bg-white rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3 justify-between" style="border-color:#F0F0F0">
+        <div class="flex flex-wrap items-center gap-2 flex-1">
+          <input id="doc-search" class="form-input text-sm" placeholder="Buscar documento o inmueble..." style="max-width:280px">
+          <select id="doc-filter-cat" class="form-input text-sm" style="max-width:220px">
+            <option value="">Todas las Categorías</option>
+            ${Object.keys(DOCUMENT_CATEGORIES).map(k => `<option value="${k}">${DOCUMENT_CATEGORIES[k].label}</option>`).join('')}
+          </select>
+          <select id="doc-filter-prop" class="form-input text-sm" style="max-width:220px">
+            <option value="">Todos los Inmuebles</option>
+            ${props.map((p: any) => `<option value="${p.id}">${p.code} - ${(window as any).esc(p.title)}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btn-add-doc-inline">
+          <i class="fas fa-cloud-arrow-up mr-1"></i>Subir Documento
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border overflow-hidden" style="border-color:#F0F0F0">
+        <div class="overflow-x-auto">
+          <table class="data-table" id="table-expedientes">
+            <thead>
+              <tr>
+                <th>Documento</th>
+                <th>Categoría</th>
+                <th>Inmueble / Contrato</th>
+                <th>Vigencia</th>
+                <th>Archivo</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${docs.map((d: any) => {
+                const prop = d.expand?.property_id;
+                const catMeta = DOCUMENT_CATEGORIES[d.category] || { label: d.category, icon: 'fa-file-lines', badge: 'badge-gray' };
+                
+                let vigenciaHtml = '<span class="badge badge-gray text-xs">Sin Vencimiento</span>';
+                if (d.expiration_date) {
+                  const diffDays = Math.ceil((new Date(d.expiration_date).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+                  if (diffDays < 0) {
+                    vigenciaHtml = `<span class="badge badge-red font-bold text-xs"><i class="fas fa-triangle-exclamation mr-1"></i>Vencido (${d.expiration_date})</span>`;
+                  } else if (diffDays <= 30) {
+                    vigenciaHtml = `<span class="badge badge-orange font-bold text-xs"><i class="fas fa-clock mr-1"></i>Vence en ${diffDays} d (${d.expiration_date})</span>`;
+                  } else {
+                    vigenciaHtml = `<span class="badge badge-green font-semibold text-xs"><i class="fas fa-circle-check mr-1"></i>Vigente (${d.expiration_date})</span>`;
+                  }
+                }
+
+                const fileUrl = d.file ? `${(window as any).PB_URL}/api/files/inmo_documents/${d.id}/${d.file}${(window as any).pb.authToken ? '?token=' + (window as any).pb.authToken : ''}` : '';
+
+                return `<tr data-id="${d.id}" data-cat="${d.category}" data-prop="${d.property_id || ''}">
+                  <td>
+                    <div class="flex items-center gap-2.5">
+                      <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0">
+                        <i class="fas ${catMeta.icon} text-sm"></i>
+                      </div>
+                      <div>
+                        <span class="font-semibold text-gray-800 text-sm">${(window as any).esc(d.title)}</span>
+                        ${d.notes ? `<p class="text-xs text-gray-400 mt-0.5 line-clamp-1">${(window as any).esc(d.notes)}</p>` : ''}
+                      </div>
+                    </div>
+                  </td>
+                  <td><span class="badge ${catMeta.badge} text-xs">${catMeta.label}</span></td>
+                  <td>
+                    <span class="font-medium text-gray-800 text-xs">${prop ? (window as any).esc(prop.title) : '<span class="text-gray-400">General / Global</span>'}</span>
+                    ${prop ? `<br><span class="text-[10px] text-gray-400 font-mono">${(window as any).esc(prop.code)}</span>` : ''}
+                  </td>
+                  <td>${vigenciaHtml}</td>
+                  <td>
+                    ${fileUrl ? `
+                      <a href="${fileUrl}" target="_blank" class="btn btn-outline btn-xs text-blue-600 border-blue-200 hover:bg-blue-50 inline-flex items-center gap-1 font-semibold">
+                        <i class="fas fa-arrow-down mr-1"></i>Ver / Descargar
+                      </a>
+                    ` : '<span class="text-gray-400 text-xs">Sin archivo</span>'}
+                  </td>
+                  <td>
+                    <div class="flex items-center gap-1">
+                      <button class="btn btn-outline btn-sm inmo-doc-edit" data-id="${d.id}" title="Editar"><i class="fas fa-pen text-xs"></i></button>
+                      <button class="btn btn-outline btn-sm inmo-doc-del text-red-500 hover:bg-red-50 border-red-200" data-id="${d.id}" title="Eliminar"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
+                  </td>
+                </tr>`;
+              }).join('')}
+              ${!docs.length ? '<tr><td colspan="6" class="text-center py-8 text-gray-400">No hay documentos cargados en el repositorio</td></tr>' : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const filterFn = () => {
+      const q = (document.getElementById('doc-search') as HTMLInputElement)?.value.toLowerCase() || '';
+      const cat = (document.getElementById('doc-filter-cat') as HTMLSelectElement)?.value || '';
+      const propId = (document.getElementById('doc-filter-prop') as HTMLSelectElement)?.value || '';
+
+      document.querySelectorAll('#table-expedientes tbody tr').forEach(row => {
+        const text = row.textContent?.toLowerCase() || '';
+        const rowCat = (row as HTMLElement).dataset.cat || '';
+        const rowProp = (row as HTMLElement).dataset.prop || '';
+        const matchQ = text.includes(q);
+        const matchCat = !cat || rowCat === cat;
+        const matchProp = !propId || rowProp === propId;
+        (row as HTMLElement).style.display = (matchQ && matchCat && matchProp) ? '' : 'none';
+      });
+    };
+
+    document.getElementById('doc-search')?.addEventListener('input', filterFn);
+    document.getElementById('doc-filter-cat')?.addEventListener('change', filterFn);
+    document.getElementById('doc-filter-prop')?.addEventListener('change', filterFn);
+    document.getElementById('btn-add-doc-inline')?.addEventListener('click', () => openDocumentModal());
+
+    document.querySelectorAll('.inmo-doc-edit').forEach(btn => {
+      btn.addEventListener('click', () => openDocumentModal((btn as HTMLElement).dataset.id));
+    });
+
+    document.querySelectorAll('.inmo-doc-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = (btn as HTMLElement).dataset.id || '';
+        if (!confirm('¿Deseas eliminar este documento del expediente?')) return;
+        try {
+          await (window as any).pb.delete('inmo_documents', id);
+          (window as any).showToast('Documento eliminado.', 'success');
+          renderInmoExpedientes(c);
+        } catch (err: any) {
+          (window as any).showToast('Error al eliminar: ' + err.message, 'error');
+        }
+      });
+    });
+
+    const tbl = document.getElementById('table-expedientes') as HTMLTableElement;
+    if (tbl) (window as any).makeTableSortable(tbl);
+
+  } catch (err: any) {
+    c.innerHTML = `<div class="p-6 text-center text-red-500"><i class="fas fa-circle-exclamation mr-2"></i>${(window as any).esc(err.message)}</div>`;
+  }
+}
+
+async function openDocumentModal(id = '') {
+  let record: any = {
+    title: '',
+    category: 'CERT_TRADICION',
+    property_id: '',
+    contract_id: '',
+    expiration_date: '',
+    notes: '',
+    file: ''
+  };
+
+  let props: any[] = [];
+  let contracts: any[] = [];
+  try {
+    [props, contracts] = await Promise.all([
+      (window as any).API.getInmoProperties(false),
+      (window as any).API.getInmoContracts(false, 'ALL')
+    ]);
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (id) {
+    try {
+      const d = await (window as any).pb.get('inmo_documents', id);
+      record = { ...record, ...d };
+    } catch (err: any) {
+      (window as any).showToast('Error al cargar documento: ' + err.message, 'error');
+      return;
+    }
+  }
+
+  (window as any).openModal(
+    id ? 'Editar Expediente Documental' : 'Subir Documento al Expediente',
+    `<div class="space-y-4 text-sm" style="text-align: left; max-height: 75vh; overflow-y: auto; padding-right: 4px;">
+      <div class="form-group mb-0">
+        <label class="form-label">Título del Documento <span class="text-red-500">*</span></label>
+        <input id="doc-title" class="form-input" placeholder="Ej: Certificado Tradición y Libertad Julio 2026" value="${(window as any).esc(record.title)}">
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Categoría <span class="text-red-500">*</span></label>
+          <select id="doc-category" class="form-input">
+            ${Object.keys(DOCUMENT_CATEGORIES).map(k => `<option value="${k}" ${record.category === k ? 'selected' : ''}>${DOCUMENT_CATEGORIES[k].label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Fecha de Vencimiento (Opcional)</label>
+          <input id="doc-exp-date" type="date" class="form-input" value="${record.expiration_date || ''}">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="form-group mb-0">
+          <label class="form-label">Inmueble Asociado</label>
+          <select id="doc-property" class="form-input">
+            <option value="">(Ninguno / Documento Global)</option>
+            ${props.map((p: any) => `<option value="${p.id}" ${record.property_id === p.id ? 'selected' : ''}>${p.code} - ${(window as any).esc(p.title)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group mb-0">
+          <label class="form-label">Contrato Asociado</label>
+          <select id="doc-contract" class="form-input">
+            <option value="">(Ninguno)</option>
+            ${contracts.map((c: any) => `<option value="${c.id}" ${record.contract_id === c.id ? 'selected' : ''}>${c.number} (${(window as any).esc(c.expand?.tenant_id?.name || 'Inquilino')})</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label">Archivo Adjunto ${!id ? '<span class="text-red-500">*</span>' : ''}</label>
+        <input id="doc-file-input" type="file" class="form-input text-xs" accept=".pdf,image/*,.zip">
+        ${record.file ? `<span class="text-xs text-gray-400 mt-1 block">Archivo actual: <strong>${record.file}</strong> (dejar vacío si no deseas reemplazarlo)</span>` : ''}
+      </div>
+
+      <div class="form-group mb-0">
+        <label class="form-label">Notas u Observaciones</label>
+        <textarea id="doc-notes" class="form-input" rows="2" placeholder="Observaciones adicionales sobre este documento...">${(window as any).esc(record.notes || '')}</textarea>
+      </div>
+    </div>`,
+    `<button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+     <button class="btn btn-primary" id="doc-save-btn"><i class="fas fa-save mr-1"></i>Guardar</button>`
+  );
+
+  document.getElementById('doc-save-btn')?.addEventListener('click', async () => {
+    const title = (document.getElementById('doc-title') as HTMLInputElement).value.trim();
+    const category = (document.getElementById('doc-category') as HTMLSelectElement).value;
+    const property_id = (document.getElementById('doc-property') as HTMLSelectElement).value || null;
+    const contract_id = (document.getElementById('doc-contract') as HTMLSelectElement).value || null;
+    const expiration_date = (document.getElementById('doc-exp-date') as HTMLInputElement).value;
+    const notes = (document.getElementById('doc-notes') as HTMLTextAreaElement).value.trim();
+    const fileInput = document.getElementById('doc-file-input') as HTMLInputElement;
+
+    if (!title) {
+      (window as any).showToast('El título del documento es obligatorio.', 'warning');
+      return;
+    }
+    if (!id && (!fileInput.files || !fileInput.files.length)) {
+      (window as any).showToast('Debes seleccionar un archivo para subir.', 'warning');
+      return;
+    }
+
+    const btn = document.getElementById('doc-save-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Subiendo...';
+
+    try {
+      const fd = new FormData();
+      fd.append('title', title);
+      fd.append('category', category);
+      if (property_id) fd.append('property_id', property_id);
+      if (contract_id) fd.append('contract_id', contract_id);
+      if (expiration_date) fd.append('expiration_date', expiration_date);
+      fd.append('notes', notes);
+
+      if (fileInput.files && fileInput.files.length) {
+        fd.append('file', fileInput.files[0]);
+      }
+
+      if (id) {
+        await (window as any).pb.update('inmo_documents', id, fd);
+        (window as any).showToast('Documento actualizado exitosamente.', 'success');
+      } else {
+        await (window as any).pb.create('inmo_documents', fd);
+        (window as any).showToast('Documento subido al expediente exitosamente.', 'success');
+      }
+
+      (window as any).closeModal();
+      const content = document.getElementById('inmo-expedientes-content') || ((window as any).getActivePane ? (window as any).getActivePane() : null);
+      if (content) renderInmoExpedientes(content);
+    } catch (err: any) {
+      console.error(err);
+      (window as any).showToast(formatPbError(err), 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save mr-1"></i>Guardar';
+    }
+  });
 }
 
 async function renderInmoInmuebles(c: HTMLElement) {
@@ -1923,6 +2641,12 @@ async function openPropertySellModal(propertyId: string, container: HTMLElement)
 (window as any).openContractModal = openContractModal;
 (window as any).viewAmortizationTable = viewAmortizationTable;
 (window as any).renderInmoLiquidacionPage = renderInmoLiquidacionPage;
+(window as any).renderInmoMantenimientosPage = renderInmoMantenimientosPage;
+(window as any).renderInmoMantenimientos = renderInmoMantenimientos;
+(window as any).openMaintenanceModal = openMaintenanceModal;
+(window as any).renderInmoExpedientesPage = renderInmoExpedientesPage;
+(window as any).renderInmoExpedientes = renderInmoExpedientes;
+(window as any).openDocumentModal = openDocumentModal;
 
 (window as any).openInmoPostingChoicesModal = async function(id: string) {
   let inv: any;

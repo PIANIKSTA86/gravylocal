@@ -8636,6 +8636,24 @@ const API = {
     });
   },
 
+  async getInmoMaintenances(opts: any = {}) {
+    const { filter = '', sort = '-scheduled_date' } = opts;
+    return pb.listAll('inmo_maintenance', {
+      filter,
+      sort,
+      expand: 'property_id,contract_id,provider_id',
+    });
+  },
+
+  async getInmoDocuments(opts: any = {}) {
+    const { filter = '', sort = '-id' } = opts;
+    return pb.listAll('inmo_documents', {
+      filter,
+      sort,
+      expand: 'property_id,contract_id',
+    });
+  },
+
   async generateInmoInvoices(period, dueDate = '') {
     const safePeriod = pb.escapeFilterValue(period);
     const contracts = await this.getInmoContracts(true);
